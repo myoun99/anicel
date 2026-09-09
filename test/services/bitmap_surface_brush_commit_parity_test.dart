@@ -16,10 +16,14 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_tile_set.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/bitmap_tile_operation_materialization.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
+
+import '../helpers/native_engine_path.dart';
 
 /// Reference implementation of the stroke-commit rasterization, built from the
 /// retained per-pixel-operation pipeline (`brushPixelBlendOperationsForDabSequence`
@@ -157,19 +161,71 @@ final BrushTipMask _testTipMask = BrushTipMask(
 
 BrushDabSequence strokeOf(List<BrushDab> dabs) => BrushDabSequence(dabs);
 
+/// 🚨★★★THE THREE TRANSCRIPTIONS ARE COMPARED IN ONE RUN, NOT ONE PER MACHINE.
+///
+/// The fast path picks the C kernel when the engine loads and the Dart kernel
+/// (`blendDabTilesDart`) when it does not, so a single call has only ever
+/// compared TWO of the three. That left the Dart kernel unpinned on a machine
+/// with the engine built and the C kernel unpinned on one without — and with
+/// origin frozen there is no second machine to cover the other half.
+///
+/// 🧪Measured 2026-09-09: dropping the density term from the dual blend in
+/// `brush_dab_kernel.dart` ALONE — the C and the reference left correct —
+/// passed this entire suite, and the overlay parity suite too. It fails on
+/// `(Dart kernel)` now.
+///
+/// ⚠️The C route asserts the engine actually LOADED. A path that exists but
+/// fails to load would quietly run the Dart kernel twice, and two identical
+/// routes agreeing is the shape of a green that measures nothing.
+typedef _FastRoute = ({String name, bool forceDart});
+
+const _FastRoute _dartKernelRoute = (name: 'Dart kernel', forceDart: true);
+const _FastRoute _cKernelRoute = (name: 'C kernel', forceDart: false);
+
+final List<_FastRoute> _fastRoutes = _resolveFastRoutes();
+
+List<_FastRoute> _resolveFastRoutes() {
+  final libraryPath = nativeEngineLibraryPathOrNull();
+  if (libraryPath == null) {
+    return const [_dartKernelRoute];
+  }
+  debugQaEngineLibraryPathOverride = libraryPath;
+  return const [_dartKernelRoute, _cKernelRoute];
+}
+
 void expectParity({
   required BitmapSurface surface,
   required BrushDabSequence sequence,
   required String reason,
 }) {
-  final fast = materializeBrushDabSequenceOnBitmapSurface(
-    surface: surface,
-    sequence: sequence,
-  );
   final reference = referenceMaterialize(surface: surface, sequence: sequence);
-
-  expect(fast.dirtyTiles, reference.dirtyTiles, reason: '$reason: dirtyTiles');
-  expect(fast.surface, reference.surface, reason: '$reason: surface pixels');
+  for (final route in _fastRoutes) {
+    QaNativeEngine.debugResetForTests();
+    QaNativeEngine.debugForceDartFallback = route.forceDart;
+    if (!route.forceDart) {
+      expect(
+        QaNativeEngine.instance,
+        isNotNull,
+        reason: 'the C route must really be the C kernel',
+      );
+    }
+    final fast = materializeBrushDabSequenceOnBitmapSurface(
+      surface: surface,
+      sequence: sequence,
+    );
+    expect(
+      fast.dirtyTiles,
+      reference.dirtyTiles,
+      reason: '$reason: dirtyTiles (${route.name})',
+    );
+    expect(
+      fast.surface,
+      reference.surface,
+      reason: '$reason: surface pixels (${route.name})',
+    );
+  }
+  QaNativeEngine.debugResetForTests();
+  QaNativeEngine.debugForceDartFallback = false;
 }
 
 void main() {
@@ -180,6 +236,21 @@ void main() {
   }
 
   group('materializeBrushDabSequenceOnBitmapSurface parity with reference', () {
+    test('🚨the routes this machine actually compares', () {
+      // Every case below is only as wide as this list. A suite that quietly
+      // dropped to one route would still be green, so the count is stated
+      // here where a reader sees it — and CI, which sets QA_REQUIRE_NATIVE,
+      // FAILS instead of narrowing.
+      expect(_fastRoutes, contains(_dartKernelRoute));
+      if (_fastRoutes.contains(_cKernelRoute)) {
+        return;
+      }
+      if (nativeEngineRequired) {
+        fail(nativeEngineMissingSkipReason);
+      }
+      markTestSkipped(nativeEngineMissingSkipReason);
+    });
+
     test('single soft round dab on blank surface', () {
       expectParity(
         surface: blankSurface(),
@@ -247,17 +318,15 @@ void main() {
     });
 
     test('🚨every EDGE step agrees across all three transcriptions', () {
-      // The fast path is the C kernel whenever the engine is present and
-      // `blendDabTilesDart` when it is not; the oracle is the per-pixel
-      // reference. The edge remap had to be written into all three at the
-      // same point in the cascade, and this is the pin that says it was —
-      // one dab per step, so a step written into only one of them fails
-      // here with the step named.
+      // The edge remap had to be written into all three transcriptions at the
+      // same point in the cascade, and this is the pin that says it was — one
+      // dab per step, so a step written into only one of them fails here with
+      // the step named. `expectParity` walks every route, so all three are
+      // compared in this one run.
       //
       // 🧪Measured 2026-09-08: `+ 0.5` -> `+ 0.6` in the C kernel alone,
       // rebuilt, and this went red on `edge step low` — so the C really is
-      // what runs here when the engine is present. Where it is NOT (the
-      // .dll is Windows-only), the same case covers `blendDabTilesDart`.
+      // what the C route runs.
       for (final step in BrushAntiAlias.values) {
         expectParity(
           surface: blankSurface(),
