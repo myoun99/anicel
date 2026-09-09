@@ -265,7 +265,7 @@ void main() {
 
       // Enabling pressure installs the identity curve.
       await tester.tap(
-        find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+        find.byKey(const ValueKey<String>('curve-source-pressure')),
       );
       await tester.pumpAndSettle();
       expect(state.flowPressureCurve, BrushPressureCurve.identity());
@@ -274,7 +274,7 @@ void main() {
       // Disabling clears it back to null (the copyWith-preserve rule is
       // bypassed through withPressureCurve).
       await tester.tap(
-        find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
+        find.byKey(const ValueKey<String>('curve-source-pressure')),
       );
       await tester.pumpAndSettle();
       expect(state.flowPressureCurve, isNull);
