@@ -280,72 +280,88 @@ class _ImportPreviewState extends State<ImportPreview> {
     setState(() => _frames = frames);
   }
 
+  /// What the well is showing right now: how many frames the transport
+  /// runs over, and the picture under the playhead (null = nothing decoded
+  /// yet).
+  ///
+  /// 🚨THE THREE SOURCES ARE ASKED ONCE. The count and the picture each
+  /// used to walk the same video-then-PDF-then-stills ladder in its own
+  /// nested conditional, so a source added to one and not the other would
+  /// scrub a video's length over a still's picture.
+  ({int frameCount, ui.Image? picture}) _shownSource() {
+    final video = _video;
+    if (video != null) {
+      return (frameCount: video.info.frameCount, picture: _videoFrame);
+    }
+    if (_pdfPages > 0) {
+      return (frameCount: _pdfPages, picture: _pdfPage);
+    }
+    if (_frames.isEmpty) {
+      return (frameCount: 1, picture: null);
+    }
+    return (
+      frameCount: _frames.length,
+      picture: _frames[_position.clamp(0, _frames.length - 1)],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final frameCount = _video != null
-        ? _video!.info.frameCount
-        : _pdfPages > 0
-        ? _pdfPages
-        : (_frames.isEmpty ? 1 : _frames.length);
-    final out = widget.outFrame ?? frameCount - 1;
-    final shown = _video != null
-        ? _videoFrame
-        : _pdfPages > 0
-        ? _pdfPage
-        : (_frames.isEmpty
-              ? null
-              : _frames[_position.clamp(0, _frames.length - 1)]);
+    final source = _shownSource();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: ColoredBox(
-            color: AppColors.backdrop,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: shown == null
-                      ? const SizedBox.shrink()
-                      : FittedBox(
-                          child: SizedBox(
-                            width: shown.width.toDouble(),
-                            height: shown.height.toDouble(),
-                            child: CustomPaint(painter: _FramePainter(shown)),
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        Expanded(child: _stage(source.picture)),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
-          child: TransportBar(
-            frameCount: frameCount,
-            currentFrame: _position.clamp(0, frameCount - 1),
-            inFrame: widget.inFrame.clamp(0, frameCount - 1),
-            outFrame: out.clamp(0, frameCount - 1),
-            playing: false,
-            showRange: widget.rangeEditable && frameCount > 1,
-            onSeek: (frame) {
-              setState(() => _position = frame);
-              if (_pdfPages > 0) {
-                unawaited(_renderPdfPage(frame));
-              }
-            },
-            // Playback belongs to the day a video arrives; stepping is what
-            // a page or a GIF frame needs, and that is the scrub.
-            onPlayPause: () {},
-            onRangeChanged: (start, end) => widget.onRangeChanged(
-              start,
-              end >= frameCount - 1 ? null : end,
-            ),
-          ),
+          child: _transport(source.frameCount),
         ),
       ],
+    );
+  }
+
+  Widget _stage(ui.Image? picture) => ColoredBox(
+    color: AppColors.backdrop,
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: picture == null
+              ? const SizedBox.shrink()
+              : FittedBox(
+                  child: SizedBox(
+                    width: picture.width.toDouble(),
+                    height: picture.height.toDouble(),
+                    child: CustomPaint(painter: _FramePainter(picture)),
+                  ),
+                ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _transport(int frameCount) {
+    final out = widget.outFrame ?? frameCount - 1;
+    return TransportBar(
+      frameCount: frameCount,
+      currentFrame: _position.clamp(0, frameCount - 1),
+      inFrame: widget.inFrame.clamp(0, frameCount - 1),
+      outFrame: out.clamp(0, frameCount - 1),
+      playing: false,
+      showRange: widget.rangeEditable && frameCount > 1,
+      onSeek: (frame) {
+        setState(() => _position = frame);
+        if (_pdfPages > 0) {
+          unawaited(_renderPdfPage(frame));
+        }
+      },
+      // Playback belongs to the day a video arrives; stepping is what
+      // a page or a GIF frame needs, and that is the scrub.
+      onPlayPause: () {},
+      onRangeChanged: (start, end) =>
+          widget.onRangeChanged(start, end >= frameCount - 1 ? null : end),
     );
   }
 }

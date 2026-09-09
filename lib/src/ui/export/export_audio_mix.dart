@@ -21,7 +21,7 @@ import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/wav16_header.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../playback/audio_playback_schedule.dart'
-    show ScheduledAudioClip, audioMixScheduleFrom;
+    show AudioMixSchedule, ScheduledAudioClip, audioMixScheduleFrom;
 
 /// Resolves one source's conformed PCM (at the mix's own sample rate), or
 /// null when it cannot be had — that clip renders silent, the export goes
@@ -36,6 +36,14 @@ typedef ExportAudioSourceResolver =
 /// exists to avoid.
 typedef ExportAudioStreamResolver =
     ConformPcmStreamReader? Function(String filePath);
+
+/// One clip whose PCM is read from disk a block at a time, with the source
+/// slot it refreshes (AUDIO-PRO R6).
+typedef _StreamedClip = ({
+  AudioMixClip clip,
+  ConformPcmStreamReader reader,
+  int slot,
+});
 
 /// Renders [schedule] to an int16 stereo WAV at [outputPath].
 ///
@@ -60,151 +68,188 @@ Future<bool> writeExportAudioMixWav({
   if (schedule.isEmpty || totalFrames <= 0) {
     return false;
   }
-  final mix = audioMixScheduleFrom(
-    schedule: schedule,
-    rate: rate,
+  final writer = _ExportMixWriter(
+    mix: audioMixScheduleFrom(
+      schedule: schedule,
+      rate: rate,
+      sampleRate: sampleRate,
+    ),
     sampleRate: sampleRate,
+    channels: channels,
+    resolveSource: resolveSource,
+    resolveStreamReader: resolveStreamReader,
+    log: log,
   );
-  final sources = <AudioMixSource>[];
-  final resolvedIndexByOriginal = <int, int>{};
-  final streamReaderByOriginal = <int, ConformPcmStreamReader>{};
-  for (var index = 0; index < mix.sourcePaths.length; index += 1) {
-    final path = mix.sourcePaths[index];
-    // Disk-backed first (AUDIO-PRO R6): a streaming conform is read block
-    // by block below — asking the resolver for the whole file would hold
-    // exactly the memory streaming exists to avoid. Its conform is
-    // project-rate PCM, so a mix at any other rate falls through to the
-    // resolver (which resamples, at full residency — the honest cost of
-    // that rare setup).
-    final reader = resolveStreamReader?.call(path);
-    if (reader != null && reader.sampleRate == sampleRate) {
-      streamReaderByOriginal[index] = reader;
-      continue;
-    }
-    final source = await resolveSource(path);
-    if (source == null) {
-      log?.call(
-        '[export audio] no decodable source for $path — that clip renders '
-        'silent',
-      );
-      continue;
-    }
-    resolvedIndexByOriginal[index] = sources.length;
-    sources.add(source);
-  }
-  if (sources.isEmpty && streamReaderByOriginal.isEmpty) {
+  if (!await writer.bindSources()) {
     return false;
   }
-  // EVERY clip field carries over — the render must hear exactly what the
-  // preview heard. (Pan, the fade curve and the volume envelope arrived
-  // with AUDIO-PRO R1; dropping any of them here is how a preview starts
-  // lying about the export again.)
-  AudioMixClip clipWithSource(AudioMixClip clip, int sourceIndex) =>
-      AudioMixClip(
-        sourceIndex: sourceIndex,
-        startSample: clip.startSample,
-        endSample: clip.endSample,
-        sourceOffset: clip.sourceOffset,
-        gain: clip.gain,
-        fadeInSamples: clip.fadeInSamples,
-        fadeOutSamples: clip.fadeOutSamples,
-        panLeft: clip.panLeft,
-        panRight: clip.panRight,
-        fadeCurve: clip.fadeCurve,
-        envelope: clip.envelope,
-      );
+  writer.writeTo(
+    outputPath,
+    totalSamples: rate.frameToSample(totalFrames, sampleRate),
+  );
+  return true;
+}
 
-  final clips = <AudioMixClip>[];
-  // Streaming clips own a PRIVATE source slot each, refreshed per block.
-  final streamedClips =
-      <({AudioMixClip clip, ConformPcmStreamReader reader, int slot})>[];
-  for (final clip in mix.clips) {
-    final resident = resolvedIndexByOriginal[clip.sourceIndex];
-    if (resident != null) {
-      clips.add(clipWithSource(clip, resident));
-      continue;
-    }
-    final reader = streamReaderByOriginal[clip.sourceIndex];
-    if (reader == null) {
-      continue; // unresolvable: renders silent, already logged
-    }
-    final slot = sources.length;
-    sources.add(
-      AudioMixSource(samples: Float32List(0), channels: reader.channels),
-    );
-    final rebuilt = clipWithSource(clip, slot);
-    clips.add(rebuilt);
-    streamedClips.add((clip: rebuilt, reader: reader, slot: slot));
-  }
-  if (clips.isEmpty) {
-    return false;
-  }
+/// ONE export mix on its way to disk, in the three phases it always had:
+/// resolve every source (streaming where the conform allows it), bind each
+/// clip to the slot it will read from, then write the WAV block by block.
+///
+/// 🚨A COLLABORATOR, NOT A NEW POLICY (audit round 2, 2026-09-10): every
+/// decision below moved here verbatim from `writeExportAudioMixWav`, which
+/// held all three phases, five collections and the file handle in one body.
+/// The phases share state on purpose — a slot index means nothing without
+/// the source list it points into — and that is exactly what an object is
+/// for.
+class _ExportMixWriter {
+  _ExportMixWriter({
+    required this.mix,
+    required this.sampleRate,
+    required this.channels,
+    required this.resolveSource,
+    required this.resolveStreamReader,
+    required this.log,
+  });
 
-  final totalSamples = rate.frameToSample(totalFrames, sampleRate);
-  final dataBytes = totalSamples * channels * 2;
-  final sink = File(outputPath).openSync(mode: FileMode.write);
-  try {
-    sink.writeFromSync(
-      wav16HeaderBytes(
-        dataBytes: dataBytes,
-        sampleRate: sampleRate,
-        channels: channels,
-      ),
-    );
-    // Block-mixed so a long timeline never holds its whole bus in memory;
-    // the buffers are reused across blocks, and streaming sources read
-    // exactly one block's worth of disk at a time.
-    const blockSamples = 65536;
-    final bus = Float64List(blockSamples * channels);
-    final out = Int16List(blockSamples * channels);
-    var position = 0;
-    while (position < totalSamples) {
-      final count = (totalSamples - position).clamp(0, blockSamples);
-      for (final streamed in streamedClips) {
-        final clip = streamed.clip;
-        if (position + count <= clip.startSample ||
-            position >= clip.endSample) {
-          continue; // this block never reads the clip; keep whatever is there
-        }
-        final clipLength = clip.endSample - clip.startSample;
-        final from =
-            clip.sourceOffset +
-            (position - clip.startSample).clamp(0, clipLength);
-        final to =
-            clip.sourceOffset +
-            (position + count - clip.startSample).clamp(0, clipLength);
-        final window = streamed.reader.readWindow(from, to - from);
-        sources[streamed.slot] = AudioMixSource(
-          samples: window.samples,
-          channels: streamed.reader.channels,
-          sourceStart: window.startSample,
-        );
+  final AudioMixSchedule mix;
+  final int sampleRate;
+  final int channels;
+  final ExportAudioSourceResolver resolveSource;
+  final ExportAudioStreamResolver? resolveStreamReader;
+  final void Function(String message)? log;
+
+  final List<AudioMixSource> _sources = [];
+  final List<AudioMixClip> _clips = [];
+
+  /// Streaming clips own a PRIVATE source slot each, refreshed per block.
+  final List<_StreamedClip> _streamed = [];
+
+  /// Resolves every source and binds every clip to the slot it reads.
+  /// False = nothing audible came back, and the caller writes no file.
+  Future<bool> bindSources() async {
+    final residentByOriginal = <int, int>{};
+    final readerByOriginal = <int, ConformPcmStreamReader>{};
+    for (var index = 0; index < mix.sourcePaths.length; index += 1) {
+      final path = mix.sourcePaths[index];
+      // Disk-backed first (AUDIO-PRO R6): a streaming conform is read block
+      // by block below — asking the resolver for the whole file would hold
+      // exactly the memory streaming exists to avoid. Its conform is
+      // project-rate PCM, so a mix at any other rate falls through to the
+      // resolver (which resamples, at full residency — the honest cost of
+      // that rare setup).
+      final reader = resolveStreamReader?.call(path);
+      if (reader != null && reader.sampleRate == sampleRate) {
+        readerByOriginal[index] = reader;
+        continue;
       }
-      final busView = count == blockSamples
-          ? bus
-          : Float64List.sublistView(bus, 0, count * channels);
-      mixAudioReference(
-        clips: clips,
-        sources: sources,
-        startSample: position,
-        sampleCount: count,
-        outChannels: channels,
-        into: busView,
+      final source = await resolveSource(path);
+      if (source == null) {
+        log?.call(
+          '[export audio] no decodable source for $path — that clip renders '
+          'silent',
+        );
+        continue;
+      }
+      residentByOriginal[index] = _sources.length;
+      _sources.add(source);
+    }
+    // ⚠️THE ONLY EMPTY OUTCOME. Every path in `mix.sourcePaths` was put
+    // there BY a clip (`audioMixScheduleFrom` walks the schedule), so once
+    // one path resolves, the loop below binds at least one clip. The
+    // `clips.isEmpty` check that used to follow it could not fire — no
+    // test could kill it, which is how it was found.
+    if (_sources.isEmpty && readerByOriginal.isEmpty) {
+      return false;
+    }
+    for (final clip in mix.clips) {
+      final resident = residentByOriginal[clip.sourceIndex];
+      if (resident != null) {
+        _clips.add(clip.pointedAt(resident));
+        continue;
+      }
+      final reader = readerByOriginal[clip.sourceIndex];
+      if (reader == null) {
+        continue; // unresolvable: renders silent, already logged
+      }
+      final slot = _sources.length;
+      _sources.add(
+        AudioMixSource(samples: Float32List(0), channels: reader.channels),
       );
-      final outView = count == blockSamples
-          ? out
-          : Int16List.sublistView(out, 0, count * channels);
-      audioBusToInt16(busView, into: outView);
+      final rebuilt = clip.pointedAt(slot);
+      _clips.add(rebuilt);
+      _streamed.add((clip: rebuilt, reader: reader, slot: slot));
+    }
+    return true;
+  }
+
+  /// Writes the header and then [totalSamples] of mixed audio.
+  ///
+  /// Block-mixed so a long timeline never holds its whole bus in memory;
+  /// the buffers are reused across blocks, and streaming sources read
+  /// exactly one block's worth of disk at a time.
+  void writeTo(String outputPath, {required int totalSamples}) {
+    final sink = File(outputPath).openSync(mode: FileMode.write);
+    try {
       sink.writeFromSync(
-        outView.buffer.asUint8List(
-          outView.offsetInBytes,
-          outView.lengthInBytes,
+        wav16HeaderBytes(
+          dataBytes: totalSamples * channels * 2,
+          sampleRate: sampleRate,
+          channels: channels,
         ),
       );
-      position += count;
+      const blockSamples = 65536;
+      final bus = Float64List(blockSamples * channels);
+      final out = Int16List(blockSamples * channels);
+      var position = 0;
+      while (position < totalSamples) {
+        final count = (totalSamples - position).clamp(0, blockSamples);
+        _refillStreamedSources(position, count);
+        final busView = count == blockSamples
+            ? bus
+            : Float64List.sublistView(bus, 0, count * channels);
+        mixAudioReference(
+          clips: _clips,
+          sources: _sources,
+          startSample: position,
+          sampleCount: count,
+          outChannels: channels,
+          into: busView,
+        );
+        final outView = count == blockSamples
+            ? out
+            : Int16List.sublistView(out, 0, count * channels);
+        audioBusToInt16(busView, into: outView);
+        sink.writeFromSync(
+          outView.buffer.asUint8List(
+            outView.offsetInBytes,
+            outView.lengthInBytes,
+          ),
+        );
+        position += count;
+      }
+    } finally {
+      sink.closeSync();
     }
-  } finally {
-    sink.closeSync();
   }
-  return true;
+
+  /// Reads this block's window for every streaming clip that sounds in it.
+  void _refillStreamedSources(int position, int count) {
+    for (final streamed in _streamed) {
+      final clip = streamed.clip;
+      if (position + count <= clip.startSample || position >= clip.endSample) {
+        continue; // this block never reads the clip; keep whatever is there
+      }
+      final clipLength = clip.endSample - clip.startSample;
+      final from =
+          clip.sourceOffset + (position - clip.startSample).clamp(0, clipLength);
+      final to =
+          clip.sourceOffset +
+          (position + count - clip.startSample).clamp(0, clipLength);
+      final window = streamed.reader.readWindow(from, to - from);
+      _sources[streamed.slot] = AudioMixSource(
+        samples: window.samples,
+        channels: streamed.reader.channels,
+        sourceStart: window.startSample,
+      );
+    }
+  }
 }

@@ -487,22 +487,6 @@ AudioMixSchedule audioMixScheduleFrom({
 /// Where the disk window sits and how far it reaches, in device samples.
 typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
 
-/// [clip] re-pointed at [sourceIndex]; nothing else about it changes.
-AudioMixClip _clipWithSource(AudioMixClip clip, int sourceIndex) =>
-    AudioMixClip(
-      sourceIndex: sourceIndex,
-      startSample: clip.startSample,
-      endSample: clip.endSample,
-      sourceOffset: clip.sourceOffset,
-      gain: clip.gain,
-      fadeInSamples: clip.fadeInSamples,
-      fadeOutSamples: clip.fadeOutSamples,
-      panLeft: clip.panLeft,
-      panRight: clip.panRight,
-      fadeCurve: clip.fadeCurve,
-      envelope: clip.envelope,
-    );
-
 /// The sources that are already conformed and resident, in upload order,
 /// with the mix's source index mapped onto that order.
 ///
@@ -628,14 +612,14 @@ windowedMixUpload({
       if (mapped == null) {
         return null;
       }
-      clips.add(_clipWithSource(clip, mapped));
+      clips.add(clip.pointedAt(mapped));
       continue;
     }
     final reader = conformStore.streamReaderFor(path);
     if (reader == null) {
       return null;
     }
-    clips.add(_clipWithSource(clip, sources.length));
+    clips.add(clip.pointedAt(sources.length));
     sources.add(_streamWindowSource(clip, reader: reader, at: at));
   }
   return (clips: clips, sources: sources, hasStreaming: resident.hasStreaming);

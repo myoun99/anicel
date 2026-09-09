@@ -122,45 +122,12 @@ class _ImportFileTableState extends State<ImportFileTable> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rows = widget.rows;
-    final columns = widget.columns;
-    final enabled = widget.enabled;
-    final selected = widget.selected;
-    final onRowTap = widget.onRowTap;
-    final dim = theme.textTheme.labelSmall?.copyWith(color: AppColors.textDim);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 5),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(AppText.strings.commonNameField, style: dim),
-              ),
-              SizedBox(
-                width: 58,
-                child: Text(AppText.strings.imModified, style: dim),
-              ),
-              SizedBox(
-                width: 52,
-                child: Text(
-                  AppText.strings.imSize,
-                  style: dim,
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              for (final column in columns)
-                SizedBox(
-                  width: column.width,
-                  child: _HeaderButton(
-                    column: column,
-                    enabled: enabled && rows.isNotEmpty,
-                    paths: [for (final row in rows) row.path],
-                  ),
-                ),
-            ],
-          ),
+          child: _headerCells(theme),
         ),
         const Divider(height: 1),
         Expanded(
@@ -168,84 +135,8 @@ class _ImportFileTableState extends State<ImportFileTable> {
             builder: (context, constraints) => Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: ListView.builder(
-                    controller: _scroll,
-                    padding: EdgeInsets.zero,
-                    itemCount: rows.length,
-                    itemExtent: _rowHeight,
-                    itemBuilder: (context, index) {
-                      final row = rows[index];
-                      final isSelected = selected.contains(row.path);
-                      return ControlPressClaim(
-                        onPressed: enabled ? () => onRowTap(row.path) : null,
-                        child: InkWell(
-                          key: ValueKey<String>('import-row-${row.name}'),
-                          onTap: silentPress(
-                            enabled ? () => onRowTap(row.path) : null,
-                          ),
-                          child: Container(
-                            color: isSelected
-                                ? AppColors.accent.withValues(alpha: 0.14)
-                                : null,
-                            padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    row.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: isSelected
-                                          ? AppColors.accent
-                                          : null,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 58,
-                                  child: Text(row.modified, style: dim),
-                                ),
-                                SizedBox(
-                                  width: 52,
-                                  child: Text(
-                                    row.size,
-                                    style: dim,
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                                for (final column in columns)
-                                  SizedBox(
-                                    width: column.width,
-                                    child: _OptionCell(
-                                      column: column,
-                                      path: row.path,
-                                      enabled: enabled,
-                                      targets: _targets(row.path),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 16,
-                  child: AppScrollbar(
-                    axis: Axis.vertical,
-                    offset: _scroll.hasClients ? _scroll.offset : 0,
-                    viewportExtent: constraints.maxHeight,
-                    contentExtent: rows.length * _rowHeight,
-                    onOffsetChanged: (offset) {
-                      if (_scroll.hasClients) {
-                        _scroll.jumpTo(offset);
-                      }
-                    },
-                  ),
-                ),
+                Expanded(child: _rowList(theme)),
+                SizedBox(width: 16, child: _scrollbar(constraints)),
               ],
             ),
           ),
@@ -253,6 +144,105 @@ class _ImportFileTableState extends State<ImportFileTable> {
       ],
     );
   }
+
+  /// One line of the table — the header and every row alike.
+  ///
+  /// 🚨THE ALIGNMENT LAW LIVES HERE. The header and the row each used to
+  /// spell the same four cells with the same widths and the same
+  /// `for (column in columns)` tail; two copies of a column layout are two
+  /// chances for the header to stop sitting over the values it names.
+  Widget _tableLine({
+    required Widget name,
+    required Widget modified,
+    required Widget size,
+    required Widget Function(ImportColumn<Object?> column) cell,
+  }) => Row(
+    children: [
+      Expanded(child: name),
+      SizedBox(width: _modifiedWidth, child: modified),
+      SizedBox(width: _sizeWidth, child: size),
+      for (final column in widget.columns)
+        SizedBox(width: column.width, child: cell(column)),
+    ],
+  );
+
+  static const double _modifiedWidth = 58;
+  static const double _sizeWidth = 52;
+
+  TextStyle? _dimStyle(ThemeData theme) =>
+      theme.textTheme.labelSmall?.copyWith(color: AppColors.textDim);
+
+  Widget _headerCells(ThemeData theme) {
+    final dim = _dimStyle(theme);
+    return _tableLine(
+      name: Text(AppText.strings.commonNameField, style: dim),
+      modified: Text(AppText.strings.imModified, style: dim),
+      size: Text(
+        AppText.strings.imSize,
+        style: dim,
+        textAlign: TextAlign.right,
+      ),
+      cell: (column) => _HeaderButton(
+        column: column,
+        enabled: widget.enabled && widget.rows.isNotEmpty,
+        paths: [for (final row in widget.rows) row.path],
+      ),
+    );
+  }
+
+  Widget _rowList(ThemeData theme) => ListView.builder(
+    controller: _scroll,
+    padding: EdgeInsets.zero,
+    itemCount: widget.rows.length,
+    itemExtent: _rowHeight,
+    itemBuilder: (context, index) => _fileRow(theme, widget.rows[index]),
+  );
+
+  Widget _fileRow(ThemeData theme, ImportFileRow row) {
+    final dim = _dimStyle(theme);
+    final isSelected = widget.selected.contains(row.path);
+    final tap = widget.enabled ? () => widget.onRowTap(row.path) : null;
+    return ControlPressClaim(
+      onPressed: tap,
+      child: InkWell(
+        key: ValueKey<String>('import-row-${row.name}'),
+        onTap: silentPress(tap),
+        child: Container(
+          color: isSelected ? AppColors.accent.withValues(alpha: 0.14) : null,
+          padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+          child: _tableLine(
+            name: Text(
+              row.name,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: isSelected ? AppColors.accent : null,
+              ),
+            ),
+            modified: Text(row.modified, style: dim),
+            size: Text(row.size, style: dim, textAlign: TextAlign.right),
+            cell: (column) => _OptionCell(
+              column: column,
+              path: row.path,
+              enabled: widget.enabled,
+              targets: _targets(row.path),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _scrollbar(BoxConstraints constraints) => AppScrollbar(
+    axis: Axis.vertical,
+    offset: _scroll.hasClients ? _scroll.offset : 0,
+    viewportExtent: constraints.maxHeight,
+    contentExtent: widget.rows.length * _rowHeight,
+    onOffsetChanged: (offset) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(offset);
+      }
+    },
+  );
 }
 
 class _HeaderButton extends StatelessWidget {

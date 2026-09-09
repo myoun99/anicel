@@ -73,6 +73,28 @@ class AudioMixClip {
   /// The volume envelope, sorted by sample; empty = unity. The FFI layer
   /// flattens every clip's points into one shared array for the C.
   final List<AudioEnvelopePoint> envelope;
+
+  /// This clip re-pointed at [sourceIndex]. NOTHING else changes.
+  ///
+  /// 🚨IT LIVES ON THE CLASS SO IT CANNOT BE HALF-COPIED. Two places
+  /// re-point clips at a slot — the playback schedule's streaming windows
+  /// and the export mix's — and each spelled all eleven fields itself.
+  /// Pan, the fade curve and the volume envelope arrived with AUDIO-PRO R1
+  /// and had to be added to both; a copy that forgets one is how a preview
+  /// starts telling a small lie about the render.
+  AudioMixClip pointedAt(int sourceIndex) => AudioMixClip(
+    sourceIndex: sourceIndex,
+    startSample: startSample,
+    endSample: endSample,
+    sourceOffset: sourceOffset,
+    gain: gain,
+    fadeInSamples: fadeInSamples,
+    fadeOutSamples: fadeOutSamples,
+    panLeft: panLeft,
+    panRight: panRight,
+    fadeCurve: fadeCurve,
+    envelope: envelope,
+  );
 }
 
 /// The COMPENSATED equal-power pan law: -1 (full left) .. +1 (full
