@@ -407,6 +407,9 @@ BrushPreset? _presetFromBrushDescriptor(
   // uuid, and the engine anchors it to the canvas exactly like the Clip
   // Studio one.
   BrushTipMask? textureMask;
+  var textureInvert = false;
+  var textureBrightness = 0.0;
+  var textureContrast = 0.0;
   var textureScale = 1.0;
   var textureDensity = 1.0;
   if (entry['useTexture'] == true) {
@@ -421,16 +424,23 @@ BrushPreset? _presetFromBrushDescriptor(
         'embedded in this file; imported without it.',
       );
     } else {
-      textureMask = brushTipMaskWithLevels(
-        brushTipMaskFromPattern(pattern, id: 'abr-pattern-${pattern.id}'),
-        invert: entry['InvT'] == true,
-        brightness: ((entry.numberValue('textureBrightness') ?? 0.0) / 100.0)
-            .clamp(-1.0, 1.0)
-            .toDouble(),
-        contrast: ((entry.numberValue('textureContrast') ?? 0.0) / 100.0)
-            .clamp(-1.0, 1.0)
-            .toDouble(),
+      // ⛔The levels are CARRIED, not baked in here any more. Baking made
+      // them unreachable forever: nothing kept the original to re-bake from,
+      // so the panel could never offer the three controls Photoshop and Clip
+      // Studio both put on a texture.
+      textureMask = brushTipMaskFromPattern(
+        pattern,
+        id: 'abr-pattern-${pattern.id}',
       );
+      textureInvert = entry['InvT'] == true;
+      textureBrightness = ((entry.numberValue('textureBrightness') ?? 0.0) /
+              100.0)
+          .clamp(-1.0, 1.0)
+          .toDouble();
+      textureContrast =
+          ((entry.numberValue('textureContrast') ?? 0.0) / 100.0)
+              .clamp(-1.0, 1.0)
+              .toDouble();
       final scalePercent = entry.numberValue('textureScale');
       if (scalePercent != null && scalePercent > 0) {
         textureScale = (scalePercent / 100.0).clamp(0.05, 10.0).toDouble();
@@ -489,7 +499,10 @@ BrushPreset? _presetFromBrushDescriptor(
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
-      textureMask: textureMask,
+      textureMaskSource: textureMask,
+      textureInvert: textureInvert,
+      textureBrightness: textureBrightness,
+      textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
       blendMode: blendMode,
@@ -571,7 +584,10 @@ BrushSettings _settingsForTip(
   bool scatterBothAxes = true,
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
-  BrushTipMask? textureMask,
+  BrushTipMask? textureMaskSource,
+  bool textureInvert = false,
+  double textureBrightness = 0.0,
+  double textureContrast = 0.0,
   double textureScale = 1.0,
   double textureDensity = 1.0,
   BrushBlendMode blendMode = BrushBlendMode.color,
@@ -601,7 +617,10 @@ BrushSettings _settingsForTip(
     scatterBothAxes: scatterBothAxes,
     dualMask: dualMask,
     dualMaskScale: dualMaskScale,
-    textureMask: textureMask,
+    textureMaskSource: textureMaskSource,
+    textureInvert: textureInvert,
+    textureBrightness: textureBrightness,
+    textureContrast: textureContrast,
     textureScale: textureScale,
     textureDensity: textureDensity,
     blendMode: blendMode,

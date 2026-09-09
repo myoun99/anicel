@@ -321,7 +321,7 @@ void main() {
         size: 12,
         tipMask: mask('tip-a'),
         dualMask: mask('tip-b'),
-        textureMask: mask('tip-c'),
+        textureMaskSource: mask('tip-c'),
       ),
     );
 
@@ -340,11 +340,11 @@ void main() {
       final map = settings as Map<String, dynamic>;
       expect(map['tipMaskId'], 'tip-a');
       expect(map['dualMaskId'], 'tip-b');
-      expect(map['textureMaskId'], 'tip-c');
+      expect(map['textureMaskSourceId'], 'tip-c');
       // The point of the exercise: the bytes are gone from the preset.
       expect(map.containsKey('tipMask'), isFalse);
       expect(map.containsKey('dualMask'), isFalse);
-      expect(map.containsKey('textureMask'), isFalse);
+      expect(map.containsKey('textureMaskSource'), isFalse);
     });
 
     test('ids resolve back to masks on load', () async {

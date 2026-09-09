@@ -36,7 +36,10 @@ class BrushEditCanvasInputSettings {
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool textureInvert = false,
+    double textureBrightness = 0.0,
+    double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
     bool erase = false,
@@ -118,7 +121,10 @@ class BrushEditCanvasInputSettings {
         dualMask: dualMask,
         dualMaskScale: dualMaskScale,
         dualDensity: dualDensity,
-        textureMask: textureMask,
+        textureMaskSource: textureMaskSource,
+        textureInvert: textureInvert,
+        textureBrightness: textureBrightness,
+        textureContrast: textureContrast,
         textureScale: textureScale,
         textureDensity: textureDensity,
         antiAlias: antiAlias,
@@ -215,6 +221,13 @@ class BrushEditCanvasInputSettings {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+  /// The texture as PICKED — see [BrushShape.textureMaskSource].
+  BrushTipMask? get textureMaskSource => shape.textureMaskSource;
+  bool get textureInvert => shape.textureInvert;
+  double get textureBrightness => shape.textureBrightness;
+  double get textureContrast => shape.textureContrast;
+
+  /// The texture a DAB carries, levels baked in — see [BrushShape.textureMask].
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -262,7 +275,10 @@ class BrushEditCanvasInputSettings {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool? textureInvert,
+    double? textureBrightness,
+    double? textureContrast,
     double? textureScale,
     double? textureDensity,
     bool? erase,
@@ -305,7 +321,10 @@ class BrushEditCanvasInputSettings {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
-      textureMask: textureMask ?? this.textureMask,
+      textureMaskSource: textureMaskSource ?? this.textureMaskSource,
+      textureInvert: textureInvert ?? this.textureInvert,
+      textureBrightness: textureBrightness ?? this.textureBrightness,
+      textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       erase: erase ?? this.erase,

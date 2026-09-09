@@ -36,7 +36,10 @@ class BrushSettings {
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool textureInvert = false,
+    double textureBrightness = 0.0,
+    double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
     double roundnessJitter = 0.0,
@@ -76,7 +79,10 @@ class BrushSettings {
          dualMask: dualMask,
          dualMaskScale: dualMaskScale,
          dualDensity: dualDensity,
-         textureMask: textureMask,
+         textureMaskSource: textureMaskSource,
+         textureInvert: textureInvert,
+         textureBrightness: textureBrightness,
+         textureContrast: textureContrast,
          textureScale: textureScale,
          textureDensity: textureDensity,
          roundnessJitter: roundnessJitter,
@@ -135,6 +141,14 @@ class BrushSettings {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+  /// See [BrushShape.textureMaskSource] — the texture as PICKED.
+  BrushTipMask? get textureMaskSource => shape.textureMaskSource;
+  bool get textureInvert => shape.textureInvert;
+  double get textureBrightness => shape.textureBrightness;
+  double get textureContrast => shape.textureContrast;
+
+  /// See [BrushShape.textureMask] — the texture with the levels baked in,
+  /// which is what a dab carries.
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -188,7 +202,10 @@ class BrushSettings {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool? textureInvert,
+    double? textureBrightness,
+    double? textureContrast,
     double? textureScale,
     double? textureDensity,
     double? roundnessJitter,
@@ -235,7 +252,10 @@ class BrushSettings {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
-      textureMask: textureMask ?? this.textureMask,
+      textureMaskSource: textureMaskSource ?? this.textureMaskSource,
+      textureInvert: textureInvert ?? this.textureInvert,
+      textureBrightness: textureBrightness ?? this.textureBrightness,
+      textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
@@ -287,7 +307,11 @@ class BrushSettings {
     if (dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
     'dualDensity': dualDensity,
-    if (textureMask != null) 'textureMask': textureMask!.toJson(),
+    if (textureMaskSource != null)
+      'textureMaskSource': textureMaskSource!.toJson(),
+    if (textureInvert) 'textureInvert': true,
+    if (textureBrightness != 0.0) 'textureBrightness': textureBrightness,
+    if (textureContrast != 0.0) 'textureContrast': textureContrast,
     'textureScale': textureScale,
     'textureDensity': textureDensity,
     // Ground-colour mixing writes only when ON, so presets saved before it
@@ -357,9 +381,15 @@ class BrushSettings {
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
       dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
-      textureMask: json['textureMask'] == null
+      textureMaskSource: json['textureMaskSource'] == null
           ? null
-          : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
+          : BrushTipMask.fromJson(
+              json['textureMaskSource'] as Map<String, dynamic>,
+            ),
+      textureInvert: json['textureInvert'] as bool? ?? false,
+      textureBrightness:
+          (json['textureBrightness'] as num?)?.toDouble() ?? 0.0,
+      textureContrast: (json['textureContrast'] as num?)?.toDouble() ?? 0.0,
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
       mixesGroundColor: json['mixesGroundColor'] as bool? ?? false,

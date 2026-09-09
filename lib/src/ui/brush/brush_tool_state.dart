@@ -231,7 +231,10 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool textureInvert = false,
+    double textureBrightness = 0.0,
+    double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
     CanvasTool tool = CanvasTool.brush,
@@ -272,7 +275,10 @@ class BrushToolState {
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
-      textureMask: textureMask,
+      textureMaskSource: textureMaskSource,
+      textureInvert: textureInvert,
+      textureBrightness: textureBrightness,
+      textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
       tool: tool,
@@ -363,7 +369,10 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool? textureInvert,
+    double? textureBrightness,
+    double? textureContrast,
     double? textureScale,
     double? textureDensity,
     bool? mixesGroundColor,
@@ -411,7 +420,10 @@ class BrushToolState {
         dualMask: dualMask,
         dualMaskScale: dualMaskScale ?? 1.0,
         dualDensity: dualDensity ?? 1.0,
-        textureMask: textureMask,
+        textureMaskSource: textureMaskSource,
+        textureInvert: textureInvert ?? false,
+        textureBrightness: textureBrightness ?? 0.0,
+        textureContrast: textureContrast ?? 0.0,
         textureScale: textureScale ?? 1.0,
         textureDensity: textureDensity ?? 1.0,
         mixesGroundColor: mixesGroundColor ?? false,
@@ -459,7 +471,15 @@ class BrushToolState {
     dualDensity: clampZeroToOne(s.dualDensity),
     textureScale: clampDualMaskScale(s.textureScale),
     textureDensity: clampZeroToOne(s.textureDensity),
+    textureBrightness: clampSignedUnit(s.textureBrightness),
+    textureContrast: clampSignedUnit(s.textureContrast),
   );
+
+  /// −1..1, the range both texture LEVEL knobs live in. Neutral is 0 in the
+  /// middle rather than an end, which is why they cannot borrow
+  /// [clampZeroToOne].
+  static double clampSignedUnit(double value) =>
+      !value.isFinite ? 0.0 : value.clamp(-1.0, 1.0).toDouble();
 
   static const double minSize = 1.0;
   // CSP-parity ceiling; the settings slider maps this range exponentially so
@@ -549,6 +569,13 @@ class BrushToolState {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+  /// What the PICKER shows — the texture as chosen, before the levels.
+  BrushTipMask? get textureMaskSource => shape.textureMaskSource;
+  bool get textureInvert => shape.textureInvert;
+  double get textureBrightness => shape.textureBrightness;
+  double get textureContrast => shape.textureContrast;
+
+  /// What a dab carries — the same texture with the levels baked in.
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
@@ -853,7 +880,10 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool textureInvert = false,
+    double textureBrightness = 0.0,
+    double textureContrast = 0.0,
     double? textureScale,
     double? textureDensity,
     bool? mixesGroundColor,
@@ -905,7 +935,7 @@ class BrushToolState {
           scatterBothAxes: scatterBothAxes,
           dualMask: dualMask,
           dualMaskScale: dualMaskScale,
-          textureMask: textureMask,
+          textureMaskSource: textureMask,
           textureScale: textureScale,
           textureDensity: textureDensity,
           mixesGroundColor: mixesGroundColor,

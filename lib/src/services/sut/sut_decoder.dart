@@ -143,6 +143,9 @@ Future<SutImportResult> _decode(
     // Paper texture material (canvas-anchored overlay), referenced the same
     // way as the pattern array.
     BrushTipMask? textureMask;
+    var textureInvert = false;
+    var textureBrightness = 0.0;
+    var textureContrast = 0.0;
     if (variant['TextureImage'] != null) {
       textureMask = await _tipMaskFromPatternArray(
         variant['TextureImage'],
@@ -153,14 +156,16 @@ Future<SutImportResult> _decode(
         warnings: warnings,
       );
       if (textureMask != null) {
-        textureMask = brushTipMaskWithLevels(
-          textureMask,
-          // 濃度反転 — the same switch the Photoshop importer honours as
-          // `InvT`, and it was going unread on this side.
-          invert: _intOf(variant['TextureReverseDensity']) == 1,
-          brightness: _signedPercent(variant['TextureBrightness']),
-          contrast: _signedPercent(variant['TextureContrast']),
-        );
+        // ⛔CARRIED, not baked in here — see the same change in the ABR
+        // importer. The levels are three brush settings now, so baking them
+        // into the mask on the way in would be the one thing that could
+        // make them unreachable.
+        //
+        // 濃度反転 — the same switch the Photoshop importer honours as
+        // `InvT`, and it was going unread on this side.
+        textureInvert = _intOf(variant['TextureReverseDensity']) == 1;
+        textureBrightness = _signedPercent(variant['TextureBrightness']);
+        textureContrast = _signedPercent(variant['TextureContrast']);
         // Rotation stays unmapped on purpose: the tiled samplers run off a
         // separable per-axis lattice that exists precisely BECAUSE textures
         // never rotate, so honouring one brush's angle would cost every
@@ -196,7 +201,10 @@ Future<SutImportResult> _decode(
         settings: _settingsFromVariant(
           variant,
           mask: mask,
-          textureMask: textureMask,
+          textureMaskSource: textureMask,
+          textureInvert: textureInvert,
+          textureBrightness: textureBrightness,
+          textureContrast: textureContrast,
           dualMask: dualMask,
           brushName: name,
           warnings: warnings,
@@ -216,7 +224,10 @@ BrushSettings _settingsFromVariant(
   required BrushTipMask? mask,
   required String brushName,
   required List<String> warnings,
-  BrushTipMask? textureMask,
+  BrushTipMask? textureMaskSource,
+  bool textureInvert = false,
+  double textureBrightness = 0.0,
+  double textureContrast = 0.0,
   BrushTipMask? dualMask,
 }) {
   // `BrushSizeUnit` scales the stored number: 0 stores pixels outright, 2
@@ -339,7 +350,10 @@ BrushSettings _settingsFromVariant(
     dualMaskScale: dualMask == null
         ? 1.0
         : _dualMaskScaleOf(variant, brushSize: size),
-    textureMask: textureMask,
+    textureMaskSource: textureMaskSource,
+    textureInvert: textureInvert,
+    textureBrightness: textureBrightness,
+    textureContrast: textureContrast,
     textureScale: _textureScaleOf(variant),
     textureDensity: _textureDensityOf(variant),
     mixesGroundColor: mixesGroundColor,

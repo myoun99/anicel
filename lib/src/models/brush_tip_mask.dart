@@ -49,6 +49,66 @@ BrushTipMask brushTipMaskWithLevels(
   return BrushTipMask(id: mask.id, size: mask.size, alpha: adjusted);
 }
 
+/// [brushTipMaskWithLevels], baked at most once per (mask, levels).
+///
+/// 🚨THE LEVELS ARE A BRUSH SETTING NOW, so the bake moved out of the
+/// importers and onto the path a dab is built on — and that path runs
+/// thousands of times a stroke while a 256×256 texture is 65k pixels. This
+/// is what keeps it at one bake.
+///
+/// The three cache questions, answered before it was written:
+/// ① The key is the WHOLE identity — the mask instance plus all three
+///    levels — so nothing can change without changing the key.
+/// ② A miss costs exactly one bake, which is what the uncached call always
+///    paid. No amplification.
+/// ③ It hangs off the mask itself, so an entry dies when its mask does and
+///    there is no global table to grow or to sweep.
+///
+/// ⛔The mask is the key by IDENTITY, which is why this is an [Expando] and
+/// not a map keyed by the mask. `BrushTipMask ==` walks the whole alpha
+/// array, and the entries most likely to collide in a hash bucket are the
+/// SAME texture at other levels — so a value-keyed map would compare 65k
+/// bytes on the lookup this exists to make cheap.
+///
+/// ⚠️Neutral levels return the mask ITSELF and never touch the cache — the
+/// overwhelmingly common brush has no levels at all.
+BrushTipMask brushTipMaskWithCachedLevels(
+  BrushTipMask mask, {
+  bool invert = false,
+  double brightness = 0.0,
+  double contrast = 0.0,
+}) {
+  if (!invert && brightness == 0.0 && contrast == 0.0) {
+    return mask;
+  }
+  final levels = (invert: invert, brightness: brightness, contrast: contrast);
+  final byLevels = _levelCache[mask] ??= {};
+  final hit = byLevels[levels];
+  if (hit != null) {
+    return hit;
+  }
+  // A slider DRAG is a fresh value every frame and every one of them is a
+  // real bake, so the only thing to bound here is what the drag leaves
+  // behind afterwards.
+  if (byLevels.length >= _levelsPerMaskLimit) {
+    byLevels.clear();
+  }
+  return byLevels[levels] = brushTipMaskWithLevels(
+    mask,
+    invert: invert,
+    brightness: brightness,
+    contrast: contrast,
+  );
+}
+
+const int _levelsPerMaskLimit = 4;
+
+typedef _MaskLevels = ({bool invert, double brightness, double contrast});
+
+final Expando<Map<_MaskLevels, BrushTipMask>> _levelCache = Expando(
+  'brushTipMaskLevels',
+);
+
 
 /// A sampled (bitmap) brush tip: a square grayscale alpha mask.
 ///

@@ -52,7 +52,10 @@ class BrushShape {
     this.dualMask,
     this.dualMaskScale = 1.0,
     this.dualDensity = 1.0,
-    this.textureMask,
+    this.textureMaskSource,
+    this.textureInvert = false,
+    this.textureBrightness = 0.0,
+    this.textureContrast = 0.0,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.roundnessJitter = 0.0,
@@ -91,12 +94,6 @@ class BrushShape {
   /// map, not a second home for the data: they read `(target, pressure)`,
   /// which is what they always meant.
   ///
-  /// ⚠️STORED BY REFERENCE — this class is const, so it cannot wrap the map
-  /// the way [BrushPressureCurve] wraps its points. Every producer therefore
-  /// hands over a FRESH map it does not keep (, ,
-  /// the importers), and nobody may mutate one after handing it over: a shape
-  /// is a value and a live cache key, so a map that changes underneath it
-  /// changes its hashCode after the fact.
   /// ⚠️STORED BY REFERENCE. This class is const, so it cannot wrap the map
   /// the way [BrushPressureCurve] wraps its points. Every producer therefore
   /// hands over a FRESH map it does not keep, and nobody may mutate one
@@ -162,8 +159,44 @@ class BrushShape {
   /// two masks doing the same job, one of them dimmable and one not.
   final double dualDensity;
 
-  /// Paper texture tiled in canvas space; see the same fields on `BrushDab`.
-  final BrushTipMask? textureMask;
+  /// The paper texture AS PICKED, before the three levels below are applied.
+  ///
+  /// 🚨SOURCE AND PAINTED ARE DIFFERENT FACTS, and this is the one the user
+  /// chose. The importers used to bake invert/brightness/contrast into the
+  /// mask on the way in, which made the levels unreachable forever: nothing
+  /// held the original to re-bake from, so a slider would have had to work
+  /// on its own last output and lose the grain a little each time.
+  final BrushTipMask? textureMaskSource;
+
+  /// 濃度反転 — the texture's coverage read the other way up (Clip Studio's
+  /// `TextureReverseDensity`, Photoshop's `InvT`).
+  final bool textureInvert;
+
+  /// −1..1 each, both neutral at 0. See `brushTipMaskWithLevels` for why
+  /// brightness is a lerp toward white rather than an offset.
+  final double textureBrightness;
+  final double textureContrast;
+
+  /// Paper texture tiled in canvas space, WITH the levels baked in — what a
+  /// dab actually carries; see the same field on `BrushDab`.
+  ///
+  /// ⚠️Derived, not stored, so the levels can never be out of step with the
+  /// mask beside them. It costs nothing when the levels are neutral (the
+  /// source comes straight back) and one bake per (source, levels)
+  /// otherwise.
+  BrushTipMask? get textureMask {
+    final source = textureMaskSource;
+    if (source == null) {
+      return null;
+    }
+    return brushTipMaskWithCachedLevels(
+      source,
+      invert: textureInvert,
+      brightness: textureBrightness,
+      contrast: textureContrast,
+    );
+  }
+
   final double textureScale;
   final double textureDensity;
 
@@ -326,7 +359,12 @@ class BrushShape {
       dualMask: slot == BrushMaskSlot.dual ? mask : dualMask,
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
-      textureMask: slot == BrushMaskSlot.texture ? mask : textureMask,
+      textureMaskSource: slot == BrushMaskSlot.texture
+          ? mask
+          : textureMaskSource,
+      textureInvert: textureInvert,
+      textureBrightness: textureBrightness,
+      textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
     );
@@ -353,7 +391,10 @@ class BrushShape {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
-    BrushTipMask? textureMask,
+    BrushTipMask? textureMaskSource,
+    bool? textureInvert,
+    double? textureBrightness,
+    double? textureContrast,
     double? textureScale,
     double? textureDensity,
     double? roundnessJitter,
@@ -386,7 +427,10 @@ class BrushShape {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
-      textureMask: textureMask ?? this.textureMask,
+      textureMaskSource: textureMaskSource ?? this.textureMaskSource,
+      textureInvert: textureInvert ?? this.textureInvert,
+      textureBrightness: textureBrightness ?? this.textureBrightness,
+      textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
@@ -424,7 +468,10 @@ class BrushShape {
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
           other.dualDensity == dualDensity &&
-          other.textureMask == textureMask &&
+          other.textureMaskSource == textureMaskSource &&
+          other.textureInvert == textureInvert &&
+          other.textureBrightness == textureBrightness &&
+          other.textureContrast == textureContrast &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
           other.roundnessJitter == roundnessJitter &&
@@ -460,7 +507,10 @@ class BrushShape {
     dualMask,
     dualMaskScale,
     dualDensity,
-    textureMask,
+    textureMaskSource,
+    textureInvert,
+    textureBrightness,
+    textureContrast,
     textureScale,
     textureDensity,
     roundnessJitter,
@@ -483,7 +533,11 @@ class BrushShape {
       'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
-      'dualMaskScale: $dualMaskScale, textureMask: $textureMask, '
+      'dualMaskScale: $dualMaskScale, '
+      'textureMaskSource: $textureMaskSource, '
+      'textureInvert: $textureInvert, '
+      'textureBrightness: $textureBrightness, '
+      'textureContrast: $textureContrast, '
       'textureScale: $textureScale, textureDensity: $textureDensity)';
 }
 

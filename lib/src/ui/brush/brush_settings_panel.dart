@@ -340,7 +340,10 @@ class BrushSettingsPanel extends StatelessWidget {
           BrushTipPickerRow(
             label: AppText.strings.brTexture,
             role: BrushTipRole.texture,
-            selected: state.textureMask,
+            // ⚠️The SOURCE, not the painted mask: the swatch answers "which
+            // texture did I pick", and a levelled bake is a different object
+            // that would never match a library entry.
+            selected: state.textureMaskSource,
             tips: tips,
             onImportRequested: onTipImportRequested,
             onRenameTip: onRenameTip,
@@ -356,7 +359,7 @@ class BrushSettingsPanel extends StatelessWidget {
             max: 10,
             scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-texture-scale-slider',
-            onChanged: state.textureMask == null
+            onChanged: state.textureMaskSource == null
                 ? null
                 : (value) => onChanged(state.copyWith(textureScale: value)),
           ),
@@ -367,9 +370,50 @@ class BrushSettingsPanel extends StatelessWidget {
             min: 0,
             max: 1,
             keyValue: 'brush-tool-texture-density-slider',
-            onChanged: state.textureMask == null
+            onChanged: state.textureMaskSource == null
                 ? null
                 : (value) => onChanged(state.copyWith(textureDensity: value)),
+          ),
+          // The three LEVELS both source formats carry and neither could
+          // reach: the importers baked them into the mask, which left no
+          // original to re-bake from. Clip Studio calls them 濃度反転 /
+          // 明るさ / コントラスト and Photoshop InvT / Brightness / Contrast.
+          _PanelSwitch(
+            label: AppText.strings.brTextureInvert,
+            value: state.textureInvert,
+            keyValue: 'brush-tool-texture-invert-toggle',
+            onChanged: state.textureMaskSource == null
+                ? null
+                : (value) => onChanged(state.copyWith(textureInvert: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brTextureBrightness,
+            valueLabel: sliderValueText(
+              state.textureBrightness * 100,
+              unit: '%',
+            ),
+            value: BrushToolState.clampSignedUnit(state.textureBrightness),
+            min: -1,
+            max: 1,
+            keyValue: 'brush-tool-texture-brightness-slider',
+            onChanged: state.textureMaskSource == null
+                ? null
+                : (value) =>
+                      onChanged(state.copyWith(textureBrightness: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brTextureContrast,
+            valueLabel: sliderValueText(
+              state.textureContrast * 100,
+              unit: '%',
+            ),
+            value: BrushToolState.clampSignedUnit(state.textureContrast),
+            min: -1,
+            max: 1,
+            keyValue: 'brush-tool-texture-contrast-slider',
+            onChanged: state.textureMaskSource == null
+                ? null
+                : (value) => onChanged(state.copyWith(textureContrast: value)),
           ),
           const _GroupHeader('Correction'),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
@@ -504,7 +548,9 @@ class _PanelSwitch extends StatelessWidget {
   final String label;
   final bool value;
   final String keyValue;
-  final ValueChanged<bool> onChanged;
+  /// Null makes the row DEAD, not absent — the same contract [_PanelSlider]
+  /// states, for the same reason.
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {

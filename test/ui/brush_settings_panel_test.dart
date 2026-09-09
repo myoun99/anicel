@@ -312,11 +312,18 @@ void main() {
       expect(read().dualMask, isNull);
       expect(read().textureMask, isNull);
 
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-texture-invert-toggle')),
+        findsOneWidget,
+      );
+
       for (final key in [
         'brush-tool-dual-scale-slider',
         'brush-tool-dual-density-slider',
         'brush-tool-texture-scale-slider',
         'brush-tool-texture-density-slider',
+        'brush-tool-texture-brightness-slider',
+        'brush-tool-texture-contrast-slider',
       ]) {
         final slider = find.byKey(ValueKey<String>(key));
         expect(slider, findsOneWidget, reason: '$key must keep its place');
@@ -330,6 +337,8 @@ void main() {
       expect(read().dualDensity, 1.0);
       expect(read().textureScale, 1.0);
       expect(read().textureDensity, 1.0);
+      expect(read().textureBrightness, 0.0);
+      expect(read().textureContrast, 0.0);
     });
 
     testWidgets('the jitter sliders reach the engine', (tester) async {

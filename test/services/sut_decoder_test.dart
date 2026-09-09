@@ -176,6 +176,8 @@ void main() {
         BrushUseSpray INTEGER, BrushSpraySize REAL,
         BrushSprayDensity INTEGER, TextureImage BLOB,
         TextureScale2 REAL, TextureDensity INTEGER,
+        TextureReverseDensity INTEGER, TextureBrightness INTEGER,
+        TextureContrast INTEGER,
         BrushSizeUnit INTEGER, BrushRotationEffector INTEGER,
         BrushRotationRandomScale INTEGER, UseDualBrush INTEGER,
         DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
@@ -205,14 +207,16 @@ void main() {
       'BrushUsePatternImage, BrushPatternImageArray, BrushSizeEffector, '
       'BrushOpacityEffector, BrushFlowEffector, BrushUseSpray, '
       'BrushSpraySize, BrushSprayDensity, TextureImage, TextureScale2, '
-      'TextureDensity, BrushSizeUnit, BrushRotationEffector, '
+      'TextureDensity, TextureReverseDensity, TextureBrightness, '
+      'TextureContrast, BrushSizeUnit, BrushRotationEffector, '
       'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
       'BrushIntervalEffector, CompositeMode, AntiAlias) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+      '?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(
@@ -354,10 +358,17 @@ void main() {
     expect(s.scatterRadiusRatio, closeTo(1.0, 1e-9));
     expect(s.scatterCount, 4);
     // Paper texture joins its own material; scale 182% and density 90%.
-    expect(s.textureMask, isNotNull);
-    expect(s.textureMask!.size, 8);
+    expect(s.textureMaskSource, isNotNull);
+    expect(s.textureMaskSource!.size, 8);
     expect(s.textureScale, closeTo(1.82, 1e-9));
     expect(s.textureDensity, closeTo(0.9, 1e-9));
+    // 🚨THE LEVELS ARE CARRIED, NOT BAKED — 濃度反転 / 明るさ / コントラスト
+    // arrive as three brush settings, so the panel can show and change them.
+    // Baking them into the mask on the way in was what made them unreachable.
+    expect(s.textureInvert, isTrue);
+    expect(s.textureBrightness, closeTo(-0.4, 1e-9));
+    expect(s.textureContrast, closeTo(0.3, 1e-9));
+    expect(s.textureMask, isNot(same(s.textureMaskSource)));
 
     // The larger PNG is the tip (the 2x2 one is a thumbnail); 6x4 pads to
     // a centered 6x6 square, black-opaque pixels become full coverage.

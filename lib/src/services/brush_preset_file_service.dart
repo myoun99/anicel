@@ -51,7 +51,10 @@ class BrushPresetFileService {
   /// release that reaches someone who has drawn with their own brushes has to
   /// put carry-forward back before it bumps this number, or the bump eats
   /// their library. Nothing here enforces that; this comment is the warning.
-  static const int libraryVersion = 7;
+  // 8: the paper texture stores its SOURCE plus invert/brightness/contrast,
+  // where 7 stored one mask with the levels already baked in. A 7 file would
+  // read its baked mask back as a source and bake the levels a second time.
+  static const int libraryVersion = 8;
 
   /// Reads the preset library; a missing, unreadable or older file yields the
   /// built-in defaults (nothing is written back until the next save).
@@ -169,7 +172,14 @@ class BrushPresetFileService {
   );
 
   /// The three mask-valued settings, by json key.
-  static const List<String> _maskKeys = ['tipMask', 'dualMask', 'textureMask'];
+  // ⚠️'textureMaskSource', not 'textureMask': the file stores the texture AS
+  // PICKED, and the levelled bake beside it is derived — it has no id of its
+  // own and nothing in the library to resolve back to.
+  static const List<String> _maskKeys = [
+    'tipMask',
+    'dualMask',
+    'textureMaskSource',
+  ];
 
   /// Swaps each inline mask blob for its id on the way OUT.
   ///
@@ -217,7 +227,7 @@ class BrushPresetFileService {
       settings = switch (key) {
         'tipMask' => settings.copyWith(tipMask: mask),
         'dualMask' => settings.copyWith(dualMask: mask),
-        _ => settings.copyWith(textureMask: mask),
+        _ => settings.copyWith(textureMaskSource: mask),
       };
     }
     return preset.copyWith(settings: settings);

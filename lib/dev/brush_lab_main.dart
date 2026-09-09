@@ -368,7 +368,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
               : BrushToolState.defaultSize,
           tipMask: phase.heavyBrush ? _labNoiseMask('lab-tip', 128) : null,
           dualMask: phase.heavyBrush ? _labNoiseMask('lab-dual', 64) : null,
-          textureMask: phase.heavyBrush
+          textureMaskSource: phase.heavyBrush
               ? _labNoiseMask('lab-texture', 64)
               : null,
         );

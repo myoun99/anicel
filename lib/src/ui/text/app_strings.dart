@@ -1028,6 +1028,9 @@ enum AppStrings {
   String get brDualTip => _s('brDualTip');
   String get brTexture => _s('brTexture');
   String get brTextureDensity => _s('brTextureDensity');
+  String get brTextureInvert => _s('brTextureInvert');
+  String get brTextureBrightness => _s('brTextureBrightness');
+  String get brTextureContrast => _s('brTextureContrast');
   String get brAddTipImage => _s('brAddTipImage');
   String get brRenameTip => _s('brRenameTip');
   String get brDeleteTip => _s('brDeleteTip');
@@ -1798,6 +1801,9 @@ enum AppStrings {
     'brDualTip': 'Dual Tip',
     'brTexture': 'Texture',
     'brTextureDensity': 'Density',
+    'brTextureInvert': 'Invert',
+    'brTextureBrightness': 'Brightness',
+    'brTextureContrast': 'Contrast',
     'brAddTipImage': 'Add a tip from an image',
     'brRenameTip': 'Rename tip',
     'brDeleteTip': 'Delete tip',
@@ -2719,6 +2725,9 @@ enum AppStrings {
     'brDualTip': 'デュアル先端',
     'brTexture': '質感',
     'brTextureDensity': '濃度',
+    'brTextureInvert': '濃度反転',
+    'brTextureBrightness': '明るさ',
+    'brTextureContrast': 'コントラスト',
     'brAddTipImage': '画像から先端を追加',
     'brRenameTip': '先端の名前を変更',
     'brDeleteTip': '先端を削除',
@@ -3662,6 +3671,9 @@ enum AppStrings {
     'brDualTip': '듀얼 끝',
     'brTexture': '질감',
     'brTextureDensity': '농도',
+    'brTextureInvert': '농도 반전',
+    'brTextureBrightness': '밝기',
+    'brTextureContrast': '대비',
     'brAddTipImage': '이미지에서 끝 추가',
     'brRenameTip': '끝 이름 변경',
     'brDeleteTip': '끝 삭제',

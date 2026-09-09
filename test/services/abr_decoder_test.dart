@@ -246,7 +246,7 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('null');
-  desc.i32(6);
+  desc.i32(9);
   desc.key('Nm  ');
   desc.text('Soft Round 16');
   desc.key('useTexture');
@@ -263,6 +263,13 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.text('pattern-rle-uuid');
   desc.key('textureScale');
   desc.untf('#Prc', 150);
+  desc.key('InvT');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  desc.key('textureBrightness');
+  desc.untf('#Prc', -50);
+  desc.key('textureContrast');
+  desc.untf('#Prc', 25);
   desc.key('textureDepth');
   desc.untf('#Prc', 40);
   desc.key('Brsh');
@@ -483,19 +490,38 @@ void main() {
       // Paper texture joins the `patt` section by uuid; the referenced
       // pattern is RLE-packed, which is what Photoshop writes once a
       // pattern gets large.
-      expect(round.settings.textureMask, isNotNull);
-      expect(round.settings.textureMask!.id, 'abr-pattern-pattern-rle-uuid');
-      expect(round.settings.textureMask!.size, 4);
+      expect(round.settings.textureMaskSource, isNotNull);
+      expect(
+        round.settings.textureMaskSource!.id,
+        'abr-pattern-pattern-rle-uuid',
+      );
+      expect(round.settings.textureMaskSource!.size, 4);
       expect(round.settings.textureScale, closeTo(1.5, 1e-9));
       // Photoshop's texture depth is Clip Studio's density.
       expect(round.settings.textureDensity, closeTo(0.4, 1e-9));
       // Coverage reads dark-means-paint, over the luminance of all three
       // channels: pixel 0 is black -> full, and the ramp darkens coverage.
-      final paper = round.settings.textureMask!;
+      final paper = round.settings.textureMaskSource!;
       expect(paper.alpha[0], 255);
       expect(paper.alpha[1], lessThan(255));
       expect(paper.alpha[15], lessThan(paper.alpha[1]));
+
+      // 🚨THE LEVELS ARE CARRIED, NOT BAKED. The importer used to fold
+      // InvT/brightness/contrast into the mask, which left the panel nothing
+      // to offer a control over — the source above is the raw pattern, and
+      // the painted mask is what those three make of it.
+      expect(round.settings.textureInvert, isTrue);
+      expect(round.settings.textureBrightness, closeTo(-0.5, 1e-9));
+      expect(round.settings.textureContrast, closeTo(0.25, 1e-9));
+      expect(round.settings.textureMask, isNot(same(paper)));
+      expect(
+        round.settings.textureMask!.alpha[0],
+        isNot(paper.alpha[0]),
+        reason: 'an inverted full-coverage texel cannot stay at full',
+      );
+
       // The brush that asked for no texture keeps none.
+      expect(chalk.settings.textureMaskSource, isNull);
       expect(chalk.settings.textureMask, isNull);
     });
 

@@ -268,7 +268,7 @@ void main() {
       scatterBothAxes: false,
       dualMask: maskFor('dual'),
       dualMaskScale: 0.7,
-      textureMask: maskFor('texture'),
+      textureMaskSource: maskFor('texture'),
       textureScale: 1.2,
       textureDensity: 0.9,
       blendMode: BrushBlendMode.multiply,

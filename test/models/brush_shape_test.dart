@@ -40,7 +40,10 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   scatterBothAxes: false,
   dualMask: _maskFor('dual'),
   dualMaskScale: 0.7,
-  textureMask: _maskFor('texture'),
+  textureMaskSource: _maskFor('texture'),
+  textureInvert: true,
+  textureBrightness: -0.4,
+  textureContrast: 0.6,
   textureScale: 1.2,
   textureDensity: 0.9,
 );
@@ -81,7 +84,10 @@ void main() {
       expect(base.copyWith(scatterBothAxes: true), isNot(base));
       expect(base.copyWith(dualMask: _maskFor('other')), isNot(base));
       expect(base.copyWith(dualMaskScale: 1.0), isNot(base));
-      expect(base.copyWith(textureMask: _maskFor('other')), isNot(base));
+      expect(base.copyWith(textureMaskSource: _maskFor('other')), isNot(base));
+      expect(base.copyWith(textureInvert: false), isNot(base));
+      expect(base.copyWith(textureBrightness: 0.0), isNot(base));
+      expect(base.copyWith(textureContrast: 0.0), isNot(base));
       expect(base.copyWith(textureScale: 1.0), isNot(base));
       expect(base.copyWith(textureDensity: 1.0), isNot(base));
       // The pressure curves too.
@@ -178,6 +184,72 @@ void main() {
         ),
         base,
       );
+    });
+
+    group('the paper texture as picked vs as painted', () {
+      test('🚨the levels are applied to the PAINTED mask and nothing else', () {
+        final source = BrushTipMask(
+          id: 'paper',
+          size: 2,
+          alpha: Uint8List.fromList(const [0, 80, 160, 255]),
+        );
+        final shape = BrushShape(
+          textureMaskSource: source,
+          textureInvert: true,
+        );
+
+        expect(
+          shape.textureMaskSource,
+          same(source),
+          reason: 'the picked texture is kept, untouched, to re-bake from',
+        );
+        expect(shape.textureMask!.alpha, [255, 175, 95, 0]);
+      });
+
+      test('neutral levels hand back the source ITSELF, with no bake', () {
+        final source = BrushTipMask(
+          id: 'paper',
+          size: 2,
+          alpha: Uint8List.fromList(const [0, 80, 160, 255]),
+        );
+
+        expect(BrushShape(textureMaskSource: source).textureMask, same(source));
+      });
+
+      test('🚨the same shape bakes ONCE, and reading it twice is free', () {
+        // The derived mask is read on the path a dab is built on, which runs
+        // thousands of times a stroke while a 256×256 texture is 65k pixels.
+        // A getter that re-baked per read would be a per-dab cost.
+        final shape = BrushShape(
+          textureMaskSource: BrushTipMask(
+            id: 'paper',
+            size: 2,
+            alpha: Uint8List.fromList(const [0, 80, 160, 255]),
+          ),
+          textureContrast: 0.5,
+        );
+
+        expect(shape.textureMask, same(shape.textureMask));
+      });
+
+      test('a different level is a different bake', () {
+        final source = BrushTipMask(
+          id: 'paper',
+          size: 2,
+          alpha: Uint8List.fromList(const [0, 80, 160, 255]),
+        );
+        final dim = BrushShape(
+          textureMaskSource: source,
+          textureBrightness: 0.5,
+        );
+        final dimmer = BrushShape(
+          textureMaskSource: source,
+          textureBrightness: 0.8,
+        );
+
+        expect(dim.textureMask, isNot(same(dimmer.textureMask)));
+        expect(dim.textureMask!.alpha[3], greaterThan(dimmer.textureMask!.alpha[3]));
+      });
     });
   });
 }
