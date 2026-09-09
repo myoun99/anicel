@@ -50,11 +50,6 @@ void main() {
 
   const service = CameraFrameRenderService(filterQuality: FilterQuality.none);
 
-  test('file names are 1-based and zero padded', () {
-    expect(cameraSequenceFileName(0), 'frame_0001.png');
-    expect(cameraSequenceFileName(11), 'frame_0012.png');
-  });
-
   /// One red pixel in the tile to the LEFT of the canvas: local (7,2) of the
   /// tile at x = -1 is world (-1, 2).
   BitmapSurface surfaceWithParkedRedPixel() {

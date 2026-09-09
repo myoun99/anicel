@@ -20,11 +20,6 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
 
-/// File name for one exported frame: `frame_0001.png` (1-based).
-String cameraSequenceFileName(int frameIndex, {int digits = 4}) {
-  return 'frame_${(frameIndex + 1).toString().padLeft(digits, '0')}.png';
-}
-
 /// Surfaces with at least this many pixels assemble their upload buffer in
 /// a background isolate; smaller ones stay synchronous (the spawn/copy
 /// overhead would dominate, and fake-async widget tests never pump real

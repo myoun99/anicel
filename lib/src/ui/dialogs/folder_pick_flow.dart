@@ -109,7 +109,7 @@ Future<FolderGrant?> pickFolderGrantForUser(
   return _spokenFor(context, grant, folderMode: true);
 }
 
-/// PICK-5: the same flow for FILES.
+/// PICK-5: the same flow for FILES, keeping the grants whole.
 ///
 /// Every caller here used to reach `file_selector` directly, and on both
 /// mobile platforms that plugin COPIES the chosen file — into the iOS
@@ -119,34 +119,16 @@ Future<FolderGrant?> pickFolderGrantForUser(
 /// [FolderPicker.pickFiles] is what makes a reference reference the file
 /// the user actually chose.
 ///
-/// Returns the chosen paths; empty when the user backed out or was told why
-/// they cannot use what they chose.
-///
-/// The short spelling, for the callers that only need somewhere to read
-/// from. Anything that RECORDS what it picked wants
-/// [pickFileGrantsForUser] instead — see there.
-Future<List<String>> pickFilesForUser(
-  BuildContext context, {
-  required List<String> supportedExtensions,
-  bool allowMultiple = false,
-}) async => [
-  for (final grant in await pickFileGrantsForUser(
-    context,
-    supportedExtensions: supportedExtensions,
-    allowMultiple: allowMultiple,
-  ))
-    ?grant.path,
-];
-
-/// The same flow, keeping the grants whole.
-///
-/// 🚨 This is the difference between a reference that survives a relaunch
-/// and one that does not. `pickFiles` mints a security-scoped bookmark on
-/// Apple platforms and the short spelling above threw it away at the door
-/// — so an asset imported by REFERENCE recorded a path, and a recorded
-/// path on iOS or macOS is refused the next time the app starts. Every
-/// piece of the machine existed; the answer simply never reached the code
-/// that could write it down.
+/// 🚨 The GRANT is the difference between a reference that survives a
+/// relaunch and one that does not. `pickFiles` mints a security-scoped
+/// bookmark on Apple platforms, and a path-only spelling of this call
+/// threw it away at the door — so an asset imported by REFERENCE recorded
+/// a path, and a recorded path on iOS or macOS is refused the next time
+/// the app starts. Every piece of the machine existed; the answer simply
+/// never reached the code that could write it down. ⚠️That spelling is
+/// GONE (2026-09-10: nothing in the app called it, and a door that drops
+/// the token is a door someone reaches for by accident) — there is one
+/// file door and it hands back what it was granted, paths included.
 ///
 /// Opening a PROJECT wants it for the same reason: a recent-projects entry
 /// is refused after relaunch unless the app can produce the token it was
