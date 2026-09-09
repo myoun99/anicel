@@ -1,6 +1,4 @@
 import 'brush_anti_alias.dart';
-import 'brush_input_sample.dart';
-import 'brush_settings.dart';
 import 'brush_stamp_image.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
@@ -66,55 +64,6 @@ class BrushDab {
     _validateFinite(angleDegrees, 'angleDegrees');
     _validateSquareIsAxisAligned(tipShape, tipMask, roundness, angleDegrees);
     _validateSequence(sequence);
-  }
-
-  /// A dab carrying the settings' BASE values and this sample's input
-  /// readings — before any curve has scaled it.
-  ///
-  /// 🚨THE CURVES ARE NOT APPLIED HERE. They were, inline, and the same four
-  /// multiplications lived in `applyBrushInputDynamics` and in the preview
-  /// cache as well — one algorithm written three times, each with different
-  /// accretions (this one clamped nothing, the dynamics clamp to 0..1, the
-  /// preview floors at 0.05). Callers run [applyBrushInputDynamics] and
-  /// keep whatever floor is theirs.
-  ///
-  /// ⚠️F-12 lives in the base, not in the curve: a dab's opacity starts at
-  /// 1.0 because the TOOL's opacity is the accumulated stroke's ceiling and
-  /// rides `BrushDabSequence.opacity` — on the dab it would cap nothing,
-  /// since dabs pile up source-over and any factor below 1 still converges
-  /// on opaque.
-  factory BrushDab.fromInputSample({
-    required BrushInputSample sample,
-    required BrushSettings settings,
-    required int sequence,
-  }) {
-    return BrushDab(
-      center: CanvasPoint(x: sample.x, y: sample.y),
-      color: settings.color,
-      size: settings.size,
-      opacity: 1.0,
-      flow: settings.flow,
-      hardness: settings.hardness,
-      pressure: sample.pressure,
-      sequence: sequence,
-      // ⛔"Rides along unread" is no longer true: `applyBrushInputDynamics`
-      // evaluates 傾き curves against [tiltAltitude]. It travels on the dab
-      // for the reason it always did — a dab that does not carry its own
-      // input value could never be replayed (P17).
-      tiltAzimuthDegrees: sample.tiltAzimuthDegrees,
-      tiltAltitude: sample.tiltAltitude,
-      speed: sample.speed,
-      roundness: settings.roundness,
-      angleDegrees: settings.angleDegrees,
-      tipMask: settings.tipMask,
-      dualMask: settings.dualMask,
-      dualMaskScale: settings.dualMaskScale,
-      dualDensity: settings.dualDensity,
-      textureMask: settings.textureMask,
-      textureScale: settings.textureScale,
-      textureDensity: settings.textureDensity,
-      antiAlias: settings.antiAlias,
-    );
   }
 
   final CanvasPoint center;

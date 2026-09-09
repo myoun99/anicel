@@ -199,9 +199,15 @@ Uint8List rasterizeBrushStrokeSample(
         tipMask: settings.tipMask,
         dualMask: settings.dualMask,
         dualMaskScale: settings.dualMaskScale,
+        dualDensity: settings.dualDensity,
         textureMask: settings.textureMask,
         textureScale: settings.textureScale,
         textureDensity: settings.textureDensity,
+        // The swatch has to show the brush the canvas will draw, so the
+        // edge step and the dual density belong here too. ⚠️The dual PHASE
+        // deliberately does not: it is random per dab on the canvas, and a
+        // preview that moved under you every rebuild would be noise.
+        antiAlias: settings.antiAlias,
       ),
       shape: settings.shape,
     );

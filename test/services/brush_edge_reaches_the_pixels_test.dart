@@ -14,8 +14,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_settings.dart';
-import 'package:anicel/src/models/brush_input_sample.dart';
 import 'package:anicel/src/models/brush_pixel_coverage.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -49,20 +47,15 @@ void main() {
           .map((BrushPixelCoverage c) => c.coverage)
           .where((c) => c > 0.0 && c < 1.0);
 
-  test('🚨THE SETTING REACHES THE DAB — the hop the pixel tests cannot see', () {
-    // ⛔Every other case here builds a dab by hand, so all of them survived
-    // deleting `antiAlias: settings.antiAlias` from `fromInputSample`
-    // (measured 2026-09-08). The brush -> dab hop needs its own pin, or the
-    // panel can say 없음 while the canvas keeps drawing 3단계.
-    for (final step in BrushAntiAlias.values) {
-      final placed = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 1, y: 1),
-        settings: BrushSettings(size: 4, antiAlias: step),
-        sequence: 0,
-      );
-      expect(placed.antiAlias, step, reason: 'the brush said ${step.name}');
-    }
-  });
+  // ⛔THE BRUSH -> DAB HOP USED TO BE PINNED HERE, on
+  // `BrushDab.fromInputSample` — and that factory turned out to be the one
+  // producer NOTHING in the app called, so the pin was green while the
+  // canvas dropped the setting entirely. The hop is pinned at the LIVE
+  // doors now: `every_brush_setting_reaches_the_dab_test`.
+  //
+  // ⚠️Every case below builds its dab by hand, which is why none of them
+  // could ever catch it (measured 2026-09-08 by deleting `antiAlias:` and
+  // watching this file stay green).
 
   test('없음 leaves NO partly-covered pixel — that is what hard means', () {
     expect(softPixels(BrushAntiAlias.none), isEmpty);

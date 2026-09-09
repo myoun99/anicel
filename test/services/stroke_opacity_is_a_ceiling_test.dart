@@ -5,8 +5,6 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
-import 'package:anicel/src/models/brush_input_sample.dart';
-import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -14,7 +12,6 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
-import 'package:anicel/src/services/brush_dab_placement.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_stroke_blend.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
@@ -262,11 +259,14 @@ void main() {
   });
 
   group('where the number lives', () {
-    test('the offline placement puts the setting on the SEQUENCE', () {
-      final sequence = brushInputSamplesToBrushDabs(
-        samples: [BrushInputSample(x: 0, y: 0), BrushInputSample(x: 40, y: 0)],
-        settings: BrushSettings(size: 10, spacing: 0.5, opacity: 0.3),
-      );
+    // ⛔The offline `brushInputSamplesToBrushDabs` used to demonstrate these
+    // two, and it is gone (nothing in the app ever called it). The law is
+    // the same and it belongs to the TYPE: the ceiling is a property of the
+    // stroke, and it is not on the dabs.
+    test('the ceiling is the SEQUENCE\'s, and the dabs stay at 1.0', () {
+      final sequence = BrushDabSequence([
+        for (var i = 0; i < 4; i += 1) pixelDab(i),
+      ], 0.3);
 
       expect(sequence.opacity, 0.3);
       expect(
@@ -279,13 +279,7 @@ void main() {
     });
 
     test('an empty stroke still carries its ceiling', () {
-      expect(
-        brushInputSamplesToBrushDabs(
-          samples: const [],
-          settings: BrushSettings(size: 10, opacity: 0.3),
-        ).opacity,
-        0.3,
-      );
+      expect(BrushDabSequence(const [], 0.3).opacity, 0.3);
     });
 
     test('the ceiling round-trips and counts as identity', () {

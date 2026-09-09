@@ -578,9 +578,17 @@ class _InteractiveBrushEditCanvasViewState
       dualMaskScale: settings.dualMaskScale,
       dualOffsetU: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
       dualOffsetV: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
+      dualDensity: settings.dualDensity,
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
+      // 🚨THE EDGE STEP AND THE DUAL DENSITY WERE NOT HERE, and the panel
+      // has been writing both for a while: 아웃 오브 the brush's settings,
+      // into the shape, and no further. The only producer that ever carried
+      // `antiAlias` onto a dab was `BrushDab.fromInputSample` — which
+      // nothing in the app called — so the pin that watched it was green
+      // while the canvas ignored the setting entirely.
+      antiAlias: settings.antiAlias,
       erase: settings.erase,
     );
   }

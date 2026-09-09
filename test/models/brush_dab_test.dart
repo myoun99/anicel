@@ -3,9 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
 import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_input_sample.dart';
-import 'package:anicel/src/models/brush_pressure_curve.dart';
-import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -244,55 +241,6 @@ void main() {
       expect(dab().copyWith(size: 6).roundness, 1.0);
     });
 
-    test('fromInputSample uses sample position as CanvasPoint', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 3, y: 4),
-        settings: BrushSettings(),
-        sequence: 0,
-      );
-      expect(value.center, CanvasPoint(x: 3, y: 4));
-    });
-
-    test('fromInputSample copies BrushSettings color', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0),
-        settings: BrushSettings(color: 0x80FF3366),
-        sequence: 0,
-      );
-      expect(value.color, 0x80FF3366);
-    });
-
-    test('fromInputSample carries the BASE values, curves unapplied', () {
-      // 🚨The factory used to multiply the four curves in itself — a third
-      // copy of the law that `applyBrushPressureDynamics` owns. It now hands
-      // over the settings' base values and the sample's readings, and
-      // `brushInputSamplesToBrushDabs` runs the law (see
-      // `brush_dab_placement_test`, which asserts the product).
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0, pressure: 0.25),
-        settings: BrushSettings(
-          size: 20,
-          flow: 0.8,
-          hardness: 0.5,
-          sizePressureCurve: BrushPressureCurve.identity(),
-          opacityPressureCurve: BrushPressureCurve.identity(),
-          flowPressureCurve: BrushPressureCurve.identity(),
-          hardnessPressureCurve: BrushPressureCurve.identity(),
-        ),
-        sequence: 0,
-      );
-
-      expect(value.size, 20);
-      expect(value.flow, 0.8);
-      expect(value.hardness, 0.5);
-      // F-12 lives in the BASE: a dab's opacity starts at 1.0 because the
-      // tool's opacity is the accumulated stroke's ceiling and rides
-      // `BrushDabSequence.opacity` — on the dab it would cap nothing.
-      expect(value.opacity, 1.0);
-      // The reading still arrives, so the law downstream has something to
-      // evaluate against.
-      expect(value.pressure, 0.25);
-    });
 
     test('🚨a BRUSH dab is always ROUND — there is no square brush', () {
       // 유저 2026-09-09: 「포토샵이나 클튜처럼 가자. 원이나 이미지」. A brush
@@ -301,14 +249,7 @@ void main() {
       // `BrushDab.tipShape` survives for the FILL, selection-lift and
       // cut-stamp verbs, which build a square dab to mean "cover exactly this
       // rect"; nothing a brush can set reaches it.
-      expect(
-        BrushDab.fromInputSample(
-          sample: BrushInputSample(x: 0, y: 0),
-          settings: BrushSettings(),
-          sequence: 0,
-        ).tipShape,
-        BrushTipShape.round,
-      );
+      expect(dab().tipShape, BrushTipShape.round);
     });
 
     test('🚨a square dab cannot be rotated or squashed', () {
@@ -340,46 +281,14 @@ void main() {
     test('a round dab writes no tipShape key at all', () {
       // Byte-identity with strokes recorded before the field left the brush:
       // every dab a brush lays is round, so the key never appears again.
-      final json = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0),
-        settings: BrushSettings(),
-        sequence: 0,
-      ).toJson();
-
-      expect(json.containsKey('tipShape'), isFalse);
+      expect(dab().toJson().containsKey('tipShape'), isFalse);
       // ...and the verbs that DO set it still round-trip.
       final square = BrushDab.fromJson(
-        BrushDab.fromInputSample(
-          sample: BrushInputSample(x: 0, y: 0),
-          settings: BrushSettings(),
-          sequence: 0,
-        ).copyWith(tipShape: BrushTipShape.square).toJson(),
+        dab().copyWith(tipShape: BrushTipShape.square).toJson(),
       );
       expect(square.tipShape, BrushTipShape.square);
     });
 
-    test('fromInputSample preserves flow and hardness', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0),
-        settings: BrushSettings(
-          flow: 0.3,
-          hardness: 0.4,
-        ),
-        sequence: 0,
-      );
-      expect(value.flow, 0.3);
-      expect(value.hardness, 0.4);
-    });
-
-    test('fromInputSample carries roundness and angle', () {
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0),
-        settings: BrushSettings(roundness: 0.6, angleDegrees: 30),
-        sequence: 0,
-      );
-      expect(value.roundness, 0.6);
-      expect(value.angleDegrees, 30.0);
-    });
 
     test('tipMask round-trips through json and equality', () {
       final mask = BrushTipMask(
@@ -394,18 +303,5 @@ void main() {
       expect(BrushDab.fromJson(dab().toJson()).tipMask, isNull);
     });
 
-    test('fromInputSample carries the settings tip mask', () {
-      final mask = BrushTipMask(
-        id: 'tip',
-        size: 2,
-        alpha: Uint8List.fromList([0, 128, 255, 64]),
-      );
-      final value = BrushDab.fromInputSample(
-        sample: BrushInputSample(x: 0, y: 0),
-        settings: BrushSettings(tipMask: mask),
-        sequence: 0,
-      );
-      expect(value.tipMask, mask);
-    });
   });
 }
