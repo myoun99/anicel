@@ -178,6 +178,22 @@ class BitmapSurface {
   /// constructor every write goes through already applies them, so the
   /// copy was dead weight that could drift (a mutant that disabled the
   /// copy's bounds check survived every test, 2026-09-07).
+  ///
+  /// 🧪**AND THE MAP REBUILD IS O(TILES HELD) ON PURPOSE — MEASURED, THEN
+  /// KEPT** (2026-09-09). Cost of `putTiles([one])` against the tiles the
+  /// cel holds: 100 → **31.8 µs**, 400 → **37.3**, 1,600 → **141.7**,
+  /// 6,400 → **595.6**. Linear, ~0.09 µs a tile. A 1920×1080 cel at 128px
+  /// holds 135 tiles of canvas grid and a 4096² one holds 1,024, so a
+  /// commit spends 0.2–0.5% of a 60fps frame here; 6,400 tiles needs an
+  /// 8192² canvas inked corner to corner.
+  ///
+  /// ⛔**The only way to make it O(touched) is a persistent map (HAMT),
+  /// and that is a trade, not a win.** It buys the write by turning
+  /// [tileAt] — a hash lookup, run per tile per paint, which is far more
+  /// often than a commit runs — into a trie walk. Paying a read that
+  /// frequent to save a write this cheap is the wrong direction, and
+  /// nothing measured says otherwise. Revisit if a real cel ever holds
+  /// thousands of tiles.
   BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     for (final tile in tilesToPut) {
