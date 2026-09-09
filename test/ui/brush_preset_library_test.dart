@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -491,7 +492,7 @@ void main() {
         reason: 'two saves must never be in flight together',
       );
 
-      await writer.settled;
+      await writer.settle();
 
       // ...and the newest state is what the file ends up holding.
       expect(writer.applied.last, library.presets.length);
@@ -507,7 +508,7 @@ void main() {
       for (var i = 0; i < 6; i += 1) {
         library.saveCurrent(BrushSettings(size: 5));
       }
-      await writer.settled;
+      await writer.settle();
 
       expect(
         writer.applied.length,
@@ -522,35 +523,47 @@ void main() {
 
 /// A file service that records what it was asked to write and how many
 /// writes were in flight at once.
+///
+/// ⛔NO TIMER FINISHES A WRITE HERE — the TEST does, one at a time. A fake
+/// that landed its completion on a `Future.delayed` would be betting on how
+/// busy the machine is, which is the race
+/// `tests_do_not_race_the_code_test` exists to refuse.
 class _RecordingFileService extends BrushPresetFileService {
   _RecordingFileService(String path) : super(filePath: path);
 
-  /// Preset counts, in the order they reached the disk.
+  /// Preset counts, in the order the library ASKED for them.
   final List<int> applied = [];
 
-  int _inFlight = 0;
-  int maximumOverlap = 0;
-  Future<void> _tail = Future<void>.value();
+  final List<Completer<void>> _open = [];
 
-  /// Completes once every write this service has been handed has finished.
-  Future<void> get settled async {
-    // Two turns: the first lets the drain start the write it queued, the
-    // second lets the loop notice a snapshot that arrived while it ran.
-    for (var turn = 0; turn < 8; turn += 1) {
-      await _tail;
-      await Future<void>.delayed(Duration.zero);
-    }
-  }
+  /// The most writes this service was ever holding at once.
+  int maximumOverlap = 0;
 
   @override
   Future<void> save(BrushPresetLibraryData library) {
-    _inFlight += 1;
-    maximumOverlap = maximumOverlap > _inFlight ? maximumOverlap : _inFlight;
-    final done = Future<void>.delayed(const Duration(milliseconds: 5), () {
-      applied.add(library.presets.length);
-      _inFlight -= 1;
-    });
-    _tail = done;
-    return done;
+    applied.add(library.presets.length);
+    final completer = Completer<void>();
+    _open.add(completer);
+    if (_open.length > maximumOverlap) {
+      maximumOverlap = _open.length;
+    }
+    return completer.future;
+  }
+
+  /// Finishes the write the library is waiting on and gives it the turn it
+  /// needs to queue whatever is next. False means nothing was in flight —
+  /// positive evidence that the queue is empty, not an observed silence.
+  Future<bool> _finishOne() async {
+    if (_open.isEmpty) {
+      return false;
+    }
+    _open.removeAt(0).complete();
+    await Future<void>.delayed(Duration.zero);
+    return true;
+  }
+
+  /// Runs the queue to exhaustion, one write per turn.
+  Future<void> settle() async {
+    while (await _finishOne()) {}
   }
 }
