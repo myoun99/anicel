@@ -1269,175 +1269,235 @@ class ExportDialogState extends State<ExportDialog> {
         },
       );
 
+  /// The size the preview renders at: [width]×[height] fitted into the
+  /// panel's budget, or null when it already fits (render at full size).
+  ///
+  /// ⚠️ONE budget for every tab. Four call sites spelled the same
+  /// four-argument call and the same null-or-[CanvasSize] line after it,
+  /// each rounding its own pair of doubles — a preview that fits on one tab
+  /// and overflows on another is the drift that shape invites.
+  CanvasSize? _previewFit(num width, num height) {
+    final fitted = previewOutputSize(
+      sourceWidth: width.round(),
+      sourceHeight: height.round(),
+      maxWidth: _previewMaxWidth,
+      maxHeight: _previewMaxHeight,
+    );
+    return fitted == null
+        ? null
+        : CanvasSize(width: fitted.width, height: fitted.height);
+  }
+
+  /// The entry the preview is parked on: [position] clamped into [plan] and
+  /// written back through [park]. Null — with the well CLEARED — when the
+  /// plan holds nothing.
+  ///
+  /// 🚨ONE ANSWER TO 「보여줄 게 없다」. Four tabs spelled the empty-check,
+  /// the clamp and the write-back themselves, and the sequence tab spelled
+  /// it WITHOUT the clear — a fifth answer to the same question, which
+  /// would have left a stale picture in the well the day a project with no
+  /// frames reached it.
+  T? _parkedPreviewEntry<T>(
+    List<T> plan,
+    int position,
+    void Function(int) park,
+  ) {
+    if (plan.isEmpty) {
+      _preview.clear();
+      return null;
+    }
+    final index = position.clamp(0, plan.length - 1);
+    park(index);
+    return plan[index];
+  }
+
   /// Re-aims the preview at whatever the tab currently points at. Called
   /// after every spec/nav/tab change; requests coalesce in the controller.
+  ///
+  /// ⚠️THE SWITCH STAYS A SWITCH. Nine questions in this window dispatch on
+  /// [_tab] and a tab-shaped object would gather them — but the set of tabs
+  /// is the product's closed list, and Dart's exhaustive switch already
+  /// refuses to compile until a new one is answered EVERYWHERE. What the
+  /// cases must not hold is a second copy of a shared step; that is what
+  /// [_previewFit] and [_parkedPreviewEntry] above are.
   void _refreshPreview() {
     switch (_tab) {
       case ExportTab.sequence:
-        final spec = _specs.sequence;
-        final axis = _sequenceAxisPlan();
-        if (axis.isEmpty) {
-          return;
-        }
-        _sequencePosition = _sequencePosition.clamp(0, axis.length - 1);
-        final task = axis[_sequencePosition];
-        _requestCompositePreview(
-          task: task,
-          sizeMode: spec.sizeMode,
-          applyLayerFx: spec.applyLayerFx,
-          format: spec.format,
-          caption: 'F${_sequencePosition + 1}',
-        );
+        _refreshSequencePreview();
       case ExportTab.image:
-        final spec = _specs.image;
-        _requestCompositePreview(
-          task: ExportFrameTask(
-            cut: _activeCut,
-            frameIndex: _currentImageFrame(),
-          ),
-          sizeMode: spec.sizeMode,
-          applyLayerFx: spec.applyLayerFx,
-          format: spec.format,
-          caption: 'F${_currentImageFrame() + 1}',
-        );
+        _refreshImagePreview();
       case ExportTab.cels:
-        final spec = _specs.cels;
-        final plan = _celGroupPlan();
-        final entries = _celEntries(plan);
-        if (entries.isEmpty) {
-          _preview.clear();
-          return;
-        }
-        _celPosition = _celPosition.clamp(0, entries.length - 1);
-        final entry = entries[_celPosition];
-        final format = spec.format;
-        final renderer = _previewRendererFor(
-          // The preview shows what the export writes — same switch.
-          applyLayerFx: spec.applyLayerFx,
-          format: format,
-        );
-        final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
-        switch (entry) {
-          case ExportCelGroupTask():
-            _preview.request(
-              key: celGroupPreviewKey(
-                entry,
-                sizeMode: spec.sizeMode.jsonValue,
-                backgroundKey: bgKey,
-                applyLayerFx: spec.applyLayerFx,
-              ),
-              caption: _celEntryCaption(entry),
-              render: () => renderer.renderCelGroup(entry, spec.sizeMode),
-            );
-          case ExportInstructionTask():
-            final size = spec.sizeMode == ExportSizeMode.camera
-                ? _session.camera.cameraFrameSize
-                : entry.cut.canvasSize;
-            _preview.request(
-              key:
-                  'celinst:${entry.fileName}:${size.width}x${size.height}:'
-                  '$bgKey',
-              caption: _celEntryCaption(entry),
-              render: () => renderInstructionCelImage(
-                task: entry,
-                size: size,
-                background: format.wantsAlpha
-                    ? null
-                    : ui.Color(format.backgroundArgb),
-              ),
-            );
-        }
+        _refreshCelsPreview();
       case ExportTab.timesheet:
-        final plan = _timesheetPagePlan();
-        if (plan.isEmpty) {
-          _preview.clear();
-          return;
-        }
-        _sheetPosition = _sheetPosition.clamp(0, plan.length - 1);
-        final task = plan[_sheetPosition];
-        final (_, document, layout) = _sheetDocFor(task.cut);
-        final page = layout.pageRect(task.pageIndex);
-        final fitted = previewOutputSize(
-          sourceWidth: page.width.round(),
-          sourceHeight: page.height.round(),
-          maxWidth: _previewMaxWidth,
-          maxHeight: _previewMaxHeight,
-        );
-        _preview.request(
-          key: 'sheet:${task.cut.id.value}:${task.pageIndex}',
-          caption: 'p${task.pageIndex + 1}',
-          render: () => renderTimesheetPageImage(
-            document: document,
-            layout: layout,
-            pageIndex: task.pageIndex,
-            notation: _sheetNotation,
-            outputSize: fitted == null
-                ? null
-                : CanvasSize(width: fitted.width, height: fitted.height),
-          ),
-        );
+        _refreshTimesheetPreview();
       case ExportTab.conte:
-        final (source, pages) = _conteSheet();
-        if (pages.isEmpty) {
-          _preview.clear();
-          return;
-        }
-        _contePosition = _contePosition.clamp(0, pages.length - 1);
-        final page = pages[_contePosition];
-        final fitted = previewOutputSize(
-          sourceWidth: page.metrics.pageWidth.round(),
-          sourceHeight: page.metrics.pageHeight.round(),
-          maxWidth: _previewMaxWidth,
-          maxHeight: _previewMaxHeight,
-        );
-        _preview.request(
-          key: 'conte:${page.pageIndex}',
-          caption: 'p${page.pageIndex + 1}',
-          // Preview pictures at panel resolution — fast, and the run
-          // re-renders sharper ones anyway.
-          render: () => _renderContePage(
-            page,
-            source,
-            pictureWidth: 128,
-            outputSize: fitted == null
-                ? null
-                : CanvasSize(width: fitted.width, height: fitted.height),
-          ),
-        );
+        _refreshContePreview();
       case ExportTab.envelope:
-        final plan = _envelopePlan();
-        if (plan.isEmpty) {
-          _preview.clear();
-          return;
-        }
-        _envelopePosition = _envelopePosition.clamp(0, plan.length - 1);
-        final task = plan[_envelopePosition];
-        final fitted = previewOutputSize(
-          sourceWidth: task.layout.paperWidth.round(),
-          sourceHeight: task.layout.paperHeight.round(),
-          maxWidth: _previewMaxWidth,
-          maxHeight: _previewMaxHeight,
-        );
-        final spec = _specs.envelope;
-        final layers = spec.layers;
+        _refreshEnvelopePreview();
+    }
+  }
+
+  void _refreshSequencePreview() {
+    final spec = _specs.sequence;
+    final task = _parkedPreviewEntry(
+      _sequenceAxisPlan(),
+      _sequencePosition,
+      (index) => _sequencePosition = index,
+    );
+    if (task == null) {
+      return;
+    }
+    _requestCompositePreview(
+      task: task,
+      sizeMode: spec.sizeMode,
+      applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
+      caption: 'F${_sequencePosition + 1}',
+    );
+  }
+
+  void _refreshImagePreview() {
+    final spec = _specs.image;
+    _requestCompositePreview(
+      task: ExportFrameTask(cut: _activeCut, frameIndex: _currentImageFrame()),
+      sizeMode: spec.sizeMode,
+      applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
+      caption: 'F${_currentImageFrame() + 1}',
+    );
+  }
+
+  void _refreshCelsPreview() {
+    final spec = _specs.cels;
+    final entry = _parkedPreviewEntry(
+      _celEntries(_celGroupPlan()),
+      _celPosition,
+      (index) => _celPosition = index,
+    );
+    if (entry == null) {
+      return;
+    }
+    final format = spec.format;
+    final renderer = _previewRendererFor(
+      // The preview shows what the export writes — same switch.
+      applyLayerFx: spec.applyLayerFx,
+      format: format,
+    );
+    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
+    switch (entry) {
+      case ExportCelGroupTask():
         _preview.request(
-          // Every setting that changes the picture is in the key: two
-          // different layer sets of the same SIZE must not share a
-          // cached render.
-          key:
-              'envelope:${task.owner.id.value}:${spec.formId}:'
-              '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
-              '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
-          caption: 'CUT${task.owner.name}',
-          render: () => _renderEnvelope(
-            task,
-            layers: layers,
-            outputSize: fitted == null
+          key: celGroupPreviewKey(
+            entry,
+            sizeMode: spec.sizeMode.jsonValue,
+            backgroundKey: bgKey,
+            applyLayerFx: spec.applyLayerFx,
+          ),
+          caption: _celEntryCaption(entry),
+          render: () => renderer.renderCelGroup(entry, spec.sizeMode),
+        );
+      case ExportInstructionTask():
+        final size = spec.sizeMode == ExportSizeMode.camera
+            ? _session.camera.cameraFrameSize
+            : entry.cut.canvasSize;
+        _preview.request(
+          key: 'celinst:${entry.fileName}:${size.width}x${size.height}:$bgKey',
+          caption: _celEntryCaption(entry),
+          render: () => renderInstructionCelImage(
+            task: entry,
+            size: size,
+            background: format.wantsAlpha
                 ? null
-                : (width: fitted.width, height: fitted.height),
+                : ui.Color(format.backgroundArgb),
           ),
         );
     }
+  }
+
+  void _refreshTimesheetPreview() {
+    final task = _parkedPreviewEntry(
+      _timesheetPagePlan(),
+      _sheetPosition,
+      (index) => _sheetPosition = index,
+    );
+    if (task == null) {
+      return;
+    }
+    final (_, document, layout) = _sheetDocFor(task.cut);
+    final page = layout.pageRect(task.pageIndex);
+    final outputSize = _previewFit(page.width, page.height);
+    _preview.request(
+      key: 'sheet:${task.cut.id.value}:${task.pageIndex}',
+      caption: 'p${task.pageIndex + 1}',
+      render: () => renderTimesheetPageImage(
+        document: document,
+        layout: layout,
+        pageIndex: task.pageIndex,
+        notation: _sheetNotation,
+        outputSize: outputSize,
+      ),
+    );
+  }
+
+  void _refreshContePreview() {
+    final (source, pages) = _conteSheet();
+    final page = _parkedPreviewEntry(
+      pages,
+      _contePosition,
+      (index) => _contePosition = index,
+    );
+    if (page == null) {
+      return;
+    }
+    final outputSize = _previewFit(
+      page.metrics.pageWidth,
+      page.metrics.pageHeight,
+    );
+    _preview.request(
+      key: 'conte:${page.pageIndex}',
+      caption: 'p${page.pageIndex + 1}',
+      // Preview pictures at panel resolution — fast, and the run
+      // re-renders sharper ones anyway.
+      render: () => _renderContePage(
+        page,
+        source,
+        pictureWidth: 128,
+        outputSize: outputSize,
+      ),
+    );
+  }
+
+  void _refreshEnvelopePreview() {
+    final task = _parkedPreviewEntry(
+      _envelopePlan(),
+      _envelopePosition,
+      (index) => _envelopePosition = index,
+    );
+    if (task == null) {
+      return;
+    }
+    final spec = _specs.envelope;
+    final fitted = _previewFit(
+      task.layout.paperWidth,
+      task.layout.paperHeight,
+    );
+    _preview.request(
+      // Every setting that changes the picture is in the key: two
+      // different layer sets of the same SIZE must not share a
+      // cached render.
+      key:
+          'envelope:${task.owner.id.value}:${spec.formId}:'
+          '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
+          '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
+      caption: 'CUT${task.owner.name}',
+      render: () => _renderEnvelope(
+        task,
+        layers: spec.layers,
+        outputSize: fitted == null
+            ? null
+            : (width: fitted.width, height: fitted.height),
+      ),
+    );
   }
 
   void _requestCompositePreview({
@@ -1460,15 +1520,7 @@ class ExportDialogState extends State<ExportDialog> {
     final source = sizeMode == ExportSizeMode.camera
         ? _session.camera.cameraFrameSize
         : task.cut.canvasSize;
-    final fitted = previewOutputSize(
-      sourceWidth: source.width,
-      sourceHeight: source.height,
-      maxWidth: _previewMaxWidth,
-      maxHeight: _previewMaxHeight,
-    );
-    final outputSize = fitted == null
-        ? null
-        : CanvasSize(width: fitted.width, height: fitted.height);
+    final outputSize = _previewFit(source.width, source.height);
     _preview.request(
       key:
           'frame:${task.cut.id.value}:${task.frameIndex}:'
@@ -1547,73 +1599,90 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- summaries ------------------------------------------------------------
 
-  String _planHeadline() {
-    switch (_tab) {
-      case ExportTab.sequence:
-        final spec = _specs.sequence;
-        final plan = _sequencePlanForRun(video: spec.format.isVideo);
-        if (plan == null) {
-          final duration = math.max(1, _activeCut.duration);
-          return 'Enter a valid in/out range (1–$duration).';
-        }
-        final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
-        if (spec.sizeMode == ExportSizeMode.camera) {
-          final size = _session.camera.cameraFrameSize;
-          return '$frames at ${size.width}×${size.height} through the camera.';
-        }
-        final sizes = _scopeCanvasSizes(spec.scope);
-        if (sizes.length == 1) {
-          final size = sizes.first;
-          return '$frames at ${size.width}×${size.height} (raw canvas).';
-        }
-        return "$frames at each cut's own canvas size.";
-      case ExportTab.image:
-        final size = _specs.image.sizeMode == ExportSizeMode.camera
-            ? _session.camera.cameraFrameSize
-            : _activeCut.canvasSize;
-        return 'Frame ${_currentImageFrame() + 1} of ${_activeCut.name} at '
-            '${size.width}×${size.height}.';
-      case ExportTab.cels:
-        final plan = _celGroupPlan();
-        final labels = {for (final task in plan.cels) task.baseLayer.id}.length;
-        final background = _specs.cels.format.wantsAlpha
-            ? 'transparent'
-            : 'opaque';
-        return '$labels ${_plural(labels, 'label')} · ${plan.length} '
-            '${_plural(plan.length, 'file')} as $background '
-            '${_specs.cels.format.stillFormat.label} '
-            '(기준+어태치 composited per cel).';
-      case ExportTab.timesheet:
-        if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
-          final pages = _timesheetPagePlan().length;
-          return '$pages sheet ${_plural(pages, 'page')} as B4 PNG — the '
-              "panel's own paper, offscreen.";
-        }
-        final count = _timesheetCuts().length;
-        return '$count XDTS ${_plural(count, 'sheet')} '
-            '(cels + serifu + camerawork columns).';
-      case ExportTab.conte:
-        final (_, pages) = _conteSheet();
-        if (_specs.conte.format == ExportConteFormat.pdf) {
-          return '${pages.length} conte ${_plural(pages.length, 'page')} as '
-              'ONE vector PDF — rules and text as vectors, pictures '
-              'embedded.';
-        }
-        return '${pages.length} conte ${_plural(pages.length, 'page')} as '
-            "A4 PNG — the panel's own paper, offscreen.";
-      case ExportTab.envelope:
-        final spec = _specs.envelope;
-        final sheets = _envelopePlan().length;
-        final files = _envelopeFilePlan().length;
-        final paper = spec.paperMode == CutEnvelopePaperMode.cut
-            ? "the CUT's own pixels — drops into a working file as a layer"
-            : '${spec.sheetWidth}px wide — the real 봉투, for printing';
-        final layered = spec.separateLayerFiles
-            ? ' · one PNG per layer (${spec.orderedLayers.length})'
-            : '';
-        return '$sheets ${_plural(sheets, 'envelope')} as '
-            '$files ${_plural(files, 'PNG')} at $paper$layered.';
+  /// The sentence under the preview: what THIS tab would write, in the
+  /// terms that tab thinks in. One case per tab, each its own method —
+  /// every one of them ends in a sentence, and a switch that also builds
+  /// them reads as one function doing six jobs.
+  String _planHeadline() => switch (_tab) {
+    ExportTab.sequence => _sequenceHeadline(),
+    ExportTab.image => _imageHeadline(),
+    ExportTab.cels => _celsHeadline(),
+    ExportTab.timesheet => _timesheetHeadline(),
+    ExportTab.conte => _conteHeadline(),
+    ExportTab.envelope => _envelopeHeadline(),
+  };
+
+  String _sequenceHeadline() {
+    final spec = _specs.sequence;
+    final plan = _sequencePlanForRun(video: spec.format.isVideo);
+    if (plan == null) {
+      final duration = math.max(1, _activeCut.duration);
+      return 'Enter a valid in/out range (1–$duration).';
     }
+    final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
+    if (spec.sizeMode == ExportSizeMode.camera) {
+      final size = _session.camera.cameraFrameSize;
+      return '$frames at ${size.width}×${size.height} through the camera.';
+    }
+    final sizes = _scopeCanvasSizes(spec.scope);
+    if (sizes.length == 1) {
+      final size = sizes.first;
+      return '$frames at ${size.width}×${size.height} (raw canvas).';
+    }
+    return "$frames at each cut's own canvas size.";
+  }
+
+  String _imageHeadline() {
+    final size = _specs.image.sizeMode == ExportSizeMode.camera
+        ? _session.camera.cameraFrameSize
+        : _activeCut.canvasSize;
+    return 'Frame ${_currentImageFrame() + 1} of ${_activeCut.name} at '
+        '${size.width}×${size.height}.';
+  }
+
+  String _celsHeadline() {
+    final plan = _celGroupPlan();
+    final labels = {for (final task in plan.cels) task.baseLayer.id}.length;
+    final background = _specs.cels.format.wantsAlpha ? 'transparent' : 'opaque';
+    return '$labels ${_plural(labels, 'label')} · ${plan.length} '
+        '${_plural(plan.length, 'file')} as $background '
+        '${_specs.cels.format.stillFormat.label} '
+        '(기준+어태치 composited per cel).';
+  }
+
+  String _timesheetHeadline() {
+    if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
+      final pages = _timesheetPagePlan().length;
+      return '$pages sheet ${_plural(pages, 'page')} as B4 PNG — the '
+          "panel's own paper, offscreen.";
+    }
+    final count = _timesheetCuts().length;
+    return '$count XDTS ${_plural(count, 'sheet')} '
+        '(cels + serifu + camerawork columns).';
+  }
+
+  String _conteHeadline() {
+    final (_, pages) = _conteSheet();
+    if (_specs.conte.format == ExportConteFormat.pdf) {
+      return '${pages.length} conte ${_plural(pages.length, 'page')} as '
+          'ONE vector PDF — rules and text as vectors, pictures embedded.';
+    }
+    return '${pages.length} conte ${_plural(pages.length, 'page')} as '
+        "A4 PNG — the panel's own paper, offscreen.";
+  }
+
+  String _envelopeHeadline() {
+    final spec = _specs.envelope;
+    final sheets = _envelopePlan().length;
+    final files = _envelopeFilePlan().length;
+    final paper = spec.paperMode == CutEnvelopePaperMode.cut
+        ? "the CUT's own pixels — drops into a working file as a layer"
+        : '${spec.sheetWidth}px wide — the real 봉투, for printing';
+    final layered = spec.separateLayerFiles
+        ? ' · one PNG per layer (${spec.orderedLayers.length})'
+        : '';
+    return '$sheets ${_plural(sheets, 'envelope')} as '
+        '$files ${_plural(files, 'PNG')} at $paper$layered.';
   }
 
   String _outputLine() {
@@ -2019,39 +2088,12 @@ class ExportDialogState extends State<ExportDialog> {
         if (job == null) {
           break;
         }
-        _activeJobId = job.id;
-        _queue.update(
-          job.id,
-          (current) => current.copyWith(status: ExportJobStatus.running),
-        );
-        _loadJobIntoForm(job);
-        _refreshPreview();
-        try {
-          final message = await _runCurrentTabExport();
-          final cancelled = _cancelRequested;
-          _queue.update(
-            job.id,
-            (current) => current.copyWith(
-              status: cancelled
-                  ? ExportJobStatus.cancelled
-                  : ExportJobStatus.succeeded,
-              message: message,
-            ),
-          );
-          if (!cancelled) {
-            succeeded += 1;
-          }
-        } on Object catch (error) {
+        final status = await _runQueuedJob(job);
+        if (status == ExportJobStatus.succeeded) {
+          succeeded += 1;
+        } else if (status == ExportJobStatus.failed) {
           failed += 1;
-          _queue.update(
-            job.id,
-            (current) => current.copyWith(
-              status: ExportJobStatus.failed,
-              message: '$error',
-            ),
-          );
         }
-        _activeJobId = null;
       }
     } finally {
       _activeJobId = null;
@@ -2063,10 +2105,7 @@ class ExportDialogState extends State<ExportDialog> {
           _specs = snapshotSpecs;
           _setLocation(snapshotLocation, bookmark: snapshotLocationBookmark);
           _syncControllersFromSpecs();
-          _statusMessage =
-              'Queue: $succeeded ${_plural(succeeded, 'job')} done'
-              '${failed > 0 ? ', $failed failed' : ''}'
-              '${_queue.nextQueued != null ? ', rest kept' : ''}.';
+          _statusMessage = _queueRestSentence(succeeded, failed);
         });
         _persist();
         _preview.clear();
@@ -2074,6 +2113,51 @@ class ExportDialogState extends State<ExportDialog> {
       }
     }
   }
+
+  /// Runs ONE queued job and returns the status it ended in — the same
+  /// status the job itself now wears, so the runner counts what the queue
+  /// shows. The job's setup goes into the live form first (the window
+  /// honestly shows what renders).
+  ///
+  /// ⚠️A failure is caught HERE, which is what 부분 실패 means: the runner
+  /// above never sees a throw and carries on to the next job. Cancel ends
+  /// the job as cancelled, and the runner counts it as neither.
+  Future<ExportJobStatus> _runQueuedJob(ExportJob job) async {
+    _activeJobId = job.id;
+    _queue.update(
+      job.id,
+      (current) => current.copyWith(status: ExportJobStatus.running),
+    );
+    _loadJobIntoForm(job);
+    _refreshPreview();
+    try {
+      final message = await _runCurrentTabExport();
+      final status = _cancelRequested
+          ? ExportJobStatus.cancelled
+          : ExportJobStatus.succeeded;
+      _queue.update(
+        job.id,
+        (current) => current.copyWith(status: status, message: message),
+      );
+      return status;
+    } on Object catch (error) {
+      _queue.update(
+        job.id,
+        (current) =>
+            current.copyWith(status: ExportJobStatus.failed, message: '$error'),
+      );
+      return ExportJobStatus.failed;
+    } finally {
+      _activeJobId = null;
+    }
+  }
+
+  /// What the status bar says when the queue rests: how many jobs are done,
+  /// how many failed (부분 실패), and whether Cancel left any queued.
+  String _queueRestSentence(int succeeded, int failed) =>
+      'Queue: $succeeded ${_plural(succeeded, 'job')} done'
+      '${failed > 0 ? ', $failed failed' : ''}'
+      '${_queue.nextQueued != null ? ', rest kept' : ''}.';
 
   /// Runs an image export over [count] items and reports it the one way:
   /// cancelled when fewer landed than were asked for, done otherwise.
@@ -2527,136 +2611,183 @@ class ExportDialogState extends State<ExportDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (_anchorCut == null) {
-      // R27 #31: nothing to export. An empty state, never a throw.
-      final strings = _session.uiStrings;
-      return AppConfirmDialog(
-        windowKey: const ValueKey<String>('export-dialog-no-cuts'),
-        title: AppText.strings.exExport,
-        titleIcon: Icons.upload_file_outlined,
-        message: strings.exportNoCuts,
-        actions: [
-          AppWindowAction(
-            label: strings.commonClose,
-            emphasis: AppWindowActionEmphasis.primary,
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      );
+      return _noCutsDialog(context);
     }
     // LayoutBuilder sits OUTSIDE the window now: AppWindow owns the Dialog,
     // so the room the drawers negotiate over is the screen minus the
     // window's inset, not the dialog's interior.
     return LayoutBuilder(
       builder: (context, constraints) {
-        const inset = 64.0;
-        final availableWidth = constraints.maxWidth - inset;
-        final availableHeight = constraints.maxHeight - inset;
-        // The drawers yield before the preview does (v10: 전개 ~1020 /
-        // 최소 ~700): a tight surface collapses the queue, then the
-        // presets, to presentational strips — the stored preference
-        // stays untouched.
-        var presetsOpen = _presetsOpen;
-        var queueOpen = _queueOpen;
-        double widthFor() =>
-            (presetsOpen ? 152.0 : 22.0) +
-            330 +
-            272 +
-            (queueOpen ? 200.0 : 22.0) +
-            4;
-        if (widthFor() > availableWidth && queueOpen) {
-          queueOpen = false;
-        }
-        if (widthFor() > availableWidth && presetsOpen) {
-          presetsOpen = false;
-        }
-        final presetsWidth = presetsOpen ? 152.0 : 22.0;
-        final queueWidth = queueOpen ? 200.0 : 22.0;
-        final width = math.min(widthFor(), availableWidth);
-        final height = math.min(620.0, availableHeight);
-
+        final room = _windowMetrics(constraints);
         return AppWindow(
           windowKey: const ValueKey<String>('export-dialog'),
           title: AppText.strings.exExport,
           titleIcon: Icons.upload_file_outlined,
           onClose: _isExporting ? null : () => Navigator.of(context).pop(),
-          width: width,
-          height: height,
+          width: room.width,
+          height: room.height,
           scrollBody: false,
           bodyPadding: EdgeInsets.zero,
-          tabs: [
-            for (final tab in ExportTab.values)
-              AppWindowTab(
-                label: ExportPresetRail.tabLabel(tab),
-                tabKey: ValueKey<String>('export-tab-${tab.jsonValue}'),
-                enabled: !_isExporting,
-                onSelected: () {
-                  setState(() => _tab = tab);
-                  // Tabs share the one preview slot; a stale picture from
-                  // another domain must not linger under the new axis.
-                  _preview.clear();
-                  _refreshPreview();
-                },
-              ),
-          ],
+          tabs: _tabStrip(),
           selectedTab: ExportTab.values.indexOf(_tab),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _nameBar(theme),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      width: presetsWidth,
-                      child: _presetsZone(open: presetsOpen),
-                    ),
-                    VerticalDivider(width: 1, color: theme.dividerColor),
-                    Expanded(child: _previewZone(theme)),
-                    VerticalDivider(width: 1, color: theme.dividerColor),
-                    SizedBox(width: 272, child: _settingsZone()),
-                    VerticalDivider(width: 1, color: theme.dividerColor),
-                    SizedBox(
-                      width: queueWidth,
-                      child: _queueZone(open: queueOpen),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          body: _zones(
+            theme,
+            presetsOpen: room.presetsOpen,
+            queueOpen: room.queueOpen,
           ),
-          footerNote: Text(
-            _statusMessage ?? '',
-            key: const ValueKey<String>('export-status'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          actions: [
-            if (_isExporting)
-              AppWindowAction(
-                label: AppText.strings.commonCancel,
-                actionKey: const ValueKey<String>('export-cancel-button'),
-                onPressed: cancelExport,
-              ),
-            AppWindowAction(
-              label: AppText.strings.exAddToQueue,
-              actionKey: const ValueKey<String>('export-queue-add-button'),
-              onPressed: _canExport ? addToQueue : null,
-            ),
-            AppWindowAction(
-              label: AppText.strings.exExport,
-              actionKey: const ValueKey<String>('export-run-button'),
-              emphasis: AppWindowActionEmphasis.primary,
-              onPressed: _canExport ? () => unawaited(export()) : null,
-            ),
-          ],
+          footerNote: _statusNote(theme),
+          actions: _windowActions(context),
         );
       },
     );
   }
+
+  /// R27 #31: nothing to export. An empty state, never a throw.
+  Widget _noCutsDialog(BuildContext context) {
+    final strings = _session.uiStrings;
+    return AppConfirmDialog(
+      windowKey: const ValueKey<String>('export-dialog-no-cuts'),
+      title: AppText.strings.exExport,
+      titleIcon: Icons.upload_file_outlined,
+      message: strings.exportNoCuts,
+      actions: [
+        AppWindowAction(
+          label: strings.commonClose,
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    );
+  }
+
+  /// The four columns' widths. ⚠️The collapse rule and the row that lays
+  /// the columns out must agree on these to the pixel, so they are read
+  /// from here by both instead of typed twice.
+  static const double _presetsDrawerWidth = 152;
+  static const double _queueDrawerWidth = 200;
+  static const double _collapsedDrawerWidth = 22;
+  static const double _previewColumnWidth = 330;
+  static const double _settingsColumnWidth = 272;
+
+  /// The window's size and whether each drawer still fits, for the room the
+  /// screen leaves.
+  ///
+  /// The drawers yield before the preview does (v10: 전개 ~1020 / 최소
+  /// ~700): a tight surface collapses the queue, then the presets, to
+  /// presentational strips — the STORED preference stays untouched, so the
+  /// drawer comes back the moment the room does.
+  ({double width, double height, bool presetsOpen, bool queueOpen})
+  _windowMetrics(BoxConstraints constraints) {
+    const inset = 64.0;
+    final availableWidth = constraints.maxWidth - inset;
+    final availableHeight = constraints.maxHeight - inset;
+    var presetsOpen = _presetsOpen;
+    var queueOpen = _queueOpen;
+    double widthFor() =>
+        _drawerWidth(presetsOpen, _presetsDrawerWidth) +
+        _previewColumnWidth +
+        _settingsColumnWidth +
+        _drawerWidth(queueOpen, _queueDrawerWidth) +
+        4;
+    if (widthFor() > availableWidth && queueOpen) {
+      queueOpen = false;
+    }
+    if (widthFor() > availableWidth && presetsOpen) {
+      presetsOpen = false;
+    }
+    return (
+      width: math.min(widthFor(), availableWidth),
+      height: math.min(620.0, availableHeight),
+      presetsOpen: presetsOpen,
+      queueOpen: queueOpen,
+    );
+  }
+
+  static double _drawerWidth(bool open, double openWidth) =>
+      open ? openWidth : _collapsedDrawerWidth;
+
+  List<AppWindowTab> _tabStrip() => [
+    for (final tab in ExportTab.values)
+      AppWindowTab(
+        label: ExportPresetRail.tabLabel(tab),
+        tabKey: ValueKey<String>('export-tab-${tab.jsonValue}'),
+        enabled: !_isExporting,
+        onSelected: () {
+          setState(() => _tab = tab);
+          // Tabs share the one preview slot; a stale picture from
+          // another domain must not linger under the new axis.
+          _preview.clear();
+          _refreshPreview();
+        },
+      ),
+  ];
+
+  /// The window's four columns: presets · preview · settings · queue.
+  Widget _zones(
+    ThemeData theme, {
+    required bool presetsOpen,
+    required bool queueOpen,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _nameBar(theme),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: _drawerWidth(presetsOpen, _presetsDrawerWidth),
+                child: _presetsZone(open: presetsOpen),
+              ),
+              VerticalDivider(width: 1, color: theme.dividerColor),
+              Expanded(child: _previewZone(theme)),
+              VerticalDivider(width: 1, color: theme.dividerColor),
+              SizedBox(
+                width: _settingsColumnWidth,
+                child: _settingsZone(),
+              ),
+              VerticalDivider(width: 1, color: theme.dividerColor),
+              SizedBox(
+                width: _drawerWidth(queueOpen, _queueDrawerWidth),
+                child: _queueZone(open: queueOpen),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusNote(ThemeData theme) => Text(
+    _statusMessage ?? '',
+    key: const ValueKey<String>('export-status'),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+  );
+
+  List<AppWindowAction> _windowActions(BuildContext context) => [
+    if (_isExporting)
+      AppWindowAction(
+        label: AppText.strings.commonCancel,
+        actionKey: const ValueKey<String>('export-cancel-button'),
+        onPressed: cancelExport,
+      ),
+    AppWindowAction(
+      label: AppText.strings.exAddToQueue,
+      actionKey: const ValueKey<String>('export-queue-add-button'),
+      onPressed: _canExport ? addToQueue : null,
+    ),
+    AppWindowAction(
+      label: AppText.strings.exExport,
+      actionKey: const ValueKey<String>('export-run-button'),
+      emphasis: AppWindowActionEmphasis.primary,
+      onPressed: _canExport ? () => unawaited(export()) : null,
+    ),
+  ];
 
   Widget _nameBar(ThemeData theme) {
     final singleFile = _singleFileTab;
