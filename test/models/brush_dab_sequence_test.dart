@@ -41,6 +41,15 @@ void main() {
       );
     });
 
+    /// 🚨The getter used to be `List.unmodifiable(_dabs)` — a fresh copy per
+    /// read, over a field the constructor had already made unmodifiable, on
+    /// a list as long as the stroke. Nothing BEHAVIOURAL could see it; the
+    /// identity can, and the identity is what makes the read free.
+    test('🚨reading dabs twice hands back the SAME list, not a copy', () {
+      final sequence = BrushDabSequence([dab(0), dab(1)]);
+      expect(identical(sequence.dabs, sequence.dabs), isTrue);
+    });
+
     test('isEmpty is true for empty sequence', () {
       expect(BrushDabSequence().isEmpty, isTrue);
     });

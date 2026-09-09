@@ -126,7 +126,10 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
           surface: surface,
           strokePixels: strokePixels,
           bounds: strokeBounds,
-          erase: sequence.dabs.isNotEmpty && sequence.dabs.first.erase,
+          // The sequence answers both halves itself — reaching through
+          // `dabs` to ask `isNotEmpty` and `first` is asking the list for
+          // what the object already knows.
+          erase: sequence.firstOrNull?.erase ?? false,
           blendMode: blendMode,
         )
       : materializeBrushDabSequenceOnBitmapSurface(

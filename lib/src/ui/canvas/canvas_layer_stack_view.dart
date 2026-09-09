@@ -1621,7 +1621,19 @@ class _LayerStackPainter extends CustomPainter {
     }
     cacheState.lastOverlayTokens = overlayNow;
     // Committed tiles: a commit replaces the tile, and a decode replaces its
+    // Committed tiles: a commit replaces the tile, and a decode replaces its
     // image. Both are identity changes on the same coordinate.
+    //
+    // 🚨★★★**AND THIS WALK CANNOT BE GATED BY THE CACHE'S REVISION** — I
+    // tried, 2026-09-09, and `stroke_dirty_rect_is_the_dab_test` caught it
+    // in one run. `revision` is bumped inside `notifyListeners`, and the
+    // cache SCHEDULES that for the next frame (`_scheduleNotify`), so a
+    // decode that landed during this frame has already changed
+    // `imageFor(tile)` while the revision still reads what it read last
+    // paint. `_bufferKey` can live with that — a stale key costs one frame
+    // of a reused buffer — but a dirty RECT cannot: the rect is what gets
+    // repainted, so a coordinate missed here is a coordinate left showing
+    // the frame before. The walk stays, per-tile identity and all.
     final cache = surfacePainter.tileImageCache;
     final seen = <TileCoord, Object>{
       for (final entry in surfacePainter.surface.tiles.entries)

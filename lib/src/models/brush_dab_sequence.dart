@@ -21,7 +21,17 @@ class BrushDabSequence {
 
   final List<BrushDab> _dabs;
 
-  List<BrushDab> get dabs => List<BrushDab>.unmodifiable(_dabs);
+  /// The dabs, read-only.
+  ///
+  /// 🚨★★★**THIS COPIED THE WHOLE STROKE ON EVERY READ.** It was
+  /// `List.unmodifiable(_dabs)` over a field the constructor had ALREADY
+  /// made unmodifiable — the copy protected nothing and cost the length of
+  /// the stroke per call. `BitmapSurface.tiles` and `DirtyTileSet.coords`
+  /// were the same defect over a different collection, and the worst
+  /// caller here is the one their comments describe: a commit reading
+  /// `sequence.dabs.isNotEmpty && sequence.dabs.first.erase` copied a
+  /// stroke-length list TWICE to answer two O(1) questions.
+  List<BrushDab> get dabs => _dabs;
 
   int get length => _dabs.length;
 

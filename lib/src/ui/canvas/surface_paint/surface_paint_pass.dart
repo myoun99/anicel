@@ -217,12 +217,13 @@ class _SurfacePaintPass {
 
   /// The tiles whose decode has not started yet — started after the
   /// paint, nearest to the visible rect first.
+  ///
+  /// ⛔The walk itself is the painter's ([BitmapSurfacePainter
+  /// .tilesAwaitingDecode]) — it was written out here AND there, same
+  /// iteration and same predicate, and a converged cel now stops paying
+  /// for either.
   void _collectPendingDecodes() {
-    for (final tile in _painter.surface.tiles.values) {
-      if (_painter.tileImageCache.needsDecodeStart(tile)) {
-        (_pendingDecodes ??= <BitmapTile>[]).add(tile);
-      }
-    }
+    _pendingDecodes = _painter.tilesAwaitingDecode();
   }
 
   /// Every tile under the visible rect: a committed image, a held

@@ -252,12 +252,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// actually begin. [canvas] provides the visibility priority (the same
   /// clip read the paint itself uses).
   void startPendingDecodes(Canvas canvas) {
-    List<BitmapTile>? pending;
-    for (final tile in surface.tiles.values) {
-      if (tileImageCache.needsDecodeStart(tile)) {
-        (pending ??= <BitmapTile>[]).add(tile);
-      }
-    }
+    final pending = tilesAwaitingDecode();
     if (pending == null) {
       return;
     }
@@ -265,6 +260,43 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       pending,
       _visibleCanvasRect(canvas, pasteboardRect),
     );
+  }
+
+  int? _noPendingAtRevision;
+
+  /// The tiles whose decode has not started, or null when there are none.
+  ///
+  /// ⛔**ONE WALK, NOT TWO.** [startPendingDecodes] and the paint pass's
+  /// collect step each wrote this loop out — same iteration, same
+  /// predicate, same nullable accumulation. Different text, one algorithm.
+  ///
+  /// 🚨★★★**AND A CONVERGED CEL STOPS PAYING FOR IT.** The walk costs two
+  /// `Expando` probes per tile the cel holds ([BitmapTileImageCache
+  /// .needsDecodeStart] tests two slots), and it runs on EVERY paint —
+  /// including the overwhelming case where every tile decoded long ago and
+  /// it finds nothing. [surface] is final on this painter, so the only way
+  /// the answer can change is the cache admitting it changed, which is
+  /// exactly what its revision counts. So an EMPTY answer is remembered
+  /// against that revision and the walk is skipped until it moves.
+  ///
+  /// ⛔Only the empty answer is remembered. A non-empty one is a list the
+  /// caller is about to act on, and acting on it changes what is pending —
+  /// caching that would be caching a thing in flight.
+  List<BitmapTile>? tilesAwaitingDecode() {
+    final revision = tileImageCache.revision;
+    if (_noPendingAtRevision == revision) {
+      return null;
+    }
+    List<BitmapTile>? pending;
+    for (final tile in surface.tiles.values) {
+      if (tileImageCache.needsDecodeStart(tile)) {
+        (pending ??= <BitmapTile>[]).add(tile);
+      }
+    }
+    if (pending == null) {
+      _noPendingAtRevision = revision;
+    }
+    return pending;
   }
 
   /// The part of CANVAS space this paint can actually reach, read off the
