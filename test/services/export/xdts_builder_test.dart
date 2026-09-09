@@ -258,6 +258,52 @@ void main() {
     );
   });
 
+  test('🚨an ATTACH row takes no CELL column either — it has no sheet '
+      'toggle to turn one off with', () {
+    final cut = _cut();
+    final withAttach = Cut(
+      id: cut.id,
+      name: cut.name,
+      duration: cut.duration,
+      canvasSize: cut.canvasSize,
+      layers: [
+        ...cut.layers,
+        Layer(
+          id: const LayerId('cel-a-color'),
+          name: 'A색',
+          attachedToLayerId: const LayerId('cel-a'),
+          onTimesheet: true,
+          frames: [
+            Frame(id: const FrameId('ac1'), duration: 3, strokes: const []),
+          ],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('ac1'), length: 3),
+          },
+        ),
+      ],
+    );
+
+    final json =
+        jsonDecode(
+              buildXdtsContent(
+                cut: withAttach,
+                cutLabel: '3',
+              ).split('\n').skip(1).join('\n'),
+            )
+            as Map<String, dynamic>;
+    final timeTable =
+        (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;
+    final cellHeader = (timeTable['timeTableHeaders'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((header) => header['fieldId'] == 0);
+    expect(
+      cellHeader['names'],
+      ['A'],
+      reason: 'the attach row rides A — a second column would print A\'s '
+          'timing twice under a name the studio does not shoot',
+    );
+  });
+
   test('TRACK SE lanes reach the DIALOG column through the cut window — '
       'spill-in rebased to 0, crossings kept whole, starts past the end '
       'clipped (the print sheet\'s own projection)', () {

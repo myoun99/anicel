@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../input/control_press_claim.dart';

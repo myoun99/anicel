@@ -1,4 +1,3 @@
-import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/transform_track.dart';

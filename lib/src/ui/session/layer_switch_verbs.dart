@@ -1,5 +1,4 @@
 import '../../services/editing/default_layer_helpers.dart';
-import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -221,8 +220,14 @@ class LayerSwitchVerbs {
         ..._selection.activeTrack.seLayers,
         _selection.activeTrack.transitionLayer,
       ],
+      // The sweep writes the flag on exactly the rows that OWN a switch
+      // ([layerCarriesTimesheetToggle], the one law) — it used to spell
+      // only half of it, so it flipped folder rows nothing can read or
+      // turn back, while D31's transition row and the SE rows keep their
+      // place here because their kinds do print.
       commandFor: (cut, layer) =>
-          layer.attachedToLayerId == null && layer.onTimesheet != onTimesheet
+          layerCarriesTimesheetToggle(layer) &&
+              layer.onTimesheet != onTimesheet
           ? UpdateLayerTimesheetCommand(
               repository: _project.repository,
               cutId: cut.id,

@@ -1,3 +1,4 @@
+import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';

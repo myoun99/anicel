@@ -378,24 +378,10 @@ class LayerBlendModeChip extends StatelessWidget {
   }
 }
 
-/// Every layer kind that PRINTS carries the timesheet-output toggle — one
-/// entrance for every row (unified layer controls, user rule): cel/image/SE
-/// gate their sheet columns and the CAMERA layer gates the printed CAM
-/// column. A folder prints nothing of its own, so its slot stays reserved
-/// but empty.
-bool layerKindEligibleForTimesheetToggle(LayerKind kind) => !kind.groupsLayers;
-
-/// Whether [layer]'s row carries a live sheet toggle: its kind prints AND
-/// it is not an attach row (W5) — attach rows are display accessories of
-/// their base, never sheet columns. The gate is the same on both surfaces:
-/// the sheet once had no `attachedToLayerId` check, so an attach column
-/// showed a live sheet toggle the rail hides. ONE predicate since the
-/// round-8 audit (2026-09-06): the rail's cell, the storyboard's two label
-/// rows and both column-swipe lists each spelled the pair themselves.
-bool layerCarriesTimesheetToggle(Layer layer) =>
-    layerKindEligibleForTimesheetToggle(layer.kind) &&
-    layer.attachedToLayerId == null;
-
+/// ⚠️[layerCarriesTimesheetToggle] and [layerKindEligibleForTimesheetToggle]
+/// moved to `models/layer.dart` (2026-09-10): the printed sheet asks the
+/// same question, and `models` cannot import `ui`.
+///
 /// Almost every layer kind shows the opacity slider (unified layer controls
 /// — "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
 /// row's slider drives the camera-view DIM opacity, and instruction rows

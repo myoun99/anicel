@@ -549,6 +549,38 @@ class Layer {
 bool layerAcceptsBrushInput(Layer layer) =>
     layer.kind.acceptsBrushInput && layer.mediaReference == null;
 
+/// Whether [layer] is an attach layer of EITHER mode (rides a base
+/// layer's transform/FX and group structure).
+///
+/// ⚠️It lives HERE, next to the field, rather than with the attach
+/// resolvers: it is a fact about one Layer, and the sheet gate below —
+/// which `models` cannot reach the resolvers from — has to ask it.
+/// `attached_layer_resolve.dart` re-exports it, so its callers are
+/// unchanged.
+bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
+
+/// Every layer kind that PRINTS carries the timesheet-output toggle — one
+/// entrance for every row (unified layer controls, user rule): cel/image/SE
+/// gate their sheet columns and the CAMERA layer gates the printed CAM
+/// column. A folder prints nothing of its own, so its slot stays reserved
+/// but empty.
+bool layerKindEligibleForTimesheetToggle(LayerKind kind) => !kind.groupsLayers;
+
+/// 🚨THE ONE LAW OF THE SHEET SWITCH: whether [layer]'s row carries a live
+/// sheet toggle — its kind prints AND it is not an attach row (W5), which
+/// is a display accessory of its base, never a sheet column of its own.
+/// 유저 2026-09-09: 「부속 레이어엔 타임시트 on/off 버튼이 없도록 만들었어.
+/// 자기 열 안 가지도록 해왔을텐데」.
+///
+/// ⚠️It lives in `models`, not with the rail's widgets, because the SHEET
+/// reads it too ([layerTakesSheetCelColumn] below) and `models` cannot
+/// import `ui`. Round 8 (2026-09-06) unified the rail's own surfaces here
+/// and its note claimed the storyboard was among them; the storyboard rail
+/// and the legend's bulk verb were still spelling the pair themselves when
+/// the sheet round found them (2026-09-10).
+bool layerCarriesTimesheetToggle(Layer layer) =>
+    layerKindEligibleForTimesheetToggle(layer.kind) && !isAttachedLayer(layer);
+
 /// D24: whether this layer prints an ACTION cel column — the ONE gate the
 /// printed timesheet, the cut envelope's cel counts and the XDTS export
 /// all read (three inline copies of `animation && onTimesheet` used to
@@ -556,8 +588,19 @@ bool layerAcceptsBrushInput(Layer layer) =>
 /// cel columns, so the image kind never qualifies regardless of its
 /// sheet flag — the flag itself STAYS meaningful on image rows (D24
 /// 후반's 끼움 표시 will consume it).
+///
+/// 🚨IT IS THE SWITCH'S LAW PLUS TWO WORDS: a row can only print what it
+/// can switch, so this asks [layerCarriesTimesheetToggle] FIRST rather
+/// than re-deciding who is eligible. That is what an attach row's column
+/// was: nothing clears `onTimesheet` when a row is attached, so a gate
+/// that never asked gave every attach row a column — a synced one printed
+/// an EMPTY column (its timing lives on its base), a free one printed its
+/// own cel numbers, and the envelope counted both, while the rail showed
+/// no switch to turn any of it off.
 bool layerTakesSheetCelColumn(Layer layer) =>
-    layer.kind == LayerKind.animation && layer.onTimesheet;
+    layerCarriesTimesheetToggle(layer) &&
+    layer.kind == LayerKind.animation &&
+    layer.onTimesheet;
 
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find

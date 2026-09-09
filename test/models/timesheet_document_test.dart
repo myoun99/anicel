@@ -23,6 +23,7 @@ Layer _layer(
   bool onTimesheet = true,
   List<Frame> frames = const [],
   Map<int, TimelineExposure>? timeline,
+  String? attachedTo,
 }) {
   return Layer(
     id: LayerId(id),
@@ -31,6 +32,7 @@ Layer _layer(
     onTimesheet: onTimesheet,
     frames: frames,
     timeline: timeline ?? const {},
+    attachedToLayerId: attachedTo == null ? null : LayerId(attachedTo),
   );
 }
 
@@ -200,6 +202,32 @@ void main() {
         reason: 'layerTakesSheetCelColumn is the ONE gate — a picture row '
             'is never a cel, whatever its toggle says',
       );
+    });
+
+    /// 🚨AN ATTACH ROW IS NOT A COLUMN. It is a display accessory of its
+    /// base — the rail hides its sheet toggle for exactly that reason
+    /// (유저: 「부속 레이어엔 타임시트 on/off 버튼이 없도록 만들었어. 자기
+    /// 열 안 가지도록 해왔을텐데」) — but the row keeps `onTimesheet: true`,
+    /// which nothing clears, and this gate never asked. So every attach
+    /// row took a column: a synced one printed an EMPTY one (its timing
+    /// lives on its base) and a free one printed its own cel numbers.
+    test('an attach row takes no ACTION column, whatever its sheet flag '
+        'still says', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer('A'),
+            _layer('A색', attachedTo: 'A'),
+            _layer('B'),
+          ],
+        ),
+      );
+
+      final actionLayers = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.action)
+          .map((column) => column.layerName)
+          .whereType<String>();
+      expect(actionLayers, ['A', 'B']);
     });
 
     test('extra animation layers grow the ACTION block past the fixed 8', () {

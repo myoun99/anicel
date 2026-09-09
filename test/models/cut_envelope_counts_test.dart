@@ -19,12 +19,14 @@ Layer _layer(
   bool onTimesheet = true,
   int frames = 0,
   Map<int, TimelineExposure>? timeline,
+  String? attachedTo,
 }) {
   return Layer(
     id: LayerId(name),
     name: name,
     kind: kind,
     onTimesheet: onTimesheet,
+    attachedToLayerId: attachedTo == null ? null : LayerId(attachedTo),
     frames: [
       for (var index = 1; index <= frames; index += 1)
         Frame(
@@ -167,6 +169,25 @@ void main() {
     expect(total.name, '計');
     expect(total.genga, 5);
     expect(total.dougaEstimate, 6);
+  });
+
+  test('🚨an attach row is not a 担当 row — it rides its base, and the '
+      'envelope must not bill its drawings a second time', () {
+    final rows = cutEnvelopeCelCounts(
+      _cut([
+        _layer('A', frames: 3),
+        _layer('A색', frames: 3, attachedTo: 'A'),
+        _layer('B', frames: 2),
+      ]),
+    );
+
+    expect(
+      rows.map((row) => row.name),
+      ['A', 'B'],
+      reason: 'the row set IS the sheet ACTION block, which has no attach '
+          'columns — the envelope asks the one gate and nothing else',
+    );
+    expect(cutEnvelopeCelTotal(rows).genga, 5);
   });
 
   test('a cut with no cels totals to zero rather than throwing', () {

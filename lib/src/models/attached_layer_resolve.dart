@@ -22,9 +22,11 @@ import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 
-/// Whether [layer] is an attach layer of EITHER mode (rides a base
-/// layer's transform/FX and group structure).
-bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
+/// ⚠️[isAttachedLayer] moved next to the field it reads (`layer.dart`) so
+/// that the SHEET gate could ask it too — `models/layer.dart` cannot
+/// import this file back. Re-exported here because this is where the
+/// attach questions are looked up.
+export 'layer.dart' show isAttachedLayer;
 
 /// Whether [layer] is a SYNCED attach row (UI-R21 #3): its cels ride the
 /// base's timeline through the cell links and the row mirrors as ghosts.
