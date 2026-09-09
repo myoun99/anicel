@@ -573,8 +573,11 @@ double _textureDensityOf(Map<String, Object?> variant) {
 /// Bit 0x10 selects pen pressure, 0x20 velocity, **0x40 pen TILT** and 0x80
 /// random. ⛔They are no longer "read and dropped": every one of the three
 /// curve sources gets its own curve and its own minimum (see
-/// [_effectorCurves]), and random drives the jitters. 速度's curve is stored
-/// but not yet applied — the dab has no clock.
+/// [_effectorCurves]), and random drives the jitters. ⛔Nor is 速度's curve
+/// "stored but not yet applied" any more: the dab HAS a clock — the pen
+/// door normalizes px/s against `AppInputSettings
+/// .speedReferencePixelsPerSecond` and `BrushDab.speed` carries the ratio,
+/// which `brushInputValue` reads like any other source.
 ///
 /// ↩️0x40 was guessed here as "most likely stroke direction", on the evidence
 /// that it only ever appeared on the rotation effector. 🚨THE GUESS WAS

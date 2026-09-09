@@ -23,13 +23,14 @@
 /// they get adjusted by drawing next to Clip Studio, not by inventing a
 /// constant with more decimal places.
 ///
-/// 🔜NOT IMPORTED YET, deliberately. The plan says Clip Studio's own column
-/// is `AntiAlias`, 0..3 in this same order — so [index] would map straight
-/// through with no table to keep in step — but **that column name has never
-/// been read out of a real file**: it appears nowhere in this repo, and no
-/// `.sut` was on the machine to check (2026-09-08). Wiring it on the
-/// strength of a remembered name is the kind of guess that cost the rotation
-/// effector a round. Dump one file's `Variant` columns first.
+/// ⛔THIS USED TO SAY "NOT IMPORTED YET", and to suggest mapping Clip
+/// Studio's column straight through as `BrushAntiAlias.values[index]`. Both
+/// halves are dead: the column WAS dumped out of the user's real files the
+/// next day and the import landed (`24050b58`, 2026-09-09), and the round
+/// that wrote it REFUSED the `values[index]` shortcut on purpose — an
+/// explicit table means reordering this enum cannot silently re-map every
+/// imported brush. The verified decision, and exactly which of its claims
+/// are measured, live with `_antiAliasOf` in `sut_decoder.dart`.
 enum BrushAntiAlias {
   /// 없음 — a hard edge. The ramp collapses to a threshold at half
   /// coverage, which is the cut this engine already uses for its own hard

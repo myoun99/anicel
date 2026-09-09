@@ -88,11 +88,6 @@ double? brushInputValue(BrushDab dab, BrushInputSource source) =>
       // comment claiming Clip Studio reads the same way round. Nobody had
       // checked that, and it was backwards.
       //
-      // ⚠️A device that reports NO tilt sits at altitude 1.0, so it lands
-      // here as lean 0.0 — the floor of the curve. For an imported brush
-      // with a 0% minimum that is a stroke that vanishes on a mouse. There
-      // is no "the device said nothing" value to tell that case apart from a
-      // genuinely upright pen; see the board card `brush-tilt-no-device-Q1`.
       // ⚠️NULL propagates: a device that reported no tilt cannot answer, and
       // `_factorFor` skips a source it cannot answer for. 유저 2026-09-09
       // (`brush-tilt-no-device-Q1` 답 1). Before this, a mouse arrived as an

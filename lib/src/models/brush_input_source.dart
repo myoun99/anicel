@@ -35,10 +35,17 @@
 ///
 /// ## Randomness is NOT one of these
 ///
-/// 🚨Chance already has a home: `BrushShape.sizeJitter` and its siblings,
-/// applied in `brush_stroke_dynamics.dart` as `value *= 1 - jitter * rand`.
-/// Promoting it to a fourth source here would be a second machine doing one
-/// job. **Krita agrees structurally** — its fuzzy sensors return
+/// 🚨Chance already has a home — `BrushShape.sizeJitter` and its siblings,
+/// applied as `value *= 1 - jitter * rand`. Promoting it to a fourth source
+/// here would be a second machine doing one job.
+///
+/// ⚠️TWO ROOMS, not one, and the split is on purpose: size / opacity / angle
+/// / roundness jitter roll PER DAB in `brush_stroke_dynamics.dart`, while
+/// SPACING jitter rolls per SEGMENT in `brush_edit_stroke.dart`
+/// (`activeStrokeSpacing`) — spacing is consumed by the interpolator, which
+/// is pure and shared, so threading a random source into it would cost more
+/// than the difference is worth. The reason lives at that call site. Neither
+/// room is a fourth input source, which is all this paragraph claims. **Krita agrees structurally** — its fuzzy sensors return
 /// `isAdditive() == true`, so they skip the combination mode entirely and get
 /// folded in by a hard-coded multiply at the end, which is the same shape as
 /// our jitter.

@@ -59,13 +59,15 @@ class BrushDabInterpolator {
         // made 傾き drive the curves but never reached the LIVE one, so every
         // dab between two pointer readings wore the endpoint's lean and a
         // tilt brush stepped instead of ramping. The pin that would have said
-        // so was watching `brushInputSamplesToBrushDabs`, which nothing in
-        // `lib/` calls.
+        // so was watching `brushInputSamplesToBrushDabs` — an offline
+        // placement path nothing in `lib/` called, since DELETED (`c7fff282`).
         //
         // ⛔Azimuth is deliberately left riding along from `nextRaw`: nothing
         // reads it yet, and its lerp has to go the SHORT way round the circle
-        // (350° to 10° is twenty degrees forward, not 340 back). The round
-        // that gives it a reader is the one that shares that helper.
+        // (350° to 10° is twenty degrees forward, not 340 back). ⚠️There is
+        // no helper to reuse — the only wrap-safe lerp in the repo went out
+        // with that offline path — so the round that gives azimuth a reader
+        // writes the wrap itself, here, rather than lerping it raw.
         tiltAltitude: altitudeDelta == null
             ? nextAltitude
             : previousAltitude! + altitudeDelta * fraction,
