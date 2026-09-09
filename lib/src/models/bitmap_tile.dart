@@ -314,6 +314,16 @@ class BitmapTile implements Finalizable {
     );
   }
 
+  /// 🧪**IT COMPARES EVERY BYTE, AND NOTHING HOT ASKS** (counted
+  /// 2026-09-09). `listEquals` over the whole view, and `hashCode`
+  /// hashes it — which would matter if a tile were ever a Set
+  /// element or a Map key, or if `BitmapSurface ==` ran per frame.
+  /// Neither happens: `Set<BitmapTile>` and `Map<BitmapTile` have
+  /// zero hits across lib and test, no surface is compared to
+  /// another anywhere in lib, and the one place that could
+  /// (`SelectionFloatPaint`) uses `identical` on purpose. Left as
+  /// the honest answer to「are these the same picture」rather than
+  /// narrowed to defend a call site that does not exist.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

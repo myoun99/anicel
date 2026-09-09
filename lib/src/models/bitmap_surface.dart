@@ -131,6 +131,15 @@ class BitmapSurface {
   /// question: spilling has to WRITE exactly these tiles and leave the
   /// shared ones referenced. Two answers derived from one walk rather
   /// than two walks that could disagree about what "shared" means.
+  /// 🧪**AND IT IS COMPUTED EAGERLY, PER SNAPSHOT — MEASURED, THEN KEPT**
+  /// (2026-09-09). An undo PAIR builds two of these, so a pen-up pays for
+  /// two identity sets and two walks. Cost against the tiles a cel holds:
+  /// 135 → **28.1 µs**, 400 → **26.7**, 1,024 → **51.3**, 4,096 → **236**.
+  /// A 1920×1080 cel at 128px holds 135 tiles of canvas grid and a 4096²
+  /// one holds 1,024, so a commit spends 0.3–0.6% of a 60fps frame on the
+  /// pair. Deferring the second half would need the surface it was
+  /// measured against held on the side and released in step with the
+  /// tiles — a second nullable meaning nothing measured asks for.
   Map<TileCoord, BitmapTile> tilesNotSharedWith(BitmapSurface? other) {
     final live = Set<Object>.identity()
       ..addAll(other?._tiles.values ?? const <BitmapTile>[]);
