@@ -756,26 +756,31 @@ class _ImportDialogState extends State<ImportDialog> {
               ),
             ),
           ),
-          ExportChip(
-            key: const ValueKey<String>('import-place-pool'),
-            label: 'Pool',
-            selected: !_placing,
-            onTap: _running ? null : () => setState(() => _destination = null),
-          ),
-          const SizedBox(width: 4),
-          Tooltip(
-            message: widget.poolOnly
-                ? 'The media pool registers; place from the timeline.'
-                : '',
-            child: ExportChip(
-              key: const ValueKey<String>('import-place-timeline'),
-              label: 'Timeline',
-              selected: _placing,
-              onTap: _running || widget.poolOnly
-                  ? null
-                  : () => setState(
-                      () => _destination = ImportDestination.activeCutLayer,
-                    ),
+          Flexible(
+            child: ExportPillStrip(
+              items: [
+                ExportPillItem(
+                  keyValue: 'import-place-pool',
+                  label: 'Pool',
+                  selected: !_placing,
+                  onTap: _running
+                      ? null
+                      : () => setState(() => _destination = null),
+                ),
+                ExportPillItem(
+                  keyValue: 'import-place-timeline',
+                  label: 'Timeline',
+                  selected: _placing,
+                  onTap: _running || widget.poolOnly
+                      ? null
+                      : () => setState(
+                          () => _destination = ImportDestination.activeCutLayer,
+                        ),
+                  tooltip: widget.poolOnly
+                      ? 'The media pool registers; place from the timeline.'
+                      : null,
+                ),
+              ],
             ),
           ),
         ],

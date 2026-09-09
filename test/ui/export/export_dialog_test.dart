@@ -13,6 +13,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -84,6 +86,7 @@ void main() {
                   Layer(
                     id: const LayerId('layer'),
                     name: 'A',
+                    mark: const LayerMark(process: LayerProcess.key),
                     frames: [frame('f1'), frame('f2')],
                   ),
                   createCameraLayer(cutId: const CutId('cut')),
@@ -98,6 +101,7 @@ void main() {
                   Layer(
                     id: const LayerId('layer-b'),
                     name: 'A',
+                    mark: const LayerMark(process: LayerProcess.key),
                     frames: const [],
                   ),
                   createCameraLayer(cutId: const CutId('cut-b')),
@@ -754,7 +758,7 @@ void main() {
       // The tap is a no-op on a grayed chip — H.264 stays selected.
       await tester.tap(h265);
       await tester.pump();
-      final h264Chip = tester.widget<ExportChip>(
+      final h264Chip = tester.widget<ExportPill>(
         find.byKey(const ValueKey<String>('export-format-codec-h264')),
       );
       expect(h264Chip.selected, isTrue);

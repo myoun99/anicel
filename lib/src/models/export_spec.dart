@@ -5,6 +5,8 @@ import 'envelope/cut_envelope_paper.dart';
 import 'export_cel_naming.dart';
 import 'export_format_selection.dart';
 import 'export_size_mode.dart';
+import 'layer_mark.dart';
+import 'layer_process.dart';
 
 /// Per-tab export specs (출력 UI v10): everything a tab's settings column
 /// holds, as one serializable value. A preset stores exactly one of these
@@ -297,27 +299,90 @@ class ImageExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(format, sizeMode, applyLayerFx);
 }
 
+/// Which rows the Cels tab exports, as one of four PRESETS.
+///
+/// A cut whose delta holds row exceptions reads as 「커스텀」 instead — that
+/// is a state of the delta, not a fifth value here (유저 2026-09-09: 「프리셋
+/// 적용/커스텀 두 분류로 나누고」, 「기준/부속/시트/디렉션이랑 커스텀이랑
+/// 그룹 다르니 두개 그룹 나눠서」).
+enum CelsSelectionPreset {
+  /// Every drawing row wearing the label — bases and their attach rows,
+  /// so a base exports as its whole stack.
+  base('base'),
+
+  /// Attach rows only: the parts riding a base, without the base. This is
+  /// the 「일반 레이어 안의 어태치 레이어만 출력」 the v1 brief asked for.
+  attach('attach'),
+
+  /// The rows on the timesheet: bases carrying the sheet flag, their attach
+  /// rows riding along (an attach row never takes a sheet column itself).
+  sheet('sheet'),
+
+  /// Direction (instruction) rows only.
+  direction('direction');
+
+  const CelsSelectionPreset(this.jsonValue);
+
+  final String jsonValue;
+
+  static CelsSelectionPreset fromJson(Object? json) => values.firstWhere(
+    (value) => value.jsonValue == json,
+    orElse: () => base,
+  );
+}
+
 /// Cels tab: the AUTO RULES (프리셋 저장분). What they resolve to for a
 /// given cut — and how the per-cut manual delta overrides that — lives in
 /// `resolveExportCelsSelection`; the delta itself is project data.
+///
+/// v3 (유저 2026-09-09): one colour LABEL, one TAKE, one selection PRESET,
+/// paper APPLIED, art ADDED. The attach/instruction/sheet/folder toggles
+/// and the two dead mark slots this used to carry are gone — the label
+/// picker is what the slots reserved a seat for, and the presets answer
+/// the row questions in one place.
 class CelsExportSpec extends ExportTabSpec {
   const CelsExportSpec({
     this.format = const ExportFormatSelection(kind: ExportMediaKind.still),
     this.sizeMode = ExportSizeMode.canvas,
     this.applyLayerFx = true,
     this.naming = const ExportCelNaming(),
-    this.onTimesheetOnly = false,
-    this.includeInstructionLayers = true,
-    this.includeSyncedAttach = true,
-    this.includeFreeAttach = true,
-    this.includeFolderMembers = false,
-    this.markFilterA,
-    this.markFilterB,
+    this.label = defaultLabel,
+    this.take,
+    this.applyPaper = true,
+    this.addArt = false,
+    this.selection = CelsSelectionPreset.base,
     this.scope = ExportScopeKind.cut,
   });
 
+  /// 원화(上がり). A fresh preset exports the key cels; 「라벨 없음」 as the
+  /// default would export nothing from a labelled cut.
+  static const LayerMark defaultLabel = LayerMark(process: LayerProcess.key);
+
   final ExportFormatSelection format;
   final ExportSizeMode sizeMode;
+
+  /// The ONE colour label an export is about — process × revise picked as a
+  /// single item (「원화 작감」, 「LO 上がり」…; 유저: 「색라벨은 하나야. 공정이랑
+  /// 수정 나누지않고」). A row exports only when its own mark wears this
+  /// label; the take component of this value is not consulted — [take] is.
+  final LayerMark label;
+
+  /// The take a row must wear, or null for 「최신」: among rows sharing a
+  /// name and the label, the highest take present (A T1 + A T2 → T2 only;
+  /// A T1 + B T2 → both). The one item the export added to the timeline's
+  /// take flyout.
+  final int? take;
+
+  /// 용지 적용: the paper-labelled rows' drawing is composited into EVERY
+  /// output cel. Paper is never a cel of its own (유저: 「모든 출력 셀에 용지
+  /// 라벨의 그림을 적용시키는거지」).
+  final bool applyPaper;
+
+  /// 미술 추가: rows whose process is 미술 export as cels of their own,
+  /// whatever the label (유저: 「같은 공정의 미술레이어를 추가할지」).
+  final bool addArt;
+
+  final CelsSelectionPreset selection;
 
   /// Whether the delivery cel is rendered THROUGH the rows' effect chains.
   ///
@@ -335,22 +400,6 @@ class CelsExportSpec extends ExportTabSpec {
   final bool applyLayerFx;
 
   final ExportCelNaming naming;
-  final bool onTimesheetOnly;
-
-  /// 지시 레이어 출력 (v10 ⑤: 기본 on, 프리셋 저장).
-  final bool includeInstructionLayers;
-
-  /// Attach-group gates: whether a base layer's synced/free attach rows
-  /// join the cel list.
-  final bool includeSyncedAttach;
-  final bool includeFreeAttach;
-
-  /// 소속 폴더 전부 포함: any included layer pulls its whole folder.
-  final bool includeFolderMembers;
-
-  /// Mark-filter slots (자리 확보 — 마크 2중화와 함께 활성). Null = off.
-  final String? markFilterA;
-  final String? markFilterB;
 
   final ExportScopeKind scope;
 
@@ -364,31 +413,22 @@ class CelsExportSpec extends ExportTabSpec {
     ExportSizeMode? sizeMode,
     bool? applyLayerFx,
     ExportCelNaming? naming,
-    bool? onTimesheetOnly,
-    bool? includeInstructionLayers,
-    bool? includeSyncedAttach,
-    bool? includeFreeAttach,
-    bool? includeFolderMembers,
-    Object? markFilterA = _unset,
-    Object? markFilterB = _unset,
+    LayerMark? label,
+    Object? take = _unset,
+    bool? applyPaper,
+    bool? addArt,
+    CelsSelectionPreset? selection,
     ExportScopeKind? scope,
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
     applyLayerFx: applyLayerFx ?? this.applyLayerFx,
     naming: naming ?? this.naming,
-    onTimesheetOnly: onTimesheetOnly ?? this.onTimesheetOnly,
-    includeInstructionLayers:
-        includeInstructionLayers ?? this.includeInstructionLayers,
-    includeSyncedAttach: includeSyncedAttach ?? this.includeSyncedAttach,
-    includeFreeAttach: includeFreeAttach ?? this.includeFreeAttach,
-    includeFolderMembers: includeFolderMembers ?? this.includeFolderMembers,
-    markFilterA: identical(markFilterA, _unset)
-        ? this.markFilterA
-        : markFilterA as String?,
-    markFilterB: identical(markFilterB, _unset)
-        ? this.markFilterB
-        : markFilterB as String?,
+    label: label ?? this.label,
+    take: identical(take, _unset) ? this.take : take as int?,
+    applyPaper: applyPaper ?? this.applyPaper,
+    addArt: addArt ?? this.addArt,
+    selection: selection ?? this.selection,
     scope: scope ?? this.scope,
   );
 
@@ -398,13 +438,12 @@ class CelsExportSpec extends ExportTabSpec {
     if (sizeMode != ExportSizeMode.canvas) 'sizeMode': sizeMode.jsonValue,
     if (!applyLayerFx) 'applyLayerFx': false,
     'naming': naming.toJson(),
-    if (onTimesheetOnly) 'onTimesheetOnly': true,
-    if (!includeInstructionLayers) 'includeInstructionLayers': false,
-    if (!includeSyncedAttach) 'includeSyncedAttach': false,
-    if (!includeFreeAttach) 'includeFreeAttach': false,
-    if (includeFolderMembers) 'includeFolderMembers': true,
-    if (markFilterA != null) 'markFilterA': markFilterA,
-    if (markFilterB != null) 'markFilterB': markFilterB,
+    if (label != defaultLabel) 'label': label.toJson(),
+    if (take != null) 'take': take,
+    if (!applyPaper) 'applyPaper': false,
+    if (addArt) 'addArt': true,
+    if (selection != CelsSelectionPreset.base)
+      'selection': selection.jsonValue,
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
   };
 
@@ -421,13 +460,13 @@ class CelsExportSpec extends ExportTabSpec {
     naming: json['naming'] == null
         ? const ExportCelNaming()
         : ExportCelNaming.fromJson(json['naming'] as Map<String, dynamic>),
-    onTimesheetOnly: json['onTimesheetOnly'] as bool? ?? false,
-    includeInstructionLayers: json['includeInstructionLayers'] as bool? ?? true,
-    includeSyncedAttach: json['includeSyncedAttach'] as bool? ?? true,
-    includeFreeAttach: json['includeFreeAttach'] as bool? ?? true,
-    includeFolderMembers: json['includeFolderMembers'] as bool? ?? false,
-    markFilterA: json['markFilterA'] as String?,
-    markFilterB: json['markFilterB'] as String?,
+    label: json.containsKey('label')
+        ? LayerMark.fromJson(json['label']).withTake(LayerMark.firstTake)
+        : defaultLabel,
+    take: json['take'] is int ? json['take'] as int : null,
+    applyPaper: json['applyPaper'] as bool? ?? true,
+    addArt: json['addArt'] as bool? ?? false,
+    selection: CelsSelectionPreset.fromJson(json['selection']),
     scope: ExportScopeKind.fromJson(json['scope']),
   );
 
@@ -439,13 +478,11 @@ class CelsExportSpec extends ExportTabSpec {
           other.sizeMode == sizeMode &&
           other.applyLayerFx == applyLayerFx &&
           other.naming == naming &&
-          other.onTimesheetOnly == onTimesheetOnly &&
-          other.includeInstructionLayers == includeInstructionLayers &&
-          other.includeSyncedAttach == includeSyncedAttach &&
-          other.includeFreeAttach == includeFreeAttach &&
-          other.includeFolderMembers == includeFolderMembers &&
-          other.markFilterA == markFilterA &&
-          other.markFilterB == markFilterB &&
+          other.label == label &&
+          other.take == take &&
+          other.applyPaper == applyPaper &&
+          other.addArt == addArt &&
+          other.selection == selection &&
           other.scope == scope;
 
   @override
@@ -454,13 +491,11 @@ class CelsExportSpec extends ExportTabSpec {
     sizeMode,
     applyLayerFx,
     naming,
-    onTimesheetOnly,
-    includeInstructionLayers,
-    includeSyncedAttach,
-    includeFreeAttach,
-    includeFolderMembers,
-    markFilterA,
-    markFilterB,
+    label,
+    take,
+    applyPaper,
+    addArt,
+    selection,
     scope,
   );
 }

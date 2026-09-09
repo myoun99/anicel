@@ -582,30 +582,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// ran down the very length the name is written in — a two-level cap or
   /// the name clipped to nothing. The guides say the depth — one hairline per
   /// level, drawn inside the name's own box.
-  Widget? _depthGuides(ColorScheme colorScheme) {
-    if (depth == 0) return null;
-    return alongBox(
-      axis,
-      layerRailNameIndent(depth),
-      child: Flex(
-        direction: axis,
-        children: [
-          for (var level = 0; level < depth; level += 1)
-            alongBox(
-              axis,
-              layerRailGuideWidth,
-              child: Center(child: _guideHairline(colorScheme)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _guideHairline(ColorScheme colorScheme) => SizedBox(
-    width: _horizontal ? 1 : double.infinity,
-    height: _horizontal ? double.infinity : 1,
-    child: ColoredBox(color: colorScheme.outlineVariant),
-  );
+  Widget? _depthGuides(ColorScheme colorScheme) =>
+      layerRailDepthGuides(axis, depth, color: colorScheme.outlineVariant);
 
   /// 🚨F-26 (유저 2026-08-24): 「레이어 클릭하고 이름영역 클릭시 **선택되는
   /// 애니메이션같은거 발동**하는데, 없애고 해당영역 클릭시 레이어라벨 빈공간

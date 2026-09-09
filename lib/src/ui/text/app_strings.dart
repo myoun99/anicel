@@ -921,7 +921,6 @@ enum AppStrings {
   String get exBitrate => _s('exBitrate');
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
-  String get exFilter => _s('exFilter');
   String get exBrowse => _s('exBrowse');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
@@ -930,20 +929,27 @@ enum AppStrings {
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exApplyLayerFxHelp => _s('exApplyLayerFxHelp');
-  String get exOnTimesheetOnly => _s('exOnTimesheetOnly');
-  String get exInstructionLayer => _s('exInstructionLayer');
   String get exMuxSeMix => _s('exMuxSeMix');
-  String get exCutFolder => _s('exCutFolder');
-  String get exLayerFolder => _s('exLayerFolder');
-  String get exProjectName => _s('exProjectName');
+  String get exLabel => _s('exLabel');
+  String get exApply => _s('exApply');
+  String get exAdd => _s('exAdd');
+  String get exSelect => _s('exSelect');
+  String get exSelBase => _s('exSelBase');
+  String get exSelAttach => _s('exSelAttach');
+  String get exSelSheet => _s('exSelSheet');
+  String get exSelDirection => _s('exSelDirection');
+  String get exSelCustom => _s('exSelCustom');
+  String get exPaperLabel => _s('exPaperLabel');
+  String get exArtLabel => _s('exArtLabel');
+  String get exTakeLatest => _s('exTakeLatest');
+  String get exFolders => _s('exFolders');
+  String get exNameParts => _s('exNameParts');
+  String get exTarget => _s('exTarget');
+  String get exLayer => _s('exLayer');
+  String exCelCount(int count) =>
+      _s('exCelCount').replaceFirst('{n}', '$count');
   String get exProject => _s('exProject');
   String get exCut => _s('exCut');
-  String get exFreeAttach => _s('exFreeAttach');
-  String get exSyncAttach => _s('exSyncAttach');
-
-  /// The cel scope toggle for folder members ('Folder 전부' before it was
-  /// tabled — the app's second hardcoded-Korean string).
-  String get exFolderMembers => _s('exFolderMembers');
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
 
@@ -1686,7 +1692,6 @@ enum AppStrings {
     'exBitrate': 'Bitrate',
     'exChannels': 'Channels',
     'exAudio': 'Audio',
-    'exFilter': 'Filter',
     'exBrowse': 'Browse…',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
@@ -1695,17 +1700,26 @@ enum AppStrings {
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Apply layer FX',
     'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
-    'exOnTimesheetOnly': 'On-timesheet layers only',
-    'exInstructionLayer': 'Direction layer',
     'exMuxSeMix': 'Mux the SE mix into the video',
-    'exCutFolder': 'Cut folder',
-    'exLayerFolder': 'Layer folder',
-    'exProjectName': 'Project name',
+    'exLabel': 'Label',
+    'exApply': 'Apply',
+    'exAdd': 'Add',
+    'exSelect': 'Select',
+    'exSelBase': 'Base',
+    'exSelAttach': 'Attach',
+    'exSelSheet': 'Sheet',
+    'exSelDirection': 'Direction',
+    'exSelCustom': 'Custom',
+    'exPaperLabel': 'Paper',
+    'exArtLabel': 'Art',
+    'exTakeLatest': 'Latest',
+    'exFolders': 'Folders',
+    'exNameParts': 'Name',
+    'exTarget': 'Target',
+    'exLayer': 'Layer',
+    'exCelCount': '{n} cels',
     'exProject': 'Project',
     'exCut': 'Cut',
-    'exFreeAttach': 'Free attach',
-    'exSyncAttach': 'Sync attach',
-    'exFolderMembers': 'All folder members',
     'exWhite': 'White',
     'exBlack': 'Black',
     'exCameraTemplate': 'Camera {w}×{h}',
@@ -2600,7 +2614,6 @@ enum AppStrings {
     'exBitrate': 'ビットレート',
     'exChannels': 'チャンネル',
     'exAudio': '音声',
-    'exFilter': 'フィルター',
     'exBrowse': '参照…',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
@@ -2609,17 +2622,26 @@ enum AppStrings {
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFXを適用',
     'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
-    'exOnTimesheetOnly': 'シートに載っているレイヤーのみ',
-    'exInstructionLayer': 'ディレクションレイヤー',
     'exMuxSeMix': 'SEミックスを動画に多重化',
-    'exCutFolder': 'カットフォルダ',
-    'exLayerFolder': 'レイヤーフォルダ',
-    'exProjectName': 'プロジェクト名',
+    'exLabel': 'ラベル',
+    'exApply': '適用',
+    'exAdd': '追加',
+    'exSelect': '選択',
+    'exSelBase': '基準',
+    'exSelAttach': '付属',
+    'exSelSheet': 'シート',
+    'exSelDirection': 'ディレクション',
+    'exSelCustom': 'カスタム',
+    'exPaperLabel': '用紙',
+    'exArtLabel': '美術',
+    'exTakeLatest': '最新',
+    'exFolders': 'フォルダ作成',
+    'exNameParts': '名前指定',
+    'exTarget': '対象',
+    'exLayer': 'レイヤー',
+    'exCelCount': '{n}枚',
     'exProject': 'プロジェクト',
     'exCut': 'カット',
-    'exFreeAttach': 'フリー付属',
-    'exSyncAttach': '同期付属',
-    'exFolderMembers': 'フォルダ内すべて',
     'exWhite': '白',
     'exBlack': '黒',
     'exCameraTemplate': 'カメラ {w}×{h}',
@@ -3536,7 +3558,6 @@ enum AppStrings {
     'exBitrate': '비트레이트',
     'exChannels': '채널',
     'exAudio': '오디오',
-    'exFilter': '필터',
     'exBrowse': '찾아보기…',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
@@ -3545,17 +3566,26 @@ enum AppStrings {
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX 적용',
     'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
-    'exOnTimesheetOnly': '시트에 올라간 레이어만',
-    'exInstructionLayer': '디렉션 레이어',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
-    'exCutFolder': '컷 폴더',
-    'exLayerFolder': '레이어 폴더',
-    'exProjectName': '프로젝트 이름',
+    'exLabel': '라벨',
+    'exApply': '적용',
+    'exAdd': '추가',
+    'exSelect': '선택',
+    'exSelBase': '기준',
+    'exSelAttach': '부속',
+    'exSelSheet': '시트',
+    'exSelDirection': '디렉션',
+    'exSelCustom': '커스텀',
+    'exPaperLabel': '용지',
+    'exArtLabel': '미술',
+    'exTakeLatest': '최신',
+    'exFolders': '폴더 생성',
+    'exNameParts': '이름 지정',
+    'exTarget': '대상',
+    'exLayer': '레이어',
+    'exCelCount': '{n}장',
     'exProject': '프로젝트',
     'exCut': '컷',
-    'exFreeAttach': '프리 부속',
-    'exSyncAttach': '동기 부속',
-    'exFolderMembers': '폴더 전부',
     'exWhite': '흰색',
     'exBlack': '검정',
     'exCameraTemplate': '카메라 {w}×{h}',
@@ -4506,7 +4536,6 @@ enum AppStrings {
     'exBitrate': 'Débit',
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
-    'exFilter': 'Filtre',
     'exBrowse': 'Parcourir…',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
@@ -4516,17 +4545,26 @@ enum AppStrings {
     'exApplyLayerFx': 'Appliquer les FX de calque',
     'exApplyLayerFxHelp':
         'Appliquer les FX de calque (transformations et opacité animée)',
-    'exOnTimesheetOnly': 'Uniquement les calques sur la feuille',
-    'exInstructionLayer': 'Calque de direction',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
-    'exCutFolder': 'Dossier du plan',
-    'exLayerFolder': 'Dossier du calque',
-    'exProjectName': 'Nom du projet',
+    'exLabel': 'Étiquette',
+    'exApply': 'Appliquer',
+    'exAdd': 'Ajouter',
+    'exSelect': 'Sélection',
+    'exSelBase': 'Base',
+    'exSelAttach': 'Attaches',
+    'exSelSheet': 'Feuille',
+    'exSelDirection': 'Direction',
+    'exSelCustom': 'Personnalisé',
+    'exPaperLabel': 'Papier',
+    'exArtLabel': 'Décor',
+    'exTakeLatest': 'Dernière',
+    'exFolders': 'Dossiers',
+    'exNameParts': 'Nom',
+    'exTarget': 'Cible',
+    'exLayer': 'Calque',
+    'exCelCount': '{n} cellulos',
     'exProject': 'Projet',
     'exCut': 'Plan',
-    'exFreeAttach': 'Attache libre',
-    'exSyncAttach': 'Attache synchronisée',
-    'exFolderMembers': 'Tout le dossier',
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
     'exCameraTemplate': 'Caméra {w}×{h}',
@@ -5403,7 +5441,6 @@ enum AppStrings {
     'exBitrate': '码率',
     'exChannels': '声道',
     'exAudio': '音频',
-    'exFilter': '滤镜',
     'exBrowse': '浏览…',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
@@ -5412,17 +5449,26 @@ enum AppStrings {
     'exDigits': '位数',
     'exApplyLayerFx': '应用图层 FX',
     'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',
-    'exOnTimesheetOnly': '仅摄影表上的图层',
-    'exInstructionLayer': 'Direction图层',
     'exMuxSeMix': '将 SE 混音封装进视频',
-    'exCutFolder': '镜头文件夹',
-    'exLayerFolder': '图层文件夹',
-    'exProjectName': '项目名称',
+    'exLabel': '标签',
+    'exApply': '应用',
+    'exAdd': '添加',
+    'exSelect': '选择',
+    'exSelBase': '基准',
+    'exSelAttach': '附属',
+    'exSelSheet': '律表',
+    'exSelDirection': '指示',
+    'exSelCustom': '自定义',
+    'exPaperLabel': '用纸',
+    'exArtLabel': '美术',
+    'exTakeLatest': '最新',
+    'exFolders': '创建文件夹',
+    'exNameParts': '命名',
+    'exTarget': '对象',
+    'exLayer': '图层',
+    'exCelCount': '{n}张',
     'exProject': '项目',
     'exCut': '镜头',
-    'exFreeAttach': '自由附属',
-    'exSyncAttach': '同步附属',
-    'exFolderMembers': '整个文件夹',
     'exWhite': '白色',
     'exBlack': '黑色',
     'exCameraTemplate': '摄影机 {w}×{h}',

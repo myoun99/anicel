@@ -42,7 +42,7 @@ void main() {
         const ExportPreset(
           id: ExportPresetId('p2'),
           name: '납품 셀',
-          spec: CelsExportSpec(onTimesheetOnly: true),
+          spec: CelsExportSpec(selection: CelsSelectionPreset.attach),
         ),
       ],
       lastSpecs: const ExportTabSpecs().withSpec(

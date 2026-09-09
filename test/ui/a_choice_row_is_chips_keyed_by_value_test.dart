@@ -23,8 +23,8 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 /// reach for, the selected chip, and the refused one — so the rows can be
 /// written once without any of them changing what the window offers.
 void main() {
-  ExportChip chipAt(WidgetTester tester, String key) =>
-      tester.widget<ExportChip>(find.byKey(ValueKey<String>(key)));
+  ExportPill chipAt(WidgetTester tester, String key) =>
+      tester.widget<ExportPill>(find.byKey(ValueKey<String>(key)));
 
   /// The chip of [row] that is drawn selected, by its key suffix.
   String selectedIn(WidgetTester tester, String row, List<String> values) {

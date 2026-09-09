@@ -49,8 +49,9 @@ class ExportPresetRail extends StatelessWidget {
           '${spec.sizeMode == ExportSizeMode.camera ? 'Camera' : 'Canvas'}',
     ImageExportSpec() => ExportFormatModule.summarize(spec.format),
     CelsExportSpec() =>
-      '${ExportFormatModule.summarize(spec.format)}'
-          '${spec.onTimesheetOnly ? ' · sheet only' : ''}',
+      '${ExportFormatModule.summarize(spec.format)} · '
+          '${exportCelLabelText(spec.label)} · '
+          '${exportCelPresetLabel(spec.selection)}',
     TimesheetExportSpec() => switch (spec.format) {
       ExportTimesheetFormat.sheetImage => 'Sheet image',
       ExportTimesheetFormat.xdts => 'XDTS',

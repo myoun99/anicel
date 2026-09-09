@@ -4,6 +4,8 @@ import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_preset.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 
 void main() {
   group('SequenceExportSpec', () {
@@ -58,31 +60,60 @@ void main() {
   });
 
   group('CelsExportSpec', () {
-    test('defaults: canvas size, instruction layers on, attach gates on', () {
+    test('defaults: canvas size, 원화 label, 「최신」 take, paper applied, no '
+        'art, 기준 preset — and the JSON carries none of them', () {
       const spec = CelsExportSpec();
       expect(spec.sizeMode, ExportSizeMode.canvas);
-      expect(spec.includeInstructionLayers, isTrue);
-      expect(spec.includeSyncedAttach, isTrue);
-      expect(spec.includeFreeAttach, isTrue);
-      expect(spec.includeFolderMembers, isFalse);
+      expect(spec.label, const LayerMark(process: LayerProcess.key));
+      expect(spec.take, isNull);
+      expect(spec.applyPaper, isTrue);
+      expect(spec.addArt, isFalse);
+      expect(spec.selection, CelsSelectionPreset.base);
+      expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
     });
 
-    test('non-default fields round-trip, mark slots included', () {
+    test('non-default fields round-trip', () {
       final spec = const CelsExportSpec().copyWith(
         sizeMode: ExportSizeMode.camera,
-        naming: const ExportCelNaming(frameDigits: 4, cutFolder: true),
-        onTimesheetOnly: true,
-        includeInstructionLayers: false,
-        includeSyncedAttach: false,
-        includeFolderMembers: true,
-        markFilterA: 'red',
+        naming: const ExportCelNaming(
+          frameDigits: 4,
+          projectFolder: true,
+          cutFolder: true,
+        ),
+        label: const LayerMark(
+          process: LayerProcess.layout,
+          revise: LayerRevise.animationDirector,
+        ),
+        take: 3,
+        applyPaper: false,
+        addArt: true,
+        selection: CelsSelectionPreset.sheet,
         scope: ExportScopeKind.project,
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
-      expect(restored.markFilterA, 'red');
-      expect(restored.markFilterB, isNull);
+      expect(restored.take, 3);
+      expect(restored.naming.projectFolder, isTrue);
+    });
+
+    test('the label stores its stage and revise only — a take riding the '
+        'stored label is dropped on read, since the take is its own field',
+        () {
+      final json = const CelsExportSpec(
+        label: LayerMark(process: LayerProcess.layout, take: 4),
+      ).toJson();
+      final restored = CelsExportSpec.fromJson(json);
+      expect(restored.label, const LayerMark(process: LayerProcess.layout));
+      expect(restored.take, isNull);
+    });
+
+    test('copyWith clears the take with an explicit null and keeps it when '
+        'omitted', () {
+      const spec = CelsExportSpec(take: 2);
+      expect(spec.copyWith(take: null).take, isNull);
+      expect(spec.copyWith().take, 2);
+      expect(spec.copyWith(addArt: true).take, 2);
     });
   });
 
@@ -103,12 +134,12 @@ void main() {
       const specs = ExportTabSpecs();
       final updated = specs
           .withSpec(const SequenceExportSpec(inFrame: 1))
-          .withSpec(const CelsExportSpec(onTimesheetOnly: true));
+          .withSpec(const CelsExportSpec(take: 2));
       expect(
         (updated.specFor(ExportTab.sequence) as SequenceExportSpec).inFrame,
         1,
       );
-      expect(updated.cels.onTimesheetOnly, isTrue);
+      expect(updated.cels.take, 2);
       expect(updated.image, specs.image);
       expect(ExportTabSpecs.fromJson(updated.toJson()), updated);
     });
@@ -131,11 +162,11 @@ void main() {
       const preset = ExportPreset(
         id: ExportPresetId('preset-2'),
         name: '납품 셀',
-        spec: CelsExportSpec(includeFolderMembers: true),
+        spec: CelsExportSpec(addArt: true),
       );
       final restored = ExportPreset.fromJson(preset.toJson());
       expect(restored.spec, isA<CelsExportSpec>());
-      expect((restored.spec as CelsExportSpec).includeFolderMembers, isTrue);
+      expect((restored.spec as CelsExportSpec).addArt, isTrue);
     });
   });
 }

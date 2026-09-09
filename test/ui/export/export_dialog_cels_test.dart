@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -6,36 +7,85 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_overrides.dart';
+import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_cel_layer_row.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/export/export_settings_modules.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
+/// The Cels tab, v3 (유저 2026-09-09): one label picked through the
+/// timeline's own flyout, a take picker with 「최신」 added, 적용/추가 pills,
+/// the 선택 presets beside 「커스텀」, the cut's stack as the timeline draws it
+/// with a dot on every row, and the output cels listed beside the preview
+/// with a dot of their own.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
-  // Cels are numbered by their frame NAME (an unnamed frame is the
-  // in-between mark and exports no file), so the fixture ids' digits double
+  const key = LayerMark(process: LayerProcess.key);
+  const cut1 = CutId('cut');
+
+  // Cels are numbered by their frame NAME, so the fixture ids' digits double
   // as the cel numbers: 'f1' is cel 1.
-  Frame frame(String id) => Frame(
+  Frame frame(String id, {String? name}) => Frame(
     id: FrameId(id),
     duration: 1,
     strokes: const [],
-    name: id.replaceAll(RegExp('[^0-9]'), ''),
+    name: name ?? id.replaceAll(RegExp('[^0-9]'), ''),
   );
 
-  /// CUT1: base A (2 cels) + a synced color row + a hidden base B + an
-  /// instruction row. CUT2 exists for the scope grid.
+  Layer drawing(
+    String id,
+    String name,
+    List<Frame> frames, {
+    LayerMark mark = key,
+    bool isVisible = true,
+    String? folder,
+    String? attachedTo,
+    Map<FrameId, FrameId> links = const {},
+  }) => Layer(
+    id: LayerId(id),
+    name: name,
+    frames: frames,
+    mark: mark,
+    isVisible: isVisible,
+    folderId: folder == null ? null : LayerId(folder),
+    attachedToLayerId: attachedTo == null ? null : LayerId(attachedTo),
+    attachedMode: AttachedMode.synced,
+    baseFrameLinks: links,
+  );
+
+  Cut plainCut(String id, String name) => Cut(
+    id: CutId(id),
+    name: name,
+    duration: 2,
+    canvasSize: const CanvasSize(width: 8, height: 8),
+    layers: [
+      drawing('$id-a', 'A', [frame('$id-f1', name: '1')]),
+      createCameraLayer(cutId: CutId(id)),
+    ],
+  );
+
+  /// CUT1: a paper row · base A (2 cels) with a synced colour row · a hidden
+  /// base B · folder F holding C and D · a direction row. CUT2·CUT3 are 겸용
+  /// siblings and CUT4 stands alone — the scope grid's material.
   EditorSessionManager celsSession() {
     return EditorSessionManager(
       initialProject: Project(
@@ -48,33 +98,29 @@ void main() {
             name: 'Track',
             cuts: [
               Cut(
-                id: const CutId('cut'),
+                id: cut1,
                 name: 'CUT1',
                 duration: 4,
                 canvasSize: const CanvasSize(width: 8, height: 8),
                 layers: [
-                  Layer(
-                    id: const LayerId('a'),
-                    name: 'A',
-                    frames: [frame('f1'), frame('f2')],
-                  ),
-                  Layer(
-                    id: const LayerId('a-color'),
-                    name: 'A색',
-                    frames: [frame('c1'), frame('c2')],
-                    attachedToLayerId: const LayerId('a'),
-                    attachedMode: AttachedMode.synced,
-                    baseFrameLinks: {
+                  drawing('paper', 'Paper', [
+                    frame('p1'),
+                  ], mark: const LayerMark(process: LayerProcess.paper)),
+                  drawing('a', 'A', [frame('f1'), frame('f2')]),
+                  drawing(
+                    'a-color',
+                    'A색',
+                    [frame('c1'), frame('c2')],
+                    attachedTo: 'a',
+                    links: {
                       const FrameId('f1'): const FrameId('c1'),
                       const FrameId('f2'): const FrameId('c2'),
                     },
                   ),
-                  Layer(
-                    id: const LayerId('b'),
-                    name: 'B',
-                    frames: [frame('b1')],
-                    isVisible: false,
-                  ),
+                  drawing('b', 'B', [frame('b1')], isVisible: false),
+                  createFolderLayer(id: const LayerId('f'), name: 'F'),
+                  drawing('c', 'C', [frame('x1')], folder: 'f'),
+                  drawing('d', 'D', [frame('y1')], folder: 'f'),
                   Layer(
                     id: const LayerId('inst'),
                     name: 'Camera',
@@ -88,26 +134,34 @@ void main() {
                       ),
                     },
                   ),
-                  createCameraLayer(cutId: const CutId('cut')),
+                  createCameraLayer(cutId: cut1),
                 ],
               ),
-              Cut(
-                id: const CutId('cut-b'),
-                name: 'CUT2',
-                duration: 2,
-                canvasSize: const CanvasSize(width: 8, height: 8),
-                layers: [
-                  Layer(
-                    id: const LayerId('b-a'),
-                    name: 'A',
-                    frames: [frame('bf1')],
-                  ),
-                  createCameraLayer(cutId: const CutId('cut-b')),
-                ],
-              ),
+              plainCut('c2', 'CUT2'),
+              plainCut('c3', 'CUT3'),
+              plainCut('c4', 'CUT4'),
             ],
           ),
         ],
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(
+              id: 'group-1',
+              members: const [
+                LayerLinkMember(
+                  trackId: TrackId('track'),
+                  cutId: CutId('c2'),
+                  layerId: LayerId('c2-a'),
+                ),
+                LayerLinkMember(
+                  trackId: TrackId('track'),
+                  cutId: CutId('c3'),
+                  layerId: LayerId('c3-a'),
+                ),
+              ],
+            ),
+          ],
+        ),
         createdAt: DateTime.utc(2026),
       ),
     );
@@ -136,140 +190,250 @@ void main() {
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
 
-  testWidgets('the label list shows bases + Instructions; members show '
-      'their tags', (tester) async {
+  Future<void> tapKey(WidgetTester tester, String key) async {
+    final finder = find.byKey(ValueKey<String>(key));
+    await tester.ensureVisible(finder);
+    await tester.pump();
+    await tester.tap(finder, warnIfMissed: false);
+    await tester.pump();
+  }
+
+  String textOf(WidgetTester tester, String key) =>
+      tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
+
+  String bundleCount(WidgetTester tester) =>
+      textOf(tester, 'export-cels-bundle-count');
+
+  ExportIncludeDot dot(WidgetTester tester, String key) =>
+      tester.widget<ExportIncludeDot>(find.byKey(ValueKey<String>(key)));
+
+  ExportPill pill(WidgetTester tester, String key) =>
+      tester.widget<ExportPill>(find.byKey(ValueKey<String>(key)));
+
+  ExportCelsCutDelta? deltaOf(EditorSessionManager session) =>
+      session.repository.requireProject().exportOverrides.deltaFor(cut1);
+
+  testWidgets('the list is the cut\'s stack, each row led by its dot — the '
+      'rule\'s picks on, the rest dim, paper not the user\'s to tick',
+      (tester) async {
     await pumpCels(tester, celsSession());
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-label-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-label-inst')),
-      findsOneWidget,
-    );
-    // The hidden base B is not a label — it waits in Add from timeline.
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-label-b')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-add-b')),
-      findsOneWidget,
-    );
-    // The member list of label A carries the base and the synced row.
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-member-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-member-a-color')),
-      findsOneWidget,
-    );
-    expect(find.text('sync'), findsOneWidget);
-    expect(find.text('기준'), findsOneWidget);
+
+    for (final id in ['paper', 'a', 'a-color', 'b', 'f', 'c', 'd', 'inst']) {
+      expect(
+        find.byKey(ValueKey<String>('export-cels-row-$id')),
+        findsOneWidget,
+        reason: 'row $id',
+      );
+    }
+    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
+    expect(dot(tester, 'export-cels-dot-a-color').value, isTrue);
+    expect(dot(tester, 'export-cels-dot-b').value, isFalse);
+    expect(dot(tester, 'export-cels-dot-inst').value, isFalse);
+    expect(dot(tester, 'export-cels-dot-paper').onTap, isNull);
+    // The folder's leaves are both in, so the folder reads whole.
+    expect(dot(tester, 'export-cels-dot-f').value, isTrue);
+    expect(dot(tester, 'export-cels-dot-f').indeterminate, isFalse);
+
+    // A ×2 + C + D; the paper row is applied, not counted.
+    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(pill(tester, 'export-cels-select-base').selected, isTrue);
+    expect(pill(tester, 'export-cels-select-custom').selected, isFalse);
+    expect(pill(tester, 'export-cels-select-custom').onTap, isNull);
   });
 
-  testWidgets('the label × writes a project-side delta; Reset clears it',
-      (tester) async {
-    final session = celsSession();
-    final state = await pumpCels(tester, session);
-    expect(state.debugFlushPreview, isNotNull);
-
-    // Remove label A by its ×.
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('export-cels-label-a')),
-        matching: find.byIcon(Icons.close),
-      ),
-    );
-    await tester.pump();
-    final overrides = session.repository
-        .requireProject()
-        .exportOverrides;
-    expect(
-      overrides.deltaFor(const CutId('cut'))?.layerOverrides[const LayerId(
-        'a',
-      )],
-      isFalse,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-label-a')),
-      findsNothing,
-    );
-    // A now sits in Add from timeline; its dot re-includes it (the
-    // override drops because the wish equals the rule again).
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-cels-add-a')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-adddot-a')),
-      warnIfMissed: false,
-    );
-    await tester.pump();
-    final after = session.repository.requireProject().exportOverrides;
-    expect(after.deltaFor(const CutId('cut')), isNull);
-  });
-
-  testWidgets('the hidden base joins by hand and the plan grows',
-      (tester) async {
-    final session = celsSession();
-    await pumpCels(tester, celsSession());
-    // Fresh session per pump above; use a single session for assertions.
-    final state = await pumpCels(tester, session);
-    final before = tester
-        .widget<Text>(
-          find.byKey(const ValueKey<String>('export-transport-line')),
-        )
-        .data;
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-cels-add-b')),
-    );
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-cels-adddot-b')),
-      warnIfMissed: false,
-    );
-    await tester.pump();
-    final overrides = session.repository.requireProject().exportOverrides;
-    expect(
-      overrides
-          .deltaFor(const CutId('cut'))
-          ?.layerOverrides[const LayerId('b')],
-      isTrue,
-    );
-    final after = tester
-        .widget<Text>(
-          find.byKey(const ValueKey<String>('export-transport-line')),
-        )
-        .data;
-    expect(after, isNot(before));
-    expect(state.debugImageFrame, isNotNull);
-  });
-
-  testWidgets('the project-scope cut grid excludes a cut and saves it',
-      (tester) async {
+  testWidgets('ticking a hidden row forces it in: the plan grows, 「커스텀」 '
+      'lights, and a preset pill drops the exception', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
-    // The Cels Scope accordion sits collapsed by default — open it.
-    await tester.ensureVisible(find.textContaining('Scope'));
-    await tester.tap(find.textContaining('Scope'));
-    await tester.pump();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-scope-project')),
-    );
-    await tester.tap(find.byKey(const ValueKey<String>('export-scope-project')));
-    await tester.pump();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-cut-cell-2')),
-    );
-    await tester.tap(find.byKey(const ValueKey<String>('export-cut-cell-2')));
-    await tester.pump();
+
+    await tapKey(tester, 'export-cels-dot-b');
+    expect(deltaOf(session)?.layerOverrides[const LayerId('b')], isTrue);
+    expect(bundleCount(tester), AppText.strings.exCelCount(5));
+    expect(pill(tester, 'export-cels-select-custom').selected, isTrue);
+    expect(pill(tester, 'export-cels-select-base').selected, isFalse);
+
+    await tapKey(tester, 'export-cels-select-base');
+    expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
+    expect(pill(tester, 'export-cels-select-custom').selected, isFalse);
+    expect(pill(tester, 'export-cels-select-base').selected, isTrue);
+    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+  });
+
+  testWidgets('a preset pill stores the preset: 디렉션 lists the direction '
+      'row\'s events and no drawing', (tester) async {
+    final session = celsSession();
+    final state = await pumpCels(tester, session);
+
+    await tapKey(tester, 'export-cels-select-direction');
+    expect(state.debugSpecs.cels.selection, CelsSelectionPreset.direction);
+    expect(dot(tester, 'export-cels-dot-inst').value, isTrue);
+    expect(dot(tester, 'export-cels-dot-a').value, isFalse);
+    expect(bundleCount(tester), AppText.strings.exCelCount(1));
+    expect(textOf(tester, 'export-transport-line'), 'Camera1.png · 1 / 1');
+  });
+
+  testWidgets('the folder dot ticks its leaves together and reads half when '
+      'they disagree', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+
+    await tapKey(tester, 'export-cels-dot-c');
+    expect(deltaOf(session)?.layerOverrides[const LayerId('c')], isFalse);
+    expect(dot(tester, 'export-cels-dot-f').indeterminate, isTrue);
+    expect(bundleCount(tester), AppText.strings.exCelCount(3));
+
+    // Half → whole: the exception that equals the rule again disappears.
+    await tapKey(tester, 'export-cels-dot-f');
+    expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
+    expect(dot(tester, 'export-cels-dot-f').value, isTrue);
+
+    // Whole → none: both leaves off in one write.
+    await tapKey(tester, 'export-cels-dot-f');
+    expect(deltaOf(session)?.layerOverrides, {
+      const LayerId('c'): false,
+      const LayerId('d'): false,
+    });
+    expect(dot(tester, 'export-cels-dot-f').value, isFalse);
+    expect(dot(tester, 'export-cels-dot-f').indeterminate, isFalse);
+    expect(bundleCount(tester), AppText.strings.exCelCount(2));
+  });
+
+  testWidgets('the cel list: unticking a bundle keeps it listed, drops it '
+      'from the count, and Reset restores it', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+
+    await tapKey(tester, 'export-cels-bundle-dot-a');
+    expect(deltaOf(session)?.skippedBases, {const LayerId('a')});
+    expect(bundleCount(tester), AppText.strings.exCelCount(2));
     expect(
-      session.repository
-          .requireProject()
-          .exportOverrides
-          .cutIncluded(const CutId('cut-b')),
-      isFalse,
+      find.byKey(const ValueKey<String>('export-cels-bundle-a')),
+      findsOneWidget,
+      reason: 'an unticked cel stays in the list with its dot off',
     );
-    expect(find.text('1 / 2 cuts'), findsOneWidget);
+    expect(dot(tester, 'export-cels-bundle-dot-a').value, isFalse);
+    // The row selection is a different question — the rows stay as they were.
+    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
+
+    await tester.tap(find.text('Reset').first);
+    await tester.pump();
+    expect(deltaOf(session), isNull);
+    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+  });
+
+  testWidgets('choosing a cel in the list drives the preview to its first '
+      'sheet, and the nav counts that bundle alone', (tester) async {
+    await pumpCels(tester, celsSession());
+
+    await tapKey(tester, 'export-cels-bundle-c');
+    expect(textOf(tester, 'export-transport-line'), 'C1.png · 1 / 1');
+    await tapKey(tester, 'export-cels-bundle-a');
+    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+  });
+
+  testWidgets('the label picker is the timeline\'s flyout: 「라벨 없음」 empties '
+      'a KEY cut, a stage picked through its hover child relabels the export',
+      (tester) async {
+    final state = await pumpCels(tester, celsSession());
+    expect(
+      textOf(tester, 'export-cels-label-text'),
+      exportCelLabelText(key),
+    );
+
+    await tapKey(tester, 'export-cels-label-picker');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('layer-mark-option-none')));
+    await tester.pumpAndSettle();
+    expect(state.debugSpecs.cels.label, LayerMark.none);
+    expect(
+      textOf(tester, 'export-cels-label-text'),
+      AppText.strings.tlLayerMarkNone,
+    );
+    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+
+    await tapKey(tester, 'export-cels-label-picker');
+    await tester.pumpAndSettle();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('layer-mark-stage-layout')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-mark-option-layout')),
+    );
+    await tester.pumpAndSettle();
+    const layout = LayerMark(process: LayerProcess.layout);
+    expect(state.debugSpecs.cels.label, layout);
+    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(layout));
+  });
+
+  testWidgets('the take picker is the timeline\'s flyout plus 「최신」',
+      (tester) async {
+    final state = await pumpCels(tester, celsSession());
+    expect(textOf(tester, 'export-cels-take-text'), AppText.strings.exTakeLatest);
+
+    await tapKey(tester, 'export-cels-take-picker');
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('layer-take-option-latest')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('layer-take-option-2')));
+    await tester.pumpAndSettle();
+    expect(state.debugSpecs.cels.take, 2);
+    expect(
+      textOf(tester, 'export-cels-take-text'),
+      AppText.strings.tlLayerTakeNumber(2),
+    );
+    // Nothing in the cut is a second take.
+    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+
+    await tapKey(tester, 'export-cels-take-picker');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-take-option-latest')),
+    );
+    await tester.pumpAndSettle();
+    expect(state.debugSpecs.cels.take, isNull);
+    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+  });
+
+  testWidgets('적용 and 추가 are pills that write the spec', (tester) async {
+    final state = await pumpCels(tester, celsSession());
+    expect(pill(tester, 'export-cels-apply-paper').selected, isTrue);
+    expect(pill(tester, 'export-cels-add-art').selected, isFalse);
+
+    await tapKey(tester, 'export-cels-apply-paper');
+    expect(state.debugSpecs.cels.applyPaper, isFalse);
+    expect(pill(tester, 'export-cels-apply-paper').selected, isFalse);
+
+    await tapKey(tester, 'export-cels-add-art');
+    expect(state.debugSpecs.cels.addArt, isTrue);
+    expect(pill(tester, 'export-cels-add-art').selected, isTrue);
+  });
+
+  testWidgets('the project-scope grid shows a 겸용 pair as ONE cell and '
+      'excludes both cuts at once', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    // The Scope accordion sits collapsed by default — open it.
+    await tester.ensureVisible(find.textContaining(AppText.strings.exScope));
+    await tester.tap(find.textContaining(AppText.strings.exScope));
+    await tester.pump();
+    await tapKey(tester, 'export-scope-project');
+
+    expect(find.text('CUT2-CUT3'), findsOneWidget);
+    expect(find.text('3 / 3 cuts'), findsOneWidget);
+    await tapKey(tester, 'export-cut-cell-2');
+    final overrides = session.repository.requireProject().exportOverrides;
+    expect(overrides.cutIncluded(const CutId('c2')), isFalse);
+    expect(overrides.cutIncluded(const CutId('c3')), isFalse);
+    expect(overrides.cutIncluded(const CutId('c4')), isTrue);
+    expect(find.text('2 / 3 cuts'), findsOneWidget);
   });
 }

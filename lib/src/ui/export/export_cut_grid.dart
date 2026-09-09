@@ -6,8 +6,11 @@ import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../repaint_props.dart';
 
-/// One scope cut for the grid: its number and identity.
-typedef ExportCutEntry = ({CutId id, int number});
+/// One grid cell: the cut — or the 겸용 group — it stands for. [ids] toggle
+/// together, [label] is what the cell prints (one cut's name, or the
+/// group's names joined: `12-15`), [number] is the first cut's position for
+/// the range field.
+typedef ExportCutEntry = ({List<CutId> ids, String label, int number});
 
 /// The v10 cut grid (Cels·Timesheet의 Scope 모듈 전용): 10 columns of
 /// micro number cells — selected = teal fill, excluded = hatching, click
@@ -27,7 +30,10 @@ class ExportCutGrid extends StatefulWidget {
 
   final List<ExportCutEntry> cuts;
   final bool Function(CutId id) isIncluded;
-  final void Function(CutId id, bool included) onToggle;
+
+  /// A cell's whole group flips together — a 겸용 sibling cannot be left out
+  /// (유저 2026-09-09: 「겸용컷 비포함이란게 불가능하도록」).
+  final void Function(List<CutId> ids, bool included) onToggle;
 
   /// The All button: every cut back in scope (reset semantics — enabled
   /// only while something is excluded).
@@ -72,7 +78,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final included = widget.cuts
-        .where((cut) => widget.isIncluded(cut.id))
+        .where((cut) => widget.isIncluded(cut.ids.first))
         .length;
     final anyExcluded = included < widget.cuts.length;
     return Column(
@@ -171,13 +177,13 @@ class _ExportCutGridState extends State<ExportCutGrid> {
             itemCount: widget.cuts.length,
             itemBuilder: (context, index) {
               final cut = widget.cuts[index];
-              final selected = widget.isIncluded(cut.id);
+              final selected = widget.isIncluded(cut.ids.first);
               return _CutCell(
                 key: ValueKey<String>('export-cut-cell-${cut.number}'),
-                number: cut.number,
+                label: cut.label,
                 selected: selected,
                 enabled: widget.enabled,
-                onTap: () => widget.onToggle(cut.id, !selected),
+                onTap: () => widget.onToggle(cut.ids, !selected),
               );
             },
           ),
@@ -190,13 +196,13 @@ class _ExportCutGridState extends State<ExportCutGrid> {
 class _CutCell extends StatelessWidget {
   const _CutCell({
     super.key,
-    required this.number,
+    required this.label,
     required this.selected,
     required this.enabled,
     required this.onTap,
   });
 
-  final int number;
+  final String label;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
@@ -226,7 +232,9 @@ class _CutCell extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
             child: Text(
-              '$number',
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
                 fontSize: 7.5,
                 height: 1,

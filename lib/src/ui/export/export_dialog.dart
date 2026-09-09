@@ -22,11 +22,8 @@ import '../../services/persistence/app_save_settings.dart'
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../editor_session_manager.dart';
-import '../../models/attached_layer_resolve.dart'
-    show attachedLayersOf, isAttachedLayer;
 import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
-import '../../models/layer_id.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -46,9 +43,17 @@ import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
+import 'export_cel_layer_row.dart';
 import 'export_conte_render.dart';
-import 'export_cels_rows.dart';
 import 'export_cels_selection.dart';
+import '../../models/layer_folder.dart';
+import '../../models/layer_mark.dart';
+import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../timeline/layer_label_controls.dart';
+import '../timeline/layer_timeline_display_adapter.dart'
+    show horizontalLayerDisplayOrder;
+import '../timeline/timeline_cell_style.dart' show timelineTextOnColor;
+import '../widgets/panel_flyout.dart';
 import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
@@ -74,6 +79,19 @@ import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+
+/// One row of the output-cel list: the bundle's axis layer, its plate
+/// (none for an instruction row), where its sheets start in the nav's
+/// flat entry list, how many there are, whether its tick is off, and
+/// whether it has a tick at all (instruction rows always write).
+typedef _CelBundleRow = ({
+  Layer layer,
+  LayerMark? mark,
+  int first,
+  int count,
+  bool skipped,
+  bool tickable,
+});
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -384,17 +402,193 @@ class ExportDialogState extends State<ExportDialog> {
   /// A format/scale chip that is DEAD while an export runs. Thirteen sites
   /// wrote that guard out; it is the same law each time — a run in flight
   /// owns the spec — so one place says it.
-  Widget _chip({
+  /// One segment of a module's pill strip; the strip is the window's one
+  /// grouped-choice control ([ExportPillStrip]).
+  ExportPillItem _pill({
     required String keyValue,
     required String label,
     required bool selected,
     required VoidCallback onPick,
-  }) => ExportChip(
-    key: ValueKey<String>(keyValue),
+  }) => ExportPillItem(
+    keyValue: keyValue,
     label: label,
     selected: selected,
     onTap: _isExporting ? null : onPick,
   );
+
+  /// The preview picture — the cropped result alone (v10: 오버레이 없음), or
+  /// the plan headline while nothing has resolved.
+  Widget _previewWell(ThemeData theme) => Container(
+    decoration: ShapeDecoration(
+      shape: AppShapes.container(
+        AppShapes.wellRadius,
+        side: BorderSide(color: theme.dividerColor),
+      ),
+    ),
+    alignment: Alignment.center,
+    padding: const EdgeInsets.all(8),
+    child: AnimatedBuilder(
+      animation: _preview,
+      builder: (context, _) {
+        final image = _preview.image;
+        if (image == null) {
+          return Text(
+            _planHeadline(),
+            key: const ValueKey<String>('export-plan-headline'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall,
+          );
+        }
+        return RawImage(
+          key: const ValueKey<String>('export-preview-image'),
+          image: image,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+        );
+      },
+    ),
+  );
+
+  /// The cels the export will write, one row per bundle, in stack order:
+  /// its tick, its label plate, its name and its sheet count. Choosing a
+  /// row is what the preview shows (유저 2026-09-09: 「왼쪽에서 선택할때마다
+  /// 미리보기 바뀌는느낌」); its tick is whether the file is written.
+  Widget _celBundleList(ThemeData theme) {
+    final plan = _celGroupPlan();
+    final entries = _celEntries(plan);
+    final currentIndex = entries.isEmpty
+        ? -1
+        : _celPosition.clamp(0, entries.length - 1);
+    final rows = <_CelBundleRow>[];
+    var index = 0;
+    for (final bundle in plan.bundles) {
+      rows.add((
+        layer: bundle.axis,
+        mark: bundle.axis.mark,
+        first: index,
+        count: bundle.sheets.length,
+        skipped: bundle.sheets.first.skipped,
+        tickable: true,
+      ));
+      index += bundle.sheets.length;
+    }
+    final instructions = plan.instructions;
+    for (var i = 0; i < instructions.length;) {
+      final layer = instructions[i].layer;
+      var end = i;
+      while (end < instructions.length && instructions[end].layer.id == layer.id) {
+        end += 1;
+      }
+      rows.add((
+        layer: layer,
+        mark: null,
+        first: plan.cels.length + i,
+        count: end - i,
+        skipped: false,
+        tickable: false,
+      ));
+      i = end;
+    }
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: BorderSide(color: theme.dividerColor),
+        ),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.all(4),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 4),
+            child: Text(
+              AppText.strings.exCelCount(plan.length),
+              key: const ValueKey<String>('export-cels-bundle-count'),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontSize: 9,
+                letterSpacing: 1.1,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final row in rows)
+            _celBundleItem(
+              theme,
+              row,
+              selected:
+                  currentIndex >= row.first &&
+                  currentIndex < row.first + row.count,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _celBundleItem(
+    ThemeData theme,
+    _CelBundleRow row, {
+    required bool selected,
+  }) {
+    final accent = theme.colorScheme.primary;
+    final idValue = row.layer.id.value;
+    void jump() {
+      setState(() => _celPosition = row.first);
+      _refreshPreview();
+    }
+    return ControlPressClaim(
+      onPressed: jump,
+      child: InkWell(
+        key: ValueKey<String>('export-cels-bundle-$idValue'),
+        onTap: silentPress(jump),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(2, 3, 6, 3),
+          decoration: ShapeDecoration(
+            color: selected ? accent.withValues(alpha: 0.12) : null,
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: selected ? accent : Colors.transparent),
+            ),
+          ),
+          child: Row(
+            children: [
+              ExportIncludeDot(
+                key: ValueKey<String>('export-cels-bundle-dot-$idValue'),
+                value: !row.skipped,
+                onTap: row.tickable && !_isExporting
+                    ? () => _toggleCelBundle(row.layer, !row.skipped)
+                    : null,
+              ),
+              SizedBox(
+                width: layerMarkSlotWidth,
+                height: 20,
+                child: row.mark == null ? null : LayerMarkPlate(mark: row.mark!),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  row.layer.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: selected ? accent : null,
+                  ),
+                ),
+              ),
+              Text(
+                AppText.strings.exCelCount(row.count),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontSize: 10,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   // --- plans ----------------------------------------------------------------
 
@@ -957,12 +1151,43 @@ class ExportDialogState extends State<ExportDialog> {
     ...plan.instructions,
   ];
 
+  /// The nav's tick caption within one bundle: the cel number (the frame
+  /// name) — the bundle itself is named by the list on the left.
   String _celEntryCaption(Object entry) => switch (entry) {
-    ExportCelGroupTask(:final baseLayer, :final celName) =>
-      '${baseLayer.name}-$celName',
+    ExportCelGroupTask(:final celName) => celName,
     ExportInstructionTask(:final label) => label,
     _ => '',
   };
+
+  /// What the preview writes under the picture: the file exactly as the
+  /// naming rule will write it, extension included (유저 2026-09-09:
+  /// 「이름 규칙같은거에서 적용된걸 그대로 … A0001.png 이런식으로 확장자까지」).
+  String _celEntryFileName(Object entry) => switch (entry) {
+    ExportCelGroupTask(:final fileName) => fileName,
+    ExportInstructionTask(:final fileName) => fileName,
+    _ => '',
+  };
+
+  /// The contiguous run of [entries] that shares [position]'s bundle —
+  /// (start, its tasks). The planner emits a bundle's cels together and
+  /// an instruction row's events together, so adjacency IS the bundle.
+  (int, List<Object>) _celBundleSpan(List<Object> entries, int position) {
+    String keyOf(Object entry) => switch (entry) {
+      ExportCelGroupTask(:final baseLayer) => 'cel:${baseLayer.id.value}',
+      ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
+      _ => '',
+    };
+    final key = keyOf(entries[position]);
+    var start = position;
+    while (start > 0 && keyOf(entries[start - 1]) == key) {
+      start -= 1;
+    }
+    var end = position + 1;
+    while (end < entries.length && keyOf(entries[end]) == key) {
+      end += 1;
+    }
+    return (start, entries.sublist(start, end));
+  }
 
   ExportNavAxis _sequenceAxis(List<ExportFrameTask> plan) =>
       ExportNavAxis.grouped(
@@ -976,16 +1201,22 @@ class ExportDialogState extends State<ExportDialog> {
     captionOf: (position) => 'F${position + 1}',
   );
 
+  /// The nav walks ONE bundle — the one the cel list has selected — so its
+  /// length is that bundle's sheet count (유저 2026-09-09: 「해당 셀의 장수만
+  /// 표현하도록」).
   ExportNavAxis _celsAxis(ExportCelGroupPlan plan) {
     final entries = _celEntries(plan);
-    return ExportNavAxis.grouped(
-      entries: entries,
-      groupOf: (entry) => switch (entry) {
-        ExportCelGroupTask(:final baseLayer) => 'cel:${baseLayer.id.value}',
-        ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
-        _ => '',
-      },
-      captionOf: (position) => _celEntryCaption(entries[position]),
+    if (entries.isEmpty) {
+      return const ExportNavAxis(length: 0);
+    }
+    final (_, sheets) = _celBundleSpan(
+      entries,
+      _celPosition.clamp(0, entries.length - 1),
+    );
+    return ExportNavAxis(
+      length: sheets.length,
+      captionOf: (position) =>
+          _celEntryCaption(sheets[position.clamp(0, sheets.length - 1)]),
     );
   }
 
@@ -1240,8 +1471,9 @@ class ExportDialogState extends State<ExportDialog> {
           return null;
         }
         final position = _celPosition.clamp(0, entries.length - 1);
-        return '${_celEntryCaption(entries[position])} · '
-            '${position + 1} / ${entries.length}';
+        final (start, sheets) = _celBundleSpan(entries, position);
+        return '${_celEntryFileName(entries[position])} · '
+            '${position - start + 1} / ${sheets.length}';
       case ExportTab.timesheet:
         final plan = _timesheetPagePlan();
         if (plan.isEmpty) {
@@ -2536,12 +2768,22 @@ class ExportDialogState extends State<ExportDialog> {
           },
         );
       case ExportTab.cels:
+        final plan = _celGroupPlan();
+        final entries = _celEntries(plan);
+        final start = entries.isEmpty
+            ? 0
+            : _celBundleSpan(
+                entries,
+                _celPosition.clamp(0, entries.length - 1),
+              ).$1;
         return ExportNavBar(
-          axis: _celsAxis(_celGroupPlan()),
-          position: _celPosition,
+          axis: _celsAxis(plan),
+          position: entries.isEmpty
+              ? 0
+              : _celPosition.clamp(0, entries.length - 1) - start,
           enabled: !_isExporting,
           onChanged: (position) {
-            setState(() => _celPosition = position);
+            setState(() => _celPosition = start + position);
             _refreshPreview();
           },
         );
@@ -2599,38 +2841,19 @@ class ExportDialogState extends State<ExportDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Container(
-              decoration: ShapeDecoration(
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(color: theme.dividerColor),
-                ),
-              ),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.all(8),
-              // The preview shows the CROPPED RESULT alone (v10: 오버레이
-              // 없음) — or the plan headline while nothing has resolved.
-              child: AnimatedBuilder(
-                animation: _preview,
-                builder: (context, _) {
-                  final image = _preview.image;
-                  if (image == null) {
-                    return Text(
-                      _planHeadline(),
-                      key: const ValueKey<String>('export-plan-headline'),
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodySmall,
-                    );
-                  }
-                  return RawImage(
-                    key: const ValueKey<String>('export-preview-image'),
-                    image: image,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.medium,
-                  );
-                },
-              ),
-            ),
+            // The Cels tab splits the zone: the cels that will be written on
+            // the left, the picked one on the right (유저 2026-09-09: 「미리보기
+            // 영역을 왼쪽 오른쫑으로 나눠서, 왼쪽에 출력될 셀 리스트」).
+            child: _tab == ExportTab.cels
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(width: 190, child: _celBundleList(theme)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _previewWell(theme)),
+                    ],
+                  )
+                : _previewWell(theme),
           ),
           if (navBar != null) ...[const SizedBox(height: 6), navBar],
           if (transport != null) ...[
@@ -2865,32 +3088,20 @@ class ExportDialogState extends State<ExportDialog> {
         delta: withDelta ? _overrides.deltaFor(_activeCut.id) : null,
       );
 
-  /// Writes a per-layer include for the ACTIVE cut — storing null when
-  /// the wish equals the rule outcome, so the delta stays exactly the
-  /// hand exceptions (Reset = clear, preset switches stay live).
-  void _writeLayerOverride(Layer layer, bool include) {
-    final rule = _activeCelsSelection(withDelta: false).includes(layer);
-    final value = include == rule ? null : include;
-    final cutId = _activeCut.id;
-    _session.repository.updateExportOverrides(
-      (overrides) => overrides.withCelsDelta(
-        cutId,
-        (overrides.deltaFor(cutId) ?? ExportCelsCutDelta()).withLayerOverride(
-          layer.id,
-          value,
-        ),
-      ),
-    );
-    setState(() {});
-    _refreshPreview();
-  }
-
-  void _clearOverridesFor(Iterable<LayerId> ids) {
+  /// Ticks or unticks [rows] for the ACTIVE cut — storing null where the
+  /// wish equals the rule outcome, so the delta stays exactly the hand
+  /// exceptions (Reset = clear, preset switches re-apply the rule). A row
+  /// tick and a folder tick (every leaf at once) are one write.
+  void _toggleCelRows(Iterable<Layer> rows, bool include) {
+    final rule = _activeCelsSelection(withDelta: false);
     final cutId = _activeCut.id;
     _session.repository.updateExportOverrides((overrides) {
       var delta = overrides.deltaFor(cutId) ?? ExportCelsCutDelta();
-      for (final id in ids) {
-        delta = delta.withLayerOverride(id, null);
+      for (final row in rows) {
+        delta = delta.withLayerOverride(
+          row.id,
+          include == rule.includes(row) ? null : include,
+        );
       }
       return overrides.withCelsDelta(cutId, delta);
     });
@@ -2898,36 +3109,93 @@ class ExportDialogState extends State<ExportDialog> {
     _refreshPreview();
   }
 
-  /// The label the Layers accordion edits: the current nav cel's base.
-  Layer? _currentCelLabel() {
-    final entries = _celEntries(_celGroupPlan());
-    if (entries.isEmpty) {
-      return null;
-    }
-    final entry = entries[_celPosition.clamp(0, entries.length - 1)];
-    if (entry is ExportCelGroupTask && entry.cut.id == _activeCut.id) {
-      return entry.baseLayer;
-    }
-    final selection = _activeCelsSelection();
-    for (final layer in selection.celLayers) {
-      if (!isAttachedLayer(layer)) {
-        return layer;
-      }
-    }
-    return null;
+  /// The cel list's tick: whether the bundle on [axis] is written.
+  void _toggleCelBundle(Layer axis, bool skipped) {
+    final cutId = _activeCut.id;
+    _session.repository.updateExportOverrides(
+      (overrides) => overrides.withCelsDelta(
+        cutId,
+        (overrides.deltaFor(cutId) ?? ExportCelsCutDelta()).withBaseSkipped(
+          axis.id,
+          skipped,
+        ),
+      ),
+    );
+    setState(() {});
+    _refreshPreview();
   }
 
-  bool _isAttachedRow(Layer layer) => layer.attachedToLayerId != null;
+  /// Reset: the cut back to the rules and every cel ticked.
+  void _clearCelDelta() {
+    final cutId = _activeCut.id;
+    _session.repository.updateExportOverrides(
+      (overrides) => overrides.withCelsDelta(cutId, null),
+    );
+    setState(() {});
+    _refreshPreview();
+  }
 
+  /// Whether the active cut's rows deviate from the preset — what the
+  /// 「커스텀」 pill shows. A state of the delta, not a fifth preset.
+  bool get _celSelectionIsCustom =>
+      _overrides.deltaFor(_activeCut.id)?.layerOverrides.isNotEmpty ?? false;
+
+  /// A preset press drops the row exceptions (the cel ticks stay) and
+  /// stores the preset in the spec, where presets are saved.
+  void _applyCelPreset(CelsSelectionPreset preset) {
+    final cutId = _activeCut.id;
+    _session.repository.updateExportOverrides((overrides) {
+      final delta = overrides.deltaFor(cutId);
+      return delta == null
+          ? overrides
+          : overrides.withCelsDelta(cutId, delta.withoutLayerOverrides());
+    });
+    _updateSpec(_specs.cels.copyWith(selection: preset));
+  }
+
+  /// The layer list's rows: the cut's stack in the TIMELINE's display
+  /// order, so the list reads exactly as the rail does.
+  List<Layer> _celListRows() => horizontalLayerDisplayOrder(_activeCut.layers);
+
+  /// The rows a folder row stands for: its subtree's tickable leaves.
+  List<Layer> _celFolderLeaves(Layer folder) => [
+    for (final layer in _activeCut.layers.subtreeMembersOf(folder.id))
+      if (!layer.kind.groupsLayers && _celRowIsTickable(layer)) layer,
+  ];
+
+  /// Paper is APPLIED, not ticked; rows that hold no cel are not ticked.
+  bool _celRowIsTickable(Layer layer) =>
+      layer.kind.exportsCels && !isExportPaperRow(layer);
+
+  /// Scope-grid entries: one per cut, and ONE per 겸용 group — the siblings
+  /// share a cell labelled with their joined name and toggle together
+  /// (유저 2026-09-09: 「컷 리스트에도 한 칸 … 겸용컷 비포함이란게 불가능하도록」).
   List<ExportCutEntry> _scopeCutEntries() {
+    final project = _session.repository.requireProject();
     final cuts = resolveExportCuts(
-      project: _session.repository.requireProject(),
+      project: project,
       activeCutId: _activeCut.id,
       range: ExportRange.allCuts,
     );
-    return [
-      for (var i = 0; i < cuts.length; i += 1) (id: cuts[i].id, number: i + 1),
-    ];
+    final seen = <CutId>{};
+    final entries = <ExportCutEntry>[];
+    for (var i = 0; i < cuts.length; i += 1) {
+      final cut = cuts[i];
+      if (!seen.add(cut.id)) {
+        continue;
+      }
+      final group = <CutId>{cut.id, ...linkedCutSiblings(project, cutId: cut.id)};
+      seen.addAll(group);
+      entries.add((
+        ids: [
+          for (final candidate in cuts)
+            if (group.contains(candidate.id)) candidate.id,
+        ],
+        label: celGroupCutName(project, cut),
+        number: i + 1,
+      ));
+    }
+    return entries;
   }
 
   Widget _scopeCutGrid() {
@@ -2936,10 +3204,14 @@ class ExportDialogState extends State<ExportDialog> {
       cuts: entries,
       isIncluded: _overrides.cutIncluded,
       enabled: !_isExporting,
-      onToggle: (id, included) {
-        _session.repository.updateExportOverrides(
-          (overrides) => overrides.withCutIncluded(id, included),
-        );
+      onToggle: (ids, included) {
+        _session.repository.updateExportOverrides((overrides) {
+          var next = overrides;
+          for (final id in ids) {
+            next = next.withCutIncluded(id, included);
+          }
+          return next;
+        });
         setState(() {});
         _refreshPreview();
       },
@@ -2954,10 +3226,12 @@ class ExportDialogState extends State<ExportDialog> {
         _session.repository.updateExportOverrides((overrides) {
           var next = overrides;
           for (final entry in entries) {
-            next = next.withCutIncluded(
-              entry.id,
-              entry.number >= start && entry.number <= end,
-            );
+            for (final id in entry.ids) {
+              next = next.withCutIncluded(
+                id,
+                entry.number >= start && entry.number <= end,
+              );
+            }
           }
           return next;
         });
@@ -2967,222 +3241,251 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
+  /// The Cels module's body (v3, 2026-09-09): the label and take pickers,
+  /// 적용/추가, the two 선택 groups, then the cut's stack as the timeline
+  /// draws it — each row led by the dot that ticks it.
   Widget _celsAccordionBody() {
     final theme = Theme.of(context);
     final spec = _specs.cels;
+    final strings = AppText.strings;
     final selection = _activeCelsSelection();
-    final labels = [
-      for (final layer in selection.celLayers)
-        if (!_isAttachedRow(layer)) layer,
-    ];
-    final current = _currentCelLabel();
-    final entries = _celEntries(_celGroupPlan());
-
-    void jumpToLabel(Layer label) {
-      for (var i = 0; i < entries.length; i += 1) {
-        final entry = entries[i];
-        final matches = switch (entry) {
-          ExportCelGroupTask(:final baseLayer) => baseLayer.id == label.id,
-          ExportInstructionTask(:final layer) => layer.id == label.id,
-          _ => false,
-        };
-        if (matches) {
-          setState(() => _celPosition = i);
-          _refreshPreview();
-          return;
-        }
-      }
-    }
-
-    final includedIds = {
-      for (final layer in selection.celLayers) layer.id,
-      for (final layer in selection.instructionLayers) layer.id,
-    };
-    final addCandidates = [
-      for (final layer in _activeCut.layers)
-        if (!includedIds.contains(layer.id) &&
-            !_isAttachedRow(layer) &&
-            layer.kind.exportsCels)
-          layer,
-    ];
-
+    final custom = _celSelectionIsCustom;
+    ExportPillItem toggle(String keyValue, String label, bool on, CelsExportSpec Function() write) =>
+        ExportPillItem(
+          keyValue: keyValue,
+          label: label,
+          selected: on,
+          onTap: _isExporting ? null : () => _updateSpec(write()),
+        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final label in labels)
-          ExportLayerRow(
-            key: ValueKey<String>('export-cels-label-${label.id.value}'),
-            layer: label,
-            selected: current?.id == label.id,
-            onTap: () => jumpToLabel(label),
-            onRemove: _isExporting
-                ? null
-                : () => _writeLayerOverride(label, false),
-          ),
-        for (final layer in selection.instructionLayers)
-          ExportLayerRow(
-            key: ValueKey<String>('export-cels-label-${layer.id.value}'),
-            layer: layer,
-            onTap: () => jumpToLabel(layer),
-            onRemove: _isExporting
-                ? null
-                : () => _writeLayerOverride(layer, false),
-          ),
-        Divider(height: 8, color: theme.dividerColor),
-        _specToggle(
-          keyValue: 'export-cels-instruction-toggle',
-          label: AppText.strings.exInstructionLayer,
-          value: spec.includeInstructionLayers,
-          write: (value) => spec.copyWith(includeInstructionLayers: value),
-        ),
-        const Tooltip(
-          message: '용지 레이어 타입이 도입되면 여기서 합류합니다.',
-          child: ExportToggleRow(label: '용지', value: false, onChanged: null),
-        ),
-        const ExportMarkSlotsRow(),
-        Divider(height: 8, color: theme.dividerColor),
-        Text(
-          'ADD FROM TIMELINE',
-          style: theme.textTheme.labelSmall?.copyWith(
-            fontSize: 8,
-            letterSpacing: 1.1,
-            color: theme.colorScheme.onSurfaceVariant,
+        ExportModuleRow(
+          label: strings.exLabel,
+          // Both pickers give width up (their text ellipsising) before the
+          // row overflows a narrow column.
+          child: Row(
+            children: [
+              Flexible(child: _celLabelPicker(spec)),
+              const SizedBox(width: 5),
+              Flexible(child: _celTakePicker(spec)),
+            ],
           ),
         ),
-        if (addCandidates.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              'Every timeline row is already in.',
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontSize: 9,
-                color: theme.colorScheme.onSurfaceVariant,
+        ExportModuleRow(
+          label: strings.exApply,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ExportPillStrip(
+              items: [
+                toggle(
+                  'export-cels-apply-paper',
+                  strings.exPaperLabel,
+                  spec.applyPaper,
+                  () => spec.copyWith(applyPaper: !spec.applyPaper),
+                ),
+              ],
+            ),
+          ),
+        ),
+        ExportModuleRow(
+          label: strings.exAdd,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ExportPillStrip(
+              items: [
+                toggle(
+                  'export-cels-add-art',
+                  strings.exArtLabel,
+                  spec.addArt,
+                  () => spec.copyWith(addArt: !spec.addArt),
+                ),
+              ],
+            ),
+          ),
+        ),
+        ExportModuleRow(
+          label: strings.exSelect,
+          // Two strips, not one: the presets and 커스텀 are different kinds
+          // of thing (유저: 「그룹 다르니 두개 그룹 나눠서」).
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              ExportPillStrip(
+                items: [
+                  for (final preset in CelsSelectionPreset.values)
+                    ExportPillItem(
+                      keyValue: 'export-cels-select-${preset.jsonValue}',
+                      label: exportCelPresetLabel(preset),
+                      selected: !custom && spec.selection == preset,
+                      onTap: _isExporting
+                          ? null
+                          : () => _applyCelPreset(preset),
+                    ),
+                ],
               ),
-            ),
-          )
-        else
-          for (final layer in addCandidates)
-            ExportLayerRow(
-              key: ValueKey<String>('export-cels-add-${layer.id.value}'),
-              layer: layer,
-              dimmed: true,
-              includeDot: false,
-              dotKey: ValueKey<String>('export-cels-adddot-${layer.id.value}'),
-              onDotTap: _isExporting
-                  ? null
-                  : () => _writeLayerOverride(layer, true),
-            ),
+              ExportPillStrip(
+                items: [
+                  ExportPillItem(
+                    keyValue: 'export-cels-select-custom',
+                    label: strings.exSelCustom,
+                    selected: custom,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Divider(height: 8, color: theme.dividerColor),
+        for (final layer in _celListRows()) _celListRow(layer, selection),
       ],
     );
   }
 
-  Widget _celsLayersAccordionBody(Layer label) {
-    final spec = _specs.cels;
-    final selection = _activeCelsSelection();
-    final attached = attachedLayersOf(label.id, _activeCut.layers);
-    final members = [
-      for (final layer in _activeCut.layers)
-        if (layer.id == label.id ||
-            attached.any((candidate) => candidate.id == layer.id))
-          layer,
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final member in members)
-          ExportLayerRow(
-            key: ValueKey<String>('export-cels-member-${member.id.value}'),
-            layer: member,
-            includeDot: selection.includes(member),
-            dotKey: ValueKey<String>(
-              'export-cels-memberdot-${member.id.value}',
-            ),
-            trailingTag: member.id == label.id
-                ? '기준'
-                : ExportLayerRow.attachTag(member),
-            // The base leaves through the label's ×, not its own dot.
-            onDotTap: member.id == label.id || _isExporting
-                ? null
-                : () =>
-                      _writeLayerOverride(member, !selection.includes(member)),
+  /// One list row — a folder ticks its leaves together and reads half when
+  /// they disagree; paper and cel-less rows keep a dot nobody can tick.
+  Widget _celListRow(Layer layer, ExportCelsSelection selection) {
+    final layers = _activeCut.layers;
+    final key = ValueKey<String>('export-cels-row-${layer.id.value}');
+    if (layer.kind.groupsLayers) {
+      final leaves = _celFolderLeaves(layer);
+      final on = leaves.where(selection.includes).length;
+      return ExportCelLayerRow(
+        key: key,
+        keyPrefix: 'export-cels',
+        layer: layer,
+        layers: layers,
+        included: leaves.isNotEmpty && on == leaves.length,
+        indeterminate: on > 0 && on < leaves.length,
+        onToggle: leaves.isEmpty || _isExporting
+            ? null
+            : () => _toggleCelRows(leaves, on != leaves.length),
+      );
+    }
+    final included = selection.includes(layer);
+    return ExportCelLayerRow(
+      key: key,
+      keyPrefix: 'export-cels',
+      layer: layer,
+      layers: layers,
+      included: included,
+      onToggle: _celRowIsTickable(layer) && !_isExporting
+          ? () => _toggleCelRows([layer], !included)
+          : null,
+    );
+  }
+
+  /// 「원화 작감 ▾」 — the timeline's own label flyout behind a button that
+  /// wears the picked label's colour (유저: 「그냥 원화작감이라고 심플하게
+  /// 텍스트 두고, 버튼 색만 색라벨 색 그대로」).
+  Widget _celLabelPicker(CelsExportSpec spec) {
+    final theme = Theme.of(context);
+    final fill = layerMarkColor(spec.label);
+    final ink = timelineTextOnColor(fill);
+    return AbsorbPointer(
+      absorbing: _isExporting,
+      child: PanelFlyoutTrigger(
+        key: const ValueKey<String>('export-cels-label-picker'),
+        tooltip: AppText.strings.tlLayerMark,
+        padding: EdgeInsets.zero,
+        entriesBuilder: () => layerMarkFlyoutEntries(
+          onSelected: (mark) => _updateSpec(
+            spec.copyWith(label: mark.withTake(LayerMark.firstTake)),
           ),
-        Divider(height: 8, color: Theme.of(context).dividerColor),
-        _specToggle(
-          keyValue: 'export-cels-sync-toggle',
-          label: AppText.strings.exSyncAttach,
-          value: spec.includeSyncedAttach,
-          write: (value) => spec.copyWith(includeSyncedAttach: value),
         ),
-        _specToggle(
-          keyValue: 'export-cels-free-toggle',
-          label: AppText.strings.exFreeAttach,
-          value: spec.includeFreeAttach,
-          write: (value) => spec.copyWith(includeFreeAttach: value),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
+          decoration: ShapeDecoration(
+            color: fill,
+            shape: AppShapes.container(AppShapes.wellRadius),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  exportCelLabelText(spec.label),
+                  key: const ValueKey<String>('export-cels-label-text'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(color: ink),
+                ),
+              ),
+              Icon(Icons.arrow_drop_down, size: 14, color: ink),
+            ],
+          ),
         ),
-        _specToggle(
-          keyValue: 'export-cels-folder-toggle',
-          label: AppText.strings.exFolderMembers,
-          value: spec.includeFolderMembers,
-          write: (value) => spec.copyWith(includeFolderMembers: value),
+      ),
+    );
+  }
+
+  /// 「테이크 최신 ▾」 — the timeline's take flyout plus the export's one
+  /// added row, 「최신」.
+  Widget _celTakePicker(CelsExportSpec spec) {
+    final theme = Theme.of(context);
+    final take = spec.take;
+    return AbsorbPointer(
+      absorbing: _isExporting,
+      child: PanelFlyoutTrigger(
+        key: const ValueKey<String>('export-cels-take-picker'),
+        tooltip: AppText.strings.tlLayerTake,
+        padding: EdgeInsets.zero,
+        entriesBuilder: () => layerTakeFlyoutEntries(
+          selectedTake: take,
+          offerLatest: true,
+          onSelected: (next) => _updateSpec(spec.copyWith(take: next)),
         ),
-        const ExportMarkSlotsRow(),
-      ],
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: theme.dividerColor),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  take == null
+                      ? AppText.strings.exTakeLatest
+                      : AppText.strings.tlLayerTakeNumber(take),
+                  key: const ValueKey<String>('export-cels-take-text'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall,
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   List<Widget> _celsModules() {
     final spec = _specs.cels;
+    final plan = _celGroupPlan();
     final delta = _overrides.deltaFor(_activeCut.id);
-    final labelLevelIds = <LayerId>{
-      for (final layer in _activeCut.layers)
-        if (!_isAttachedRow(layer)) layer.id,
-    };
-    final hasLabelDelta =
-        delta != null && delta.layerOverrides.keys.any(labelLevelIds.contains);
-    final hasMemberDelta =
-        delta != null &&
-        delta.layerOverrides.keys.any((id) => !labelLevelIds.contains(id));
-    final currentLabel = _currentCelLabel();
     return [
       ExportAccordion(
         title: AppText.strings.exCels,
-        summary: '${_celGroupPlan().length} files',
+        summary: AppText.strings.exCelCount(plan.length),
         expansion: _expansion('cels', open: true),
-        reset: (
-          enabled: hasLabelDelta,
-          onTap: () => _clearOverridesFor(labelLevelIds),
-        ),
+        reset: (enabled: delta != null && !delta.isEmpty, onTap: _clearCelDelta),
         child: _celsAccordionBody(),
       ),
-      if (currentLabel != null)
-        ExportAccordion(
-          title: 'Layers · ${currentLabel.name}',
-          summary: '',
-          expansion: _expansion('layers', open: true),
-          reset: (
-            enabled: hasMemberDelta,
-            onTap: () => _clearOverridesFor({
-              for (final layer in _activeCut.layers)
-                if (_isAttachedRow(layer)) layer.id,
-            }),
-          ),
-          child: _celsLayersAccordionBody(currentLabel),
-        ),
       _formatAccordion(
         format: spec.format,
         capabilities: _stillOnlyCapabilities,
         onChanged: (format) => _updateSpec(spec.copyWith(format: format)),
-      ),
-      ExportAccordion(
-        title: AppText.strings.exFilter,
-        summary: spec.onTimesheetOnly ? 'Sheet only' : 'All visible',
-        expansion: _expansion('filter'),
-        child: _specToggle(
-          keyValue: 'export-cel-timesheet-only-toggle',
-          label: AppText.strings.exOnTimesheetOnly,
-          value: spec.onTimesheetOnly,
-          write: (value) => spec.copyWith(onTimesheetOnly: value),
-        ),
       ),
       _sizeAccordion(
         sizeMode: spec.sizeMode,
@@ -3192,7 +3495,10 @@ class ExportDialogState extends State<ExportDialog> {
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _namingAccordion(
-        summary: ExportCelNamingModule.summarize(spec.naming),
+        // The collapsed summary IS the first file's name — the one example
+        // the user can read (유저: 「미리보기 이름이니까 … 삭제」 of the
+        // editable-looking example line).
+        summary: _patternPreview(),
         isDefault: spec.naming == const ExportCelNaming(),
         onReset: () {
           _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
@@ -3237,10 +3543,9 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 5,
-              children: [
-                _chip(
+            ExportPillStrip(
+              items: [
+                _pill(
                   keyValue: 'export-tsformat-sheet',
                   label: AppText.strings.exSheetPng,
                   selected: spec.format == ExportTimesheetFormat.sheetImage,
@@ -3248,7 +3553,7 @@ class ExportDialogState extends State<ExportDialog> {
                     spec.copyWith(format: ExportTimesheetFormat.sheetImage),
                   ),
                 ),
-                _chip(
+                _pill(
                   keyValue: 'export-tsformat-xdts',
                   label: 'XDTS',
                   selected: spec.format == ExportTimesheetFormat.xdts,
@@ -3300,17 +3605,16 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 5,
-              children: [
-                _chip(
+            ExportPillStrip(
+              items: [
+                _pill(
                   keyValue: 'export-conteformat-pdf',
                   label: 'PDF',
                   selected: spec.format == ExportConteFormat.pdf,
                   onPick: () =>
                       _updateSpec(spec.copyWith(format: ExportConteFormat.pdf)),
                 ),
-                _chip(
+                _pill(
                   keyValue: 'export-conteformat-png',
                   label: AppText.strings.exSheetPng,
                   selected: spec.format == ExportConteFormat.pageImage,
@@ -3358,17 +3662,19 @@ class ExportDialogState extends State<ExportDialog> {
       const SizedBox(height: 6),
       ExportModuleRow(
         label: AppText.strings.brScale,
-        child: Wrap(
-          spacing: 5,
-          children: [
-            for (final step in const [1, 2, 3, 4])
-              _chip(
-                keyValue: '$keyPrefix-$step',
-                label: '${step}x',
-                selected: scale == step,
-                onPick: () => onPick(step),
-              ),
-          ],
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ExportPillStrip(
+            items: [
+              for (final step in const [1, 2, 3, 4])
+                _pill(
+                  keyValue: '$keyPrefix-$step',
+                  label: '${step}x',
+                  selected: scale == step,
+                  onPick: () => onPick(step),
+                ),
+            ],
+          ),
         ),
       ),
     ],
@@ -3511,17 +3817,19 @@ class ExportDialogState extends State<ExportDialog> {
         title: 'Form',
         summary: CutEnvelopePresets.byId(spec.formId).name,
         expansion: _expansion('envelope-form', open: true),
-        child: Wrap(
-          spacing: 5,
-          children: [
-            for (final form in CutEnvelopePresets.all)
-              _chip(
-                keyValue: 'export-envelope-form-${form.id}',
-                label: form.name,
-                selected: spec.formId == form.id,
-                onPick: () => _updateSpec(spec.copyWith(formId: form.id)),
-              ),
-          ],
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ExportPillStrip(
+            items: [
+              for (final form in CutEnvelopePresets.all)
+                _pill(
+                  keyValue: 'export-envelope-form-${form.id}',
+                  label: form.name,
+                  selected: spec.formId == form.id,
+                  onPick: () => _updateSpec(spec.copyWith(formId: form.id)),
+                ),
+            ],
+          ),
         ),
       ),
       ExportAccordion(
@@ -3531,10 +3839,9 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 5,
-              children: [
-                _chip(
+            ExportPillStrip(
+              items: [
+                _pill(
                   keyValue: 'export-envelope-paper-cut',
                   label: 'Cut size',
                   selected: cutPaper,
@@ -3542,7 +3849,7 @@ class ExportDialogState extends State<ExportDialog> {
                     spec.copyWith(paperMode: CutEnvelopePaperMode.cut),
                   ),
                 ),
-                _chip(
+                _pill(
                   keyValue: 'export-envelope-paper-sheet',
                   label: 'Real sheet',
                   selected: !cutPaper,
@@ -3556,18 +3863,20 @@ class ExportDialogState extends State<ExportDialog> {
               const SizedBox(height: 6),
               ExportModuleRow(
                 label: 'Width',
-                child: Wrap(
-                  spacing: 5,
-                  children: [
-                    for (final width in const [1240, 2480, 3508])
-                      _chip(
-                        keyValue: 'export-envelope-width-$width',
-                        label: '${width}px',
-                        selected: spec.sheetWidth == width,
-                        onPick: () =>
-                            _updateSpec(spec.copyWith(sheetWidth: width)),
-                      ),
-                  ],
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ExportPillStrip(
+                    items: [
+                      for (final width in const [1240, 2480, 3508])
+                        _pill(
+                          keyValue: 'export-envelope-width-$width',
+                          label: '${width}px',
+                          selected: spec.sheetWidth == width,
+                          onPick: () =>
+                              _updateSpec(spec.copyWith(sheetWidth: width)),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -3600,11 +3909,10 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 5,
-              children: [
+            ExportPillStrip(
+              items: [
                 for (final layer in SheetPaintLayer.values)
-                  _chip(
+                  _pill(
                     keyValue: 'export-envelope-layer-${layer.jsonValue}',
                     label: switch (layer) {
                       SheetPaintLayer.paper => 'Paper',
@@ -3622,24 +3930,26 @@ class ExportDialogState extends State<ExportDialog> {
             const SizedBox(height: 6),
             ExportModuleRow(
               label: 'Files',
-              child: Wrap(
-                spacing: 5,
-                children: [
-                  _chip(
-                    keyValue: 'export-envelope-files-flat',
-                    label: 'One image',
-                    selected: !spec.separateLayerFiles,
-                    onPick: () =>
-                        _updateSpec(spec.copyWith(separateLayerFiles: false)),
-                  ),
-                  _chip(
-                    keyValue: 'export-envelope-files-layered',
-                    label: 'One per layer',
-                    selected: spec.separateLayerFiles,
-                    onPick: () =>
-                        _updateSpec(spec.copyWith(separateLayerFiles: true)),
-                  ),
-                ],
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ExportPillStrip(
+                  items: [
+                    _pill(
+                      keyValue: 'export-envelope-files-flat',
+                      label: 'One image',
+                      selected: !spec.separateLayerFiles,
+                      onPick: () =>
+                          _updateSpec(spec.copyWith(separateLayerFiles: false)),
+                    ),
+                    _pill(
+                      keyValue: 'export-envelope-files-layered',
+                      label: 'One per layer',
+                      selected: spec.separateLayerFiles,
+                      onPick: () =>
+                          _updateSpec(spec.copyWith(separateLayerFiles: true)),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 5),

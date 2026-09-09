@@ -6,6 +6,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_canvas.dart';
@@ -257,7 +258,10 @@ void main() {
   group('cel export', () {
     test('a row inside a hidden folder does not export', () {
       final (s, member, folder) = sessionWithFolder();
-      const spec = CelsExportSpec();
+      // The default project's rows wear no colour label, and the export's
+      // default label is 원화 — so ask for the unlabelled rows. This test
+      // measures the folder's eye, not the label filter.
+      const spec = CelsExportSpec(label: LayerMark.none);
 
       final before = resolveExportCelsSelection(
         cut: s.activeCutOrNull!,

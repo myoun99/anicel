@@ -1010,23 +1010,14 @@ class LayerMarkChip extends StatelessWidget {
         key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
         tooltip: AppText.strings.tlLayerTake,
         padding: EdgeInsets.zero,
-        // ⛔No 「없음」. 유저 2026-08-27: 「테이크도 … 라벨없음 삭제해. 테이크는
-        // **기본값 T1**」 — a drawing is always some pass, so the first one is
-        // 1 rather than an absence. (색 라벨 keeps its 없음: 「색라벨은
-        // 라벨없음 그대로 두자」.)
-        entriesBuilder: () => [
-          for (final take in LayerMark.takeChoices)
-            PanelFlyoutItem(
-              keyValue: 'layer-take-option-$take',
-              label: AppText.strings.tlLayerTakeNumber(take),
-              selected: take == mark.take,
-              onSelected: () => onMarkSelected(layerId, mark.withTake(take)),
-            ),
-        ],
+        entriesBuilder: () => layerTakeFlyoutEntries(
+          selectedTake: mark.take,
+          onSelected: (take) => onMarkSelected(layerId, mark.withTake(take!)),
+        ),
         child: Semantics(
           label: AppText.strings.tlLayerTake,
           button: true,
-          child: _TakeText(mark: mark, axis: axis),
+          child: LayerTakeText(mark: mark, axis: axis),
         ),
       ),
     );
@@ -1058,86 +1049,187 @@ class LayerMarkChip extends StatelessWidget {
         // ⛔The revise list is not copied per process either: [revisesFor]
         // answers from the ONE [LayerRevise] set, so renaming a revise renames
         // it everywhere and 원화 can drop 동화검사 without the others noticing.
-        entriesBuilder: () => [
-          PanelFlyoutItem(
-            keyValue: 'layer-mark-option-none',
-            label: AppText.strings.tlLayerMarkNone,
-            swatch: layerMarkColor(LayerMark.none),
-            onSelected: () => onMarkSelected(layerId, LayerMark.none),
-          ),
-          for (final process in LayerProcess.values)
-            PanelFlyoutItem(
-              // 🚨THE KEY SAYS WHAT THE ROW DOES. A stage that opens a child
-              // is `…-stage-…`; a row that PICKS is `…-option-…`. They used
-              // to share a key and the submenu's 소재 collided with the parent
-              // it hung off — two widgets, one key, and every finder that
-              // touched either one broke.
-              keyValue: revisesFor(process).isEmpty
-                  ? 'layer-mark-option-${process.jsonValue}'
-                  : 'layer-mark-stage-${process.jsonValue}',
-              label: layerProcessLabel(process),
-              swatch: layerMarkColor(LayerMark(process: process)),
-              // 용지 carries no corrections, so it is a plain choice — no
-              // chevron, no second level, and picking it labels the row.
-              onSelected: revisesFor(process).isEmpty
-                  ? () => onMarkSelected(layerId, LayerMark(process: process))
-                  : null,
-              submenuBuilder: revisesFor(process).isEmpty
-                  ? null
-                  : () => [
-                      // 소재(上がり) first — 그 공정의 작업본이다. 이것이
-                      // 「수정 없음」 자리를 대신한다.
-                      for (final option in [
-                        LayerMark(process: process),
-                        for (final revise in revisesFor(process))
-                          LayerMark(process: process, revise: revise),
-                      ])
-                        PanelFlyoutItem(
-                          keyValue: 'layer-mark-option-${option.keySlug}',
-                          label: option.revise == null
-                              ? AppText.strings.tlLayerMarkSource
-                              : layerReviseLabel(option.revise!),
-                          swatch: layerMarkColor(option),
-                          onSelected: () => onMarkSelected(layerId, option),
-                        ),
-                    ],
-            ),
-        ],
+        entriesBuilder: () => layerMarkFlyoutEntries(
+          onSelected: (option) => onMarkSelected(layerId, option),
+        ),
         child: Semantics(
           label: AppText.strings.tlLayerMark,
           button: true,
-          // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
-          //
-          // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
-          // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
-          // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
-          // 읽는걸 기준으로** 설계하고있어」.
-          //
-          // ⚠️The first reading (stage on the right, from Japanese vertical
-          // writing) was right about the writing and wrong about the SURFACE:
-          // the rail is a left-to-right column of names, and one label
-          // reading the other way would be the exception.
-          //
-          // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
-          // 살리고싶어서」 — two columns keep the plate as short as one. The
-          // sheet stacks instead, because there the plate is wide and short.
-          child: _LabelPlate(
-            // ⚠️0.45 is the rail's own 「off」 alpha — the same one the onion
-            // and fx icons wear — so a hidden layer reads as off in one
-            // language rather than in three.
-            fill: !isVisible
-                ? layerMarkColor(mark).withValues(alpha: layerRailOffAlpha)
-                : layerMarkColor(mark),
-            columns: [
-              layerMarkChipText(mark).process,
-              layerMarkChipText(mark).revise,
-            ],
-            axis: axis,
-          ),
+          child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
         ),
       ),
     );
   }
+}
+
+/// The colour-label flyout's rows — 「라벨 없음」, then every stage, each
+/// opening its 上がり and corrections as a second level (유저 설계 I-4:
+/// 「호버하면 추가로 앵커팝오버로 수정라벨이 뜨도록. 즉 축으로서 2가지가
+/// 존재하도록」).
+///
+/// 🚨ONE LIST, TWO TRIGGERS. The rail's mark chip and the export window's
+/// label picker both open THIS (유저 2026-09-09: 「타임라인에서 색라벨 고르는
+/// 피커창 … 그거 그대로 공용화해서 재사용」); each hands in only what to do
+/// with the pick.
+List<PanelFlyoutEntry> layerMarkFlyoutEntries({
+  required void Function(LayerMark mark) onSelected,
+}) => [
+  PanelFlyoutItem(
+    keyValue: 'layer-mark-option-none',
+    label: AppText.strings.tlLayerMarkNone,
+    swatch: layerMarkColor(LayerMark.none),
+    onSelected: () => onSelected(LayerMark.none),
+  ),
+  for (final process in LayerProcess.values)
+    PanelFlyoutItem(
+      // 🚨THE KEY SAYS WHAT THE ROW DOES. A stage that opens a child is
+      // `…-stage-…`; a row that PICKS is `…-option-…`. They used to share a
+      // key and the submenu's 소재 collided with the parent it hung off — two
+      // widgets, one key, and every finder that touched either one broke.
+      keyValue: revisesFor(process).isEmpty
+          ? 'layer-mark-option-${process.jsonValue}'
+          : 'layer-mark-stage-${process.jsonValue}',
+      label: layerProcessLabel(process),
+      swatch: layerMarkColor(LayerMark(process: process)),
+      // 용지 carries no corrections, so it is a plain choice — no chevron,
+      // no second level, and picking it labels the row.
+      onSelected: revisesFor(process).isEmpty
+          ? () => onSelected(LayerMark(process: process))
+          : null,
+      submenuBuilder: revisesFor(process).isEmpty
+          ? null
+          : () => [
+              // 소재(上がり) first — 그 공정의 작업본이다. 이것이 「수정 없음」
+              // 자리를 대신한다.
+              for (final option in [
+                LayerMark(process: process),
+                for (final revise in revisesFor(process))
+                  LayerMark(process: process, revise: revise),
+              ])
+                PanelFlyoutItem(
+                  keyValue: 'layer-mark-option-${option.keySlug}',
+                  label: option.revise == null
+                      ? AppText.strings.tlLayerMarkSource
+                      : layerReviseLabel(option.revise!),
+                  swatch: layerMarkColor(option),
+                  onSelected: () => onSelected(option),
+                ),
+            ],
+    ),
+];
+
+/// The take flyout's rows — 1–9, and for the export window alone a leading
+/// 「최신」 ([offerLatest]) that selects with `null`.
+///
+/// ⛔No 「없음」. 유저 2026-08-27: 「테이크도 … 라벨없음 삭제해. 테이크는
+/// **기본값 T1**」 — a drawing is always some pass, so the first one is 1
+/// rather than an absence. (색 라벨 keeps its 없음: 「색라벨은 라벨없음 그대로
+/// 두자」.) 「최신」 is not an absence either: it is the export's rule 「the
+/// newest take of each row」, the one item the export added to this list
+/// (유저 2026-09-09: 「테이크 피커만 지금 최신이란 항목없으니 그거만 이번에만
+/// 추가」).
+List<PanelFlyoutEntry> layerTakeFlyoutEntries({
+  required int? selectedTake,
+  required void Function(int? take) onSelected,
+  bool offerLatest = false,
+}) => [
+  if (offerLatest)
+    PanelFlyoutItem(
+      keyValue: 'layer-take-option-latest',
+      label: AppText.strings.exTakeLatest,
+      selected: selectedTake == null,
+      onSelected: () => onSelected(null),
+    ),
+  for (final take in LayerMark.takeChoices)
+    PanelFlyoutItem(
+      keyValue: 'layer-take-option-$take',
+      label: AppText.strings.tlLayerTakeNumber(take),
+      selected: take == selectedTake,
+      onSelected: () => onSelected(take),
+    ),
+];
+
+/// The colour plate alone, read-only: [LayerMarkChip]'s left half without
+/// its trigger. The export window's layer list draws the rail's own plate
+/// here (유저 2026-09-09: 「타임라인 아이콘이나 뭐나 싹 다 그대로 재사용」).
+class LayerMarkPlate extends StatelessWidget {
+  const LayerMarkPlate({
+    super.key,
+    required this.mark,
+    this.isVisible = true,
+    this.axis = Axis.horizontal,
+  });
+
+  final LayerMark mark;
+
+  /// A hidden row's plate wears the rail's 「off」 alpha (F-56).
+  final bool isVisible;
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) {
+    // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
+    //
+    // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
+    // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
+    // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
+    // 읽는걸 기준으로** 설계하고있어」.
+    //
+    // ⚠️The first reading (stage on the right, from Japanese vertical
+    // writing) was right about the writing and wrong about the SURFACE:
+    // the rail is a left-to-right column of names, and one label reading
+    // the other way would be the exception.
+    //
+    // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
+    // 살리고싶어서」 — two columns keep the plate as short as one. The sheet
+    // stacks instead, because there the plate is wide and short.
+    return _LabelPlate(
+      // ⚠️0.45 is the rail's own 「off」 alpha — the same one the onion and
+      // fx icons wear — so a hidden layer reads as off in one language
+      // rather than in three.
+      fill: !isVisible
+          ? layerMarkColor(mark).withValues(alpha: layerRailOffAlpha)
+          : layerMarkColor(mark),
+      columns: [
+        layerMarkChipText(mark).process,
+        layerMarkChipText(mark).revise,
+      ],
+      axis: axis,
+    );
+  }
+}
+
+/// The rail's two label plates side by side at their slot widths, read-only
+/// — the mark plate and, unless [showTake] is off, the take text. What a
+/// surface that lists layers but does not edit their labels shows.
+class LayerMarkPlates extends StatelessWidget {
+  const LayerMarkPlates({
+    super.key,
+    required this.mark,
+    this.isVisible = true,
+    this.showTake = true,
+  });
+
+  final LayerMark mark;
+  final bool isVisible;
+  final bool showTake;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SizedBox(
+        width: layerMarkSlotWidth,
+        child: LayerMarkPlate(mark: mark, isVisible: isVisible),
+      ),
+      if (showTake)
+        SizedBox(
+          width: layerTakeSlotWidth,
+          child: LayerTakeText(mark: mark, axis: Axis.horizontal),
+        ),
+    ],
+  );
 }
 
 /// A6 (2026-08-17): the circle became the label PLATE — the full slot,
@@ -1400,8 +1492,8 @@ class RailSwipeColumnPointer extends StatelessWidget {
 /// to match — [layerRowNameStyle], the very style the layer's name is set
 /// in, so the two stay one decision. A copied `TextStyle` here would be the
 /// second place to edit the day that style changes.
-class _TakeText extends StatelessWidget {
-  const _TakeText({required this.mark, required this.axis});
+class LayerTakeText extends StatelessWidget {
+  const LayerTakeText({super.key, required this.mark, required this.axis});
 
   final LayerMark mark;
   final Axis axis;

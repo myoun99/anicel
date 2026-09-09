@@ -6,14 +6,25 @@ import 'layer_id.dart';
 /// what the user hand-flipped away from the preset rules' outcome for one
 /// cut. Reset = clearing the delta.
 class ExportCelsCutDelta {
-  ExportCelsCutDelta({Map<LayerId, bool> layerOverrides = const {}})
-    : layerOverrides = Map.unmodifiable(layerOverrides);
+  ExportCelsCutDelta({
+    Map<LayerId, bool> layerOverrides = const {},
+    Set<LayerId> skippedBases = const {},
+  }) : layerOverrides = Map.unmodifiable(layerOverrides),
+       skippedBases = Set.unmodifiable(skippedBases);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
-  /// NAMES are not unique, ids are.
+  /// NAMES are not unique, ids are. A non-empty map is what makes the
+  /// 선택 pills read 「커스텀」.
   final Map<LayerId, bool> layerOverrides;
 
-  bool get isEmpty => layerOverrides.isEmpty;
+  /// Output cels the user unticked in the cel list (v3.2, 유저 2026-09-09:
+  /// 「출력 셀쪽에 최종적으로 출력할 셀 고를수있게 … 기본값은 on」), keyed
+  /// by the bundle's axis layer. Separate from [layerOverrides] on
+  /// purpose: unticking a CEL says "do not write this file" and leaves the
+  /// row selection alone, so the two questions never share a flag.
+  final Set<LayerId> skippedBases;
+
+  bool get isEmpty => layerOverrides.isEmpty && skippedBases.isEmpty;
 
   ExportCelsCutDelta withLayerOverride(LayerId id, bool? include) {
     final next = Map<LayerId, bool>.from(layerOverrides);
@@ -22,23 +33,42 @@ class ExportCelsCutDelta {
     } else {
       next[id] = include;
     }
-    return ExportCelsCutDelta(layerOverrides: next);
+    return ExportCelsCutDelta(layerOverrides: next, skippedBases: skippedBases);
   }
+
+  ExportCelsCutDelta withBaseSkipped(LayerId id, bool skipped) {
+    final next = Set<LayerId>.from(skippedBases);
+    if (skipped) {
+      next.add(id);
+    } else {
+      next.remove(id);
+    }
+    return ExportCelsCutDelta(layerOverrides: layerOverrides, skippedBases: next);
+  }
+
+  /// The row exceptions dropped, the cel ticks kept — pressing a 선택
+  /// preset re-applies the rule without touching which files are written.
+  ExportCelsCutDelta withoutLayerOverrides() =>
+      ExportCelsCutDelta(skippedBases: skippedBases);
 
   Map<String, dynamic> toJson() => {
     'layerOverrides': {
       for (final entry in layerOverrides.entries)
         entry.key.value: entry.value,
     },
+    if (skippedBases.isNotEmpty)
+      'skippedBases': [for (final id in skippedBases) id.value]..sort(),
   };
 
   static ExportCelsCutDelta fromJson(Map<String, dynamic> json) {
     final raw = json['layerOverrides'] as Map<String, dynamic>? ?? const {};
+    final skipped = json['skippedBases'] as List<dynamic>? ?? const [];
     return ExportCelsCutDelta(
       layerOverrides: {
         for (final entry in raw.entries)
           LayerId(entry.key): entry.value as bool,
       },
+      skippedBases: {for (final id in skipped) LayerId(id as String)},
     );
   }
 
@@ -46,13 +76,17 @@ class ExportCelsCutDelta {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ExportCelsCutDelta &&
-          mapEquals(other.layerOverrides, layerOverrides);
+          mapEquals(other.layerOverrides, layerOverrides) &&
+          setEquals(other.skippedBases, skippedBases);
 
   @override
-  int get hashCode => Object.hashAllUnordered([
-    for (final entry in layerOverrides.entries)
-      Object.hash(entry.key, entry.value),
-  ]);
+  int get hashCode => Object.hash(
+    Object.hashAllUnordered([
+      for (final entry in layerOverrides.entries)
+        Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAllUnordered(skippedBases),
+  );
 }
 
 /// PROJECT-side export state (v10: 컷 체크=프로젝트 저장): which cuts the

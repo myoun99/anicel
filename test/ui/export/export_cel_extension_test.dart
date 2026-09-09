@@ -8,6 +8,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -38,11 +40,13 @@ void main() {
                 Layer(
                   id: const LayerId('a'),
                   name: 'A',
+                  mark: const LayerMark(process: LayerProcess.key),
                   frames: [frame('f1', '1'), frame('f2', '2')],
                 ),
                 Layer(
                   id: const LayerId('b'),
                   name: 'A',
+                  mark: const LayerMark(process: LayerProcess.key),
                   frames: [frame('f3', '1')],
                 ),
                 createCameraLayer(cutId: const CutId('cut')),

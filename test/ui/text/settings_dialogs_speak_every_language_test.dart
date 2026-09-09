@@ -156,7 +156,7 @@ void main() {
   /// failure, put THAT in.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 134;
+  const untranslatedElsewhere = 120;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

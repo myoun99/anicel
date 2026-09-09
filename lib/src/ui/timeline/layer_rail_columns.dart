@@ -218,6 +218,40 @@ const double layerRailGuideWidth = 8;
 
 double layerRailNameIndent(int depth) => depth * layerRailGuideWidth;
 
+/// The nesting guides — one hairline per folder level, drawn in the indent
+/// the name gives up (유저 2026-08-29: the buttons keep one x at every
+/// depth, the NAME is what gives ground). Null at depth 0 so the caller
+/// adds nothing.
+///
+/// 🚨ONE DRAWING FOR EVERY SURFACE THAT LISTS THE STACK: the timeline row
+/// and the export window's layer list (유저 2026-09-09: 「폴더는 지금 폴더
+/// 내부 레이어를 ㅣ 로 표현하는데 그런거 전부」).
+Widget? layerRailDepthGuides(Axis axis, int depth, {required Color color}) {
+  if (depth == 0) return null;
+  final horizontal = axis == Axis.horizontal;
+  return alongBox(
+    axis,
+    layerRailNameIndent(depth),
+    child: Flex(
+      direction: axis,
+      children: [
+        for (var level = 0; level < depth; level += 1)
+          alongBox(
+            axis,
+            layerRailGuideWidth,
+            child: Center(
+              child: SizedBox(
+                width: horizontal ? 1 : double.infinity,
+                height: horizontal ? double.infinity : 1,
+                child: ColoredBox(color: color),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 /// The leading run's slots, in the order [layerRailLeadingCells] emits them
 /// — the twin of [LayerRailTrailingSlot], and for the same reason: a host
 /// that wants to LOCATE a leading column must not re-add the widths in a

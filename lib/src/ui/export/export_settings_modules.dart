@@ -6,14 +6,16 @@ import '../../models/export_cel_naming.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
+import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
+import '../timeline/layer_label_controls.dart' show layerMarkChipText;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
-/// one accordion grammar, chip pickers, and the shared Format module.
+/// one accordion grammar, pill strips, and the shared Format module.
 /// Everything is stateless and callback-driven — the dialog owns the spec.
 
 const exportModuleGap = 6.0;
@@ -152,60 +154,15 @@ class _ResetChip extends StatelessWidget {
   }
 }
 
-/// One compact selectable chip (the picker unit). Selection = accent
-/// border + soft fill, color only.
-class ExportChip extends StatelessWidget {
-  const ExportChip({
-    super.key,
-    required this.label,
-    required this.selected,
-    this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
-    final disabled = onTap == null;
-    return ControlPressClaim(
-      onPressed: onTap,
-      child: InkWell(
-        onTap: silentPress(onTap),
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        child: Container(
-          padding: _chipPadding,
-          decoration: ShapeDecoration(
-            color: selected ? accent.withValues(alpha: 0.14) : null,
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(color: selected ? accent : theme.dividerColor),
-            ),
-          ),
-          child: Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: disabled
-                  ? theme.disabledColor
-                  : selected
-                  ? accent
-                  : theme.colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class ExportModuleRow extends StatelessWidget {
   const ExportModuleRow({super.key, required this.label, required this.child});
 
   final String label;
   final Widget child;
+
+  /// Wide enough for the longest row name the export tab uses (「폴더 생성」,
+  /// 「이름 지정」) so every pill strip starts at one x.
+  static const double labelWidth = 54;
 
   @override
   Widget build(BuildContext context) {
@@ -216,9 +173,11 @@ class ExportModuleRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 46,
+            width: labelWidth,
             child: Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -231,16 +190,175 @@ class ExportModuleRow extends StatelessWidget {
   }
 }
 
-/// A labelled row offering one chip per VALUE of a choice.
+/// One segment of an [ExportPillStrip].
+class ExportPillItem {
+  const ExportPillItem({
+    required this.keyValue,
+    required this.label,
+    required this.selected,
+    this.onTap,
+    this.tooltip,
+  });
+
+  /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
+  /// the row's contract.
+  final String keyValue;
+  final String label;
+  final bool selected;
+
+  /// Null = offered but refused: the pill keeps its place and loses its
+  /// tap (「없다가 생기는 UI 금지」).
+  final VoidCallback? onTap;
+  final String? tooltip;
+}
+
+/// 🚨THE ONE GROUPED-CHOICE CONTROL of the export window (유저 2026-09-09:
+/// 「여러개중 하나 선택한다거나 … 복수선택한다거나 그룹으로 묶여있는 선택은
+/// 이 ui 사용하도록 공용화」): joined pills in one outline, the chosen ones
+/// tinted accent. Whether the group is single- or multi-select is the
+/// CALLER's rule — the strip only shows which are on — so 선택(하나) and
+/// 이름 지정(여럿) wear one look. Selection is colour alone.
+///
+/// The other panels get the same control in their own round (board card
+/// `pill-group-everywhere`); this is the export window's half.
+///
+/// ⚠️Needs a BOUNDED width: its pills are [Flexible] so the strip shrinks
+/// instead of overflowing a narrow column. As a child of a `Row`, wrap it in
+/// `Flexible` yourself; under `Align`, `Wrap` or a `Column` it is fine.
+class ExportPillStrip extends StatelessWidget {
+  const ExportPillStrip({super.key, required this.items});
+
+  final List<ExportPillItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: ShapeDecoration(
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: BorderSide(color: theme.dividerColor),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < items.length; i += 1)
+            _pill(theme, accent, items[i], first: i == 0),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(
+    ThemeData theme,
+    Color accent,
+    ExportPillItem item, {
+    required bool first,
+  }) {
+    final pill = ExportPill(
+      key: ValueKey<String>(item.keyValue),
+      label: item.label,
+      selected: item.selected,
+      onTap: item.onTap,
+      leadingHairline: !first,
+    );
+    final tooltip = item.tooltip;
+    // Loose: a pill takes its own width while the strip fits, and gives
+    // width up (its label ellipsising) when the column is narrower than
+    // the strip — a strip never overflows its row.
+    return Flexible(
+      child: tooltip == null ? pill : Tooltip(message: tooltip, child: pill),
+    );
+  }
+}
+
+/// One drawn segment of an [ExportPillStrip] — the widget a test reaches
+/// through the item's key to read `selected`, `label` and `onTap`.
+class ExportPill extends StatelessWidget {
+  const ExportPill({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.leadingHairline,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  /// Every segment but the first draws the hairline that separates it
+  /// from the one before.
+  final bool leadingHairline;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = theme.colorScheme.primary;
+    return ControlPressClaim(
+      onPressed: onTap,
+      child: InkWell(
+        onTap: silentPress(onTap),
+        child: Container(
+          padding: _chipPadding,
+          decoration: BoxDecoration(
+            color: selected ? accent.withValues(alpha: 0.14) : null,
+            border: leadingHairline
+                ? Border(left: BorderSide(color: theme.dividerColor))
+                : null,
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              // A selected pill reads selected even when it takes no tap —
+              // 「커스텀」 is a state the delta puts the row in, not a button.
+              color: selected
+                  ? accent
+                  : onTap == null
+                  ? theme.disabledColor
+                  : theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How the export names a colour label in a button or a summary: the
+/// plate's two abbreviations as one reading (「원화 작감」), 「라벨 없음」 for
+/// none. The rail's plate writes the same two texts in its two columns.
+String exportCelLabelText(LayerMark label) {
+  if (label.isNone) {
+    return AppText.strings.tlLayerMarkNone;
+  }
+  final chip = layerMarkChipText(label);
+  return [chip.process, chip.revise].where((t) => t.isNotEmpty).join(' ');
+}
+
+/// The 선택 preset's name — on its pill and in a preset's summary line.
+String exportCelPresetLabel(CelsSelectionPreset preset) => switch (preset) {
+  CelsSelectionPreset.base => AppText.strings.exSelBase,
+  CelsSelectionPreset.attach => AppText.strings.exSelAttach,
+  CelsSelectionPreset.sheet => AppText.strings.exSelSheet,
+  CelsSelectionPreset.direction => AppText.strings.exSelDirection,
+};
+
+/// A labelled row offering one pill per VALUE of a choice.
 ///
 /// 🚨ONE LAW FOR EVERY PICKER ROW (the audit's clone scan, round 8): a
-/// chip keyed `<keyPrefix>-<keyOf(value)>`, labelled from [labelOf],
+/// pill keyed `<keyPrefix>-<keyOf(value)>`, labelled from [labelOf],
 /// shown selected by comparing the value with [selected], and selecting
 /// it on tap. Seven rows across the export, import and text-cel windows
 /// spelled that out by hand, and the key naming and selection-by-colour
 /// were promises each of them kept on its own.
 ///
-/// ⛔[enabledFor] refuses a VALUE, it does not hide it: the chip keeps its
+/// ⛔[enabledFor] refuses a VALUE, it does not hide it: the pill keeps its
 /// place and loses its tap (「없다가 생기는 UI 금지」).
 class ExportChoiceRow<T> extends StatelessWidget {
   const ExportChoiceRow({
@@ -253,12 +371,11 @@ class ExportChoiceRow<T> extends StatelessWidget {
     required this.labelOf,
     required this.onSelect,
     this.enabledFor,
-    this.spacing = 4,
   });
 
   final String label;
 
-  /// The chips are keyed `<keyPrefix>-<keyOf(value)>` — tests reach for
+  /// The pills are keyed `<keyPrefix>-<keyOf(value)>` — tests reach for
   /// those strings, so the prefix is part of the row's contract.
   final String keyPrefix;
 
@@ -271,24 +388,24 @@ class ExportChoiceRow<T> extends StatelessWidget {
   /// Null offers every value.
   final bool Function(T value)? enabledFor;
 
-  final double spacing;
-
   @override
   Widget build(BuildContext context) => ExportModuleRow(
     label: label,
-    child: Wrap(
-      spacing: spacing,
-      children: [
-        for (final value in values)
-          ExportChip(
-            key: ValueKey<String>('$keyPrefix-${keyOf(value)}'),
-            label: labelOf(value),
-            selected: value == selected,
-            onTap: enabledFor?.call(value) == false
-                ? null
-                : () => onSelect(value),
-          ),
-      ],
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(
+        items: [
+          for (final value in values)
+            ExportPillItem(
+              keyValue: '$keyPrefix-${keyOf(value)}',
+              label: labelOf(value),
+              selected: value == selected,
+              onTap: enabledFor?.call(value) == false
+                  ? null
+                  : () => onSelect(value),
+            ),
+        ],
+      ),
     ),
   );
 }
@@ -301,9 +418,9 @@ Widget exportModuleNote(BuildContext context, String text) => Text(
   ),
 );
 
-/// What the Format module offers in a tab: the LINEUP (v10 — every chip
-/// shows), with per-chip enablement + reason from the machine's actual
-/// encoders. A grayed chip says why on hover; nothing fails only at
+/// What the Format module offers in a tab: the LINEUP (v10 — every pill
+/// shows), with per-pill enablement + reason from the machine's actual
+/// encoders. A grayed pill says why on hover; nothing fails only at
 /// Export.
 class ExportFormatCapabilities {
   const ExportFormatCapabilities({
@@ -338,7 +455,7 @@ class ExportFormatCapabilities {
   bool isVideoEnabled(ExportVideoContainer container, ExportVideoCodec codec) =>
       videoEnabled?.call(container, codec) ?? true;
 
-  /// A container chip stays live while ANY of its codecs does.
+  /// A container pill stays live while ANY of its codecs does.
   bool isContainerEnabled(ExportVideoContainer container) {
     for (final codec in codecsFor(container)) {
       if (isVideoEnabled(container, codec)) {
@@ -388,38 +505,32 @@ class ExportFormatModule extends StatelessWidget {
     }
   }
 
-  Widget _maybeTooltip(String? reason, Widget chip) =>
-      reason == null ? chip : Tooltip(message: reason, child: chip);
-
-  /// The container chips. Choosing one lands on that container's first
+  /// The container pills. Choosing one lands on that container's first
   /// WRITABLE codec when the current one is off there — picking MOV must
   /// not leave a codec selected that MOV cannot hold.
   Widget _containerRow() => ExportModuleRow(
     label: AppText.strings.exVideo,
-    child: Wrap(
-      spacing: 5,
-      runSpacing: 4,
-      children: [
-        for (final container in capabilities.video.keys)
-          _maybeTooltip(
-            capabilities.isContainerEnabled(container)
-                ? null
-                : capabilities.reasonFor(
-                    container,
-                    capabilities.codecsFor(container).first,
-                  ),
-            ExportChip(
-              key: ValueKey<String>(
-                'export-format-container-${container.jsonValue}',
-              ),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(
+        items: [
+          for (final container in capabilities.video.keys)
+            ExportPillItem(
+              keyValue: 'export-format-container-${container.jsonValue}',
               label: container.label,
               selected: selection.isVideo && selection.container == container,
               onTap: enabled && capabilities.isContainerEnabled(container)
                   ? () => _change(_withContainer(container))
                   : null,
+              tooltip: capabilities.isContainerEnabled(container)
+                  ? null
+                  : capabilities.reasonFor(
+                      container,
+                      capabilities.codecsFor(container).first,
+                    ),
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 
@@ -444,17 +555,13 @@ class ExportFormatModule extends StatelessWidget {
 
   Widget _stillFormatRow() => ExportModuleRow(
     label: AppText.strings.exImage,
-    child: Wrap(
-      spacing: 5,
-      runSpacing: 4,
-      children: [
-        for (final still in capabilities.stills)
-          _maybeTooltip(
-            capabilities.isStillEnabled(still)
-                ? null
-                : 'Not available in this build yet.',
-            ExportChip(
-              key: ValueKey<String>('export-format-still-${still.jsonValue}'),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(
+        items: [
+          for (final still in capabilities.stills)
+            ExportPillItem(
+              keyValue: 'export-format-still-${still.jsonValue}',
               label: still.label,
               selected: selection.isStill && selection.stillFormat == still,
               onTap: enabled && capabilities.isStillEnabled(still)
@@ -465,25 +572,24 @@ class ExportFormatModule extends StatelessWidget {
                       ),
                     )
                   : null,
+              tooltip: capabilities.isStillEnabled(still)
+                  ? null
+                  : 'Not available in this build yet.',
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 
   Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
     label: AppText.strings.exCodec,
-    child: Wrap(
-      spacing: 5,
-      runSpacing: 4,
-      children: [
-        for (final codec in codecs)
-          _maybeTooltip(
-            capabilities.isVideoEnabled(selection.container, codec)
-                ? null
-                : capabilities.reasonFor(selection.container, codec),
-            ExportChip(
-              key: ValueKey<String>('export-format-codec-${codec.jsonValue}'),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(
+        items: [
+          for (final codec in codecs)
+            ExportPillItem(
+              keyValue: 'export-format-codec-${codec.jsonValue}',
               label: codec.label,
               selected: selection.videoCodec == codec,
               onTap:
@@ -491,9 +597,12 @@ class ExportFormatModule extends StatelessWidget {
                       capabilities.isVideoEnabled(selection.container, codec)
                   ? () => _change(selection.copyWith(videoCodec: codec))
                   : null,
+              tooltip: capabilities.isVideoEnabled(selection.container, codec)
+                  ? null
+                  : capabilities.reasonFor(selection.container, codec),
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 
@@ -544,31 +653,32 @@ class ExportFormatModule extends StatelessWidget {
     labelOf: (channels) => channels.name.toUpperCase(),
     onSelect: (channels) => _change(selection.copyWith(channels: channels)),
     enabledFor: (_) => enabled,
-    spacing: 5,
   );
 
   Widget _backgroundRow() => ExportModuleRow(
     label: 'BG',
-    child: Wrap(
-      spacing: 5,
-      children: [
-        ExportChip(
-          key: const ValueKey<String>('export-format-bg-white'),
-          label: AppText.strings.exWhite,
-          selected: selection.backgroundArgb == 0xFFFFFFFF,
-          onTap: enabled
-              ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
-              : null,
-        ),
-        ExportChip(
-          key: const ValueKey<String>('export-format-bg-black'),
-          label: AppText.strings.exBlack,
-          selected: selection.backgroundArgb == 0xFF000000,
-          onTap: enabled
-              ? () => _change(selection.copyWith(backgroundArgb: 0xFF000000))
-              : null,
-        ),
-      ],
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(
+        items: [
+          ExportPillItem(
+            keyValue: 'export-format-bg-white',
+            label: AppText.strings.exWhite,
+            selected: selection.backgroundArgb == 0xFFFFFFFF,
+            onTap: enabled
+                ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
+                : null,
+          ),
+          ExportPillItem(
+            keyValue: 'export-format-bg-black',
+            label: AppText.strings.exBlack,
+            selected: selection.backgroundArgb == 0xFF000000,
+            onTap: enabled
+                ? () => _change(selection.copyWith(backgroundArgb: 0xFF000000))
+                : null,
+          ),
+        ],
+      ),
     ),
   );
 
@@ -599,7 +709,7 @@ class ExportFormatModule extends StatelessWidget {
   }
 }
 
-/// The Scope module: Cut/Project chips plus an optional tab-specific body
+/// The Scope module: Cut/Project pills plus an optional tab-specific body
 /// (Sequence's in/out fields, the Cels/Timesheet cut grid later).
 class ExportScopeModule extends StatelessWidget {
   const ExportScopeModule({
@@ -625,24 +735,19 @@ class ExportScopeModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 5,
-          children: [
-            ExportChip(
-              key: const ValueKey<String>('export-scope-cut'),
-              label: AppText.strings.exCut,
-              selected: scope == ExportScopeKind.cut,
-              onTap: enabled ? () => onChanged(ExportScopeKind.cut) : null,
-            ),
-            ExportChip(
-              key: const ValueKey<String>('export-scope-project'),
-              label: AppText.strings.exProject,
-              selected: scope == ExportScopeKind.project,
-              onTap: enabled ? () => onChanged(ExportScopeKind.project) : null,
-            ),
-          ],
+        ExportChoiceRow<ExportScopeKind>(
+          label: AppText.strings.exTarget,
+          keyPrefix: 'export-scope',
+          values: ExportScopeKind.values,
+          selected: scope,
+          keyOf: (kind) => kind.jsonValue,
+          labelOf: (kind) => kind == ExportScopeKind.cut
+              ? AppText.strings.exCut
+              : AppText.strings.exProject,
+          onSelect: onChanged,
+          enabledFor: (_) => enabled,
         ),
-        if (child != null) ...[const SizedBox(height: 6), child!],
+        if (child != null) ...[const SizedBox(height: 1), child!],
         if (note != null) ...[
           const SizedBox(height: 5),
           exportModuleNote(context, note!),
@@ -654,7 +759,7 @@ class ExportScopeModule extends StatelessWidget {
 
 /// The Size module with the v10 coupling: a project scope forces the
 /// camera frame (per-cut canvases cannot make one movie), so the Canvas
-/// chip only exists under the cut scope.
+/// pill only exists under the cut scope.
 class ExportSizeModule extends StatelessWidget {
   const ExportSizeModule({
     super.key,
@@ -684,19 +789,17 @@ class ExportSizeModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 5,
-          runSpacing: 4,
-          children: [
-            ExportChip(
-              key: const ValueKey<String>('export-size-camera'),
+        ExportPillStrip(
+          items: [
+            ExportPillItem(
+              keyValue: 'export-size-camera',
               label: 'Camera ${cameraSize.width}×${cameraSize.height}',
               selected: sizeMode == ExportSizeMode.camera,
               onTap: enabled ? () => onChanged(ExportSizeMode.camera) : null,
             ),
             if (!projectScope)
-              ExportChip(
-                key: const ValueKey<String>('export-size-canvas'),
+              ExportPillItem(
+                keyValue: 'export-size-canvas',
                 label: canvasLabel,
                 selected: sizeMode == ExportSizeMode.canvas,
                 onTap: enabled ? () => onChanged(ExportSizeMode.canvas) : null,
@@ -868,69 +971,80 @@ class ExportCelNamingModule extends StatelessWidget {
   final ValueChanged<ExportCelNaming> onChanged;
   final TextEditingController suffixController;
 
-  static String summarize(ExportCelNaming naming) {
-    final parts = <String>[
-      if (naming.includeProjectName) 'proj',
-      if (naming.includeCutName) 'cut',
-      if (naming.includeLayerName) 'layer',
-    ];
-    final folders = <String>[
-      if (naming.cutFolder) 'cut/',
-      if (naming.layerFolder) 'layer/',
-    ];
-    return [
-      if (parts.isEmpty) 'frame' else parts.join('_'),
-      if (naming.frameDigits > 0) '${naming.frameDigits}d',
-      if (folders.isNotEmpty) folders.join(''),
-    ].join(' · ');
+  /// Three names the file can carry and the same three the folders can, as
+  /// two multi-select strips.
+  ExportPillStrip _names({
+    required String keyPrefix,
+    required bool project,
+    required bool cut,
+    required bool layer,
+    required ExportCelNaming Function(String which) toggled,
+  }) {
+    final strings = AppText.strings;
+    ExportPillItem item(String which, String label, bool selected) =>
+        ExportPillItem(
+          keyValue: '$keyPrefix-$which',
+          label: label,
+          selected: selected,
+          onTap: enabled ? () => onChanged(toggled(which)) : null,
+        );
+    return ExportPillStrip(
+      items: [
+        item('project', strings.exProject, project),
+        item('cut', strings.exCut, cut),
+        item('layer', strings.exLayer, layer),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    // Top to bottom the way the file is built: the folder it lands in, the
+    // name it gets, then the digits and suffix (유저 2026-09-09: 「젤 위에
+    // 폴더 생성, 이름 지정, 자릿수/접미사」).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 5,
-          runSpacing: 4,
-          children: [
-            ExportChip(
-              key: const ValueKey<String>('export-cel-include-project'),
-              label: AppText.strings.exProjectName,
-              selected: naming.includeProjectName,
-              onTap: enabled
-                  ? () => onChanged(
-                      naming.copyWith(
-                        includeProjectName: !naming.includeProjectName,
-                      ),
-                    )
-                  : null,
+        ExportModuleRow(
+          label: strings.exFolders,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _names(
+              keyPrefix: 'export-cel-folder',
+              project: naming.projectFolder,
+              cut: naming.cutFolder,
+              layer: naming.layerFolder,
+              toggled: (which) => switch (which) {
+                'project' =>
+                  naming.copyWith(projectFolder: !naming.projectFolder),
+                'cut' => naming.copyWith(cutFolder: !naming.cutFolder),
+                _ => naming.copyWith(layerFolder: !naming.layerFolder),
+              },
             ),
-            ExportChip(
-              key: const ValueKey<String>('export-cel-include-cut'),
-              label: AppText.strings.renameCutField,
-              selected: naming.includeCutName,
-              onTap: enabled
-                  ? () => onChanged(
-                      naming.copyWith(includeCutName: !naming.includeCutName),
-                    )
-                  : null,
-            ),
-            ExportChip(
-              key: const ValueKey<String>('export-cel-include-layer'),
-              label: AppText.strings.renameLayerField,
-              selected: naming.includeLayerName,
-              onTap: enabled
-                  ? () => onChanged(
-                      naming.copyWith(
-                        includeLayerName: !naming.includeLayerName,
-                      ),
-                    )
-                  : null,
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 6),
+        ExportModuleRow(
+          label: strings.exNameParts,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _names(
+              keyPrefix: 'export-cel-include',
+              project: naming.includeProjectName,
+              cut: naming.includeCutName,
+              layer: naming.includeLayerName,
+              toggled: (which) => switch (which) {
+                'project' => naming.copyWith(
+                  includeProjectName: !naming.includeProjectName,
+                ),
+                'cut' => naming.copyWith(includeCutName: !naming.includeCutName),
+                _ => naming.copyWith(
+                  includeLayerName: !naming.includeLayerName,
+                ),
+              },
+            ),
+          ),
+        ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -956,31 +1070,6 @@ class ExportCelNamingModule extends StatelessWidget {
                       onChanged(naming.copyWith(suffix: value.trim())),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 5,
-          children: [
-            ExportChip(
-              key: const ValueKey<String>('export-cel-cut-folder'),
-              label: AppText.strings.exCutFolder,
-              selected: naming.cutFolder,
-              onTap: enabled
-                  ? () =>
-                        onChanged(naming.copyWith(cutFolder: !naming.cutFolder))
-                  : null,
-            ),
-            ExportChip(
-              key: const ValueKey<String>('export-cel-layer-folder'),
-              label: AppText.strings.exLayerFolder,
-              selected: naming.layerFolder,
-              onTap: enabled
-                  ? () => onChanged(
-                      naming.copyWith(layerFolder: !naming.layerFolder),
-                    )
-                  : null,
             ),
           ],
         ),

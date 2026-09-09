@@ -4,6 +4,12 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/export/export_cut_grid.dart';
 
 void main() {
+  ExportCutEntry entry(int number, {List<String>? ids, String? label}) => (
+    ids: [for (final id in ids ?? ['c$number']) CutId(id)],
+    label: label ?? '$number',
+    number: number,
+  );
+
   testWidgets('toggle, All-reset and the range field drive the scope',
       (tester) async {
     final excluded = <CutId>{};
@@ -15,17 +21,14 @@ void main() {
           body: SizedBox(
             width: 280,
             child: ExportCutGrid(
-              cuts: [
-                for (var i = 1; i <= 24; i += 1)
-                  (id: CutId('c$i'), number: i),
-              ],
+              cuts: [for (var i = 1; i <= 24; i += 1) entry(i)],
               isIncluded: (id) => !excluded.contains(id),
               enabled: true,
-              onToggle: (id, included) {
+              onToggle: (ids, included) {
                 if (included) {
-                  excluded.remove(id);
+                  excluded.removeAll(ids);
                 } else {
-                  excluded.add(id);
+                  excluded.addAll(ids);
                 }
               },
               onAllIncluded: () {
@@ -70,6 +73,43 @@ void main() {
     expect(range, (2, 7));
   });
 
+  testWidgets('a 겸용 group is ONE cell: it prints the joined name and its '
+      'cuts flip together', (tester) async {
+    // 유저 2026-09-09: 「컷 리스트에도 한 칸 … 겸용컷 비포함이란게 불가능하도록」.
+    final excluded = <CutId>{};
+    Future<void> pump() => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 280,
+            child: ExportCutGrid(
+              cuts: [
+                entry(1),
+                entry(2, ids: ['c2', 'c3'], label: '2-3'),
+                entry(4),
+              ],
+              isIncluded: (id) => !excluded.contains(id),
+              enabled: true,
+              onToggle: (ids, included) =>
+                  included ? excluded.removeAll(ids) : excluded.addAll(ids),
+              onAllIncluded: excluded.clear,
+              onRangeSelected: (_, _) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await pump();
+    expect(find.text('2-3'), findsOneWidget);
+    expect(find.text('3 / 3 cuts'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('export-cut-cell-2')));
+    await pump();
+    expect(excluded, {const CutId('c2'), const CutId('c3')});
+    expect(find.text('2 / 3 cuts'), findsOneWidget);
+  });
+
   testWidgets('a long list stays lazily built under the height cap',
       (tester) async {
     await tester.pumpWidget(
@@ -78,10 +118,7 @@ void main() {
           body: SizedBox(
             width: 280,
             child: ExportCutGrid(
-              cuts: [
-                for (var i = 1; i <= 1500; i += 1)
-                  (id: CutId('c$i'), number: i),
-              ],
+              cuts: [for (var i = 1; i <= 1500; i += 1) entry(i)],
               isIncluded: (_) => true,
               enabled: true,
               onToggle: (_, _) {},

@@ -382,13 +382,17 @@ class ExportCelFileNamer {
   final String fileExtension;
   final Set<String> _used = <String>{};
 
+  /// [cutName] is the export's reading of the cut — a 겸용 group joins its
+  /// names — which is why it arrives as text rather than as the cut.
   String uniqueFileName({
-    required Cut cut,
+    required String projectName,
+    required String cutName,
     required String layerName,
     required String base,
   }) {
     final folder = [
-      if (naming.cutFolder) sanitizeExportFileComponent(cut.name),
+      if (naming.projectFolder) sanitizeExportFileComponent(projectName),
+      if (naming.cutFolder) sanitizeExportFileComponent(cutName),
       if (naming.layerFolder) sanitizeExportFileComponent(layerName),
     ].join('/');
     final prefix = folder.isEmpty ? '' : '$folder/';
