@@ -16,6 +16,7 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
+        TrackStackContribution,
         resolveTrackStackContributions,
         resolveTransitionContributions,
         sourceOverWeights,
@@ -30,6 +31,7 @@ import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
 import 'export_plan.dart';
+import 'offscreen_raster.dart';
 
 /// Renders export output at full quality straight from the brush store, so
 /// exports never depend on the playback quality setting or its caches.
@@ -247,19 +249,15 @@ class ExportFrameRenderer {
       final size = mode == ExportSizeMode.camera
           ? session.camera.cameraFrameSize
           : task.cut.canvasSize;
-      final recorder = ui.PictureRecorder();
-      final canvas = ui.Canvas(recorder);
-      _paintBackdropGround(
-        canvas,
-        ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
-        preserveAlpha: preserveAlpha,
+      return rasterizeOffscreen(
+        width: size.width,
+        height: size.height,
+        paint: (canvas) => _paintBackdropGround(
+          canvas,
+          ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+          preserveAlpha: preserveAlpha,
+        ),
       );
-      final picture = recorder.endRecording();
-      try {
-        return await picture.toImage(size.width, size.height);
-      } finally {
-        picture.dispose();
-      }
     }
     // A transition reaching across this frame's boundary puts a SECOND cut
     // here, and canvas space is shared whenever the two agree on their canvas
@@ -298,53 +296,50 @@ class ExportFrameRenderer {
     if (fade >= 1 && trackEffects.isEmpty) {
       return image;
     }
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
     final bounds = ui.Rect.fromLTWH(
       0,
       0,
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    // The BACKDROP ground (R3b): a fade thins the frame down to it. An alpha
-    // master leaves it transparent instead.
-    // The BACKDROP ground (R3b): a fade thins the frame down to it.
-    _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
-    // The fade is transparency (R3b): the frame thins as one layer over the
-    // ground; no target-color wash.
-    if (fade < 1) {
-      canvas.saveLayer(
-        bounds,
-        ui.Paint()
-          ..color = alphaOnly(fade),
-      );
-    }
-    final framePaint = ui.Paint();
-    // The chain filters the cut's finished picture, under the fade — the same
-    // order the screen draws it in.
-    //
-    // 🚨AND A KEY IN IT NEEDS ITS OWN RASTER. `image` is the cut's finished
-    // picture at its own size and the export draws it 1:1, so the steps run
-    // at scale 1 — the one route where the ratio is not a question.
-    final plan = resolveCompositeEffectPlan(trackEffects);
-    plan.finalPaint.applyTo(framePaint);
-    final stepped = steppedForChain(
-      image: image,
-      plan: plan,
-      canvasExtent: task.cut.canvasSize.width.toDouble(),
-    );
-    canvas.drawImage(stepped, ui.Offset.zero, framePaint);
-    if (!identical(stepped, image)) {
-      stepped.dispose();
-    }
-    if (fade < 1) {
-      canvas.restore();
-    }
-    final picture = recorder.endRecording();
     try {
-      return await picture.toImage(image.width, image.height);
+      return await rasterizeOffscreen(
+        width: image.width,
+        height: image.height,
+        paint: (canvas) {
+          // The BACKDROP ground (R3b): a fade thins the frame down to it.
+          // An alpha master leaves it transparent instead.
+          _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
+          // The fade is transparency (R3b): the frame thins as one layer
+          // over the ground; no target-color wash.
+          if (fade < 1) {
+            canvas.saveLayer(bounds, ui.Paint()..color = alphaOnly(fade));
+          }
+          final framePaint = ui.Paint();
+          // The chain filters the cut's finished picture, under the fade —
+          // the same order the screen draws it in.
+          //
+          // 🚨AND A KEY IN IT NEEDS ITS OWN RASTER. `image` is the cut's
+          // finished picture at its own size and the export draws it 1:1,
+          // so the steps run at scale 1 — the one route where the ratio is
+          // not a question.
+          final plan = resolveCompositeEffectPlan(trackEffects);
+          plan.finalPaint.applyTo(framePaint);
+          final stepped = steppedForChain(
+            image: image,
+            plan: plan,
+            canvasExtent: task.cut.canvasSize.width.toDouble(),
+          );
+          canvas.drawImage(stepped, ui.Offset.zero, framePaint);
+          if (!identical(stepped, image)) {
+            stepped.dispose();
+          }
+          if (fade < 1) {
+            canvas.restore();
+          }
+        },
+      );
     } finally {
-      picture.dispose();
       image.dispose();
     }
   }
@@ -400,63 +395,62 @@ class ExportFrameRenderer {
     ];
     final weights = sourceOverWeights(unitAlphas);
 
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
     final bounds = ui.Rect.fromLTWH(
       0,
       0,
       size.width.toDouble(),
       size.height.toDouble(),
     );
-    _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
     final images = <ui.Image>[];
     try {
-      for (var i = 0; i < contributions.length; i += 1) {
-        final contribution = contributions[i];
-        final cut = contribution.cut;
-        final image = await renderComposite(
-          ExportFrameTask(cut: cut, frameIndex: contribution.localFrameIndex),
-          ExportSizeMode.canvas,
-          withNameTags: true,
-        );
-        images.add(image);
-        final weight = weights[i].clamp(0.0, 1.0);
-        if (weight < 1) {
-          canvas.saveLayer(
-            bounds,
-            ui.Paint()..color = alphaOnly(weight),
-          );
-        }
-        final framePaint = ui.Paint();
-        // The V row's chain on this contribution, keys included — the
-        // dissolve weights what the chain made, not what it started from.
-        final dissolvePlan = resolveCompositeEffectPlan(
-          trackEffectsAt(
-            session.effectsAndFx.trackEffectsForCut(cut.id),
-            globalFrame,
-            enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
-          ),
-        );
-        dissolvePlan.finalPaint.applyTo(framePaint);
-        final steppedFrame = steppedForChain(
-          image: image,
-          plan: dissolvePlan,
-          canvasExtent: cut.canvasSize.width.toDouble(),
-        );
-        canvas.drawImage(steppedFrame, ui.Offset.zero, framePaint);
-        if (!identical(steppedFrame, image)) {
-          steppedFrame.dispose();
-        }
-        if (weight < 1) {
-          canvas.restore();
-        }
-      }
-      final picture = recorder.endRecording();
-      try {
-        return await picture.toImage(size.width, size.height);
-      } finally {
-        picture.dispose();
-      }
+      return await rasterizeOffscreen(
+        width: size.width,
+        height: size.height,
+        paint: (canvas) async {
+          _paintBackdropGround(canvas, bounds, preserveAlpha: preserveAlpha);
+          for (var i = 0; i < contributions.length; i += 1) {
+            final contribution = contributions[i];
+            final cut = contribution.cut;
+            final image = await renderComposite(
+              ExportFrameTask(
+                cut: cut,
+                frameIndex: contribution.localFrameIndex,
+              ),
+              ExportSizeMode.canvas,
+              withNameTags: true,
+            );
+            images.add(image);
+            final weight = weights[i].clamp(0.0, 1.0);
+            if (weight < 1) {
+              canvas.saveLayer(bounds, ui.Paint()..color = alphaOnly(weight));
+            }
+            final framePaint = ui.Paint();
+            // The V row's chain on this contribution, keys included — the
+            // dissolve weights what the chain made, not what it started
+            // from.
+            final dissolvePlan = resolveCompositeEffectPlan(
+              trackEffectsAt(
+                session.effectsAndFx.trackEffectsForCut(cut.id),
+                globalFrame,
+                enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
+              ),
+            );
+            dissolvePlan.finalPaint.applyTo(framePaint);
+            final steppedFrame = steppedForChain(
+              image: image,
+              plan: dissolvePlan,
+              canvasExtent: cut.canvasSize.width.toDouble(),
+            );
+            canvas.drawImage(steppedFrame, ui.Offset.zero, framePaint);
+            if (!identical(steppedFrame, image)) {
+              steppedFrame.dispose();
+            }
+            if (weight < 1) {
+              canvas.restore();
+            }
+          }
+        },
+      );
     } finally {
       for (final image in images) {
         image.dispose();
@@ -507,8 +501,38 @@ class ExportFrameRenderer {
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
     final size = session.camera.cameraFrameSize;
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
+    final images = <ui.Image>[];
+    try {
+      return await rasterizeOffscreen(
+        width: size.width,
+        height: size.height,
+        paint: (canvas) => _paintTrackStack(
+          canvas,
+          size: size,
+          positions: positions,
+          weights: weights,
+          images: images,
+          preserveAlpha: preserveAlpha,
+        ),
+      );
+    } finally {
+      for (final image in images) {
+        image.dispose();
+      }
+    }
+  }
+
+  /// The track stack painted onto [canvas], each position loaded as it is
+  /// drawn — every picture it loads goes into [images] so the caller can
+  /// dispose them once the raster has read them.
+  Future<void> _paintTrackStack(
+    ui.Canvas canvas, {
+    required CanvasSize size,
+    required List<TrackStackContribution> positions,
+    required List<double> weights,
+    required List<ui.Image> images,
+    required bool preserveAlpha,
+  }) async {
     // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
     // frames, a posed stage sliding off, a fade thinning the stack away.
     _paintBackdropGround(
@@ -516,86 +540,73 @@ class ExportFrameRenderer {
       ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
       preserveAlpha: preserveAlpha,
     );
-    final images = <ui.Image>[];
-    try {
-      for (var i = 0; i < positions.length; i += 1) {
-        final position = positions[i];
-        final cut = position.cut;
-        final image = await _stackRenderService.renderThroughCamera(
-          nodes: planCutFrameCompositeTree(
-            cut: _cutForRender(cut),
-            frameIndex: position.localFrameIndex,
-            surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+    for (var i = 0; i < positions.length; i += 1) {
+      final position = positions[i];
+      final cut = position.cut;
+      final image = await _stackRenderService.renderThroughCamera(
+        nodes: planCutFrameCompositeTree(
+          cut: _cutForRender(cut),
+          frameIndex: position.localFrameIndex,
+          surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
+        ),
+        // The IDENTITY camera: a canvas-space composite, exactly what
+        // the playback cache holds — the painter below projects it
+        // through the cut's real camera, so the camera is never baked
+        // into the composite itself (playback's own rule).
+        pose: CameraPose(
+          center: CanvasPoint(
+            x: cut.canvasSize.width / 2,
+            y: cut.canvasSize.height / 2,
           ),
-          // The IDENTITY camera: a canvas-space composite, exactly what
-          // the playback cache holds — the painter below projects it
-          // through the cut's real camera, so the camera is never baked
-          // into the composite itself (playback's own rule).
-          pose: CameraPose(
-            center: CanvasPoint(
-              x: cut.canvasSize.width / 2,
-              y: cut.canvasSize.height / 2,
-            ),
-          ),
-          cameraFrameSize: cut.canvasSize,
-        );
-        images.add(image);
-        // Track effects at the frame's GLOBAL position (R4) — the stack's
-        // own axis — with the row's fx master gating them (R8's rule; the
-        // static opacity is not an fx and stays).
-        final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
-        final weight = weights[i];
-        // The stage belongs to the bottom covered TRACK, and to every
-        // contribution of it: an O.L is a 場面転換, so the arriving cut brings
-        // its own paper and the weights cross-fade the whole screen. Keyed to
-        // the bottom CONTRIBUTION this baked a superimpose.
-        final isStage = position.isBottomTrack;
-        PlaybackFramePainter(
-          image: image,
-          canvasSize: cut.canvasSize,
-          // The multitrack video path projects here, so the tags ride
-          // this painter instead of the identity-camera composite above —
-          // one draw, in the same canvas space as every other surface.
-          seNameTags: session.seEntries.seNameTagsForCutFrame(
-            cut,
-            position.localFrameIndex,
-          ),
-          cameraPose: session.camera.cameraPoseForCut(cut, position.localFrameIndex),
-          cameraFrameSize: size,
-          // No cutPose/cutAnchorPoint: the V row has no transform.
-          cutEffects: trackEffectsAt(
-            session.effectsAndFx.trackEffectsForCut(cut.id),
-            position.globalFrameIndex,
-            enabled: trackFxEnabled,
-          ),
-          paperBackground: session.projectSettings.projectBackground,
-          paintPaper: isStage,
-          // The alpha matrix (user 2026-07-29): alpha masters exclude the
-          // backdrop AND the pasteboard — they are compositing sources,
-          // and the paper carries its own alpha.
-          pasteboardColor: isStage && !preserveAlpha
-              ? ui.Color(session.repository.requireProject().pasteboardArgb)
-              : null,
-          // The output IS the camera frame — there is no outside to
-          // letterbox, and an alpha master needs the ground transparent.
-          paintLetterbox: false,
-          fadeOpacity: isStage ? weight : 1,
-          imageOpacity: isStage ? 1 : weight,
-        ).paint(
-          canvas,
-          ui.Size(size.width.toDouble(), size.height.toDouble()),
-        );
-      }
-      final picture = recorder.endRecording();
-      try {
-        return await picture.toImage(size.width, size.height);
-      } finally {
-        picture.dispose();
-      }
-    } finally {
-      for (final image in images) {
-        image.dispose();
-      }
+        ),
+        cameraFrameSize: cut.canvasSize,
+      );
+      images.add(image);
+      // Track effects at the frame's GLOBAL position (R4) — the stack's
+      // own axis — with the row's fx master gating them (R8's rule; the
+      // static opacity is not an fx and stays).
+      final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
+      final weight = weights[i];
+      // The stage belongs to the bottom covered TRACK, and to every
+      // contribution of it: an O.L is a 場面転換, so the arriving cut brings
+      // its own paper and the weights cross-fade the whole screen. Keyed to
+      // the bottom CONTRIBUTION this baked a superimpose.
+      final isStage = position.isBottomTrack;
+      PlaybackFramePainter(
+        image: image,
+        canvasSize: cut.canvasSize,
+        // The multitrack video path projects here, so the tags ride
+        // this painter instead of the identity-camera composite above —
+        // one draw, in the same canvas space as every other surface.
+        seNameTags: session.seEntries.seNameTagsForCutFrame(
+          cut,
+          position.localFrameIndex,
+        ),
+        cameraPose: session.camera.cameraPoseForCut(cut, position.localFrameIndex),
+        cameraFrameSize: size,
+        // No cutPose/cutAnchorPoint: the V row has no transform.
+        cutEffects: trackEffectsAt(
+          session.effectsAndFx.trackEffectsForCut(cut.id),
+          position.globalFrameIndex,
+          enabled: trackFxEnabled,
+        ),
+        paperBackground: session.projectSettings.projectBackground,
+        paintPaper: isStage,
+        // The alpha matrix (user 2026-07-29): alpha masters exclude the
+        // backdrop AND the pasteboard — they are compositing sources,
+        // and the paper carries its own alpha.
+        pasteboardColor: isStage && !preserveAlpha
+            ? ui.Color(session.repository.requireProject().pasteboardArgb)
+            : null,
+        // The output IS the camera frame — there is no outside to
+        // letterbox, and an alpha master needs the ground transparent.
+        paintLetterbox: false,
+        fadeOpacity: isStage ? weight : 1,
+        imageOpacity: isStage ? 1 : weight,
+      ).paint(
+        canvas,
+        ui.Size(size.width.toDouble(), size.height.toDouble()),
+      );
     }
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
@@ -28,13 +29,19 @@ import '../../models/canvas_size.dart';
 ///
 /// [paint] runs ONCE per rendered page — the callback is per image, never
 /// per pixel.
+///
+/// ⚠️It may be ASYNC, and that is what let the video renderers move in
+/// (감사 2026-09-09): they load each contribution's picture inside the
+/// paint, so a synchronous callback could not have held them and four
+/// hand-written copies of this lifetime stayed behind. A recorder is happy
+/// to stay open across an await — it accumulates until [endRecording].
 Future<ui.Image> rasterizeOffscreen({
   required int width,
   required int height,
-  required void Function(ui.Canvas canvas) paint,
+  required FutureOr<void> Function(ui.Canvas canvas) paint,
 }) async {
   final recorder = ui.PictureRecorder();
-  paint(ui.Canvas(recorder));
+  await paint(ui.Canvas(recorder));
   final picture = recorder.endRecording();
   try {
     return await picture.toImage(width, height);
