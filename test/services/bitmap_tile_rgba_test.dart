@@ -123,19 +123,11 @@ void main() {
       );
     });
 
-    test('preserves tile coord', () {
-      final coord = TileCoord(x: 3, y: 4);
-      final tile = BitmapTile.blank(size: 2);
-      final updated = writeRgbaColorToBitmapTile(
-        tile: tile,
-        x: 0,
-        y: 0,
-        color: RgbaColor(r: 0, g: 255, b: 0, a: 128),
-      );
-
-
-    });
-
+    /// 🪦**「preserves tile coord」 IS GONE WITH ITS SUBJECT.** A tile
+    /// carried a coordinate and this pinned that a pixel write kept it.
+    /// A tile has no coordinate now — its place is the map key the
+    /// surface stores it under — so there is nothing here to preserve.
+    /// The size case below is the half that still has a subject.
     test('preserves tile size', () {
       final tile = BitmapTile.blank(size: 2);
       final updated = writeRgbaColorToBitmapTile(

@@ -244,7 +244,6 @@ class _SurfacePaintPass {
   /// or the pixel fallback while their budgets last, and marked unpainted
   /// past them.
   void _paintTile(PlacedTile placed) {
-    final tile = placed.tile;
     // The _overlay's result tile REPLACES this coordinate outright (it
     // already contains the committed pixels blended with the stroke) —
     // the committed tile is not drawn at all. The decode start ran in
