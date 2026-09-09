@@ -1,7 +1,6 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 
 void main() {
   group('BrushSettings', () {
@@ -14,7 +13,6 @@ void main() {
       expect(brush.flow, 1.0);
       expect(brush.hardness, 1.0);
       expect(brush.spacing, 0.1);
-      expect(brush.tipShape, BrushTipShape.round);
       expect(brush.sizePressureCurve, isNull);
       expect(brush.opacityPressureCurve, isNull);
       expect(brush.flowPressureCurve, isNull);
@@ -32,10 +30,6 @@ void main() {
       expect(brush.copyWith(flow: 0.25).flow, 0.25);
       expect(brush.copyWith(hardness: 0.75).hardness, 0.75);
       expect(brush.copyWith(spacing: 0.2).spacing, 0.2);
-      expect(
-        brush.copyWith(tipShape: BrushTipShape.square).tipShape,
-        BrushTipShape.square,
-      );
       expect(
         brush
             .copyWith(sizePressureCurve: BrushPressureCurve.identity())
@@ -59,7 +53,6 @@ void main() {
       expect(brush.copyWith(flow: 0.5), isNot(brush));
       expect(brush.copyWith(hardness: 0.5), isNot(brush));
       expect(brush.copyWith(spacing: 0.2), isNot(brush));
-      expect(brush.copyWith(tipShape: BrushTipShape.square), isNot(brush));
       expect(
         brush.copyWith(sizePressureCurve: BrushPressureCurve.identity()),
         isNot(brush),
@@ -84,7 +77,6 @@ void main() {
           'flow',
           'hardness',
           'spacing',
-          'tipShape',
           'roundness',
           'angleDegrees',
         ]),
@@ -99,7 +91,6 @@ void main() {
         flow: 0.4,
         hardness: 0.8,
         spacing: 0.15,
-        tipShape: BrushTipShape.square,
         sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
         opacityPressureCurve: BrushPressureCurve.identity(),
         roundness: 0.35,
@@ -120,7 +111,6 @@ void main() {
       expect(brush.flow, 1.0);
       expect(brush.hardness, 1.0);
       expect(brush.spacing, 0.1);
-      expect(brush.tipShape, BrushTipShape.round);
       expect(brush.sizePressureCurve, isNull);
       expect(brush.opacityPressureCurve, isNull);
       expect(brush.flowPressureCurve, isNull);

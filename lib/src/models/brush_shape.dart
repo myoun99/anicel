@@ -4,7 +4,6 @@ import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
-import 'brush_tip_shape.dart';
 
 /// What a response curve is FOR: the setting it drives, and the input that
 /// drives it. A record because it is nothing but those two facts together —
@@ -39,7 +38,6 @@ class BrushShape {
     this.flow = 1.0,
     this.hardness = 1.0,
     this.spacing = 0.1,
-    this.tipShape = BrushTipShape.round,
     this.curves = const {},
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
@@ -72,7 +70,12 @@ class BrushShape {
   final double flow;
   final double hardness;
   final double spacing;
-  final BrushTipShape tipShape;
+  // ⛔tipShape is GONE from the brush (유저 2026-09-09: 「포토샵이나 클튜처럼
+  // 가자. 원이나 이미지」). A brush tip is the analytic ROUND one or a tip
+  // IMAGE — the two Clip Studio and Photoshop offer — so a brush can never
+  // ask for the square footprint. `BrushDab.tipShape` keeps it, because the
+  // fill, selection-lift and cut-stamp verbs build a square dab to mean
+  // "cover exactly this rect", which is not a brush mark.
 
   /// Every response curve this brush carries, keyed by WHAT it drives and
   /// WHAT drives it. An absent key is "that pairing ignores that input".
@@ -119,7 +122,8 @@ class BrushShape {
   /// horizontal, in degrees.
   final double angleDegrees;
 
-  /// Sampled (bitmap) tip; when set it overrides [tipShape] and [hardness].
+  /// Sampled (bitmap) tip; when set it overrides the analytic round tip and
+  /// [hardness]. This and the round tip are the ONLY two shapes a brush has.
   final BrushTipMask? tipMask;
 
   /// How dab angles are chosen at placement time.
@@ -258,7 +262,6 @@ class BrushShape {
       flow: flow,
       hardness: hardness,
       spacing: spacing,
-      tipShape: tipShape,
       curves: curves,
       roundness: roundness,
       angleDegrees: angleDegrees,
@@ -293,7 +296,6 @@ class BrushShape {
     double? flow,
     double? hardness,
     double? spacing,
-    BrushTipShape? tipShape,
     Map<BrushDynamicsKey, BrushPressureCurve>? curves,
     double? roundness,
     double? angleDegrees,
@@ -326,7 +328,6 @@ class BrushShape {
       flow: flow ?? this.flow,
       hardness: hardness ?? this.hardness,
       spacing: spacing ?? this.spacing,
-      tipShape: tipShape ?? this.tipShape,
       curves: curves ?? this.curves,
       roundness: roundness ?? this.roundness,
       angleDegrees: angleDegrees ?? this.angleDegrees,
@@ -364,7 +365,6 @@ class BrushShape {
           other.flow == flow &&
           other.hardness == hardness &&
           other.spacing == spacing &&
-          other.tipShape == tipShape &&
           _sameCurves(other.curves, curves) &&
           other.roundness == roundness &&
           other.angleDegrees == angleDegrees &&
@@ -398,7 +398,6 @@ class BrushShape {
     flow,
     hardness,
     spacing,
-    tipShape,
     Object.hashAllUnordered([
       for (final entry in curves.entries) Object.hash(entry.key, entry.value),
     ]),
@@ -431,7 +430,7 @@ class BrushShape {
   String toString() =>
       'BrushShape(color: $color, size: $size, opacity: $opacity, '
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
-      'tipShape: $tipShape, curves: $curves, '
+      'curves: $curves, '
       'roundness: $roundness, angleDegrees: $angleDegrees, tipMask: $tipMask, '
       'rotationMode: $rotationMode, sizeJitter: $sizeJitter, '
       'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '

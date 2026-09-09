@@ -6,7 +6,6 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 
@@ -253,7 +252,6 @@ void main() {
       spacing: 0.3,
       hardness: 0.6,
       flow: 0.5,
-      tipShape: BrushTipShape.square,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.2),
       opacityPressureCurve: BrushPressureCurve.linearFrom(0.3),
       flowPressureCurve: BrushPressureCurve.linearFrom(0.4),
@@ -290,7 +288,6 @@ void main() {
       expect(input.spacing, state.spacing);
       expect(input.hardness, state.hardness);
       expect(input.flow, state.flow);
-      expect(input.tipShape, state.tipShape);
       expect(input.sizePressureCurve, state.sizePressureCurve);
       expect(input.opacityPressureCurve, state.opacityPressureCurve);
       expect(input.flowPressureCurve, state.flowPressureCurve);

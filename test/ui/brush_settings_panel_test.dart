@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -169,7 +168,6 @@ void main() {
     final inputSettings = state.toInputSettings();
     expect(inputSettings.hardness, state.hardness);
     expect(inputSettings.flow, state.flow);
-    expect(inputSettings.tipShape, BrushTipShape.round);
   });
 
   testWidgets('BrushSettingsPanel updates tip roundness and angle', (

@@ -192,7 +192,6 @@ Uint8List rasterizeBrushStrokeSample(
         opacity: 1.0,
         flow: settings.flow,
         hardness: settings.hardness,
-        tipShape: settings.tipShape,
         pressure: pressure,
         sequence: sequence,
         roundness: settings.roundness,

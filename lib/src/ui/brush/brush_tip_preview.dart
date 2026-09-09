@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
-import '../../models/brush_tip_shape.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
@@ -12,7 +11,7 @@ import '../timeline/memo_token.dart';
 ///
 /// Sampled tips render as a coarse grid averaged from the mask's alpha
 /// bytes (no async image decode, so it is deterministic in widget tests);
-/// parametric tips render their ellipse/square shape with roundness, angle,
+/// the analytic tip renders its ellipse with roundness, angle,
 /// and a soft outer ring when hardness is low. This is a shape hint, not a
 /// rasterizer-accurate rendering.
 class BrushTipPreview extends StatelessWidget {
@@ -171,20 +170,13 @@ class _BrushTipPreviewPainter extends CustomPainter with RepaintOnProps {
     );
     final soft = settings.hardness < 0.85;
     final corePaint = Paint()..color = color.withValues(alpha: soft ? 0.8 : 1);
-    if (settings.tipShape == BrushTipShape.square) {
-      if (soft) {
-        canvas.drawRect(rect, Paint()..color = color.withValues(alpha: 0.3));
-        canvas.drawRect(rect.deflate(radius * 0.25), corePaint);
-      } else {
-        canvas.drawRect(rect, corePaint);
-      }
+    // ⛔The square branch went with the brush's tipShape: a brush tip is the
+    // analytic ROUND one or an image, so this preview can only draw an oval.
+    if (soft) {
+      canvas.drawOval(rect, Paint()..color = color.withValues(alpha: 0.3));
+      canvas.drawOval(rect.deflate(radius * 0.25), corePaint);
     } else {
-      if (soft) {
-        canvas.drawOval(rect, Paint()..color = color.withValues(alpha: 0.3));
-        canvas.drawOval(rect.deflate(radius * 0.25), corePaint);
-      } else {
-        canvas.drawOval(rect, corePaint);
-      }
+      canvas.drawOval(rect, corePaint);
     }
     canvas.restore();
   }

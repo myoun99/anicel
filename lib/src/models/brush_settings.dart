@@ -5,7 +5,6 @@ import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
-import 'brush_tip_shape.dart';
 
 class BrushSettings {
   BrushSettings({
@@ -15,7 +14,6 @@ class BrushSettings {
     double flow = 1.0,
     double hardness = 1.0,
     double spacing = 0.1,
-    BrushTipShape tipShape = BrushTipShape.round,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -55,7 +53,6 @@ class BrushSettings {
          flow: flow,
          hardness: hardness,
          spacing: spacing,
-         tipShape: tipShape,
          curves: {
            ...brushPressureCurves(
              size: sizePressureCurve,
@@ -110,7 +107,6 @@ class BrushSettings {
   double get flow => shape.flow;
   double get hardness => shape.hardness;
   double get spacing => shape.spacing;
-  BrushTipShape get tipShape => shape.tipShape;
 
   /// BB-3 (R26 #11): per-setting pen-pressure response — `null` means the
   /// setting ignores pressure. These replaced the pressureSize /
@@ -170,7 +166,6 @@ class BrushSettings {
     double? flow,
     double? hardness,
     double? spacing,
-    BrushTipShape? tipShape,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -206,7 +201,6 @@ class BrushSettings {
       flow: flow ?? this.flow,
       hardness: hardness ?? this.hardness,
       spacing: spacing ?? this.spacing,
-      tipShape: tipShape ?? this.tipShape,
       // 🚨MERGE, DO NOT REBUILD. The four names can only address
       // `(target, pressure)`; handing the constructor a map built from them
       // alone would DELETE every tilt and speed curve this brush carries,
@@ -255,7 +249,6 @@ class BrushSettings {
     'flow': flow,
     'hardness': hardness,
     'spacing': spacing,
-    'tipShape': tipShape.toJson(),
     if (sizePressureCurve != null)
       'sizePressureCurve': sizePressureCurve!.toJson(),
     if (opacityPressureCurve != null)
@@ -323,9 +316,6 @@ class BrushSettings {
       flow: (json['flow'] as num?)?.toDouble() ?? 1.0,
       hardness: (json['hardness'] as num?)?.toDouble() ?? 1.0,
       spacing: (json['spacing'] as num?)?.toDouble() ?? 0.1,
-      tipShape: json.containsKey('tipShape')
-          ? BrushTipShape.fromJson(json['tipShape'])
-          : BrushTipShape.round,
       sizePressureCurve: sizeCurve,
       opacityPressureCurve: opacityCurve,
       flowPressureCurve: curveOf('flowPressureCurve'),

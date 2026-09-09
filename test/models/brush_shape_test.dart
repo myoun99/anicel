@@ -5,7 +5,6 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 
 BrushTipMask _maskFor(String id) => BrushTipMask(
   id: id,
@@ -23,7 +22,6 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   flow: 0.5,
   hardness: 0.6,
   spacing: 0.3,
-  tipShape: BrushTipShape.square,
   curves: brushPressureCurves(
     size: BrushPressureCurve.linearFrom(0.2),
     opacity: BrushPressureCurve.linearFrom(0.3),
@@ -68,7 +66,6 @@ void main() {
       expect(base.copyWith(flow: 1.0), isNot(base));
       expect(base.copyWith(hardness: 1.0), isNot(base));
       expect(base.copyWith(spacing: 0.1), isNot(base));
-      expect(base.copyWith(tipShape: BrushTipShape.round), isNot(base));
       expect(base.copyWith(roundness: 1.0), isNot(base));
       expect(base.copyWith(angleDegrees: 0), isNot(base));
       expect(base.copyWith(tipMask: _maskFor('other')), isNot(base));

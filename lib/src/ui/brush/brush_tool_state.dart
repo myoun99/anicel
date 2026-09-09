@@ -5,7 +5,6 @@ import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
-import '../../models/brush_tip_shape.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_hand_settings_store.dart' show BrushHandSettings;
@@ -212,7 +211,6 @@ class BrushToolState {
     double spacing = defaultSpacing,
     double hardness = defaultHardness,
     double flow = defaultFlow,
-    BrushTipShape tipShape = defaultTipShape,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -253,7 +251,6 @@ class BrushToolState {
       spacing: spacing,
       hardness: hardness,
       flow: flow,
-      tipShape: tipShape,
       sizePressureCurve: sizePressureCurve,
       opacityPressureCurve: opacityPressureCurve,
       flowPressureCurve: flowPressureCurve,
@@ -344,7 +341,6 @@ class BrushToolState {
     double? spacing,
     double? hardness,
     double? flow,
-    BrushTipShape? tipShape,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -390,7 +386,6 @@ class BrushToolState {
         flow: flow ?? defaultFlow,
         hardness: hardness ?? defaultHardness,
         spacing: spacing ?? defaultSpacing,
-        tipShape: tipShape ?? defaultTipShape,
         curves: brushPressureCurves(
           size: sizePressureCurve,
           opacity: opacityPressureCurve,
@@ -472,7 +467,6 @@ class BrushToolState {
   static const double defaultSpacing = 0.25;
   static const double defaultHardness = 1.0;
   static const double defaultFlow = 1.0;
-  static const BrushTipShape defaultTipShape = BrushTipShape.round;
   static const double minRoundness = 0.05;
   static const double defaultRoundness = 1.0;
   static const double minAngleDegrees = 0.0;
@@ -500,7 +494,6 @@ class BrushToolState {
   /// dab is sampled.
   double get flow => shape.flow;
 
-  BrushTipShape get tipShape => shape.tipShape;
 
   /// BB-3 (R26 #11): per-setting pen-pressure response curves; `null` =
   /// the setting ignores pressure. Part of brush presets (they travel
@@ -520,10 +513,10 @@ class BrushToolState {
   /// horizontal, in degrees (0-180; an ellipse repeats every 180).
   double get angleDegrees => shape.angleDegrees;
 
-  /// Sampled (bitmap) tip applied by a preset; `null` uses the parametric
-  /// [tipShape]. The panel has no direct mask picker yet — masks arrive via
-  /// presets (and later ABR import). Cleared only by applying a preset
-  /// without one ([BrushToolState.fromBrushSettings]); [copyWith] preserves
+  /// Sampled (bitmap) tip applied by a preset; `null` uses the analytic
+  /// ROUND tip — the two shapes a brush has, Photoshop's and Clip Studio's
+  /// pair. Masks arrive via presets and imports. Cleared only by applying a
+  /// preset without one ([BrushToolState.fromBrushSettings]); [copyWith] keeps
   /// it so slider tweaks keep the textured tip.
   BrushTipMask? get tipMask => shape.tipMask;
 
@@ -832,7 +825,6 @@ class BrushToolState {
     double? spacing,
     double? hardness,
     double? flow,
-    BrushTipShape? tipShape,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
     BrushPressureCurve? flowPressureCurve,
@@ -882,7 +874,6 @@ class BrushToolState {
           spacing: spacing,
           hardness: hardness,
           flow: flow,
-          tipShape: tipShape,
           curves: brushCurvesWithPressure(
             baseShape.curves,
             size: sizePressureCurve,

@@ -4,7 +4,6 @@ import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
-import 'brush_tip_shape.dart';
 
 class BrushEditCanvasInputSettings {
   factory BrushEditCanvasInputSettings({
@@ -13,7 +12,6 @@ class BrushEditCanvasInputSettings {
     double opacity = 1.0,
     double flow = 1.0,
     double hardness = 1.0,
-    BrushTipShape tipShape = BrushTipShape.round,
     double spacing = 0.25,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
@@ -95,7 +93,6 @@ class BrushEditCanvasInputSettings {
         flow: flow,
         hardness: hardness,
         spacing: spacing,
-        tipShape: tipShape,
         curves: {
           ...brushPressureCurves(
             size: sizePressureCurve,
@@ -177,7 +174,6 @@ class BrushEditCanvasInputSettings {
   double get opacity => shape.opacity;
   double get flow => shape.flow;
   double get hardness => shape.hardness;
-  BrushTipShape get tipShape => shape.tipShape;
   double get spacing => shape.spacing;
 
   /// BB-3 (R26 #11): per-setting pressure response curves; `null` = the
@@ -241,7 +237,6 @@ class BrushEditCanvasInputSettings {
     double? opacity,
     double? flow,
     double? hardness,
-    BrushTipShape? tipShape,
     double? spacing,
     BrushPressureCurve? sizePressureCurve,
     BrushPressureCurve? opacityPressureCurve,
@@ -274,7 +269,6 @@ class BrushEditCanvasInputSettings {
       opacity: opacity ?? this.opacity,
       flow: flow ?? this.flow,
       hardness: hardness ?? this.hardness,
-      tipShape: tipShape ?? this.tipShape,
       spacing: spacing ?? this.spacing,
       // 🚨MERGE, DO NOT REBUILD — see `BrushSettings.copyWith`. The live
       // stroke path goes through here: a mapped-erase press snapshots the

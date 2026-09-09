@@ -287,13 +287,50 @@ void main() {
       expect(value.pressure, 0.25);
     });
 
-    test('fromInputSample preserves flow/hardness/tipShape', () {
+    test('🚨a BRUSH dab is always ROUND — there is no square brush', () {
+      // 유저 2026-09-09: 「포토샵이나 클튜처럼 가자. 원이나 이미지」. A brush
+      // tip is the analytic round one or a tip IMAGE, which is the pair Clip
+      // Studio and Photoshop both offer — neither has a parametric square.
+      // `BrushDab.tipShape` survives for the FILL, selection-lift and
+      // cut-stamp verbs, which build a square dab to mean "cover exactly this
+      // rect"; nothing a brush can set reaches it.
+      expect(
+        BrushDab.fromInputSample(
+          sample: BrushInputSample(x: 0, y: 0),
+          settings: BrushSettings(),
+          sequence: 0,
+        ).tipShape,
+        BrushTipShape.round,
+      );
+    });
+
+    test('a round dab writes no tipShape key at all', () {
+      // Byte-identity with strokes recorded before the field left the brush:
+      // every dab a brush lays is round, so the key never appears again.
+      final json = BrushDab.fromInputSample(
+        sample: BrushInputSample(x: 0, y: 0),
+        settings: BrushSettings(),
+        sequence: 0,
+      ).toJson();
+
+      expect(json.containsKey('tipShape'), isFalse);
+      // ...and the verbs that DO set it still round-trip.
+      final square = BrushDab.fromJson(
+        BrushDab.fromInputSample(
+          sample: BrushInputSample(x: 0, y: 0),
+          settings: BrushSettings(),
+          sequence: 0,
+        ).copyWith(tipShape: BrushTipShape.square).toJson(),
+      );
+      expect(square.tipShape, BrushTipShape.square);
+    });
+
+    test('fromInputSample preserves flow and hardness', () {
       final value = BrushDab.fromInputSample(
         sample: BrushInputSample(x: 0, y: 0),
         settings: BrushSettings(
           flow: 0.3,
           hardness: 0.4,
-          tipShape: BrushTipShape.square,
         ),
         sequence: 0,
       );

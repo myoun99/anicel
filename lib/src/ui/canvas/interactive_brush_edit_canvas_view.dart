@@ -563,7 +563,6 @@ class _InteractiveBrushEditCanvasViewState
       opacity: 1,
       flow: settings.flow,
       hardness: settings.hardness,
-      tipShape: settings.tipShape,
       pressure: _currentPressure,
       sequence: sequence,
       tiltAzimuthDegrees: _currentTiltAzimuthDegrees,

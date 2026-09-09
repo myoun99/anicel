@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 
 void main() {
@@ -13,7 +12,6 @@ void main() {
       expect(settings.opacity, 1.0);
       expect(settings.flow, 1.0);
       expect(settings.hardness, 1.0);
-      expect(settings.tipShape, BrushTipShape.round);
       expect(settings.sizePressureCurve, isNull);
       expect(settings.opacityPressureCurve, isNull);
       expect(settings.flowPressureCurve, isNull);
@@ -28,7 +26,6 @@ void main() {
         opacity: 0.5,
         flow: 0.25,
         hardness: 0.75,
-        tipShape: BrushTipShape.square,
       );
 
       expect(settings.color, 0xFFFF00FF);
@@ -36,7 +33,6 @@ void main() {
       expect(settings.opacity, 0.5);
       expect(settings.flow, 0.25);
       expect(settings.hardness, 0.75);
-      expect(settings.tipShape, BrushTipShape.square);
     });
 
     test('rejects size <= 0', () {
@@ -167,7 +163,6 @@ void main() {
         opacity: 0.4,
         flow: 0.3,
         hardness: 0.2,
-        tipShape: BrushTipShape.square,
       );
 
       expect(
@@ -178,7 +173,6 @@ void main() {
           opacity: 0.4,
           flow: 0.3,
           hardness: 0.2,
-          tipShape: BrushTipShape.square,
         ),
       );
     });

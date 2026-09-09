@@ -14,7 +14,7 @@ class BrushDab {
     required this.opacity,
     required this.flow,
     required this.hardness,
-    required this.tipShape,
+    this.tipShape = BrushTipShape.round,
     required this.pressure,
     required this.sequence,
     this.tiltAzimuthDegrees = 0.0,
@@ -92,7 +92,6 @@ class BrushDab {
       opacity: 1.0,
       flow: settings.flow,
       hardness: settings.hardness,
-      tipShape: settings.tipShape,
       pressure: sample.pressure,
       sequence: sequence,
       // ⛔"Rides along unread" is no longer true: `applyBrushInputDynamics`
@@ -245,7 +244,10 @@ class BrushDab {
     'opacity': opacity,
     'flow': flow,
     'hardness': hardness,
-    'tipShape': tipShape.toJson(),
+    // ⛔Omitted at the resting value: a brush dab is never square now, so
+    // every stroke a brush records is byte-identical without this key. The
+    // FILL, selection-lift and cut-stamp verbs still write it.
+    if (tipShape != BrushTipShape.round) 'tipShape': tipShape.toJson(),
     'pressure': pressure,
     'sequence': sequence,
     // ⚠️Omitted at the resting value so a stroke recorded before tilt
@@ -276,7 +278,9 @@ class BrushDab {
       opacity: (json['opacity'] as num).toDouble(),
       flow: (json['flow'] as num).toDouble(),
       hardness: (json['hardness'] as num).toDouble(),
-      tipShape: BrushTipShape.fromJson(json['tipShape']),
+      tipShape: json['tipShape'] == null
+          ? BrushTipShape.round
+          : BrushTipShape.fromJson(json['tipShape']),
       pressure: (json['pressure'] as num).toDouble(),
       sequence: json['sequence'] as int,
       tiltAzimuthDegrees:
