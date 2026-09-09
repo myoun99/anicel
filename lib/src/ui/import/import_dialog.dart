@@ -969,9 +969,11 @@ class _ImportDialogState extends State<ImportDialog> {
       return const SizedBox.shrink();
     }
     final named = paths.map(mediaAssetDefaultName).take(3).join(', ');
-    final more = paths.length > 3 ? ' and ${paths.length - 3} more' : '';
+    final more = paths.length > 3
+        ? AppText.strings.imAndMore(paths.length - 3)
+        : '';
     return Text(
-      '$named$more: placement not available yet — register instead.',
+      '$named$more: ${AppText.strings.imRegisterInstead}',
       key: const ValueKey<String>('import-unplaceable-note'),
       style: Theme.of(context).textTheme.labelSmall,
       overflow: TextOverflow.ellipsis,
@@ -1027,120 +1029,89 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  /// What the window says it will DO with what was picked: one row per
+  /// thing it recognised, and the dim rows for what it will leave alone.
   Widget _interpretationTable(BuildContext context) {
-    final theme = Theme.of(context);
-    final rows = <Widget>[];
-    void addRow(String leading, String body, {bool dim = false}) {
-      rows.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 86,
-                child: Text(
-                  leading,
-                  style: theme.textTheme.labelSmall!.copyWith(
-                    color: dim
-                        ? theme.colorScheme.outline
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  body,
-                  style: theme.textTheme.bodySmall!.copyWith(
-                    color: dim ? theme.colorScheme.outline : null,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     final parsed = _parsed;
-    if (parsed != null) {
-      addRow(
-        'Cut',
-        parsed.cutNumbers.isEmpty
-            ? parsed.folderName
-            : parsed.cutNumbers.join(' · ') +
-                  (parsed.cutNumbers.length > 1 ? '  (겸용)' : ''),
-      );
-      if (parsed.processTokens.isNotEmpty) {
-        addRow('Process', parsed.processTokens.join(' + '));
-      }
-      for (final layer in parsed.layers) {
-        addRow(
-          'Layer ${layer.symbol}',
-          '${layer.cells.length} cels '
-              '(${layer.cells.map((c) => c.label).join(', ')})',
-        );
-      }
-      for (final picture in parsed.pictures) {
-        addRow('Picture', picture.name);
-      }
-      for (final group in parsed.processGroups) {
-        addRow(
-          'Process ${group.process}',
-          [
-            for (final layer in group.layers)
-              '${layer.symbol}: ${layer.cells.length}',
-          ].join(' · '),
-        );
-      }
-      for (final reference in parsed.references) {
-        addRow('Reference', reference.file, dim: true);
-      }
-      for (final exclusion in parsed.excluded) {
-        addRow(
-          'Excluded',
-          '${exclusion.path} — ${exclusion.reason}',
-          dim: true,
-        );
-      }
-      for (final warning in parsed.warnings) {
-        addRow('⚠', warning);
-      }
-    } else if (_files.isNotEmpty) {
-      for (final path in _files) {
-        final kind = mediaAssetKindForPath(path);
-        // Only a PLACEMENT can be refused for its kind. Registering a
-        // movie in the pool is exactly what the media pool has always
-        // done, so pool-bound rows read as ordinary ones.
-        final unplaceable =
-            kind != null &&
-            _destination != null &&
-            _unplaceableKinds.contains(kind);
-        addRow(
-          kind?.jsonValue ?? 'file',
-          unplaceable
-              ? '${mediaAssetDefaultName(path)} — placement not available yet'
-              : mediaAssetDefaultName(path),
-          dim: kind == null || unplaceable,
-        );
-      }
-    } else {
-      addRow(
-        '',
-        'Pick files or a cut folder to see the interpretation.',
-        dim: true,
-      );
-    }
-    for (final ignored in _ignoredSources) {
-      addRow('Ignored', mediaAssetDefaultName(ignored), dim: true);
-    }
-
     return ListView(
       key: const ValueKey<String>('import-interpretation-table'),
       padding: const EdgeInsets.symmetric(vertical: 6),
-      children: rows,
+      children: [
+        // ⛔NO LOOSE-FILE BRANCH. Loose files go to the file TABLE instead
+        // (`_twoZones`), and this table is only built when `_files` is
+        // empty — the branch that listed them here could not run at all,
+        // and was still being kept in step with the kinds (감사 2026-09-09).
+        if (parsed != null)
+          ..._cutFolderRows(parsed)
+        else
+          _InterpretationRow(
+            leading: '',
+            body: AppText.strings.imPickToSee,
+            dim: true,
+          ),
+        for (final ignored in _ignoredSources)
+          _InterpretationRow(
+            leading: AppText.strings.imIgnored,
+            body: mediaAssetDefaultName(ignored),
+            dim: true,
+          ),
+      ],
     );
   }
+
+  /// A parsed CUT FOLDER, read out in the order the delivery reads: the
+  /// cut, its process, its layers and their cels, then what was left out.
+  List<_InterpretationRow> _cutFolderRows(CutFolderParseResult parsed) {
+    final strings = AppText.strings;
+    return [
+      _InterpretationRow(
+        leading: strings.exCut,
+        body: parsed.cutNumbers.isEmpty
+            ? parsed.folderName
+            : parsed.cutNumbers.join(' · ') +
+                  (parsed.cutNumbers.length > 1
+                      ? '  ${strings.imMultiCutMark}'
+                      : ''),
+      ),
+      if (parsed.processTokens.isNotEmpty)
+        _InterpretationRow(
+          leading: strings.imProcess,
+          body: parsed.processTokens.join(' + '),
+        ),
+      for (final layer in parsed.layers)
+        _InterpretationRow(
+          leading: '${strings.exLayer} ${layer.symbol}',
+          body:
+              '${strings.exCelCount(layer.cells.length)} '
+              '(${layer.cells.map((c) => c.label).join(', ')})',
+        ),
+      for (final picture in parsed.pictures)
+        _InterpretationRow(leading: strings.imPicture, body: picture.name),
+      for (final group in parsed.processGroups)
+        _InterpretationRow(
+          leading: '${strings.imProcess} ${group.process}',
+          body: [
+            for (final layer in group.layers)
+              '${layer.symbol}: ${layer.cells.length}',
+          ].join(' · '),
+        ),
+      for (final reference in parsed.references)
+        _InterpretationRow(
+          leading: strings.imReference,
+          body: reference.file,
+          dim: true,
+        ),
+      for (final exclusion in parsed.excluded)
+        _InterpretationRow(
+          leading: strings.imExcluded,
+          body: '${exclusion.path} — ${exclusion.reason}',
+          dim: true,
+        ),
+      for (final warning in parsed.warnings)
+        _InterpretationRow(leading: '⚠', body: warning),
+    ];
+  }
+
 
   int _sizeOf(String path) => _fileSizes.putIfAbsent(path, () {
     try {
@@ -1339,6 +1310,53 @@ class _ImportDialogState extends State<ImportDialog> {
               _parseConfig = _parseConfig.copyWith(revisionPolicy: policy);
               _reparseFolder(rescan: false);
             }),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One line of the interpretation table: what was recognised on the left,
+/// what it is on the right. [dim] is the "will be left alone" reading —
+/// references, exclusions, ignored files and the empty prompt.
+class _InterpretationRow extends StatelessWidget {
+  const _InterpretationRow({
+    required this.leading,
+    required this.body,
+    this.dim = false,
+  });
+
+  final String leading;
+  final String body;
+  final bool dim;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 86,
+            child: Text(
+              leading,
+              style: theme.textTheme.labelSmall!.copyWith(
+                color: dim
+                    ? theme.colorScheme.outline
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              body,
+              style: theme.textTheme.bodySmall!.copyWith(
+                color: dim ? theme.colorScheme.outline : null,
+              ),
+            ),
           ),
         ],
       ),

@@ -12,6 +12,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
@@ -1329,6 +1330,77 @@ void main() {
         ),
         isTrue,
       );
+    });
+  });
+
+  /// THE INTERPRETATION TABLE SAYS WHAT WILL HAPPEN, in the reader's own
+  /// language and with the rows it will leave alone drawn as such.
+  ///
+  /// 감사 2026-09-09: nothing measured it. The kind label could be swapped
+  /// for another kind's word and the dim rule dropped, and the suite stayed
+  /// green — while the table printed `video` (a stored key) at a Japanese
+  /// user and drew a refused row like an ordinary one.
+  group('the interpretation table', () {
+    Future<String> writeMovie(WidgetTester tester) async =>
+        (await tester.runAsync(() async {
+          final file = File('${tempDir.path}${Platform.pathSeparator}ref.mp4');
+          await file.writeAsBytes(const [0, 0, 0, 24]);
+          return file.path;
+        }))!;
+
+    Future<void> pumpOn(WidgetTester tester, List<String> paths) async {
+      tester.view.physicalSize = const Size(1400, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: paths),
+          ),
+        ),
+      );
+      // A loose file is PROBED (identity, size) before the table can say
+      // what it is; the real IO runs in runAsync and its awaits are
+      // fake-zone microtasks that only pump() drains.
+      for (var i = 0; i < 8; i += 1) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+      }
+    }
+
+
+    testWidgets('with nothing picked it says so', (tester) async {
+      await pumpOn(tester, const []);
+      expect(find.text(AppText.strings.imPickToSee), findsOneWidget);
+    });
+
+    testWidgets('loose files go to the file TABLE — this table is not built '
+        'for them at all', (tester) async {
+      // 감사 2026-09-09: the table carried a loose-file branch that could
+      // not run, because the only place that builds it is the arm where
+      // `_files` is empty. It was still being kept in step with the kinds.
+      await pumpOn(tester, [await writeMovie(tester)]);
+      expect(
+        find.byKey(const ValueKey<String>('import-interpretation-table')),
+        findsNothing,
+      );
+      expect(find.byType(ImportFileTable), findsOneWidget);
+    });
+
+    testWidgets('a movie in a placing batch is refused in the reader\'s '
+        'language, and the note names it', (tester) async {
+      final movie = await writeMovie(tester);
+      await pumpOn(tester, [movie]);
+
+      final note = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('import-unplaceable-note')),
+      );
+      expect(note.data, contains(AppText.strings.imRegisterInstead));
+      expect(note.data, contains('ref'));
     });
   });
 }

@@ -993,6 +993,24 @@ enum AppStrings {
   String get imArchivedProcesses => _s('imArchivedProcesses');
   String get imMultiCutFolders => _s('imMultiCutFolders');
 
+  /// The interpretation table's row names — what the window recognised in
+  /// what was picked. ⚠️Cut · Layer and the cel count are `exCut`,
+  /// `exLayer` and `exCelCount`; a file's KIND is `exAudio`/`exImage`/
+  /// `exVideo`, which is what the export window already calls them.
+  String get imProcess => _s('imProcess');
+  String get imPicture => _s('imPicture');
+  String get imReference => _s('imReference');
+  String get imExcluded => _s('imExcluded');
+  String get imIgnored => _s('imIgnored');
+  String get imMultiCutMark => _s('imMultiCutMark');
+  String get imPickToSee => _s('imPickToSee');
+
+  /// The note over the action bar when the batch holds something that can
+  /// be REGISTERED but not placed. '{n}' is how many names were not listed.
+  String imAndMore(int count) =>
+      _s('imAndMore').replaceFirst('{n}', '$count');
+  String get imRegisterInstead => _s('imRegisterInstead');
+
   /// The media pool's states and its rename prompt.
   String get mpFileMissing => _s('mpFileMissing');
   String get mpLinkedOnSeRows => _s('mpLinkedOnSeRows');
@@ -1799,6 +1817,15 @@ enum AppStrings {
     'imSize': 'Size',
     'imArchivedProcesses': 'Archived processes (LO/, GEN/…)',
     'imMultiCutFolders': 'Multi-cut folders (兼用)',
+    'imProcess': 'Process',
+    'imPicture': 'Picture',
+    'imReference': 'Reference',
+    'imExcluded': 'Excluded',
+    'imIgnored': 'Ignored',
+    'imMultiCutMark': '(multi-cut)',
+    'imAndMore': ' and {n} more',
+    'imRegisterInstead': 'placement not available yet — register instead.',
+    'imPickToSee': 'Pick files or a cut folder to see the interpretation.',
     'mpFileMissing': 'File missing — relink it',
     'mpLinkedOnSeRows': 'Linked on SE rows',
     'mpNameEmpty': 'Media name cannot be empty.',
@@ -2756,6 +2783,15 @@ enum AppStrings {
     'imSize': 'サイズ',
     'imArchivedProcesses': '格納済み工程（LO/・GEN/…）',
     'imMultiCutFolders': '兼用カットのフォルダ',
+    'imProcess': '工程',
+    'imPicture': '画像',
+    'imReference': '参考',
+    'imExcluded': '除外',
+    'imIgnored': '無視',
+    'imMultiCutMark': '（兼用）',
+    'imAndMore': ' ほか{n}件',
+    'imRegisterInstead': '配置はまだ未対応です — 登録だけ行います。',
+    'imPickToSee': 'ファイルかカットフォルダを選ぶと解釈が出ます。',
     'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
     'mpLinkedOnSeRows': 'SE行にリンク済み',
     'mpNameEmpty': 'メディア名を入力してください。',
@@ -3735,6 +3771,15 @@ enum AppStrings {
     'imSize': '크기',
     'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
     'imMultiCutFolders': '겸용 컷 폴더',
+    'imProcess': '공정',
+    'imPicture': '그림',
+    'imReference': '참고',
+    'imExcluded': '제외',
+    'imIgnored': '무시',
+    'imMultiCutMark': '(겸용)',
+    'imAndMore': ' 외 {n}개',
+    'imRegisterInstead': '아직 배치할 수 없습니다 — 등록만 합니다.',
+    'imPickToSee': '파일이나 컷 폴더를 고르면 해석이 나옵니다.',
     'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
     'mpLinkedOnSeRows': 'SE 행에 연결됨',
     'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
@@ -4749,6 +4794,18 @@ enum AppStrings {
     'imSize': 'Taille',
     'imArchivedProcesses': 'Étapes archivées (LO/, GEN/…)',
     'imMultiCutFolders': 'Dossiers multi-plans (兼用)',
+    'imProcess': 'Étape',
+    'imPicture': 'Image',
+    'imReference': 'Référence',
+    'imExcluded': 'Exclu',
+    'imIgnored': 'Ignoré',
+    'imMultiCutMark': '(multi-plan)',
+    'imAndMore': ' et {n} de plus',
+    'imRegisterInstead':
+        'placement pas encore disponible — enregistrement seulement.',
+    'imPickToSee':
+        'Choisissez des fichiers ou un dossier de plan pour voir '
+        'l\'interprétation.',
     'mpFileMissing': 'Fichier introuvable — reliez-le',
     'mpLinkedOnSeRows': 'Lié aux lignes SE',
     'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
@@ -5685,6 +5742,15 @@ enum AppStrings {
     'imSize': '大小',
     'imArchivedProcesses': '已归档工序（LO/、GEN/…）',
     'imMultiCutFolders': '兼用镜头文件夹',
+    'imProcess': '工序',
+    'imPicture': '图片',
+    'imReference': '参考',
+    'imExcluded': '已排除',
+    'imIgnored': '已忽略',
+    'imMultiCutMark': '（兼用）',
+    'imAndMore': ' 等{n}个',
+    'imRegisterInstead': '暂不支持放置 — 仅登记。',
+    'imPickToSee': '选择文件或镜头文件夹即可查看解析。',
     'mpFileMissing': '文件缺失 — 请重新链接',
     'mpLinkedOnSeRows': '已链接到 SE 行',
     'mpNameEmpty': '媒体名称不能为空。',
