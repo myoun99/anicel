@@ -1,4 +1,3 @@
-import '../core/collection_equality.dart';
 import 'media_identity.dart';
 
 export 'media_identity.dart' show MediaIdentity, MediaIdentityMatch;
@@ -358,7 +357,3 @@ List<MediaAsset> immutableMediaAssetList(List<MediaAsset> assets) {
   validateMediaAssetPaths(assets);
   return List.unmodifiable(assets);
 }
-
-/// Convenience equality for pool lists (command no-op guards).
-bool mediaAssetListEquals(List<MediaAsset> a, List<MediaAsset> b) =>
-    listEquals(a, b);
