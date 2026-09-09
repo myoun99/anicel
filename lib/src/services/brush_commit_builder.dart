@@ -39,10 +39,13 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     if (promotedTiles.isEmpty) {
       return BrushCommitResult.noOp(surface: surface);
     }
-    var dirtyTiles = DirtyTileSet.empty();
-    for (final tile in promotedTiles) {
-      dirtyTiles = dirtyTiles.add(tile.coord);
-    }
+    // ONE set build, not one per tile: `DirtyTileSet` is immutable, so
+    // folding coordinates in with a per-coordinate add rebuilt the whole
+    // set n times for an n-tile commit. The single-coord form is gone
+    // now (see DirtyTileSet.addAll) — this is the shape that survives.
+    final dirtyTiles = DirtyTileSet(
+      promotedTiles.map((tile) => tile.coord),
+    );
     return BrushCommitResult.changed(
       beforeSurface: surface,
       afterSurface: surface.putMaterializedTiles(promotedTiles),

@@ -41,15 +41,27 @@ void main() {
       expect(DirtyTileSet([a]).contains(b), isFalse);
     });
 
-    test('add returns new set with coord', () {
-      expect(DirtyTileSet([a]).add(b).coords, {a, b});
+    /// ⛔There is no one-coordinate `add` to test: it existed, its only
+    /// caller folded a commit's tiles in one at a time, and each call
+    /// rebuilt the whole set. `addAll` with one coordinate is that case.
+    test('addAll of one coord returns a new set with it', () {
+      expect(DirtyTileSet([a]).addAll([b]).coords, {a, b});
     });
 
-    test('add does not mutate original', () {
+    test('addAll does not mutate original', () {
       final original = DirtyTileSet([a]);
-      final next = original.add(b);
+      final next = original.addAll([b]);
       expect(original.coords, {a});
       expect(next.coords, {a, b});
+    });
+
+    /// 🚨The getter used to be `Set.unmodifiable(_coords)` — a fresh copy
+    /// per read, over a field the constructor had already made
+    /// unmodifiable. Nothing BEHAVIOURAL could see it; identity can, and
+    /// identity is what makes the read free.
+    test('🚨reading coords twice hands back the SAME set, not a copy', () {
+      final set = DirtyTileSet([a, b]);
+      expect(identical(set.coords, set.coords), isTrue);
     });
 
     test('addAll returns new set with all coords', () {

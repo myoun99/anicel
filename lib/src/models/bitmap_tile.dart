@@ -7,6 +7,15 @@ import '../core/collection_equality.dart';
 import '../native/qa_native_engine.dart';
 import 'tile_coord.dart';
 
+/// The tight box of a tile's ink, in TILE-LOCAL pixels. Exclusive on the
+/// far edges, like every other rect in this codebase.
+typedef TileInkBounds = ({
+  int left,
+  int top,
+  int rightExclusive,
+  int bottomExclusive,
+});
+
 /// One immutable 4-byte-RGBA tile whose pixels live in NATIVE memory
 /// (R19-Z zero-copy tile storage).
 ///
@@ -162,6 +171,87 @@ class BitmapTile implements Finalizable {
       }
     }
     return false;
+  }
+
+  TileInkBounds? _inkBounds;
+
+  /// The tight box of this tile's ink, in TILE-LOCAL pixels — null when
+  /// the tile has none.
+  ///
+  /// 🚨★★★**EVERY COMMIT RESCANNED EVERY PIXEL THE CEL HELD.** The
+  /// surface-level scan ([bitmapSurfaceContentBounds]) is memoized by its
+  /// callers ON THE SURFACE INSTANCE, and a commit MAKES a new instance —
+  /// so the memo missed exactly when it mattered and the answer was
+  /// rebuilt from scratch while the user drew. Almost none of that work
+  /// was new: a commit replaces a handful of tiles and the rest are the
+  /// SAME OBJECTS, whose ink cannot have moved because a tile is
+  /// immutable. Memoized here, an unchanged tile answers in O(1) and only
+  /// the tiles the stroke actually touched are scanned.
+  ///
+  /// ⛔**NOT a second [hasInk].** That one answers on its first opaque
+  /// byte, which for a drawn-on tile is almost immediately; this one has
+  /// to read every pixel to know the extent. Folding them would make the
+  /// cheap question pay the expensive question's price. They agree by
+  /// construction instead — no ink, no box — which is why `??=` is enough
+  /// here with no "computed yet" flag beside it.
+  TileInkBounds? get inkBounds {
+    if (!hasInk) {
+      return null;
+    }
+    return _inkBounds ??= _scanInkBounds();
+  }
+
+  /// Whether [inkBounds] can answer without reading pixels — what a
+  /// BATCHED scan asks so it stages only the tiles that still owe one.
+  bool get inkBoundsKnown => _inkBounds != null || !hasInk;
+
+  /// Adopts a box computed elsewhere — the batched C scan, which answers
+  /// for many tiles in one call and would otherwise throw its answers
+  /// away.
+  ///
+  /// ⚠️A MEMO on an immutable object, not a mutation: the pixels decide
+  /// the box, the pixels never change, so the only thing this can do is
+  /// save the recompute. First writer wins, and every writer computes the
+  /// same answer.
+  void rememberInkBounds(TileInkBounds bounds) => _inkBounds ??= bounds;
+
+  /// The reference scan: this tile's words, in Dart.
+  ///
+  /// ⛔**IT IS WRITTEN OUT, AND THE WORD LOOP STAYS.** It runs per PIXEL,
+  /// and it is the twin the native parity test measures the C path
+  /// against — a helper call inside it would cost on both counts. It used
+  /// to live in `bitmap_surface_geometry`; it moved here so the batched C
+  /// scan and the reference answer the same question in one place, and so
+  /// the answer can be MEMOIZED where the pixels are.
+  TileInkBounds _scanInkBounds() {
+    var minX = size;
+    var minY = size;
+    var maxX = -1;
+    var maxY = -1;
+    // RGBA little-endian: alpha is the word's top byte.
+    final words = _view.buffer.asUint32List(
+      _view.offsetInBytes,
+      size * size,
+    );
+    for (var y = 0; y < size; y += 1) {
+      final rowStart = y * size;
+      for (var x = 0; x < size; x += 1) {
+        final word = words[rowStart + x];
+        if (word == 0 || (word & 0xff000000) == 0) {
+          continue;
+        }
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    return (
+      left: minX,
+      top: minY,
+      rightExclusive: maxX + 1,
+      bottomExclusive: maxY + 1,
+    );
   }
 
   /// Copies the pixel bytes into [target] without the intermediate copy

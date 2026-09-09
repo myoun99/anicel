@@ -196,32 +196,57 @@ void main() {
     for (var round = 0; round < 12; round += 1) {
       const tileSize = 32;
       final tiles = <TileCoord, BitmapTile>{};
+      final referenceTiles = <TileCoord, BitmapTile>{};
       final tileCount = random.nextInt(5);
       for (var i = 0; i < tileCount; i += 1) {
         final coord = TileCoord(
           x: random.nextInt(4) - 1,
           y: random.nextInt(3) - 1,
         );
-        final pixels = Uint8List(tileSize * tileSize * 4);
+        // 🚨★★★**TWO SETS OF TILE OBJECTS OVER THE SAME BYTES, AND THE
+        // WHOLE PARITY RESTS ON IT.** A tile MEMOIZES its ink box (it is
+        // immutable, so the answer cannot go stale), so running both
+        // paths over the SAME surface would have the second one read the
+        // first one's cached answer and agree with itself. Two surfaces
+        // built from identical bytes give each path a cold cache and
+        // makes the comparison mean what it says.
+        final nativePixels = Uint8List(tileSize * tileSize * 4);
+        final referencePixels = Uint8List(tileSize * tileSize * 4);
         // Sparse ink, including exact tile-edge pixels on some rounds.
         final inkCount = random.nextInt(6);
         for (var k = 0; k < inkCount; k += 1) {
           final x = round.isEven ? random.nextInt(tileSize) : 0;
           final y = round % 3 == 0 ? tileSize - 1 : random.nextInt(tileSize);
-          pixels[(y * tileSize + x) * 4 + 3] = 1 + random.nextInt(255);
+          final alpha = 1 + random.nextInt(255);
+          nativePixels[(y * tileSize + x) * 4 + 3] = alpha;
+          referencePixels[(y * tileSize + x) * 4 + 3] = alpha;
         }
-        tiles[coord] = BitmapTile(coord: coord, size: tileSize, pixels: pixels);
+        tiles[coord] = BitmapTile(
+          coord: coord,
+          size: tileSize,
+          pixels: nativePixels,
+        );
+        referenceTiles[coord] = BitmapTile(
+          coord: coord,
+          size: tileSize,
+          pixels: referencePixels,
+        );
       }
       final surface = BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tileSize,
         tiles: tiles,
       );
+      final referenceSurface = BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: referenceTiles,
+      );
 
       QaNativeEngine.debugForceDartFallback = false;
       final nativeBounds = bitmapSurfaceContentBounds(surface);
       QaNativeEngine.debugForceDartFallback = true;
-      final referenceBounds = bitmapSurfaceContentBounds(surface);
+      final referenceBounds = bitmapSurfaceContentBounds(referenceSurface);
       QaNativeEngine.debugForceDartFallback = false;
 
       expect(nativeBounds, referenceBounds, reason: 'round $round');

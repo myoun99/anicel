@@ -129,12 +129,7 @@ class UndoSurfaceSnapshot {
   }) : _canvasSize = snapshot.canvasSize,
        _tileSize = snapshot.tileSize,
        _surface = snapshot,
-       _owned = snapshot.tilesNotSharedWith(sharedWith) {
-    _sharedCoords = {
-      for (final coord in snapshot.tiles.keys)
-        if (!_owned!.containsKey(coord)) coord,
-    };
-  }
+       _owned = snapshot.tilesNotSharedWith(sharedWith);
 
   /// Which cel these pixels are — the blob header wants it, and a crash
   /// dump of the room can then say which drawing it was looking at.
@@ -158,7 +153,15 @@ class UndoSurfaceSnapshot {
   /// ⛔So it cannot hold a tile at all now. The rebuild takes them from
   /// the surface handed to [surfaceOver], which by the stack's own LIFO
   /// order is the very surface this one was measured against.
-  late final Set<TileCoord> _sharedCoords;
+  ///
+  /// ⚠️**AND IT IS FILLED IN BY [_releaseTiles], NOT BY THE CONSTRUCTOR.**
+  /// It can only be computed while [_surface] is still here, and it is
+  /// only ever NEEDED once [_surface] is gone — so building it eagerly
+  /// walked the whole cel for every snapshot ever made, parked or not.
+  /// A pair holds two of these, and a stroke makes a pair: 🧪two full
+  /// walks of the cel per commit, spent on an answer almost none of them
+  /// would be asked for. Null until the tiles are let go.
+  Set<TileCoord>? _sharedCoords;
 
   /// The tiles only this snapshot holds — null once they are on disk.
   Map<TileCoord, BitmapTile>? _owned;
@@ -268,14 +271,20 @@ class UndoSurfaceSnapshot {
   /// The shared tiles, taken from [live] — or null when it cannot answer
   /// for every coordinate this snapshot expects of it.
   Map<TileCoord, BitmapTile>? _sharedTilesFrom(BitmapSurface? live) {
-    if (_sharedCoords.isEmpty) {
+    final shared = _sharedCoords;
+    if (shared == null) {
+      // Never let go, so nothing pinned the coordinates — and a snapshot
+      // that still HOLDS its surface never reaches here.
+      return null;
+    }
+    if (shared.isEmpty) {
       return const {};
     }
     if (live == null) {
       return null;
     }
     final tiles = <TileCoord, BitmapTile>{};
-    for (final coord in _sharedCoords) {
+    for (final coord in shared) {
       final tile = live.tileAt(coord);
       if (tile == null) {
         return null;
@@ -338,8 +347,7 @@ class UndoSurfaceSnapshot {
       // one snapshot the budget was sure cost nothing was the one that
       // went on costing — the same mistake [_sharedCoords] records, in the
       // branch that looked too trivial to have it.
-      _owned = null;
-      _surface = null;
+      _releaseTiles();
       _letGo = true;
       return true;
     }
@@ -366,15 +374,42 @@ class UndoSurfaceSnapshot {
       // wide open in practice: the stack sheds and trims from `_push`,
       // synchronously, while this await is parked on the event loop.
       ScratchFile.remove(path);
-      _owned = null;
-      _surface = null;
+      _releaseTiles();
       return true;
     }
     _parkedPath = path;
-    _owned = null;
-    _surface = null;
+    _releaseTiles();
     _letGo = true;
     return true;
+  }
+
+  /// Lets go of the tiles — and pins [_sharedCoords] on the way out.
+  ///
+  /// 🚨★★★**THE TWO ARE ONE STEP, AND THAT IS THE WHOLE REASON THIS IS A
+  /// METHOD.** Which coordinates somebody else holds can only be worked
+  /// out while [_surface] is still here, and it is only ever ASKED for
+  /// after [_surface] is gone. Written as two statements the answer was
+  /// built in the CONSTRUCTOR — for every snapshot ever made, parked or
+  /// not — which is a walk of the whole cel, twice per commit, for an
+  /// answer almost none of them are asked. Written as one step, exactly
+  /// the snapshots that let go pay for it, and the order cannot be got
+  /// wrong: there is no way to drop the surface without pinning the
+  /// coordinates first.
+  ///
+  /// ⚠️Idempotent on purpose — the dropped-mid-encode branch of [_park]
+  /// releases without setting [_letGo], so a later [park] can arrive
+  /// here a second time and must not throw or widen the answer.
+  void _releaseTiles() {
+    final surface = _surface;
+    if (surface != null) {
+      final owned = _owned;
+      _sharedCoords = {
+        for (final coord in surface.tiles.keys)
+          if (owned == null || !owned.containsKey(coord)) coord,
+      };
+    }
+    _owned = null;
+    _surface = null;
   }
 
   /// The entry holding this is leaving the stack: nobody can ask for

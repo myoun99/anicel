@@ -20,24 +20,45 @@ import '../native/qa_native_engine.dart';
 /// pixel exists. R26 #13 follow-up (user rule 07-22): the whole-picture
 /// transform box frames exactly the picture, PS-style, not the canvas.
 ///
-/// One full scan per call, and `surface.tiles` copies the cel's whole
-/// tile map before the scan even starts. The word loop fast-skips fully
-/// transparent pixels (most of an animation cel), so the common cost is
-/// memory bandwidth — but it is still far too much to spend per frame.
-/// ⚠️ This comment used to promise "callers open a session with it,
-/// never a per-frame path" and that was already false: the selection
-/// layer frames the always-on move box from `build`. Callers on a build
-/// path MUST memoize on the surface instance (BrushCanvasPanel does).
+/// 🚨★★★**IT USED TO RESCAN EVERY PIXEL THE CEL HELD, ON EVERY COMMIT.**
+/// Both callers memoize — but on the SURFACE INSTANCE, and a commit makes
+/// a new one, so the memo missed exactly while the user drew. The work
+/// was nearly all repeated: a commit replaces a handful of tiles and
+/// every other tile is the SAME OBJECT, whose ink cannot have moved
+/// because tiles are immutable. So the box is memoized per TILE
+/// ([BitmapTile.inkBounds]) and only the tiles that still owe an answer
+/// are scanned. The surface-level memo above it stays — it saves the
+/// walk itself, this saves the pixels.
+///
+/// ⚠️The old note here also warned that `surface.tiles` copied the whole
+/// map before the scan started. It no longer does (2026-09-09) — the
+/// getter hands the field over.
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
-  // BB-N1 (ABI 22): with the engine loaded, every tile's word scan runs
-  // in C, fanned across the worker pool — the Dart loop stays as the
-  // reference and the fallback (integer logic, so parity is structural;
-  // the parity test pins it anyway).
-  final native = QaNativeEngine.instance;
-  final box = native != null && surface.tiles.isNotEmpty
-      ? _nativeInkBox(surface, native)
-      : _dartInkBox(surface);
+  final box = _InkBox();
+  final tileSize = surface.tileSize;
+  // Tiles that already know their own box cost a lookup each; only the
+  // rest reach a pixel scan.
+  final unscanned = <MapEntry<TileCoord, BitmapTile>>[];
+  for (final entry in surface.tiles.entries) {
+    if (!entry.value.inkBoundsKnown) {
+      unscanned.add(entry);
+      continue;
+    }
+    _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
+  }
+  if (unscanned.isNotEmpty) {
+    // BB-N1 (ABI 22): with the engine loaded, the word scan runs in C,
+    // fanned across the worker pool — the Dart loop stays as the
+    // reference and the fallback (integer logic, so parity is
+    // structural; the parity test pins it anyway).
+    final native = QaNativeEngine.instance;
+    if (native != null) {
+      _scanNativeInto(box, unscanned, tileSize, native);
+    } else {
+      _scanDartInto(box, unscanned, tileSize);
+    }
+  }
   if (box.maxX < box.minX) {
     return null;
   }
@@ -46,6 +67,27 @@ bitmapSurfaceContentBounds(BitmapSurface surface) {
     top: box.minY,
     rightExclusive: box.maxX + 1,
     bottomExclusive: box.maxY + 1,
+  );
+}
+
+/// Folds one tile's LOCAL box onto the canvas axis. A null box is an
+/// ink-free tile, which contributes nothing.
+void _includeTileBox(
+  _InkBox box,
+  TileCoord coord,
+  TileInkBounds? bounds,
+  int tileSize,
+) {
+  if (bounds == null) {
+    return;
+  }
+  final originX = coord.x * tileSize;
+  final originY = coord.y * tileSize;
+  box.include(
+    left: originX + bounds.left,
+    top: originY + bounds.top,
+    right: originX + bounds.rightExclusive - 1,
+    bottom: originY + bounds.bottomExclusive - 1,
   );
 }
 
@@ -71,11 +113,14 @@ class _InkBox {
   }
 }
 
-/// Every tile staged for one batched C scan, and its per-tile answers
-/// folded back onto the canvas axis.
-_InkBox _nativeInkBox(BitmapSurface surface, QaNativeEngine native) {
-  final tileSize = surface.tileSize;
-  final entries = surface.tiles.entries.toList();
+/// Stages the tiles that still owe a box for ONE batched C scan, folds
+/// the answers onto the canvas axis, and MEMOIZES each on its tile.
+void _scanNativeInto(
+  _InkBox box,
+  List<MapEntry<TileCoord, BitmapTile>> entries,
+  int tileSize,
+  QaNativeEngine native,
+) {
   native.ensureTileSpanBatch(entries.length);
   for (var i = 0; i < entries.length; i += 1) {
     // Only tilePixels is consumed — the scan is whole-tile. The staged
@@ -99,70 +144,35 @@ _InkBox _nativeInkBox(BitmapSurface surface, QaNativeEngine native) {
     count: entries.length,
     tileSize: tileSize,
   );
-  final box = _InkBox();
   for (var i = 0; i < entries.length; i += 1) {
     final localMinX = bounds[i * 4];
     if (localMinX == 0x7fffffff) {
-      continue; // Ink-free tile.
+      // Ink-free tile. Nothing to remember: `inkBounds` answers null off
+      // `hasInk`, which this tile will have computed for itself.
+      continue;
     }
-    final originX = entries[i].key.x * tileSize;
-    final originY = entries[i].key.y * tileSize;
-    box.include(
-      left: originX + localMinX,
-      top: originY + bounds[i * 4 + 1],
-      right: originX + bounds[i * 4 + 2],
-      bottom: originY + bounds[i * 4 + 3],
+    final local = (
+      left: localMinX,
+      top: bounds[i * 4 + 1],
+      rightExclusive: bounds[i * 4 + 2] + 1,
+      bottomExclusive: bounds[i * 4 + 3] + 1,
     );
+    entries[i].value.rememberInkBounds(local);
+    _includeTileBox(box, entries[i].key, local, tileSize);
   }
-  return box;
 }
 
-/// The reference scan: every tile's words, in Dart.
-///
-/// ⛔The word loop stays written out. It runs per PIXEL of every tile a
-/// cel holds, and it is the twin the parity test measures the C path
-/// against — a helper call inside it would cost on both counts.
-_InkBox _dartInkBox(BitmapSurface surface) {
-  final tileSize = surface.tileSize;
-  final box = _InkBox();
-  for (final entry in surface.tiles.entries) {
-    final originX = entry.key.x * tileSize;
-    final originY = entry.key.y * tileSize;
-    // RGBA little-endian: alpha is the word's top byte. The native view
-    // reads in place — the [BitmapTile.pixels] getter would copy every
-    // tile just to scan it — and readPixels keeps the tile alive for the
-    // scan (see BitmapTile.readPixels).
-    entry.value.readPixels((_, bytes) {
-      final words = bytes.buffer.asUint32List(0, tileSize * tileSize);
-      var tileMinX = tileSize;
-      var tileMinY = tileSize;
-      var tileMaxX = -1;
-      var tileMaxY = -1;
-      for (var y = 0; y < tileSize; y += 1) {
-        final rowStart = y * tileSize;
-        for (var x = 0; x < tileSize; x += 1) {
-          final word = words[rowStart + x];
-          if (word == 0 || (word & 0xff000000) == 0) {
-            continue;
-          }
-          if (x < tileMinX) tileMinX = x;
-          if (x > tileMaxX) tileMaxX = x;
-          if (y < tileMinY) tileMinY = y;
-          if (y > tileMaxY) tileMaxY = y;
-        }
-      }
-      if (tileMaxX < 0) {
-        return; // Ink-free tile, same answer the C scan gives.
-      }
-      box.include(
-        left: originX + tileMinX,
-        top: originY + tileMinY,
-        right: originX + tileMaxX,
-        bottom: originY + tileMaxY,
-      );
-    });
+/// The reference route: each tile scans its own words and memoizes the
+/// answer ([BitmapTile.inkBounds]) — the twin the native parity test
+/// measures the C path against.
+void _scanDartInto(
+  _InkBox box,
+  List<MapEntry<TileCoord, BitmapTile>> entries,
+  int tileSize,
+) {
+  for (final entry in entries) {
+    _includeTileBox(box, entry.key, entry.value.inkBounds, tileSize);
   }
-  return box;
 }
 
 BitmapSurface resizeBitmapSurfaceCanvas(
