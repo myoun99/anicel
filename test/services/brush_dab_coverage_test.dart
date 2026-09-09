@@ -187,44 +187,6 @@ void main() {
       expect(rotated, baseline);
     });
 
-    test('rotated rectangle tip covers a diamond at 45 degrees', () {
-      // Size 8 (radius 4), roundness 1, rotated 45 degrees: corners of the
-      // axis-aligned bounding box fall outside the rotated square while the
-      // axis midpoints stay inside.
-      final values = brushPixelCoveragesForDab(
-        dab(
-          x: 10.5,
-          y: 10.5,
-          size: 8,
-          tipShape: BrushTipShape.square,
-          angleDegrees: 45,
-        ),
-      );
-      final coords = values.map((value) => (value.x, value.y)).toSet();
-      expect(coords, contains((10, 10)));
-      expect(coords, contains((13, 10))); // axis midpoint stays inside
-      expect(coords, contains((10, 13)));
-      expect(coords, isNot(contains((13, 13)))); // bbox corner cut off
-      expect(coords, isNot(contains((7, 7))));
-      expect(values.every((value) => value.coverage == 1), isTrue);
-    });
-
-    test('rectangle roundness shrinks the minor side', () {
-      final values = brushPixelCoveragesForDab(
-        dab(
-          x: 10.5,
-          y: 10.5,
-          size: 8,
-          tipShape: BrushTipShape.square,
-          roundness: 0.25,
-        ),
-      );
-      final coords = values.map((value) => (value.x, value.y)).toSet();
-      expect(coords, contains((13, 10))); // dx=+3 within the major half-width
-      expect(coords, isNot(contains((10, 13)))); // dy=+3 beyond minor radius 1
-      expect(coords, contains((10, 11))); // dy=+1 within minor radius
-    });
-
     test('sampled tip covers only where the mask has alpha', () {
       // Size 8 (radius 4), half-opaque mask at angle 0: pixels left of the
       // center are covered, pixels right of it are not.

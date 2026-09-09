@@ -217,16 +217,6 @@ void main() {
           angleDegrees: 137,
         ),
       ],
-      'rotated rectangle tip': [
-        _dab(
-          x: 18.4,
-          y: 17.7,
-          size: 16,
-          tipShape: BrushTipShape.square,
-          roundness: 0.5,
-          angleDegrees: 45,
-        ),
-      ],
       'sampled tip on fractional center': [
         _dab(x: 14.37, y: 12.81, size: 16, tipMask: _testTipMask),
       ],

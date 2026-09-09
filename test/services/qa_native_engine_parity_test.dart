@@ -255,17 +255,30 @@ void main() {
       final textureMask = (heavy || (mode == 7 && random.nextBool()))
           ? randomMask('texture-$round')
           : null;
-      // Mode map: 0 plain round, 1 ellipse, 2 square, 3 rotated rect,
-      // 4 unrotated tip, 5 rotated tip, 6 tip+dual+texture, 7 chaos.
+      // Mode map: 0 plain round, 1 ellipse, 2 square, 3 ellipse again (was
+      // "rotated rect"), 4 unrotated tip, 5 rotated tip, 6 tip+dual+texture,
+      // 7 chaos.
+      //
+      // ⛔MODE 3 WAS THE ROTATED RECTANGLE AND IT CANNOT BE BUILT ANY MORE.
+      // A maskless square dab is required to stay axis-aligned (`BrushDab`
+      // throws otherwise), because the fill and stamp verbs that make one all
+      // mean "cover exactly this rect". It draws a rotated ELLIPSE now, which
+      // keeps the mode exercising a rotation rather than quietly becoming a
+      // duplicate of mode 0.
       final isRoundTip =
-          mode == 0 || mode == 1 || (mode == 7 && random.nextBool());
-      final roundness =
-          (mode == 1 || mode == 3 || mode == 5 || heavy || mode == 7)
+          mode == 0 || mode == 1 || mode == 3 || (mode == 7 && random.nextBool());
+      // A MASKED dab may still be squashed and rotated — the mask carries the
+      // footprint and the sampler un-squashes it, which is a real brush.
+      final masked = tipMask != null;
+      final wantsSquash =
+          mode == 1 || mode == 3 || mode == 5 || heavy || mode == 7;
+      final roundness = (wantsSquash && (isRoundTip || masked))
           ? 0.2 + random.nextDouble() * 0.8
           : 1.0;
-      final angleDegrees = (mode == 3 || mode == 5 || heavy)
+      final wantsAngle = mode == 3 || mode == 5 || heavy;
+      final angleDegrees = (wantsAngle && (isRoundTip || masked))
           ? random.nextDouble() * 360.0 - 180.0
-          : (mode == 7 && random.nextBool())
+          : (mode == 7 && (isRoundTip || masked) && random.nextBool())
           ? random.nextDouble() * 90.0
           : 0.0;
 

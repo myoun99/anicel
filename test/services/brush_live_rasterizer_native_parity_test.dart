@@ -41,8 +41,14 @@ void main() {
     const canvasSize = CanvasSize(width: 300, height: 200);
     final random = Random(20260715);
     final cache = BrushTipStampCache();
-    final dabs = <BrushDab>[
-      for (var i = 0; i < 24; i += 1)
+    final dabs = <BrushDab>[];
+    for (var i = 0; i < 24; i += 1) {
+      // The shape and the squash are drawn TOGETHER, not independently: a
+      // maskless square dab is axis-aligned by invariant, so a randomizer
+      // that rolled roundness and angle for one would be building a dab
+      // BrushDab now refuses to construct.
+      final isRound = random.nextBool();
+      dabs.add(
         cache.resolveDab(
           BrushDab(
             center: CanvasPoint(
@@ -54,16 +60,15 @@ void main() {
             opacity: 0.3 + random.nextDouble() * 0.7,
             flow: 0.3 + random.nextDouble() * 0.7,
             hardness: random.nextDouble(),
-            tipShape: random.nextBool()
-                ? BrushTipShape.round
-                : BrushTipShape.square,
+            tipShape: isRound ? BrushTipShape.round : BrushTipShape.square,
             pressure: 1,
             sequence: i,
-            roundness: 0.4 + random.nextDouble() * 0.6,
-            angleDegrees: random.nextDouble() * 360,
+            roundness: isRound ? 0.4 + random.nextDouble() * 0.6 : 1.0,
+            angleDegrees: isRound ? random.nextDouble() * 360 : 0.0,
           ),
         ),
-    ];
+      );
+    }
 
     QaNativeEngine.debugResetForTests();
     QaNativeEngine.debugForceDartFallback = true;

@@ -64,7 +64,7 @@ class BrushDab {
     _validateUnitIntervalFinite(speed, 'speed');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
-    _validateSquareIsAxisAligned(tipShape, roundness, angleDegrees);
+    _validateSquareIsAxisAligned(tipShape, tipMask, roundness, angleDegrees);
     _validateSequence(sequence);
   }
 
@@ -442,12 +442,18 @@ void _validateUnitIntervalFinite(double value, String fieldName) {
 /// check is what lets it be DELETED rather than left unused: the state is
 /// unrepresentable now, so a future caller finds out here instead of finding
 /// a silently axis-aligned rectangle.
+/// ⚠️MASKLESS squares only, which is exactly what the deleted path was gated
+/// on (`tipMask == null && !isRound && …`). With a tip MASK the shape flag is
+/// ignored entirely — the mask carries the footprint and the sampler squashes
+/// and rotates it — so a masked dab may carry any roundness and angle, and a
+/// rotated raster tip is a real brush (Graphite Stick is one).
 void _validateSquareIsAxisAligned(
   BrushTipShape tipShape,
+  BrushTipMask? tipMask,
   double roundness,
   double angleDegrees,
 ) {
-  if (tipShape == BrushTipShape.round) {
+  if (tipShape == BrushTipShape.round || tipMask != null) {
     return;
   }
   if (roundness != 1.0 || angleDegrees != 0.0) {
