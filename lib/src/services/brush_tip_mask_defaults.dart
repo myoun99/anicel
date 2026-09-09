@@ -24,6 +24,17 @@ final BrushTipMask bristleBrushTipMask = _generateBristleMask();
 /// Clumped soft blobs — sponge dabs and cloud puffs.
 final BrushTipMask spongeBrushTipMask = _generateSpongeMask();
 
+/// Wet watercolour blot: a pale, uneven pool that DARKENS towards its rim.
+///
+/// 🚨THE RIM IS THE POINT, and it runs the opposite way to every other tip
+/// here — the others fade out at the edge, this one gains there. That is what
+/// a wet wash does as it dries: pigment is carried to the boundary and left
+/// behind, so the mark reads as a puddle rather than a stamp. Doing it in the
+/// TIP is what lets a watercolour preset get the look with no new engine
+/// field; the alternative would have been a wet-edge parameter nobody asked
+/// for.
+final BrushTipMask wetBlotBrushTipMask = _generateWetBlotMask();
+
 /// Canvas-anchored PAPER texture (see `textureMask`): seamless two-octave
 /// noise. A texture mask is sampled with wrapping, so any discontinuity
 /// across the tile edge would print a visible grid over the artwork.
@@ -58,6 +69,36 @@ BrushTipMask _generateChalkMask() {
       return 0;
     }
     return falloff * (96 + (grain - 77) * 159 / 178);
+  });
+}
+
+/// Wet blot: pale in the pool, heavier at the rim, with a soft irregular
+/// boundary so two dabs never stack into a clean circle.
+///
+/// ⚠️The rim gain is capped below 255 on purpose. A wash is a MULTIPLIER on
+/// the stroke's own flow (these presets run flow ~0.35), so a saturated rim
+/// here would still land pale — but a rim at full alpha would make the blot
+/// read as an outline the moment someone raised flow, which is not what a
+/// wet edge looks like.
+BrushTipMask _generateWetBlotMask() {
+  final noise = _noiseBytes(0x6C078965, _maskSize * _maskSize);
+  return _discMask('builtin-wet-blot', (x, y, dx, edge) {
+    final grain = noise[y * _maskSize + x];
+    // The boundary wanders: the rim sits between 0.72 and 1.0 of the radius
+    // depending on the cell, so the pool is not a disc.
+    final rimStart = 0.72 + (grain / 255.0) * 0.16;
+    if (edge > rimStart + 0.24) {
+      return 0;
+    }
+    // Inside the pool: pale, lightly mottled.
+    if (edge < rimStart) {
+      return 96.0 + (grain >> 3);
+    }
+    // In the rim band: rises to the deposit, then feathers out past 1.0.
+    final into = (edge - rimStart) / 0.24;
+    final deposit = 96 + 108 * (into < 0.55 ? into / 0.55 : 1.0);
+    final feather = into < 0.55 ? 1.0 : 1.0 - (into - 0.55) / 0.45;
+    return deposit * feather;
   });
 }
 

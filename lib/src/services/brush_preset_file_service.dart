@@ -51,7 +51,7 @@ class BrushPresetFileService {
   /// release that reaches someone who has drawn with their own brushes has to
   /// put carry-forward back before it bumps this number, or the bump eats
   /// their library. Nothing here enforces that; this comment is the warning.
-  static const int libraryVersion = 6;
+  static const int libraryVersion = 7;
 
   /// Reads the preset library; a missing, unreadable or older file yields the
   /// built-in defaults (nothing is written back until the next save).

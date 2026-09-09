@@ -1,0 +1,129 @@
+// THE ROSTER'S DECISIONS, PINNED — the ones a later round would undo by
+// accident rather than on purpose.
+//
+// ⚠️This does NOT pin counts. "41 presets" is a number that should be free to
+// move; what must not move is the SHAPE the user decided (2026-09-09): no
+// eraser group, no pixel group, paint split by medium, and no two brushes
+// that the picker cannot tell apart.
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/services/brush_preset_defaults.dart';
+
+void main() {
+  test('⛔no eraser group, and no preset smuggling one in', () {
+    // 유저 2026-09-09: 「지우개그룹은 만들 이유를 못느끼겠고. 왜냐하면 툴이
+    // 있으니까」 — the eraser is a TOOL. A group would duplicate it, and so
+    // would a preset that pins the erase blend, which is why both are checked.
+    expect(
+      defaultBrushGroups.map((group) => group.name.toLowerCase()),
+      isNot(contains('eraser')),
+    );
+    for (final preset in defaultBrushPresets) {
+      expect(
+        preset.settings.blendMode,
+        isNot(BrushBlendMode.erase),
+        reason: '${preset.name} would be the banned group in disguise',
+      );
+    }
+  });
+
+  test('⛔no pixel group — the pixel brush is an AA setting', () {
+    // 유저 2026-09-09: 「픽셀브러시도 그냥 G펜 우리가 만들어서 넣고 aa off면
+    // 픽셀대로 나오게 클튜처럼 하면되는거고」.
+    expect(
+      defaultBrushGroups.map((group) => group.name.toLowerCase()),
+      isNot(contains('pixel')),
+    );
+    final animePen = defaultBrushPresets.firstWhere(
+      (preset) => preset.name == 'Anime Pen',
+    );
+    expect(animePen.settings.antiAlias.name, 'none');
+    // 🚨And the hardness that makes the AA setting mean anything: at 1.0 the
+    // coverage is already binary, so `none` would be a field set to no effect.
+    expect(animePen.settings.hardness, lessThan(1.0));
+    // ⛔A masked tip would be binarized whole by the same threshold.
+    expect(animePen.settings.tipMask, isNull);
+  });
+
+  test('paint is split by medium, and every group has members', () {
+    // 유저 2026-09-09: 「페인트는 그룹 더 나눠서 수채화나 오일이나 이런거」.
+    final names = defaultBrushGroups.map((group) => group.name).toList();
+    expect(names, containsAll(<String>['Watercolor', 'Oil']));
+    expect(names, isNot(contains('Paint')));
+    // 유저 2026-09-09: 「이름 펜이 맞지않을까」 — the group of pens is named
+    // for the tool, like every other group here.
+    expect(names, contains('Pen'));
+    expect(names, isNot(contains('Ink')));
+
+    for (final group in defaultBrushGroups) {
+      expect(
+        defaultBrushPresets.where((preset) => preset.groupId == group.id),
+        isNotEmpty,
+        reason: '${group.name} would render as an empty tab',
+      );
+    }
+    // Nothing is left at the root: a built-in with no group is invisible in
+    // the tabbed picker.
+    for (final preset in defaultBrushPresets) {
+      expect(preset.groupId, isNotNull, reason: preset.name);
+    }
+  });
+
+  test('🔑no two presets differ ONLY by what the picker cannot draw', () {
+    // The preview normalizes SIZE to the row, skips scatter and every jitter,
+    // and bakes alpha only — so size, scatter, jitter, blend and the whole
+    // colour-mixing block are invisible in the list. Two rows that share
+    // everything else are one brush wearing two names, which is what
+    // 「최대한 안겹치도록… 에어브러시 같은게 두개 안생기도록」 forbids.
+    String visibleKey(BrushSettings s) => [
+      s.tipMask?.id ?? '-',
+      s.dualMask?.id ?? '-',
+      s.dualMaskScale,
+      s.textureMask?.id ?? '-',
+      s.textureScale,
+      s.textureDensity,
+      s.roundness,
+      s.angleDegrees,
+      s.hardness,
+      s.spacing,
+      s.rotationMode.name,
+      s.antiAlias.name,
+      // The curve SHAPES, which the preview's synthetic stroke draws.
+      s.sizePressureCurve?.points.toString() ?? '-',
+      s.opacityPressureCurve?.points.toString() ?? '-',
+      s.flowPressureCurve?.points.toString() ?? '-',
+      s.hardnessPressureCurve?.points.toString() ?? '-',
+    ].join('|');
+
+    final seen = <String, String>{};
+    for (final preset in defaultBrushPresets) {
+      final key = visibleKey(preset.settings);
+      final twin = seen[key];
+      expect(
+        twin,
+        isNull,
+        reason:
+            '"${preset.name}" and "$twin" draw the same row — they differ '
+            'only in fields the picker cannot show',
+      );
+      seen[key] = preset.name;
+    }
+  });
+
+  test('every preset id and name is unique', () {
+    expect(
+      defaultBrushPresets.map((preset) => preset.id).toSet(),
+      hasLength(defaultBrushPresets.length),
+    );
+    expect(
+      defaultBrushPresets.map((preset) => preset.name).toSet(),
+      hasLength(defaultBrushPresets.length),
+    );
+    expect(
+      defaultBrushGroups.map((group) => group.id).toSet(),
+      hasLength(defaultBrushGroups.length),
+    );
+  });
+}
