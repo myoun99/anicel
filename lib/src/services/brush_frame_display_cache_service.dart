@@ -13,7 +13,7 @@ class BrushFrameDisplayCacheService {
   const BrushFrameDisplayCacheService({
     required this.frameStore,
     required this.canvasSize,
-    this.tileSize = 256,
+    this.tileSize = defaultCelTileSize,
   });
 
   final BrushFrameStore frameStore;

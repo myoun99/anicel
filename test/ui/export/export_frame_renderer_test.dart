@@ -78,7 +78,10 @@ void main() {
       sentinelPixels[3] = 255;
       session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
         key: frameKey,
-        previewSurface: BitmapSurface(canvasSize: cut.canvasSize).putTiles([
+        previewSurface: BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: 256,
+        ).putTiles([
           BitmapTile(
             coord: TileCoord(x: 0, y: 0),
             size: 256,
@@ -243,7 +246,10 @@ void main() {
       pixels[tileOffset + 3] = 255;
       session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
         key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
-        previewSurface: BitmapSurface(canvasSize: cut.canvasSize).putTiles([
+        previewSurface: BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: 256,
+        ).putTiles([
           BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
         ]),
       );

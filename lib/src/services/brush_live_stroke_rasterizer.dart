@@ -126,7 +126,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
 
   /// Edge length of a sparse stroke tile in canvas pixels when the caller
   /// states none — the committed surface's own default.
-  static const int defaultTileSize = 256;
+  static const int defaultTileSize = defaultCelTileSize;
 
   /// Edge length of a sparse stroke tile in canvas pixels.
   ///

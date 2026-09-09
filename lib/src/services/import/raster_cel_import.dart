@@ -109,7 +109,7 @@ Future<BitmapSurface> rasterizeImageToSurface({
   required CanvasSize canvas,
   required MediaFitMode fit,
   ui.Rect? placement,
-  int tileSize = 256,
+  int tileSize = defaultCelTileSize,
 }) async {
   placement ??= placementRectFor(
     sourceWidth: image.width,

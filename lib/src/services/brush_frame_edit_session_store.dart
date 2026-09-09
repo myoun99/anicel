@@ -8,7 +8,7 @@ import '../models/canvas_surface_state.dart';
 class BrushFrameEditSessionStore {
   BrushFrameEditSessionStore({
     required CanvasSize canvasSize,
-    this.tileSize = 256,
+    this.tileSize = defaultCelTileSize,
   }) : _canvasSize = canvasSize;
 
   CanvasSize _canvasSize;

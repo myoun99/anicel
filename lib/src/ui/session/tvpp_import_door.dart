@@ -178,7 +178,7 @@ class TvppImportDoor {
         for (final tile in tiles)
           BitmapTile(
             coord: TileCoord(x: tile.x, y: tile.y),
-            size: 256,
+            size: defaultCelTileSize,
             pixels: tile.pixels,
           ),
       ]),

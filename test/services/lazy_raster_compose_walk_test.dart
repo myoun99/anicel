@@ -201,6 +201,7 @@ void main() {
 
       return BitmapSurface(
         canvasSize: canvasSize,
+        tileSize: 256,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
             coord: TileCoord(x: 0, y: 0),

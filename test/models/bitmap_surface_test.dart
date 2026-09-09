@@ -9,9 +9,17 @@ import 'package:anicel/src/models/tile_coord.dart';
 
 void main() {
   group('BitmapSurface', () {
+    /// ⚠️**THE TILE SIZE IS STATED, not taken from the default.** Every
+    /// case below is about the surface's ARITHMETIC — ceiling division,
+    /// the pasteboard's bounds, which coords are storable — and those
+    /// answers are derived from a tile size, not from THE tile size. Left
+    /// on the default they all moved the day it did (2026-09-09, 256 →
+    /// 128), which would have said the arithmetic broke when only the
+    /// input had changed. What the default IS gets its own case below.
     BitmapSurface surface({Map<TileCoord, BitmapTile> tiles = const {}}) =>
         BitmapSurface(
           canvasSize: const CanvasSize(width: 1920, height: 1080),
+          tileSize: 256,
           tiles: tiles,
         );
 
@@ -19,7 +27,26 @@ void main() {
       'empty surface stores no tiles',
       () => expect(surface().tiles, isEmpty),
     );
-    test('default tileSize is 256', () => expect(surface().tileSize, 256));
+
+    /// 🚨★★★**THE ONE PLACE THE VALUE ITSELF IS PINNED.** It was written
+    /// in eight files — the surface, the edit-session store, the display
+    /// cache service, the live stroke rasterizer, the stroke overlay and
+    /// three import paths — each with its own `256` default, and NOT ONE
+    /// caller passes a tile size, so they agreed only by everybody having
+    /// typed the same number. A surface at one size with an overlay at
+    /// another is not a slow path, it is wrong pixels.
+    ///
+    /// 유저 확정 2026-09-09: 「128로 통일해서 가자」. Measured: 128 is the
+    /// fastest of the three on commit and on decode, holds a third of 256's
+    /// undo bytes, and pays 2x its paint — where 64 pays 6.2x.
+    test('the default is 128, and every default reads THIS constant', () {
+      expect(defaultCelTileSize, 128);
+      expect(
+        BitmapSurface(canvasSize: const CanvasSize(width: 1920, height: 1080))
+            .tileSize,
+        defaultCelTileSize,
+      );
+    });
     test(
       'tileColumnCount uses ceiling division',
       () => expect(surface().tileColumnCount, 8),

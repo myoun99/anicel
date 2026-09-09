@@ -19,7 +19,7 @@ void main() {
   });
 
   BitmapSurface patternedSurface(CanvasSize canvasSize) {
-    var surface = BitmapSurface(canvasSize: canvasSize);
+    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 256);
     final columns = (canvasSize.width + 255) ~/ 256;
     final rows = (canvasSize.height + 255) ~/ 256;
     for (var tileY = 0; tileY < rows; tileY += 1) {
@@ -140,6 +140,7 @@ void main() {
         pixels[3] = 255;
         final surface = BitmapSurface(
           canvasSize: const CanvasSize(width: 300, height: 200),
+          tileSize: 256,
           tiles: {
             TileCoord(x: -1, y: -1): BitmapTile(
               coord: TileCoord(x: -1, y: -1),

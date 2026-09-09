@@ -44,7 +44,8 @@ import 'deferred_image_disposal.dart';
 /// events (e.g. app focus switches) that corrupted synchronously created
 /// picture-to-image textures for a frame.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
-  ActiveStrokeOverlayModel({int tileSize = 256}) : _tileSize = tileSize;
+  ActiveStrokeOverlayModel({int tileSize = defaultCelTileSize})
+    : _tileSize = tileSize;
 
   int _tileSize;
 

@@ -27,6 +27,7 @@ void main() {
 
   BitmapSurface surfaceOf(Iterable<BitmapTile> tiles) => BitmapSurface(
     canvasSize: canvas,
+    tileSize: 256,
     tiles: {for (final tile in tiles) tile.coord: tile},
   );
 

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/import/tvpp_parse.dart';
 
 /// Decodes one .tvpp image slot to straight (un-premultiplied) RGBA.
@@ -56,7 +57,7 @@ List<TvppCelTile>? decodeTvppSlotTiles({
   required TvppSlot slot,
   required int width,
   required int height,
-  int tileSize = 256,
+  int tileSize = defaultCelTileSize,
 }) {
   final rgba = decodeTvppSlotRgba(
     recordBytes: recordBytes,

@@ -50,6 +50,7 @@ BitmapSurface _surface({
   }
   return BitmapSurface(
     canvasSize: const CanvasSize(width: 4000, height: 4000),
+    tileSize: 256,
     tiles: map,
   );
 }

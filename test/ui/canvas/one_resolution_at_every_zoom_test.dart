@@ -49,6 +49,7 @@ void main() {
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
+        tileSize: 256,
         tiles: {tile.coord: tile},
       ),
       showTransparentBackground: false,

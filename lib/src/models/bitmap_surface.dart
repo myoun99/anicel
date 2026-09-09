@@ -6,10 +6,39 @@ import 'canvas_size.dart';
 import 'pasteboard_bounds.dart';
 import 'tile_coord.dart';
 
+/// The edge length of a cel's tiles, in canvas pixels.
+///
+/// 🚨★★★**ONE NUMBER, AND IT WAS WRITTEN IN EIGHT PLACES.** The surface,
+/// the edit-session store, the display cache service, the live stroke
+/// rasterizer (whose own comment called its copy「the committed surface's
+/// own default」), the stroke overlay, and three import paths each declared
+/// `256` as their own default — and NOT ONE of their callers passes a tile
+/// size, so they agreed only by everybody happening to type the same
+/// number. A surface at one size with an overlay at another is not a slow
+/// path, it is wrong pixels.
+///
+/// 🚨★★★**128, 유저 확정 2026-09-09**(「128로 통일해서 가자」). It was 256
+/// from the first commit (`e1c5cdfa`, 2026-06-21) with no measurement and
+/// no decision comment behind it. What decided it, measured on this repo:
+///
+/// | | 256 | **128** | 64 |
+/// |---|---|---|---|
+/// | commit, 20px dab | 0.37 ms | **0.36** | 2.13 |
+/// | undo, 200-tap pass | 58.5 MiB | **17.2** | 5.9 |
+/// | decode a whole cel | 49 ms | **31** | 103 |
+/// | one paint | **0.287 ms** | 0.616 | 1.787 |
+///
+/// ⛔**64 loses on three of the four.** Waste is proportional to tile AREA,
+/// so it wins on undo bytes — and pays 6.2x the paint and 2.1x the decode,
+/// because our storage tile IS our GPU texture (one `ui.Image` per tile).
+/// Krita, MyPaint and OpenToonz all use 64, but they decouple the two;
+/// GIMP uses 128, which is where this landed.
+const int defaultCelTileSize = 128;
+
 class BitmapSurface {
   BitmapSurface({
     required this.canvasSize,
-    this.tileSize = 256,
+    this.tileSize = defaultCelTileSize,
     Map<TileCoord, BitmapTile> tiles = const {},
   }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles) {
     _validateTileSize(tileSize);
@@ -251,6 +280,10 @@ class BitmapSurface {
       canvasSize: CanvasSize.fromJson(
         json['canvasSize'] as Map<String, dynamic>,
       ),
+      // ⛔NOT [defaultCelTileSize]. This answers a different question —
+      // "what did a file written before the field existed use" — and the
+      // answer is history, not policy. Following the current default would
+      // read those old bytes at the wrong stride.
       tileSize: json['tileSize'] as int? ?? 256,
       tiles: tiles,
     );

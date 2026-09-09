@@ -514,7 +514,11 @@ void main() {
         color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
       );
       return BitmapSurfacePainter(
-        surface: BitmapSurface(canvasSize: canvasSize, tiles: {tile.coord: tile}),
+        surface: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 256,
+          tiles: {tile.coord: tile},
+        ),
         showTransparentBackground: false,
       );
     }

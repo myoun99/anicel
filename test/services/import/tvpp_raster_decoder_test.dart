@@ -234,6 +234,9 @@ void main() {
         slot: slot,
         width: tw,
         height: th,
+        // ⚠️STATED, not the default: this case is about the 256px grid it
+        // names in its own title, and the arithmetic below counts in 256s.
+        tileSize: 256,
       )!;
       expect(tiles, hasLength(1));
       final tile = tiles.single;
@@ -284,6 +287,7 @@ void main() {
         ),
         width: tw,
         height: th,
+        tileSize: 256,
       )!;
       expect(windowed, hasLength(tiles.length));
       expect(

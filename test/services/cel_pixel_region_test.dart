@@ -22,6 +22,7 @@ void main() {
 
   BitmapSurface surfaceWith(List<TileCoord> coords) => BitmapSurface(
     canvasSize: canvas,
+    tileSize: 256,
     tiles: {for (final coord in coords) coord: blank(coord)},
   );
 

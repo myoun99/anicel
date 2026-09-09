@@ -19,7 +19,7 @@ void main() {
   /// A surface whose tiles carry every alpha regime (0 / mid / 255) plus
   /// partial edge tiles, so the premultiply branches all execute.
   BitmapSurface patternedSurface(CanvasSize canvasSize) {
-    var surface = BitmapSurface(canvasSize: canvasSize);
+    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 256);
     final columns = (canvasSize.width + 255) ~/ 256;
     final rows = (canvasSize.height + 255) ~/ 256;
     for (var tileY = 0; tileY < rows; tileY += 1) {

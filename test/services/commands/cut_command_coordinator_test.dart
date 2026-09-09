@@ -303,6 +303,7 @@ void main() {
         );
         final ink = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
+          tileSize: 256,
         ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
         ]);
@@ -333,6 +334,7 @@ void main() {
         // touches it.
         final repainted = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
+          tileSize: 256,
         ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 1, y: 0), size: 256),
         ]);
@@ -998,9 +1000,9 @@ void main() {
             .last
             .layerId;
 
-        // Ink lives under the CANONICAL (cut-1/base) key.
         final ink = BitmapSurface(
           canvasSize: const CanvasSize(width: 1280, height: 720),
+          tileSize: 256,
         ).putTiles([
           BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256),
         ]);

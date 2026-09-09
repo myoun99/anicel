@@ -41,7 +41,7 @@ void main() {
     pixels[3] = 255;
     s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
-      BitmapSurface(canvasSize: originalSize).putTiles([
+      BitmapSurface(canvasSize: originalSize, tileSize: 256).putTiles([
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 256, pixels: pixels),
       ]),
     );

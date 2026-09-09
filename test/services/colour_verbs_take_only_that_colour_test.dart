@@ -24,6 +24,7 @@ void main() {
     }
     return BitmapSurface(
       canvasSize: canvas,
+      tileSize: 256,
       tiles: {
         origin: BitmapTile(coord: origin, size: 256, pixels: bytes),
       },

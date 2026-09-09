@@ -322,6 +322,7 @@ BitmapSurface _surfaceWithInkAt({required int x, required int y}) {
   pixels[offset + 3] = 255;
   return BitmapSurface(
     canvasSize: const CanvasSize(width: 1920, height: 1080),
+    tileSize: 256,
   ).putTiles([BitmapTile(coord: coord, size: tileSize, pixels: pixels)]);
 }
 
