@@ -18,6 +18,7 @@ import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
 import 'brush_preset_reorder.dart';
+import 'brush_preset_reorder_grid.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
 import '../text/app_strings.dart';
@@ -835,20 +836,26 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   /// The open tab's brushes.
+  /// 🚨유저 확정 (`brush-grid-reorder-Q1`, 답 1): the list is a GRID whose
+  /// cells still drag into a new order. One column is the same grid with one
+  /// column, so nothing here branches on the width and there is no view
+  /// where reordering quietly stops working.
   Widget _buildList(List<BrushPreset> visible, bool reorderable) {
-    // Same as the rail above: the app's behaviour is the only bar.
-    return ReorderableListView.builder(
+    return BrushPresetReorderGrid(
       key: const ValueKey<String>('brush-preset-list'),
       scrollController: _scrollController,
-      buildDefaultDragHandles: false,
       itemCount: visible.length,
-      onReorderStart: (_) => _dragging = true,
-      onReorderEnd: (_) {
+      cellHeight: brushPresetRowHeight,
+      itemKey: (index) =>
+          ValueKey<String>('brush-preset-entry-${visible[index].id.value}'),
+      onDragStart: () => _dragging = true,
+      onDragEnd: () {
         _dragging = false;
         _cancelSpring();
       },
-      onReorderItem: (oldIndex, newIndex) =>
-          _handleReorder(visible, oldIndex, newIndex),
+      onReorder: reorderable
+          ? (oldIndex, newIndex) => _handleReorder(visible, oldIndex, newIndex)
+          : null,
       itemBuilder: (context, index) {
         final preset = visible[index];
         final row = _BrushPresetRow(
@@ -859,16 +866,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           showStrokePreview: _showStrokePreview,
           showName: _showName,
         );
-        return KeyedSubtree(
-          key: ValueKey<String>('brush-preset-entry-${preset.id.value}'),
-          // The rows carry tooltips too, and a row drag re-parents them
-          // exactly the same way (유저, R4 #11 — same defect, other list).
-          child: reorderable
-              ? _dismissTooltipsOnPress(
-                  ReorderableDragStartListener(index: index, child: row),
-                )
-              : row,
-        );
+        // The rows carry tooltips too, and a row drag re-parents them
+        // exactly the same way (유저, R4 #11 — same defect, other list).
+        return reorderable ? _dismissTooltipsOnPress(row) : row;
       },
     );
   }
@@ -1238,7 +1238,7 @@ class _BrushPresetRow extends StatelessWidget {
           customBorder: AppShapes.container(AppShapes.windowRadius),
           onTap: onApplied == null ? null : () => onApplied!(preset),
           child: SizedBox(
-            height: 34,
+            height: brushPresetRowHeight,
             child: Row(
               children: [
                 SizedBox(
