@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
@@ -43,7 +45,7 @@ class BitmapSurface {
     required this.tileSize,
     required Map<TileCoord, BitmapTile> tiles,
     required Iterable<BitmapTile> added,
-  }) : _tiles = tiles {
+  }) : _tiles = UnmodifiableMapView(tiles) {
     for (final tile in added) {
       _validateTileEntry(tile.coord, tile, this);
     }
@@ -53,7 +55,24 @@ class BitmapSurface {
   final int tileSize;
   final Map<TileCoord, BitmapTile> _tiles;
 
-  Map<TileCoord, BitmapTile> get tiles => Map.unmodifiable(_tiles);
+  /// The tiles, read-only.
+  ///
+  /// 🚨★★★**THIS COPIED THE WHOLE MAP ON EVERY READ, AND IT IS READ ON
+  /// EVERY HOT PATH THERE IS.** It was `Map.unmodifiable(_tiles)`, which
+  /// the SDK documents as behaving like `Map.from` — a full rebuild per
+  /// call. An audit found ~30 callers, and the ones that hurt are the ones
+  /// asking trivial questions: `storeBakedSurface` copied the cel three
+  /// times per commit to read `length`, `isEmpty`, and an `any` that its
+  /// own decision comment says stops at the first inked tile — the copy
+  /// ran in front of the short-circuit and made that reasoning false.
+  ///
+  /// ⛔The fix is NOT a family of copy-free accessors beside it. The field
+  /// is already unmodifiable in both constructors — the public one copies
+  /// (its caller may keep the map it passed), the derived one WRAPS
+  /// (`UnmodifiableMapView`, O(1), over a map its caller built inline and
+  /// let go of). So the getter can hand the field over as it is, and every
+  /// caller stops paying without any of them changing.
+  Map<TileCoord, BitmapTile> get tiles => _tiles;
 
   /// Bytes one of THIS surface's tiles occupies — the multiplier every
   /// undo-weight answer needs, taken from the tile rather than re-derived.

@@ -227,5 +227,48 @@ void main() {
       expect(empty.tileCount, 40);
       expect(empty.tiles.length, 0);
     });
+
+    /// 🚨★★★**THE GETTER COPIED THE WHOLE MAP ON EVERY READ.** It was
+    /// `Map.unmodifiable(_tiles)`, which the SDK documents as behaving like
+    /// `Map.from` — a full rebuild per call, on a getter read by roughly
+    /// thirty callers, several of them per commit and per frame. Nothing
+    /// BEHAVIOURAL could see it: a copy and a view answer every question
+    /// identically. Identity can, and identity is exactly the property that
+    /// makes it free.
+    test('🚨reading the tiles twice hands back the SAME map, not a copy', () {
+      final coord = TileCoord(x: 0, y: 0);
+      final built = surface(
+        tiles: {
+          coord: BitmapTile(
+            coord: coord,
+            size: 256,
+            pixels: Uint8List(BitmapTile.bytesFor(256)),
+          ),
+        },
+      );
+
+      expect(identical(built.tiles, built.tiles), isTrue);
+      // And a derived surface keeps the property — that constructor wraps
+      // rather than copies, which is the half that had to change.
+      final grown = built.putTiles([
+        BitmapTile(
+          coord: TileCoord(x: 1, y: 0),
+          size: 256,
+          pixels: Uint8List(BitmapTile.bytesFor(256)),
+        ),
+      ]);
+      expect(identical(grown.tiles, grown.tiles), isTrue);
+    });
+
+    test('and it is still unmodifiable from the outside', () {
+      final built = surface();
+      expect(
+        () => built.tiles[TileCoord(x: 9, y: 9)] = BitmapTile.blank(
+          coord: TileCoord(x: 9, y: 9),
+          size: 256,
+        ),
+        throwsUnsupportedError,
+      );
+    });
   });
 }
