@@ -24,8 +24,15 @@ void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
-  Frame frame(String id) =>
-      Frame(id: FrameId(id), duration: 1, strokes: const []);
+  // Cels are numbered by their frame NAME (an unnamed frame is the
+  // in-between mark and exports no file), so the fixture ids' digits double
+  // as the cel numbers: 'f1' is cel 1.
+  Frame frame(String id) => Frame(
+    id: FrameId(id),
+    duration: 1,
+    strokes: const [],
+    name: id.replaceAll(RegExp('[^0-9]'), ''),
+  );
 
   /// CUT1: base A (2 cels) + a synced color row + a hidden base B + an
   /// instruction row. CUT2 exists for the scope grid.

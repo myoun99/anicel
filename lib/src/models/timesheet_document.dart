@@ -38,7 +38,8 @@ enum TimesheetCellKind {
   emptyRunStart,
 
   /// A drawing exposure starts here; [TimesheetCell.label] carries the cel
-  /// number (Frame.name, 1-based position fallback — export naming rule).
+  /// number ([Frame.celNumber] — the cel export files by the same rule) or
+  /// the ○ mark for an unnamed drawing.
   drawing,
 
   /// Covered by the drawing above (the hold line runs through this row).
@@ -706,10 +707,11 @@ class _LayerCellsPass {
        covered = List<bool>.filled(rowCount, false),
        entries = layer.timeline.entries.toList(growable: false),
        labelsByFrameId = <FrameId, String>{
-         // The sheet writes the frame NAME verbatim; unnamed cels print the
+         // The sheet writes the cel NUMBER verbatim; unnamed cels print the
          // in-between division mark — never an invented number (R5-④, same
-         // glyph the mark rows use).
-         for (final frame in layer.frames) frame.id: frame.name ?? '○',
+         // glyph the mark rows use). [Frame.celNumber] is the one place that
+         // decides which is which; the cel export reads the same getter.
+         for (final frame in layer.frames) frame.id: frame.celNumber ?? '○',
        },
        seNamesByFrameId = <FrameId, String?>{
          if (includeSeNames)

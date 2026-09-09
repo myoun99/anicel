@@ -23,6 +23,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -143,8 +144,17 @@ void main() {
       );
       final frame = Frame(id: drawnKey.frameId, duration: 1, strokes: const []);
 
-      final image = await ExportFrameRenderer(session: s).renderCel(
-        ExportCelTask(cut: cut, layer: layer, frame: frame, fileName: 'c.png'),
+      final image = await ExportFrameRenderer(session: s).renderCelGroup(
+        ExportCelGroupTask(
+          cut: cut,
+          baseLayer: layer,
+          members: [layer],
+          memberFrames: [frame],
+          baseFrame: frame,
+          celName: '1',
+          fileName: 'c.png',
+        ),
+        ExportSizeMode.canvas,
       );
 
       expect(image, isNotNull, reason: 'a loaded cel must export');

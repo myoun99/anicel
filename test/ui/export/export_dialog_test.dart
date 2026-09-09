@@ -51,8 +51,15 @@ void main() {
     }
   });
 
-  Frame frame(String id) =>
-      Frame(id: FrameId(id), duration: 1, strokes: const []);
+  // Cels are numbered by their frame NAME (an unnamed frame is the
+  // in-between mark and exports no file), so the fixture ids' digits double
+  // as the cel numbers: 'f1' is cel 1.
+  Frame frame(String id) => Frame(
+    id: FrameId(id),
+    duration: 1,
+    strokes: const [],
+    name: id.replaceAll(RegExp('[^0-9]'), ''),
+  );
 
   /// Two cuts (2 + 3 frames) on the active track, a third cut on another
   /// track that exports must never touch. The first cut's drawing layer

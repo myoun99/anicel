@@ -28,7 +28,7 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 /// of replaying the frame's whole command list — the storyboard-thumbnail
 /// replay after each stroke was a main part of the post-stroke UI freeze.
 void main() {
-  testWidgets('renderCel reads the valid display cache and only replays '
+  testWidgets('renderCelGroup reads the valid display cache and only replays '
       'commands when it is dirty', (tester) async {
     await tester.runAsync(() async {
       final session = EditorSessionManager(
@@ -88,14 +88,25 @@ void main() {
       );
 
       Future<ByteData> renderedBytes() async {
-        final image = await ExportFrameRenderer(session: session).renderCel(
-          ExportCelTask(
-            cut: cut,
-            layer: layer,
-            frame: frame,
-            fileName: 'cel.png',
-          ),
-        );
+        // A cel is exported as its label group — here a base with no
+        // members, rendered at canvas size so pixel (0,0) stays pixel (0,0),
+        // on a transparent ground so an empty pixel reads alpha 0.
+        final image =
+            await ExportFrameRenderer(
+              session: session,
+              background: const ui.Color(0x00000000),
+            ).renderCelGroup(
+              ExportCelGroupTask(
+                cut: cut,
+                baseLayer: layer,
+                members: [layer],
+                memberFrames: [frame],
+                baseFrame: frame,
+                celName: '1',
+                fileName: 'cel.png',
+              ),
+              ExportSizeMode.canvas,
+            );
         final bytes = await image!.toByteData(
           format: ui.ImageByteFormat.rawRgba,
         );

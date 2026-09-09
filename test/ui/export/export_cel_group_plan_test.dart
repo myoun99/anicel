@@ -21,8 +21,16 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 
 void main() {
-  Frame frame(String id, {String? name}) =>
-      Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
+  // A cel carries its number as the frame name; an unnamed frame is the
+  // in-between mark and exports nothing. The fixture ids' digits double as
+  // the cel number ('f1' → '1') unless a test names the frame itself, and
+  // `unnamed: true` builds the mark on purpose.
+  Frame frame(String id, {String? name, bool unnamed = false}) => Frame(
+    id: FrameId(id),
+    duration: 1,
+    strokes: const [],
+    name: unnamed ? null : (name ?? id.replaceAll(RegExp('[^0-9]'), '')),
+  );
 
   Layer base(String id, String name, List<Frame> frames) =>
       Layer(id: LayerId(id), name: name, frames: frames);
@@ -146,8 +154,17 @@ void main() {
     expect(plan.cels[1].memberFrames.last?.id.value, 's1');
   });
 
-  test('cel numbering honors Frame.name and the naming options', () {
-    final baseA = base('a', 'A', [frame('f1', name: '3'), frame('f2')]);
+  test('the cel number IS the frame name; an unnamed frame is the '
+      'in-between mark and has no file', () {
+    // 유저 2026-09-09: 「프레임 이름을 그대로 셀 번호로 출력시키고, 이름 없으면
+    // 출력 안 하도록 — 이름 없으면 중간나누기 마크인 거니까」. The old plan
+    // numbered f2 by its position ('CUT1_A002.png'); the sheet had always
+    // printed ○ for it.
+    final baseA = base('a', 'A', [
+      frame('f1', name: '3'),
+      frame('f2', unnamed: true),
+      frame('f3', name: '  '),
+    ]);
     final plan = buildExportCelGroupPlan(
       project: projectWith([baseA]),
       activeCutId: const CutId('cut'),
@@ -155,10 +172,17 @@ void main() {
         naming: ExportCelNaming(includeCutName: true, frameDigits: 3),
       ),
     );
-    expect(plan.cels.map((task) => task.fileName), [
-      'CUT1_A003.png',
-      'CUT1_A002.png',
-    ]);
+    expect(plan.cels.map((task) => task.fileName), ['CUT1_A003.png']);
+    expect(plan.cels.single.baseFrame.id.value, 'f1');
+  });
+
+  test('the sheet and the export agree on which drawing is a cel', () {
+    // One getter answers both — a blank name is the mark on either side.
+    expect(frame('f1', name: '12').celNumber, '12');
+    expect(frame('f1', name: ' 12 ').celNumber, '12');
+    expect(frame('f1', unnamed: true).celNumber, isNull);
+    expect(frame('f1', name: '').celNumber, isNull);
+    expect(frame('f1', name: '\t').celNumber, isNull);
   });
 
   test('instruction layers export per event with the row text', () {

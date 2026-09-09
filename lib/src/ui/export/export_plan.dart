@@ -3,8 +3,6 @@ import 'dart:math' as math;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_cel_naming.dart';
-import '../../models/frame.dart';
-import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
@@ -39,24 +37,6 @@ class ExportFrameTask {
 
   /// Renders as a black frame instead of compositing [cut].
   bool get isGap => frameIndex < 0;
-}
-
-/// One instance (cel) output: a unique authored [frame] of [layer], exported
-/// as drawn — no compositing.
-class ExportCelTask {
-  const ExportCelTask({
-    required this.cut,
-    required this.layer,
-    required this.frame,
-    required this.fileName,
-  });
-
-  final Cut cut;
-  final Layer layer;
-  final Frame frame;
-
-  /// Relative to the export directory; may contain `/` subfolders.
-  final String fileName;
 }
 
 /// Pads the first digit run in [name] to [digits] ('1' → '0001', 'a12b' →
@@ -383,67 +363,6 @@ List<ScheduledAudioClip> buildExportAudioPlan({
   return clips;
 }
 
-/// Instance-only plan: each unique authored frame (cel) of every visible
-/// drawing layer, once, in authored order — regardless of how often (or
-/// whether) the timeline exposes it. Camera and hidden layers are skipped.
-/// A frame-subrange does not apply to cels, so [ExportRange.frameRange]
-/// covers the active cut whole.
-List<ExportCelTask> buildExportCelPlan({
-  required Project project,
-  required CutId activeCutId,
-  required ExportRange range,
-  ExportCelNaming naming = const ExportCelNaming(),
-  bool onTimesheetOnly = false,
-  String fileExtension = 'png',
-}) {
-  final cuts = resolveExportCuts(
-    project: project,
-    activeCutId: activeCutId,
-    range: range,
-  );
-
-  final plan = <ExportCelTask>[];
-  final namer = ExportCelFileNamer(
-    naming: naming,
-    fileExtension: fileExtension,
-  );
-  for (final cut in cuts) {
-    for (final layer in cut.layers) {
-      if (!layer.kind.paintsArtwork || !layer.isVisible) {
-        continue;
-      }
-      // Cel-export scope: the timesheet toggle on layer labels marks which
-      // layers belong to the sheet output.
-      if (onTimesheetOnly && !layer.onTimesheet) {
-        continue;
-      }
-      for (var index = 0; index < layer.frames.length; index += 1) {
-        final frame = layer.frames[index];
-        plan.add(
-          ExportCelTask(
-            cut: cut,
-            layer: layer,
-            frame: frame,
-            fileName: namer.uniqueFileName(
-              cut: cut,
-              layerName: layer.name,
-              base: _celFileBase(
-                projectName: project.name,
-                cut: cut,
-                layer: layer,
-                frame: frame,
-                celPosition: index + 1,
-                naming: naming,
-              ),
-            ),
-          ),
-        );
-      }
-    }
-  }
-  return plan;
-}
-
 /// Names the files a cel export writes, and keeps them UNIQUE.
 ///
 /// 🚨Uniqueness is per RUN, not per cut or per label: two labels can hold
@@ -451,10 +370,11 @@ List<ExportCelTask> buildExportCelPlan({
 /// the second write would silently replace the first. The bump (`_2`,
 /// `_3`, …) is what the user sees instead of a missing file.
 ///
-/// It takes the [base] rather than deriving it: the per-cel and the
-/// per-label planners spell a base differently on purpose (which of the
-/// two spellings should win is a user decision, not this class's), and
-/// what they share is the folder, the extension and the bump.
+/// It takes the [base] rather than deriving it: the label planner spells
+/// the base (`celGroupFileBase`) and this class owns only the folder, the
+/// extension and the bump. A second, per-cel planner used to spell it
+/// differently; it went unused once cels became label groups and was
+/// removed with the frame-name rule (2026-09-09).
 class ExportCelFileNamer {
   ExportCelFileNamer({required this.naming, required this.fileExtension});
 
@@ -480,41 +400,6 @@ class ExportCelFileNamer {
     }
     return fileName;
   }
-}
-
-String _celFileBase({
-  required String projectName,
-  required Cut cut,
-  required Layer layer,
-  required Frame frame,
-  required int celPosition,
-  required ExportCelNaming naming,
-}) {
-  final rawFrameName = (frame.name ?? '').trim();
-  final frameName = padFrameNumber(
-    rawFrameName.isEmpty ? '$celPosition' : rawFrameName,
-    naming.frameDigits,
-  );
-
-  final prefixes = [
-    if (naming.includeProjectName) sanitizeExportFileComponent(projectName),
-    if (naming.includeCutName) sanitizeExportFileComponent(cut.name),
-  ];
-  final buffer = StringBuffer();
-  if (prefixes.isNotEmpty) {
-    buffer
-      ..writeAll(prefixes, '_')
-      ..write('_');
-  }
-  if (naming.includeLayerName) {
-    buffer.write(sanitizeExportFileComponent(layer.name));
-  }
-  buffer.write(sanitizeExportFileComponent(frameName));
-  final suffix = naming.suffix.trim();
-  if (suffix.isNotEmpty) {
-    buffer.write(sanitizeExportFileComponent(suffix));
-  }
-  return buffer.toString();
 }
 
 /// Makes a cut/layer name safe as a file-name component: characters Windows

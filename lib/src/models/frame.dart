@@ -25,6 +25,21 @@ class Frame {
   final List<Stroke> strokes;
   final String? name;
 
+  /// The printed cel number, or null when this drawing is an in-between
+  /// division mark (中割).
+  ///
+  /// 🚨ONE RULE FOR THE SHEET AND THE EXPORT. A drawing without a name is
+  /// not "cel N by position" — it is the mark. 유저 2026-09-09: 「프레임
+  /// 이름을 그대로 셀 번호 이름으로 출력시키고, 프레임 이름 없으면 그냥
+  /// 출력 안 하도록. 이름 없으면 중간나누기 마크인 거니까」. The timesheet
+  /// already printed it that way (R5-④, 「never an invented number」) while
+  /// the cel export invented `index + 1`, so one drawing was ○ on the sheet
+  /// and `A2.png` on disk. Both ask here now; a blank name is no name.
+  String? get celNumber {
+    final trimmed = name?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   /// SE rows only: the speaker/effect name shown in the accent box at the
   /// block start. [name] stays the dialogue there (it predates this field,
   /// so legacy SE labels keep reading as dialogue).

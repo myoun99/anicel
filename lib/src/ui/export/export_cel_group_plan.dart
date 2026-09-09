@@ -42,7 +42,8 @@ class ExportCelGroupTask {
 
   final Frame baseFrame;
 
-  /// The printed cel number (`Frame.name`, 1-based position fallback).
+  /// The printed cel number — [Frame.celNumber] of [baseFrame]. A base
+  /// frame without one is the in-between mark and never becomes a task.
   final String celName;
 
   /// Relative to the export directory; may contain `/` subfolders.
@@ -163,9 +164,15 @@ Iterable<ExportCelGroupTask> _celGroupTasksFor(
     if (members == null) {
       continue;
     }
-    for (var index = 0; index < base.frames.length; index += 1) {
-      final baseFrame = base.frames[index];
-      final celName = baseFrame.name ?? '${index + 1}';
+    for (final baseFrame in base.frames) {
+      // An unnamed drawing is the in-between mark, not a cel: no file. The
+      // sheet prints ○ for the very same frame ([Frame.celNumber] decides
+      // for both); numbering it by position here invented a cel the sheet
+      // never listed (유저 2026-09-09).
+      final celName = baseFrame.celNumber;
+      if (celName == null) {
+        continue;
+      }
       yield ExportCelGroupTask(
         cut: cut,
         baseLayer: base,

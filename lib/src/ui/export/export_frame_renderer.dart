@@ -681,27 +681,4 @@ class ExportFrameRenderer {
     );
   }
 
-  /// One cel exactly as drawn, no compositing; `null` when the frame has no
-  /// artwork (the export loop skips the file). [transparent] keeps the
-  /// background empty; otherwise the cel sits on the white paper at the
-  /// cut's canvas size.
-  Future<ui.Image?> renderCel(ExportCelTask task, {bool transparent = true}) {
-    final surface = _surfaceFor(task.cut, task.layer, task.frame);
-    if (surface == null) {
-      return Future<ui.Image?>.value();
-    }
-    if (transparent) {
-      return bitmapSurfaceToImage(surface);
-    }
-    return renderService.renderThroughCamera(
-      layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
-      pose: CameraPose(
-        center: CanvasPoint(
-          x: task.cut.canvasSize.width / 2,
-          y: task.cut.canvasSize.height / 2,
-        ),
-      ),
-      cameraFrameSize: task.cut.canvasSize,
-    );
-  }
 }

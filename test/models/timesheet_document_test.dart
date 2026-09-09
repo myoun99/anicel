@@ -257,10 +257,20 @@ void main() {
                   strokes: const [],
                 ),
                 Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
+                // A blank name is no name — the same Frame.celNumber the cel
+                // export files by decides it (유저 2026-09-09: 「이름 없으면
+                // 중간나누기 마크」).
+                Frame(
+                  id: const FrameId('f3'),
+                  duration: 1,
+                  name: '  ',
+                  strokes: const [],
+                ),
               ],
               timeline: {
                 0: const TimelineExposure.drawing(FrameId('f1'), length: 3),
                 4: const TimelineExposure.drawing(FrameId('f2'), length: 2),
+                6: const TimelineExposure.drawing(FrameId('f3'), length: 2),
               },
             ),
           ],
@@ -276,6 +286,8 @@ void main() {
       expect(cells[4].kind, TimesheetCellKind.drawing);
       expect(cells[4].label, '○', reason: 'unnamed = in-between mark glyph');
       expect(cells[5].kind, TimesheetCellKind.held);
+      expect(cells[6].kind, TimesheetCellKind.drawing);
+      expect(cells[6].label, '○', reason: 'a blank name is the mark too');
     });
 
     test('X sits only on the first row of an empty run; block-owned dots '
