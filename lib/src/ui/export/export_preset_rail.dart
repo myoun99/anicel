@@ -51,7 +51,7 @@ class ExportPresetRail extends StatelessWidget {
     CelsExportSpec() =>
       '${ExportFormatModule.summarize(spec.format)} · '
           '${exportCelLabelText(spec.label)} · '
-          '${exportCelPresetLabel(spec.selection)}',
+          '${exportCelFilterSummary(spec)}',
     TimesheetExportSpec() => switch (spec.format) {
       ExportTimesheetFormat.sheetImage => 'Sheet image',
       ExportTimesheetFormat.xdts => 'XDTS',

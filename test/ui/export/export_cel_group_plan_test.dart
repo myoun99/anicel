@@ -28,8 +28,14 @@ void main() {
   const layout = LayerMark(process: LayerProcess.layout);
   const paper = LayerMark(process: LayerProcess.paper);
   const art = LayerMark(process: LayerProcess.art);
-  const direction = CelsExportSpec(selection: CelsSelectionPreset.direction);
-  const attach = CelsExportSpec(selection: CelsSelectionPreset.attach);
+  // 디렉션 alone: the drawing filters off, the direction rows added.
+  const direction = CelsExportSpec(
+    base: false,
+    attach: false,
+    addDirection: true,
+  );
+  // 부속 alone: the base filter off — the base still numbers the cels.
+  const attach = CelsExportSpec(base: false);
 
   // A cel carries its number as the frame name; an unnamed frame is the
   // in-between mark and exports nothing. The fixture ids' digits double as
@@ -325,12 +331,12 @@ void main() {
     expect(frame('f1', name: '\t').celNumber, isNull);
   });
 
-  test('디렉션: instruction rows export per event with the row text, and '
-      'drawing rows do not; the other presets leave instructions out', () {
+  test('디렉션 추가: instruction rows export per event with the row text; '
+      'without it they stay out; it takes nothing away from the drawings', () {
     final layers = [base('a', 'A', [frame('f1')]), instructionRow()];
 
     final built = plan(layers, spec: direction);
-    expect(built.cels, isEmpty);
+    expect(built.cels, isEmpty, reason: 'the drawing filters are off');
     expect(built.instructions, hasLength(1));
     expect(built.instructions.single.label, 'PAN');
     expect(built.instructions.single.length, 12);
@@ -338,6 +344,48 @@ void main() {
     expect(built.length, 1);
 
     expect(plan(layers).instructions, isEmpty);
+    final added = plan(layers, spec: const CelsExportSpec(addDirection: true));
+    expect(added.cels, hasLength(1));
+    expect(added.instructions, hasLength(1));
+  });
+
+  test('🚨the preview key is the picture, not the file name — two labels '
+      'naming their cel A1.png get two keys', () {
+    // 유저 2026-09-09: 「작감수정 고른상태서 LO로 고르고 나니까 미리보기화면이
+    // 갱신안되서 여전히 작감수정그림있던데」 — the cache keyed on the name.
+    const keyAd = LayerMark(
+      process: LayerProcess.key,
+      revise: LayerRevise.animationDirector,
+    );
+    final rider = Layer(
+      id: const LayerId('a-ad'),
+      name: 'A-ad',
+      frames: [frame('d1')],
+      mark: keyAd,
+      attachedToLayerId: const LayerId('a'),
+      attachedMode: AttachedMode.synced,
+      baseFrameLinks: {const FrameId('f1'): const FrameId('d1')},
+    );
+    final layers = [base('a', 'A', [frame('f1')]), rider];
+    final plain = plan(layers).cels.single;
+    final corrected = plan(
+      layers,
+      spec: const CelsExportSpec(label: keyAd),
+    ).cels.single;
+    expect(plain.fileName, corrected.fileName, reason: 'same axis, same cel');
+    expect(names(plain.members), ['A']);
+    expect(names(corrected.members), ['A-ad']);
+
+    String keyOf(ExportCelGroupTask task, {bool fx = true}) =>
+        celGroupPreviewKey(
+          task,
+          sizeMode: 'canvas',
+          backgroundKey: -1,
+          applyLayerFx: fx,
+        );
+    expect(keyOf(plain), isNot(keyOf(corrected)));
+    expect(keyOf(plain), isNot(keyOf(plain, fx: false)));
+    expect(keyOf(plain), keyOf(plan(layers).cels.single));
   });
 
   test('미술 추가: an art row makes a bundle of its own', () {
@@ -512,13 +560,8 @@ void main() {
     final built = plan(
       [base('a', 'A', [frame('f1')]), instructionRow(id: 'i', name: 'A')],
       spec: const CelsExportSpec(
-        selection: CelsSelectionPreset.direction,
+        addDirection: true,
         naming: ExportCelNaming(includeLayerName: false),
-      ),
-      // The delta beats the preset: A is forced in beside the event.
-      overrides: ExportProjectOverrides().withCelsDelta(
-        const CutId('cut'),
-        ExportCelsCutDelta().withLayerOverride(const LayerId('a'), true),
       ),
     );
 

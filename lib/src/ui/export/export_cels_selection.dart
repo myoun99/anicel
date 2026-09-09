@@ -3,15 +3,14 @@ import '../../models/cut.dart';
 import '../../models/export_overrides.dart';
 import '../../models/export_spec.dart';
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_process.dart';
 
 /// The Cels tab's resolved row set for one cut: the AUTO RULES first, the
-/// cut's manual DELTA last (v10 ⑥ "규칙 적용 후 델타만") — so switching
-/// presets re-evaluates the rules while the hand exceptions survive, and
+/// cut's manual DELTA last (v10 ⑥ "규칙 적용 후 델타만") — so changing a
+/// filter re-evaluates the rules while the hand exceptions survive, and
 /// Reset just drops the delta.
 class ExportCelsSelection {
   const ExportCelsSelection({
@@ -47,21 +46,31 @@ bool markWearsLabel(LayerMark mark, LayerMark label) =>
 /// Resolves which of [cut]'s layers the Cels export covers under [spec]'s
 /// rules and the cut's manual [delta].
 ///
-/// Rule order:
+/// The rules are FILTERS that stack (유저 2026-09-09: 「단일선택이 아니라
+/// 중첩가능이야 … 진짜 여러 항목이 필터로 작동하는거지」), in this order:
 /// 1. Kind gate — camera never; SE never (SE cels are timing data, not
-///    pictures); instruction rows iff the preset is 디렉션; paper rows never
-///    (they are APPLIED, see [ExportCelsSelection.paperLayers]).
-/// 2. The label — a drawing row exports only when its OWN mark wears
+///    pictures); paper rows never (they are APPLIED, see
+///    [ExportCelsSelection.paperLayers]); instruction rows iff 디렉션 is
+///    ADDED ([CelsExportSpec.addDirection]).
+/// 2. 기준 / 부속 — a base row stays while [CelsExportSpec.base], an attach
+///    row while [CelsExportSpec.attach]. Attach alone is the parts without
+///    their base (the base still numbers the cels — the planner's axis).
+/// 3. 시트 — with [CelsExportSpec.sheetOnly], only the rows on the timesheet
+///    stay; an attach row never takes a sheet column of its own, so it is
+///    on the sheet when its base is.
+/// 4. The label — a drawing row stays only when its OWN mark wears
 ///    [CelsExportSpec.label]. Attach rows too: 「LO 작감만」 is a row filter,
 ///    so a 作監 correction riding a 上がり base is in for 작감 and out for
 ///    上がり, whatever its base wears. 미술 rows pass instead when
 ///    [CelsExportSpec.addArt].
-/// 3. The take — [CelsExportSpec.take], or 「최신」: the highest take among
-///    rows sharing a name and the label.
-/// 4. The preset — 기준: every row that passed · 부속: attach rows only ·
-///    시트: rows whose base is on the timesheet · 디렉션: no drawing rows.
-/// 5. [delta] wins last, per layer id — a forced include overrides even
-///    visibility (hidden ≠ empty; the user asked for that cel).
+/// 5. The take — [CelsExportSpec.take], or 「최신」: the highest take among
+///    rows sharing a name that passed the label.
+/// 6. [delta] wins last, per layer id — the user asked for that row.
+///
+/// ⛔THE TIMELINE'S EYE IS NOT CONSULTED. Until 2026-09-09 a hidden row (or
+/// a row in a hidden folder) exported nothing; 유저: 「타임라인에서 비지블
+/// off면 출력에 off인채로 있는데, 그게아니라 상태에 따라 안바뀌도록」. The
+/// eye is view state; what exports is what the filters say.
 ExportCelsSelection resolveExportCelsSelection({
   required Cut cut,
   required CelsExportSpec spec,
@@ -91,7 +100,7 @@ ExportCelsSelection resolveExportCelsSelection({
     paperLayers: [
       if (spec.applyPaper)
         for (final layer in layers)
-          if (isExportPaperRow(layer) && layers.rowVisible(layer)) layer,
+          if (isExportPaperRow(layer)) layer,
     ],
   );
 }
@@ -119,15 +128,18 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
     case LayerKind.adjustment:
       return false; // Gated above; the switch stays exhaustive on purpose.
     case LayerKind.instruction:
-      return spec.selection == CelsSelectionPreset.direction;
+      return spec.addDirection && _sheetAdmits(layer, layers, spec);
     case LayerKind.animation:
     case LayerKind.storyboard:
     case LayerKind.image:
     case LayerKind.text:
-      // The FOLDER's eye counts too. Asking only the row's own eye wrote
-      // cel files for rows the user had switched off by hiding the folder
-      // they live in — the eye said "not in this render" everywhere else.
-      if (!layers.rowVisible(layer) || isExportPaperRow(layer)) {
+      if (isExportPaperRow(layer)) {
+        return false;
+      }
+      if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
+        return false;
+      }
+      if (!_sheetAdmits(layer, layers, spec)) {
         return false;
       }
       final wearsLabel =
@@ -136,29 +148,18 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
       if (!wearsLabel) {
         return false;
       }
-      if (spec.take != null && layer.mark.take != spec.take) {
-        return false;
-      }
-      return _presetAdmits(layer, layers, spec.selection);
+      return spec.take == null || layer.mark.take == spec.take;
   }
 }
 
-bool _presetAdmits(Layer layer, List<Layer> layers, CelsSelectionPreset preset) {
-  switch (preset) {
-    case CelsSelectionPreset.base:
-      return true;
-    case CelsSelectionPreset.attach:
-      return isAttachedLayer(layer);
-    case CelsSelectionPreset.sheet:
-      // An attach row never takes a sheet column of its own; it is on the
-      // sheet when its base is.
-      final base = isAttachedLayer(layer)
-          ? attachedBaseOf(layer, layers)
-          : layer;
-      return base != null && base.onTimesheet;
-    case CelsSelectionPreset.direction:
-      return false;
+/// The 시트 filter: off, everything passes; on, a row passes when it — or,
+/// for an attach row, its base — is on the timesheet.
+bool _sheetAdmits(Layer layer, List<Layer> layers, CelsExportSpec spec) {
+  if (!spec.sheetOnly) {
+    return true;
   }
+  final base = isAttachedLayer(layer) ? attachedBaseOf(layer, layers) : layer;
+  return base != null && base.onTimesheet;
 }
 
 /// 「최신」: among rows that share a NAME and passed the label, only the

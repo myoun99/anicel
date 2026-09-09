@@ -341,13 +341,18 @@ String exportCelLabelText(LayerMark label) {
   return [chip.process, chip.revise].where((t) => t.isNotEmpty).join(' ');
 }
 
-/// The 선택 preset's name — on its pill and in a preset's summary line.
-String exportCelPresetLabel(CelsSelectionPreset preset) => switch (preset) {
-  CelsSelectionPreset.base => AppText.strings.exSelBase,
-  CelsSelectionPreset.attach => AppText.strings.exSelAttach,
-  CelsSelectionPreset.sheet => AppText.strings.exSelSheet,
-  CelsSelectionPreset.direction => AppText.strings.exSelDirection,
-};
+/// The 선택 filters that are on, read as one line — 「기준 · 부속」,
+/// 「부속 · 시트」 — for a preset's summary. A dash when none is on (the
+/// export then writes only what 추가 adds).
+String exportCelFilterSummary(CelsExportSpec spec) {
+  final strings = AppText.strings;
+  final on = [
+    if (spec.base) strings.exSelBase,
+    if (spec.attach) strings.exSelAttach,
+    if (spec.sheetOnly) strings.exSelSheet,
+  ];
+  return on.isEmpty ? '—' : on.join(' · ');
+}
 
 /// A labelled row offering one pill per VALUE of a choice.
 ///

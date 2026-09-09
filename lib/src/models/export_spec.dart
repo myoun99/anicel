@@ -299,38 +299,6 @@ class ImageExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(format, sizeMode, applyLayerFx);
 }
 
-/// Which rows the Cels tab exports, as one of four PRESETS.
-///
-/// A cut whose delta holds row exceptions reads as 「커스텀」 instead — that
-/// is a state of the delta, not a fifth value here (유저 2026-09-09: 「프리셋
-/// 적용/커스텀 두 분류로 나누고」, 「기준/부속/시트/디렉션이랑 커스텀이랑
-/// 그룹 다르니 두개 그룹 나눠서」).
-enum CelsSelectionPreset {
-  /// Every drawing row wearing the label — bases and their attach rows,
-  /// so a base exports as its whole stack.
-  base('base'),
-
-  /// Attach rows only: the parts riding a base, without the base. This is
-  /// the 「일반 레이어 안의 어태치 레이어만 출력」 the v1 brief asked for.
-  attach('attach'),
-
-  /// The rows on the timesheet: bases carrying the sheet flag, their attach
-  /// rows riding along (an attach row never takes a sheet column itself).
-  sheet('sheet'),
-
-  /// Direction (instruction) rows only.
-  direction('direction');
-
-  const CelsSelectionPreset(this.jsonValue);
-
-  final String jsonValue;
-
-  static CelsSelectionPreset fromJson(Object? json) => values.firstWhere(
-    (value) => value.jsonValue == json,
-    orElse: () => base,
-  );
-}
-
 /// Cels tab: the AUTO RULES (프리셋 저장분). What they resolve to for a
 /// given cut — and how the per-cut manual delta overrides that — lives in
 /// `resolveExportCelsSelection`; the delta itself is project data.
@@ -350,7 +318,10 @@ class CelsExportSpec extends ExportTabSpec {
     this.take,
     this.applyPaper = true,
     this.addArt = false,
-    this.selection = CelsSelectionPreset.base,
+    this.addDirection = false,
+    this.base = true,
+    this.attach = true,
+    this.sheetOnly = false,
     this.scope = ExportScopeKind.cut,
   });
 
@@ -382,7 +353,21 @@ class CelsExportSpec extends ExportTabSpec {
   /// whatever the label (유저: 「같은 공정의 미술레이어를 추가할지」).
   final bool addArt;
 
-  final CelsSelectionPreset selection;
+  /// 디렉션 추가: the instruction rows export as image cels, one per event.
+  /// An ADDITION beside 미술, not a way of selecting (유저 2026-09-09:
+  /// 「디렉션은 선택항목말고 추가항목에 묶는게 나을듯」).
+  final bool addDirection;
+
+  /// 선택 = FILTERS THAT STACK, not presets (유저 2026-09-09: 「단일선택이
+  /// 아니라 중첩가능이야 … 진짜 여러 항목이 필터로 작동하는거지」):
+  /// [base] keeps the base rows, [attach] keeps the attach rows — both on
+  /// is the whole stack, attach alone is the parts without their base
+  /// (the base still numbers the cels) — and [sheetOnly] keeps, of those,
+  /// only the rows on the timesheet (an attach row is on it when its base
+  /// is). The label and the take are the filters after these.
+  final bool base;
+  final bool attach;
+  final bool sheetOnly;
 
   /// Whether the delivery cel is rendered THROUGH the rows' effect chains.
   ///
@@ -417,7 +402,10 @@ class CelsExportSpec extends ExportTabSpec {
     Object? take = _unset,
     bool? applyPaper,
     bool? addArt,
-    CelsSelectionPreset? selection,
+    bool? addDirection,
+    bool? base,
+    bool? attach,
+    bool? sheetOnly,
     ExportScopeKind? scope,
   }) => CelsExportSpec(
     format: format ?? this.format,
@@ -428,7 +416,10 @@ class CelsExportSpec extends ExportTabSpec {
     take: identical(take, _unset) ? this.take : take as int?,
     applyPaper: applyPaper ?? this.applyPaper,
     addArt: addArt ?? this.addArt,
-    selection: selection ?? this.selection,
+    addDirection: addDirection ?? this.addDirection,
+    base: base ?? this.base,
+    attach: attach ?? this.attach,
+    sheetOnly: sheetOnly ?? this.sheetOnly,
     scope: scope ?? this.scope,
   );
 
@@ -442,8 +433,10 @@ class CelsExportSpec extends ExportTabSpec {
     if (take != null) 'take': take,
     if (!applyPaper) 'applyPaper': false,
     if (addArt) 'addArt': true,
-    if (selection != CelsSelectionPreset.base)
-      'selection': selection.jsonValue,
+    if (addDirection) 'addDirection': true,
+    if (!base) 'base': false,
+    if (!attach) 'attach': false,
+    if (sheetOnly) 'sheetOnly': true,
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
   };
 
@@ -466,9 +459,18 @@ class CelsExportSpec extends ExportTabSpec {
     take: json['take'] is int ? json['take'] as int : null,
     applyPaper: json['applyPaper'] as bool? ?? true,
     addArt: json['addArt'] as bool? ?? false,
-    selection: CelsSelectionPreset.fromJson(json['selection']),
+    // 'selection' is the one-day-old preset spelling (base / attach /
+    // sheet / direction); read it as the filters it meant.
+    addDirection:
+        json['addDirection'] as bool? ?? json['selection'] == 'direction',
+    base: json['base'] as bool? ?? !_presetJsonWas(json, {'attach', 'direction'}),
+    attach: json['attach'] as bool? ?? json['selection'] != 'direction',
+    sheetOnly: json['sheetOnly'] as bool? ?? json['selection'] == 'sheet',
     scope: ExportScopeKind.fromJson(json['scope']),
   );
+
+  static bool _presetJsonWas(Map<String, dynamic> json, Set<String> names) =>
+      names.contains(json['selection']);
 
   @override
   bool operator ==(Object other) =>
@@ -482,7 +484,10 @@ class CelsExportSpec extends ExportTabSpec {
           other.take == take &&
           other.applyPaper == applyPaper &&
           other.addArt == addArt &&
-          other.selection == selection &&
+          other.addDirection == addDirection &&
+          other.base == base &&
+          other.attach == attach &&
+          other.sheetOnly == sheetOnly &&
           other.scope == scope;
 
   @override
@@ -495,7 +500,10 @@ class CelsExportSpec extends ExportTabSpec {
     take,
     applyPaper,
     addArt,
-    selection,
+    addDirection,
+    base,
+    attach,
+    sheetOnly,
     scope,
   );
 }

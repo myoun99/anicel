@@ -68,9 +68,24 @@ void main() {
       expect(spec.take, isNull);
       expect(spec.applyPaper, isTrue);
       expect(spec.addArt, isFalse);
-      expect(spec.selection, CelsSelectionPreset.base);
+      expect(spec.addDirection, isFalse);
+      expect(spec.base, isTrue);
+      expect(spec.attach, isTrue);
+      expect(spec.sheetOnly, isFalse);
       expect(spec.toJson().keys, unorderedEquals(['format', 'naming']));
       expect(CelsExportSpec.fromJson(spec.toJson()), spec);
+    });
+
+    test('the one-day-old preset spelling reads as the filters it meant', () {
+      CelsExportSpec read(String preset) =>
+          CelsExportSpec.fromJson({'selection': preset});
+      final attach = read('attach');
+      expect((attach.base, attach.attach, attach.sheetOnly), (false, true, false));
+      final sheet = read('sheet');
+      expect((sheet.base, sheet.attach, sheet.sheetOnly), (true, true, true));
+      final direction = read('direction');
+      expect((direction.base, direction.attach, direction.addDirection), (false, false, true));
+      expect(read('base'), const CelsExportSpec());
     });
 
     test('non-default fields round-trip', () {
@@ -88,12 +103,16 @@ void main() {
         take: 3,
         applyPaper: false,
         addArt: true,
-        selection: CelsSelectionPreset.sheet,
+        addDirection: true,
+        base: false,
+        sheetOnly: true,
         scope: ExportScopeKind.project,
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
       expect(restored.take, 3);
+      expect(restored.base, isFalse);
+      expect(restored.attach, isTrue);
       expect(restored.naming.projectFolder, isTrue);
     });
 

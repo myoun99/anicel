@@ -123,8 +123,11 @@ void main() {
     expect(cels(layers, spec: const CelsExportSpec(take: 2)), ['a2']);
   });
 
-  test('presets: 기준 every row · 부속 attach rows only · 시트 the sheet\'s '
-      'bases and their riders · 디렉션 instruction rows alone', () {
+  test('the filters STACK: 기준 keeps the bases, 부속 keeps the attach rows, '
+      '시트 keeps, of those, the ones on the sheet — and 디렉션 is an addition',
+      () {
+    // 유저 2026-09-09: 「단일선택이 아니라 중첩가능이야 … 진짜 여러 항목이
+    // 필터로 작동하는거지 … 디렉션은 선택항목말고 추가항목에」.
     final layers = [
       layer('a'),
       layer('ac', attachedTo: 'a'),
@@ -132,30 +135,45 @@ void main() {
       layer('bf', attachedTo: 'b', attachedMode: AttachedMode.free),
       layer('inst', kind: LayerKind.instruction),
     ];
-    CelsExportSpec spec(CelsSelectionPreset preset) =>
-        CelsExportSpec(selection: preset);
 
-    expect(cels(layers, spec: spec(CelsSelectionPreset.base)), [
-      'a',
-      'ac',
-      'b',
-      'bf',
-    ]);
-    expect(cels(layers, spec: spec(CelsSelectionPreset.attach)), ['ac', 'bf']);
+    expect(cels(layers), ['a', 'ac', 'b', 'bf']);
+    expect(cels(layers, spec: const CelsExportSpec(base: false)), ['ac', 'bf']);
+    expect(cels(layers, spec: const CelsExportSpec(attach: false)), ['a', 'b']);
     // An attach row never takes a sheet column of its own; it is on the
     // sheet when its base is.
-    expect(cels(layers, spec: spec(CelsSelectionPreset.sheet)), ['a', 'ac']);
-    final direction = resolve(layers, spec: spec(CelsSelectionPreset.direction));
-    expect(direction.celLayers, isEmpty);
-    expect(ids(direction.instructionLayers), ['inst']);
+    expect(cels(layers, spec: const CelsExportSpec(sheetOnly: true)), [
+      'a',
+      'ac',
+    ]);
     expect(
-      resolve(layers, spec: spec(CelsSelectionPreset.base)).instructionLayers,
+      cels(layers, spec: const CelsExportSpec(base: false, sheetOnly: true)),
+      ['ac'],
+    );
+    expect(
+      cels(layers, spec: const CelsExportSpec(base: false, attach: false)),
       isEmpty,
+    );
+
+    expect(resolve(layers).instructionLayers, isEmpty);
+    final added = resolve(layers, spec: const CelsExportSpec(addDirection: true));
+    expect(
+      ids(added.celLayers),
+      ['a', 'ac', 'b', 'bf'],
+      reason: 'an addition takes nothing away',
+    );
+    expect(ids(added.instructionLayers), ['inst']);
+    expect(
+      resolve(
+        layers,
+        spec: const CelsExportSpec(addDirection: true, sheetOnly: true),
+      ).instructionLayers.map((layer) => layer.id.value),
+      ['inst'],
+      reason: 'the direction row is on the sheet by default',
     );
   });
 
-  test('paper is APPLIED, never a cel: listed while applyPaper and visible, '
-      'and no delta makes it a cel', () {
+  test('paper is APPLIED, never a cel: listed while applyPaper, eye or no '
+      'eye, and no delta makes it a cel', () {
     final layers = [
       layer('p', mark: paper),
       layer('ph', mark: paper, isVisible: false),
@@ -163,7 +181,7 @@ void main() {
     ];
     final selection = resolve(layers);
     expect(ids(selection.celLayers), ['a']);
-    expect(ids(selection.paperLayers), ['p']);
+    expect(ids(selection.paperLayers), ['p', 'ph']);
     expect(
       resolve(layers, spec: const CelsExportSpec(applyPaper: false)).paperLayers,
       isEmpty,
@@ -183,7 +201,11 @@ void main() {
     expect(cels(layers, spec: const CelsExportSpec(addArt: true)), ['a', 'bg']);
   });
 
-  test('the eye counts — the folder\'s too', () {
+  test('the timeline\'s eye does NOT count — a hidden row, or a row inside a '
+      'hidden folder, exports like any other', () {
+    // 유저 2026-09-09: 「타임라인에서 비지블off면 출력에 off인채로 있는데,
+    // 그게아니라 상태에 따라 안바뀌도록」 — the eye is view state; the
+    // filters decide. (Until this day the eye did count, folder and all.)
     final layers = [
       layer('a', folder: 'f'),
       createFolderLayer(
@@ -193,7 +215,7 @@ void main() {
       layer('dark', isVisible: false),
       layer('c'),
     ];
-    expect(cels(layers), ['c']);
+    expect(cels(layers), ['a', 'dark', 'c']);
   });
 
   test('delta wins last: force-exclude a rule pick, force-include a hidden '
@@ -210,12 +232,12 @@ void main() {
     expect(cels(layers, delta: delta), ['hidden']);
   });
 
-  test('the delta beats the preset too — a drawing row forced in under '
-      '디렉션 exports', () {
+  test('the delta beats the filters too — a base forced in with 기준 off '
+      'exports', () {
     final layers = [layer('a'), layer('inst', kind: LayerKind.instruction)];
     final selection = resolve(
       layers,
-      spec: const CelsExportSpec(selection: CelsSelectionPreset.direction),
+      spec: const CelsExportSpec(base: false, attach: false, addDirection: true),
       delta: ExportCelsCutDelta().withLayerOverride(const LayerId('a'), true),
     );
     expect(ids(selection.celLayers), ['a']);

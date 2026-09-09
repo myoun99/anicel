@@ -2,15 +2,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_canvas.dart';
-import 'package:anicel/src/ui/export/export_cels_selection.dart';
 import 'package:anicel/src/ui/session/onion_skin.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
@@ -23,6 +20,12 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// from the one on screen, so a row inside a folder the user had switched
 /// off went on ghosting in onion skin, went on being counted by the bulk
 /// sweep, and went on being written out by cel export.
+///
+/// ⚠️Cel export has since LEFT this law on purpose (유저 2026-09-09: 「타임
+/// 라인에서 비지블off면 출력에 off인채로 있는데, 그게아니라 상태에 따라
+/// 안바뀌도록」): the eye is view state there and the export's own filters
+/// decide — `export_cels_selection.dart` says so. It is not an offender
+/// below because it no longer asks the question at all.
 ///
 /// The predicate for the whole question existed the entire time
 /// ([LayerFolderQueries.rowVisible]'s neighbour `subtreeVisible`) and had
@@ -252,41 +255,6 @@ void main() {
       s.opacityVerbs.setLayerOpacity(layerId: member, opacity: 0.4);
 
       expect(editingCanvasOf(s).stack.activeLayerOpacity, closeTo(0.2, 1e-9));
-    });
-  });
-
-  group('cel export', () {
-    test('a row inside a hidden folder does not export', () {
-      final (s, member, folder) = sessionWithFolder();
-      // The default project's rows wear no colour label, and the export's
-      // default label is 원화 — so ask for the unlabelled rows. This test
-      // measures the folder's eye, not the label filter.
-      const spec = CelsExportSpec(label: LayerMark.none);
-
-      final before = resolveExportCelsSelection(
-        cut: s.activeCutOrNull!,
-        spec: spec,
-      );
-      expect(
-        before.celLayers.map((layer) => layer.id),
-        contains(member),
-        reason: 'the CONTROL — a visible drawing row exports',
-      );
-
-      hideFolder(s, folder);
-
-      final after = resolveExportCelsSelection(
-        cut: s.activeCutOrNull!,
-        spec: spec,
-      );
-      expect(
-        after.celLayers.map((layer) => layer.id),
-        isNot(contains(member)),
-        reason:
-            'The eye means "not in this render" everywhere else. Cel export '
-            'wrote files for rows the user had switched off by hiding the '
-            'folder they live in.',
-      );
     });
   });
 

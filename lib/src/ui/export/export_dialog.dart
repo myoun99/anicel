@@ -36,6 +36,7 @@ import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/paper_background.dart' show AlphaCheckerboardPainter;
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_sheet_builder.dart';
 import '../envelope/cut_envelope_builder.dart';
@@ -439,15 +440,45 @@ class ExportDialogState extends State<ExportDialog> {
             style: theme.textTheme.bodySmall,
           );
         }
-        return RawImage(
+        final picture = RawImage(
           key: const ValueKey<String>('export-preview-image'),
           image: image,
           fit: BoxFit.contain,
           filterQuality: FilterQuality.medium,
         );
+        if (!_previewShowsAlpha()) {
+          return picture;
+        }
+        // Open alpha reads as the checkerboard, not as nothing — the same
+        // checker the canvas's alpha preview paints (유저 2026-09-09: 「투명
+        // 이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」). It sits under
+        // the picture's own box, so it shows exactly where the file is open.
+        return Center(
+          child: AspectRatio(
+            aspectRatio: image.width / image.height,
+            child: CustomPaint(
+              key: const ValueKey<String>('export-preview-checker'),
+              painter: const AlphaCheckerboardPainter(),
+              child: picture,
+            ),
+          ),
+        );
       },
     ),
   );
+
+  /// Whether the picture under preview is written with open alpha: the
+  /// still formats' channels, or the envelope without its paper. One
+  /// answer for every tab's preview, so the checker appears wherever a
+  /// file would be open.
+  bool _previewShowsAlpha() => switch (_tab) {
+    ExportTab.sequence => _specs.sequence.format.wantsAlpha,
+    ExportTab.image => _specs.image.format.wantsAlpha,
+    ExportTab.cels => _specs.cels.format.wantsAlpha,
+    ExportTab.envelope =>
+      !_specs.envelope.layers.contains(SheetPaintLayer.paper),
+    ExportTab.timesheet || ExportTab.conte => false,
+  };
 
   /// The cels the export will write, one row per bundle, in stack order:
   /// its tick, its label plate, its name and its sheet count. Choosing a
@@ -1289,9 +1320,12 @@ class ExportDialogState extends State<ExportDialog> {
         switch (entry) {
           case ExportCelGroupTask():
             _preview.request(
-              key:
-                  'celgroup:${entry.fileName}:${spec.sizeMode.jsonValue}:'
-                  '$bgKey',
+              key: celGroupPreviewKey(
+                entry,
+                sizeMode: spec.sizeMode.jsonValue,
+                backgroundKey: bgKey,
+                applyLayerFx: spec.applyLayerFx,
+              ),
               caption: _celEntryCaption(entry),
               render: () => renderer.renderCelGroup(entry, spec.sizeMode),
             );
@@ -3148,9 +3182,10 @@ class ExportDialogState extends State<ExportDialog> {
   bool get _celSelectionIsCustom =>
       _overrides.deltaFor(_activeCut.id)?.layerOverrides.isNotEmpty ?? false;
 
-  /// A preset press drops the row exceptions (the cel ticks stay) and
-  /// stores the preset in the spec, where presets are saved.
-  void _applyCelPreset(CelsSelectionPreset preset) {
+  /// A filter press drops the row exceptions (the cel ticks stay) — the
+  /// rule changed, so the hand answers to the old rule go — and stores the
+  /// filters in the spec, where presets are saved.
+  void _applyCelFilter(CelsExportSpec next) {
     final cutId = _activeCut.id;
     _session.repository.updateExportOverrides((overrides) {
       final delta = overrides.deltaFor(cutId);
@@ -3158,7 +3193,7 @@ class ExportDialogState extends State<ExportDialog> {
           ? overrides
           : overrides.withCelsDelta(cutId, delta.withoutLayerOverrides());
     });
-    _updateSpec(_specs.cels.copyWith(selection: preset));
+    _updateSpec(next);
   }
 
   /// The layer list's rows: the cut's stack in the TIMELINE's display
@@ -3272,24 +3307,30 @@ class ExportDialogState extends State<ExportDialog> {
             ],
           ),
         ),
-        _celSwitchRow(
-          strings.exApply,
+        _celSwitchRow(strings.exApply, [
           _specSwitch(
             'export-cels-apply-paper',
             strings.exPaperLabel,
             spec.applyPaper,
             () => spec.copyWith(applyPaper: !spec.applyPaper),
           ),
-        ),
-        _celSwitchRow(
-          strings.exAdd,
+        ]),
+        // 추가 = 미술 · 디렉션: rows added on top of the filters' pick (유저
+        // 2026-09-09: 「디렉션은 선택항목말고 추가항목에 묶는게 나을듯」).
+        _celSwitchRow(strings.exAdd, [
           _specSwitch(
             'export-cels-add-art',
             strings.exArtLabel,
             spec.addArt,
             () => spec.copyWith(addArt: !spec.addArt),
           ),
-        ),
+          _specSwitch(
+            'export-cels-add-direction',
+            strings.exSelDirection,
+            spec.addDirection,
+            () => spec.copyWith(addDirection: !spec.addDirection),
+          ),
+        ]),
         _celSelectionRow(spec),
         Divider(height: 8, color: theme.dividerColor),
         for (final layer in _celListRows()) _celListRow(layer, selection),
@@ -3297,15 +3338,16 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// 적용 · 추가: a one-pill strip that is a switch — the same control the
-  /// grouped choices wear, holding a single answer.
-  Widget _celSwitchRow(String label, ExportPillItem item) => ExportModuleRow(
-    label: label,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: ExportPillStrip(items: [item]),
-    ),
-  );
+  /// 적용 · 추가: a strip of switches — the same control the grouped
+  /// choices wear, each pill holding one yes/no of its own.
+  Widget _celSwitchRow(String label, List<ExportPillItem> items) =>
+      ExportModuleRow(
+        label: label,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: ExportPillStrip(items: items),
+        ),
+      );
 
   /// A pill that flips one spec field — lit while [on], writing [write]'s
   /// spec on tap, dead while an export runs.
@@ -3321,35 +3363,39 @@ class ExportDialogState extends State<ExportDialog> {
     onTap: _isExporting ? null : () => _updateSpec(write()),
   );
 
-  /// 선택: the four presets in one strip and 「커스텀」 in its own — two
-  /// strips, not one, because the presets and 커스텀 are different kinds of
-  /// thing (유저: 「그룹 다르니 두개 그룹 나눠서」). 커스텀 is a state the
-  /// delta puts the cut in, so it lights and takes no tap.
+  /// 선택: the three FILTERS in one strip — each its own switch, stacking
+  /// (유저 2026-09-09: 「단일선택이 아니라 중첩가능이야」) — and 「커스텀」 in
+  /// its own: two strips, not one, because the filters and 커스텀 are
+  /// different kinds of thing (유저: 「그룹 다르니 두개 그룹 나눠서」). 커스텀
+  /// is a state the delta puts the cut in, so it lights and takes no tap.
   Widget _celSelectionRow(CelsExportSpec spec) {
-    final custom = _celSelectionIsCustom;
+    final strings = AppText.strings;
+    ExportPillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
+        ExportPillItem(
+          keyValue: 'export-cels-select-$key',
+          label: label,
+          selected: on,
+          onTap: _isExporting ? null : () => _applyCelFilter(flip()),
+        );
     return ExportModuleRow(
-      label: AppText.strings.exSelect,
+      label: strings.exSelect,
       child: Wrap(
         spacing: 6,
         runSpacing: 4,
         children: [
           ExportPillStrip(
             items: [
-              for (final preset in CelsSelectionPreset.values)
-                ExportPillItem(
-                  keyValue: 'export-cels-select-${preset.jsonValue}',
-                  label: exportCelPresetLabel(preset),
-                  selected: !custom && spec.selection == preset,
-                  onTap: _isExporting ? null : () => _applyCelPreset(preset),
-                ),
+              filter('base', strings.exSelBase, spec.base, () => spec.copyWith(base: !spec.base)),
+              filter('attach', strings.exSelAttach, spec.attach, () => spec.copyWith(attach: !spec.attach)),
+              filter('sheet', strings.exSelSheet, spec.sheetOnly, () => spec.copyWith(sheetOnly: !spec.sheetOnly)),
             ],
           ),
           ExportPillStrip(
             items: [
               ExportPillItem(
                 keyValue: 'export-cels-select-custom',
-                label: AppText.strings.exSelCustom,
-                selected: custom,
+                label: strings.exSelCustom,
+                selected: _celSelectionIsCustom,
               ),
             ],
           ),

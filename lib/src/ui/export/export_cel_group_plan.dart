@@ -91,6 +91,30 @@ class ExportInstructionTask {
 /// sheets in frame order.
 typedef ExportCelBundle = ({Layer axis, List<ExportCelGroupTask> sheets});
 
+/// The preview cache key for [task]: everything its picture depends on.
+///
+/// ⛔Not the file name alone. 「원화 上がり」 and 「LO」 both name their cel
+/// on base A `A1.png`, and a key of the name handed the first label's
+/// picture back for the second (유저 2026-09-09: 「LO로 고르고 나니까
+/// 미리보기화면이 갱신안되서 여전히 작감수정그림있던데」). The members and
+/// the frame each contributes ARE the picture, so they are the key — with
+/// the size, the background and the FX switch the renderer reads.
+String celGroupPreviewKey(
+  ExportCelGroupTask task, {
+  required String sizeMode,
+  required int backgroundKey,
+  required bool applyLayerFx,
+}) {
+  final members = [
+    for (var i = 0; i < task.members.length; i += 1)
+      '${task.members[i].id.value}='
+          '${task.memberFrames[i]?.id.value ?? '-'}',
+  ].join(',');
+  return 'celgroup:${task.cut.id.value}:${task.baseLayer.id.value}:'
+      '${task.baseFrame.id.value}:$members:$sizeMode:$backgroundKey:'
+      '${applyLayerFx ? 'fx' : 'raw'}';
+}
+
 class ExportCelGroupPlan {
   const ExportCelGroupPlan({required this.cels, required this.instructions});
 
