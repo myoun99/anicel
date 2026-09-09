@@ -246,7 +246,7 @@ BitmapSurface translateBitmapSurface(
         continue;
       }
       final coord = TileCoord(x: x, y: y);
-      rebased[coord] = entry.value.copyWith(coord: coord);
+      rebased[coord] = entry.value.rebasedTo(coord);
     }
     return BitmapSurface(
       canvasSize: canvasSize,

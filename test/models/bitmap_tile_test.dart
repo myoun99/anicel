@@ -79,12 +79,71 @@ void main() {
       expect(tile.pixels[0], 0);
     });
 
-    test('copyWith updates coord', () {
+    test('rebasedTo updates coord', () {
       final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
       expect(
-        tile.copyWith(coord: TileCoord(x: 1, y: 0)).coord,
+        tile.rebasedTo(TileCoord(x: 1, y: 0)).coord,
         TileCoord(x: 1, y: 0),
       );
+    });
+
+    /// 🚨★★★**A WHOLE-TILE SHIFT COPIED EVERY PIXEL TO CHANGE TWO
+    /// INTEGERS.** An anchored canvas resize whose offset is a multiple
+    /// of the tile size moves nothing WITHIN a tile — it renames it. It
+    /// went through `copyWith`, which allocates a fresh native buffer and
+    /// memcpys the whole tile into it, over every cel of the cut.
+    ///
+    /// ⛔A copy and a share answer every BEHAVIOURAL question the same
+    /// way, which is why this asks about the bytes themselves.
+    test('🚨a rebase SHARES the pixel buffer — it does not copy it', () {
+      final tile = BitmapTile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        pixels: Uint8List(16)..[0] = 5,
+      );
+      final moved = tile.rebasedTo(TileCoord(x: 1, y: 0));
+
+      expect(moved.coord, TileCoord(x: 1, y: 0));
+      expect(
+        tile.readPixels((pointer, _) => pointer.address),
+        moved.readPixels((pointer, _) => pointer.address),
+        reason: 'the same native block, not a duplicate of it',
+      );
+      expect(moved.pixels[0], 5);
+    });
+
+    test('a rebase to the SAME coord is the same object', () {
+      final tile = BitmapTile.blank(coord: TileCoord(x: 3, y: 4), size: 2);
+      expect(identical(tile.rebasedTo(TileCoord(x: 3, y: 4)), tile), isTrue);
+    });
+
+    /// The chain stays FLAT: a rebase of a rebase points at the original,
+    /// not at the tile it came from. Nested owners would keep every
+    /// intermediate alive for the life of the last one.
+    test('a rebase of a rebase still shares the ORIGINAL block', () {
+      final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
+      final once = tile.rebasedTo(TileCoord(x: 1, y: 0));
+      final twice = once.rebasedTo(TileCoord(x: 2, y: 0));
+      expect(
+        tile.readPixels((pointer, _) => pointer.address),
+        twice.readPixels((pointer, _) => pointer.address),
+      );
+    });
+
+    /// The scans come along too: they are decided by the pixels, and
+    /// these are the very same pixels.
+    test('a rebase inherits the ink answers instead of rescanning', () {
+      final inked = BitmapTile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        pixels: Uint8List(16)..[3] = 255,
+      );
+      expect(inked.inkBounds, isNotNull);
+      expect(inked.inkBoundsKnown, isTrue);
+
+      final moved = inked.rebasedTo(TileCoord(x: 1, y: 0));
+      expect(moved.inkBoundsKnown, isTrue);
+      expect(moved.inkBounds, inked.inkBounds);
     });
 
     test('copyWith updates size and pixels together', () {
@@ -105,7 +164,7 @@ void main() {
         tile,
         BitmapTile(coord: TileCoord(x: 0, y: 0), size: 2, pixels: pixels),
       );
-      expect(tile.copyWith(coord: TileCoord(x: 1, y: 0)), isNot(tile));
+      expect(tile.rebasedTo(TileCoord(x: 1, y: 0)), isNot(tile));
       expect(tile.copyWith(size: 1, pixels: Uint8List(4)), isNot(tile));
       expect(tile.copyWith(pixels: Uint8List(16)..[0] = 2), isNot(tile));
     });

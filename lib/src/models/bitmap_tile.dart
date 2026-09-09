@@ -74,7 +74,8 @@ class BitmapTile implements Finalizable {
   }
 
   BitmapTile._adopt(this.coord, this.size, Pointer<Uint8> pixels)
-    : _pixels = pixels,
+    : _bufferOwner = null,
+      _pixels = pixels,
       _view = pixels.asTypedList(bytesFor(size)) {
     final engine = QaNativeEngine.instance;
     (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
@@ -84,6 +85,47 @@ class BitmapTile implements Finalizable {
       externalSize: bytesFor(size),
     );
   }
+
+  /// THE SAME PIXELS AT A NEW COORDINATE, with no copy at all.
+  ///
+  /// 🚨★★★**A WHOLE-TILE SHIFT COPIED EVERY PIXEL TO CHANGE TWO
+  /// INTEGERS.** An anchored canvas resize whose offset is a multiple of
+  /// the tile size moves nothing within a tile — it renames the tile. It
+  /// went through `copyWith`, which allocates a fresh native buffer and
+  /// memcpys the whole tile into it: 64 KB per tile at 128px, over every
+  /// cel of the cut, for a rename.
+  ///
+  /// ⛔**IT CANNOT SIMPLY SHARE THE POINTER**: a tile OWNS its buffer and
+  /// a [NativeFinalizer] frees it, so two tiles attached to one block is
+  /// a double free. What makes this safe is [_bufferOwner] — the new tile
+  /// attaches NO finalizer and instead holds a reference to the tile that
+  /// does. The buffer is freed when the owner becomes unreachable, and
+  /// the owner cannot become unreachable while anything derived from it
+  /// is alive. The chain is flat, never nested: a rebase of a rebase
+  /// points at the same original.
+  ///
+  /// ⚠️The scans come along too. [hasInk] and [inkBounds] are decided by
+  /// the pixels, and these are the very same pixels — recomputing them
+  /// would be asking a question that was already answered.
+  BitmapTile rebasedTo(TileCoord coord) =>
+      coord == this.coord ? this : BitmapTile._sharing(coord, this);
+
+  BitmapTile._sharing(this.coord, BitmapTile source)
+    : size = source.size,
+      _pixels = source._pixels,
+      _view = source._view,
+      _bufferOwner = source._bufferOwner ?? source,
+      _hasInk = source._hasInk,
+      _inkBounds = source._inkBounds;
+
+  /// The tile whose finalizer owns [_pixels], when this one is a rebase
+  /// of it. Null means THIS tile owns the buffer.
+  ///
+  /// ⛔It is a strong reference on purpose, and it is the whole safety
+  /// argument: while this tile is reachable so is its owner, so the
+  /// owner's finalizer cannot have run. [readPixels] keeps the RECEIVER
+  /// alive for the length of the call, and the receiver holds this.
+  final BitmapTile? _bufferOwner;
 
   static Pointer<Uint8> _allocate(int byteLength) {
     final engine = QaNativeEngine.instance;
@@ -284,9 +326,14 @@ class BitmapTile implements Finalizable {
     return (y * size + x) * bytesPerPixel;
   }
 
-  BitmapTile copyWith({TileCoord? coord, int? size, Uint8List? pixels}) {
+  /// A tile with new PIXELS. ⛔It takes no coordinate: moving a tile to
+  /// another coordinate through here allocated a buffer and memcpy'd the
+  /// whole tile to change two integers, which is what [rebasedTo] exists
+  /// to make free. With no `coord` parameter there is nothing to reach
+  /// for, and the expensive spelling cannot come back.
+  BitmapTile copyWith({int? size, Uint8List? pixels}) {
     return BitmapTile(
-      coord: coord ?? this.coord,
+      coord: coord,
       size: size ?? this.size,
       pixels: pixels ?? _view,
     );
