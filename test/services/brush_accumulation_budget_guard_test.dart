@@ -154,7 +154,9 @@ void main() {
     BitmapSurface surfaceWithTile() => BitmapSurface(
       canvasSize: canvasSize,
       tileSize: 256,
-    ).putTiles([BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256)]);
+    ).putTiles([
+      (coord: TileCoord(x: 0, y: 0), tile: BitmapTile.blank(size: 256)),
+    ]);
 
     for (var cel = 0; cel < 3; cel += 1) {
       final surface = surfaceWithTile();
@@ -179,8 +181,11 @@ void main() {
     final coord = TileCoord(x: 0, y: 0);
 
     Future<void> decodeInScope(Object scope) async {
-      final tile = BitmapTile.blank(coord: coord, size: 8);
-      cache.ensureDecoded(tile, staleScope: scope);
+      final tile = BitmapTile.blank(size: 8);
+      cache.ensureDecoded(
+        (coord: TileCoord(x: 0, y: 0), tile: tile),
+        staleScope: scope,
+      );
       while (cache.imageFor(tile) == null) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }

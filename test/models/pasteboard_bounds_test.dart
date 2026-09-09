@@ -122,8 +122,8 @@ void main() {
     });
 
     test('putTiles stores a pasteboard tile', () {
-      final tile = BitmapTile.blank(coord: TileCoord(x: -1, y: -1), size: 256);
-      final updated = surface().putTiles([tile]);
+      final tile = BitmapTile.blank(size: 256);
+      final updated = surface().putTiles([(coord: TileCoord(x: -1, y: -1), tile: tile)]);
       expect(updated.tileAt(TileCoord(x: -1, y: -1)), tile);
     });
   });

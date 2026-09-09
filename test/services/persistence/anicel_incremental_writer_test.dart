@@ -50,7 +50,6 @@ void main() {
           tileSize: 4,
           tiles: {
             TileCoord(x: 0, y: 0): BitmapTile(
-              coord: TileCoord(x: 0, y: 0),
               size: 4,
               pixels: pixels,
             ),

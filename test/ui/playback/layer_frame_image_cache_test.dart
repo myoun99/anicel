@@ -257,8 +257,10 @@ void main() {
         frameStore: store,
         canvasSize: canvasSize,
       ).prepareFramePreview(key('frame-a')).previewSurface;
-      for (final tile in preview.tiles.values) {
-        BitmapTileImageCache.instance.ensureDecoded(tile);
+      for (final entry in preview.tiles.entries) {
+        BitmapTileImageCache.instance.ensureDecoded(
+          (coord: entry.key, tile: entry.value),
+        );
       }
       final deadline = DateTime.now().add(const Duration(seconds: 5));
       while (!BitmapTileImageCache.instance.allDecoded(preview.tiles.values)) {

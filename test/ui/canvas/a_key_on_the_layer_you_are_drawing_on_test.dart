@@ -40,7 +40,7 @@ void main() {
   const canvasSize = CanvasSize(width: 32, height: 32);
 
   BitmapSurfacePainter whiteSurface() {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    var tile = BitmapTile.blank(size: 8);
     for (var x = 0; x < 8; x++) {
       for (var y = 0; y < 8; y++) {
         tile = writeRgbaColorToBitmapTile(
@@ -55,7 +55,7 @@ void main() {
       surface: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: 8,
-        tiles: {tile.coord: tile},
+        tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
     );

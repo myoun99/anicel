@@ -120,7 +120,7 @@ void main() {
         );
 
     BitmapTile tile(int x, {int size = 8}) =>
-        BitmapTile.blank(coord: TileCoord(x: x, y: 0), size: size);
+        BitmapTile.blank(size: size);
 
     test('the retained bytes are the tiles the LIVE surface replaced — '
         'the rest is shared with the neighbouring undo entry', () {

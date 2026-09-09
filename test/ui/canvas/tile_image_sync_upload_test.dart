@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -24,16 +25,19 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// that exercises this path by watching it return null — which is what
 /// "we shipped an untested path" looks like from the inside.
 void main() {
-  BitmapTile inkedTile() {
-    final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
+  PlacedTile inkedTile() {
+    final tile = BitmapTile.blank(size: 2);
     // Partial alpha on purpose: the bytes handed to the uploader must be
     // PREMULTIPLIED, and at alpha 255 premultiplied and straight agree,
     // so an opaque fixture could not tell the two apart.
-    return writeRgbaColorToBitmapTile(
-      tile: tile,
-      x: 0,
-      y: 0,
-      color: RgbaColor(r: 200, g: 100, b: 50, a: 128),
+    return (
+      coord: TileCoord(x: 0, y: 0),
+      tile: writeRgbaColorToBitmapTile(
+        tile: tile,
+        x: 0,
+        y: 0,
+        color: RgbaColor(r: 200, g: 100, b: 50, a: 128),
+      ),
     );
   }
 
@@ -62,12 +66,12 @@ void main() {
     expect(syncImageUploadSupported, isFalse);
     expect(cache.adoptSyncUpload(tile), isNull);
     expect(
-      cache.imageFor(tile),
+      cache.imageFor(tile.tile),
       isNull,
       reason: 'a refused upload must leave the tile exactly as it was',
     );
     expect(
-      cache.needsDecodeStart(tile),
+      cache.needsDecodeStart(tile.tile),
       isTrue,
       reason: 'and the asynchronous decode must still be the plan',
     );
@@ -81,16 +85,16 @@ void main() {
     final image = cache.adoptSyncUpload(tile);
 
     expect(image, isNotNull);
-    expect(identical(cache.imageFor(tile), image), isTrue);
+    expect(identical(cache.imageFor(tile.tile), image), isTrue);
     expect(
-      cache.hasProvisional(tile),
+      cache.hasProvisional(tile.tile),
       isFalse,
       reason:
           'these are the tile own bytes — there is nothing to replace '
           'later, which is the whole difference from a composed picture',
     );
     expect(
-      cache.needsDecodeStart(tile),
+      cache.needsDecodeStart(tile.tile),
       isFalse,
       reason: 'and no second decode of the same bytes',
     );
@@ -113,7 +117,7 @@ void main() {
 
     cache.adoptSyncUpload(tile);
 
-    final expected = BitmapTileImageCache.premultipliedTileUpload(tile);
+    final expected = BitmapTileImageCache.premultipliedTileUpload(tile.tile);
     expect(seen, expected.view);
     expected.free();
     // Anti-vacuity: premultiplied is not straight here, so "same bytes"
@@ -132,16 +136,19 @@ void main() {
     debugSyncImageUploadOverride = (_, _, _) => aSolidImage();
 
     final standingIn = inkedTile();
-    cache.putProvisional(standingIn, aSolidImage());
+    cache.putProvisional(standingIn.tile, aSolidImage());
     cache.adoptSyncUpload(standingIn);
-    expect(cache.imageFor(standingIn), isNotNull);
+    expect(cache.imageFor(standingIn.tile), isNotNull);
     expect(
-      cache.hasProvisional(standingIn),
+      cache.hasProvisional(standingIn.tile),
       isFalse,
       reason: 'truth arrived, so the approximation has to go with it',
     );
 
-    final decoding = BitmapTile.blank(coord: TileCoord(x: 1, y: 0), size: 2);
+    final decoding = (
+      coord: TileCoord(x: 0, y: 0),
+      tile: BitmapTile.blank(size: 2),
+    );
     cache.ensureDecoded(decoding);
     expect(
       cache.adoptSyncUpload(decoding),

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_tile_operation_apply.dart';
@@ -14,13 +15,16 @@ void main() {
   final purple = RgbaColor(r: 128, g: 0, b: 128, a: 255);
   final rgbaOrderColor = RgbaColor(r: 1, g: 2, b: 3, a: 4);
 
-  BitmapTile blankTile({int tileX = 0, int tileY = 0, int size = 2}) {
-    return BitmapTile.blank(
+  /// ⚠️The coordinate is what half these cases are ABOUT — the tile's
+  /// global origin decides which operations land in it — so the helper
+  /// hands back the pair rather than a tile that has forgotten where
+  /// it is.
+  PlacedTile blankTile({int tileX = 0, int tileY = 0, int size = 2}) {
+    return (
       coord: TileCoord(x: tileX, y: tileY),
-      size: size,
+      tile: BitmapTile.blank(size: size),
     );
   }
-
   BrushPixelBlendOperation op({
     required int x,
     required int y,
@@ -35,42 +39,46 @@ void main() {
       final tile = blankTile();
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: const [],
       );
 
-      expect(identical(result, tile), isTrue);
+      expect(identical(result, tile.tile), isTrue);
     });
 
     test('returns original tile when no operation affects tile', () {
       final tile = blankTile(size: 2);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 2, y: 0, before: transparent, after: red)],
       );
 
-      expect(identical(result, tile), isTrue);
+      expect(identical(result, tile.tile), isTrue);
     });
 
     test('applies one operation inside tile', () {
       final tile = blankTile();
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 1, y: 0, before: transparent, after: red)],
       );
 
-      expect(identical(result, tile), isFalse);
+      expect(identical(result, tile.tile), isFalse);
       expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0), red);
-      expect(readRgbaColorFromBitmapTile(tile: tile, x: 1, y: 0), transparent);
+      expect(readRgbaColorFromBitmapTile(tile: tile.tile, x: 1, y: 0), transparent);
     });
 
     test('maps global coordinates to local tile coordinates', () {
       final tile = blankTile(tileX: 2, tileY: 3, size: 4);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 8, y: 12, before: transparent, after: red)],
       );
 
@@ -81,7 +89,8 @@ void main() {
       final tile = blankTile(tileX: 2, tileY: 3, size: 4);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 8, y: 12, before: transparent, after: blue)],
       );
 
@@ -92,7 +101,8 @@ void main() {
       final tile = blankTile(tileX: 1, tileY: 1, size: 2);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [
           op(x: 1, y: 2, before: transparent, after: red),
           op(x: 2, y: 1, before: transparent, after: red),
@@ -121,7 +131,8 @@ void main() {
       final tile = blankTile(size: 3);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [
           op(x: 2, y: 2, before: transparent, after: red),
           op(x: 0, y: 0, before: transparent, after: blue),
@@ -138,7 +149,8 @@ void main() {
       final tile = blankTile();
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [
           op(x: 0, y: 0, before: transparent, after: red),
           op(x: 0, y: 0, before: red, after: blue),
@@ -155,7 +167,8 @@ void main() {
 
         expect(
           () => applyBrushPixelBlendOperationsToBitmapTile(
-            tile: tile,
+            coord: tile.coord,
+            tile: tile.tile,
             operations: [op(x: 0, y: 0, before: red, after: blue)],
           ),
           throwsA(isA<StateError>()),
@@ -165,35 +178,33 @@ void main() {
 
     test('does not mutate original tile', () {
       final tile = blankTile();
-      final originalPixels = tile.pixels;
+      final originalPixels = tile.tile.pixels;
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 1, y: 0, before: transparent, after: red)],
       );
 
-      expect(tile.pixels, originalPixels);
-      expect(readRgbaColorFromBitmapTile(tile: tile, x: 1, y: 0), transparent);
+      expect(tile.tile.pixels, originalPixels);
+      expect(readRgbaColorFromBitmapTile(tile: tile.tile, x: 1, y: 0), transparent);
       expect(readRgbaColorFromBitmapTile(tile: result, x: 1, y: 0), red);
     });
 
-    test('preserves tile coord', () {
-      final coord = TileCoord(x: 3, y: 4);
-      final tile = BitmapTile.blank(coord: coord, size: 2);
-
-      final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
-        operations: [op(x: 6, y: 8, before: transparent, after: red)],
-      );
-
-      expect(result.coord, coord);
-    });
+    /// 🪦**「preserves tile coord」 IS GONE, AND SO IS ITS SUBJECT.** A
+    /// tile carried a coordinate and this pinned that the rewrite kept
+    /// it. A tile has no coordinate now — its place is the map key the
+    /// surface stores it under — so there is nothing here to preserve.
+    /// What the case really guarded is one line up: global operation
+    /// coordinates map to local tile pixels through the coord the
+    /// CALLER passes.
 
     test('preserves tile size', () {
       final tile = blankTile(tileX: 3, tileY: 4, size: 2);
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 6, y: 8, before: transparent, after: red)],
       );
 
@@ -204,7 +215,8 @@ void main() {
       final tile = blankTile();
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [op(x: 1, y: 0, before: transparent, after: green)],
       );
 
@@ -227,7 +239,8 @@ void main() {
       final tile = blankTile();
 
       final result = applyBrushPixelBlendOperationsToBitmapTile(
-        tile: tile,
+        coord: tile.coord,
+        tile: tile.tile,
         operations: [
           op(x: 0, y: 1, before: transparent, after: rgbaOrderColor),
         ],

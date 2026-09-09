@@ -1,13 +1,15 @@
 import '../models/bitmap_tile.dart';
 import '../models/brush_pixel_blend_operation.dart';
 import '../models/rgba_color.dart';
+import '../models/tile_coord.dart';
 
 BitmapTile applyBrushPixelBlendOperationsToBitmapTile({
+  required TileCoord coord,
   required BitmapTile tile,
   required Iterable<BrushPixelBlendOperation> operations,
 }) {
-  final tileGlobalLeft = tile.coord.x * tile.size;
-  final tileGlobalTop = tile.coord.y * tile.size;
+  final tileGlobalLeft = coord.x * tile.size;
+  final tileGlobalTop = coord.y * tile.size;
   final tileGlobalRightExclusive = tileGlobalLeft + tile.size;
   final tileGlobalBottomExclusive = tileGlobalTop + tile.size;
 

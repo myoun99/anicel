@@ -48,12 +48,12 @@ Future<ui.Image> bitmapSurfaceToImage(BitmapSurface surface) async {
   // Sendable snapshot: tile pixel buffers are copies already (the tile
   // getter clones), so the isolate borrows plain records.
   final tiles = [
-    for (final tile in surface.tiles.values)
+    for (final entry in surface.tiles.entries)
       (
-        originX: tile.coord.x * tile.size,
-        originY: tile.coord.y * tile.size,
-        size: tile.size,
-        pixels: tile.pixels,
+        originX: entry.key.x * entry.value.size,
+        originY: entry.key.y * entry.value.size,
+        size: entry.value.size,
+        pixels: entry.value.pixels,
       ),
   ];
   final threshold =

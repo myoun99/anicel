@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -16,9 +17,9 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// tile's permanent picture would pin an off-by-two forever
 /// (`tile_image_sync_compose_parity_test` measures that).
 void main() {
-  BitmapTile tileAt(int x, int y) => BitmapTile.blank(
+  PlacedTile tileAt(int x, int y) => (
     coord: TileCoord(x: x, y: y),
-    size: 4,
+    tile: BitmapTile.blank(size: 4),
   );
 
   Future<ui.Image> anImage() {
@@ -40,20 +41,20 @@ void main() {
       final cache = BitmapTileImageCache();
       final tile = tileAt(0, 0);
 
-      expect(cache.displayImageFor(tile), isNull);
-      expect(cache.needsDecodeStart(tile), isTrue);
+      expect(cache.displayImageFor(tile.tile), isNull);
+      expect(cache.needsDecodeStart(tile.tile), isTrue);
 
-      cache.putProvisional(tile, await anImage());
+      cache.putProvisional(tile.tile, await anImage());
 
       // Draws.
-      expect(cache.displayImageFor(tile), isNotNull);
-      expect(cache.hasProvisional(tile), isTrue);
+      expect(cache.displayImageFor(tile.tile), isNotNull);
+      expect(cache.hasProvisional(tile.tile), isTrue);
       // Is not truth: `imageFor` is what adoption, seeding and the stale
       // bucket read, and none of them may see a synthesized picture.
-      expect(cache.imageFor(tile), isNull);
+      expect(cache.imageFor(tile.tile), isNull);
       // 🚨 The load-bearing one. If a stand-in stopped the decode, the
       // off-by-two would become permanent and nothing would ever say so.
-      expect(cache.needsDecodeStart(tile), isTrue);
+      expect(cache.needsDecodeStart(tile.tile), isTrue);
     });
   });
 
@@ -61,23 +62,23 @@ void main() {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final tile = tileAt(1, 0);
-      cache.putProvisional(tile, await anImage());
-      final standIn = cache.displayImageFor(tile);
+      cache.putProvisional(tile.tile, await anImage());
+      final standIn = cache.displayImageFor(tile.tile);
 
       cache.ensureDecoded(tile);
       // `decodeImageFromPixels` never completes inside `pump`'s fake async,
       // so settle it for real.
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      expect(cache.imageFor(tile), isNotNull, reason: 'the decode landed');
-      expect(cache.hasProvisional(tile), isFalse);
+      expect(cache.imageFor(tile.tile), isNotNull, reason: 'the decode landed');
+      expect(cache.hasProvisional(tile.tile), isFalse);
       expect(
-        identical(cache.displayImageFor(tile), standIn),
+        identical(cache.displayImageFor(tile.tile), standIn),
         isFalse,
         reason: 'the drawn picture must switch to the tile own decode',
       );
       expect(
-        identical(cache.displayImageFor(tile), cache.imageFor(tile)),
+        identical(cache.displayImageFor(tile.tile), cache.imageFor(tile.tile)),
         isTrue,
       );
     });
@@ -87,12 +88,12 @@ void main() {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final tile = tileAt(2, 0);
-      cache.putProvisional(tile, await anImage());
+      cache.putProvisional(tile.tile, await anImage());
 
       cache.adoptDecoded(tile, await anImage());
 
-      expect(cache.imageFor(tile), isNotNull);
-      expect(cache.hasProvisional(tile), isFalse);
+      expect(cache.imageFor(tile.tile), isNotNull);
+      expect(cache.hasProvisional(tile.tile), isFalse);
     });
   });
 
@@ -105,10 +106,10 @@ void main() {
       final real = await anImage();
       cache.adoptDecoded(tile, real);
 
-      cache.putProvisional(tile, await anImage());
+      cache.putProvisional(tile.tile, await anImage());
 
-      expect(cache.hasProvisional(tile), isFalse);
-      expect(identical(cache.imageFor(tile), real), isTrue);
+      expect(cache.hasProvisional(tile.tile), isFalse);
+      expect(identical(cache.imageFor(tile.tile), real), isTrue);
     });
   });
 
@@ -120,7 +121,7 @@ void main() {
       const scope = 'cel';
       final tile = tileAt(4, 0);
 
-      cache.putProvisional(tile, await anImage());
+      cache.putProvisional(tile.tile, await anImage());
 
       // The whole point of the stand-in is that it is a picture of THIS
       // tile. Letting it seed the per-coordinate bucket would hand the

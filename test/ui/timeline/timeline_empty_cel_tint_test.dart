@@ -205,7 +205,7 @@ void main() {
         canvasSize: const CanvasSize(width: 4, height: 4),
         tileSize: 4,
       ).putTiles([
-        BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
+        (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: 4, pixels: pixels)),
       ]);
     }
 

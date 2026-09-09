@@ -46,7 +46,7 @@ BitmapSurface _surface({
   for (var i = 0; i < tiles; i++) {
     final coord = TileCoord(x: i, y: 0);
     map[coord] =
-        reuse[coord] ?? BitmapTile.blank(coord: coord, size: size);
+        reuse[coord] ?? BitmapTile.blank(size: size);
   }
   return BitmapSurface(
     canvasSize: const CanvasSize(width: 4000, height: 4000),

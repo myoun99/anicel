@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/placed_tile.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -60,21 +61,24 @@ part 'brush_edit/brush_edit_press.dart';
 /// handoff, so a just-committed stroke never trades its overlay for stale
 /// pre-stroke tile images.
 @visibleForTesting
-List<BitmapTile> settlingTilesForBounds({
+List<PlacedTile> settlingTilesForBounds({
   required BitmapSurface surface,
   required DirtyRegion? bounds,
 }) {
   if (bounds == null) {
-    return surface.tiles.values.toList();
+    return [
+      for (final entry in surface.tiles.entries)
+        (coord: entry.key, tile: entry.value),
+    ];
   }
   final box = bounds.tileRange(tileSize: surface.tileSize);
   return [
-    for (final tile in surface.tiles.values)
-      if (tile.coord.x >= box.firstX &&
-          tile.coord.x <= box.lastX &&
-          tile.coord.y >= box.firstY &&
-          tile.coord.y <= box.lastY)
-        tile,
+    for (final entry in surface.tiles.entries)
+      if (entry.key.x >= box.firstX &&
+          entry.key.x <= box.lastX &&
+          entry.key.y >= box.firstY &&
+          entry.key.y <= box.lastY)
+        (coord: entry.key, tile: entry.value),
   ];
 }
 
@@ -96,7 +100,7 @@ Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
   required DirtyRegion? bounds,
 }) {
   if (bounds == null) {
-    return {for (final tile in surface.tiles.values) tile.coord: tile};
+    return {...surface.tiles};
   }
   final tiles = surface.tiles;
   return {
@@ -626,7 +630,10 @@ class _InteractiveBrushEditCanvasViewState
     if (!_settlingState._settling || !mounted) {
       return;
     }
-    if (BitmapTileImageCache.instance.allDecoded(_settlingState.settlingTiles())) {
+    final settling = _settlingState.settlingTiles();
+    if (BitmapTileImageCache.instance.allDecoded([
+      for (final placed in settling) placed.tile,
+    ])) {
       _overlay.resetOverlay();
     } else {
       // Not done yet — start the next decode chunk off this notification

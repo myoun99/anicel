@@ -18,7 +18,7 @@ void main() {
   const canvas = CanvasSize(width: 1024, height: 512);
 
   BitmapTile blank(TileCoord coord) =>
-      BitmapTile.blank(coord: coord, size: 256);
+      BitmapTile.blank(size: 256);
 
   BitmapSurface surfaceWith(List<TileCoord> coords) => BitmapSurface(
     canvasSize: canvas,

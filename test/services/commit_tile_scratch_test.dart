@@ -27,7 +27,6 @@ void main() {
     tileSize: tileSize,
     tiles: {
       coord: BitmapTile(
-        coord: coord,
         size: tileSize,
         pixels: Uint8List(byteLength)..fillRange(0, byteLength, fill),
       ),
@@ -75,7 +74,7 @@ void main() {
       scratch.bufferFor(missing);
       final tile = scratch.finish(present);
       scratch.releaseUnfinished();
-      expect(tile.coord, present);
+  
       expect(tile.size, tileSize);
       expect(tile.pixels, everyElement(0xC3));
     });

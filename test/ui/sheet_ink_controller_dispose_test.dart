@@ -42,7 +42,7 @@ void main() {
   /// A surface with one painted tile that has never been uploaded, so the
   /// synchronous compose gives up and the async branch runs.
   BitmapSurface freshSurface() {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    var tile = BitmapTile.blank(size: 8);
     tile = writeRgbaColorToBitmapTile(
       tile: tile,
       x: 1,
@@ -52,7 +52,7 @@ void main() {
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: 8,
-      tiles: {tile.coord: tile},
+      tiles: {TileCoord(x: 0, y: 0): tile},
     );
   }
 

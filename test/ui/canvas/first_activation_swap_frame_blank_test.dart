@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/sync_image_upload.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -92,7 +93,7 @@ void main() {
     } on Object catch (_) {}
   });
 
-  BitmapTile filledTile(
+  PlacedTile filledTile(
     int x, {
     required int r,
     required int g,
@@ -105,10 +106,9 @@ void main() {
       pixels[i + 2] = b;
       pixels[i + 3] = 0xFF;
     }
-    return BitmapTile(
+    return (
       coord: TileCoord(x: x, y: 0),
-      size: tileSize,
-      pixels: pixels,
+      tile: BitmapTile(size: tileSize, pixels: pixels),
     );
   }
 
@@ -117,7 +117,7 @@ void main() {
     final tiles = <TileCoord, BitmapTile>{};
     for (var x = 0; x < tileCount; x += 1) {
       final tile = filledTile(x, r: 0, g: 0, b: 0xFF);
-      tiles[tile.coord] = tile;
+      tiles[tile.coord] = tile.tile;
     }
     return BitmapSurface(
       canvasSize: CanvasSize(width: tileCount * tileSize, height: tileSize),
@@ -597,7 +597,7 @@ void main() {
     await tester.runAsync(() async {
       tileCache.ensureDecoded(redTile);
       final deadline = DateTime.now().add(const Duration(seconds: 10));
-      while (tileCache.imageFor(redTile) == null) {
+      while (tileCache.imageFor(redTile.tile) == null) {
         if (DateTime.now().isAfter(deadline)) {
           fail('timed out decoding the edited tile');
         }

@@ -28,7 +28,7 @@ class _SurfacePaintPass {
   late int _syncUploadBudget;
   late final Rect _visibleRect;
   Set<TileCoord>? _committedWins;
-  List<BitmapTile>? _pendingDecodes;
+  List<PlacedTile>? _pendingDecodes;
 
   /// The surface + live _overlay, onto a _canvas the CALLER has already
   /// viewport-transformed and clipped to [_pasteboardRect].
@@ -252,7 +252,7 @@ class _SurfacePaintPass {
     // ready by the time the override releases.
     if (_overlayReplacesCoords &&
         _overlay != null &&
-        _overlay.tileImages.containsKey(tile.coord)) {
+        _overlay.tileImages.containsKey(placed.coord)) {
       // While the _overlay is LIVE its image IS the stroke and the
       // committed tile is still the pre-stroke surface, so the
       // _overlay must win. Once it is SETTLING the commit has landed:
@@ -359,7 +359,7 @@ class _SurfacePaintPass {
     var tileImage = _painter.tileImageCache.displayImageFor(tile);
     if (tileImage == null && _syncUploadBudget > 0) {
       tileImage = _painter.tileImageCache.adoptSyncUpload(
-        tile,
+        placed,
         staleScope: _painter.staleScope,
       );
       // Spent on the ANSWER, not the attempt — the same correction

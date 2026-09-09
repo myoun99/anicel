@@ -5,7 +5,6 @@ import 'package:ffi/ffi.dart';
 
 import '../core/collection_equality.dart';
 import '../native/qa_native_engine.dart';
-import 'tile_coord.dart';
 
 /// The tight box of a tile's ink, in TILE-LOCAL pixels. Exclusive on the
 /// far edges, like every other rect in this codebase.
@@ -36,7 +35,6 @@ typedef TileInkBounds = ({
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
   factory BitmapTile({
-    required TileCoord coord,
     required int size,
     required Uint8List pixels,
   }) {
@@ -44,15 +42,15 @@ class BitmapTile implements Finalizable {
     _validatePixelLength(pixels.length, size);
     final buffer = _allocate(pixels.length);
     buffer.asTypedList(pixels.length).setAll(0, pixels);
-    return BitmapTile._adopt(coord, size, buffer);
+    return BitmapTile._adopt(size, buffer);
   }
 
-  factory BitmapTile.blank({required TileCoord coord, required int size}) {
+  factory BitmapTile.blank({required int size}) {
     _validateSize(size);
     final length = bytesFor(size);
     final buffer = _allocate(length);
     buffer.asTypedList(length).fillRange(0, length, 0);
-    return BitmapTile._adopt(coord, size, buffer);
+    return BitmapTile._adopt(size, buffer);
   }
 
   /// Adopts a NATIVE buffer as this tile's pixels WITHOUT copying —
@@ -65,17 +63,15 @@ class BitmapTile implements Finalizable {
   /// scratch does), from `malloc` otherwise — the finalizer choice below
   /// mirrors exactly that.
   factory BitmapTile.adoptNative({
-    required TileCoord coord,
     required int size,
     required Pointer<Uint8> pixels,
   }) {
     _validateSize(size);
-    return BitmapTile._adopt(coord, size, pixels);
+    return BitmapTile._adopt(size, pixels);
   }
 
-  BitmapTile._adopt(this.coord, this.size, Pointer<Uint8> pixels)
-    : _bufferOwner = null,
-      _pixels = pixels,
+  BitmapTile._adopt(this.size, Pointer<Uint8> pixels)
+    : _pixels = pixels,
       _view = pixels.asTypedList(bytesFor(size)) {
     final engine = QaNativeEngine.instance;
     (engine == null ? _mallocFinalizer : engine.tileFinalizer).attach(
@@ -85,59 +81,6 @@ class BitmapTile implements Finalizable {
       externalSize: bytesFor(size),
     );
   }
-
-  /// THE SAME PIXELS AT A NEW COORDINATE, with no copy at all.
-  ///
-  /// 🚨★★★**A WHOLE-TILE SHIFT COPIED EVERY PIXEL TO CHANGE TWO
-  /// INTEGERS.** An anchored canvas resize whose offset is a multiple of
-  /// the tile size moves nothing within a tile — it renames the tile. It
-  /// went through `copyWith`, which allocates a fresh native buffer and
-  /// memcpys the whole tile into it: 64 KB per tile at 128px, over every
-  /// cel of the cut, for a rename.
-  ///
-  /// ⛔**IT CANNOT SIMPLY SHARE THE POINTER**: a tile OWNS its buffer and
-  /// a [NativeFinalizer] frees it, so two tiles attached to one block is
-  /// a double free. What makes this safe is [_bufferOwner] — the new tile
-  /// attaches NO finalizer and instead holds a reference to the tile that
-  /// does. The buffer is freed when the owner becomes unreachable, and
-  /// the owner cannot become unreachable while anything derived from it
-  /// is alive. The chain is flat, never nested: a rebase of a rebase
-  /// points at the same original.
-  ///
-  /// ⚠️The scans come along too. [hasInk] and [inkBounds] are decided by
-  /// the pixels, and these are the very same pixels — recomputing them
-  /// would be asking a question that was already answered.
-  BitmapTile rebasedTo(TileCoord coord) =>
-      coord == this.coord ? this : BitmapTile._sharing(coord, this);
-
-  BitmapTile._sharing(this.coord, BitmapTile source)
-    : size = source.size,
-      _pixels = source._pixels,
-      _view = source._view,
-      _bufferOwner = source._bufferOwner ?? source,
-      _hasInk = source._hasInk,
-      _inkBounds = source._inkBounds;
-
-  /// The tile whose finalizer owns [_pixels], when this one is a rebase
-  /// of it. Null means THIS tile owns the buffer.
-  ///
-  /// ⛔It is a strong reference on purpose, and it is the whole safety
-  /// argument: while this tile is reachable so is its owner, so the
-  /// owner's finalizer cannot have run. [readPixels] keeps the RECEIVER
-  /// alive for the length of the call, and the receiver holds this.
-  final BitmapTile? _bufferOwner;
-
-  /// The tile whose BYTES these are — this one, or the tile it was
-  /// rebased from.
-  ///
-  /// 🚨★★★**WHAT AN IMAGE CACHE SHOULD BE KEYED BY.** A rebase is the
-  /// same picture at a new coordinate, and a cache keyed by the tile
-  /// OBJECT loses it: an anchored canvas resize re-decodes the whole cel
-  /// though not a byte moved. Keyed by this instead it keeps, and it is
-  /// safe for exactly the reason the sharing is safe — a rebase holds
-  /// its source alive, so an `Expando` entry under the source cannot be
-  /// collected while the rebase can still ask for it.
-  BitmapTile get pixelsSource => _bufferOwner ?? this;
 
   static Pointer<Uint8> _allocate(int byteLength) {
     final engine = QaNativeEngine.instance;
@@ -158,7 +101,7 @@ class BitmapTile implements Finalizable {
   /// budget that lies about what it holds, so there is one place now.
   static int bytesFor(int size) => size * size * bytesPerPixel;
 
-  final TileCoord coord;
+
   final int size;
   final Pointer<Uint8> _pixels;
   final Uint8List _view;
@@ -338,28 +281,34 @@ class BitmapTile implements Finalizable {
     return (y * size + x) * bytesPerPixel;
   }
 
-  /// A tile with new PIXELS. ⛔It takes no coordinate: moving a tile to
-  /// another coordinate through here allocated a buffer and memcpy'd the
-  /// whole tile to change two integers, which is what [rebasedTo] exists
-  /// to make free. With no `coord` parameter there is nothing to reach
-  /// for, and the expensive spelling cannot come back.
+  /// A tile with new PIXELS.
+  ///
+  /// 🪦**IT USED TO TAKE A COORDINATE, AND THAT WAS THE EXPENSIVE**
+  /// **SPELLING OF A RENAME.** Moving a tile to another coordinate
+  /// through here allocated a native buffer and memcpy'd the whole tile
+  /// to change two integers — 64 KB at 128px, over every cel of a cut,
+  /// on an anchored canvas resize. It was answered first by a
+  /// buffer-sharing `rebasedTo` (2026-09-09) and then by this: a tile
+  /// has no coordinate at all, so a shift is a map-key rewrite that
+  /// keeps the very same object — and with it every decoded picture
+  /// the image cache holds under it.
   BitmapTile copyWith({int? size, Uint8List? pixels}) {
     return BitmapTile(
-      coord: coord,
+
       size: size ?? this.size,
       pixels: pixels ?? _view,
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'coord': coord.toJson(),
+
     'size': size,
     'pixels': _view.toList(),
   };
 
   factory BitmapTile.fromJson(Map<String, dynamic> json) {
     return BitmapTile(
-      coord: TileCoord.fromJson(json['coord'] as Map<String, dynamic>),
+
       size: json['size'] as int,
       pixels: Uint8List.fromList((json['pixels'] as List).cast<int>()),
     );
@@ -369,16 +318,16 @@ class BitmapTile implements Finalizable {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BitmapTile &&
-          other.coord == coord &&
+
           other.size == size &&
           listEquals(other._view, _view);
 
   @override
-  int get hashCode => Object.hash(coord, size, Object.hashAll(_view));
+  int get hashCode => Object.hash(size, Object.hashAll(_view));
 
   @override
   String toString() =>
-      'BitmapTile(coord: $coord, size: $size, pixelLength: ${_view.length})';
+      'BitmapTile(size: $size, pixelLength: ${_view.length})';
 }
 
 void _validateSize(int size) {

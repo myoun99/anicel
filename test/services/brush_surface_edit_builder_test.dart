@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_commit_result.dart';
@@ -34,17 +35,16 @@ void main() {
       );
     }
 
-    BitmapTile blankTile({
+    PlacedTile blankTile({
       required int tileX,
       required int tileY,
       int size = 2,
     }) {
-      return BitmapTile.blank(
+      return (
         coord: TileCoord(x: tileX, y: tileY),
-        size: size,
+        tile: BitmapTile.blank(size: size),
       );
     }
-
     BrushDab onePixelDab({
       required double globalX,
       required double globalY,
@@ -185,7 +185,7 @@ void main() {
     test('returns changed BrushSurfaceEdit for dab on existing tile', () {
       final existing = blankTile(tileX: 0, tileY: 0);
       final edit = editFor(
-        surface: surface(tiles: {existing.coord: existing}),
+        surface: surface(tiles: {existing.coord: existing.tile}),
         sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
       );
 
@@ -313,14 +313,14 @@ void main() {
 
     test('does not mutate existing BitmapTile', () {
       final existing = blankTile(tileX: 0, tileY: 0);
-      final before = BitmapTile.fromJson(existing.toJson());
+      final before = BitmapTile.fromJson(existing.tile.toJson());
 
       editFor(
-        surface: surface(tiles: {existing.coord: existing}),
+        surface: surface(tiles: {existing.coord: existing.tile}),
         sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
       );
 
-      expect(existing, before);
+      expect(existing.tile, before);
     });
 
     test('does not mutate BrushDabSequence', () {

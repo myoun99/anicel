@@ -36,13 +36,13 @@ void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   BitmapSurfacePainter surfaceWith(RgbaColor color, {int at = 0}) {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    var tile = BitmapTile.blank(size: 8);
     tile = writeRgbaColorToBitmapTile(tile: tile, x: at, y: 0, color: color);
     return BitmapSurfacePainter(
       surface: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: 8,
-        tiles: {tile.coord: tile},
+        tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
     );

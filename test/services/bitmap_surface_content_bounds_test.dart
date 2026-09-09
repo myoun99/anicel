@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -13,7 +14,7 @@ import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 void main() {
   const tileSize = 4;
 
-  BitmapTile tileWithInk(
+  PlacedTile tileWithInk(
     TileCoord coord,
     List<({int x, int y})> inkedPixels, {
     int alpha = 255,
@@ -24,7 +25,7 @@ void main() {
       pixels[base] = 255;
       pixels[base + 3] = alpha;
     }
-    return BitmapTile(coord: coord, size: tileSize, pixels: pixels);
+    return (coord: coord, tile: BitmapTile(size: tileSize, pixels: pixels));
   }
 
   test('spans ink across tiles, in canvas coordinates', () {
@@ -34,10 +35,10 @@ void main() {
       tiles: {
         TileCoord(x: 0, y: 0): tileWithInk(TileCoord(x: 0, y: 0), [
           (x: 2, y: 1),
-        ]),
+        ]).tile,
         TileCoord(x: 2, y: 1): tileWithInk(TileCoord(x: 2, y: 1), [
           (x: 3, y: 2),
-        ]),
+        ]).tile,
       },
     );
 
@@ -62,7 +63,7 @@ void main() {
         TileCoord(x: 1, y: 1): tileWithInk(TileCoord(x: 1, y: 1), [
           (x: 1, y: 0),
           (x: 3, y: 2),
-        ]),
+        ]).tile,
       },
     );
 
@@ -82,10 +83,10 @@ void main() {
       tiles: {
         TileCoord(x: 0, y: 0): tileWithInk(TileCoord(x: 0, y: 0), [
           (x: 0, y: 0),
-        ], alpha: 0),
+        ], alpha: 0).tile,
         TileCoord(x: 1, y: 1): tileWithInk(TileCoord(x: 1, y: 1), [
           (x: 1, y: 1),
-        ]),
+        ]).tile,
       },
     );
     expect(bitmapSurfaceContentBounds(ghostInk), (
@@ -130,7 +131,7 @@ void main() {
           addTearDown(() => QaNativeEngine.debugForceDartFallback = false);
           final untouched = tileWithInk(TileCoord(x: 0, y: 0), [(x: 2, y: 1)]);
           expect(
-            untouched.inkBoundsKnown,
+            untouched.tile.inkBoundsKnown,
             isFalse,
             reason: 'a fresh tile has scanned nothing yet',
           );
@@ -139,12 +140,12 @@ void main() {
             BitmapSurface(
               canvasSize: const CanvasSize(width: 12, height: 12),
               tileSize: tileSize,
-              tiles: {untouched.coord: untouched},
+              tiles: {untouched.coord: untouched.tile},
             ),
           );
 
-          expect(untouched.inkBoundsKnown, isTrue);
-          expect(untouched.inkBounds, (
+          expect(untouched.tile.inkBoundsKnown, isTrue);
+          expect(untouched.tile.inkBounds, (
             left: 2,
             top: 1,
             rightExclusive: 3,
@@ -159,7 +160,7 @@ void main() {
       final before = BitmapSurface(
         canvasSize: const CanvasSize(width: 12, height: 12),
         tileSize: tileSize,
-        tiles: {untouched.coord: untouched},
+        tiles: {untouched.coord: untouched.tile},
       );
       bitmapSurfaceContentBounds(before);
 
@@ -167,9 +168,12 @@ void main() {
       // over by reference.
       final committed = tileWithInk(TileCoord(x: 2, y: 1), [(x: 3, y: 2)]);
       final after = before.putTiles([committed]);
-      expect(identical(after.tileAt(untouched.coord), untouched), isTrue);
       expect(
-        committed.inkBoundsKnown,
+        identical(after.tileAt(untouched.coord), untouched.tile),
+        isTrue,
+      );
+      expect(
+        committed.tile.inkBoundsKnown,
         isFalse,
         reason: 'the tile the stroke made is the one that still owes a scan',
       );
@@ -181,13 +185,12 @@ void main() {
         bottomExclusive: 7,
       ));
       // And the carried-over tile answered from its memo throughout.
-      expect(untouched.inkBoundsKnown, isTrue);
-      expect(committed.inkBoundsKnown, isTrue);
+      expect(untouched.tile.inkBoundsKnown, isTrue);
+      expect(committed.tile.inkBoundsKnown, isTrue);
     });
 
     test('an ink-free tile owes nothing either', () {
       final blank = BitmapTile.blank(
-        coord: TileCoord(x: 0, y: 0),
         size: tileSize,
       );
       expect(blank.inkBounds, isNull);

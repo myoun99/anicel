@@ -36,7 +36,7 @@ void main() {
       canvasSize: CanvasSize(width: size, height: size),
       tileSize: 4,
     ).putTiles([
-      BitmapTile(coord: TileCoord(x: 0, y: 0), size: 4, pixels: pixels),
+      (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: 4, pixels: pixels)),
     ]);
   }
 

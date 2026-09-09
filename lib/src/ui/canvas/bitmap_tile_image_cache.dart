@@ -8,6 +8,7 @@ import '../../core/sync_image_upload.dart';
 import '../../services/straight_rgba_image.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
 import 'deferred_image_disposal.dart';
@@ -78,7 +79,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  final _ByTilePixels<ui.Image> _images = _ByTilePixels<ui.Image>(
+  final Expando<ui.Image> _images = Expando<ui.Image>(
     'bitmapTileImages',
   );
 
@@ -99,7 +100,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// came true, so the settle window's two-second give-up dropped the
   /// stand-in and a tile-shaped patch of the stroke reverted to pre-stroke
   /// pixels — the exact failure the settle machinery exists to prevent.
-  final _ByTilePixels<_TileDecodeAsk> _decodeAsk = _ByTilePixels<_TileDecodeAsk>(
+  final Expando<_TileDecodeAsk> _decodeAsk = Expando<_TileDecodeAsk>(
     'bitmapTileImageDecodes',
   );
   // Deferred, not direct, disposal: the finalizer runs at GC time — pen-up
@@ -150,7 +151,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// TWO channel steps, at middling alpha on both operands
   /// (`tile_image_sync_compose_parity_test`). Adopting that outright would
   /// pin an off-by-two picture forever on those tiles.
-  final _ByTilePixels<ui.Image> _provisional = _ByTilePixels<ui.Image>(
+  final Expando<ui.Image> _provisional = Expando<ui.Image>(
     'bitmapTileProvisionalImages',
   );
 
@@ -206,11 +207,7 @@ class BitmapTileImageCache extends ChangeNotifier {
       return;
     }
     _provisional[tile] = image;
-    _provisionalFinalizer.attach(
-      _provisional.keyFor(tile),
-      image,
-      detach: _provisional.keyFor(tile),
-    );
+    _provisionalFinalizer.attach(tile, image, detach: tile);
   }
 
   /// Retires [tile]'s stand-in, if it has one. Called the moment its real
@@ -223,7 +220,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     _provisional[tile] = null;
     // Detach first: without it the finalizer retires the same image a
     // second time when the tile is eventually collected.
-    _provisionalFinalizer.detach(_provisional.keyFor(tile));
+    _provisionalFinalizer.detach(tile);
     DeferredImageDisposer.instance.retire(provisional);
   }
 
@@ -256,12 +253,13 @@ class BitmapTileImageCache extends ChangeNotifier {
   ///
   /// [staleScope] identifies the logical surface lineage (e.g. a brush frame)
   /// so [latestImageForCoord] never leaks another lineage's artwork.
-  void ensureDecoded(BitmapTile tile, {Object? staleScope}) {
+  void ensureDecoded(PlacedTile placed, {Object? staleScope}) {
+    final tile = placed.tile;
     if (_images[tile] != null || _decodeAsk[tile] != null) {
       return;
     }
     _decodeAsk[tile] = _TileDecodeAsk.running;
-    unawaited(_decodeInto(tile, staleScope));
+    unawaited(_decodeInto(placed, staleScope));
   }
 
   /// 🚨★★★**THE ASK IS GIVEN BACK ON ALL THREE ROADS**, and structurally —
@@ -270,7 +268,8 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// confuse with 「never asked」. ⛔The staging buffer is inside the `try`
   /// on purpose: [premultipliedTileUpload] `malloc`s, so it can throw
   /// BEFORE any decode starts, and that road left a marker too.
-  Future<void> _decodeInto(BitmapTile tile, Object? staleScope) async {
+  Future<void> _decodeInto(PlacedTile placed, Object? staleScope) async {
+    final tile = placed.tile;
     try {
       final upload = premultipliedTileUpload(tile);
       final ui.Image image;
@@ -290,13 +289,13 @@ class BitmapTileImageCache extends ChangeNotifier {
       }
       _decodeAsk[tile] = null;
       _images[tile] = image;
-      _imageFinalizer.attach(_images.keyFor(tile), image);
+      _imageFinalizer.attach(tile, image);
       // Truth has landed; the stand-in has nothing left to stand in for.
       _dropProvisional(tile);
       final scoped = _latestDecodedByScope.remove(staleScope);
       // Re-insert: this scope becomes the most recently used.
       (_latestDecodedByScope[staleScope] =
-              scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
+              scoped ?? <TileCoord, BitmapTile>{})[placed.coord] =
           tile;
       _evictScopesBeyondBudget();
       _scheduleNotify();
@@ -318,7 +317,7 @@ class BitmapTileImageCache extends ChangeNotifier {
           stack: stack,
           library: 'anicel',
           context: ErrorDescription(
-            'decoding a ${tile.size}px canvas tile at ${tile.coord}',
+            'decoding a ${tile.size}px canvas tile at ${placed.coord}',
           ),
         ),
       );
@@ -338,7 +337,12 @@ class BitmapTileImageCache extends ChangeNotifier {
   ///
   /// A tile that somehow already has an image keeps it and the incoming
   /// one is retired — never two owners for one image.
-  void adoptDecoded(BitmapTile tile, ui.Image image, {Object? staleScope}) {
+  void adoptDecoded(
+    PlacedTile placed,
+    ui.Image image, {
+    Object? staleScope,
+  }) {
+    final tile = placed.tile;
     if (_images[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
@@ -365,13 +369,13 @@ class BitmapTileImageCache extends ChangeNotifier {
     // 2026-09-09 audit.
     _decodeAsk[tile] = null;
     _images[tile] = image;
-    _imageFinalizer.attach(_images.keyFor(tile), image);
+    _imageFinalizer.attach(tile, image);
     // An adopted picture IS the truth (the overlay decoded exactly these
     // bytes), so it retires a stand-in just as a decode would.
     _dropProvisional(tile);
     final scoped = _latestDecodedByScope.remove(staleScope);
     (_latestDecodedByScope[staleScope] =
-            scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
+            scoped ?? <TileCoord, BitmapTile>{})[placed.coord] =
         tile;
     _evictScopesBeyondBudget();
   }
@@ -390,7 +394,8 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// The scratch is freed as soon as the call returns; see
   /// [uploadImageSync] for why that is safe and what breaks if it stops
   /// being.
-  ui.Image? adoptSyncUpload(BitmapTile tile, {Object? staleScope}) {
+  ui.Image? adoptSyncUpload(PlacedTile placed, {Object? staleScope}) {
+    final tile = placed.tile;
     // FIRST, and it is a cached bool. On Skia this method is called at
     // every undrawable coordinate of every paint and must cost exactly
     // that much; the Expando lookups below would otherwise be paid on a
@@ -420,7 +425,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     if (image == null) {
       return null;
     }
-    adoptDecoded(tile, image, staleScope: staleScope);
+    adoptDecoded(placed, image, staleScope: staleScope);
     return _images[tile];
   }
 
@@ -641,49 +646,4 @@ class PremultipliedTileUpload {
   void free() => _scratch?.free();
 }
 
-/// An [Expando] over tiles, keyed by WHOSE PIXELS THEY ARE rather than by
-/// the tile object.
-///
-/// 🚨★★★**A CANVAS RESIZE RE-DECODED EVERY CEL THOUGH NOT A BYTE MOVED.**
-/// A whole-tile shift renames a tile ([BitmapTile.rebasedTo]) — same
-/// bytes, same picture, new object — and three Expandos here are keyed by
-/// the object, so every image was lost and the whole cel decoded again
-/// (31 ms at 128px, per cel, on a command that runs over the whole cut).
-/// Normalising the key to [BitmapTile.pixelsSource] keeps them.
-///
-/// ⚠️**AND THE ENTRY CANNOT GO STALE OR DANGLE.** Stale is impossible
-/// because a tile is immutable, so the same pixels are the same picture
-/// forever. Dangling is impossible because a rebase holds a strong
-/// reference to its source, so the Expando's key outlives every tile that
-/// could still ask under it.
-///
-/// ⛔One wrapper rather than three call-site fixes: the normalisation is
-/// the SAME rule for all three slots, and spelling it at each `[tile]`
-/// would be the same algorithm written thirty times — the shape a
-/// forgotten call site hides in.
-class _ByTilePixels<T extends Object> {
-  _ByTilePixels(String name) : _slot = Expando<T>(name);
 
-  final Expando<T> _slot;
-
-  /// The object this slot hangs an entry on.
-  ///
-  /// 🚨★★★**A FINALIZER MUST HANG WHERE THE ENTRY HANGS.** The entry goes
-  /// under the tile's SOURCE, but a `Finalizer.attach(tile, …)` written
-  /// beside it would sit on the tile the caller passed — a different object
-  /// whenever that tile is a rebase. The rebase can be collected while its
-  /// source is still reachable (an undo snapshot holds the pre-resize
-  /// surface), and then the image is disposed while the entry under the
-  /// source still hands it out — a use-after-dispose. The mirror case is a
-  /// stand-in dropped through one tile while its finalizer sits on another,
-  /// which retires the same `ui.Image` twice. So the key is asked for, never
-  /// re-derived: there is one spelling of「which object」and both the entry
-  /// and its lifetime hook use it.
-  BitmapTile keyFor(BitmapTile tile) => tile.pixelsSource;
-
-  T? operator [](BitmapTile tile) => _slot[keyFor(tile)];
-
-  void operator []=(BitmapTile tile, T? value) {
-    _slot[keyFor(tile)] = value;
-  }
-}

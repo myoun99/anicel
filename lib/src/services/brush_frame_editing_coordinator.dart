@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/playback_preview_cache_key.dart';
 
 import '../core/dev_profile.dart';
+import '../models/placed_tile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -168,7 +169,7 @@ class BrushFrameEditingCoordinator {
     BrushBlendMode blendMode = BrushBlendMode.color,
     double strokeOpacity = 1,
     BitmapSurface? promotedBase,
-    List<BitmapTile>? promotedTiles,
+    List<PlacedTile>? promotedTiles,
   }) {
     if (sourceDabs.isEmpty) {
       throw ArgumentError.value(sourceDabs, 'sourceDabs', 'must not be empty');

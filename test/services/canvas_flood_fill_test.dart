@@ -181,7 +181,6 @@ void main() {
         tiles: {
           for (final entry in tiles.entries)
             entry.key: BitmapTile(
-              coord: entry.key,
               size: 4,
               pixels: entry.value,
             ),
@@ -243,7 +242,6 @@ void main() {
             pixels[i + 3] = 255;
           }
           blobTiles[TileCoord(x: tx, y: ty)] = BitmapTile(
-            coord: TileCoord(x: tx, y: ty),
             size: 4,
             pixels: pixels,
           );
@@ -314,7 +312,6 @@ void main() {
           tiles: {
             for (final entry in tiles.entries)
               entry.key: BitmapTile(
-                coord: entry.key,
                 size: 4,
                 pixels: entry.value,
               ),

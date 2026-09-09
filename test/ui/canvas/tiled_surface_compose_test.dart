@@ -33,10 +33,9 @@ void main() {
           pixels[index + 3] = (pixel * 5) % 256; // 0 / mid / 255 regimes
         }
         surface = surface.putTiles([
-          BitmapTile(
+          (
             coord: TileCoord(x: tileX, y: tileY),
-            size: 256,
-            pixels: pixels,
+            tile: BitmapTile(size: 256, pixels: pixels),
           ),
         ]);
       }
@@ -54,8 +53,8 @@ void main() {
     BitmapTileImageCache cache,
     BitmapSurface surface,
   ) async {
-    for (final tile in surface.tiles.values) {
-      cache.ensureDecoded(tile);
+    for (final entry in surface.tiles.entries) {
+      cache.ensureDecoded((coord: entry.key, tile: entry.value));
     }
     while (!cache.allDecoded(surface.tiles.values)) {
       await Future<void>.delayed(const Duration(milliseconds: 2));
@@ -97,7 +96,7 @@ void main() {
       );
 
       final withPasteboard = plain.putTiles([
-        BitmapTile.blank(coord: TileCoord(x: -1, y: -1), size: 256),
+        (coord: TileCoord(x: -1, y: -1), tile: BitmapTile.blank(size: 256)),
       ]);
       expect(
         surfaceContentWorldRect(withPasteboard),
@@ -143,7 +142,6 @@ void main() {
           tileSize: 256,
           tiles: {
             TileCoord(x: -1, y: -1): BitmapTile(
-              coord: TileCoord(x: -1, y: -1),
               size: 256,
               pixels: pixels,
             ),

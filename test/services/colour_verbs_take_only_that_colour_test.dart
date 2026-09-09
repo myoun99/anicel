@@ -26,7 +26,7 @@ void main() {
       canvasSize: canvas,
       tileSize: 256,
       tiles: {
-        origin: BitmapTile(coord: origin, size: 256, pixels: bytes),
+        origin: BitmapTile(size: 256, pixels: bytes),
       },
     );
   }

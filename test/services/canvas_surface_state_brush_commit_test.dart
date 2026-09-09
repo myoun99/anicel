@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -232,9 +233,10 @@ void main() {
         state: CanvasSurfaceState(currentSurface: surface()),
         sequence: BrushDabSequence([dab()]),
       );
-      final existingTile = seed.currentSurface.tiles.values.single;
+      final existingEntry = seed.currentSurface.tiles.entries.single;
+      final existingTile = existingEntry.value;
       final beforeTile = BitmapTile.fromJson(existingTile.toJson());
-      final current = surface(tiles: {existingTile.coord: existingTile});
+      final current = surface(tiles: {existingEntry.key: existingTile});
       final beforeSurface = BitmapSurface.fromJson(current.toJson());
       final state = CanvasSurfaceState(currentSurface: current);
       final oneDab = dab(color: 0xFF0000FF, sequence: 1);

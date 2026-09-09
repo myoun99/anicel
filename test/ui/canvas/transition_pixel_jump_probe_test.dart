@@ -82,7 +82,6 @@ void main() {
     for (var ty = 0; ty < 2; ty += 1)
       for (var tx = 0; tx < 2; tx += 1)
         TileCoord(x: tx, y: ty): BitmapTile(
-          coord: TileCoord(x: tx, y: ty),
           size: tileSize,
           pixels: linePixels(tx, ty),
         ),
@@ -93,8 +92,8 @@ void main() {
 
   Future<void> decodeAll(WidgetTester tester, BitmapSurface surface) {
     return tester.runAsync(() async {
-      for (final tile in surface.tiles.values) {
-        tileCache.ensureDecoded(tile);
+      for (final entry in surface.tiles.entries) {
+        tileCache.ensureDecoded((coord: entry.key, tile: entry.value));
       }
       while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
         await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -280,7 +279,6 @@ void main() {
     final surface1 = surfaceOf(tilesV1);
     final coord00 = TileCoord(x: 0, y: 0);
     final tile00V2 = BitmapTile(
-      coord: coord00,
       size: tileSize,
       pixels: linePixels(0, 0),
     );

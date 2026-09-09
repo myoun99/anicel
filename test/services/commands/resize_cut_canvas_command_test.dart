@@ -323,7 +323,9 @@ BitmapSurface _surfaceWithInkAt({required int x, required int y}) {
   return BitmapSurface(
     canvasSize: const CanvasSize(width: 1920, height: 1080),
     tileSize: 256,
-  ).putTiles([BitmapTile(coord: coord, size: tileSize, pixels: pixels)]);
+  ).putTiles([
+    (coord: coord, tile: BitmapTile(size: tileSize, pixels: pixels)),
+  ]);
 }
 
 BrushFrameStore _storeWithInkAt({required int x, required int y}) {

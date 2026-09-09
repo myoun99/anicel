@@ -246,7 +246,11 @@ BitmapSurface translateBitmapSurface(
         continue;
       }
       final coord = TileCoord(x: x, y: y);
-      rebased[coord] = entry.value.rebasedTo(coord);
+      // 🎯**THE SHIFT IS A KEY REWRITE.** The tile does not know where it
+      // sits, so moving it is renaming its map entry — the very same
+      // object, which means zero pixels copied AND every decoded picture
+      // the image cache holds under that object still found.
+      rebased[coord] = entry.value;
     }
     return BitmapSurface(
       canvasSize: canvasSize,
@@ -281,10 +285,11 @@ BitmapSurface translateBitmapSurface(
     );
   }
 
-  for (final tile in surface.tiles.values) {
+  for (final entry in surface.tiles.entries) {
+    final tile = entry.value;
     final pixels = tile.pixels;
-    final sourceLeft = tile.coord.x * tileSize + dx;
-    final sourceTop = tile.coord.y * tileSize + dy;
+    final sourceLeft = entry.key.x * tileSize + dx;
+    final sourceTop = entry.key.y * tileSize + dy;
     for (var row = 0; row < tileSize; row += 1) {
       final worldY = sourceTop + row;
       if (worldY < pasteboardTop) {
@@ -334,6 +339,12 @@ BitmapSurface translateBitmapSurface(
     tileSize: tileSize,
   ).putMaterializedTiles([
     for (final entry in buffers.entries)
-      BitmapTile(coord: entry.key, size: tileSize, pixels: entry.value),
+      (
+        coord: entry.key,
+        tile: BitmapTile(
+          size: tileSize,
+          pixels: entry.value,
+        ),
+      ),
   ]);
 }

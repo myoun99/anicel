@@ -44,11 +44,10 @@ void main() {
         pixels[i] = 255;
       }
       final tile = BitmapTile(
-        coord: TileCoord(x: x, y: 0),
         size: tileSize,
         pixels: pixels,
       );
-      tiles[tile.coord] = tile;
+      tiles[TileCoord(x: x, y: 0)] = tile;
     }
     return BitmapSurface(
       canvasSize: canvas,

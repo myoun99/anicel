@@ -59,7 +59,6 @@ void main() {
       tiles: {
         for (final entry in buffers.entries)
           entry.key: BitmapTile(
-            coord: entry.key,
             size: tile,
             pixels: entry.value,
           ),

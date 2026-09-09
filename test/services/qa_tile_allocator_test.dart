@@ -123,13 +123,12 @@ void main() {
       pixels[i] = i & 0xFF;
     }
     final tile = BitmapTile(
-      coord: TileCoord(x: 1, y: 2),
       size: size,
       pixels: pixels,
     );
     expect(tile.pixels, pixels);
 
-    final blank = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    final blank = BitmapTile.blank(size: 8);
     expect(blank.hasInk, isFalse);
   });
 }

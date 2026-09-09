@@ -18,14 +18,13 @@ void main() {
     tiles: {
       for (final x in xs)
         TileCoord(x: x, y: 0): BitmapTile.blank(
-          coord: TileCoord(x: x, y: 0),
           size: 4,
         ),
     },
   );
 
   List<int> xsUnder(BitmapSurface surface, Rect rect) => [
-    for (final covered in tilesUnderRect(surface, rect)) covered.tile.coord.x,
+    for (final covered in tilesUnderRect(surface, rect)) covered.coord.x,
   ];
 
   test('a fractional right edge reaches the tile it pokes into', () {

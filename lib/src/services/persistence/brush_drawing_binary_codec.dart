@@ -42,8 +42,8 @@ class AnicelCelEntry {
       canvasSize: surface.canvasSize,
       tileSize: surface.tileSize,
       tiles: [
-        for (final tile in surface.tiles.values)
-          (x: tile.coord.x, y: tile.coord.y, pixels: tile.pixels),
+        for (final entry in surface.tiles.entries)
+          (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
       ],
     );
   }
@@ -59,8 +59,12 @@ class AnicelCelEntry {
       tileSize: tileSize,
       tiles: {
         for (final tile in tiles)
+          // 🎯The coordinate has ALWAYS lived beside the pixels here —
+          // Finalizable tiles cannot cross the save/open isolate boundary,
+          // so the durable shape never had one on the tile. It used to
+          // build the TileCoord twice per tile, once as the key and once
+          // for a field that no longer exists.
           TileCoord(x: tile.x, y: tile.y): BitmapTile(
-            coord: TileCoord(x: tile.x, y: tile.y),
             size: tileSize,
             pixels: tile.pixels,
           ),

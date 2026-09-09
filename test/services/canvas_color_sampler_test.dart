@@ -37,7 +37,7 @@ void main() {
       tileSize: 4,
       tiles: {
         for (final entry in tiles.entries)
-          entry.key: BitmapTile(coord: entry.key, size: 4, pixels: entry.value),
+          entry.key: BitmapTile(size: 4, pixels: entry.value),
       },
     );
   }
@@ -99,7 +99,6 @@ void main() {
         tileSize: 4,
         tiles: {
           TileCoord(x: -1, y: 0): BitmapTile(
-            coord: TileCoord(x: -1, y: 0),
             size: 4,
             pixels: buffer,
           ),

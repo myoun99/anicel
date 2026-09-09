@@ -220,7 +220,7 @@ void main() {
         erase: erase,
       );
       final promotedSurface = base.putTiles([
-        for (final entry in promoted) entry.tile,
+        for (final entry in promoted) (coord: entry.coord, tile: entry.tile),
       ]);
       live.clear();
 
@@ -306,7 +306,7 @@ void main() {
           mode: mode,
           erase: false,
         ))
-          entry.tile,
+          (coord: entry.coord, tile: entry.tile),
       ]);
       live.clear();
 
@@ -370,7 +370,7 @@ void main() {
           mode: mode,
           erase: false,
         ))
-          entry.tile,
+          (coord: entry.coord, tile: entry.tile),
       ]);
       final referenceSurface = referenceCommit(
         rasterizer: rasterizer,
@@ -443,7 +443,9 @@ void main() {
 
     expect(promoted, isNotEmpty);
     expectSameArtwork(
-      base.putTiles([for (final entry in promoted) entry.tile]),
+      base.putTiles([
+        for (final entry in promoted) (coord: entry.coord, tile: entry.tile),
+      ]),
       referenceSurface,
       'stroke onto empty canvas',
     );

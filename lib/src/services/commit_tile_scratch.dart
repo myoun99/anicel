@@ -79,7 +79,6 @@ final class NativeCommitScratch implements CommitTileScratch {
 
   @override
   BitmapTile finish(TileCoord coord) => BitmapTile.adoptNative(
-    coord: coord,
     size: _surface.tileSize,
     pixels: _buffers.remove(coord)!.pointer,
   );
@@ -116,7 +115,6 @@ final class DartCommitScratch implements CommitTileScratch {
 
   @override
   BitmapTile finish(TileCoord coord) => BitmapTile(
-    coord: coord,
     size: _surface.tileSize,
     pixels: _buffers.remove(coord)!,
   );

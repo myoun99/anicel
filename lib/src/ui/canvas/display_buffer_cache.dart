@@ -46,6 +46,7 @@ class DisplayBufferCache {
   Map<Object, Object> lastOverlayTokens = const {};
   Map<Object, Object> lastTileTokens = const {};
 
+
   /// The kept image for [key] over [rect], or null when there is none.
   ui.Image? imageFor(Object key, Rect rect) {
     if (_key == key && _rect == rect) {

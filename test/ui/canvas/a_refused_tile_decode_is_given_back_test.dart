@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -38,11 +39,14 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// the alternative is a suite that exercises this path by watching it
 /// succeed.
 void main() {
-  BitmapTile inkedTile({int x = 0, int y = 0}) => writeRgbaColorToBitmapTile(
-    tile: BitmapTile.blank(coord: TileCoord(x: x, y: y), size: 2),
-    x: 0,
-    y: 0,
-    color: RgbaColor(r: 200, g: 100, b: 50, a: 128),
+  PlacedTile inkedTile({int x = 0, int y = 0}) => (
+    coord: TileCoord(x: x, y: y),
+    tile: writeRgbaColorToBitmapTile(
+      tile: BitmapTile.blank(size: 2),
+      x: 0,
+      y: 0,
+      color: RgbaColor(r: 200, g: 100, b: 50, a: 128),
+    ),
   );
 
   ui.Image aSolidImage() {
@@ -86,13 +90,13 @@ void main() {
     installUploader(refuse: false, sizes: asked);
     final tile = inkedTile();
 
-    expect(cache.needsDecodeStart(tile), isTrue);
+    expect(cache.needsDecodeStart(tile.tile), isTrue);
     cache.ensureDecoded(tile);
     await pumpEventQueue();
 
     expect(asked, [2], reason: 'the cache went through the seam, once');
-    expect(cache.imageFor(tile), isNotNull, reason: 'and the tile filled');
-    expect(cache.needsDecodeStart(tile), isFalse);
+    expect(cache.imageFor(tile.tile), isNotNull, reason: 'and the tile filled');
+    expect(cache.needsDecodeStart(tile.tile), isFalse);
   });
 
   test('🚨a refused tile is not asked again — and every door that can still '
@@ -117,7 +121,7 @@ void main() {
     FlutterError.onError = previous;
 
     expect(asked, [2], reason: 'refused once, asked once — not a loop');
-    expect(cache.imageFor(tile), isNull);
+    expect(cache.imageFor(tile.tile), isNull);
     expect(captured, isNotEmpty, reason: 'and the refusal is not hidden');
 
     // 🚨★★★THE RECOVERY. Both guards used to stand aside for ANY marker;
@@ -129,7 +133,7 @@ void main() {
     final handedOver = aSolidImage();
     cache.adoptDecoded(tile, handedOver);
     expect(
-      cache.imageFor(tile),
+      cache.imageFor(tile.tile),
       same(handedOver),
       reason: 'the pen-up handoff fills a refused tile',
     );
@@ -157,7 +161,7 @@ void main() {
       reason: 'on a device that can upload inside the frame, a refused tile '
           'is exactly the case that most needs it',
     );
-    expect(cache.imageFor(tile), isNotNull);
+    expect(cache.imageFor(tile.tile), isNotNull);
   });
 
   test('🚨a refusal NOTIFIES, so the tiles queued behind it still drain', () async {

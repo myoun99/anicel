@@ -78,7 +78,6 @@ void main() {
       tiles: {
         for (final entry in buffers.entries)
           entry.key: BitmapTile(
-            coord: entry.key,
             size: tileSize,
             pixels: entry.value,
           ),
@@ -204,12 +203,10 @@ void main() {
         tileSize: 256,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            coord: TileCoord(x: 0, y: 0),
             size: 256,
             pixels: tileBytes(0, 0),
           ),
           TileCoord(x: -1, y: -1): BitmapTile(
-            coord: TileCoord(x: -1, y: -1),
             size: 256,
             pixels: tileBytes(-256, -256),
           ),

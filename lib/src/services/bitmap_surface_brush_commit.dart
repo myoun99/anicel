@@ -160,7 +160,7 @@ BrushSurfaceMaterialization _finishMaterialization({
   var updatedSurface = surface;
   labProbe(probeName, () {
     updatedSurface = surface.putMaterializedTiles([
-      for (final coord in sortedCoords) scratch.finish(coord),
+      for (final coord in sortedCoords) (coord: coord, tile: scratch.finish(coord)),
     ]);
   });
   scratch.releaseUnfinished();

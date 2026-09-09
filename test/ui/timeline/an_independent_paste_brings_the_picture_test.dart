@@ -34,7 +34,7 @@ void main() {
     const tile = 256;
     final pixels = Uint8List(tile * tile * 4)..fillRange(0, 16, 255);
     return BitmapSurface(canvasSize: canvasSize, tileSize: tile).putTiles([
-      BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
+      (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: tile, pixels: pixels)),
     ]);
   }
 

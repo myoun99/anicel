@@ -18,7 +18,7 @@ void main() {
     pixels[at * 4 + 1] = 0x22;
     pixels[at * 4 + 2] = 0x33;
     pixels[at * 4 + 3] = 0xFF;
-    return BitmapTile(coord: coord, size: size, pixels: pixels);
+    return BitmapTile(size: size, pixels: pixels);
   }
 
   BitmapSurface surfaceWith(
@@ -41,7 +41,7 @@ void main() {
       final coord = TileCoord(x: 0, y: 0);
       expect(
         bitmapSurfaceContentBounds(
-          surfaceWith({coord: BitmapTile.blank(coord: coord, size: 8)}),
+          surfaceWith({coord: BitmapTile.blank(size: 8)}),
         ),
         isNull,
       );

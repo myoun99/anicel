@@ -26,7 +26,7 @@ void main() {
           pixels[i + 3] = 255;
         }
         final coord = TileCoord(x: tx, y: ty);
-        map[coord] = BitmapTile(coord: coord, size: 16, pixels: pixels);
+        map[coord] = BitmapTile(size: 16, pixels: pixels);
       }
     }
     return BitmapSurface(

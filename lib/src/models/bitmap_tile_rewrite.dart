@@ -27,5 +27,5 @@ BitmapTile? rewriteTileLazily(
   final written = tile.readPixels<Uint8List?>((_, view) => body(view));
   return written == null
       ? null
-      : BitmapTile(coord: tile.coord, size: tileSize, pixels: written);
+      : BitmapTile(size: tileSize, pixels: written);
 }

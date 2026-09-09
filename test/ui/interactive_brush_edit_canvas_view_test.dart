@@ -2093,7 +2093,6 @@ Future<void> _timedStroke(
 void _settlingTileGroup() {
   group('settlingTilesForBounds', () {
     BitmapTile tile(int x, int y) => BitmapTile.blank(
-      coord: TileCoord(x: x, y: y),
       size: 2,
     );
 
@@ -2129,11 +2128,11 @@ void _settlingTileGroup() {
 
   group('preStrokeHoldTiles', () {
     test('covers every touched coordinate, empty ones as explicit nulls', () {
-      final existing = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 2);
+      final existing = BitmapTile.blank(size: 2);
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: 8, height: 8),
         tileSize: 2,
-        tiles: {existing.coord: existing},
+        tiles: {TileCoord(x: 0, y: 0): existing},
       );
 
       final hold = preStrokeHoldTiles(
@@ -2155,16 +2154,16 @@ void _settlingTileGroup() {
     });
 
     test('unknown bounds pin every existing tile', () {
-      final existing = BitmapTile.blank(coord: TileCoord(x: 1, y: 1), size: 2);
+      final existing = BitmapTile.blank(size: 2);
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: 8, height: 8),
         tileSize: 2,
-        tiles: {existing.coord: existing},
+        tiles: {TileCoord(x: 1, y: 1): existing},
       );
 
       final hold = preStrokeHoldTiles(surface: surface, bounds: null);
 
-      expect(hold, {existing.coord: same(existing)});
+      expect(hold, {TileCoord(x: 1, y: 1): same(existing)});
     });
   });
 }
@@ -2182,7 +2181,7 @@ BrushEditSessionState _paintedSessionState(List<int> rgba) {
         pixels.setRange(index * 4, index * 4 + 4, rgba);
       }
       final coord = TileCoord(x: tileX, y: tileY);
-      tiles[coord] = BitmapTile(coord: coord, size: tileSize, pixels: pixels);
+      tiles[coord] = BitmapTile(size: tileSize, pixels: pixels);
     }
   }
   return BrushEditSessionState(

@@ -31,7 +31,7 @@ void main() {
   final cache = BitmapTileImageCache.instance;
 
   BitmapTile inked(TileCoord coord, int color, {int at = 2}) {
-    var tile = BitmapTile.blank(coord: coord, size: 8);
+    var tile = BitmapTile.blank(size: 8);
     final rgba = RgbaColor(
       r: (color >> 16) & 0xFF,
       g: (color >> 8) & 0xFF,
@@ -58,7 +58,7 @@ void main() {
 
   Future<void> decodeAll(BitmapSurface surface) async {
     for (final tile in surface.tiles.values) {
-      cache.ensureDecoded(tile);
+      cache.ensureDecoded((coord: TileCoord(x: 0, y: 0), tile: tile));
     }
     while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -359,7 +359,6 @@ void main() {
       tiles: {
         ...surface.tiles,
         TileCoord(x: 2, y: 1): BitmapTile.blank(
-          coord: TileCoord(x: 2, y: 1),
           size: 8,
         ),
       },

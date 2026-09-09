@@ -208,17 +208,17 @@ abstract final class ActiveLayerFlatProjection {
     for (final entry in overlayOwns.entries) {
       operands[entry.key] = entry.value;
     }
-    for (final tile in surface.tiles.values) {
-      if (operands.containsKey(tile.coord)) {
+    for (final entry in surface.tiles.entries) {
+      if (operands.containsKey(entry.key)) {
         continue; // The overlay REPLACES its coordinate.
       }
-      final image = tileImages.imageFor(tile);
+      final image = tileImages.imageFor(entry.value);
       if (image == null) {
         // A visible truth this flatten cannot carry — refusing beats
         // baking a hole or a stand-in in permanently.
         return null;
       }
-      operands[tile.coord] = image;
+      operands[entry.key] = image;
     }
     return operands;
   }

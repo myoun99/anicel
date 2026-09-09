@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -41,20 +42,22 @@ void main() {
     frameId: FrameId('f'),
   );
 
-  BitmapTile tileOf(int x, int fill) {
+  PlacedTile tileOf(int x, int fill) {
     final coord = TileCoord(x: x, y: 0);
-    return BitmapTile(
+    return (
       coord: coord,
+      tile: BitmapTile(
       size: size,
       pixels: Uint8List(BitmapTile.bytesFor(size))
         ..fillRange(0, BitmapTile.bytesFor(size), fill),
+      ),
     );
   }
 
-  BitmapSurface surfaceOf(Iterable<BitmapTile> tiles) => BitmapSurface(
+  BitmapSurface surfaceOf(Iterable<PlacedTile> tiles) => BitmapSurface(
     canvasSize: canvas,
     tileSize: size,
-    tiles: {for (final tile in tiles) tile.coord: tile},
+    tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
   /// What a lift leaves behind: the picture as it was, measured against

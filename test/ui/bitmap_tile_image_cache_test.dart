@@ -25,14 +25,14 @@ BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
           : (x == 1 ? 128 : (y == 1 ? 77 : 255));
     }
   }
-  return BitmapTile(coord: coord, size: size, pixels: pixels);
+  return BitmapTile(size: size, pixels: pixels);
 }
 
 Future<ui.Image> _awaitDecode(
   BitmapTileImageCache cache,
   BitmapTile tile,
 ) async {
-  cache.ensureDecoded(tile);
+  cache.ensureDecoded((coord: TileCoord(x: 0, y: 0), tile: tile));
   for (var attempt = 0; attempt < 100; attempt += 1) {
     final image = cache.imageFor(tile);
     if (image != null) return image;
@@ -61,7 +61,7 @@ void main() {
       final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
 
       final first = await _awaitDecode(cache, tile);
-      cache.ensureDecoded(tile);
+      cache.ensureDecoded((coord: TileCoord(x: 0, y: 0), tile: tile));
       final second = cache.imageFor(tile);
 
       expect(identical(first, second), isTrue);
@@ -87,7 +87,7 @@ void main() {
         final surface = BitmapSurface(
           canvasSize: const CanvasSize(width: 4, height: 4),
           tileSize: 4,
-          tiles: {tile.coord: tile},
+          tiles: {TileCoord(x: 0, y: 0): tile},
         );
 
         // Fallback path: a fresh cache has no decoded image on first paint.

@@ -73,15 +73,15 @@ void main() {
           }
         }
         final coord = TileCoord(x: tx, y: ty);
-        tiles[coord] = BitmapTile(coord: coord, size: 256, pixels: pixels);
+        tiles[coord] = BitmapTile(size: 256, pixels: pixels);
       }
     }
     return BitmapSurface(canvasSize: canvasSize, tileSize: 256, tiles: tiles);
   }
 
   Future<void> decodeAll(BitmapSurface surface) async {
-    for (final tile in surface.tiles.values) {
-      tileCache.ensureDecoded(tile);
+    for (final entry in surface.tiles.entries) {
+      tileCache.ensureDecoded((coord: entry.key, tile: entry.value));
     }
     while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));

@@ -42,7 +42,7 @@ void main() {
     s.renderCaches.brushFrameStore.storeBakedSurface(
       key,
       BitmapSurface(canvasSize: originalSize, tileSize: 256).putTiles([
-        BitmapTile(coord: TileCoord(x: 0, y: 0), size: 256, pixels: pixels),
+        (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: 256, pixels: pixels)),
       ]),
     );
     // The corruption vector: a DIRECT model-size write (what the pre-R7

@@ -283,15 +283,15 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// ⛔Only the empty answer is remembered. A non-empty one is a list the
   /// caller is about to act on, and acting on it changes what is pending —
   /// caching that would be caching a thing in flight.
-  List<BitmapTile>? tilesAwaitingDecode() {
+  List<PlacedTile>? tilesAwaitingDecode() {
     final revision = tileImageCache.revision;
     if (_noPendingAtRevision == revision) {
       return null;
     }
-    List<BitmapTile>? pending;
-    for (final tile in surface.tiles.values) {
-      if (tileImageCache.needsDecodeStart(tile)) {
-        (pending ??= <BitmapTile>[]).add(tile);
+    List<PlacedTile>? pending;
+    for (final entry in surface.tiles.entries) {
+      if (tileImageCache.needsDecodeStart(entry.value)) {
+        (pending ??= <PlacedTile>[]).add((coord: entry.key, tile: entry.value));
       }
     }
     if (pending == null) {
@@ -328,18 +328,18 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// Starts up to [decodeStartBudget] of [pending]'s decodes — when over
   /// budget, tiles overlapping [visibleRect] go first (nearest the view
   /// center), off-screen tiles strictly after.
-  void _startPrioritizedDecodes(List<BitmapTile> pending, Rect visibleRect) {
+  void _startPrioritizedDecodes(List<PlacedTile> pending, Rect visibleRect) {
     var ordered = pending;
     if (pending.length > decodeStartBudget) {
       final center = visibleRect.center;
       // Dominates any real distance² (canvas diagonals stay far below),
       // so off-screen tiles sort after every visible one.
       const offscreenBias = 1e18;
-      double score(BitmapTile tile) {
-        final tileSize = tile.size.toDouble();
+      double score(PlacedTile placed) {
+        final tileSize = placed.tile.size.toDouble();
         final rect = Rect.fromLTWH(
-          tile.coord.x * tileSize,
-          tile.coord.y * tileSize,
+          placed.coord.x * tileSize,
+          placed.coord.y * tileSize,
           tileSize,
           tileSize,
         );
@@ -348,7 +348,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       }
 
       final scored = [
-        for (final tile in pending) (score: score(tile), tile: tile),
+        for (final placed in pending) (score: score(placed), tile: placed),
       ];
       scored.sort((a, b) => a.score.compareTo(b.score));
       ordered = [for (final entry in scored) entry.tile];

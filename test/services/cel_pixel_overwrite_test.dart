@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -15,19 +16,19 @@ void main() {
 
   /// A tile carrying [pixels] at the given tile-local coordinates,
   /// everything else fully transparent.
-  BitmapTile tileWith(TileCoord coord, Map<(int, int), List<int>> pixels) {
+  PlacedTile tileWith(TileCoord coord, Map<(int, int), List<int>> pixels) {
     final bytes = Uint8List(256 * 256 * 4);
     for (final entry in pixels.entries) {
       final offset = ((entry.key.$2 * 256) + entry.key.$1) * 4;
       bytes.setRange(offset, offset + 4, entry.value);
     }
-    return BitmapTile(coord: coord, size: 256, pixels: bytes);
+    return (coord: coord, tile: BitmapTile(size: 256, pixels: bytes));
   }
 
-  BitmapSurface surfaceOf(Iterable<BitmapTile> tiles) => BitmapSurface(
+  BitmapSurface surfaceOf(Iterable<PlacedTile> tiles) => BitmapSurface(
     canvasSize: canvas,
     tileSize: 256,
-    tiles: {for (final tile in tiles) tile.coord: tile},
+    tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
   List<int> pixelAt(BitmapSurface surface, TileCoord coord, int x, int y) {
@@ -410,7 +411,7 @@ void main() {
       );
 
       expect(
-        identical(result.surface.tileAt(neighbour), untouched),
+        identical(result.surface.tileAt(neighbour), untouched.tile),
         isTrue,
         reason: 'an untouched tile must stay shared with the old surface',
       );

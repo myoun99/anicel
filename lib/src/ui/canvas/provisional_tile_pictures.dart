@@ -98,7 +98,11 @@ final Paint _tilePaint = Paint()
     // bytes are right here and they are EXACT. Composing an approximation
     // of a picture we can simply have would be strictly worse, and it
     // would leave a provisional lifecycle running for nothing.
-    if (images.adoptSyncUpload(tile, staleScope: staleScope) != null) {
+    if (images.adoptSyncUpload(
+          (coord: coord, tile: tile),
+          staleScope: staleScope,
+        ) !=
+        null) {
       adopted += 1;
       continue;
     }

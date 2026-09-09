@@ -7,6 +7,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/pasteboard_bounds.dart';
+import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../brush_frame_store.dart';
 import '../photoshop/psd_image.dart';
@@ -189,7 +190,7 @@ Future<BitmapSurface> rasterizeImageToSurface({
     );
     final rowStride = blockWidth * 4;
 
-    final tiles = <BitmapTile>[];
+    final tiles = <PlacedTile>[];
     final tilePixels = Uint8List(tileSize * tileSize * 4);
     for (var ty = tileY0; ty <= tileY1; ty += 1) {
       for (var tx = tileX0; tx <= tileX1; tx += 1) {
@@ -217,13 +218,14 @@ Future<BitmapSurface> rasterizeImageToSurface({
         if (!any) {
           continue; // Fully transparent tile — the surface stays sparse.
         }
-        tiles.add(
-          BitmapTile(
-            coord: TileCoord(x: tx, y: ty),
+        tiles.add((
+          coord: TileCoord(x: tx, y: ty),
+          tile: BitmapTile(
+
             size: tileSize,
             pixels: tilePixels,
           ),
-        );
+        ));
       }
     }
     return BitmapSurface(

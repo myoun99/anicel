@@ -170,7 +170,7 @@ void main() {
             mode: mode,
             erase: mode == BrushBlendMode.erase,
           ))
-            entry.tile,
+            (coord: entry.coord, tile: entry.tile),
         ]);
         rasterizer.clear();
         final empty = ActiveStrokeOverlayModel(tileSize: tileSize);

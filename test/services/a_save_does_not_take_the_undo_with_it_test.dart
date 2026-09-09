@@ -57,7 +57,7 @@ void main() {
       canvasSize: canvasSize,
       tileSize: 8,
       tiles: {
-        origin: BitmapTile(coord: origin, size: 8, pixels: pixels),
+        origin: BitmapTile(size: 8, pixels: pixels),
       },
     );
   }

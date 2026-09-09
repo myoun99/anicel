@@ -45,7 +45,7 @@ void main() {
       // Mixed alpha: 255 and 0 take the early-outs, the rest does the math.
       pixels[i + 3] = (i ~/ 4) % 3 == 0 ? 255 : ((i ~/ 4) % 3 == 1 ? 0 : 128);
     }
-    return BitmapTile(coord: TileCoord(x: 0, y: 0), size: size, pixels: pixels);
+    return BitmapTile(size: size, pixels: pixels);
   }
 
   double microsPer(int rounds, void Function() body) {

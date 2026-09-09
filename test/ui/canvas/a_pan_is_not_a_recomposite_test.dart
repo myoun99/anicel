@@ -94,7 +94,7 @@ void main() {
   /// per pump would invalidate the cache from the FIXTURE and hide whatever
   /// the code does.
   BitmapSurfacePainter buildLivePainter() {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    var tile = BitmapTile.blank(size: 8);
     tile = writeRgbaColorToBitmapTile(
       tile: tile,
       x: 2,
@@ -105,7 +105,7 @@ void main() {
       surface: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: 8,
-        tiles: {tile.coord: tile},
+        tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
     );

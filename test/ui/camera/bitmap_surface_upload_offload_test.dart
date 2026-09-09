@@ -34,10 +34,12 @@ void main() {
           pixels[index + 3] = (pixel * 5) % 256;
         }
         surface = surface.putTiles([
-          BitmapTile(
-            coord: TileCoord(x: tileX, y: tileY),
-            size: 256,
-            pixels: pixels,
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(
+              size: 256,
+              pixels: pixels,
+            ),
           ),
         ]);
       }

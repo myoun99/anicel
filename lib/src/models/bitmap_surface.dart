@@ -4,6 +4,7 @@ import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
 import 'pasteboard_bounds.dart';
+import 'placed_tile.dart';
 import 'tile_coord.dart';
 
 /// The edge length of a cel's tiles, in canvas pixels.
@@ -73,10 +74,10 @@ class BitmapSurface {
     required this.canvasSize,
     required this.tileSize,
     required Map<TileCoord, BitmapTile> tiles,
-    required Iterable<BitmapTile> added,
+    required Iterable<PlacedTile> added,
   }) : _tiles = UnmodifiableMapView(tiles) {
-    for (final tile in added) {
-      _validateTileEntry(tile.coord, tile, this);
+    for (final placed in added) {
+      _validateTileEntry(placed.coord, placed.tile, this);
     }
   }
 
@@ -194,10 +195,10 @@ class BitmapSurface {
   /// frequent to save a write this cheap is the wrong direction, and
   /// nothing measured says otherwise. Revisit if a real cel ever holds
   /// thousands of tiles.
-  BitmapSurface putTiles(Iterable<BitmapTile> tilesToPut) {
+  BitmapSurface putTiles(Iterable<PlacedTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
-    for (final tile in tilesToPut) {
-      updated[tile.coord] = tile;
+    for (final placed in tilesToPut) {
+      updated[placed.coord] = placed.tile;
     }
     return BitmapSurface._derived(
       canvasSize: canvasSize,
@@ -227,17 +228,18 @@ class BitmapSurface {
   /// difference is real and it is about UNDO: a commit's way back is a
   /// surface snapshot, which holds the emptied tile whole and by
   /// reference, so dropping it costs the commit nothing.
-  BitmapSurface putMaterializedTiles(Iterable<BitmapTile> tilesToPut) {
+  BitmapSurface putMaterializedTiles(Iterable<PlacedTile> tilesToPut) {
     final updated = <TileCoord, BitmapTile>{..._tiles};
     // ⚠️Only what is actually STORED is checked. A blank tile is dropped,
     // and the storability law is about what a surface holds.
-    final kept = <BitmapTile>[];
-    for (final tile in tilesToPut) {
+    final kept = <PlacedTile>[];
+    for (final placed in tilesToPut) {
+      final tile = placed.tile;
       if (tile.hasInk) {
-        updated[tile.coord] = tile;
-        kept.add(tile);
+        updated[placed.coord] = tile;
+        kept.add(placed);
       } else {
-        updated.remove(tile.coord);
+        updated.remove(placed.coord);
       }
     }
     return BitmapSurface._derived(
@@ -255,7 +257,12 @@ class BitmapSurface {
   /// rewrite — callers test it with `identical`, and every tile the pass
   /// did not touch keeps its identity either way.
   BitmapSurface withRebuiltTiles(Map<TileCoord, BitmapTile> rebuilt) =>
-      rebuilt.isEmpty ? this : putTiles(rebuilt.values);
+      rebuilt.isEmpty
+          ? this
+          : putTiles([
+              for (final entry in rebuilt.entries)
+                (coord: entry.key, tile: entry.value),
+            ]);
 
   BitmapSurface removeTile(TileCoord coord) {
     final nextTiles = Map<TileCoord, BitmapTile>.of(_tiles)..remove(coord);
@@ -283,14 +290,26 @@ class BitmapSurface {
   Map<String, dynamic> toJson() => {
     'canvasSize': canvasSize.toJson(),
     'tileSize': tileSize,
-    'tiles': _tiles.values.map((tile) => tile.toJson()).toList(),
+    // ⚠️The coordinate is written BESIDE the tile, not inside it — the
+    // tile does not carry one. The durable representations already had
+    // this shape (see AnicelCelEntry.tiles); the in-memory model was the
+    // one that diverged.
+    'tiles': [
+      for (final entry in _tiles.entries)
+        {'coord': entry.key.toJson(), 'tile': entry.value.toJson()},
+    ],
   };
 
   factory BitmapSurface.fromJson(Map<String, dynamic> json) {
     final tiles = <TileCoord, BitmapTile>{};
     for (final tileJson in json['tiles'] as List? ?? const []) {
-      final tile = BitmapTile.fromJson(tileJson as Map<String, dynamic>);
-      tiles[tile.coord] = tile;
+      final record = tileJson as Map<String, dynamic>;
+      final coord = TileCoord.fromJson(
+        record['coord'] as Map<String, dynamic>,
+      );
+      tiles[coord] = BitmapTile.fromJson(
+        record['tile'] as Map<String, dynamic>,
+      );
     }
     return BitmapSurface(
       canvasSize: CanvasSize.fromJson(
@@ -357,14 +376,13 @@ void _validateCanvasSize(CanvasSize canvasSize) {
   }
 }
 
+/// 🪦**IT USED TO CHECK `tile.coord == key` FIRST, AND THAT CHECK IS
+/// GONE BECAUSE THE STATE IS.** A tile carried its own coordinate, so
+/// a tile stored under a key it disagreed with was writable and had to
+/// be refused at runtime. A tile has no coordinate now — the map key is
+/// the only place a tile's place is written — so the disagreement
+/// cannot be spelled and there is nothing left to refuse.
 void _validateTileEntry(TileCoord key, BitmapTile tile, BitmapSurface surface) {
-  if (tile.coord != key) {
-    throw ArgumentError.value(
-      tile.coord,
-      'tile.coord',
-      'BitmapSurface tile coord must match its map key.',
-    );
-  }
   if (tile.size != surface.tileSize) {
     throw ArgumentError.value(
       tile.size,

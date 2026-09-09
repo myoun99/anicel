@@ -47,7 +47,6 @@ void main() {
       tiles: {
         for (var x = 0; x < 3; x += 1)
           TileCoord(x: x, y: 0): BitmapTile.blank(
-            coord: TileCoord(x: x, y: 0),
             size: 8,
           ),
       },

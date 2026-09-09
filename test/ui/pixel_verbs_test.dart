@@ -102,7 +102,6 @@ void main() {
             tileSize: 16,
             tiles: {
               TileCoord(x: 0, y: 0): BitmapTile(
-                coord: TileCoord(x: 0, y: 0),
                 size: 16,
                 pixels: pixels,
               ),
@@ -259,10 +258,12 @@ void main() {
       key,
       before.putTiles([
         for (final tile in before.tiles.values)
-          BitmapTile(
-            coord: tile.coord,
-            size: tile.size,
-            pixels: Uint8List(tile.size * tile.size * 4),
+          (
+            coord: TileCoord(x: 0, y: 0),
+            tile: BitmapTile(
+              size: tile.size,
+              pixels: Uint8List(tile.size * tile.size * 4),
+            ),
           ),
       ]),
     );
@@ -340,10 +341,12 @@ void main() {
       coordinator.restoreSurfaceSnapshot(
         key,
         base.putTiles([
-          BitmapTile(
+          (
             coord: TileCoord(x: 0, y: 0),
-            size: base.tileSize,
-            pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
+            tile: BitmapTile(
+              size: base.tileSize,
+              pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
+            ),
           ),
         ]),
       );

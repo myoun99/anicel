@@ -148,7 +148,7 @@ void main() {
       tileSize: 8,
       tiles: {
         for (final coord in coords)
-          coord: BitmapTile.blank(coord: coord, size: 8),
+          coord: BitmapTile.blank(size: 8),
       },
     );
 
@@ -173,7 +173,7 @@ void main() {
         DirtyRegion(left: 6, top: 0, rightExclusive: 10, bottomExclusive: 4),
       ).toList();
 
-      expect(covered.map((c) => c.tile.coord.x), [0, 1]);
+      expect(covered.map((c) => c.coord.x), [0, 1]);
       expect(covered[0].rightExclusive, 8, reason: 'clipped at the tile wall');
       expect(covered[1].left, 8, reason: 'and the next one starts there');
       expect(covered[1].rightExclusive, 10);
@@ -188,7 +188,7 @@ void main() {
         ).toList();
 
         expect(
-          covered.map((c) => (c.tile.coord.x, c.tile.coord.y)),
+          covered.map((c) => (c.coord.x, c.coord.y)),
           [(-1, -1), (0, 0)],
           reason:
               'truncation would have mapped pixel -1 to tile 0 and read '
@@ -207,7 +207,7 @@ void main() {
       ).toList();
 
       expect(
-        covered.map((c) => c.tile.coord.x),
+        covered.map((c) => c.coord.x),
         [1],
         reason:
             'the surface is sparse — an absent tile has no bytes, and a '
@@ -223,7 +223,7 @@ void main() {
         DirtyRegion(left: 0, top: 0, rightExclusive: 8, bottomExclusive: 8),
       ).toList();
 
-      expect(covered.map((c) => c.tile.coord.x), [0]);
+      expect(covered.map((c) => c.coord.x), [0]);
     });
   });
 }

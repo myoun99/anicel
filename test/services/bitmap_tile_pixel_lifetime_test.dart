@@ -125,7 +125,7 @@ void main() {
         mode: mode,
         erase: erase,
       ))
-        entry.tile,
+        (coord: entry.coord, tile: entry.tile),
     ]);
     promoting.clear();
 

@@ -59,7 +59,7 @@ void main() {
     return BitmapSurface(
       canvasSize: canvasSize,
       tileSize: tileSize,
-      tiles: {coord: BitmapTile(coord: coord, size: tileSize, pixels: pixels)},
+      tiles: {coord: BitmapTile(size: tileSize, pixels: pixels)},
     );
   }
 

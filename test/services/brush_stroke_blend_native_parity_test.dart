@@ -73,7 +73,6 @@ void main() {
         }
         final coord = TileCoord(x: tileX, y: tileY);
         tiles[coord] = BitmapTile(
-          coord: coord,
           size: tileSize,
           pixels: randomPixels(random, tileSize * tileSize * 4),
         );
@@ -222,12 +221,10 @@ void main() {
           referencePixels[(y * tileSize + x) * 4 + 3] = alpha;
         }
         tiles[coord] = BitmapTile(
-          coord: coord,
           size: tileSize,
           pixels: nativePixels,
         );
         referenceTiles[coord] = BitmapTile(
-          coord: coord,
           size: tileSize,
           pixels: referencePixels,
         );

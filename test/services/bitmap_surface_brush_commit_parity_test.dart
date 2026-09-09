@@ -85,13 +85,16 @@ BrushSurfaceMaterialization referenceMaterialize({
   for (final coord in coords) {
     final existingTile = surface.tileAt(coord);
     final tile =
-        existingTile ?? BitmapTile.blank(coord: coord, size: surface.tileSize);
+        existingTile ?? BitmapTile.blank(size: surface.tileSize);
     final updatedTile = materializedBitmapTileForOperations(
+      coord: coord,
       tile: tile,
       operations: operationsByCoord[coord]!,
     );
     if (updatedTile == null) continue;
-    updatedSurface = updatedSurface.putTiles([updatedTile]);
+    updatedSurface = updatedSurface.putTiles([
+      (coord: coord, tile: updatedTile),
+    ]);
     dirtyTiles = dirtyTiles.addAll([coord]);
   }
 

@@ -63,7 +63,6 @@ void main() {
         }
         final coord = TileCoord(x: tileX, y: tileY);
         tiles[coord] = BitmapTile(
-          coord: coord,
           size: tileSize,
           pixels: randomPixels(random, tileSize * tileSize * 4),
         );
@@ -168,7 +167,6 @@ void main() {
         for (var tileX = 0; tileX < 2; tileX += 1) {
           final coord = TileCoord(x: tileX, y: tileY);
           baseTiles[coord] = BitmapTile(
-            coord: coord,
             size: liveTile,
             pixels: randomPixels(random, liveTile * liveTile * 4),
           );
@@ -322,7 +320,6 @@ void main() {
         for (var tileX = 0; tileX < 2; tileX += 1) {
           final coord = TileCoord(x: tileX, y: tileY);
           baseTiles[coord] = BitmapTile(
-            coord: coord,
             size: 64,
             pixels: randomPixels(random, 64 * 64 * 4),
           );

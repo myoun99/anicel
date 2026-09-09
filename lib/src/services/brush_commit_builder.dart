@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/placed_tile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -23,7 +24,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   DirtyRegion? prerasterizedStrokeBounds,
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
-  List<BitmapTile>? promotedTiles,
+  List<PlacedTile>? promotedTiles,
 }) {
   // PROMOTION fast path: the live overlay already produced the finished
   // tiles — pre-blended against `promotedBase` with these very kernels,
@@ -44,7 +45,7 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     // set n times for an n-tile commit. The single-coord form is gone
     // now (see DirtyTileSet.addAll) — this is the shape that survives.
     final dirtyTiles = DirtyTileSet(
-      promotedTiles.map((tile) => tile.coord),
+      promotedTiles.map((placed) => placed.coord),
     );
     return BrushCommitResult.changed(
       beforeSurface: surface,

@@ -44,7 +44,6 @@ void main() {
       tileSize: 8,
       tiles: {
         TileCoord(x: 0, y: 0): BitmapTile(
-          coord: TileCoord(x: 0, y: 0),
           size: 8,
           pixels: pixels,
         ),
@@ -568,7 +567,6 @@ void main() {
         tileSize: 32,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            coord: TileCoord(x: 0, y: 0),
             size: 32,
             pixels: pixels,
           ),
@@ -632,7 +630,6 @@ void main() {
       tileSize: 8,
       tiles: {
         TileCoord(x: 3, y: 3): BitmapTile(
-          coord: TileCoord(x: 3, y: 3),
           size: 8,
           pixels: pixels,
         ),

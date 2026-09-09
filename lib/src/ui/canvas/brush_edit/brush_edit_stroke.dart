@@ -335,12 +335,12 @@ class _BrushEditStroke {
       // stale one would be pinned to that tile forever.
       for (final entry in promoted) {
         final image = _state._overlay._overlayModel.takeTileImageAt(
-          entry.tile.coord,
+          entry.coord,
           revision: entry.revision,
         );
         if (image != null) {
           BitmapTileImageCache.instance.adoptDecoded(
-            entry.tile,
+            (coord: entry.coord, tile: entry.tile),
             image,
             staleScope: (_state.widget.layerId, _state.widget.frameId),
           );
@@ -370,9 +370,9 @@ class _BrushEditStroke {
           // tile now, not for the stroke. Saying so is what lets it
           // outlive the stroke: the next pen-down must not take it away
           // before its committed tile can paint.
-          _state._overlay._overlayModel.markStandIn(entry.tile.coord);
+          _state._overlay._overlayModel.markStandIn(entry.coord);
           BitmapTileImageCache.instance.ensureDecoded(
-            entry.tile,
+            (coord: entry.coord, tile: entry.tile),
             staleScope: (_state.widget.layerId, _state.widget.frameId),
           );
         }
@@ -387,7 +387,10 @@ class _BrushEditStroke {
         blendMode: blendMode,
         promotedBase: promotable ? base : null,
         promotedTiles: promotable
-            ? [for (final entry in promoted) entry.tile]
+            ? [
+                for (final entry in promoted)
+                  (coord: entry.coord, tile: entry.tile),
+              ]
             : null,
         // Without promotion (a host whose overlay grid differs from its
         // surface's) the classic payload still commits correctly: a

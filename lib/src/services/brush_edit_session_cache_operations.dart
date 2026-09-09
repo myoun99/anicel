@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/placed_tile.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -25,7 +26,7 @@ commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation({
   DirtyRegion? prerasterizedStrokeBounds,
   BrushBlendMode blendMode = BrushBlendMode.color,
   BitmapSurface? promotedBase,
-  List<BitmapTile>? promotedTiles,
+  List<PlacedTile>? promotedTiles,
 }) {
   final commitResult = commitBrushDabSequenceToBrushEditSessionState(
     sessionState: sessionState,

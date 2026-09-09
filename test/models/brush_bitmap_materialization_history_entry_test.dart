@@ -21,7 +21,7 @@ void main() {
         canvasSize: const CanvasSize(width: 4, height: 4),
         tileSize: 2,
         tiles: withTile
-            ? {coord: BitmapTile.blank(coord: coord, size: 2)}
+            ? {coord: BitmapTile.blank(size: 2)}
             : const {},
       );
     }

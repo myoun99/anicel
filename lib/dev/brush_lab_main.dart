@@ -726,9 +726,9 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       return 'no-view';
     }
     var beyond = 0;
-    for (final tile in surface.tiles.values) {
-      if (tile.coord.x * surface.tileSize >= 2340 ||
-          tile.coord.y * surface.tileSize >= 1654) {
+    for (final coord in surface.tiles.keys) {
+      if (coord.x * surface.tileSize >= 2340 ||
+          coord.y * surface.tileSize >= 1654) {
         beyond += 1;
       }
     }

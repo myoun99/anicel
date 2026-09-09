@@ -176,10 +176,13 @@ class TvppImportDoor {
       _internals.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       BitmapSurface(canvasSize: cut.canvasSize).putTiles([
         for (final tile in tiles)
-          BitmapTile(
+          (
             coord: TileCoord(x: tile.x, y: tile.y),
-            size: defaultCelTileSize,
-            pixels: tile.pixels,
+            tile: BitmapTile(
+
+              size: defaultCelTileSize,
+              pixels: tile.pixels,
+            ),
           ),
       ]),
     );

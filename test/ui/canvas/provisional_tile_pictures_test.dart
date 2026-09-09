@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/core/sync_image_upload.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -26,19 +27,19 @@ import 'package:anicel/src/ui/canvas/provisional_tile_pictures.dart';
 void main() {
   const tileSize = 2;
 
-  BitmapTile tile(TileCoord coord, {RgbaColor? at00}) {
-    var made = BitmapTile.blank(coord: coord, size: tileSize);
+  PlacedTile tile(TileCoord coord, {RgbaColor? at00}) {
+    var made = BitmapTile.blank(size: tileSize);
     if (at00 != null) {
       made = writeRgbaColorToBitmapTile(tile: made, x: 0, y: 0, color: at00);
     }
-    return made;
+    return (coord: coord, tile: made);
   }
 
-  BitmapSurface surfaceOf(List<BitmapTile> tiles, {int width = 4}) =>
+  BitmapSurface surfaceOf(List<PlacedTile> tiles, {int width = 4}) =>
       BitmapSurface(
         canvasSize: CanvasSize(width: width, height: tileSize),
         tileSize: tileSize,
-        tiles: {for (final t in tiles) t.coord: t},
+        tiles: {for (final t in tiles) t.coord: t.tile},
       );
 
   ui.Image solid(int size, Color color) {
@@ -140,14 +141,17 @@ void main() {
 
     expect(result.seeded, 0);
     expect(result.skipped, 1);
-    expect(cache.hasProvisional(untouched), isFalse);
+    expect(cache.hasProvisional(untouched.tile), isFalse);
   });
 
   test('a tile that already has its own picture is not given a second '
       'one', () {
     final cache = BitmapTileImageCache();
     final post = surfaceOf([tile(coord0, at00: red)]);
-    cache.adoptDecoded(post.tileAt(coord0)!, solid(tileSize, const Color(0xFF0000FF)));
+    cache.adoptDecoded(
+      (coord: coord0, tile: post.tileAt(coord0)!),
+      solid(tileSize, const Color(0xFF0000FF)),
+    );
 
     final result = seedProvisionalTilePictures(
       preSurface: surfaceOf([tile(coord0)]),

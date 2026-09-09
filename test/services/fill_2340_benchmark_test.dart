@@ -94,7 +94,6 @@ void main() {
         tiles: {
           for (final entry in rowBytes.entries)
             entry.key: BitmapTile(
-              coord: entry.key,
               size: 256,
               pixels: entry.value,
             ),

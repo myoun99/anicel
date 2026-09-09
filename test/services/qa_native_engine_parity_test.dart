@@ -60,10 +60,11 @@ void main() {
     final width = canvasSize.pasteboardRightExclusive - left;
     final height = canvasSize.pasteboardBottomExclusive - top;
     final bytes = Uint8List(width * height * 4);
-    for (final tile in surface.tiles.values) {
+    for (final entry in surface.tiles.entries) {
+      final tile = entry.value;
       final pixels = tile.pixels;
       for (var y = 0; y < tile.size; y += 1) {
-        final globalY = tile.coord.y * tile.size + y;
+        final globalY = entry.key.y * tile.size + y;
         if (globalY >= canvasSize.pasteboardBottomExclusive) {
           break;
         }
@@ -71,7 +72,7 @@ void main() {
           continue;
         }
         for (var x = 0; x < tile.size; x += 1) {
-          final globalX = tile.coord.x * tile.size + x;
+          final globalX = entry.key.x * tile.size + x;
           if (globalX >= canvasSize.pasteboardRightExclusive) {
             break;
           }
@@ -606,7 +607,6 @@ void main() {
           }
           final coord = TileCoord(x: tx, y: ty);
           tiles[coord] = BitmapTile(
-            coord: coord,
             size: tileSize,
             pixels: pixels,
           );
@@ -718,7 +718,6 @@ void main() {
             : random.nextInt(256);
       }
       final tile = BitmapTile(
-        coord: TileCoord(x: 0, y: 0),
         size: size,
         pixels: bytes,
       );

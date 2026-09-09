@@ -65,7 +65,6 @@ void main() {
         tileSize: tileSize,
         tiles: {
           TileCoord(x: 0, y: 0): BitmapTile(
-            coord: TileCoord(x: 0, y: 0),
             size: tileSize,
             pixels: bytes,
           ),

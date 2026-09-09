@@ -91,7 +91,6 @@ void main() {
       // — which is precisely the state a just-confirmed transform leaves the
       // cel in, and the reason the sweep sees a cold miss at all.
       tiles[TileCoord(x: x, y: 0)] = BitmapTile(
-        coord: TileCoord(x: x, y: 0),
         size: tileSize,
         pixels: pixels,
       );

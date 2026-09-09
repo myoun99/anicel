@@ -87,13 +87,12 @@ void main() {
   test('⛔putTiles does NOT drop — the recipe rewrite walks the tiles that '
       'exist, and cannot visit one the forward pass took away', () {
     final blank = BitmapTile(
-      coord: origin,
       size: 2,
       pixels: Uint8List(BitmapTile.bytesFor(2)),
     );
 
-    expect(empty().putTiles([blank]).tileAt(origin), isNotNull);
-    expect(empty().putMaterializedTiles([blank]).tileAt(origin), isNull);
+    expect(empty().putTiles([(coord: origin, tile: blank)]).tileAt(origin), isNotNull);
+    expect(empty().putMaterializedTiles([(coord: origin, tile: blank)]).tileAt(origin), isNull);
   });
 
   /// 🚨THE THIRD PATH, AND IT SURVIVED THE FIRST PIN. A pen-up whose live
@@ -104,7 +103,6 @@ void main() {
   test('the PROMOTION fast path drops what it emptied too', () {
     final painted = commit(empty(), dabAt(0, 0));
     final blanked = BitmapTile(
-      coord: origin,
       size: 2,
       pixels: Uint8List(BitmapTile.bytesFor(2)),
     );
@@ -115,7 +113,7 @@ void main() {
       layerId: const LayerId('l'),
       frameId: const FrameId('f'),
       promotedBase: painted,
-      promotedTiles: [blanked],
+      promotedTiles: [(coord: TileCoord(x: 0, y: 0), tile: blanked)],
     );
 
     expect(result.afterSurface.tileAt(origin), isNull);
@@ -129,11 +127,10 @@ void main() {
   test('a materializing put REMOVES a tile that was already there', () {
     final painted = commit(empty(), dabAt(0, 0));
     final blank = BitmapTile(
-      coord: origin,
       size: 2,
       pixels: Uint8List(BitmapTile.bytesFor(2)),
     );
 
-    expect(painted.putMaterializedTiles([blank]).tiles, isEmpty);
+    expect(painted.putMaterializedTiles([(coord: origin, tile: blank)]).tiles, isEmpty);
   });
 }

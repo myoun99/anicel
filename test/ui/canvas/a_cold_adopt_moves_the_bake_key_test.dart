@@ -76,7 +76,6 @@ void main() {
         pixels[i + 3] = 0xFF;
       }
       tiles[TileCoord(x: x, y: 0)] = BitmapTile(
-        coord: TileCoord(x: x, y: 0),
         size: tileSize,
         pixels: pixels,
       );

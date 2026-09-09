@@ -69,7 +69,6 @@ void main() {
         }
         final coord = TileCoord(x: tx, y: ty);
         tiles[coord] = BitmapTile(
-          coord: coord,
           size: tileSize,
           pixels: pixels,
         );
@@ -133,8 +132,8 @@ void main() {
   final cache = BitmapTileImageCache();
 
   Future<void> decodeAll(BitmapSurface surface) async {
-    for (final tile in surface.tiles.values) {
-      cache.ensureDecoded(tile);
+    for (final entry in surface.tiles.entries) {
+      cache.ensureDecoded((coord: entry.key, tile: entry.value));
     }
     while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -358,7 +357,7 @@ void main() {
     BitmapSurfacePainter inkedPainter({
       ValueListenable<CutStampPreview?>? stampPreview,
     }) {
-      var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 16);
+      var tile = BitmapTile.blank(size: 16);
       tile = writeRgbaColorToBitmapTile(
         tile: tile,
         x: 4,
@@ -369,7 +368,7 @@ void main() {
         surface: BitmapSurface(
           canvasSize: canvasSize,
           tileSize: 16,
-          tiles: {tile.coord: tile},
+          tiles: {TileCoord(x: 0, y: 0): tile},
         ),
         showTransparentBackground: false,
         stampPreview: stampPreview,

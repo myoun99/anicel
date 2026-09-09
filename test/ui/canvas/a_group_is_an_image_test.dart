@@ -506,7 +506,7 @@ void main() {
     const canvasSize = CanvasSize(width: 400, height: 300);
 
     BitmapSurfacePainter inkedPage() {
-      var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
+      var tile = BitmapTile.blank(size: 256);
       tile = writeRgbaColorToBitmapTile(
         tile: tile,
         x: 4,
@@ -517,7 +517,7 @@ void main() {
         surface: BitmapSurface(
           canvasSize: canvasSize,
           tileSize: 256,
-          tiles: {tile.coord: tile},
+          tiles: {TileCoord(x: 0, y: 0): tile},
         ),
         showTransparentBackground: false,
       );

@@ -89,103 +89,96 @@ void main() {
     );
 
     test('putTiles inserts a tile', () {
-      final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      expect(surface().putTiles([tile]).tileAt(tile.coord), tile);
+      final tile = BitmapTile.blank(size: 256);
+      expect(surface().putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]).tileAt(TileCoord(x: 0, y: 0)), tile);
     });
 
     test('putTiles replaces existing tile', () {
       final coord = TileCoord(x: 0, y: 0);
-      final first = BitmapTile.blank(coord: coord, size: 256);
+      final first = BitmapTile.blank(size: 256);
       final second = BitmapTile(
-        coord: coord,
         size: 256,
         pixels: Uint8List(256 * 256 * 4)..[0] = 9,
       );
       expect(
-        surface().putTiles([first]).putTiles([second]).tileAt(coord),
+        surface().putTiles([(coord: coord, tile: first)]).putTiles([(coord: coord, tile: second)]).tileAt(coord),
         second,
       );
       // The later tile of one batch wins too — the batch is a sequence of
       // puts, not a set of them.
-      expect(surface().putTiles([first, second]).tileAt(coord), second);
+      expect(surface().putTiles([(coord: coord, tile: first), (coord: coord, tile: second)]).tileAt(coord), second);
     });
 
     test('putTiles does not mutate original surface', () {
       final original = surface();
-      final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      final next = original.putTiles([tile]);
-      expect(original.tileAt(tile.coord), isNull);
-      expect(next.tileAt(tile.coord), tile);
+      final tile = BitmapTile.blank(size: 256);
+      final next = original.putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]);
+      expect(original.tileAt(TileCoord(x: 0, y: 0)), isNull);
+      expect(next.tileAt(TileCoord(x: 0, y: 0)), tile);
     });
 
     test('putTiles rejects a coord outside the pasteboard', () {
       expect(
         () => surface().putTiles([
-          BitmapTile.blank(coord: TileCoord(x: 23, y: 0), size: 256),
+          (coord: TileCoord(x: 23, y: 0), tile: BitmapTile.blank(size: 256)),
         ]),
         throwsArgumentError,
       );
       expect(
         () => surface().putTiles([
-          BitmapTile.blank(coord: TileCoord(x: -16, y: 0), size: 256),
+          (coord: TileCoord(x: -16, y: 0), tile: BitmapTile.blank(size: 256)),
         ]),
         throwsArgumentError,
       );
     });
+
 
     test('putTiles rejects a tile whose size is not the surface tile size', () {
       expect(
         () => surface().putTiles([
-          BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 128),
+          (coord: TileCoord(x: 0, y: 0), tile: BitmapTile.blank(size: 128)),
         ]),
         throwsArgumentError,
       );
     });
-
     test('a rejected tile takes the whole batch with it', () {
-      final good = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      final bad = BitmapTile.blank(coord: TileCoord(x: 23, y: 0), size: 256);
+      final good = BitmapTile.blank(size: 256);
+      final bad = BitmapTile.blank(size: 256);
       final original = surface();
-      expect(() => original.putTiles([good, bad]), throwsArgumentError);
-      expect(original.tileAt(good.coord), isNull);
+      expect(() => original.putTiles([(coord: TileCoord(x: 0, y: 0), tile: good), (coord: TileCoord(x: 23, y: 0), tile: bad)]), throwsArgumentError);
+      expect(original.tileAt(TileCoord(x: 0, y: 0)), isNull);
     });
 
     test('removeTile removes a tile', () {
-      final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
+      final tile = BitmapTile.blank(size: 256);
       expect(
-        surface().putTiles([tile]).removeTile(tile.coord).tileAt(tile.coord),
+        surface().putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]).removeTile(TileCoord(x: 0, y: 0)).tileAt(TileCoord(x: 0, y: 0)),
         isNull,
       );
     });
 
     test('removeTile does not mutate original surface', () {
-      final tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 256);
-      final original = surface().putTiles([tile]);
-      final next = original.removeTile(tile.coord);
-      expect(original.tileAt(tile.coord), tile);
-      expect(next.tileAt(tile.coord), isNull);
+      final tile = BitmapTile.blank(size: 256);
+      final original = surface().putTiles([(coord: TileCoord(x: 0, y: 0), tile: tile)]);
+      final next = original.removeTile(TileCoord(x: 0, y: 0));
+      expect(original.tileAt(TileCoord(x: 0, y: 0)), tile);
+      expect(next.tileAt(TileCoord(x: 0, y: 0)), isNull);
     });
 
-    test('constructor rejects tile whose coord does not match map key', () {
-      expect(
-        () => surface(
-          tiles: {
-            TileCoord(x: 1, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: 0, y: 0),
-              size: 256,
-            ),
-          },
-        ),
-        throwsArgumentError,
-      );
-    });
+    /// 🪦**「constructor rejects tile whose coord does not match map key」**
+    /// **IS GONE BECAUSE THE STATE IS.** A tile carried its own
+    /// coordinate, so a tile stored under a key it disagreed with was
+    /// writable and had to be refused at runtime. A tile has no
+    /// coordinate now — the map key is the only place a tile's place is
+    /// written — so the disagreement cannot be spelled and there is
+    /// nothing left to refuse. The size and bounds checks below are the
+    /// two the constructor still has.
 
     test('constructor rejects tile with wrong size', () {
       expect(
         () => surface(
           tiles: {
             TileCoord(x: 0, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: 0, y: 0),
               size: 128,
             ),
           },
@@ -199,7 +192,6 @@ void main() {
         () => surface(
           tiles: {
             TileCoord(x: 23, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: 23, y: 0),
               size: 256,
             ),
           },
@@ -210,7 +202,6 @@ void main() {
         () => surface(
           tiles: {
             TileCoord(x: -16, y: 0): BitmapTile.blank(
-              coord: TileCoord(x: -16, y: 0),
               size: 256,
             ),
           },
@@ -224,15 +215,14 @@ void main() {
       () {
         final firstCoord = TileCoord(x: 0, y: 0);
         final secondCoord = TileCoord(x: 1, y: 0);
-        final firstTile = BitmapTile.blank(coord: firstCoord, size: 256);
+        final firstTile = BitmapTile.blank(size: 256);
         final secondTile = BitmapTile(
-          coord: secondCoord,
           size: 256,
           pixels: Uint8List(256 * 256 * 4)..[0] = 3,
         );
 
-        final firstSurface = surface().putTiles([firstTile, secondTile]);
-        final secondSurface = surface().putTiles([secondTile, firstTile]);
+        final firstSurface = surface().putTiles([(coord: firstCoord, tile: firstTile), (coord: secondCoord, tile: secondTile)]);
+        final secondSurface = surface().putTiles([(coord: secondCoord, tile: secondTile), (coord: firstCoord, tile: firstTile)]);
 
         expect(firstSurface, secondSurface);
         expect(firstSurface.hashCode, secondSurface.hashCode);
@@ -241,11 +231,10 @@ void main() {
 
     test('toJson/fromJson round-trips', () {
       final tile = BitmapTile(
-        coord: TileCoord(x: 1, y: 2),
         size: 256,
         pixels: Uint8List(256 * 256 * 4)..[0] = 7,
       );
-      final original = surface().putTiles([tile]);
+      final original = surface().putTiles([(coord: TileCoord(x: 1, y: 2), tile: tile)]);
       expectJsonRoundTrip(original, BitmapSurface.fromJson);
     });
 
@@ -267,7 +256,6 @@ void main() {
       final built = surface(
         tiles: {
           coord: BitmapTile(
-            coord: coord,
             size: 256,
             pixels: Uint8List(BitmapTile.bytesFor(256)),
           ),
@@ -278,10 +266,12 @@ void main() {
       // And a derived surface keeps the property — that constructor wraps
       // rather than copies, which is the half that had to change.
       final grown = built.putTiles([
-        BitmapTile(
+        (
           coord: TileCoord(x: 1, y: 0),
-          size: 256,
-          pixels: Uint8List(BitmapTile.bytesFor(256)),
+          tile: BitmapTile(
+            size: 256,
+            pixels: Uint8List(BitmapTile.bytesFor(256)),
+          ),
         ),
       ]);
       expect(identical(grown.tiles, grown.tiles), isTrue);
@@ -291,7 +281,6 @@ void main() {
       final built = surface();
       expect(
         () => built.tiles[TileCoord(x: 9, y: 9)] = BitmapTile.blank(
-          coord: TileCoord(x: 9, y: 9),
           size: 256,
         ),
         throwsUnsupportedError,

@@ -94,7 +94,7 @@ void main() {
   }
 
   BitmapSurfacePainter buildLive() {
-    var tile = BitmapTile.blank(coord: TileCoord(x: 0, y: 0), size: 8);
+    var tile = BitmapTile.blank(size: 8);
     for (var i = 0; i < 6; i += 1) {
       tile = writeRgbaColorToBitmapTile(
         tile: tile,
@@ -107,7 +107,7 @@ void main() {
       surface: BitmapSurface(
         canvasSize: canvasSize,
         tileSize: 8,
-        tiles: {tile.coord: tile},
+        tiles: {TileCoord(x: 0, y: 0): tile},
       ),
       showTransparentBackground: false,
     );

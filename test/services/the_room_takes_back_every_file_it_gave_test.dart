@@ -41,7 +41,6 @@ void main() {
       tileSize: size,
       tiles: {
         coord: BitmapTile(
-          coord: coord,
           size: size,
           pixels: Uint8List(BitmapTile.bytesFor(size))
             ..fillRange(0, BitmapTile.bytesFor(size), fill),

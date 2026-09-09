@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -28,10 +29,10 @@ void main() {
       );
     }
 
-    BitmapTile blankTile(int x, int y, {int size = 2}) {
-      return BitmapTile.blank(
+    PlacedTile blankTile(int x, int y, {int size = 2}) {
+      return (
         coord: TileCoord(x: x, y: y),
-        size: size,
+        tile: BitmapTile.blank(size: size),
       );
     }
 
@@ -117,7 +118,7 @@ void main() {
 
     test('returns updated surface and dirtyTiles for dab on existing tile', () {
       final existing = blankTile(0, 0);
-      final original = surface(tiles: {existing.coord: existing});
+      final original = surface(tiles: {existing.coord: existing.tile});
       final result = materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
         sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
@@ -259,13 +260,13 @@ void main() {
           surface: surface(),
           sequence: sequence,
         ).surface;
-
-        var oracleTile = blankTile(0, 0);
+        var oracleTile = blankTile(0, 0).tile;
         final operations = brushPixelBlendOperationsForDabSequence(
           sequence: sequence,
           destinationAt: (x, y) => RgbaColor(r: 0, g: 0, b: 0, a: 0),
         );
         oracleTile = applyBrushPixelBlendOperationsToBitmapTile(
+          coord: TileCoord(x: 0, y: 0),
           tile: oracleTile,
           operations: operations,
         );
@@ -286,15 +287,15 @@ void main() {
 
     test('does not mutate existing BitmapTile', () {
       final existing = blankTile(0, 0);
-      final beforePixels = existing.pixels;
-      final original = surface(tiles: {existing.coord: existing});
+      final beforePixels = existing.tile.pixels;
+      final original = surface(tiles: {existing.coord: existing.tile});
 
       materializeBrushDabSequenceOnBitmapSurface(
         surface: original,
         sequence: BrushDabSequence([onePixelDab(globalX: 0, globalY: 0)]),
       );
 
-      expect(existing.pixels, beforePixels);
+      expect(existing.tile.pixels, beforePixels);
     });
 
     test('does not mutate BrushDabSequence or BrushDab', () {

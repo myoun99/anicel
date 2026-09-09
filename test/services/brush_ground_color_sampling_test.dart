@@ -27,7 +27,6 @@ BitmapSurface surfaceWith(List<int>? Function(int x, int y) paint) {
     tileSize: _tileSize,
     tiles: {
       TileCoord(x: 0, y: 0): BitmapTile(
-        coord: TileCoord(x: 0, y: 0),
         size: _tileSize,
         pixels: pixels,
       ),

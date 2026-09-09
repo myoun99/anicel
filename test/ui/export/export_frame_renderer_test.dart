@@ -82,10 +82,12 @@ void main() {
           canvasSize: cut.canvasSize,
           tileSize: 256,
         ).putTiles([
-          BitmapTile(
+          (
             coord: TileCoord(x: 0, y: 0),
-            size: 256,
-            pixels: sentinelPixels,
+            tile: BitmapTile(
+              size: 256,
+              pixels: sentinelPixels,
+            ),
           ),
         ]),
       );
@@ -250,7 +252,7 @@ void main() {
           canvasSize: cut.canvasSize,
           tileSize: 256,
         ).putTiles([
-          BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
+          (coord: TileCoord(x: 0, y: 0), tile: BitmapTile(size: tile, pixels: pixels)),
         ]),
       );
       session.effectsAndFx.updateLayerEffects(layer.id, [

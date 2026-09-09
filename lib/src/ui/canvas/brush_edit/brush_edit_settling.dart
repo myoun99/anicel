@@ -102,7 +102,7 @@ class _BrushEditSettling {
 
   /// The committed-surface tiles the settling stroke touched (all tiles
   /// when the bounds are unknown).
-  List<BitmapTile> settlingTiles() {
+  List<PlacedTile> settlingTiles() {
     return settlingTilesForBounds(
       surface: _state.widget.sessionState.canvasState.currentSurface,
       bounds: _settlingBounds,
@@ -122,7 +122,7 @@ class _BrushEditSettling {
     // screen throughout, so the handoff stays atomic and invisible).
     var budget = BitmapTileImageCache.decodeStartBudget;
     for (final tile in settlingTiles()) {
-      if (!BitmapTileImageCache.instance.needsDecodeStart(tile)) {
+      if (!BitmapTileImageCache.instance.needsDecodeStart(tile.tile)) {
         continue;
       }
       BitmapTileImageCache.instance.ensureDecoded(

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -177,9 +178,10 @@ void main() {
 
     test('does not mutate existing BitmapTile', () {
       final seedEdit = changedEditFor(surface());
-      final existingTile = seedEdit.afterSurface.tiles.values.single;
+      final existingEntry = seedEdit.afterSurface.tiles.entries.single;
+      final existingTile = existingEntry.value;
       final beforeTile = BitmapTile.fromJson(existingTile.toJson());
-      final current = surface(tiles: {existingTile.coord: existingTile});
+      final current = surface(tiles: {existingEntry.key: existingTile});
       final edit = changedEditFor(current);
 
       applyBrushSurfaceEditToCanvasSurfaceState(

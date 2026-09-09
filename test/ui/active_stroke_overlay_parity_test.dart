@@ -595,7 +595,7 @@ void main() {
       // does, and wait for the real decode to land.
       final scope = Object();
       BitmapTileImageCache.instance.ensureDecoded(
-        committedTile!,
+        (coord: TileCoord(x: 0, y: 0), tile: committedTile!),
         staleScope: scope,
       );
       for (var i = 0; i < 400; i += 1) {

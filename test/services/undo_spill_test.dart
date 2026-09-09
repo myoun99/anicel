@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -36,17 +37,19 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  BitmapTile tileOf(int x, int fill) => BitmapTile(
+  PlacedTile tileOf(int x, int fill) => (
     coord: TileCoord(x: x, y: 0),
+    tile: BitmapTile(
     size: size,
-    pixels: BitmapTile.blank(coord: TileCoord(x: x, y: 0), size: size).pixels
+    pixels: BitmapTile.blank(size: size).pixels
       ..fillRange(0, BitmapTile.bytesFor(size), fill),
+    ),
   );
 
-  BitmapSurface surfaceOf(Iterable<BitmapTile> tiles) => BitmapSurface(
+  BitmapSurface surfaceOf(Iterable<PlacedTile> tiles) => BitmapSurface(
     canvasSize: canvas,
     tileSize: size,
-    tiles: {for (final tile in tiles) tile.coord: tile},
+    tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
   group('a snapshot moves the tiles it ALONE holds', () {
@@ -75,9 +78,9 @@ void main() {
       // would have copied bytes that were not going anywhere, and reading
       // it back as a new object breaks the structural sharing the next
       // snapshot's weight depends on.
-      expect(identical(back.tileAt(shared.coord), shared), isTrue);
-      expect(back.tileAt(mine.coord), mine);
-      expect(identical(back.tileAt(mine.coord), mine), isFalse);
+      expect(identical(back.tileAt(shared.coord), shared.tile), isTrue);
+      expect(back.tileAt(mine.coord), mine.tile);
+      expect(identical(back.tileAt(mine.coord), mine.tile), isFalse);
     });
 
     /// 🚨A SNAPSHOT THAT SHARES EVERYTHING WRITES NO FILE — AND STILL HAS
@@ -117,7 +120,7 @@ void main() {
         reason: 'which is exactly what "let go" has to mean',
       );
       expect(
-        identical(snapshot.surfaceOver(live)!.tileAt(shared.coord), shared),
+        identical(snapshot.surfaceOver(live)!.tileAt(shared.coord), shared.tile),
         isTrue,
         reason: 'and the cel gives the same tile object back',
       );
@@ -125,13 +128,12 @@ void main() {
 
     test('coming back is byte-exact, pasteboard coords included', () async {
       final tile = BitmapTile(
-        coord: TileCoord(x: -1, y: 0),
         size: size,
-        pixels: tileOf(0, 0).pixels..[7] = 200,
+        pixels: tileOf(0, 0).tile.pixels..[7] = 200,
       );
       final snapshot = UndoSurfaceSnapshot(
         key: keyOf('f'),
-        snapshot: surfaceOf([tile]),
+        snapshot: surfaceOf([(coord: TileCoord(x: -1, y: 0), tile: tile)]),
         sharedWith: null,
       );
 

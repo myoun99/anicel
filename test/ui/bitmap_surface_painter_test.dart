@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -76,7 +77,10 @@ void main() {
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: 4, height: 2),
         tileSize: 2,
-        tiles: {firstTile.coord: firstTile, secondTile.coord: secondTile},
+        tiles: {
+          firstTile.coord: firstTile.tile,
+          secondTile.coord: secondTile.tile,
+        },
       );
 
       final pixels = await _paintPixels(
@@ -115,7 +119,7 @@ void main() {
           colors: column < 5
               ? const {}
               : {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
-        );
+        ).tile;
       }
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
@@ -168,7 +172,7 @@ void main() {
           coord: coord,
           size: tileSize,
           colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
-        );
+        ).tile;
       }
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
@@ -263,7 +267,10 @@ void main() {
       return BitmapSurface(
         canvasSize: const CanvasSize(width: 4, height: 2),
         tileSize: 2,
-        tiles: {newTile.coord: newTile, sideTile.coord: sideTile},
+        tiles: {
+          newTile.coord: newTile.tile,
+          sideTile.coord: sideTile.tile,
+        },
       );
     }
 
@@ -289,7 +296,7 @@ void main() {
           coord: coord,
           size: 2,
           colors: {const _Point(0, 0): green},
-        ),
+        ).tile,
       });
 
       final pixels = await paint(overlay);
@@ -328,7 +335,7 @@ void main() {
       for (var y = 0; y < 8; y += 1) {
         for (var x = 0; x < 10; x += 1) {
           final coord = TileCoord(x: x, y: y);
-          tiles[coord] = BitmapTile.blank(coord: coord, size: 2);
+          tiles[coord] = BitmapTile.blank(size: 2);
         }
       }
       return BitmapSurface(
@@ -393,13 +400,13 @@ void main() {
       // the first chunk.
       paintOnce(painter, const Size(4, 16));
 
-      for (final tile in surface.tiles.values) {
-        if (tile.coord.x < 2) {
+      for (final entry in surface.tiles.entries) {
+        if (entry.key.x < 2) {
           expect(
-            cache.needsDecodeStart(tile),
+            cache.needsDecodeStart(entry.value),
             isFalse,
             reason:
-                'visible tile ${tile.coord} must start in the first '
+                'visible tile ${entry.key} must start in the first '
                 'chunk',
           );
         }
@@ -464,11 +471,10 @@ void main() {
           pixels[i + 3] = 255;
         }
         final tile = BitmapTile(
-          coord: TileCoord(x: x, y: 0),
           size: tileSize,
           pixels: pixels,
         );
-        tiles[tile.coord] = tile;
+        tiles[TileCoord(x: x, y: 0)] = tile;
       }
       return BitmapSurface(
         canvasSize: const CanvasSize(width: 16, height: 4),
@@ -481,8 +487,8 @@ void main() {
     /// route, not the per-pixel fallback.
     Future<BitmapTileImageCache> decodedCache(BitmapSurface surface) async {
       final cache = BitmapTileImageCache();
-      for (final tile in surface.tiles.values) {
-        cache.ensureDecoded(tile);
+      for (final entry in surface.tiles.entries) {
+        cache.ensureDecoded((coord: entry.key, tile: entry.value));
       }
       // Wait in real TIME, not in event-loop turns. A hundred zero-length
       // delays can elapse in well under a millisecond while the engine's
@@ -610,14 +616,13 @@ void main() {
         pixels[i + 3] = 255;
       }
       final pasteboardTile = BitmapTile(
-        coord: TileCoord(x: -1, y: 0),
         size: tileSize,
         pixels: pixels,
       );
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: 16, height: 4),
         tileSize: tileSize,
-        tiles: {pasteboardTile.coord: pasteboardTile},
+        tiles: {TileCoord(x: -1, y: 0): pasteboardTile},
       );
       final painter = BitmapSurfacePainter(
         surface: surface,
@@ -695,7 +700,7 @@ void main() {
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: 2, height: 2),
         tileSize: 2,
-        tiles: {tile.coord: tile},
+        tiles: {tile.coord: tile.tile},
       );
 
       // A live ERASE stroke covering (0,0) at full alpha.
@@ -796,14 +801,14 @@ void main() {
         size: 2,
         colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
       );
-      cache.putProvisional(committed, solid(2, const Color(0xFF00FF00)));
+      cache.putProvisional(committed.tile, solid(2, const Color(0xFF00FF00)));
 
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
           surface: BitmapSurface(
             canvasSize: const CanvasSize(width: 2, height: 2),
             tileSize: 2,
-            tiles: {committed.coord: committed},
+            tiles: {committed.coord: committed.tile},
           ),
           showTransparentBackground: false,
           staleScope: scope,
@@ -841,8 +846,11 @@ void main() {
           // whole tile.
           colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
         );
-        tiles[coord] = tile;
-        cache.putProvisional(tile, solid(tileSize, const Color(0xFF00FF00)));
+        tiles[coord] = tile.tile;
+        cache.putProvisional(
+          tile.tile,
+          solid(tileSize, const Color(0xFF00FF00)),
+        );
       }
 
       final pixels = await _paintPixels(
@@ -963,7 +971,7 @@ void main() {
           surface: BitmapSurface(
             canvasSize: const CanvasSize(width: 2, height: 2),
             tileSize: 2,
-            tiles: {committed.coord: committed},
+            tiles: {committed.coord: committed.tile},
           ),
           showTransparentBackground: false,
           staleScope: scope,
@@ -981,7 +989,7 @@ void main() {
             'tile whose own bytes were available the whole time',
       );
       expect(
-        cache.imageFor(committed),
+        cache.imageFor(committed.tile),
         isNotNull,
         reason: 'and it is adopted, so the coordinate pays this once',
       );
@@ -1003,7 +1011,7 @@ void main() {
           coord: coord,
           size: tileSize,
           colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
-        );
+        ).tile;
       }
 
       final pixels = await _paintPixels(
@@ -1060,7 +1068,7 @@ void main() {
           coord: coord,
           size: tileSize,
           colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
-        );
+        ).tile;
       }
       final surface = BitmapSurface(
         canvasSize: const CanvasSize(width: columns * tileSize, height: tileSize),
@@ -1155,12 +1163,12 @@ class _AlphaAtOriginSource implements ActiveStrokePixelSource {
   }
 }
 
-BitmapTile _tile({
+PlacedTile _tile({
   required TileCoord coord,
   required int size,
   required Map<_Point, RgbaColor> colors,
 }) {
-  var tile = BitmapTile.blank(coord: coord, size: size);
+  var tile = BitmapTile.blank(size: size);
   for (final entry in colors.entries) {
     tile = writeRgbaColorToBitmapTile(
       tile: tile,
@@ -1169,7 +1177,7 @@ BitmapTile _tile({
       color: entry.value,
     );
   }
-  return tile;
+  return (coord: coord, tile: tile);
 }
 
 Future<Uint8List> _paintPixels(

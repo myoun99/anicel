@@ -61,7 +61,6 @@ void main() {
       tiles: {
         for (var tx = 0; tx < 2; tx += 1)
           TileCoord(x: tx, y: 0): BitmapTile(
-            coord: TileCoord(x: tx, y: 0),
             size: 256,
             pixels: pixels,
           ),
@@ -70,8 +69,8 @@ void main() {
   }
 
   Future<void> decodeAll(BitmapSurface surface) async {
-    for (final tile in surface.tiles.values) {
-      tileCache.ensureDecoded(tile);
+    for (final entry in surface.tiles.entries) {
+      tileCache.ensureDecoded((coord: entry.key, tile: entry.value));
     }
     while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
