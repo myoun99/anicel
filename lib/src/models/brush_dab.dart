@@ -64,6 +64,7 @@ class BrushDab {
     _validateUnitIntervalFinite(speed, 'speed');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
+    _validateSquareIsAxisAligned(tipShape, roundness, angleDegrees);
     _validateSequence(sequence);
   }
 
@@ -421,6 +422,40 @@ void _validateUnitIntervalFinite(double value, String fieldName) {
       value,
       fieldName,
       'BrushDab.$fieldName must be finite and between 0.0 and 1.0 inclusive.',
+    );
+  }
+}
+
+/// A SQUARE dab is always axis-aligned, and this is what makes that true
+/// rather than merely observed.
+///
+/// 🚨A square dab is not a brush mark any more (유저 2026-09-09: 「포토샵이나
+/// 클튜처럼 가자. 원이나 이미지」) — the only things that build one are the
+/// FILL, the selection lift and the cut stamp, and each means "cover exactly
+/// this rect". None of them squashes or rotates, and none goes through
+/// `BrushStrokeDynamics`, so none can pick up roundness or angle jitter.
+///
+/// ⇒ The rotated-rect coverage path had no way to be reached. It existed in
+/// THREE transcriptions — the Dart reference, the Dart kernel and the C
+/// kernel's `QA_DAB_FLAG_ROTATED_RECT` — with a parity case keeping them in
+/// step, which is a lot of machinery for a shape nothing can ask for. This
+/// check is what lets it be DELETED rather than left unused: the state is
+/// unrepresentable now, so a future caller finds out here instead of finding
+/// a silently axis-aligned rectangle.
+void _validateSquareIsAxisAligned(
+  BrushTipShape tipShape,
+  double roundness,
+  double angleDegrees,
+) {
+  if (tipShape == BrushTipShape.round) {
+    return;
+  }
+  if (roundness != 1.0 || angleDegrees != 0.0) {
+    throw ArgumentError.value(
+      '$roundness/$angleDegrees',
+      'roundness/angleDegrees',
+      'A square BrushDab is the fill and stamp verbs\' "cover exactly this '
+          'rect", so it must stay axis-aligned: roundness 1.0, angle 0.',
     );
   }
 }

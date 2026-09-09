@@ -89,7 +89,6 @@ class BrushDabPlan {
     required this.dabFlow,
     required this.isRound,
     required this.isEllipse,
-    required this.isRotatedRect,
     required this.unrotatedTip,
     required this.erase,
     required this.tipMask,
@@ -156,7 +155,6 @@ class BrushDabPlan {
 
   final bool isRound;
   final bool isEllipse;
-  final bool isRotatedRect;
   final bool unrotatedTip;
 
   /// Destination-out instead of source-over. The commit passes
@@ -211,7 +209,6 @@ class BrushDabPlan {
       :isRound,
       :tipMask,
       :isEllipse,
-      :isRotatedRect,
       :tipCos,
       :tipSin,
       :inverseRoundness,
@@ -273,7 +270,6 @@ class BrushDabPlan {
       dabFlow: dab.flow,
       isRound: isRound,
       isEllipse: isEllipse,
-      isRotatedRect: isRotatedRect,
       unrotatedTip: unrotatedTip,
       erase: erase,
       tipMask: tipMask,
@@ -386,7 +382,6 @@ class BrushDabPlan {
         (plan.erase ? QaNativeEngine.dabFlagErase : 0) |
         (plan.isRound ? QaNativeEngine.dabFlagRound : 0) |
         (plan.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
-        (plan.isRotatedRect ? QaNativeEngine.dabFlagRotatedRect : 0) |
         (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
         (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0),
     regionLeft: plan.left,
@@ -480,14 +475,12 @@ void blendDabTilesDart(
   final edgeSpan = plan.edgeSpan;
   final aaThreshold = plan.aaThreshold;
   final aaContrast = plan.aaContrast;
-  final minorRadius = plan.minorRadius;
   final radiusSqSkip = plan.radiusSqSkip;
   final tipCos = plan.tipCos;
   final tipSin = plan.tipSin;
   final inverseRoundness = plan.inverseRoundness;
   final isRound = plan.isRound;
   final isEllipse = plan.isEllipse;
-  final isRotatedRect = plan.isRotatedRect;
   final unrotatedTip = plan.unrotatedTip;
   final dabOpacity = plan.dabOpacity;
   final dabFlow = plan.dabFlow;
@@ -586,14 +579,8 @@ void blendDabTilesDart(
             continue;
           }
         } else {
-          if (isRotatedRect) {
-            final dx = x + 0.5 - centerX;
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = dx * tipSin + dy * tipCos;
-            if (tipU.abs() > radius || tipV.abs() > minorRadius) {
-              continue;
-            }
-          }
+          // A square dab is axis-aligned by construction now, so there is no
+          // rotated-rect case left to test for.
           coverage = 1.0;
         }
 

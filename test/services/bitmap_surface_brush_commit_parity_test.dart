@@ -375,32 +375,11 @@ void main() {
       );
     });
 
-    test('rotated rectangle tip stroke', () {
-      expectParity(
-        surface: blankSurface(),
-        sequence: strokeOf([
-          dab(
-            x: 50.4,
-            y: 50.6,
-            size: 20,
-            tipShape: BrushTipShape.square,
-            roundness: 0.5,
-            angleDegrees: 45,
-            sequence: 0,
-          ),
-          dab(
-            x: 58.1,
-            y: 55.9,
-            size: 20,
-            tipShape: BrushTipShape.square,
-            roundness: 0.5,
-            angleDegrees: 45,
-            sequence: 1,
-          ),
-        ]),
-        reason: 'rotated rectangle tip',
-      );
-    });
+    // ⛔The rotated-rectangle parity case went with the path it pinned. A
+    // square dab is the fill and stamp verbs' "cover exactly this rect" and
+    // `BrushDab` now refuses to build one that is squashed or rotated, so
+    // the case could no longer be constructed — the pin for that law is
+    // `a square dab cannot be rotated or squashed` in the dab tests.
 
     test('sampled tip stroke on fractional centers', () {
       expect(_testTipMask.alpha.any((value) => value > 0), isTrue);

@@ -182,15 +182,22 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
+      // ⚠️Round, not square: an ellipse at an angle is a real brush tip,
+      // while a SQUARE dab is required to stay axis-aligned. The round trip
+      // still exercises both fields, on the shape allowed to carry them.
       final value = dab(
         color: 0x80FF3366,
-        tipShape: BrushTipShape.square,
         pressure: 0.4,
         sequence: 2,
         roundness: 0.4,
         angleDegrees: 137.5,
       );
       expectJsonRoundTrip(value, BrushDab.fromJson);
+      // ...and the square the verbs build round-trips too.
+      expectJsonRoundTrip(
+        dab(tipShape: BrushTipShape.square, sequence: 3),
+        BrushDab.fromJson,
+      );
     });
 
     test('fromJson without color uses default black', () {
@@ -302,6 +309,32 @@ void main() {
         ).tipShape,
         BrushTipShape.round,
       );
+    });
+
+    test('🚨a square dab cannot be rotated or squashed', () {
+      // A square dab is the FILL, selection-lift and cut-stamp verbs saying
+      // "cover exactly this rect" — never a brush mark (유저 2026-09-09:
+      // 「포토샵이나 클튜처럼 가자. 원이나 이미지」). None of those four sites
+      // sets roundness or angle, and none goes through `BrushStrokeDynamics`,
+      // so none can pick up jitter either.
+      //
+      // ⇒ The rotated-rectangle coverage path could not be reached, and it
+      // existed in THREE transcriptions with a parity case keeping them in
+      // step. This check is what let it be DELETED rather than left unused:
+      // the state is unrepresentable, so a caller that wants one finds out
+      // here instead of finding a silently axis-aligned rectangle.
+      expect(
+        () => dab(tipShape: BrushTipShape.square, angleDegrees: 30),
+        throwsArgumentError,
+      );
+      expect(
+        () => dab(tipShape: BrushTipShape.square, roundness: 0.4),
+        throwsArgumentError,
+      );
+      // ...and the axis-aligned square the verbs actually build is fine.
+      expect(dab(tipShape: BrushTipShape.square).tipShape, BrushTipShape.square);
+      // A ROUND dab keeps both — an ellipse at an angle is a real brush tip.
+      expect(dab(roundness: 0.4, angleDegrees: 30).roundness, 0.4);
     });
 
     test('a round dab writes no tipShape key at all', () {

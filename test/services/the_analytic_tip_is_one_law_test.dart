@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -35,12 +34,11 @@ void main() {
   );
 
   group('what the geometry decides once, before the pixel loop', () {
-    test('a plain round tip is neither an ellipse nor a rotated rect', () {
+    test('a plain round tip is not an ellipse', () {
       final tip = brushTipGeometry(round());
       expect(tip.radius, 10);
       expect(tip.isRound, isTrue);
       expect(tip.isEllipse, isFalse);
-      expect(tip.isRotatedRect, isFalse);
       expect(
         tip.tipCos,
         1.0,
@@ -66,7 +64,6 @@ void main() {
         final mask = BrushTipMask(id: 't', size: 2, alpha: Uint8List(4));
         final tip = brushTipGeometry(round(roundness: 0.5, tipMask: mask));
         expect(tip.isEllipse, isFalse);
-        expect(tip.isRotatedRect, isFalse);
         expect(
           tip.inverseRoundness,
           closeTo(2, 1e-12),
@@ -74,21 +71,6 @@ void main() {
         );
       },
     );
-
-    test('a square tip rotates or squashes into a rotated rect, and a plain '
-        'one does neither', () {
-      BrushTipNumbers square({double roundness = 1, double angle = 0}) => (
-        size: 20,
-        hardness: 1,
-        roundness: roundness,
-        angleDegrees: angle,
-        tipShape: BrushTipShape.square,
-        tipMask: null,
-      );
-      expect(brushTipGeometry(square()).isRotatedRect, isFalse);
-      expect(brushTipGeometry(square(angle: 30)).isRotatedRect, isTrue);
-      expect(brushTipGeometry(square(roundness: 0.4)).isRotatedRect, isTrue);
-    });
   });
 
   group('the analytic round coverage', () {
@@ -139,46 +121,6 @@ void main() {
       final atRim = analyticRoundTipCoverage(tip, 10, 0);
       expect(atRim, 1.0);
       expect(atRim.isFinite, isTrue);
-    });
-  });
-
-  group('the rotated rectangle', () {
-    BrushDabTipGeometry rect({double roundness = 1, double angle = 0}) =>
-        brushTipGeometry((
-          size: 20,
-          hardness: 1,
-          roundness: roundness,
-          angleDegrees: angle,
-          tipShape: BrushTipShape.square,
-          tipMask: null,
-        ));
-
-    test('inside the square is a hit, outside is a miss', () {
-      final tip = rect(angle: 0.0001);
-      expect(rotatedRectTipMisses(tip, 0, 0), isFalse);
-      expect(rotatedRectTipMisses(tip, 9, 9), isFalse);
-      expect(rotatedRectTipMisses(tip, 11, 0), isTrue);
-    });
-
-    test('a 45 degree square is a diamond: the corner is out', () {
-      final tip = rect(angle: 45);
-      expect(rotatedRectTipMisses(tip, 0, 0), isFalse);
-      expect(
-        rotatedRectTipMisses(tip, 9, 9),
-        isTrue,
-        reason: 'the un-rotated corner lands outside the rotated square',
-      );
-      expect(rotatedRectTipMisses(tip, 10 * math.sqrt2 - 0.5, 0), isFalse);
-    });
-
-    test('roundness shrinks the MINOR side only', () {
-      final tip = rect(roundness: 0.5);
-      expect(rotatedRectTipMisses(tip, 9, 0), isFalse);
-      expect(
-        rotatedRectTipMisses(tip, 0, 9),
-        isTrue,
-        reason: 'the minor radius is radius * roundness',
-      );
     });
   });
 

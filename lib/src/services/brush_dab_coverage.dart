@@ -14,7 +14,6 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   final tip = brushDabTipGeometry(dab);
   final tipMask = tip.tipMask;
   final isRound = tip.isRound;
-  final isRotatedRect = tip.isRotatedRect;
 
   // Applies the dual-brush and paper-texture multiplications with the EXACT
   // multiplication order of the commit/live rasterizers (separate `*=`
@@ -64,9 +63,9 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
       } else if (isRound) {
         coverage = analyticRoundTipCoverage(tip, dx, dy);
       } else {
-        if (isRotatedRect && rotatedRectTipMisses(tip, dx, dy)) {
-          continue;
-        }
+        // A square dab is the fill and stamp verbs' "cover exactly this
+        // rect", and the dab constructor refuses to build one that is
+        // squashed or rotated — so there is no rotated-rect case to test.
         coverage = 1.0;
       }
       if (coverage <= 0.0) {

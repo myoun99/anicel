@@ -188,10 +188,8 @@ class BrushTipStampCache {
           // law the materializer runs per canvas pixel.
           coverage = analyticRoundTipCoverage(tip, dx, dy);
         } else {
-          // Analytic square / rotated rectangle: full coverage inside.
-          if (tip.isRotatedRect && rotatedRectTipMisses(tip, dx, dy)) {
-            continue;
-          }
+          // Analytic square: full coverage inside, and axis-aligned by
+          // construction — the dab constructor refuses any other kind.
           coverage = 1.0;
         }
         if (coverage <= 0.0) {

@@ -14,7 +14,6 @@ typedef BrushDabTipGeometry = ({
   bool isRound,
   BrushTipMask? tipMask,
   bool isEllipse,
-  bool isRotatedRect,
   double tipCos,
   double tipSin,
   double inverseRoundness,
@@ -40,14 +39,10 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
-  final isRotatedRect =
-      tipMask == null &&
-      !isRound &&
-      (tip.roundness < 1.0 || tip.angleDegrees != 0.0);
   var tipCos = 1.0;
   var tipSin = 0.0;
   var inverseRoundness = 1.0;
-  if (isEllipse || isRotatedRect || tipMask != null) {
+  if (isEllipse || tipMask != null) {
     final angleRadians = tip.angleDegrees * (math.pi / 180.0);
     tipCos = math.cos(angleRadians);
     tipSin = math.sin(angleRadians);
@@ -60,7 +55,6 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
     isRound: isRound,
     tipMask: tipMask,
     isEllipse: isEllipse,
-    isRotatedRect: isRotatedRect,
     tipCos: tipCos,
     tipSin: tipSin,
     inverseRoundness: inverseRoundness,
@@ -105,13 +99,6 @@ double analyticRoundTipCoverage(
     return 1.0;
   }
   return (1.0 - ((distance - tip.hardRadius) / edgeSpan)).clamp(0.0, 1.0);
-}
-
-/// Whether a rotated rectangular tip leaves ([dx], [dy]) uncovered.
-bool rotatedRectTipMisses(BrushDabTipGeometry tip, double dx, double dy) {
-  final tipU = dx * tip.tipCos - dy * tip.tipSin;
-  final tipV = dx * tip.tipSin + dy * tip.tipCos;
-  return tipU.abs() > tip.radius || tipV.abs() > tip.minorRadius;
 }
 
 /// What a ROTATED raster tip covers at ([dx], [dy]) — 0.0 outside the

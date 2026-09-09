@@ -1,4 +1,6 @@
-// Anicel native engine core (R18 A-track).
+        /* A square dab is axis-aligned by construction now, so there is no
+           rotated-rect case left to test for. */
+        coverage = 1.0;// Anicel native engine core (R18 A-track).
 //
 // ONE portable C source, cross-compiled per platform (Windows DLL, macOS
 // dylib, Android .so, ...). Every function here has a Dart REFERENCE
@@ -180,7 +182,6 @@ enum {
   QA_DAB_FLAG_ERASE = 1,
   QA_DAB_FLAG_ROUND = 2,
   QA_DAB_FLAG_ELLIPSE = 4,
-  QA_DAB_FLAG_ROTATED_RECT = 8,
   QA_DAB_FLAG_TIP_UNROTATED = 16,
   // 없음: the edge is a hard cut at half coverage. Set INSTEAD of an
   // aa_contrast; the two never both apply (see BrushAntiAlias).
@@ -394,7 +395,6 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int erase = (flags & QA_DAB_FLAG_ERASE) != 0;
   const int is_round = (flags & QA_DAB_FLAG_ROUND) != 0;
   const int is_ellipse = (flags & QA_DAB_FLAG_ELLIPSE) != 0;
-  const int is_rotated_rect = (flags & QA_DAB_FLAG_ROTATED_RECT) != 0;
   const int unrotated_tip = (flags & QA_DAB_FLAG_TIP_UNROTATED) != 0;
   const int has_tip = s->tip_alpha != NULL;
   const int has_dual = s->dual_alpha != NULL;
@@ -463,14 +463,8 @@ QA_EXPORT int32_t qa_dab_blend_tile(
           continue;
         }
       } else {
-        if (is_rotated_rect) {
-          const double dx = (double)x + 0.5 - s->center_x;
-          const double tip_u = dx * s->tip_cos - dy * s->tip_sin;
-          const double tip_v = dx * s->tip_sin + dy * s->tip_cos;
-          if (fabs(tip_u) > s->radius || fabs(tip_v) > s->minor_radius) {
-            continue;
-          }
-        }
+        /* A square dab is axis-aligned by construction now, so there is no
+           rotated-rect case left to test for. */
         coverage = 1.0;
       }
 

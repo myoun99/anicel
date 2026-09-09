@@ -1770,7 +1770,6 @@ class QaNativeEngine {
   static const int dabFlagErase = 1;
   static const int dabFlagRound = 2;
   static const int dabFlagEllipse = 4;
-  static const int dabFlagRotatedRect = 8;
   static const int dabFlagTipUnrotated = 16;
 
   /// 없음 — the edge is a hard cut at half coverage. Set INSTEAD of an
