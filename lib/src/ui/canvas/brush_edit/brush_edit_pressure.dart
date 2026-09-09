@@ -76,9 +76,10 @@ class _BrushEditPressure {
   /// all go through here so a fourth input cannot be added to two of them.
   void noteSample(PointerEvent event) {
     _state._currentPressure = normalizedPressure(event);
-    final tilt = penTilt(event);
-    _state._currentTiltAzimuthDegrees = tilt.azimuthDegrees;
-    _state._currentTiltAltitude = tilt.altitude;
+    // ⚠️ONE FIELD for the tilt READING, because azimuth without altitude is a
+    // lean in a direction nothing reported — and `BrushDab` refuses that pair
+    // outright. The same shape as `_travelled` below, and for the same reason.
+    _state._currentTilt = penTilt(event);
     _noteSpeed(event);
   }
 
@@ -114,13 +115,11 @@ class _BrushEditPressure {
     }
   }
 
-  /// Returns every input to its resting value — an upright pen at full
-  /// pressure, which is what a device that reports none draws with, standing
-  /// still, with no earlier reading to measure the next move against.
+  /// Returns every input to its resting value — full pressure, NO tilt
+  /// reported (which is what a mouse says, and is not the same as an upright
+  /// pen), standing still, with no earlier reading to measure against.
   void restInput() {
     _state._currentPressure = 1.0;
-    _state._currentTiltAzimuthDegrees = 0.0;
-    _state._currentTiltAltitude = 1.0;
     _state._currentSpeed = 0.0;
     _travelled = null;
   }
@@ -139,14 +138,20 @@ class _BrushEditPressure {
   /// ⚠️Flutter reports tilt as radians FROM VERTICAL and orientation as
   /// radians around the pen's axis; the app speaks the tablet bridge's
   /// azimuth/altitude instead, so the conversion happens once, here.
-  ({double azimuthDegrees, double altitude}) penTilt(PointerEvent event) {
+  /// 🚨NULL WHEN THE DEVICE REPORTED NONE — it used to answer "upright pen"
+  /// (altitude 1.0), which is a reading a mouse never made. 유저 2026-09-09,
+  /// `brush-tilt-no-device-Q1` 답 1: 「기울기 못 재는 기기에서는 傾き 소스를
+  /// 건너뛴다」 (「1번이 구조적으로 맞아보여서」). With the invented value, an
+  /// imported brush whose tilt minimum is 0% drew nothing at all on a mouse
+  /// and nothing on screen could say why.
+  ({double azimuthDegrees, double altitude})? penTilt(PointerEvent event) {
     if (event.kind != PointerDeviceKind.stylus &&
         event.kind != PointerDeviceKind.invertedStylus) {
-      return (azimuthDegrees: 0.0, altitude: 1.0);
+      return null;
     }
     final tilt = event.tilt;
     if (!tilt.isFinite) {
-      return (azimuthDegrees: 0.0, altitude: 1.0);
+      return null;
     }
     final altitude = (1.0 - tilt.abs() / (math.pi / 2.0)).clamp(0.0, 1.0);
     final orientation = event.orientation;

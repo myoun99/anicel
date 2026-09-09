@@ -60,9 +60,13 @@ BrushDabSequence brushInputSamplesToBrushDabs({
             next.tiltAzimuthDegrees,
             t,
           ),
+          // Absence carries forward: a device that reported no tilt reports
+          // none for the whole stroke, so there is nothing to ramp between.
           tiltAltitude:
-              previous.tiltAltitude +
-              (next.tiltAltitude - previous.tiltAltitude) * t,
+              (previous.tiltAltitude == null || next.tiltAltitude == null)
+              ? next.tiltAltitude
+              : previous.tiltAltitude! +
+                    (next.tiltAltitude! - previous.tiltAltitude!) * t,
           // ⛔NOT lerped, unlike the three above. Speed is a property of the
           // MOVE, and this whole loop is inside one move — every dab placed
           // between the two readings was laid at the speed that carried the

@@ -14,7 +14,7 @@ class BrushInputSample {
     required this.y,
     this.pressure = 1.0,
     this.tiltAzimuthDegrees = 0.0,
-    this.tiltAltitude = 1.0,
+    this.tiltAltitude,
     this.speed = 0.0,
     this.sequence = 0,
   }) {
@@ -26,7 +26,7 @@ class BrushInputSample {
     // so a NaN pressure walked straight through the range check.
     _validateUnitInterval(pressure, 'pressure');
     _validateFiniteCoordinate(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
-    _validateUnitInterval(tiltAltitude, 'tiltAltitude');
+    _validateTilt(tiltAltitude, tiltAzimuthDegrees);
     _validateUnitInterval(speed, 'speed');
     _validateSequence(sequence);
   }
@@ -36,11 +36,14 @@ class BrushInputSample {
   final double pressure;
 
   /// Which way the pen leans, in degrees (0 = along +x, driver convention).
-  /// Meaningless while [tiltAltitude] is 1.0 — an upright pen leans nowhere.
+  /// Meaningless while [tiltAltitude] is 1.0 — an upright pen leans nowhere —
+  /// and required to be 0 when it is null.
   final double tiltAzimuthDegrees;
 
-  /// How upright the pen is: 1.0 vertical, 0.0 flat on the surface.
-  final double tiltAltitude;
+  /// How upright the pen is: 1.0 vertical, 0.0 flat on the surface — or NULL
+  /// when the device reported no tilt. See `BrushDab.tiltAltitude`: a mouse
+  /// and an upright pen used to be the same number.
+  final double? tiltAltitude;
 
   /// How fast the pen was travelling on its way here, already normalized to
   /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
@@ -86,7 +89,7 @@ class BrushInputSample {
     // ⚠️Omitted at the resting value so a stored stroke from before tilt
     // existed reads back byte-identical to one recorded now with an
     // upright pen.
-    if (tiltAltitude != 1.0) 'tiltAltitude': tiltAltitude,
+    if (tiltAltitude != null) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
     if (speed != 0.0) 'speed': speed,
     'sequence': sequence,
@@ -99,7 +102,7 @@ class BrushInputSample {
       pressure: (json['pressure'] as num?)?.toDouble() ?? 1.0,
       tiltAzimuthDegrees:
           (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
-      tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble() ?? 1.0,
+      tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble(),
       speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
       sequence: json['sequence'] as int? ?? 0,
     );
@@ -143,6 +146,24 @@ void _validateFiniteCoordinate(double value, String fieldName) {
       'BrushInputSample.$fieldName must be finite.',
     );
   }
+}
+
+/// Tilt is ONE reading of two numbers, so it has ONE way to be absent — the
+/// same law  enforces, because a sample and a dab that disagreed
+/// about what "no tilt" looks like would be two spellings of one fact.
+void _validateTilt(double? altitude, double azimuthDegrees) {
+  if (altitude == null) {
+    if (azimuthDegrees != 0.0) {
+      throw ArgumentError.value(
+        azimuthDegrees,
+        'tiltAzimuthDegrees',
+        'BrushInputSample.tiltAzimuthDegrees must be 0 when no tilt was '
+        'reported.',
+      );
+    }
+    return;
+  }
+  _validateUnitInterval(altitude, 'tiltAltitude');
 }
 
 void _validateUnitInterval(double value, String fieldName) {

@@ -287,8 +287,12 @@ class _InteractiveBrushEditCanvasViewState
   /// How the pen leaned at the latest sample: azimuth in degrees and a 0..1
   /// altitude. An upright pen (and every device with no tilt to report)
   /// rests at 1.0, so a mouse and a finger draw exactly as before.
-  double _currentTiltAzimuthDegrees = 0.0;
-  double _currentTiltAltitude = 1.0;
+  /// ⚠️ONE FIELD, not two. Azimuth without altitude is a lean in a direction
+  /// nothing reported, and `BrushDab` refuses that pair outright — so the
+  /// reading is present or absent as a whole. Null is what a mouse and a
+  /// finger report, and it is NOT the same as an upright pen (유저 2026-09-09,
+  /// `brush-tilt-no-device-Q1` 답 1).
+  ({double azimuthDegrees, double altitude})? _currentTilt;
 
   /// How fast the pen travelled into the latest sample, 0..1 against the
   /// user's reference speed. A pen that has just landed — and every stroke's
@@ -565,8 +569,8 @@ class _InteractiveBrushEditCanvasViewState
       hardness: settings.hardness,
       pressure: _currentPressure,
       sequence: sequence,
-      tiltAzimuthDegrees: _currentTiltAzimuthDegrees,
-      tiltAltitude: _currentTiltAltitude,
+      tiltAzimuthDegrees: _currentTilt?.azimuthDegrees ?? 0.0,
+      tiltAltitude: _currentTilt?.altitude,
       speed: _currentSpeed,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,

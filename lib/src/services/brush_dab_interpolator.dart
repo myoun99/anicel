@@ -37,8 +37,15 @@ class BrushDabInterpolator {
     final stepCount = math.max(1, (distance / spacing).ceil());
     final previousPressure = previous.pressure;
     final pressureDelta = nextRaw.pressure - previousPressure;
+    // ⚠️Both ends have to have REPORTED a tilt for the ramp to mean anything.
+    // Within one stroke they always agree — the device does not change
+    // mid-stroke — so the null arm is the whole no-tilt-device case, and it
+    // carries absence forward rather than inventing an upright pen.
     final previousAltitude = previous.tiltAltitude;
-    final altitudeDelta = nextRaw.tiltAltitude - previousAltitude;
+    final nextAltitude = nextRaw.tiltAltitude;
+    final altitudeDelta = (previousAltitude == null || nextAltitude == null)
+        ? null
+        : nextAltitude - previousAltitude;
     return List<BrushDab>.generate(stepCount, (index) {
       final fraction = (index + 1) / stepCount;
       return nextRaw.copyWith(
@@ -59,7 +66,9 @@ class BrushDabInterpolator {
         // reads it yet, and its lerp has to go the SHORT way round the circle
         // (350° to 10° is twenty degrees forward, not 340 back). The round
         // that gives it a reader is the one that shares that helper.
-        tiltAltitude: previousAltitude + altitudeDelta * fraction,
+        tiltAltitude: altitudeDelta == null
+            ? nextAltitude
+            : previousAltitude! + altitudeDelta * fraction,
         // ⛔SPEED IS DELIBERATELY NOT INTERPOLATED, and it is not an
         // oversight to fix: it rides along from `nextRaw` because it is a
         // property of the MOVE this call is subdividing. Every dab here was

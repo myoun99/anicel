@@ -146,7 +146,7 @@ void main() {
     );
 
     expect(sampled.length, greaterThan(1));
-    final altitudes = sampled.map((dab) => dab.tiltAltitude).toList();
+    final altitudes = sampled.map((dab) => dab.tiltAltitude!).toList();
     expect(altitudes.last, closeTo(0.0, 1e-9));
     expect(altitudes.first, lessThan(1.0));
     expect(altitudes.first, greaterThan(0.0));

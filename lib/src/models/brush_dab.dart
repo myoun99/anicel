@@ -18,7 +18,7 @@ class BrushDab {
     required this.pressure,
     required this.sequence,
     this.tiltAzimuthDegrees = 0.0,
-    this.tiltAltitude = 1.0,
+    this.tiltAltitude,
     this.speed = 0.0,
     this.roundness = 1.0,
     this.angleDegrees = 0.0,
@@ -60,7 +60,7 @@ class BrushDab {
     _validateUnitIntervalFinite(hardness, 'hardness');
     _validateUnitIntervalFinite(pressure, 'pressure');
     _validateFinite(tiltAzimuthDegrees, 'tiltAzimuthDegrees');
-    _validateUnitIntervalFinite(tiltAltitude, 'tiltAltitude');
+    _validateTilt(tiltAltitude, tiltAzimuthDegrees);
     _validateUnitIntervalFinite(speed, 'speed');
     _validateRoundness(roundness);
     _validateFinite(angleDegrees, 'angleDegrees');
@@ -132,11 +132,23 @@ class BrushDab {
   final double speed;
 
   /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while
-  /// [tiltAltitude] is 1.0 — an upright pen leans nowhere.
+  /// [tiltAltitude] is 1.0 — an upright pen leans nowhere — and REQUIRED to
+  /// be 0 when it is null, so "the device said nothing" has exactly one
+  /// spelling (the constructor checks).
   final double tiltAzimuthDegrees;
 
-  /// How upright the pen was: 1.0 vertical, 0.0 flat on the surface.
-  final double tiltAltitude;
+  /// How upright the pen was: 1.0 vertical, 0.0 flat on the surface — or
+  /// NULL when the device reported no tilt at all.
+  ///
+  /// 🚨NULL IS NOT 1.0, and telling them apart is the whole point (유저
+  /// 2026-09-09, `brush-tilt-no-device-Q1` 답 1: 「기울기 못 재는 기기에서는
+  /// 傾き 소스를 건너뛴다」, 「1번이 구조적으로 맞아보여서」). A mouse and an
+  /// upright pen used to arrive as the same number, so an imported brush with
+  /// a 0% tilt minimum drew nothing at all on a mouse and the screen could
+  /// not say why. Absence makes `brushInputValue` answer null, and
+  /// `_factorFor` skips a source it cannot answer for — the contribution is
+  /// exactly 1.0 and the brush draws at its base.
+  final double? tiltAltitude;
 
   final int sequence;
 
@@ -263,7 +275,9 @@ class BrushDab {
     'sequence': sequence,
     // ⚠️Omitted at the resting value so a stroke recorded before tilt
     // existed round-trips byte-identical to one drawn with an upright pen.
-    if (tiltAltitude != 1.0) 'tiltAltitude': tiltAltitude,
+    // ⚠️Absent when the device reported none, which is also how a stroke
+    // recorded before tilt existed reads back — the key is simply not there.
+    if (tiltAltitude != null) 'tiltAltitude': tiltAltitude,
     if (tiltAzimuthDegrees != 0.0) 'tiltAzimuthDegrees': tiltAzimuthDegrees,
     if (speed != 0.0) 'speed': speed,
     'roundness': roundness,
@@ -297,7 +311,7 @@ class BrushDab {
       sequence: json['sequence'] as int,
       tiltAzimuthDegrees:
           (json['tiltAzimuthDegrees'] as num?)?.toDouble() ?? 0.0,
-      tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble() ?? 1.0,
+      tiltAltitude: (json['tiltAltitude'] as num?)?.toDouble(),
       speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
       roundness: (json['roundness'] as num?)?.toDouble() ?? 1.0,
       angleDegrees: (json['angleDegrees'] as num?)?.toDouble() ?? 0.0,
@@ -414,6 +428,26 @@ void _validateNonNegativeFinite(double value, String fieldName) {
       'BrushDab.$fieldName must be finite and greater than or equal to 0.0.',
     );
   }
+}
+
+/// Tilt is ONE reading of two numbers, so it has ONE way to be absent.
+///
+/// ⛔Without this check a dab could carry an azimuth with no altitude —
+/// a lean in a direction the pen never reported — and "the device said
+/// nothing" would have two spellings. Two fields sharing one fact is how a
+/// mutation walked out of the speed round untouched.
+void _validateTilt(double? altitude, double azimuthDegrees) {
+  if (altitude == null) {
+    if (azimuthDegrees != 0.0) {
+      throw ArgumentError.value(
+        azimuthDegrees,
+        'tiltAzimuthDegrees',
+        'BrushDab.tiltAzimuthDegrees must be 0 when no tilt was reported.',
+      );
+    }
+    return;
+  }
+  _validateUnitIntervalFinite(altitude, 'tiltAltitude');
 }
 
 void _validateUnitIntervalFinite(double value, String fieldName) {

@@ -93,7 +93,13 @@ double? brushInputValue(BrushDab dab, BrushInputSource source) =>
       // with a 0% minimum that is a stroke that vanishes on a mouse. There
       // is no "the device said nothing" value to tell that case apart from a
       // genuinely upright pen; see the board card `brush-tilt-no-device-Q1`.
-      BrushInputSource.tilt => 1.0 - dab.tiltAltitude,
+      // ⚠️NULL propagates: a device that reported no tilt cannot answer, and
+      // `_factorFor` skips a source it cannot answer for. 유저 2026-09-09
+      // (`brush-tilt-no-device-Q1` 답 1). Before this, a mouse arrived as an
+      // upright pen and a 0% tilt minimum erased the stroke.
+      BrushInputSource.tilt => dab.tiltAltitude == null
+          ? null
+          : 1.0 - dab.tiltAltitude!,
       // The dab already holds the RATIO, not px/s: the pen door divides by
       // the user's reference speed once, where pressure and tilt are
       // normalized too. See `AppInput.normalizedSpeed`.
