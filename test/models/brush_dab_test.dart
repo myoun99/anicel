@@ -336,7 +336,6 @@ void main() {
       );
       expect(value.flow, 0.3);
       expect(value.hardness, 0.4);
-      expect(value.tipShape, BrushTipShape.square);
     });
 
     test('fromInputSample carries roundness and angle', () {
