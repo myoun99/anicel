@@ -115,7 +115,6 @@ class ExportCelLayerRow extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     const axis = Axis.horizontal;
     final depth = layers.ancestryOf(layer.folderId).length;
-    final idValue = '${layer.id}';
     final row = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -130,37 +129,7 @@ class ExportCelLayerRow extends StatelessWidget {
             ),
           ),
         ),
-        layerRailSlot(
-          axis,
-          layerLabelSlotWidth,
-          LayerMarkPlates(mark: layer.mark),
-        ),
-        layerRailSlot(axis, layerRailSectionGap),
-        // The attach arrow rides the sheet slot on the rail too (R10 R3).
-        layerRailSlot(
-          axis,
-          layerTimesheetSlotWidth,
-          isAttachedLayer(layer)
-              ? LayerAttachArrowCell(
-                  keyPrefix: keyPrefix,
-                  idValue: idValue,
-                  placement: layer.attachedPlacement,
-                )
-              : null,
-        ),
-        layerRailSlot(axis, layerControlChipGap),
-        layerRailSlot(
-          axis,
-          layerTypeSlotWidth,
-          LayerTypeButton(
-            keyPrefix: keyPrefix,
-            idValue: idValue,
-            kind: layer.kind,
-            folderCollapsed: layer.collapsed,
-            onTap: onToggle,
-          ),
-        ),
-        layerRailSlot(axis, layerControlChipGap),
+        ..._railCells(axis),
         ?layerRailDepthGuides(axis, depth, color: colorScheme.outlineVariant),
         Expanded(
           child: Align(
@@ -185,5 +154,40 @@ class ExportCelLayerRow extends StatelessWidget {
         child: row,
       ),
     );
+  }
+
+  /// The rail's leading cells at the rail's slot widths: mark plates, the
+  /// attach arrow in the sheet slot, the type button.
+  List<Widget> _railCells(Axis axis) {
+    final idValue = '${layer.id}';
+    return [
+      layerRailSlot(axis, layerLabelSlotWidth, LayerMarkPlates(mark: layer.mark)),
+      layerRailSlot(axis, layerRailSectionGap),
+      // The attach arrow rides the sheet slot on the rail too (R10 R3).
+      layerRailSlot(
+        axis,
+        layerTimesheetSlotWidth,
+        isAttachedLayer(layer)
+            ? LayerAttachArrowCell(
+                keyPrefix: keyPrefix,
+                idValue: idValue,
+                placement: layer.attachedPlacement,
+              )
+            : null,
+      ),
+      layerRailSlot(axis, layerControlChipGap),
+      layerRailSlot(
+        axis,
+        layerTypeSlotWidth,
+        LayerTypeButton(
+          keyPrefix: keyPrefix,
+          idValue: idValue,
+          kind: layer.kind,
+          folderCollapsed: layer.collapsed,
+          onTap: onToggle,
+        ),
+      ),
+      layerRailSlot(axis, layerControlChipGap),
+    ];
   }
 }

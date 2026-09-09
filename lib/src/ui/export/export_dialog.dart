@@ -459,36 +459,7 @@ class ExportDialogState extends State<ExportDialog> {
     final currentIndex = entries.isEmpty
         ? -1
         : _celPosition.clamp(0, entries.length - 1);
-    final rows = <_CelBundleRow>[];
-    var index = 0;
-    for (final bundle in plan.bundles) {
-      rows.add((
-        layer: bundle.axis,
-        mark: bundle.axis.mark,
-        first: index,
-        count: bundle.sheets.length,
-        skipped: bundle.sheets.first.skipped,
-        tickable: true,
-      ));
-      index += bundle.sheets.length;
-    }
-    final instructions = plan.instructions;
-    for (var i = 0; i < instructions.length;) {
-      final layer = instructions[i].layer;
-      var end = i;
-      while (end < instructions.length && instructions[end].layer.id == layer.id) {
-        end += 1;
-      }
-      rows.add((
-        layer: layer,
-        mark: null,
-        first: plan.cels.length + i,
-        count: end - i,
-        skipped: false,
-        tickable: false,
-      ));
-      i = end;
-    }
+    final rows = _celBundleRows(plan);
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: AppShapes.container(
@@ -522,6 +493,43 @@ class ExportDialogState extends State<ExportDialog> {
         ],
       ),
     );
+  }
+
+  /// The list's rows over the plan's flat entry order: one per bundle, then
+  /// one per instruction row (its events are adjacent in the plan, so a run
+  /// of the same layer is one row).
+  List<_CelBundleRow> _celBundleRows(ExportCelGroupPlan plan) {
+    final rows = <_CelBundleRow>[];
+    var index = 0;
+    for (final bundle in plan.bundles) {
+      rows.add((
+        layer: bundle.axis,
+        mark: bundle.axis.mark,
+        first: index,
+        count: bundle.sheets.length,
+        skipped: bundle.sheets.first.skipped,
+        tickable: true,
+      ));
+      index += bundle.sheets.length;
+    }
+    final instructions = plan.instructions;
+    for (var i = 0; i < instructions.length;) {
+      final layer = instructions[i].layer;
+      var end = i;
+      while (end < instructions.length && instructions[end].layer.id == layer.id) {
+        end += 1;
+      }
+      rows.add((
+        layer: layer,
+        mark: null,
+        first: plan.cels.length + i,
+        count: end - i,
+        skipped: false,
+        tickable: false,
+      ));
+      i = end;
+    }
+    return rows;
   }
 
   Widget _celBundleItem(
@@ -3249,14 +3257,6 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.cels;
     final strings = AppText.strings;
     final selection = _activeCelsSelection();
-    final custom = _celSelectionIsCustom;
-    ExportPillItem toggle(String keyValue, String label, bool on, CelsExportSpec Function() write) =>
-        ExportPillItem(
-          keyValue: keyValue,
-          label: label,
-          selected: on,
-          onTap: _isExporting ? null : () => _updateSpec(write()),
-        );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3272,74 +3272,89 @@ class ExportDialogState extends State<ExportDialog> {
             ],
           ),
         ),
-        ExportModuleRow(
-          label: strings.exApply,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ExportPillStrip(
-              items: [
-                toggle(
-                  'export-cels-apply-paper',
-                  strings.exPaperLabel,
-                  spec.applyPaper,
-                  () => spec.copyWith(applyPaper: !spec.applyPaper),
-                ),
-              ],
-            ),
+        _celSwitchRow(
+          strings.exApply,
+          _specSwitch(
+            'export-cels-apply-paper',
+            strings.exPaperLabel,
+            spec.applyPaper,
+            () => spec.copyWith(applyPaper: !spec.applyPaper),
           ),
         ),
-        ExportModuleRow(
-          label: strings.exAdd,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ExportPillStrip(
-              items: [
-                toggle(
-                  'export-cels-add-art',
-                  strings.exArtLabel,
-                  spec.addArt,
-                  () => spec.copyWith(addArt: !spec.addArt),
-                ),
-              ],
-            ),
+        _celSwitchRow(
+          strings.exAdd,
+          _specSwitch(
+            'export-cels-add-art',
+            strings.exArtLabel,
+            spec.addArt,
+            () => spec.copyWith(addArt: !spec.addArt),
           ),
         ),
-        ExportModuleRow(
-          label: strings.exSelect,
-          // Two strips, not one: the presets and 커스텀 are different kinds
-          // of thing (유저: 「그룹 다르니 두개 그룹 나눠서」).
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              ExportPillStrip(
-                items: [
-                  for (final preset in CelsSelectionPreset.values)
-                    ExportPillItem(
-                      keyValue: 'export-cels-select-${preset.jsonValue}',
-                      label: exportCelPresetLabel(preset),
-                      selected: !custom && spec.selection == preset,
-                      onTap: _isExporting
-                          ? null
-                          : () => _applyCelPreset(preset),
-                    ),
-                ],
-              ),
-              ExportPillStrip(
-                items: [
-                  ExportPillItem(
-                    keyValue: 'export-cels-select-custom',
-                    label: strings.exSelCustom,
-                    selected: custom,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _celSelectionRow(spec),
         Divider(height: 8, color: theme.dividerColor),
         for (final layer in _celListRows()) _celListRow(layer, selection),
       ],
+    );
+  }
+
+  /// 적용 · 추가: a one-pill strip that is a switch — the same control the
+  /// grouped choices wear, holding a single answer.
+  Widget _celSwitchRow(String label, ExportPillItem item) => ExportModuleRow(
+    label: label,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: ExportPillStrip(items: [item]),
+    ),
+  );
+
+  /// A pill that flips one spec field — lit while [on], writing [write]'s
+  /// spec on tap, dead while an export runs.
+  ExportPillItem _specSwitch(
+    String keyValue,
+    String label,
+    bool on,
+    CelsExportSpec Function() write,
+  ) => ExportPillItem(
+    keyValue: keyValue,
+    label: label,
+    selected: on,
+    onTap: _isExporting ? null : () => _updateSpec(write()),
+  );
+
+  /// 선택: the four presets in one strip and 「커스텀」 in its own — two
+  /// strips, not one, because the presets and 커스텀 are different kinds of
+  /// thing (유저: 「그룹 다르니 두개 그룹 나눠서」). 커스텀 is a state the
+  /// delta puts the cut in, so it lights and takes no tap.
+  Widget _celSelectionRow(CelsExportSpec spec) {
+    final custom = _celSelectionIsCustom;
+    return ExportModuleRow(
+      label: AppText.strings.exSelect,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          ExportPillStrip(
+            items: [
+              for (final preset in CelsSelectionPreset.values)
+                ExportPillItem(
+                  keyValue: 'export-cels-select-${preset.jsonValue}',
+                  label: exportCelPresetLabel(preset),
+                  selected: !custom && spec.selection == preset,
+                  onTap: _isExporting ? null : () => _applyCelPreset(preset),
+                ),
+            ],
+          ),
+          ExportPillStrip(
+            items: [
+              ExportPillItem(
+                keyValue: 'export-cels-select-custom',
+                label: AppText.strings.exSelCustom,
+                selected: custom,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
