@@ -133,23 +133,33 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
     case LayerKind.storyboard:
     case LayerKind.image:
     case LayerKind.text:
-      if (isExportPaperRow(layer)) {
-        return false;
-      }
-      if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
-        return false;
-      }
-      if (!_sheetAdmits(layer, layers, spec)) {
-        return false;
-      }
-      final wearsLabel =
-          markWearsLabel(layer.mark, spec.label) ||
-          (spec.addArt && layer.mark.process == LayerProcess.art);
-      if (!wearsLabel) {
-        return false;
-      }
-      return spec.take == null || layer.mark.take == spec.take;
+      return _drawingCelExports(layer, layers, spec);
   }
+}
+
+/// The FILTER STACK on a drawing row, in the order the window shows it:
+/// 기준/부속 · 시트 · 색라벨(+미술) · 테이크. Every one of them only takes
+/// rows away — 유저 2026-09-09: 「진짜 여러 항목이 필터로 작동하는거지」.
+///
+/// A paper row is not one of the exported cels at all: it is the sheet the
+/// others are composited onto ([isExportPaperRow], 적용 항목).
+bool _drawingCelExports(Layer layer, List<Layer> layers, CelsExportSpec spec) {
+  if (isExportPaperRow(layer)) {
+    return false;
+  }
+  if (!(isAttachedLayer(layer) ? spec.attach : spec.base)) {
+    return false;
+  }
+  if (!_sheetAdmits(layer, layers, spec)) {
+    return false;
+  }
+  final wearsLabel =
+      markWearsLabel(layer.mark, spec.label) ||
+      (spec.addArt && layer.mark.process == LayerProcess.art);
+  if (!wearsLabel) {
+    return false;
+  }
+  return spec.take == null || layer.mark.take == spec.take;
 }
 
 /// The 시트 filter: off, everything passes; on, a row passes when it — or,

@@ -34,36 +34,50 @@ class PngSequenceExportService {
       }
       final image = await renderImage(index);
       if (image != null) {
-        try {
-          final List<int>? fileBytes;
-          if (encode != null) {
-            fileBytes = await encode(image);
-          } else {
-            final bytes = await image.toByteData(
-              format: ui.ImageByteFormat.png,
-            );
-            // C1-v1: delivered PNGs declare the working color space
-            // (sRGB) so downstream tools stop guessing. Pixels untouched.
-            fileBytes = bytes == null
-                ? null
-                : tagPngAsSrgb(bytes.buffer.asUint8List());
-          }
-          if (fileBytes != null) {
-            final file = File(
-              '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}',
-            );
-            // File names may carry subfolders (per-cut/per-layer cels).
-            await file.parent.create(recursive: true);
-            await file.writeAsBytes(fileBytes, flush: true);
-            written += 1;
-          }
-        } finally {
-          image.dispose();
+        final path =
+            '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}';
+        if (await _writeOneImage(image, path, encode)) {
+          written += 1;
         }
       }
       processed += 1;
       onProgress?.call(processed, count);
     }
     return (written: written, processed: processed);
+  }
+
+  /// Encodes [image] and writes it at [path]; false = nothing to write
+  /// (the encoder had no bytes for it), which the caller counts the same
+  /// way it counts a null render.
+  ///
+  /// ⚠️It OWNS the image: disposed here whichever way the encode goes.
+  Future<bool> _writeOneImage(
+    ui.Image image,
+    String path,
+    Future<List<int>?> Function(ui.Image image)? encode,
+  ) async {
+    try {
+      final List<int>? fileBytes;
+      if (encode != null) {
+        fileBytes = await encode(image);
+      } else {
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        // C1-v1: delivered PNGs declare the working color space (sRGB) so
+        // downstream tools stop guessing. Pixels untouched.
+        fileBytes = bytes == null
+            ? null
+            : tagPngAsSrgb(bytes.buffer.asUint8List());
+      }
+      if (fileBytes == null) {
+        return false;
+      }
+      final file = File(path);
+      // File names may carry subfolders (per-cut/per-layer cels).
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(fileBytes, flush: true);
+      return true;
+    } finally {
+      image.dispose();
+    }
   }
 }

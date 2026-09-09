@@ -127,31 +127,11 @@ class VideoExportService {
     final padFilter =
         'pad=ceil(iw/2)*2:ceil(ih/2)*2:color=${keepAlpha ? 'black@0.0' : 'white'}';
     final video = <String>[
-      if (codec.isProRes) ...[
-        '-c:v',
-        'prores_ks',
-        '-profile:v',
-        '${codec.proresKsProfile}',
-        '-vendor',
-        'apl0',
-        '-pix_fmt',
-        if (codec == ExportVideoCodec.prores4444)
-          keepAlpha ? 'yuva444p10le' : 'yuv444p10le'
-        else
-          'yuv422p10le',
-      ] else ...[
-        '-c:v',
-        if (codec == ExportVideoCodec.h265) 'libx265' else 'libx264',
-        '-pix_fmt',
-        'yuv420p',
-        if (bitrateBps > 0) ...[
-          '-b:v',
-          '$bitrateBps',
-        ] else ...[
-          '-crf',
-          if (codec == ExportVideoCodec.h265) '20' else '18',
-        ],
-      ],
+      ..._videoCodecArguments(
+        codec: codec,
+        keepAlpha: keepAlpha,
+        bitrateBps: bitrateBps,
+      ),
       '-vf',
       padFilter,
     ];
@@ -182,6 +162,42 @@ class VideoExportService {
       outputFilePath,
     ]);
   }
+
+  /// The codec's own half of the argument list: which encoder, which pixel
+  /// format, and how the rate is asked for. ProRes carries its profile and
+  /// the 10-bit 4:4:4 flavors (alpha only in 4444); the H.26x pair take a
+  /// bitrate when one was asked for and a per-codec CRF otherwise.
+  static List<String> _videoCodecArguments({
+    required ExportVideoCodec codec,
+    required bool keepAlpha,
+    required int bitrateBps,
+  }) => [
+    if (codec.isProRes) ...[
+      '-c:v',
+      'prores_ks',
+      '-profile:v',
+      '${codec.proresKsProfile}',
+      '-vendor',
+      'apl0',
+      '-pix_fmt',
+      if (codec == ExportVideoCodec.prores4444)
+        keepAlpha ? 'yuva444p10le' : 'yuv444p10le'
+      else
+        'yuv422p10le',
+    ] else ...[
+      '-c:v',
+      if (codec == ExportVideoCodec.h265) 'libx265' else 'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      if (bitrateBps > 0) ...[
+        '-b:v',
+        '$bitrateBps',
+      ] else ...[
+        '-crf',
+        if (codec == ExportVideoCodec.h265) '20' else '18',
+      ],
+    ],
+  ];
 
   Future<ExportWriteSummary> exportVideo({
     required int count,
@@ -234,6 +250,51 @@ class VideoExportService {
     );
   }
 
+  /// The FIRST frame that renders, and how far the run got finding it.
+  ///
+  /// ⚠️Its size is the geometry the encoder opens with, so the search
+  /// cannot be skipped: a leading gap renders null and would open the
+  /// encoder at nothing. A null [image] with [cancelled] false means the
+  /// whole range rendered nothing.
+  Future<({ui.Image? image, int nextIndex, int processed, bool cancelled})>
+  _firstRenderedFrame({
+    required int count,
+    required Future<ui.Image?> Function(int index) renderImage,
+    required void Function(int completed, int total)? onProgress,
+    required bool Function()? isCancelled,
+  }) async {
+    var processed = 0;
+    var index = 0;
+    while (index < count) {
+      if (isCancelled?.call() ?? false) {
+        return (
+          image: null,
+          nextIndex: index,
+          processed: processed,
+          cancelled: true,
+        );
+      }
+      final image = await renderImage(index);
+      index += 1;
+      processed += 1;
+      onProgress?.call(processed, count);
+      if (image != null) {
+        return (
+          image: image,
+          nextIndex: index,
+          processed: processed,
+          cancelled: false,
+        );
+      }
+    }
+    return (
+      image: null,
+      nextIndex: index,
+      processed: processed,
+      cancelled: false,
+    );
+  }
+
   /// The OS-encoder run: raw RGBA frames straight into the system H.264
   /// encoder, the mixed WAV read back in per-frame chunks and fed to the
   /// system AAC encoder — interleaved, so neither side buffers the track.
@@ -254,23 +315,18 @@ class VideoExportService {
     if (count <= 0) {
       return (written: 0, processed: 0);
     }
-    var processed = 0;
-
-    // The first renderable frame decides the geometry.
-    ui.Image? first;
-    var index = 0;
-    while (index < count) {
-      if (isCancelled?.call() ?? false) {
-        return (written: 0, processed: processed);
-      }
-      first = await renderImage(index);
-      index += 1;
-      processed += 1;
-      onProgress?.call(processed, count);
-      if (first != null) {
-        break;
-      }
+    final probe = await _firstRenderedFrame(
+      count: count,
+      renderImage: renderImage,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
+    );
+    var processed = probe.processed;
+    var index = probe.nextIndex;
+    if (probe.cancelled) {
+      return (written: 0, processed: processed);
     }
+    final first = probe.image;
     if (first == null) {
       // Nothing rendered at all — same outcome the pipe path reports.
       throw const VideoExportException('video export: nothing rendered');
@@ -323,6 +379,21 @@ class VideoExportService {
       onProgress?.call(processed, count);
     }
 
+    _closeOsEncoder(encoder, failed: failed, cancelled: cancelled);
+    return (written: feed.written, processed: processed);
+  }
+
+  /// Ends the OS-encoder run: a failed feed aborts the file, anything else
+  /// finalizes it.
+  ///
+  /// A CANCELLED run finalizes a playable partial — the pipe path's
+  /// behavior, kept. ⚠️Untested (2026-09-05): nothing cancels the OS path
+  /// mid-run yet, so `&& !cancelled` mutates away green.
+  static void _closeOsEncoder(
+    QaVideoEncoder encoder, {
+    required bool failed,
+    required bool cancelled,
+  }) {
     if (failed) {
       final detail = encoder.lastError;
       encoder.abort();
@@ -330,16 +401,12 @@ class VideoExportService {
         detail.isEmpty ? 'video export: the OS encoder failed' : detail,
       );
     }
-    // A cancelled run finalizes a playable partial — the pipe path's
-    // behavior, kept. ⚠️Untested (2026-09-05): nothing cancels the OS
-    // path mid-run yet, so `&& !cancelled` mutates away green.
     if (!encoder.finish() && !cancelled) {
       final detail = encoder.lastError;
       throw VideoExportException(
         detail.isEmpty ? 'video export: the MP4 failed to finalize' : detail,
       );
     }
-    return (written: feed.written, processed: processed);
   }
 
   Future<ExportWriteSummary> _exportViaFfmpeg({
@@ -376,21 +443,7 @@ class VideoExportService {
     }
 
     final stderrTail = StringBuffer();
-    final stderrDone = process.stderr
-        .transform(utf8.decoder)
-        .forEach((chunk) {
-          stderrTail.write(chunk);
-          // Keep only the tail: ffmpeg logs a lot and only the last lines
-          // explain a failure.
-          const cap = 4000;
-          if (stderrTail.length > cap * 2) {
-            final kept = stderrTail.toString();
-            stderrTail
-              ..clear()
-              ..write(kept.substring(kept.length - cap));
-          }
-        })
-        .catchError((Object _) {});
+    final stderrDone = _drainStderrTail(process, into: stderrTail);
     final stdoutDone = process.stdout.drain<void>().catchError((Object _) {});
 
     var written = 0;
@@ -443,18 +496,46 @@ class VideoExportService {
     // A cancelled run keeps whatever partial video ffmpeg finalized; only a
     // completed run that failed to encode is an error.
     if (!cancelled && (exitCode != 0 || pipeBroken)) {
-      final tail = stderrTail.toString().trim();
-      final lines = tail.isEmpty
-          ? 'no ffmpeg output'
-          : (tail.split('\n')..removeWhere((line) => line.trim().isEmpty))
-                .reversed
-                .take(3)
-                .toList()
-                .reversed
-                .join('\n');
-      throw VideoExportException('ffmpeg failed (exit $exitCode): $lines');
+      throw VideoExportException(
+        'ffmpeg failed (exit $exitCode): ${_lastLinesOf(stderrTail)}',
+      );
     }
     return (written: written, processed: processed);
+  }
+
+  /// Reads the process's stderr into [into], keeping only the TAIL: ffmpeg
+  /// logs a lot and only the last lines explain a failure. Never throws —
+  /// a stream that dies with the process must not replace the real error.
+  static Future<void> _drainStderrTail(
+    Process process, {
+    required StringBuffer into,
+  }) => process.stderr
+      .transform(utf8.decoder)
+      .forEach((chunk) {
+        into.write(chunk);
+        const cap = 4000;
+        if (into.length > cap * 2) {
+          final kept = into.toString();
+          into
+            ..clear()
+            ..write(kept.substring(kept.length - cap));
+        }
+      })
+      .catchError((Object _) {});
+
+  /// The last three non-empty lines of [tail] — what a failed ffmpeg run
+  /// says, without the hundred lines of banner in front of it.
+  static String _lastLinesOf(StringBuffer tail) {
+    final text = tail.toString().trim();
+    if (text.isEmpty) {
+      return 'no ffmpeg output';
+    }
+    return (text.split('\n')..removeWhere((line) => line.trim().isEmpty))
+        .reversed
+        .take(3)
+        .toList()
+        .reversed
+        .join('\n');
   }
 }
 

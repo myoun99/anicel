@@ -282,6 +282,27 @@ int _runEndFrom(
   return runEnd;
 }
 
+/// Whether this block is the one that lays the span reaching [exportPos]:
+/// the block it STARTS in, or — only at a run start, where nothing before
+/// it could have laid the span — a block it spills into from earlier.
+///
+/// ⚠️ONCE, and only once: a span crossing three blocks is laid by the
+/// first of them and runs to its true end, so the two questions have to be
+/// asked together or a spill-in gets a second copy.
+bool _spanIsLaidAt(
+  _ExportBlock block, {
+  required int exportPos,
+  required int lengthFrames,
+  required bool isRunStart,
+}) {
+  if (exportPos >= block.start && exportPos < block.end) {
+    return true;
+  }
+  return isRunStart &&
+      exportPos < block.start &&
+      exportPos + lengthFrames > block.start;
+}
+
 /// Track-owned SE rows: spans sit on the track's global axis and may
 /// cross cut boundaries. Each span is laid ONCE — at the block where it
 /// starts, or a run-start block it spills into — and runs to its true
@@ -316,12 +337,12 @@ Iterable<ScheduledAudioClip> _trackOwnedSpans(
     }
     for (final span in seAudioSpans(layer)) {
       final exportPos = block.start + (span.startFrame - windowTrackStart);
-      final startsHere = exportPos >= block.start && exportPos < block.end;
-      final spillsIn =
-          isRunStart &&
-          exportPos < block.start &&
-          exportPos + span.lengthFrames > block.start;
-      if (!startsHere && !spillsIn) {
+      if (!_spanIsLaidAt(
+        block,
+        exportPos: exportPos,
+        lengthFrames: span.lengthFrames,
+        isRunStart: isRunStart,
+      )) {
         continue;
       }
       final clip = _trimmedExportClip(

@@ -17,6 +17,7 @@ import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
         TrackStackContribution,
+        TransitionContribution,
         resolveTrackStackContributions,
         resolveTransitionContributions,
         sourceOverWeights,
@@ -115,6 +116,29 @@ class ExportFrameRenderer {
   void _retainSurfacesFor(Iterable<CutId> cutIds) {
     final keep = cutIds.toSet();
     _surfacesByCut.removeWhere((cutId, _) => !keep.contains(cutId));
+  }
+
+  /// Holds the cels of every cut about to be drawn and returns each
+  /// contribution's UNIT ALPHA: its own share of the frame times its
+  /// track's static opacity and fade.
+  ///
+  /// ⚠️Both bakes below need exactly this before they can weigh anything,
+  /// and they weigh it differently afterwards ([sourceOverWeights] within
+  /// one canvas, [trackGroupSourceOverWeights] across tracks). The half
+  /// they share is here; the half they don't stays at the call site.
+  List<double> _retainAndUnitAlphas(
+    List<({Cut cut, double opacity})> contributions, {
+    Iterable<CutId> alsoRetain = const [],
+  }) {
+    _retainSurfacesFor([
+      ...alsoRetain,
+      for (final contribution in contributions) contribution.cut.id,
+    ]);
+    return [
+      for (final contribution in contributions)
+        contribution.opacity *
+            session.opacityVerbs.trackStaticOpacityForCut(contribution.cut.id),
+    ];
   }
 
   /// Canvas-space composites for the stack bake: TRANSPARENT backing, so
@@ -344,18 +368,19 @@ class ExportFrameRenderer {
     }
   }
 
-  /// A CANVAS-size video frame that two cuts share, because a transition
-  /// reaches across the boundary here — null when this frame has only one
-  /// contribution (the ordinary bake) or when the contributing cuts disagree
-  /// on their canvas size (no shared space to mix in).
+  /// The cuts this frame is mixed from and the space they share — null when
+  /// only one cut contributes (the ordinary bake) or when the contributors
+  /// disagree on their canvas size, which leaves no shared space to mix in.
   ///
-  /// Each cut is drawn with its own track pose, chain and unit weight, in the
-  /// order the resolver returns them (leaving cut first) — the camera path's
-  /// rules, in canvas space instead of the camera frame.
-  Future<ui.Image?> _canvasSpaceTransitionFrame(
-    ExportFrameTask task, {
-    required bool preserveAlpha,
-  }) async {
+  /// The weights come out already source-over composed, and the surfaces of
+  /// every contributing cut are retained before the caller starts drawing.
+  ({
+    List<TransitionContribution> contributions,
+    CanvasSize size,
+    List<double> weights,
+    int globalFrame,
+  })?
+  _sharedTransitionSpace(ExportFrameTask task) {
     final layout = _stackLayout ??= buildStoryboardTimelineLayout(
       session.repository.requireProject(),
     );
@@ -384,16 +409,38 @@ class ExportFrameRenderer {
         return null;
       }
     }
-    _retainSurfacesFor([
-      for (final contribution in contributions) contribution.cut.id,
-    ]);
-
-    final unitAlphas = <double>[
+    final unitAlphas = _retainAndUnitAlphas([
       for (final contribution in contributions)
-        contribution.opacity *
-            session.opacityVerbs.trackStaticOpacityForCut(contribution.cut.id),
-    ];
-    final weights = sourceOverWeights(unitAlphas);
+        (cut: contribution.cut, opacity: contribution.opacity),
+    ]);
+    return (
+      contributions: contributions,
+      size: size,
+      weights: sourceOverWeights(unitAlphas),
+      globalFrame: globalFrame,
+    );
+  }
+
+  /// A CANVAS-size video frame that two cuts share, because a transition
+  /// reaches across the boundary here — null when this frame has only one
+  /// contribution (the ordinary bake) or when the contributing cuts disagree
+  /// on their canvas size (no shared space to mix in).
+  ///
+  /// Each cut is drawn with its own track pose, chain and unit weight, in the
+  /// order the resolver returns them (leaving cut first) — the camera path's
+  /// rules, in canvas space instead of the camera frame.
+  Future<ui.Image?> _canvasSpaceTransitionFrame(
+    ExportFrameTask task, {
+    required bool preserveAlpha,
+  }) async {
+    final shared = _sharedTransitionSpace(task);
+    if (shared == null) {
+      return null;
+    }
+    final contributions = shared.contributions;
+    final size = shared.size;
+    final weights = shared.weights;
+    final globalFrame = shared.globalFrame;
 
     final bounds = ui.Rect.fromLTWH(
       0,
@@ -486,18 +533,16 @@ class ExportFrameRenderer {
       spansOf: session.transitions.transitionSpansOfTrack,
       globalFrameIndex: globalFrame,
     );
-    _retainSurfacesFor([
-      task.cut.id,
-      for (final position in positions) position.cutId,
-    ]);
-    // The unit alpha per contribution — its transition share times the
-    // track's opacity and fade — and the source-over weights that make the
-    // stack read as that mix (see [sourceOverWeights]).
-    final unitAlphas = <double>[
-      for (final position in positions)
-        position.opacity *
-            session.opacityVerbs.trackStaticOpacityForCut(position.cut.id),
-    ];
+    // The unit alphas, and then the source-over weights that make the stack
+    // read as that mix (see [sourceOverWeights]) — grouped by track here,
+    // because an upper track thins only its own contribution.
+    final unitAlphas = _retainAndUnitAlphas(
+      [
+        for (final position in positions)
+          (cut: position.cut, opacity: position.opacity),
+      ],
+      alsoRetain: [task.cut.id],
+    );
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
     final size = session.camera.cameraFrameSize;
