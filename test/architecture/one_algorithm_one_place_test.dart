@@ -41,8 +41,31 @@ import '../../tool/refactor/clone_scan.dart';
 /// for a shape seen twice. 🔜**The third index-to-enum importer merges all
 /// three and lowers this back**; it will most likely arrive from the .abr
 /// side, which has its own menus to map.
+/// 88 → 89 (2026-09-10, the preset name's ink). The new pair is named:
+///
+///     54 tokens
+///       lib/src/ui/brush/brush_stroke_preview_cache.dart
+///         brushStrokeNameGroundCoverage
+///       lib/src/ui/timeline/timeline_grid_tile_store.dart
+///         TimelineGridTileStore.boxFilterA8
+///
+/// The shared core is real: sum an A8 rectangle over a width-strided buffer
+/// and divide by the count. So the reading CONFIRMS the candidate.
+///
+/// ⛔It is not merged, and this one is not the rule of three — it is the
+/// SUBJECT. `boxFilterA8` resamples a bitmap: it walks that kernel once per
+/// destination pixel and its whole argument (the decision comment above it)
+/// is about averaging rather than point-sampling. The brush measures ONE
+/// rectangle to answer "how dark is it where the name goes", which is a
+/// legibility question, not a resampling one. A shared `meanA8Rect` would
+/// have to live outside both subsystems and would leave each caller with a
+/// helper that explains neither of them — the count rising with a reason is
+/// what this ratchet is FOR, and the alternative is the number-chasing the
+/// complexity section refuses.
+/// 🔜**A third rectangle-mean makes it a law**, and then it is extracted and
+/// this comes back down.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
