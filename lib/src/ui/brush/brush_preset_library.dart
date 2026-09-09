@@ -375,13 +375,39 @@ class BrushPresetLibrary extends ChangeNotifier {
     return 'Preset $index';
   }
 
+  /// The write in flight, and the snapshot waiting behind it.
+  ///
+  /// 🚨ONE WRITER, IN CALL ORDER. Eleven mutators call [_persist] and it used
+  /// to fire each save off unawaited with nothing serializing them: two edits
+  /// a frame apart raced, and "last write wins" meant last to FINISH, not
+  /// last called — so a rename could land on disk after the delete that
+  /// followed it and bring the preset back on the next load.
+  ///
+  /// ⚠️Only the NEWEST snapshot is kept while a write is in flight. The
+  /// in-between states of a drag-reorder are not worth a write each, and
+  /// skipping them cannot lose anything: every one of them is a prefix of
+  /// the state the last snapshot already holds.
+  Future<void>? _writing;
+  ({List<BrushGroup> groups, List<BrushPreset> presets})? _pendingWrite;
+
   void _persist() {
     // Fire-and-forget: preset persistence must never block or crash the
     // editor; a failed write just leaves the in-memory library unsaved.
-    unawaited(
-      _fileService
-          .save((groups: _groups, presets: _presets))
-          .catchError((Object _) {}),
-    );
+    _pendingWrite = (groups: _groups, presets: _presets);
+    _writing ??= _drainWrites();
+  }
+
+  Future<void> _drainWrites() async {
+    while (_pendingWrite != null) {
+      final snapshot = _pendingWrite!;
+      _pendingWrite = null;
+      try {
+        await _fileService.save(snapshot);
+      } on Object {
+        // Same contract as before: a failed write leaves the library
+        // unsaved and never reaches the editor.
+      }
+    }
+    _writing = null;
   }
 }

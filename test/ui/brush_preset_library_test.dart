@@ -468,4 +468,89 @@ void main() {
       expect(merged.presets.single.groupId, importedBrushGroupId('Noah'));
     });
   });
+
+  group('🚨the library writes ONE AT A TIME, in call order', () {
+    test('a second edit does not start a second write', () async {
+      // Eleven mutators persist, and they used to fire each save unawaited
+      // with nothing serializing them. Two edits a frame apart raced, and
+      // "last write wins" meant last to FINISH, not last called — a rename
+      // could land after the delete that followed it and bring the preset
+      // back on the next load.
+      final writer = _RecordingFileService(
+        '${tempDirectory.path}/serialized.json',
+      );
+      final library = BrushPresetLibrary(fileService: writer);
+
+      library.saveCurrent(BrushSettings(size: 5));
+      library.saveCurrent(BrushSettings(size: 6));
+      library.saveCurrent(BrushSettings(size: 7));
+
+      expect(
+        writer.maximumOverlap,
+        1,
+        reason: 'two saves must never be in flight together',
+      );
+
+      await writer.settled;
+
+      // ...and the newest state is what the file ends up holding.
+      expect(writer.applied.last, library.presets.length);
+      library.dispose();
+    });
+
+    test('the states BETWEEN two edits may be skipped, the last may not', () async {
+      final writer = _RecordingFileService(
+        '${tempDirectory.path}/coalesced.json',
+      );
+      final library = BrushPresetLibrary(fileService: writer);
+
+      for (var i = 0; i < 6; i += 1) {
+        library.saveCurrent(BrushSettings(size: 5));
+      }
+      await writer.settled;
+
+      expect(
+        writer.applied.length,
+        lessThan(6),
+        reason: 'the in-between states of a burst are not worth a write each',
+      );
+      expect(writer.applied.last, 6);
+      library.dispose();
+    });
+  });
+}
+
+/// A file service that records what it was asked to write and how many
+/// writes were in flight at once.
+class _RecordingFileService extends BrushPresetFileService {
+  _RecordingFileService(String path) : super(filePath: path);
+
+  /// Preset counts, in the order they reached the disk.
+  final List<int> applied = [];
+
+  int _inFlight = 0;
+  int maximumOverlap = 0;
+  Future<void> _tail = Future<void>.value();
+
+  /// Completes once every write this service has been handed has finished.
+  Future<void> get settled async {
+    // Two turns: the first lets the drain start the write it queued, the
+    // second lets the loop notice a snapshot that arrived while it ran.
+    for (var turn = 0; turn < 8; turn += 1) {
+      await _tail;
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  @override
+  Future<void> save(BrushPresetLibraryData library) {
+    _inFlight += 1;
+    maximumOverlap = maximumOverlap > _inFlight ? maximumOverlap : _inFlight;
+    final done = Future<void>.delayed(const Duration(milliseconds: 5), () {
+      applied.add(library.presets.length);
+      _inFlight -= 1;
+    });
+    _tail = done;
+    return done;
+  }
 }

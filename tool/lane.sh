@@ -77,8 +77,34 @@ cmd_open() {
   # makes a lane that wants to rebuild re-configure in its own directory,
   # which is the only correct answer.
   rm -f "$p/build/native_standalone/CMakeCache.txt"
+  warn_if_engine_is_stale
   (cd "$p" && flutter pub get >/dev/null 2>&1)
   echo "$p"
+}
+
+# 🚨THE COPIED ENGINE CAN BE OLDER THAN THE C IT CAME FROM, and an ABI bump
+# turns that into SEVENTY red tests at once (2026-09-09, v32: audio, video,
+# resample and every parity pin, all saying the same thing — "the engine did
+# not load — an ABI mismatch after a bump is the usual cause"). One cause,
+# one line, and a whole gate run to find it.
+#
+# ⚠️Measured in the MAIN CHECKOUT, never in the lane: the lane's sources were
+# written by `worktree add` seconds ago, so there every .c looks newer than
+# every binary and the check would fire always and mean nothing.
+warn_if_engine_is_stale() {
+  local src="$ROOT/packages/qa_native/src"
+  local dll
+  for dll in "$ROOT/build/native_standalone/Release/qa_engine.dll" \
+             "$ROOT/build/native_standalone/libqa_engine.dylib" \
+             "$ROOT/build/native_standalone/libqa_engine.so"; do
+    [ -f "$dll" ] || continue
+    [ -n "$(find "$src" -type f -newer "$dll" -print -quit 2>/dev/null)" ] || return 0
+    echo "lane: ⚠️the engine this lane copied is OLDER than packages/qa_native/src." >&2
+    echo "lane:   Rebuild it IN THE LANE before you gate, or every native pin fails at once:" >&2
+    echo "lane:   cmake -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release" >&2
+    echo "lane:   cmake --build build/native_standalone --config Release" >&2
+    return 0
+  done
 }
 
 cmd_list() {
