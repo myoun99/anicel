@@ -52,11 +52,11 @@ jobs:
       # second look to notice. A check the release path cannot skip is
       # worth more than a check that is thorough somewhere else.
       #
-      # Only the tests that touch the native engine run here: 37 files of
-      # 735, selected by what they import rather than from a list that
-      # would rot. The other 698 have already run on Linux and Windows for
-      # this commit, and running them a third time is what makes apple.yml
-      # take 26 minutes.
+      # Only the tests that touch the native engine run here, chosen by
+      # tool/native_parity_tests.sh from what they import rather than from a
+      # list that would rot; the step prints how many. The rest have already
+      # run on Linux and Windows for this commit, and running them a third
+      # time is what makes apple.yml take 26 minutes.
       - name: Native core (Apple clang)
         run: |
           cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
@@ -70,18 +70,11 @@ jobs:
           QA_REQUIRE_NATIVE: '1'
         run: |
           set -euo pipefail
-          # `|| true` because grep exits 1 on no matches, and under `set -e`
-          # that would kill the step before the guard below could say why.
-          grep -rl 'native_engine_path\|qa_engine_abi\|QaNativeEngine\|src/native/' \
-            test --include='*_test.dart' | sort > "$RUNNER_TEMP/parity.txt" || true
-          count=$(wc -l < "$RUNNER_TEMP/parity.txt")
-          echo "parity subset: $count of $(find test -name '*_test.dart' | wc -l) files"
-          # A selector that matched nothing would sail through green — the
-          # one way this check could quietly stop checking.
-          if [ "$count" -eq 0 ]; then
-            echo "no parity tests selected"
-            exit 1
-          fi
+          # The selector is ONE script: this build, the Codemagic one and
+          # `lane.sh land` ask the same question and must get one answer. It
+          # exits 1 when it selects nothing, which fails this step under -e.
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
+          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt"
 
       # Flutter's own artifacts first (the Dart AOT snapshot, the engine,

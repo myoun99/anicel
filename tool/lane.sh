@@ -3,6 +3,7 @@
 #
 #   bash tool/lane.sh open  <name>     a worktree + branch off master, ready to run
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
+#   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
 #   bash tool/lane.sh list             what is open right now
 #   bash tool/lane.sh drop  <name>     throw a lane away (its commits go with it)
@@ -13,7 +14,7 @@
 # every time. The account is suspended, so origin is frozen and LOCAL master is
 # the trunk — that is not a workaround to remember, it is what `open` does.
 #
-# ⛔THE FOUR THINGS THIS REFUSES TO LET YOU DO
+# ⛔THE FIVE THINGS THIS REFUSES TO LET YOU DO
 #
 # 1. Run a git command in a worktree that is not one. `git worktree remove`
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
@@ -32,6 +33,22 @@
 #    on one side and a fixture on the other).
 # 4. Leave master behind. `land` fast-forwards master last, so the next lane
 #    someone opens is based on what just landed.
+# 5. Land C that nobody compiled. `flutter analyze` does not read C, and the
+#    parity tests load whatever engine the lane was OPENED with — `open`
+#    copies the trunk's binary, so a lane's own C edits reach no test unless
+#    its author remembers to rebuild. 2026-09-09: a splice left
+#    `coverage = 1.0;` above qa_engine.c's first line; MSVC warned and built,
+#    every test passed against the old binary, and the iPad build (Apple
+#    clang) was the first thing to refuse it, a day later. So a lane that
+#    touched packages/qa_native/src is built here — EVERY target, because the
+#    pen DLL lives beside the engine and a directory holding only qa_engine
+#    fails the pen tests for a reason that has nothing to do with the change
+#    — then its C tests run, then the parity subset runs against what was
+#    just built, with QA_REQUIRE_NATIVE=1 so a missing binary fails instead
+#    of skipping. `bash tool/lane.sh native <name>` runs the same thing
+#    without landing. Measured 2026-09-10 from a clean
+#    directory: 241 s for all of it (configure, every target, the C tests, 67
+#    parity files). A lane that did not touch the C pays nothing.
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -203,6 +220,49 @@ cmd_backup() {
     --format='%(refname)' 'refs/heads/work/**' | wc -l) open lane(s)"
 }
 
+# cmake is on PATH on a Mac or a Linux box; on this Windows machine it lives
+# in its installer's folder, which Git Bash does not know about.
+find_cmake() {
+  command -v cmake 2>/dev/null && return 0
+  local c="/c/Program Files/CMake/bin/cmake.exe"
+  [ -x "$c" ] && { printf '%s\n' "$c"; return 0; }
+  return 1
+}
+
+# Refusal 5, runnable on its own. The header says why each step is there.
+cmd_native() {
+  local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+  local cm; cm="$(find_cmake)" || die "cmake not found — not on PATH, not in C:/Program Files/CMake"
+  local log="$p/build/lane-native.log" list="$p/build/lane-parity.txt"
+  mkdir -p "$p/build"
+  : >"$log"
+  # The directory `open` copied holds the TRUNK's project files and no cache
+  # (open deletes it), so a lane that never configured here starts clean
+  # rather than building on top of another checkout's generator state.
+  [ -f "$p/build/native_standalone/CMakeCache.txt" ] || rm -rf "$p/build/native_standalone"
+  echo "lane: native — every target, the C tests, then parity against them"
+  (cd "$p" \
+    && "$cm" -S packages/qa_native/src -B build/native_standalone -DCMAKE_BUILD_TYPE=Release \
+    && "$cm" --build build/native_standalone --config Release) >>"$log" 2>&1 || {
+    grep -aE 'error C[0-9]+|: error:| error ' "$log" | head -15 >&2
+    die "the native build is red — this is refusal 5; the whole log: $log"
+  }
+  (cd "$p/build/native_standalone" \
+    && "$(dirname "$cm")/ctest" -C Release --output-on-failure) >>"$log" 2>&1 || {
+    grep -aE 'Failed|\*\*\*' "$log" | head -15 >&2
+    die "the C tests are red — this is refusal 5; the whole log: $log"
+  }
+  (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
+    || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
+  (cd "$p" && QA_REQUIRE_NATIVE=1 xargs flutter test --no-pub <"$list") >>"$log" 2>&1 || {
+    tr '\r' '\n' <"$log" | grep -a '\[E\]' | head -10 >&2
+    die "parity is red against the engine this lane just built — this is refusal 5; the whole log: $log"
+  }
+  echo "lane: native — green ($(wc -l <"$list") parity files)"
+}
+
 cmd_land() {
   local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
   local p; p="$(lane_path "$name")"
@@ -254,6 +314,11 @@ cmd_land() {
   trunk's: land the lane, then lower the ceiling to the measured number."
   }
 
+  # Refusal 5. Only a lane that touched the C pays for it.
+  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
+    cmd_native "$name"
+  fi
+
   git -C "$ROOT" merge --ff-only "work/$name" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
   echo "lane: merged work/$name -> $(git -C "$ROOT" log --oneline -1)"
 
@@ -267,9 +332,10 @@ cmd_land() {
 case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
+  native) shift; cmd_native "$@" ;;
   backup) shift; cmd_backup "$@" ;;
   list) shift; cmd_list "$@" ;;
   drop) shift; cmd_drop "$@" ;;
   sweep) shift; cmd_sweep "$@" ;;
-  *) sed -n '2,10p' "$0"; exit 2 ;;
+  *) sed -n '2,11p' "$0"; exit 2 ;;
 esac

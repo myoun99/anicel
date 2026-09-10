@@ -72,19 +72,12 @@ workflows:
           # and a passing one look identical in a summary, which is exactly how
           # #614 hid for five rounds.
           export QA_REQUIRE_NATIVE=1
-          # `|| true` because grep exits 1 on no matches, and under `set -e`
-          # that would kill the step before the guard below could say why.
+          # The selector is ONE script: this build, the GitHub one and
+          # `lane.sh land` ask the same question and must get one answer. It
+          # exits 1 when it selects nothing, which fails this step under -e.
           list="$CM_BUILD_DIR/build/parity.txt"
-          grep -rl 'native_engine_path\|qa_engine_abi\|QaNativeEngine\|src/native/' \
-            test --include='*_test.dart' | sort > "$list" || true
-          count=$(wc -l < "$list")
-          echo "parity subset: $count of $(find test -name '*_test.dart' | wc -l) files"
-          # A selector that matched nothing would sail through green — the one
-          # way this check could quietly stop checking.
-          if [ "$count" -eq 0 ]; then
-            echo "no parity tests selected"
-            exit 1
-          fi
+          bash tool/native_parity_tests.sh > "$list"
+          echo "parity subset: $(wc -l < "$list") of $(find test -name '*_test.dart' | wc -l) files"
           xargs flutter test --no-pub < "$list"
 
       # Flutter's own artifacts first. fastlane's build_app then archives and
