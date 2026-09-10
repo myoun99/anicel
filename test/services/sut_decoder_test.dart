@@ -152,6 +152,7 @@ void main() {
     int rotationEffectorInSpray = 0x03,
     int rotationRandomInSpray = 100,
     double dualSize = 30.0,
+    int dualFlow = 100,
     int syncDualBrushSize = 0,
     int compositeMode = 0,
     int useWaterColor = 0,
@@ -186,7 +187,7 @@ void main() {
         BrushRotationEffectorInSpray INTEGER,
         BrushRotationRandomInSpray INTEGER, UseDualBrush INTEGER,
         DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
-        DualSize REAL, SyncDualBrushSize INTEGER,
+        DualSize REAL, SyncDualBrushSize INTEGER, DualFlow INTEGER,
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
@@ -216,13 +217,13 @@ void main() {
       'TextureContrast, BrushSizeUnit, BrushRotationEffector, '
       'BrushRotationRandomScale, BrushRotationEffectorInSpray, '
       'BrushRotationRandomInSpray, UseDualBrush, DualUsePatternImage, '
-      'DualPatternImageArray, DualSize, SyncDualBrushSize, '
+      'DualPatternImageArray, DualSize, SyncDualBrushSize, DualFlow, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
       'BrushIntervalEffector, CompositeMode, AntiAlias) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(
@@ -249,6 +250,7 @@ void main() {
         if (dualPng == null) null else patternArray(dualCatalogPath),
         dualSize,
         syncDualBrushSize,
+        dualFlow,
         useWaterColor,
         mixColor,
         mixAlpha,
@@ -566,6 +568,48 @@ void main() {
     expect(s.dualMask!.size, 10);
     // Synced: DualSize is a percentage of the brush size.
     expect(s.dualMaskScale, closeTo(2.5, 1e-9));
+  });
+
+  test('🚨the dual tip arrives at the DENSITY its file gives it', () async {
+    // Nobody read this before, from either importer, so every dual brush
+    // landed at 1.0 — the unconditional multiply `dualDensity` was added to
+    // replace. `ウェット水彩`, the one brush of twenty in the user's files
+    // with a dual tip, stores `DualFlow = 30`.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualFlow: 30,
+      // ⚠️DIFFERENT FROM THE FLOW ON PURPOSE. The fixture's default dual size
+      // is 30 too, so a first draft of this test passed with the decoder
+      // reading `DualSize` — the mutation is what said so.
+      dualSize: 80.0,
+      syncDualBrushSize: 1,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualDensity, closeTo(0.3, 1e-9));
+    expect(s.dualMaskScale, closeTo(0.8, 1e-9), reason: 'not the same column');
+  });
+
+  test('⛔a brush with NO dual tip keeps the full density its file stores '
+      'anyway', () async {
+    // The same trap `DualSize` has: Clip Studio parks the dual knobs on
+    // brushes that never enabled a second tip, so reading them ungated would
+    // fade a brush that has nothing to fade.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualFlow: 30,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualMask, isNull, reason: 'fixture premise: no dual tip');
+    expect(s.dualDensity, 1.0);
   });
 
   test('unsynced dual size divides against the brush size', () async {

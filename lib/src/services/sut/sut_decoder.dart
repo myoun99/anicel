@@ -374,6 +374,24 @@ BrushSettings _settingsFromVariant(
     dualMaskScale: dualMask == null
         ? 1.0
         : _dualMaskScaleOf(variant, brushSize: size),
+    // 🚨AND ITS DENSITY, which nobody was reading — from EITHER importer.
+    // `dualDensity`'s own declaration says 1.0 is the pre-density behaviour
+    // (an unconditional multiply), and 1.0 is what every dual brush landed
+    // at however faint its file said the second tip should be.
+    //
+    // 📏Measured 2026-09-10 on the user's files: one brush of twenty enables
+    // a dual tip (`ウェット水彩`) and it stores `DualFlow = 30`, so it was
+    // arriving three times as strong as it was authored.
+    //
+    // ⚠️A SAMPLE OF ONE, and the reading is positional: `DualFlow` sits where
+    // `BrushFlow` sits on the main tip, and `BrushFlow` is our `flow`.
+    // ⛔`DualBrushCompositeMode` (12 on that brush) is still unread, because
+    // our dual tip only ever multiplies. The density is the term that
+    // dominates; the mode is the next thing this brush wants, and it wants an
+    // engine field rather than a column read.
+    dualDensity: dualMask == null
+        ? 1.0
+        : _percentRatio(variant['DualFlow'], fallback: 1.0),
     textureMaskSource: textureMaskSource,
     textureInvert: textureInvert,
     textureBrightness: textureBrightness,
