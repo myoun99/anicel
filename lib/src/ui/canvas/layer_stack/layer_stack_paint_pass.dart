@@ -1022,13 +1022,23 @@ class _LayerStackPaintPass {
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
+    // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw the
+    // KEPT image into this recorder, which is what makes the new image
+    // retain the old one (`DisplayBufferCache._derivedDepth` says what
+    // that costs and why it is bounded); the third starts from nothing.
+    // Re-deriving the answer next to `store` is how the scrolled carry
+    // came to be counted as a fresh compose in the first place.
+    final bool derived;
     if (base != null && dirty != null) {
       _blitPatched(into, base.image, rect, dirty);
+      derived = true;
     } else if (scroll != null && canScroll) {
       cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
+      derived = true;
     } else {
       // The canvas-resolution buffer records with a translate only.
       _paintContent(into, rasterRect: rect, rasterScale: 1);
+      derived = false;
     }
     final picture = recorder.endRecording();
     final ui.Image image;
@@ -1044,6 +1054,7 @@ class _LayerStackPaintPass {
         rect,
         image,
         patched: base != null && dirty != null,
+        derived: derived,
       );
       if (canScroll) {
         cache.scrolledCount += 1;

@@ -80,6 +80,54 @@ class DisplayBufferCache {
   int patchedCount = 0;
   int fullCount = 0;
 
+  /// How many stores IN A ROW were drawn from the kept image instead of
+  /// from nothing.
+  ///
+  /// 🚨★★★A STACK BUDGET, NOT A CACHE STATISTIC — and the reason this
+  /// class refuses to hand its image out forever.
+  ///
+  /// `toImageSync` returns an image that is NOT rasterized yet, and the
+  /// engine keeps the display list that would draw it
+  /// (`DlDeferredImageGPUSkia::ImageWrapper` holds an `sk_sp<DisplayList>`)
+  /// until the raster thread gets to it. So a buffer drawn from the kept
+  /// one RETAINS it, and the next buffer retains that: derive N times with
+  /// no rasterization in between and the chain is N long. It costs almost
+  /// nothing resident — a display list is small — which is exactly why
+  /// nothing noticed.
+  ///
+  /// ⛔RELEASING THAT CHAIN IS RECURSIVE, IN THE ENGINE, ON THE RASTER
+  /// THREAD: `~DisplayList → DisposeOps → ~DlDeferredImageGPUSkia →
+  /// ~ImageWrapper → ~DisplayList`, ~850 bytes of stack per link against a
+  /// 2MB stack. 2026-09-09 the app died there with no frame of ours
+  /// anywhere on the stack — ~2,470 links, guard-page violation
+  /// (0x80000001). Read from the dump with WinDbg; board card
+  /// `app-crash-stack-overflow-in-engine` has the walk.
+  ///
+  /// ⚠️A COUNT, BECAUSE RASTERIZATION IS NOT OBSERVABLE FROM DART. The
+  /// chain truly breaks whenever a buffer rasterizes — normally every
+  /// frame, so the real depth is 1 — but nothing in the framework will say
+  /// that it did. Counting derivations is the conservative half: it can
+  /// only OVER-estimate the danger, and over-estimating costs one full
+  /// compose, which is what every frame cost before patching existed.
+  int _derivedDepth = 0;
+
+  /// The most derivations allowed before the next compose has to start
+  /// from nothing.
+  ///
+  /// 128 links ≈ 110KB of the raster thread's 2MB — a twentieth of what it
+  /// took to die — and at 60fps an unbroken stroke pays one full compose
+  /// about every two seconds. ⛔Raising the thread's stack is not the
+  /// alternative: the chain has no length of its own to be under.
+  static const int _maxDerivedDepth = 128;
+
+  /// Whether the kept image may be drawn into the next one at all. Both
+  /// doors below ask it, so neither can forget the budget.
+  bool get _mayDeriveAgain => _derivedDepth < _maxDerivedDepth;
+
+  /// The generation count itself, for the test that pins the budget.
+  @visibleForTesting
+  int get debugDerivedDepth => _derivedDepth;
+
   /// The dirty rect the last compose was confined to (canvas space, after
   /// the hairline inflate); null when the compose was full. Probe surface
   /// like the counters: a patch that quietly grows back to the stroke's
@@ -94,18 +142,25 @@ class DisplayBufferCache {
   /// counters' own law).
   double? lastBufferScale;
 
+  /// [patched] and [derived] are two questions, deliberately two flags.
+  /// [patched] is the PROBE — "did the patch path run" — and a scrolled
+  /// carry answers it false. [derived] is the STACK BUDGET above: a carry
+  /// draws the kept image too, so it answers true. One flag for both would
+  /// let a pan build the chain unwatched.
   void store(
     Object key,
     Object staticKey,
     Rect rect,
     ui.Image image, {
     bool patched = false,
+    bool derived = false,
   }) {
     if (patched) {
       patchedCount += 1;
     } else {
       fullCount += 1;
     }
+    _derivedDepth = derived ? _derivedDepth + 1 : 0;
     if (!identical(_image, image)) {
       _image?.dispose();
     }
@@ -133,6 +188,9 @@ class DisplayBufferCache {
   ({ui.Image image, Rect rect})? patchBaseFor(Object staticKey, Rect rect) {
     final image = _image;
     if (image == null || _staticKey != staticKey || _rect != rect) {
+      return null;
+    }
+    if (!_mayDeriveAgain) {
       return null;
     }
     return (image: image, rect: rect);
@@ -163,6 +221,9 @@ class DisplayBufferCache {
     final image = _image;
     final was = _rect;
     if (image == null || was == null || _staticKey != staticKey) {
+      return null;
+    }
+    if (!_mayDeriveAgain) {
       return null;
     }
     if (was == rect) {
@@ -196,6 +257,9 @@ class DisplayBufferCache {
     _rect = null;
     _key = null;
     _staticKey = null;
+    // Nothing is kept, so nothing can be derived FROM: the next store
+    // starts a new chain whatever it is.
+    _derivedDepth = 0;
     // ⛔The snapshots go with the image. Kept across an invalidate they would
     // describe a frame nobody holds any more, and the next paint would
     // "find" a small dirty rect against a base that no longer exists.

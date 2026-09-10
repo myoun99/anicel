@@ -94,4 +94,66 @@ void main() {
     expect(cache.isWarm, isFalse);
     expect(cache.imageFor('k', rect), isNull);
   });
+
+  /// 🚨THE CHAIN THAT KILLED THE APP (2026-09-09). A buffer drawn from the
+  /// kept one retains it — `toImageSync` hands back an image the engine has
+  /// not rasterized, holding the display list that would draw it — so
+  /// deriving without end builds a list that is released RECURSIVELY on the
+  /// raster thread. ~2,470 links took its 2MB stack down with no frame of
+  /// ours on it.
+  ///
+  /// The cache is where that is stopped, because the cache is what hands
+  /// the previous image out.
+  group('the derived chain is bounded', () {
+    const rect = Rect.fromLTWH(0, 0, 4, 4);
+
+    Future<void> derive(int times) async {
+      for (var i = 0; i < times; i += 1) {
+        cache.store('k$i', 'static', rect, await makeImage(4), derived: true);
+      }
+    }
+
+    test('a derived store deepens the chain; a fresh one starts it over',
+        () async {
+      await derive(3);
+      expect(cache.debugDerivedDepth, 3);
+
+      cache.store('fresh', 'static', rect, await makeImage(4));
+      expect(
+        cache.debugDerivedDepth,
+        0,
+        reason: 'a compose that started from nothing retains no ancestor',
+      );
+    });
+
+    test('🚨past the budget BOTH doors refuse, so the next compose has to '
+        'start from nothing', () async {
+      await derive(200);
+
+      expect(
+        cache.patchBaseFor('static', rect),
+        isNull,
+        reason: 'the patch door is one of the two that hands the image out',
+      );
+      expect(
+        cache.scrollBaseFor('static', const Rect.fromLTWH(1, 0, 4, 4)),
+        isNull,
+        reason: 'a PAN derives too — refusing only the patch door would let '
+            'a drag rebuild the same chain',
+      );
+      // And the refusal is not a dead cache: the image is still there for a
+      // plain hit, and one full compose reopens both doors.
+      expect(cache.isWarm, isTrue);
+      cache.store('fresh', 'static', rect, await makeImage(4));
+      expect(cache.patchBaseFor('static', rect), isNotNull);
+    });
+
+    test('invalidate starts the chain over — nothing is kept to derive from',
+        () async {
+      await derive(200);
+      cache.invalidate();
+
+      expect(cache.debugDerivedDepth, 0);
+    });
+  });
 }
