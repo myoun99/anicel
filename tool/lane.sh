@@ -3,6 +3,7 @@
 #
 #   bash tool/lane.sh open  <name>     a worktree + branch off master, ready to run
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
+#   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
 #   bash tool/lane.sh list             what is open right now
 #   bash tool/lane.sh drop  <name>     throw a lane away (its commits go with it)
 #   bash tool/lane.sh sweep            delete the empty shells left by Windows
@@ -44,11 +45,20 @@
 # process table on 2026-09-07 (bash fork failures, a dead editor). Concurrent
 # runs also share `build/test_cache` and die with PathExistsException; when a
 # suite stalls, delete that folder and run it alone.
+#
+# ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
+#   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
+# bash reads a script LAZILY, so the `merge --ff-only` near the end of `land`
+# swaps this file out from under the interpreter at a byte offset it has not
+# reached yet, and everything after the merge is read out of the wrong file.
 
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="$ROOT/.claude/worktrees"
 TRUNK=master
+# THE MIRROR. ⛔Not a second trunk: nothing is ever pulled from it, and
+# `.githooks/pre-push` lets it through ungated precisely because it runs no CI.
+MIRROR=backup
 
 die() { echo "lane: $*" >&2; exit 1; }
 
@@ -159,6 +169,40 @@ cmd_drop() {
   echo "dropped work/$name"
 }
 
+# 🚨THE TRUNK LIVES ON ONE DISK UNTIL SOMETHING COPIES IT. origin is frozen
+# while the account is suspended, so `land` advancing local master is the whole
+# record of a day's work — on 2026-09-10 there were 969 commits in exactly one
+# place, and it had been that way for nine days without anyone noticing. A
+# backup that waits for somebody to remember it is the failure mode this file
+# exists to refuse, so `land` pushes the mirror itself.
+#
+# ⚠️A FAILED PUSH MUST NOT FAIL THE LAND. The merge already happened, and
+# calling the lane broken would send the author looking for a problem that is
+# not there. It says loudly what to run instead.
+mirror_trunk() {
+  git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || {
+    echo "lane: ⚠️no '$MIRROR' remote — $TRUNK exists on this disk only." >&2
+    return 0
+  }
+  echo "lane: mirroring $TRUNK -> $MIRROR"
+  git -C "$ROOT" push --quiet "$MIRROR" "$TRUNK" && return 0
+  echo "lane: ⚠️THE MIRROR PUSH FAILED — $TRUNK is on this disk only." >&2
+  echo "lane:   The merge landed; it is the COPY that is missing. Retry with:" >&2
+  echo "lane:   bash tool/lane.sh backup" >&2
+}
+
+# Every open lane too, not just the trunk: a lane's commits live in its branch
+# and nowhere else, and a lane can sit open for days. FORCED, because a lane
+# rebases — the mirror is a copy of what is here now, not a history to protect.
+cmd_backup() {
+  mirror_trunk
+  git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
+  git -C "$ROOT" push --quiet "$MIRROR" '+refs/heads/work/*:refs/heads/work/*' \
+    || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+  echo "lane: mirrored $TRUNK and $(git -C "$ROOT" for-each-ref \
+    --format='%(refname)' 'refs/heads/work/**' | wc -l) open lane(s)"
+}
+
 cmd_land() {
   local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
   local p; p="$(lane_path "$name")"
@@ -217,13 +261,15 @@ cmd_land() {
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -d "work/$name" 2>/dev/null
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
+  mirror_trunk
 }
 
 case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   land) shift; cmd_land "$@" ;;
+  backup) shift; cmd_backup "$@" ;;
   list) shift; cmd_list "$@" ;;
   drop) shift; cmd_drop "$@" ;;
   sweep) shift; cmd_sweep "$@" ;;
-  *) sed -n '2,9p' "$0"; exit 2 ;;
+  *) sed -n '2,10p' "$0"; exit 2 ;;
 esac
