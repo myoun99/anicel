@@ -308,6 +308,11 @@ class _InteractiveCanvasBuild {
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.
       onStrokeInputActiveChanged: session.setBrushInputActive,
+      // The canvas hands the session its stroke lander so a SAVE can land
+      // the pen before it snapshots — the same registration shape
+      // `onCoordinatorChanged` above uses.
+      onStrokeLanderChanged: (lander) =>
+          session.liveStrokeLanding.lander = lander,
       // R15-⑤: _selection drags block seeks/cut switches entirely.
       onSelectionInteractionChanged: (active) => active
           ? session.beginSelectionInteraction()

@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:convert';
 import 'dart:io';
 
@@ -80,7 +81,7 @@ void main() {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
     s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     expect(s.projectFile.hasUnsavedChanges, isFalse, reason: 'a save leaves it clean');
 
     fingerprint(s, movie);
@@ -100,7 +101,7 @@ void main() {
     final movie = makeFile('참고영상.mp4', 7);
     s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     fingerprint(s, movie);
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     s.dispose();
 
     final reopened = session();
@@ -161,7 +162,7 @@ void main() {
 
     final now = makeFile('옮긴영상.mp4', 7);
     await s.mediaPool.relinkMediaAsset(was, now);
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     s.dispose();
 
     final reopened = session();
@@ -189,7 +190,7 @@ void main() {
 
     final now = makeFile('옮긴영상.mp4', 7);
     s.mediaPool.relinkMediaAssets({was: now});
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     s.dispose();
 
     final reopened = session();
@@ -213,10 +214,10 @@ void main() {
       final movie = makeFile('참고영상.mp4', 7);
       s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
       fingerprint(s, movie);
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
       s.mediaPool.removeMediaAsset(movie);
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       // 🚨THE FILE, not just the reopened session. The open side narrows
@@ -245,7 +246,7 @@ void main() {
       // ordinary state, not a missing field somebody has to handle.
       final s = session();
       s.mediaPool.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       expect(

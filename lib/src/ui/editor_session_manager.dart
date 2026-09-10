@@ -81,6 +81,7 @@ import 'brush/brush_canvas_panel.dart';
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
+import 'session/live_stroke_landing.dart';
 import 'session/session_roles.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/media_grant_ledger.dart';
@@ -827,6 +828,15 @@ class EditorSessionManager extends ChangeNotifier
   /// buttons dim rather than the press throwing.
   @override
   BrushFrameEditingCoordinator? pixelEditingCoordinator;
+
+  /// Where the canvas leaves 「land the stroke the pen is holding」, and
+  /// where the save door picks it up.
+  ///
+  /// 🚨Filled in exactly the way [pixelEditingCoordinator] is, from the same
+  /// build — but it is a SIBLING object rather than a name on
+  /// [SessionInternals], because that interface only shrinks. See
+  /// [LiveStrokeLanding] for the rest of the reason.
+  final LiveStrokeLanding liveStrokeLanding = LiveStrokeLanding();
 
   /// The canvas-side facts a pixel-verb press needs, published by whoever
   /// owns them — see [PixelVerbCanvas].
@@ -2846,6 +2856,7 @@ class EditorSessionManager extends ChangeNotifier
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
+    liveStrokeLanding: liveStrokeLanding,
   );
 
   // ── the project-wide audio settings: their own object ────────────────

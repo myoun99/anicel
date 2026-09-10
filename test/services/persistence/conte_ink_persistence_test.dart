@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -80,7 +81,7 @@ void main() {
     s.renderCaches.conteInkRowStore.storeBakedSurface(liveKey, inkSurface(seed: 3));
     s.renderCaches.conteInkRowStore.storeBakedSurface(deadKey, inkSurface(seed: 5));
     s.renderCaches.conteInkPageStore.storeBakedSurface(conteInkPageKey(0), inkSurface());
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     final loaded = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(loaded.dispose);
@@ -113,7 +114,7 @@ void main() {
       conteInkPageKey(1),
       inkSurface(seed: 7),
     );
-    await loaded.projectDoor.saveProjectToFile(path);
+    await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final reloaded = EditorSessionManager(
       initialProject: createDefaultProject(),
     );

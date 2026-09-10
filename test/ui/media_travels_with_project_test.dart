@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -54,12 +55,12 @@ void main() {
   test('a sound survives its original being deleted', () async {
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     final source = writeMedia('bgm.wav', 40 * 1024);
     final expected = File(source).readAsBytesSync();
     editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
     // The whole point: the file the project was imported from is gone.
@@ -86,11 +87,11 @@ void main() {
     // answer, and here the answer is no.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     final movie = writeMedia('reference.mp4', 2048);
     editor.mediaPool.importMediaFiles([movie], copyIntoProject: false);
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
     final reopened = session();
@@ -110,12 +111,12 @@ void main() {
     // that quietly makes copies with no sound.
     final editor = session();
     final first = '${directory.path}/first.anicel';
-    await editor.projectDoor.saveProjectToFile(first);
+    await editor.projectDoor.saveProjectToFile(first, asked: SaveAsked.byAPerson);
 
     final source = writeMedia('voice.wav', 12 * 1024);
     final expected = File(source).readAsBytesSync();
     editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
-    await editor.projectDoor.saveProjectToFile(first);
+    await editor.projectDoor.saveProjectToFile(first, asked: SaveAsked.byAPerson);
 
     // Deleted BEFORE the save-as, deliberately. With the original still
     // sitting there the copy could be fed from it and the test would pass
@@ -125,7 +126,7 @@ void main() {
     File(source).deleteSync();
 
     final second = '${directory.path}/second.anicel';
-    await editor.projectDoor.saveProjectToFile(second);
+    await editor.projectDoor.saveProjectToFile(second, asked: SaveAsked.byAPerson);
     editor.dispose();
 
     // And now the file it was copied from is gone too; only the copy
@@ -150,13 +151,13 @@ void main() {
     // would rewrite the project's whole media area to change one drawing.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final source = writeMedia('bgm.wav', 64 * 1024);
     editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     final afterFirst = File(projectPath).lengthSync();
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final afterSecond = File(projectPath).lengthSync();
     editor.dispose();
 
@@ -173,10 +174,10 @@ void main() {
     // anyway would be answering a question nobody posed.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final source = writeMedia('shared.wav', 8 * 1024);
     editor.mediaPool.importMediaFiles([source], copyIntoProject: false);
-    await editor.projectDoor.saveProjectToFile(projectPath);
+    await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
     final reopened = session();

@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 
 import '../../models/layer_effect.dart';
 import '../../models/brush_dab.dart';
@@ -92,6 +93,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selectionCommands,
     this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
+    this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
     this.onAutoFrameSettled,
@@ -271,6 +273,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
+
+  /// This canvas view's stroke lander, published upward while it is
+  /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
+  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
   /// Forwarded to [BrushCanvasPanel]: selection-drag lifecycle (R15-⑤
   /// seek lock).
@@ -529,6 +535,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       selectionCommands: widget.selectionCommands,
       cutPieceSlot: widget.cutPieceSlot,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
+      onStrokeLanderChanged: widget.onStrokeLanderChanged,
       onSelectionInteractionChanged: widget.onSelectionInteractionChanged,
     );
   }

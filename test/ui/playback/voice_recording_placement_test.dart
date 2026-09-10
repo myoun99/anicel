@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -59,7 +60,7 @@ void main() {
   test('REC1-B: a take lands on the given lane — <lane>_T01 WAV, pool '
       'entry, block at the anchor, ONE undo strips it all', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final lane = manager.activeTrack.seLayers.first;
 
     final placed = await manager.voiceRecording.placeVoiceRecording(
@@ -119,7 +120,7 @@ void main() {
     'REC1-B: recording along trims the monitoring latency off the head',
     () async {
       final manager = session();
-      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
       final lane = manager.activeTrack.seLayers.first;
 
       final placed = await manager.voiceRecording.placeVoiceRecording(
@@ -148,7 +149,7 @@ void main() {
     'REC1-B: a take shorter than the latency it rode on places nothing',
     () async {
       final manager = session();
-      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+      await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
       expect(
         await manager.voiceRecording.placeVoiceRecording(
           takeOfSeconds(0.1),
@@ -165,7 +166,7 @@ void main() {
   test('REC1-B: a second take over the first TRIMS it, tape-style — same '
       'lane, no new row, both files kept', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final laneId = manager.activeTrack.seLayers.first.id;
     final rowsBefore = manager.activeTrack.seLayers.length;
 
@@ -212,7 +213,7 @@ void main() {
 
   test('REC1-B: the punch window clamps the take — block AND file', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
@@ -254,7 +255,7 @@ void main() {
   test('REC1-B: a null lane refuses the take rather than landing it '
       'anywhere', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     expect(
       await manager.voiceRecording.placeVoiceRecording(
         takeOfSeconds(0.5),

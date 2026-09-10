@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -45,7 +46,10 @@ void main() {
         isDirty: () =>
             session.projectFile.hasUnsavedChanges &&
             !session.projectFile.autosaveShouldStandDown,
-        saveProject: session.projectDoor.saveProjectToFile,
+        saveProject: (path) => session.projectDoor.saveProjectToFile(
+          path,
+          asked: SaveAsked.byTheClock,
+        ),
         projectPath: () => session.projectFile.path!,
         needsProjectFile: () => session.projectFile.path == null,
       );
@@ -55,7 +59,7 @@ void main() {
     final path = '${directory.path.replaceAll(r'\', '/')}/p.anicel';
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    await session.projectDoor.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final cutsAtSave = (await const AnicelFileService().open(
       filePath: path,
     )).project.tracks.first.cuts.length;
@@ -88,7 +92,7 @@ void main() {
     final path = '${directory.path.replaceAll(r'\', '/')}/clean.anicel';
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    await session.projectDoor.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final wroteAt = File(path).lastModifiedSync();
 
     await autosaveFor(session).saveNow();
@@ -112,7 +116,7 @@ void main() {
     final path = '${directory.path.replaceAll(r'\', '/')}/inflight.anicel';
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    await session.projectDoor.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     session.cutVerbs.createCut();
 
     var ticked = false;
@@ -122,12 +126,12 @@ void main() {
           !session.projectFile.autosaveShouldStandDown,
       saveProject: (path) async {
         ticked = true;
-        await session.projectDoor.saveProjectToFile(path);
+        await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
       },
       projectPath: () => session.projectFile.path!,
     );
 
-    final saving = session.projectDoor.saveProjectToFile(path);
+    final saving = session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     await autosave.saveNow();
     await saving;
 
@@ -143,7 +147,7 @@ void main() {
     final path = '${directory.path.replaceAll(r'\', '/')}/discarded.anicel';
     final session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    await session.projectDoor.saveProjectToFile(path);
+    await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final cutsAtSave = (await const AnicelFileService().open(
       filePath: path,
     )).project.tracks.first.cuts.length;
@@ -175,7 +179,10 @@ void main() {
     var prompted = 0;
     await ProjectAutosaveService(
       isDirty: () => session.projectFile.hasUnsavedChanges,
-      saveProject: session.projectDoor.saveProjectToFile,
+      saveProject: (path) => session.projectDoor.saveProjectToFile(
+        path,
+        asked: SaveAsked.byTheClock,
+      ),
       projectPath: () => session.projectFile.path!,
       needsProjectFile: () => session.projectFile.path == null,
       onUnsavedProject: () => prompted += 1,

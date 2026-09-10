@@ -39,6 +39,7 @@ import '../src/ui/home_page.dart';
 import '../src/ui/theme/app_scroll_behavior.dart';
 import '../src/ui/theme/app_theme.dart';
 import '../src/ui/ui_scale.dart';
+import '../src/ui/session/project_file_door.dart' show SaveAsked;
 import '../src/ui/ui_scale_binding.dart';
 
 Future<void> main() async {
@@ -679,7 +680,10 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       final savePath =
           '${Directory.systemTemp.path}/r27_repro_'
           '${DateTime.now().microsecondsSinceEpoch}$anicelProjectSuffix';
-      await session.projectDoor.saveProjectToFile(savePath);
+      await session.projectDoor.saveProjectToFile(
+        savePath,
+        asked: SaveAsked.byAPerson,
+      );
       session.renderCaches.brushFrameStore.hotCelByteBudget = 0;
       _log('fill-roundtrip B: saved + hot budget 0');
       session.cutVerbs.duplicateActiveCut(); // Jumps to the copy = walk away.

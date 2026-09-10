@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -93,7 +94,7 @@ void main() {
   test('the suppression step runs between trim and fold/gain, and its '
       'output is what the file bakes', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final lane = manager.activeTrack.seLayers.first;
 
     Float32List? seenSamples;
@@ -138,7 +139,7 @@ void main() {
   test('a DECLINED pass keeps the raw take, and denoise:false never '
       'calls the seam', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final lane = manager.activeTrack.seLayers.first;
 
     var calls = 0;

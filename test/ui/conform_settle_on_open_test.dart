@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -34,7 +35,7 @@ void main() {
     );
     addTearDown(s.dispose);
     final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     spy.releases = 0;
     await s.projectDoor.openProjectFromFile(path);

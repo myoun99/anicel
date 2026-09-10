@@ -75,7 +75,7 @@ void main() {
         .length;
     final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await door.saveProjectToFile(path);
+    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     expect(s.projectFile.path, path);
     expect(s.projectFile.hasUnsavedChanges, isFalse);
 
@@ -120,7 +120,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await door.saveProjectToFile(path);
+    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     // A band naming a row of the project that is about to be replaced.
     s.updateFrameRangeSelectionDrag(
@@ -152,9 +152,9 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final door = projectDoorOf(s);
     final path = '${directory.path}/scene.anicel';
-    await door.saveProjectToFile(path);
+    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     s.cutVerbs.createCut();
-    await door.saveProjectToFile(path);
+    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     final entries = directory.listSync().map((e) => e.uri.pathSegments.last);
     expect(entries, ['scene.anicel']);
@@ -191,7 +191,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     s.createDrawingAtCurrentFrame();
     final real = '${directory.path.replaceAll(r'\', '/')}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(real);
+    await s.projectDoor.saveProjectToFile(real, asked: SaveAsked.byAPerson);
     final cuts = s.repository.requireProject().tracks.first.cuts.length;
     s.dispose();
 

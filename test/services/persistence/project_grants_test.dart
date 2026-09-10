@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -198,7 +199,7 @@ void main() {
       ]);
 
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       final reopened = session();
@@ -220,7 +221,7 @@ void main() {
       // made, and a "save your changes?" they cannot account for.
       final s = session();
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       expect(s.projectFile.hasUnsavedChanges, isFalse);
 
       s.mediaGrants.rememberMediaGrants([
@@ -249,7 +250,7 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       final reopened = session();
@@ -328,7 +329,7 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       // The launch where it will not resolve.
@@ -344,7 +345,7 @@ void main() {
         hasLength(1),
         reason: 'but not forgotten',
       );
-      await refused.projectDoor.saveProjectToFile(projectPath);
+      await refused.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       refused.dispose();
 
       // The launch after the drive comes back.
@@ -383,7 +384,7 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       // The file was renamed while the project was closed.
@@ -414,7 +415,7 @@ void main() {
       );
 
       // And the grant still covers something, so a save keeps it.
-      await reopened.projectDoor.saveProjectToFile(projectPath);
+      await reopened.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       reopened.dispose();
 
       final again = session();
@@ -441,7 +442,7 @@ void main() {
         ),
       ]);
       final projectPath = '${directory.path}/scene.anicel';
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 
       final reopened = session();

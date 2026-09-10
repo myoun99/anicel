@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -64,7 +65,7 @@ void main() {
       ),
     );
     final projectPath = '${folder.path.replaceAll('\\', '/')}/p.anicel';
-    await session.projectDoor.saveProjectToFile(projectPath);
+    await session.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final file = projectFileOf(session);
     expect(file.mediaEntryNames.containsKey(audioPath), isTrue);
 

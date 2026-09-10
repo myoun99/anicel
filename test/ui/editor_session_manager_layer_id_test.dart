@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -60,7 +61,7 @@ void main() {
       reason: 'fixture: the file must carry an id the fresh counter will '
           'reach, or reopening proves nothing',
     );
-    await first.projectDoor.saveProjectToFile(path);
+    await first.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     first.dispose();
 
     // A NEW session: its counter starts at 1 again, knowing nothing about
@@ -80,7 +81,7 @@ void main() {
     final first = EditorSessionManager(initialProject: createDefaultProject());
     first.layerStack.addLayer();
     first.layerStack.addLayer();
-    await first.projectDoor.saveProjectToFile(path);
+    await first.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     first.dispose();
 
     final second = EditorSessionManager(initialProject: createDefaultProject());

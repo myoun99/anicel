@@ -56,6 +56,14 @@ part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 part 'brush_edit/brush_edit_press.dart';
 
+/// Lands the stroke the pen is in the middle of, if any, and answers
+/// whether anything landed — [BrushEditPress.landActiveStroke] handed out
+/// so a caller that is not a pointer event can perform the same landing.
+///
+/// ⚠️A FUNCTION rather than the press object: what leaves this view is the
+/// one verb a save needs, not a handle onto its input state.
+typedef StrokeLander = bool Function();
+
 /// The committed-surface tiles inside [bounds] (every stored tile when the
 /// bounds are unknown): the set whose decodes gate the settling overlay
 /// handoff, so a just-committed stroke never trades its overlay for stale
@@ -132,6 +140,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     required this.onSourceStrokeCommitted,
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
+    this.onStrokeLanderChanged,
     this.onAltPick,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
@@ -198,6 +207,23 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
   final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// Handed this view's [StrokeLander] while it is mounted, and null when
+  /// it goes — the same publish-upward shape `onCoordinatorChanged` uses,
+  /// on the same route as [onActiveStrokeChanged].
+  ///
+  /// 🚨★★★**A SAVE HAS TO BE ABLE TO LAND THE PEN.** Press Ctrl+S with the
+  /// pen still down and the stroke reaches the cel AFTER the save took its
+  /// snapshot, so the file the user just asked for does not have the line
+  /// they were drawing when they asked (`BrushFrameStore.adoptSavedFile`
+  /// keeps it dirty on purpose, so it is not lost — it is just not in
+  /// THAT file). 유저 2026-09-10: 「그냥 스트로크 커밋시키고 저장로직
+  /// 발동시키면 되는거아닌가?」
+  ///
+  /// ⛔The lander is the view's own [BrushEditPress.landActiveStroke] and
+  /// nothing else — a save that ended the stroke its own way would be that
+  /// four-step ordering written twice.
+  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
   /// Alt+pointer-down picks a color instead of starting a stroke (P5's
   /// temporary eyedropper); null disables the shortcut.
@@ -399,6 +425,7 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     BitmapTileImageCache.instance.addListener(_onTileImagesChanged);
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
+    widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
   }
 
   @override
@@ -434,6 +461,11 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   void dispose() {
+    // ⛔FIRST, and before anything this view owns is torn down: a lander
+    // still published after that point would land a stroke into freed
+    // rasterizer tiles. Nulling it is the only thing that says 「there is
+    // no pen here any more」.
+    widget.onStrokeLanderChanged?.call(null);
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingState._settlingFallbackTimer?.cancel();
     // Only OUR model — a host-owned one outlives this view (it survives

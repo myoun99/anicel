@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -66,7 +67,7 @@ void main() {
         deadKey,
         inkSurface(seed: 5),
       );
-      await session.projectDoor.saveProjectToFile(path);
+      await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
       final loaded = EditorSessionManager(
         initialProject: createDefaultProject(),

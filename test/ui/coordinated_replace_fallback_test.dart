@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -122,7 +123,7 @@ void main() {
     drawOnCurrentFrame(s);
     final path = refusingLocation('drive.anicel');
 
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     expect(replaces, 1);
     final layout = parseAnicelZipLayoutFile(path);
@@ -152,7 +153,7 @@ void main() {
     // The location takes writes now (the fake replaced the directory
     // with a real file): the NEXT save is ordinary — no coordinator.
     drawOnCurrentFrame(s);
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     expect(replaces, 1, reason: 'the fallback is per-refusal, not a mode');
   });
 
@@ -169,7 +170,7 @@ void main() {
     final path = refusingLocation('refused.anicel');
 
     await expectLater(
-      s.projectDoor.saveProjectToFile(path),
+      s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
       throwsA(isA<FileSystemException>()),
     );
     expect(
@@ -201,7 +202,7 @@ void main() {
     final path = refusingLocation('desktop.anicel');
 
     await expectLater(
-      s.projectDoor.saveProjectToFile(path),
+      s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
       throwsA(isA<FileSystemException>()),
     );
   });

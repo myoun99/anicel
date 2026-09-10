@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -51,7 +52,7 @@ void main() {
       cutId: cut.id,
       canvasSize: const CanvasSize(width: 640, height: 360),
     );
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
 
     final loaded = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -74,7 +75,7 @@ void main() {
     );
 
     // A healthy round-trip stays untouched and clean.
-    await loaded.projectDoor.saveProjectToFile(path);
+    await loaded.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     final clean = EditorSessionManager(
       initialProject: createDefaultProject(),
     );

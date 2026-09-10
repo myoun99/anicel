@@ -42,9 +42,30 @@ import 'playback_rig.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
+import 'live_stroke_landing.dart';
 import 'text_cel_bakes.dart';
 
 /// Saves the session into a `.anicel` and opens one back.
+/// Who asked for a save — the ONE thing the two entrances disagree about.
+///
+/// 🚨★★★**IT EXISTS SO THAT NOBODY HAS TO INFER IT.** The distinction was
+/// already there and already load-bearing (a manual save puts a window in
+/// front of itself, the tick does not), but it was readable only as 「is
+/// `onProgress` non-null」 — a flag that means 「somebody wants a progress
+/// bar」 being asked a second question it never agreed to answer. Naming it
+/// costs one required parameter and makes a new call site state its case
+/// instead of inheriting whichever answer the last author happened to get.
+enum SaveAsked {
+  /// A person pressed Save (the menu, the shortcut, the unsaved-work
+  /// prompt). They are waiting, and whatever the pen is holding is part of
+  /// what they asked to keep.
+  byAPerson,
+
+  /// The autosave clock came due. Nobody is watching, and the user may
+  /// have a pen down — see [ProjectFileDoor._settleWorkInFlight].
+  byTheClock,
+}
+
 class ProjectFileDoor {
   ProjectFileDoor({
     required ProjectFile file,
@@ -64,6 +85,7 @@ class ProjectFileDoor {
     required AudioConformStore audioConformStore,
     required ValueNotifier<int> frameSeekCommitted,
     required MediaPool mediaPool,
+    required LiveStrokeLanding liveStrokeLanding,
   }) : _file = file,
        _project = project,
        _selection = selection,
@@ -80,7 +102,8 @@ class ProjectFileDoor {
        _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
        _frameSeekCommitted = frameSeekCommitted,
-       _mediaPool = mediaPool;
+       _mediaPool = mediaPool,
+       _liveStrokeLanding = liveStrokeLanding;
 
   final ProjectFile _file;
   final ProjectAccess _project;
@@ -98,6 +121,7 @@ class ProjectFileDoor {
   final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
   final ValueNotifier<int> _frameSeekCommitted;
+  final LiveStrokeLanding _liveStrokeLanding;
   final MediaPool _mediaPool;
 
   static const AnicelFileService _anicelFileService = AnicelFileService();
@@ -139,12 +163,57 @@ class ProjectFileDoor {
   /// [onProgress] is called with 0..1 as the write proceeds, for the window
   /// a manual save puts in front of itself. Omitted by the autosave tick,
   /// which nobody is watching.
+  /// **EVERYTHING IN FLIGHT LANDS HERE, AND THIS IS THE ONLY PLACE THAT
+  /// LIST EXISTS.** The first statement of every writer.
+  ///
+  /// 🚨★★★**BEFORE THE STORE SNAPSHOTS, AND THAT ORDER IS THE POINT.** The
+  /// snapshot records each cel's edit tick, and
+  /// `BrushFrameStore.adoptSavedFile` refuses to mark clean anything whose
+  /// tick moved past it — so work that lands one line later is correctly
+  /// kept dirty for the NEXT save, and correctly missing from the file the
+  /// user just asked for. Landing it first is what puts it in this one.
+  ///
+  /// ⛔**IT IS ONE VERB BECAUSE IT WAS ONE LAW WRITTEN TWICE.** The text
+  /// bake flush stood at the head of both writers, and the pen landing was
+  /// about to stand beside it in both — four call sites for 「settle what
+  /// is in flight」, and the fifth kind of in-flight work would have had to
+  /// find all four. It finds this instead.
+  ///
+  /// **The pen** — 유저 2026-09-10: 「그냥 스트로크 커밋시키고 저장로직
+  /// 발동시키면 되는거아닌가?」. Press Ctrl+S with the pen down and the
+  /// stroke used to reach the cel after the snapshot, so the file the user
+  /// asked for did not have the line they were drawing when they asked.
+  ///
+  /// ⛔**ONLY WHEN A PERSON ASKED.** The autosave tick runs with no window
+  /// and nobody watching, so the user may be mid-stroke when it fires;
+  /// ending their stroke under their hand would split one line into two,
+  /// with two undo entries. [AutosaveClock] already answers that case the
+  /// right way — it HOLDS the fire until the pen lifts — and the residual
+  /// race (a stroke that starts after the fire) costs nothing, because the
+  /// dirty mark keeps the work for the next save.
+  ///
+  /// ⚠️[SaveAsked] is required rather than derived so a new caller has to
+  /// answer the question. ⛔It must never be read off `onProgress`, which
+  /// happens to be non-null for exactly the manual saves today: that would
+  /// be one flag answering two questions, and the day a tick wanted
+  /// progress the pen would start landing under it.
+  ///
+  /// ⚠️The pen goes FIRST and synchronously. Its landing is the pointer-up
+  /// path's own four-step sequence, which finishes inside one event;
+  /// putting an await in front of it would reopen the window this closes.
+  Future<void> _settleWorkInFlight(SaveAsked asked) async {
+    if (asked == SaveAsked.byAPerson) {
+      _liveStrokeLanding.landNow();
+    }
+    // The archive's parameters and raster must never disagree.
+    await _textCelBakes.flushTextCelBakes();
+  }
+
   Future<void> saveProjectToFile(
     String filePath, {
+    required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
-    // A text bake in flight must land before the store snapshots — the
-    // archive's parameters and raster must never disagree.
     // Raised for the WHOLE save, so a tick that comes due inside one stands
     // down instead of starting a SECOND write of the same file — an
     // incremental append reads the tail it is about to extend, and two of
@@ -158,7 +227,7 @@ class ProjectFileDoor {
     // at the next launch is the only thing that says otherwise.
     MemoryBlackBox.begin('save');
     try {
-      await _writeProjectToFile(filePath, onProgress: onProgress);
+      await _writeProjectToFile(filePath, asked: asked, onProgress: onProgress);
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
@@ -182,9 +251,10 @@ class ProjectFileDoor {
   /// what [adoptPlacedArchive] needs if this copy becomes the project.
   Future<Map<String, String>> writeArchiveCopy(
     String path, {
+    required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
-    await _textCelBakes.flushTextCelBakes();
+    await _settleWorkInFlight(asked);
     final mediaToStore = projectMediaSources(
       project: _project.repository.requireProject(),
       projectFilePath: _file.path,
@@ -312,9 +382,10 @@ class ProjectFileDoor {
 
   Future<void> _writeProjectToFile(
     String filePath, {
+    required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
-    await _textCelBakes.flushTextCelBakes();
+    await _settleWorkInFlight(asked);
     // Captured BEFORE the save moves the project path — it is what tells a
     // Save As from an ordinary save, which decides `rewriteWhole` below.
     // 🪦The comment here said 「a Save As has to retire the sidecars of the

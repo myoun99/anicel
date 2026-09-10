@@ -379,6 +379,35 @@ class _BrushEditPress {
       return;
     }
 
+    landActiveStroke();
+  }
+
+  /// Ends whatever the pen is in the middle of and puts it on the cel —
+  /// the landing a pen-up performs. Answers whether anything landed.
+  /// Published as a [StrokeLander] while the view is mounted.
+  ///
+  /// 🚨★★★**THE ORDER IS THE WHOLE THING, WHICH IS WHY IT HAS A NAME.**
+  /// Four steps that each depend on the one before, and every one of them
+  /// was a bug once: the stabilizer trails the pen so the catch-up has to
+  /// run or the line stops short of where the hand is; the snap settles
+  /// AFTER that catch-up so the extra travel counts towards its decision;
+  /// the commit reads the rasterizer's tiles so dabs still waiting on the
+  /// per-frame flush must be blended first; and the input teardown comes
+  /// last because the steps above read the state it clears.
+  ///
+  /// ⛔**So a second caller must not re-write these four — it calls THIS.**
+  /// A save that landed the stroke its own way would be the same algorithm
+  /// implemented twice, and the copy would drift on the first of those four
+  /// that anybody improved. That is not hypothetical here: this sequence
+  /// already carries three separate fixes in its ordering.
+  ///
+  /// ⚠️Safe to call with no stroke in flight — it answers false and
+  /// touches nothing, so a caller never has to ask first (and cannot ask
+  /// wrongly).
+  bool landActiveStroke() {
+    if (_state._activeDrawingPointer == null) {
+      return false;
+    }
     // Stabilizer catch-up (P7): the brush trails the pen by up to a rope
     // length — pen-up closes the gap with one straight segment through
     // the normal pipeline, so line ends land where the pen lifted.
@@ -409,6 +438,7 @@ class _BrushEditPress {
     if (!hadDabs) {
       _state._overlay.resetOverlay();
     }
+    return hadDabs;
   }
 
   void pointerCancel(PointerCancelEvent event) {

@@ -190,6 +190,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.selectionCommands,
     this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
+    this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.toolCursorsEnabled = true,
@@ -622,6 +623,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// stroke end/cancel — the session holds prerender warming while a
   /// stroke is live.
   final ValueChanged<bool>? onStrokeInputActiveChanged;
+
+  /// This canvas view's stroke lander, published upward while it is
+  /// mounted — see [InteractiveBrushEditCanvasView.onStrokeLanderChanged].
+  final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
   /// Selection-drag lifecycle for the host (R15-⑤): the session blocks
   /// frame seeks/cut switches while a selection interaction is live.
@@ -1614,6 +1619,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it.
       selectionRegion: widget.selectionCommands?.region,
+      onStrokeLanderChanged: widget.onStrokeLanderChanged,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);

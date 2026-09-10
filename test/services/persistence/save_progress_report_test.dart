@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -94,7 +95,7 @@ void main() {
     }
 
     final reports = <double>[];
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(reports, isNotEmpty, reason: 'nothing crossed the port at all');
     expect(
@@ -115,7 +116,7 @@ void main() {
     final s = session();
     s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     // The proof that an APPEND ran, rather than a full rewrite that happened
     // to end up bigger. An append truncates at the old central directory and
     // writes from there, so everything before that offset survives byte for
@@ -131,7 +132,7 @@ void main() {
     s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     final reports = <double>[];
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(
       File(projectPath).readAsBytesSync().sublist(0, keptPrefix.length),
@@ -161,7 +162,7 @@ void main() {
       // session, which is a full rewrite.
       final s = session();
       drawOnCurrentFrame(s);
-      await s.projectDoor.saveProjectToFile(projectPath);
+      await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
       File('${directory.path}/대사.wav')
         ..createSync()
@@ -172,6 +173,7 @@ void main() {
 
       final reports = <double>[];
       await s.projectDoor.saveProjectToFile(
+        asked: SaveAsked.byAPerson,
         projectPath,
         onProgress: reports.add,
       );
@@ -199,14 +201,14 @@ void main() {
     // number. The path has to be seen moving.
     final s = session();
     drawOnCurrentFrame(s);
-    await s.projectDoor.saveProjectToFile(projectPath);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     for (var i = 0; i < 5; i += 1) {
       s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
     }
     final reports = <double>[];
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(
       reports.where((r) => r < 1.0),
@@ -236,6 +238,7 @@ void main() {
         s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
+          asked: SaveAsked.byAPerson,
           '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
           onProgress: reports.add,
         );
@@ -281,6 +284,7 @@ void main() {
         }
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
+          asked: SaveAsked.byAPerson,
           '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
           onProgress: reports.add,
         );
@@ -324,7 +328,7 @@ void main() {
     s.mediaPool.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
 
     final reports = <double>[];
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: reports.add);
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(reports.last, 1.0);
   });
@@ -344,7 +348,7 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
-    await s.projectDoor.saveProjectToFile(projectPath, onProgress: (_) {});
+    await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: (_) {});
 
     final archive = ZipDecoder().decodeBytes(
       File(projectPath).readAsBytesSync(),

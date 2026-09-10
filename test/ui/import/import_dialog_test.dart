@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -332,6 +333,7 @@ void main() {
       final path = await tester.runAsync(() async {
         final png = await writePng('ref.png');
         await s.projectDoor.saveProjectToFile(
+          asked: SaveAsked.byAPerson,
           '${tempDir.path}${Platform.pathSeparator}scene.anicel',
         );
         return png;

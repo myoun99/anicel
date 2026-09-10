@@ -36,6 +36,7 @@ import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
+import '../session/project_file_door.dart' show SaveAsked;
 import '../shortcuts/editor_shortcut_bindings.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
 import '../theme/app_theme.dart';
@@ -1608,7 +1609,11 @@ Future<bool> saveProjectShowingProgress(
       doneLabel: AppText.strings.saveProgressDone,
       windowKey: const ValueKey<String>('save-progress-dialog'),
       task: (report) =>
-          session.projectDoor.saveProjectToFile(path, onProgress: report),
+          session.projectDoor.saveProjectToFile(
+            path,
+            asked: SaveAsked.byAPerson,
+            onProgress: report,
+          ),
     );
     // 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**
     //
@@ -1691,7 +1696,11 @@ Future<void> promptSaveProjectAs(
   final write =
       writeArchive ??
       (String path, void Function(double) report) =>
-          session.projectDoor.writeArchiveCopy(path, onProgress: report);
+          session.projectDoor.writeArchiveCopy(
+            path,
+            asked: SaveAsked.byAPerson,
+            onProgress: report,
+          );
   // 🪦ONE CALL, not two. An injected picker used to get its own branch
   // here, and that branch re-answered the suffix question the pick already
   // answers (F-14) — a second spelling of one law, kept alive by a seam

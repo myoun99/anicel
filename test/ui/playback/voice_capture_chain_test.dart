@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -59,7 +60,7 @@ void main() {
 
   test('REC1-D: the landed WAV carries the baked gain', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
@@ -87,7 +88,7 @@ void main() {
   test('REC1-D: an over-hot take flags the clip on the landed AudioClip '
       'and the toast obeys the notice toggle', () async {
     final manager = session();
-    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel');
+    await manager.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
 

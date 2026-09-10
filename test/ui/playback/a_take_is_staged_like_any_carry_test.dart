@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -256,6 +257,7 @@ void main() {
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
 
     await manager.projectDoor.saveProjectToFile(
+      asked: SaveAsked.byAPerson,
       '${directory.path}/scene.anicel',
     );
 
@@ -301,6 +303,7 @@ void main() {
     manager.undo();
 
     await manager.projectDoor.saveProjectToFile(
+      asked: SaveAsked.byAPerson,
       '${directory.path}/scene.anicel',
     );
 

@@ -55,6 +55,7 @@ import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
 import 'layout/device_grid.dart';
 import 'layout/device_grid_safe_area.dart';
+import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'widgets/cursor_notice.dart';
 
@@ -393,7 +394,11 @@ class _HomePageState extends State<HomePage> {
       // not abolished, it is the OFF position of a switch the user owns:
       // autosave on and the file follows the work every n minutes; autosave
       // off and the file changes on an explicit save alone.
-      saveProject: _session.projectDoor.saveProjectToFile,
+      saveProject: (path) => _session.projectDoor.saveProjectToFile(
+        path,
+        // The clock, not a person — so the pen is left alone.
+        asked: SaveAsked.byTheClock,
+      ),
       // Only called once needsProjectFile says a real file exists.
       projectPath: () => _session.projectFile.path!,
       // PEN-12 #8: a NEVER-SAVED project snapshots nowhere — instead of

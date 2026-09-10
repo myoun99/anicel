@@ -91,7 +91,7 @@ void main() {
     );
     final copy = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
 
-    await s.projectDoor.writeArchiveCopy(copy);
+    await s.projectDoor.writeArchiveCopy(copy, asked: SaveAsked.byAPerson);
 
     // The placed file IS the project: parseable, project.json and the
     // drawn cel inside.
@@ -137,10 +137,10 @@ void main() {
       selection.frameId,
     );
     final home = '${folder.path.replaceAll('\\', '/')}/home.anicel';
-    await s.projectDoor.saveProjectToFile(home);
+    await s.projectDoor.saveProjectToFile(home, asked: SaveAsked.byAPerson);
 
     final copy = '${folder.path.replaceAll('\\', '/')}/copy.anicel';
-    await s.projectDoor.writeArchiveCopy(copy);
+    await s.projectDoor.writeArchiveCopy(copy, asked: SaveAsked.byAPerson);
     expect(parseAnicelZipLayoutFile(copy).projectEntry(),
         isNotNull);
 
@@ -176,7 +176,7 @@ void main() {
     expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     final staged = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
-    final names = await projectDoorOf(s).writeArchiveCopy(staged);
+    final names = await projectDoorOf(s).writeArchiveCopy(staged, asked: SaveAsked.byAPerson);
 
     // What the export picker does, and all it does: MOVE.
     final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';

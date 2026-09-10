@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -117,7 +118,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll(r'\', '/')}/gate.anicel';
     await tester.runAsync(
-      () => fixture.session.projectDoor.saveProjectToFile(path),
+      () => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
     );
     fixture.session.cutVerbs.createCut();
     expect(fixture.session.projectFile.autosaveShouldStandDown, isFalse);
@@ -174,7 +175,7 @@ void main() {
     // bytes landing would quit past an unsaved project.
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate-save.anicel';
-    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path));
+    await tester.runAsync(() => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson));
     final savedLength = File(path).lengthSync();
     fixture.session.cutVerbs.createCut();
     expect(fixture.session.projectFile.hasUnsavedChanges, isTrue);
@@ -204,7 +205,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/gate-fail.anicel';
     await tester.runAsync(() async {
-      await fixture.session.projectDoor.saveProjectToFile(path);
+      await fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
       // The project path turns into a DIRECTORY: every later write —
       // incremental append and the full rewrite's rename alike — refuses.
       File(path).deleteSync();
@@ -296,7 +297,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/vanishing.anicel';
     await tester.runAsync(
-      () => fixture.session.projectDoor.saveProjectToFile(path),
+      () => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
     );
     expect(
       fixture.session.projectFile.hasUnsavedChanges,
@@ -334,7 +335,7 @@ void main() {
     final fixture = await mounted(tester);
     final path = '${folder.path.replaceAll('\\', '/')}/present.anicel';
     await tester.runAsync(
-      () => fixture.session.projectDoor.saveProjectToFile(path),
+      () => fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
     );
     fixture.session.cutVerbs.createCut();
 

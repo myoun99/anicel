@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -79,7 +80,7 @@ void main() {
       ],
     );
     final path = '${directory.path}/scene.anicel';
-    await s.projectDoor.saveProjectToFile(path);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     await s.projectDoor.openProjectFromFile(path);
     // Sanity: the open restored the baked raster truth.
     expect(
