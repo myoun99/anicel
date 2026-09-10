@@ -255,3 +255,23 @@ else()
     target_link_libraries(qa_engine ${QA_M_LIB})
   endif()
 endif()
+
+# 🚨EVERY COMPILER REFUSES WHAT THE STRICTEST ONE REFUSES.
+#
+# 2026-09-10: a splice left three lines of a function body above the file's
+# first comment, and `coverage = 1.0;` at file scope is an implicit-int
+# declaration — an error for Apple clang and for the NDK's clang, and a
+# warning MSVC does not even print at its default level. Every Windows build
+# and every test on the development machine stayed green for over a day
+# while the iPad build could not compile, and the only thing that noticed
+# was the build shipping to TestFlight.
+#
+# So the two things clang refuses by default in C99 are refused here on
+# every compiler: a declaration with no type (C4431), and a call to a
+# function nothing declared (C4013).
+if(MSVC)
+  target_compile_options(qa_engine PRIVATE /we4431 /we4013)
+else()
+  target_compile_options(qa_engine PRIVATE
+    -Werror=implicit-int -Werror=implicit-function-declaration)
+endif()
