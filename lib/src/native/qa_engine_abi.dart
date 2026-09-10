@@ -134,7 +134,26 @@ import 'dart:io';
 ///   unconditional multiply, all or nothing. Two masks doing the same job,
 ///   one of them dimmable and one not, is the whole reason. 1.0 is the old
 ///   behaviour, so every brush that never asks draws byte-identically.
-const int kQaEngineAbiVersion = 33;
+/// - v33: `qa_dab_spec.reserved` becomes `dual_composite_mode` — how the dual
+///   mask COMBINES with the coverage under it, through the same
+///   `QA_STROKE_BLEND_*` ids and the same `qa_stroke_blend_channel` table
+///   the stroke kernel reads. Both source formats carry one (Clip Studio's
+///   `DualBrushCompositeMode`, Photoshop's `dualBrush.BlnM`) and ours only
+///   multiplied. Multiply is the default and keeps its own line in every
+///   transcription, so every brush that ever shipped draws byte-identically;
+///   `add` gets a named combiner because it is not in the B(Cs, Cd) table.
+///   Same slot, same size — `qa_dab_spec_sizeof` does not move.
+///   ⚠️(Written a round late: the dual round bumped the number and left
+///   this line out. The ABI test compares the two numbers, not the log.)
+/// - v34: `qa_cel_pixel_spec` + `qa_cel_pixel_pass_tile` — the 색 변환 /
+///   픽셀 비우기 pass over one tile, including the lazy copy. The Dart loop
+///   in `cel_pixel_overwrite.dart` stays the reference and the no-engine
+///   path. ⛔ONE TILE PER CALL: the originals stream is shared across
+///   tiles in walk order, so a batched, pooled form would need every
+///   tile's participation count before any tile could start — two passes
+///   to save calls that cost tens of microseconds against a pass that
+///   costs hundreds of milliseconds.
+const int kQaEngineAbiVersion = 34;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

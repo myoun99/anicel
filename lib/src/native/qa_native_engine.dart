@@ -49,7 +49,10 @@ class QaNativeEngine {
     this._fillComposeBatch,
     this._gridRasterTile,
     this._resampleRgba,
-  ) : _spec = calloc<QaDabSpecStruct>();
+    this._celPixelPassTile,
+  ) : _spec = calloc<QaDabSpecStruct>(),
+      _celSpec = calloc<QaCelPixelSpecStruct>(),
+      _celCount = calloc<Int32>();
 
   /// R25-③ batched fill compose: packs compose-tile items + their
   /// ordered layer blends into grow-only native arrays and fans the
@@ -710,6 +713,14 @@ class QaNativeEngine {
       if (spanSize != sizeOf<QaTileSpanStruct>()) {
         return null;
       }
+      final celSpecSize = library
+          .lookupFunction<Int32 Function(), int Function()>(
+            'qa_cel_pixel_spec_sizeof',
+          )
+          .call();
+      if (celSpecSize != sizeOf<QaCelPixelSpecStruct>()) {
+        return null;
+      }
       final premultiplyRgba = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Int32),
@@ -1103,6 +1114,33 @@ class QaNativeEngine {
               int,
             )
           >('qa_resample_rgba');
+      final celPixelPassTile = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              Int32,
+              Pointer<Uint8>,
+              Pointer<QaCelPixelSpecStruct>,
+              Pointer<Uint8>,
+              Int64,
+              Pointer<Uint8>,
+              Int64,
+              Pointer<Int32>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              Pointer<Uint8>,
+              int,
+              Pointer<Uint8>,
+              Pointer<QaCelPixelSpecStruct>,
+              Pointer<Uint8>,
+              int,
+              Pointer<Uint8>,
+              int,
+              Pointer<Int32>,
+            )
+          >('qa_cel_pixel_pass_tile');
       return QaNativeEngine._(
         premultiplyRgba,
         fillPaperRect,
@@ -1127,6 +1165,7 @@ class QaNativeEngine {
         fillComposeBatch,
         gridRasterTile,
         resampleRgba,
+        celPixelPassTile,
       );
     } on Object {
       return null;
@@ -1725,6 +1764,133 @@ class QaNativeEngine {
 
   final Pointer<QaDabSpecStruct> _spec;
 
+  // ABI 34 — the cel pixel pass (색 변환 / 픽셀 비우기), one tile per call.
+  final int Function(
+    Pointer<Uint8> inPixels,
+    Pointer<Uint8> outPixels,
+    int tileSize,
+    Pointer<Uint8> mask,
+    Pointer<QaCelPixelSpecStruct> spec,
+    Pointer<Uint8> incoming,
+    int incomingCount,
+    Pointer<Uint8> originalsOut,
+    int startIndex,
+    Pointer<Int32> countOut,
+  )
+  _celPixelPassTile;
+  final Pointer<QaCelPixelSpecStruct> _celSpec;
+  final Pointer<Int32> _celCount;
+  final _celIncoming = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _celMask = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _celOriginals = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  int _celByteCount = 0;
+  int _celIncomingCount = 0;
+
+  /// Stages the per-PASS constants of a cel pixel pass: the channel, the
+  /// selector, the direction, and the incoming bytes — [incoming] is
+  /// `byteCount` bytes going forward, or the whole recipe expanded to one
+  /// entry per touched pixel on undo.
+  ///
+  /// ⛔Called once per pass, never per tile: everything here is the same
+  /// for every tile, and the tile call is the one in the loop.
+  void stageCelPixelPass({
+    required int byteCount,
+    required int byteOffsetBase,
+    required int byteOffsetStride,
+    required bool takesEmptyPixels,
+    required bool isUndo,
+    required Uint8List incoming,
+    bool hasSelector = false,
+    int selectorRed = 0,
+    int selectorGreen = 0,
+    int selectorBlue = 0,
+    int selectorTolerance = 0,
+    bool selectorKeepsMatches = false,
+  }) {
+    final spec = _celSpec.ref
+      ..byteCount = byteCount
+      ..byteOffsetBase = byteOffsetBase
+      ..byteOffsetStride = byteOffsetStride
+      ..takesEmptyPixels = takesEmptyPixels ? 1 : 0
+      ..hasSelector = hasSelector ? 1 : 0
+      ..selectorRed = selectorRed
+      ..selectorGreen = selectorGreen
+      ..selectorBlue = selectorBlue
+      ..selectorTolerance = selectorTolerance
+      ..selectorKeepsMatches = selectorKeepsMatches ? 1 : 0
+      ..isUndo = isUndo ? 1 : 0;
+    assert(spec.byteCount == byteCount);
+    _celByteCount = byteCount;
+    _celIncomingCount = incoming.length ~/ byteCount;
+    final staged = _celIncoming.ensure(incoming.isEmpty ? 1 : incoming.length);
+    staged.asTypedList(incoming.length).setAll(0, incoming);
+  }
+
+  /// Hands the staged stream back once a pass is over.
+  ///
+  /// ⚠️An undo stages its whole recipe laid flat — megabytes on a
+  /// full-canvas pass — and a grow-only scratch would hold that for the rest
+  /// of the session. Forward stages one value; releasing that too costs one
+  /// tiny allocation next pass and keeps the rule unconditional.
+  void finishCelPixelPass() => _celIncoming.release();
+
+  /// Runs the staged pass over ONE tile.
+  ///
+  /// [inPixels] is the tile's own bytes (from `BitmapTile.readPixels`) and
+  /// is never written. The result's `pixels` is a [tileAlloc] block holding
+  /// the rewritten tile when anything changed — ready for
+  /// `BitmapTile.adoptNative`, no copy — and null when nothing did, in which
+  /// case the block has already gone back to the pool. `originals` is this
+  /// tile's slice of the recipe stream (a VIEW into scratch, valid until the
+  /// next call), present only when [wantOriginals].
+  ({Pointer<Uint8>? pixels, int count, Uint8List? originals}) celPixelPassTile({
+    required Pointer<Uint8> inPixels,
+    required int tileSize,
+    required Uint8List? mask,
+    required int startIndex,
+    required bool wantOriginals,
+  }) {
+    final pixelCount = tileSize * tileSize;
+    final out = tileAlloc(pixelCount * 4);
+    Pointer<Uint8> maskPointer = nullptr;
+    if (mask != null) {
+      maskPointer = _celMask.ensure(pixelCount);
+      maskPointer.asTypedList(pixelCount).setAll(0, mask);
+    }
+    final originals = wantOriginals
+        ? _celOriginals.ensure(pixelCount * _celByteCount)
+        : nullptr;
+    final changed = _celPixelPassTile(
+      inPixels,
+      out,
+      tileSize,
+      maskPointer,
+      _celSpec,
+      _celIncoming.pointer,
+      _celIncomingCount,
+      originals,
+      startIndex,
+      _celCount,
+    );
+    final count = _celCount.value;
+    if (changed != 1) {
+      tileFree(out);
+    }
+    if (changed < 0) {
+      throw StateError(
+        'the recipe holds $_celIncomingCount pixels and the walk it replays '
+        'goes past them — it was built over some other surface',
+      );
+    }
+    return (
+      pixels: changed == 0 ? null : out,
+      count: count,
+      originals: wantOriginals
+          ? originals.asTypedList(count * _celByteCount)
+          : null,
+    );
+  }
+
   /// Uploaded mask alphas keyed by the SOURCE Float64List's identity
   /// (BrushTipMask.alphaNormalized is `late final`, so the identity is
   /// stable for a mask's lifetime). Small LRU — one stroke reuses the
@@ -2220,4 +2386,46 @@ final class QaDabSpecStruct extends Struct {
   external Pointer<Int32> texVTexel1;
   external Pointer<Double> texVFraction;
   external Pointer<Double> texVOneMinus;
+}
+
+/// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must
+/// match EXACTLY; the loader cross-checks `qa_cel_pixel_spec_sizeof`.
+///
+/// Eleven int32s and nothing else, so there is no padding to get wrong:
+/// the whole struct is the cel pixel pass's per-PASS constants, staged once
+/// and read by every tile.
+final class QaCelPixelSpecStruct extends Struct {
+  /// 3 for colour, 1 for alpha — `CelPixelChannel.byteCount`.
+  @Int32()
+  external int byteCount;
+
+  /// Channel byte i sits at `base + i * stride` in the RGBA quad —
+  /// `CelPixelChannel.byteOffset` asked twice, so the C never has to know
+  /// what a channel IS.
+  @Int32()
+  external int byteOffsetBase;
+  @Int32()
+  external int byteOffsetStride;
+
+  /// 1 = every masked pixel takes part — `CelPixelChannel.takesEmptyPixels`.
+  @Int32()
+  external int takesEmptyPixels;
+
+  /// The `CelColorKey`, or `hasSelector == 0`.
+  @Int32()
+  external int hasSelector;
+  @Int32()
+  external int selectorRed;
+  @Int32()
+  external int selectorGreen;
+  @Int32()
+  external int selectorBlue;
+  @Int32()
+  external int selectorTolerance;
+  @Int32()
+  external int selectorKeepsMatches;
+
+  /// 1 = undo: the incoming stream is the recipe, indexed by walk position.
+  @Int32()
+  external int isUndo;
 }

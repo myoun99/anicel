@@ -4818,6 +4818,168 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// Cel pixel pass (ABI 33): 색 변환 and 픽셀 비우기 over a cel's tiles.
+//
+// Mirrors the per-pixel loop of lib/src/services/cel_pixel_overwrite.dart.
+// That Dart loop STAYS — it is the reference, and it is what runs with no
+// engine — and `cel_pixel_pass_parity_test.dart` drives both over the same
+// fixtures and compares bytes.
+//
+// ⛔ONE TILE PER CALL, deliberately. The batched shape every other tile
+// kernel here uses (qa_tile_span[] + qa_pool_run) cannot be used as-is:
+// this pass writes its ORIGINALS into one stream shared by every tile, in
+// walk order, and a tile's slot in that stream is the sum of the counts
+// before it — which is not known until those tiles have run. 510 calls on
+// a 4K cel cost tens of microseconds against a pass that costs hundreds of
+// milliseconds, and per-call keeps both the caller's ONE scratch buffer and
+// the lazy copy below.
+
+typedef struct {
+  // 3 for colour, 1 for alpha.
+  int32_t byte_count;
+  // Where channel byte i sits in the RGBA quad: base + i * stride.
+  // colour = (0, 1) -> 0, 1, 2 · alpha = (3, 0) -> 3.
+  //
+  // ⚠️TWO NUMBERS RATHER THAN A CHANNEL ENUM, so the C never has to know
+  // what a channel IS. `CelPixelChannel.byteOffset` stays the one law and
+  // this reads it; a third channel added there needs no edit here.
+  int32_t byte_offset_base;
+  int32_t byte_offset_stride;
+  // 1 = every masked pixel takes part (the alpha rule); 0 = only pixels
+  // that carry ink (the colour rule, alpha > 0). Same reasoning as
+  // `celPixelParticipates`: an alpha write destroys "was there ink here",
+  // so undo must record the empty pixels too.
+  int32_t takes_empty_pixels;
+  // The colour selector, or has_selector = 0. ⛔It reads R, G and B and
+  // NEVER alpha — that purity is what lets undo re-ask the same question
+  // of the same bytes and walk the same pixels.
+  int32_t has_selector;
+  int32_t selector_red;
+  int32_t selector_green;
+  int32_t selector_blue;
+  int32_t selector_tolerance;
+  int32_t selector_keeps_matches;
+  // 1 = undo: `incoming` is the flat originals stream indexed by the
+  // GLOBAL walk index, and coverage does not blend — the recipe already
+  // holds what the pixel was, so putting it back is a plain assignment.
+  int32_t is_undo;
+} qa_cel_pixel_spec;
+
+QA_EXPORT int32_t qa_cel_pixel_spec_sizeof(void) {
+  return (int32_t)sizeof(qa_cel_pixel_spec);
+}
+
+// `older + (incoming - older) * coverage / 255`, the integer mul-div-255
+// idiom — byte-for-byte the Dart `_blend`.
+static uint8_t qa_cel_pixel_blend(int32_t older, int32_t incoming,
+                                  int32_t coverage) {
+  const int32_t scaled =
+      incoming * coverage + older * (255 - coverage) + 128;
+  return (uint8_t)((scaled + (scaled >> 8)) >> 8);
+}
+
+static int32_t qa_cel_pixel_participates(const qa_cel_pixel_spec* spec,
+                                         int32_t alpha, int32_t mask_value,
+                                         int32_t red, int32_t green,
+                                         int32_t blue) {
+  if (mask_value == 0) {
+    return 0;
+  }
+  if (spec->has_selector) {
+    const int32_t tolerance = spec->selector_tolerance;
+    const int32_t dr = red > spec->selector_red ? red - spec->selector_red
+                                                : spec->selector_red - red;
+    const int32_t dg = green > spec->selector_green
+                           ? green - spec->selector_green
+                           : spec->selector_green - green;
+    const int32_t db = blue > spec->selector_blue ? blue - spec->selector_blue
+                                                  : spec->selector_blue - blue;
+    const int32_t matches =
+        (dr <= tolerance && dg <= tolerance && db <= tolerance) ? 1 : 0;
+    // `matches != keepsMatches` — CelColorKey.erases, exactly.
+    return matches != spec->selector_keeps_matches ? 1 : 0;
+  }
+  return spec->takes_empty_pixels ? 1 : (alpha > 0 ? 1 : 0);
+}
+
+// Runs the pass over ONE tile. Returns 1 when anything was written.
+//
+// [in_pixels] is the tile's own bytes and is never written; [out_pixels] is
+// a caller-owned scratch of the same size that receives a COPY at the first
+// pixel that actually changes and the writes after it. A tile the walk
+// crosses but never writes returns 0 and the caller keeps the original tile
+// object — the copy-on-write law of `rewriteTileLazily`, in C.
+//
+// [mask] is tile-local coverage or NULL for full coverage.
+// [incoming] is `byte_count` bytes going forward, or the whole originals
+// stream on undo (indexed by the global walk index), [incoming_count]
+// entries long.
+// [originals_out] receives this tile's originals, TILE-LOCAL (entry 0 is
+// this tile's first touched pixel), or NULL when no recipe is wanted.
+// [start_index] is the global walk index this tile starts at.
+//
+// Returns -1 when an undo walk reaches past the end of its stream. A recipe
+// shorter than the walk it replays was built over some other surface, and
+// the Dart reference refuses it too; here the alternative is reading
+// whatever memory follows the stream.
+QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
+                                         uint8_t* out_pixels,
+                                         int32_t tile_size,
+                                         const uint8_t* mask,
+                                         const qa_cel_pixel_spec* spec,
+                                         const uint8_t* incoming,
+                                         int64_t incoming_count,
+                                         uint8_t* originals_out,
+                                         int64_t start_index,
+                                         int32_t* count_out) {
+  const int32_t pixel_count = tile_size * tile_size;
+  const int32_t bytes = spec->byte_count;
+  const int32_t base = spec->byte_offset_base;
+  const int32_t stride = spec->byte_offset_stride;
+  int32_t copied = 0;
+  int64_t index = start_index;
+
+  for (int32_t pixel = 0; pixel < pixel_count; pixel += 1) {
+    const int32_t mask_value = mask != NULL ? mask[pixel] : 255;
+    const ptrdiff_t offset = (ptrdiff_t)pixel * 4;
+    if (!qa_cel_pixel_participates(spec, in_pixels[offset + 3], mask_value,
+                                   in_pixels[offset], in_pixels[offset + 1],
+                                   in_pixels[offset + 2])) {
+      continue;
+    }
+    if (spec->is_undo && index >= incoming_count) {
+      *count_out = (int32_t)(index - start_index);
+      return -1;
+    }
+    if (!copied) {
+      memcpy(out_pixels, in_pixels, (size_t)pixel_count * 4);
+      copied = 1;
+    }
+    const uint8_t* source =
+        spec->is_undo ? incoming + index * (ptrdiff_t)bytes : incoming;
+    const ptrdiff_t local = (ptrdiff_t)(index - start_index) * bytes;
+    for (int32_t byte = 0; byte < bytes; byte += 1) {
+      const ptrdiff_t at = offset + base + (ptrdiff_t)byte * stride;
+      const uint8_t original = in_pixels[at];
+      if (originals_out != NULL) {
+        originals_out[local + byte] = original;
+      }
+      // 🚨UNDO WRITES, IT DOES NOT BLEND — the same law the Dart loop's
+      // comment states at length: running the recipe through the blend only
+      // converges toward the original and never reaches it.
+      out_pixels[at] = (spec->is_undo || mask_value == 255)
+                           ? source[byte]
+                           : qa_cel_pixel_blend(original, source[byte],
+                                                mask_value);
+    }
+    index += 1;
+  }
+
+  *count_out = (int32_t)(index - start_index);
+  return copied;
+}
+
 // Engine ABI version - ONE number for this whole binary, and the Dart
 // loader refuses a mismatched one.
 //
@@ -4844,4 +5006,8 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 // stroke kernel reads. Multiply is the default and keeps its own line, so
 // every brush that ever shipped draws byte-identically. Same slot, same
 // size: sizeof does not move.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 33; }
+// v34: qa_cel_pixel_spec + qa_cel_pixel_pass_tile - the 색 변환 / 픽셀
+// 비우기 pass over one tile, lazy copy included. One tile per call: the
+// originals stream is shared across tiles in walk order, so a batched,
+// pooled form would need every tile's count before any could start.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 34; }

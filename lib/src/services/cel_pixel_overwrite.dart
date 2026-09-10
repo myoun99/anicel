@@ -5,6 +5,7 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 import 'cel_source_effect_pass.dart';
 
 /// The four PIXEL VERBS the timeline's 색 편집 popover runs.
@@ -132,6 +133,20 @@ enum CelPixelChannel {
     CelPixelChannel.colour => index,
     CelPixelChannel.alpha => 3,
   };
+
+  /// Whether a pixel with NO ink still takes part — the reason is the one
+  /// [celPixelParticipates] gives: an alpha write destroys the question
+  /// "was there ink here", so undo could not tell an already-empty pixel
+  /// from one this pass emptied.
+  ///
+  /// ⛔ONE ANSWER FOR TWO LANGUAGES (ABI 34). The C pass stages this as a
+  /// flag rather than re-deriving it from the channel, so the rule lives
+  /// here and only here — an exhaustive switch, like the two above, so a
+  /// third channel has to state its answer.
+  bool get takesEmptyPixels => switch (this) {
+    CelPixelChannel.colour => false,
+    CelPixelChannel.alpha => true,
+  };
 }
 
 /// Whether a pixel takes part, given its CURRENT alpha and its mask
@@ -178,13 +193,11 @@ bool celPixelParticipates({
     // on the wrong pixels. A test caught exactly that.
     return selector.erases(red, green, blue);
   }
-  // ⚠️Exhaustive for the reason [CelPixelChannel.byteCount] gives: a new
-  // channel must be made to STATE its participation rule rather than
-  // inheriting alpha's by falling off the end of a boolean.
-  return switch (channel) {
-    CelPixelChannel.alpha => true,
-    CelPixelChannel.colour => alpha > 0,
-  };
+  // ⚠️The rule is [CelPixelChannel.takesEmptyPixels] — an exhaustive switch
+  // on the enum, so a new channel must STATE its participation rule rather
+  // than inheriting alpha's by falling off the end of a boolean. It lives
+  // there rather than here because the C pass stages the same answer.
+  return channel.takesEmptyPixels || alpha > 0;
 }
 
 /// What one cel needs in order to be put back exactly as it was.
@@ -198,9 +211,40 @@ sealed class CelPixelRestore {
   /// Bytes this recipe holds, for the history manager's byte budget.
   int get estimatedRetainedBytes;
 
+  /// How many pixels the pass touched — the length of the walk this recipe
+  /// replays.
+  ///
+  /// ⚠️It was never asked before ABI 34, because every reader walked the
+  /// recipe in lockstep with the pass and `readInto` never needed the end.
+  /// The native undo expands the recipe to one entry per touched pixel
+  /// BEFORE the pass runs, so it has to know how many there are — and a
+  /// uniform recipe, which is one value, could not say.
+  int get touchedPixelCount;
+
   /// Writes the original channel bytes of the [index]-th touched pixel
   /// into [into] (which is [CelPixelChannel.byteCount] long).
   void readInto(Uint8List into, int index);
+
+  /// Every touched pixel's original bytes, end to end in walk order —
+  /// [touchedPixelCount] entries of [byteCount].
+  ///
+  /// The native undo reads its recipe from inside C, which cannot call
+  /// [readInto], so the recipe is laid flat once before the pass runs.
+  /// ⛔Written in terms of [readInto] rather than once per shape: each shape
+  /// already says "the i-th value" in one place, and a bulk form beside it
+  /// would be a second answer to the same question.
+  Uint8List expand(int byteCount) {
+    final flat = Uint8List(touchedPixelCount * byteCount);
+    final one = Uint8List(byteCount);
+    for (var index = 0; index < touchedPixelCount; index += 1) {
+      readInto(one, index);
+      final at = index * byteCount;
+      for (var byte = 0; byte < byteCount; byte += 1) {
+        flat[at + byte] = one[byte];
+      }
+    }
+    return flat;
+  }
 }
 
 /// Copies [count] bytes from [from] at [base] into the front of [into] —
@@ -243,10 +287,15 @@ void copyRestoreBytes(Uint8List into, Uint8List from, int base, int count) {
 /// the region flat by definition, so every recolour after the first one
 /// lands here no matter what the drawing started as.
 final class UniformCelPixelRestore extends CelPixelRestore {
-  const UniformCelPixelRestore(this.value);
+  const UniformCelPixelRestore(this.value, {required this.touchedPixelCount});
 
   /// The channel bytes, in channel order (3 for colour, 1 for alpha).
   final Uint8List value;
+
+  /// ⚠️STORED, because a uniform recipe is ONE value and says nothing about
+  /// how many pixels it stands for — see [CelPixelRestore.touchedPixelCount].
+  @override
+  final int touchedPixelCount;
 
   @override
   int get estimatedRetainedBytes => value.length;
@@ -274,6 +323,9 @@ final class PalettedCelPixelRestore extends CelPixelRestore {
 
   @override
   int get estimatedRetainedBytes => palette.length + indices.length;
+
+  @override
+  int get touchedPixelCount => indices.length;
 
   @override
   void readInto(Uint8List into, int index) {
@@ -313,6 +365,12 @@ final class RunLengthCelPixelRestore extends CelPixelRestore {
   @override
   int get estimatedRetainedBytes => values.length + lengths.lengthInBytes;
 
+  @override
+  late final int touchedPixelCount = lengths.fold<int>(
+    0,
+    (sum, run) => sum + run,
+  );
+
   /// Where the cursor stands: [_run] is the run holding pixel [_runStart].
   ///
   /// ⚠️A CURSOR, because every caller walks forward. [overwriteCelPixels]
@@ -340,10 +398,15 @@ final class RunLengthCelPixelRestore extends CelPixelRestore {
 /// More distinct values than a palette can index — the channels are kept
 /// as they were, one pixel after another in walk order.
 final class RawCelPixelRestore extends CelPixelRestore {
-  const RawCelPixelRestore(this.values);
+  const RawCelPixelRestore(this.values, {required this.touchedPixelCount});
 
   /// Channel bytes for every touched pixel, in walk order.
   final Uint8List values;
+
+  /// ⚠️STORED: [values] is `touchedPixelCount * byteCount` long, and this
+  /// recipe never learns the byte count — [readInto] is handed it.
+  @override
+  final int touchedPixelCount;
 
   @override
   int get estimatedRetainedBytes => values.length;
@@ -544,10 +607,13 @@ class _RestoreBuilder {
       return null;
     }
     if (_uniform) {
-      return UniformCelPixelRestore(_first!);
+      return UniformCelPixelRestore(_first!, touchedPixelCount: _count);
     }
     if (_paletteOpen && _paletteIndexByKey.length == 1) {
-      return UniformCelPixelRestore(_palette.toBytes());
+      return UniformCelPixelRestore(
+        _palette.toBytes(),
+        touchedPixelCount: _count,
+      );
     }
     final runBytes = _runLengths.length * (byteCount + _runLengthBytes);
     final paletteBytes = _paletteOpen
@@ -566,7 +632,7 @@ class _RestoreBuilder {
         indices: Uint8List.fromList(_indices),
       );
     }
-    return RawCelPixelRestore(_raw!.toBytes());
+    return RawCelPixelRestore(_raw!.toBytes(), touchedPixelCount: _count);
   }
 }
 
@@ -616,79 +682,197 @@ typedef CelPixelWalk =
     value == null || value.length == channel.byteCount,
     'value must carry exactly the channel bytes.',
   );
-  final byteCount = channel.byteCount;
-  final builder = value == null ? null : _RestoreBuilder(byteCount);
-  final original = Uint8List(byteCount);
-  final incoming = Uint8List(byteCount);
-  if (value != null) {
-    incoming.setAll(0, value);
-  }
+  final builder = value == null ? null : _RestoreBuilder(channel.byteCount);
+  final engine = QaNativeEngine.instance;
+  final rewrite = engine == null
+      ? _dartTileRewrite(
+          channel: channel,
+          tileSize: surface.tileSize,
+          value: value,
+          restore: restore,
+          selector: selector,
+          builder: builder,
+        )
+      : _nativeTileRewrite(
+          engine,
+          channel: channel,
+          tileSize: surface.tileSize,
+          value: value,
+          restore: restore,
+          selector: selector,
+          builder: builder,
+        );
 
   final rebuilt = <TileCoord, BitmapTile>{};
-  final pixelCount = surface.tileSize * surface.tileSize;
-  var index = 0;
-
-  walk((coord, mask) {
-    // Absent tile: nothing has ever been drawn here, so 색 변환 has no
-    // colour to replace and 비우기 has nothing to empty. It stays absent
-    // rather than materializing 256 KB of zeroes.
-    final tile = surface.tileAt(coord);
-    if (tile == null) {
-      return;
-    }
-    final rewritten = rewriteTileLazily(tile, surface.tileSize, (view) {
-      Uint8List? out;
-      for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-        final maskValue = mask == null ? 255 : mask[pixel];
-        final offset = pixel * 4;
-        if (!celPixelParticipates(
-          channel: channel,
-          alpha: view[offset + 3],
-          maskValue: maskValue,
-          selector: selector,
-          red: view[offset],
-          green: view[offset + 1],
-          blue: view[offset + 2],
-        )) {
-          continue;
-        }
-        for (var byte = 0; byte < byteCount; byte += 1) {
-          original[byte] = view[offset + channel.byteOffset(byte)];
-        }
-        builder?.add(original);
-        if (restore != null) {
-          restore.readInto(incoming, index);
-        }
-        index += 1;
-        out ??= Uint8List.fromList(view);
-        for (var byte = 0; byte < byteCount; byte += 1) {
-          out[offset + channel.byteOffset(byte)] =
-              // 🚨UNDO WRITES, IT DOES NOT BLEND. The recipe already holds
-              // what the pixel was, so putting it back is a plain assignment
-              // at every coverage. Running the recipe through the blend
-              // instead only converges toward the original and never reaches
-              // it — a feathered recolour of flat black came back as
-              // [55, 61, 67] rather than [10, 20, 30], and a second undo
-              // would have drifted again.
-              restore != null || maskValue == 255
-              ? incoming[byte]
-              // Forward, partial coverage blends the VALUE, so a feathered
-              // edge fades between the old colour and the new one while the
-              // drawing's own alpha — its shape — is left alone.
-              : _blend(original[byte], incoming[byte], maskValue);
-        }
+  try {
+    walk((coord, mask) {
+      // Absent tile: nothing has ever been drawn here, so 색 변환 has no
+      // colour to replace and 비우기 has nothing to empty. It stays absent
+      // rather than materializing 256 KB of zeroes.
+      final tile = surface.tileAt(coord);
+      if (tile == null) {
+        return;
       }
-      return out;
+      final rewritten = rewrite(tile, mask);
+      if (rewritten != null) {
+        rebuilt[coord] = rewritten;
+      }
     });
-    if (rewritten != null) {
-      rebuilt[coord] = rewritten;
-    }
-  });
+  } finally {
+    engine?.finishCelPixelPass();
+  }
 
   return (
     surface: surface.withRebuiltTiles(rebuilt),
     restore: rebuilt.isEmpty ? null : builder?.build(),
   );
+}
+
+/// One tile of the pass: the rewritten tile, or null when nothing in it
+/// took part. Each implementation carries its own running walk index — the
+/// only addressing a recipe has.
+typedef _TileRewrite = BitmapTile? Function(BitmapTile tile, Uint8List? mask);
+
+/// The pass in Dart: the reference `cel_pixel_pass_parity_test.dart`
+/// compares the C pass against byte for byte, and what runs with no engine.
+_TileRewrite _dartTileRewrite({
+  required CelPixelChannel channel,
+  required int tileSize,
+  required Uint8List? value,
+  required CelPixelRestore? restore,
+  required CelColorKey? selector,
+  required _RestoreBuilder? builder,
+}) {
+  final byteCount = channel.byteCount;
+  final original = Uint8List(byteCount);
+  final incoming = Uint8List(byteCount);
+  if (value != null) {
+    incoming.setAll(0, value);
+  }
+  final pixelCount = tileSize * tileSize;
+  var index = 0;
+  return (tile, mask) => rewriteTileLazily(tile, tileSize, (view) {
+    Uint8List? out;
+    for (var pixel = 0; pixel < pixelCount; pixel += 1) {
+      final maskValue = mask == null ? 255 : mask[pixel];
+      final offset = pixel * 4;
+      if (!celPixelParticipates(
+        channel: channel,
+        alpha: view[offset + 3],
+        maskValue: maskValue,
+        selector: selector,
+        red: view[offset],
+        green: view[offset + 1],
+        blue: view[offset + 2],
+      )) {
+        continue;
+      }
+      for (var byte = 0; byte < byteCount; byte += 1) {
+        original[byte] = view[offset + channel.byteOffset(byte)];
+      }
+      builder?.add(original);
+      if (restore != null) {
+        // ⛔A recipe shorter than its walk was built over some other
+        // surface. The C pass has to refuse it — reading on there reads
+        // whatever memory follows the stream — so this one refuses it too,
+        // or the two passes would answer one malformed undo differently.
+        if (index >= restore.touchedPixelCount) {
+          throw StateError(
+            'the recipe holds ${restore.touchedPixelCount} pixels and the '
+            'walk it replays goes past them',
+          );
+        }
+        restore.readInto(incoming, index);
+      }
+      index += 1;
+      out ??= Uint8List.fromList(view);
+      for (var byte = 0; byte < byteCount; byte += 1) {
+        out[offset + channel.byteOffset(byte)] =
+            // 🚨UNDO WRITES, IT DOES NOT BLEND. The recipe already holds
+            // what the pixel was, so putting it back is a plain assignment
+            // at every coverage. Running the recipe through the blend
+            // instead only converges toward the original and never reaches
+            // it — a feathered recolour of flat black came back as
+            // [55, 61, 67] rather than [10, 20, 30], and a second undo
+            // would have drifted again.
+            restore != null || maskValue == 255
+            ? incoming[byte]
+            // Forward, partial coverage blends the VALUE, so a feathered
+            // edge fades between the old colour and the new one while the
+            // drawing's own alpha — its shape — is left alone.
+            : _blend(original[byte], incoming[byte], maskValue);
+      }
+    }
+    return out;
+  });
+}
+
+/// The pass in C (ABI 34): `qa_cel_pixel_pass_tile`, one tile per call.
+///
+/// The participation law, the blend and the lazy copy run in the kernel;
+/// the RECIPE stays here. C hands back each tile's originals in walk order
+/// and [_RestoreBuilder] — the one place a recipe's shape is chosen — reads
+/// them exactly as it reads the Dart pass's, so the compression is never
+/// written twice (the card's fork ②: C speaks flat bytes, Dart compresses).
+_TileRewrite _nativeTileRewrite(
+  QaNativeEngine engine, {
+  required CelPixelChannel channel,
+  required int tileSize,
+  required Uint8List? value,
+  required CelPixelRestore? restore,
+  required CelColorKey? selector,
+  required _RestoreBuilder? builder,
+}) {
+  final byteCount = channel.byteCount;
+  final base = channel.byteOffset(0);
+  final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
+  assert(() {
+    for (var byte = 0; byte < byteCount; byte += 1) {
+      if (channel.byteOffset(byte) != base + byte * stride) {
+        return false;
+      }
+    }
+    return true;
+  }(), 'the C pass addresses channel byte i at base + i * stride');
+  engine.stageCelPixelPass(
+    byteCount: byteCount,
+    byteOffsetBase: base,
+    byteOffsetStride: stride,
+    takesEmptyPixels: channel.takesEmptyPixels,
+    isUndo: restore != null,
+    incoming: value ?? restore!.expand(byteCount),
+    hasSelector: selector != null,
+    selectorRed: selector?.red ?? 0,
+    selectorGreen: selector?.green ?? 0,
+    selectorBlue: selector?.blue ?? 0,
+    selectorTolerance: selector?.tolerance ?? 0,
+    selectorKeepsMatches: selector?.keepsMatches ?? false,
+  );
+  final original = Uint8List(byteCount);
+  var index = 0;
+  return (tile, mask) {
+    final pass = tile.readPixels(
+      (pixels, _) => engine.celPixelPassTile(
+        inPixels: pixels,
+        tileSize: tileSize,
+        mask: mask,
+        startIndex: index,
+        wantOriginals: builder != null,
+      ),
+    );
+    index += pass.count;
+    final originals = pass.originals;
+    if (builder != null && originals != null) {
+      for (var at = 0; at < originals.length; at += byteCount) {
+        copyRestoreBytes(original, originals, at, byteCount);
+        builder.add(original);
+      }
+    }
+    final pixels = pass.pixels;
+    return pixels == null
+        ? null
+        : BitmapTile.adoptNative(size: tileSize, pixels: pixels);
+  };
 }
 
 /// `older + (incoming - older) * coverage / 255`, in the integer mul-div-255
