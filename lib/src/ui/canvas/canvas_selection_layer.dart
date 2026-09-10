@@ -35,6 +35,7 @@ import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
 import '../theme/app_theme.dart';
 import 'selection_ants_painter.dart';
+import 'selection_drag.dart';
 import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
@@ -300,8 +301,6 @@ enum CanvasSelectionTool {
   /// shape you drew is not selecting it.
   fillShape,
 }
-
-enum _DragMode { none, marquee, move, transform, vertexTap }
 
 /// The float the transform preview last resampled.
 ///
@@ -612,21 +611,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// The committed region as it stood when a marquee drag started — the
-  /// undo record's BEFORE (a cancelled drag restores it).
-  CanvasSelectionRegion? _shapeBeforeMarquee;
+  /// The drag running right now, or null — the ONE field that says which
+  /// mode owns the pointer and what that mode is holding. See
+  /// [SelectionDrag] for why it is one field and not three.
+  SelectionDrag? _drag;
 
-  _DragMode _dragMode = _DragMode.none;
-  int? _activePointer;
+  /// The live drag when it is the marquee, for the three sites that want
+  /// its outline. A projection of [_drag], never a second copy of it.
+  MarqueeDrag? get _marqueeDrag {
+    final drag = _drag;
+    return drag is MarqueeDrag ? drag : null;
+  }
 
-  // Marquee-in-progress (canvas space).
-  CanvasPoint? _marqueeStart;
-  CanvasPoint? _marqueeCurrent;
-  List<CanvasPoint> _lassoPoints = const [];
+  /// The move drag's screen-space delta, or zero when no move drag is live
+  /// — which is also what the field this replaced held at rest.
+  Offset get _moveScreenDelta => switch (_drag) {
+    MoveDrag(:final screenDelta) => screenDelta,
+    _ => Offset.zero,
+  };
 
-  // Move-in-progress: screen-space delta + the floating copy of the
-  // selected strokes (built once at drag start).
-  Offset _moveScreenDelta = Offset.zero;
+  /// The floating copy of the selected pixels (built once at drag start).
   BitmapSurface? _floatSurface;
 
   /// The drag so far in WHOLE CANVAS PIXELS — what a move can actually
@@ -705,14 +709,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// back repaints this layer. The trace itself is never copied down here
   /// — the channel stays its only owner.
   int _polygonTracePoints = 0;
-
-  /// Where a vertex tap went DOWN — the point it will place.
-  ///
-  /// Down for the position, up for the commit: the aim is taken where the
-  /// stylus landed, and nothing is placed until the hand comes off (유저
-  /// 법: 선택은 탭 = 손 떼야). Taking the release position instead would
-  /// slide the vertex out from under a finger that rolled.
-  Offset? _vertexTapStart;
 
   @override
   void initState() {
@@ -892,7 +888,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _cancelFloatHold();
     widget.selectionCommands?.removeListener(_adoptChannelRegion);
     widget.selectionCommands?.unbind(this);
-    if (_dragMode != _DragMode.none) {
+    if (_drag != null) {
       _notifyDragActive(false);
     }
     // R16-①: unmounting with a pending move (tool switched to a
@@ -1205,7 +1201,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   );
 
   void _resetAll({bool deferDragNotify = false}) {
-    final wasDragging = _dragMode != _DragMode.none;
+    final wasDragging = _drag != null;
     setState(() {
       // A pending float must not lose its pixels: land it at its pending
       // position (raw, no history) before the bookkeeping clears. Pending
@@ -1220,7 +1216,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // showed is what lands, on every exit.
       _foldOpenTransformIntoPendingStamp();
       _landPendingLiftStamp();
-      _cancelDrag(notify: wasDragging && !deferDragNotify);
+      _endDrag(cancelled: true, notify: wasDragging && !deferDragNotify);
       _setRegion(null);
       _shapeIsImplicitWholePicture = false; // R26 #13
       _clearLiftState();
@@ -1646,7 +1642,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the whole rect, and the commit reuses that very buffer — so the
   /// byte-identity path the tool has always had survives untouched.
   SelectionVisibleRect? _previewVisibleRect() {
-    if (_dragMode != _DragMode.transform) {
+    if (_drag is! TransformDrag) {
       return null;
     }
     final rect = _visibleCanvasRect();
@@ -2189,13 +2185,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The one door both drag-active signals leave by.
   ///
-  /// The transform half is DERIVED from [_dragMode] rather than raised by
+  /// The transform half is DERIVED from [_drag] rather than raised by
   /// hand at each site, so a future drag kind cannot forget to lower it —
   /// and a stuck touch lock is the kind of bug that only shows up as "the
   /// canvas stopped panning" an hour later.
   void _notifyDragActive(bool active) {
     widget.onDragActiveChanged?.call(active);
-    final transform = active && _dragMode == _DragMode.transform;
+    final transform = active && _drag is TransformDrag;
     if (transform != _reportedTransformDrag) {
       _reportedTransformDrag = transform;
       widget.onTransformDragActiveChanged?.call(transform);
@@ -2205,7 +2201,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool _reportedTransformDrag = false;
 
   void _syncAnts() {
-    final animate = _hasSelection || _dragMode == _DragMode.marquee;
+    final animate = _hasSelection || _drag is MarqueeDrag;
     if (animate && !_ants.isAnimating) {
       unawaited(_ants.repeat());
     } else if (!animate && _ants.isAnimating) {
@@ -2217,7 +2213,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _deselect() {
-    if (!_hasSelection && _dragMode == _DragMode.none) {
+    if (!_hasSelection && _drag == null) {
       return;
     }
     final before = _region;
@@ -2588,7 +2584,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       );
     }
     if (floatSurface != null &&
-        (_dragMode == _DragMode.move ||
+        (_drag is MoveDrag ||
             transform != null ||
             _movePending ||
             _floatHold != null)) {
@@ -2671,7 +2667,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.viewport.viewportToCanvas(ViewportPoint(x: local.dx, y: local.dy));
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (_activePointer != null) {
+    if (_drag != null) {
       // A second TOUCH is the navigate signal (same rule as strokes):
       // cancel the selection drag and let the gesture layer take over.
       //
@@ -2682,10 +2678,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // giving the finger a meaning was rejected for the reason a palm
       // gives it too — a mis-touch would then change the RESULT, which is
       // invisible, instead of the drag, which is not.
-      if (event.kind == PointerDeviceKind.touch &&
-          _dragMode != _DragMode.none &&
-          _dragMode != _DragMode.transform) {
-        setState(() => _cancelDrag(notify: true));
+      if (event.kind == PointerDeviceKind.touch && _drag is! TransformDrag) {
+        setState(() => _endDrag(cancelled: true, notify: true));
         _syncAnts();
       }
       return;
@@ -2731,10 +2725,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // The polygon places points; it has no drag verb at all, so the
       // press only records where the tap aimed and the release decides
       // what it meant.
-      _activePointer = event.pointer;
       setState(() {
-        _dragMode = _DragMode.vertexTap;
-        _vertexTapStart = event.localPosition;
+        _drag = VertexTapDrag(
+          pointer: event.pointer,
+          tapStart: event.localPosition,
+        );
       });
     } else {
       // The marquee tools ALWAYS draw a NEW polygon — even starting
@@ -2745,21 +2740,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // records the combination as one undoable step. A pending move
       // session confirms first (R16-①: never revert, always confirm).
       _confirmMoveSession();
-      _activePointer = event.pointer;
       setState(() {
-        _dragMode = _DragMode.marquee;
-        // Nothing to stash while cutting: the drag never touches the
-        // region, so there is nothing for a cancel to put back.
-        // Nothing to stash for the verbs that never touch the region: the
-        // drag leaves it alone, so a cancel has nothing to put back.
-        _shapeBeforeMarquee =
-            widget.tool == CanvasSelectionTool.cut ||
-                widget.tool == CanvasSelectionTool.fillShape
-            ? null
-            : _region;
-        _marqueeStart = canvasPoint;
-        _marqueeCurrent = canvasPoint;
-        _lassoPoints = [canvasPoint];
+        _drag = MarqueeDrag(
+          pointer: event.pointer,
+          shapeKind: widget.shapeKind,
+          // Nothing to stash for the verbs that never touch the region: the
+          // drag leaves it alone, so a cancel has nothing to put back.
+          before:
+              widget.tool == CanvasSelectionTool.cut ||
+                  widget.tool == CanvasSelectionTool.fillShape
+              ? null
+              : _region,
+          at: canvasPoint,
+        );
       });
     }
     _notifyDragActive(true);
@@ -2885,10 +2878,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _syncAnts();
       return false;
     }
-    _activePointer = event.pointer;
     setState(() {
-      _dragMode = _DragMode.move;
-      _moveScreenDelta = Offset.zero;
+      _drag = MoveDrag(pointer: event.pointer);
       _floatSurface = _buildFloatSurface();
     });
     return true;
@@ -2907,9 +2898,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ).containsPoint(canvasPoint)) {
         return;
       }
-      _activePointer = event.pointer;
       setState(() {
-        _dragMode = _DragMode.transform;
+        _drag = TransformDrag(pointer: event.pointer);
         // ⚠️NULL IS REACHABLE and means something: the press landed
         // INSIDE the mesh boundary but not on a point. It carried no
         // point before this field became a list, and it still carries
@@ -2933,9 +2923,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         cornersPlaced,
       );
       if (cornerIndex != null) {
-        _activePointer = event.pointer;
         setState(() {
-          _dragMode = _DragMode.transform;
+          _drag = TransformDrag(pointer: event.pointer);
           _warpDragPoints = [cornerIndex];
           _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
           _transformDragStartPointer = canvasPoint;
@@ -2977,9 +2966,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         ? _edgeCornerPair(handle)
         : null;
     if (edgePair != null && cornersPlaced != null) {
-      _activePointer = event.pointer;
       setState(() {
-        _dragMode = _DragMode.transform;
+        _drag = TransformDrag(pointer: event.pointer);
         _warpDragPoints = edgePair;
         _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
         _transformDragStartPointer = canvasPoint;
@@ -2987,9 +2975,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _notifyDragActive(true);
       return;
     }
-    _activePointer = event.pointer;
     setState(() {
-      _dragMode = _DragMode.transform;
+      _drag = TransformDrag(pointer: event.pointer);
       _transformDragHandle = handle;
       _transformDragStart = openTransform;
       _transformDragStartPointer = canvasPoint;
@@ -3002,27 +2989,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (event.pointer != _activePointer) {
+    final drag = _drag;
+    if (drag == null || event.pointer != drag.pointer) {
       return;
     }
-    switch (_dragMode) {
-      case _DragMode.none:
-        return;
-      case _DragMode.vertexTap:
+    switch (drag) {
+      case VertexTapDrag():
         // Nothing follows the pointer: the vertex was aimed on the way
         // down and only the release decides whether it lands.
         return;
-      case _DragMode.marquee:
-        setState(() {
-          final canvasPoint = _toCanvas(event.localPosition);
-          _marqueeCurrent = canvasPoint;
-          if (_tracesPointerPath) {
-            _lassoPoints = [..._lassoPoints, canvasPoint];
-          }
-        });
-      case _DragMode.move:
-        setState(() => _moveScreenDelta += event.delta);
-      case _DragMode.transform:
+      case MarqueeDrag():
+        setState(() => drag.update(_toCanvas(event.localPosition)));
+      case MoveDrag():
+        setState(() => drag.screenDelta += event.delta);
+      case TransformDrag():
         _updateTransformDrag(_toCanvas(event.localPosition));
     }
   }
@@ -3237,33 +3217,34 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (event.pointer != _activePointer) {
+    final drag = _drag;
+    if (drag == null || event.pointer != drag.pointer) {
       return;
     }
-    switch (_dragMode) {
-      case _DragMode.none:
-        break;
-      case _DragMode.marquee:
-        _finishMarquee();
-      case _DragMode.move:
+    // A release is the COMMIT half of [SelectionDrag]'s lifecycle, so the
+    // end below is not a cancel — a finished marquee keeps what it folded
+    // in rather than having its BEFORE region put back.
+    switch (drag) {
+      case MarqueeDrag():
+        _finishMarquee(drag);
+      case MoveDrag():
         _finishMove();
-      case _DragMode.transform:
+      case TransformDrag():
         // The session stays open across drags; Enter/Escape close it.
         break;
-      case _DragMode.vertexTap:
-        _placeVertex();
+      case VertexTapDrag():
+        _placeVertex(drag);
     }
-    setState(() => _cancelDrag(notify: true));
+    setState(() => _endDrag(cancelled: false, notify: true));
     _syncAnts();
   }
 
   /// A polygon tap has come off: close the trace if it aimed at the first
   /// vertex, otherwise extend it.
-  void _placeVertex() {
+  void _placeVertex(VertexTapDrag drag) {
     final commands = widget.selectionCommands;
-    final down = _vertexTapStart;
-    _vertexTapStart = null;
-    if (commands == null || down == null) {
+    final down = drag.tapStart;
+    if (commands == null) {
       return;
     }
     final tapped = _toCanvas(down);
@@ -3328,37 +3309,39 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
-    if (event.pointer != _activePointer) {
+    if (event.pointer != _drag?.pointer) {
       return;
     }
-    setState(() => _cancelDrag(notify: true));
+    setState(() => _endDrag(cancelled: true, notify: true));
     _syncAnts();
   }
 
-  /// Clears drag bookkeeping (NOT the committed selection, and NOT an
-  /// open Ctrl+T session — its float persists between handle drags).
-  void _cancelDrag({required bool notify}) {
-    final wasDragging = _dragMode != _DragMode.none;
+  /// Ends the live drag — dropping the object IS the end ([SelectionDrag]),
+  /// so nothing here clears per-mode fields.
+  ///
+  /// NOT the committed selection, and NOT an open Ctrl+T session: its float
+  /// persists between handle drags, and R16-①'s move SESSION survives the
+  /// gesture (the float keeps rendering at its pending position until the
+  /// user confirms).
+  ///
+  /// ⛔[cancelled] is the OTHER half of the lifecycle, and exactly one of
+  /// the two closes a drag. A CANCELLED marquee leaves the region exactly
+  /// as the drag found it; a finished one keeps what the release folded in.
+  /// This used to be one path that read a stash [_finishMarquee] had
+  /// emptied on its way past — the same fact in two places, and only the
+  /// order of two calls kept them agreeing.
+  void _endDrag({required bool cancelled, required bool notify}) {
+    final drag = _drag;
     // Leaving a handle drag widens the preview back to the whole rect:
     // the clip is a drag-time measure, and at rest the box has to be
     // correct wherever the user looks next. It is also what lets the
     // commit reuse this buffer instead of computing a second one.
-    final wasTransformDrag = _dragMode == _DragMode.transform;
-    // R16-①: the move SESSION survives the gesture — the float keeps
-    // rendering at its pending position until the user confirms.
-    // A CANCELLED marquee leaves the region exactly as the drag found it
-    // (a finished one consumed the stash in _finishMarquee).
-    if (_dragMode == _DragMode.marquee && _shapeBeforeMarquee != null) {
-      _setRegion(_shapeBeforeMarquee);
+    final wasTransformDrag = drag is TransformDrag;
+    if (cancelled && drag is MarqueeDrag && drag.before != null) {
+      _setRegion(drag.before);
       _shapeNeedsLift = true;
     }
-    _shapeBeforeMarquee = null;
-    _dragMode = _DragMode.none;
-    _activePointer = null;
-    _marqueeStart = null;
-    _marqueeCurrent = null;
-    _lassoPoints = const [];
-    _moveScreenDelta = Offset.zero;
+    _drag = null;
     _transformDragHandle = null;
     _transformDragStart = null;
     _transformDragStartPointer = null;
@@ -3370,7 +3353,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (wasTransformDrag && _transform != null) {
       _scheduleFloatResample();
     }
-    if (notify && wasDragging) {
+    if (notify && drag != null) {
       _notifyDragActive(false);
     }
   }
@@ -3399,10 +3382,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         SelectionCombineMode.defaultMode;
   }
 
-  void _finishMarquee() {
-    final before = _shapeBeforeMarquee;
-    _shapeBeforeMarquee = null;
-    _commitDrawnOutline(_marqueeShape(), before: before);
+  void _finishMarquee(MarqueeDrag drag) {
+    _commitDrawnOutline(drag.shape(), before: drag.before);
   }
 
   /// Where every finished outline lands, whoever traced it — a marquee
@@ -3501,18 +3482,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// Whether the active shape IS the pointer's path (points accumulate as
-  /// the drag runs) rather than being derived from its two corners.
-  ///
-  /// Exhaustive on purpose: a new [CanvasShapeKind] fails to compile here
-  /// until it has said which kind of drag it is.
-  bool get _tracesPointerPath => switch (widget.shapeKind) {
-    CanvasShapeKind.rect => false,
-    CanvasShapeKind.ellipse => false,
-    CanvasShapeKind.lasso => true,
-    CanvasShapeKind.polygon => false,
-  };
-
   /// Whether the active shape is TAPPED out vertex by vertex rather than
   /// dragged. The polygon is the only shape with no drag verb at all: a
   /// press places a point and the outline stays open until it is closed,
@@ -3524,51 +3493,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasShapeKind.lasso => false,
     CanvasShapeKind.polygon => true,
   };
-
-  /// The in-progress or final marquee polygon; null while degenerate.
-  ///
-  /// This is the one place a shape kind turns into geometry — every other
-  /// site asks a predicate rather than branching on the kind itself.
-  CanvasSelectionShape? _marqueeShape() {
-    switch (widget.shapeKind) {
-      case CanvasShapeKind.lasso:
-        if (_lassoPoints.length < 3) {
-          return null;
-        }
-        return CanvasSelectionShape(_lassoPoints);
-      case CanvasShapeKind.polygon:
-        // Tapped out, not dragged: its outline is the channel's open trace
-        // and it is built when the trace CLOSES, not while a drag runs.
-        return null;
-      case CanvasShapeKind.rect:
-      case CanvasShapeKind.ellipse:
-        final start = _marqueeStart;
-        final current = _marqueeCurrent;
-        if (start == null || current == null) {
-          return null;
-        }
-        // A click (or a drag too small to have meant one) is degenerate for
-        // both box shapes — an ellipse in a 1px box is not a thinner
-        // ellipse, it is nothing.
-        if ((current.x - start.x).abs() < 2 &&
-            (current.y - start.y).abs() < 2) {
-          return null;
-        }
-        return widget.shapeKind == CanvasShapeKind.ellipse
-            ? CanvasSelectionShape.ellipse(
-                left: start.x,
-                top: start.y,
-                right: current.x,
-                bottom: current.y,
-              )
-            : CanvasSelectionShape.rect(
-                left: start.x,
-                top: start.y,
-                right: current.x,
-                bottom: current.y,
-              );
-    }
-  }
 
   void _finishMove() {
     if (_moveScreenDelta == Offset.zero) {
@@ -3850,7 +3774,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (chromeAffine == null &&
         widget.alwaysShowTransformBox &&
         widget.tool == CanvasSelectionTool.move &&
-        _dragMode == _DragMode.none) {
+        _drag == null) {
       // R26 #13: no selection = the box frames the WHOLE picture (the
       // canvas rect) — grabbing a handle opens the implicit session.
       final bounds = _regionBounds(
@@ -4002,17 +3926,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // TP5: the ants step with the PIXELS, not with the
             // pointer — the outline has to be around the thing that
             // will land, or the confirm looks like it moved.
-            screenOffset: _dragMode == _DragMode.move
+            screenOffset: _drag is MoveDrag
                 ? _moveChromeOffset
                 : Offset.zero,
-            marqueeShapes: _dragMode == _DragMode.marquee
-                ? _symmetryCopies(_marqueeShape())
-                : const [],
+            marqueeShapes: _symmetryCopies(_marqueeDrag?.shape()),
             openTrail: _tapsVertices
                 ? (widget.selectionCommands?.polygonPoints ?? const [])
-                : _dragMode == _DragMode.marquee && _tracesPointerPath
-                ? _lassoPoints
-                : const [],
+                : (_marqueeDrag?.openTrail ?? const []),
             // TS6: from the FIRST vertex, not from the third. It used
             // to wait for `canClosePolygon` so the ring never offered
             // a tap that would do nothing — and the answer to that was
@@ -4142,7 +4062,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final mapped = _mapCanvasToViewportOffset(
       CanvasPoint(x: bounds.right, y: bounds.top),
     );
-    final dragOffset = _dragMode == _DragMode.move
+    final dragOffset = _drag is MoveDrag
         ? _moveChromeOffset
         : Offset.zero;
     return mapped + dragOffset + const Offset(8, -34);
