@@ -320,12 +320,14 @@ Future<void> showPanelFlyout(
                     const SizedBox(width: 8),
                   ],
                   Flexible(
-                    child: listenable == null
-                        ? Builder(builder: builder)
-                        : ListenableBuilder(
-                            listenable: listenable,
-                            builder: (context, _) => builder(context),
-                          ),
+                    child: _ControlsAtFullStrength(
+                      child: listenable == null
+                          ? Builder(builder: builder)
+                          : ListenableBuilder(
+                              listenable: listenable,
+                              builder: (context, _) => builder(context),
+                            ),
+                    ),
                   ),
                 ],
               ),
@@ -856,4 +858,38 @@ class PanelFlyoutButton extends StatelessWidget {
     }
     return Tooltip(message: tooltip, child: chip);
   }
+}
+
+/// A flyout control row's CONTENTS, drawn as if the row were enabled.
+///
+/// 🚨유저 2026-09-10: 「의도는 아닌데 나쁘지않아서 그대로둘까생각중이기도한데
+/// 한번 그냥 흐리지않게 해보자. 보고확인하게」.
+///
+/// The row is `enabled: false` so a knob never doubles as a command (the
+/// decision on the [PanelFlyoutRow] case in [showPanelFlyout]'s list), and a
+/// disabled `PopupMenuItem` does one more thing nobody asked for: it DIMS
+/// what it holds. It merges an IconTheme with opacity 0.38 (0.5 in dark
+/// mode), and its M3 label style turns inherited text `onSurface` at 0.38.
+/// So every control in the canvas pill's settings rows — the rotate/flip
+/// accents included — was drawn at 38% as a side effect of the command
+/// trick (traced 2026-09-10: the IconTheme sits forty ancestors above the
+/// rotate icon). This undoes exactly those two: icon opacity back to 1,
+/// inherited text back to M3's ENABLED label colour (`onSurface`). The row
+/// is still disabled as a command.
+///
+/// ↩️The user is judging this look on the device. To go back to the dimmed
+/// one, return [child] directly from [build].
+class _ControlsAtFullStrength extends StatelessWidget {
+  const _ControlsAtFullStrength({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => IconTheme.merge(
+    data: const IconThemeData(opacity: 1.0),
+    child: DefaultTextStyle.merge(
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+      child: child,
+    ),
+  );
 }

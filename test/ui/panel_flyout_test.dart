@@ -209,4 +209,75 @@ void main() {
       reason: '겹이 열렸는데 부모가 꺼져 있다 — 어느 행이 열었는지 잃었다',
     );
   });
+
+  // 🚨A CONTROL ROW IS DRAWN AT FULL STRENGTH (유저 2026-09-10: 「한번 그냥
+  // 흐리지않게 해보자」). A row is a DISABLED PopupMenuItem so a knob never
+  // doubles as a command — and a disabled item also dims what it holds:
+  // IconTheme opacity 0.38 (0.5 in dark mode) and inherited text `onSurface`
+  // at 0.38. The rotate/flip accents in the canvas pill's settings list sat
+  // at 38% for that reason alone. Both themes, because Flutter dims them by
+  // different amounts.
+  for (final (name, theme) in [
+    ('light', ThemeData.light()),
+    ('dark', ThemeData.dark()),
+  ]) {
+    testWidgets('a control row\'s icons and inherited text are not dimmed '
+        '($name)', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: Center(
+              child: Builder(
+                builder: (context) => TextButton(
+                  key: const ValueKey<String>('strength-anchor'),
+                  onPressed: () => showPanelFlyout(
+                    context,
+                    entries: [
+                      PanelFlyoutRow(
+                        keyValue: 'strength-row',
+                        builder: (_) => const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.rotate_left,
+                              key: ValueKey<String>('strength-icon'),
+                            ),
+                            Text('15°', key: ValueKey<String>('strength-text')),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('strength-anchor')));
+      await tester.pumpAndSettle();
+
+      final icon = find.byKey(const ValueKey<String>('strength-icon'));
+      expect(
+        IconTheme.of(tester.element(icon)).opacity,
+        1.0,
+        reason: 'the disabled menu item dims every icon it holds',
+      );
+      final text = find.byKey(const ValueKey<String>('strength-text'));
+      final painted = tester
+          .widget<RichText>(
+            find.descendant(of: text, matching: find.byType(RichText)),
+          )
+          .text
+          .style!
+          .color;
+      expect(
+        painted,
+        Theme.of(tester.element(text)).colorScheme.onSurface,
+        reason: 'inherited text takes M3\'s ENABLED label colour, not 0.38',
+      );
+    });
+  }
 }

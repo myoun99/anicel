@@ -113,15 +113,12 @@ void main() {
     // close it — so the whole accent sequence runs with it open, which is
     // also how a person uses it (straighten, look, flip, look).
     await openViewSettings(tester);
-    // The PAINTED glyph colour — the Icon's own RichText — at FULL alpha.
-    // ⚠️Full alpha on purpose: inside the view-settings flyout the row is a
-    // disabled `PopupMenuItem`, whose ListTile context installs an IconTheme
-    // with opacity 0.38 ABOVE the button (traced 2026-09-10: d=40 of the
-    // icon's ancestors). Material's button merged that opacity as well, so
-    // the flyout has always drawn this accent at 38% — the old read never
-    // saw it because it read the button's STYLE object, not the pixels.
-    // What this pins is the HUE that says "active"; the host's dimming is
-    // the host's.
+    // The PAINTED glyph colour — the Icon's own RichText — at the alpha it
+    // is drawn with. 🚨The flyout row used to dim it to 38% as a side effect
+    // of being a disabled PopupMenuItem (traced 2026-09-10: an IconTheme with
+    // opacity 0.38, forty ancestors up); 유저 asked to see it undimmed
+    // (「한번 그냥 흐리지않게 해보자」), so full alpha IS the assertion now —
+    // see `_ControlsAtFullStrength` in panel_flyout.dart.
     Color? inkOf(String key) => tester
         .widget<RichText>(
           find.descendant(
@@ -131,8 +128,7 @@ void main() {
         )
         .text
         .style
-        ?.color
-        ?.withValues(alpha: 1);
+        ?.color;
 
     // Straight, unflipped: everything rests on the default ink.
     for (final key in [
@@ -142,6 +138,7 @@ void main() {
       'canvas-viewport-flip-vertical',
     ]) {
       expect(inkOf(key), isNot(AppColors.accent), reason: '$key rests unaccented');
+      expect(inkOf(key)!.a, 1.0, reason: '$key is at full strength in the flyout row');
     }
 
     await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
@@ -201,15 +198,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The PAINTED glyph colour — the Icon's own RichText — at FULL alpha.
-    // ⚠️Full alpha on purpose: inside the view-settings flyout the row is a
-    // disabled `PopupMenuItem`, whose ListTile context installs an IconTheme
-    // with opacity 0.38 ABOVE the button (traced 2026-09-10: d=40 of the
-    // icon's ancestors). Material's button merged that opacity as well, so
-    // the flyout has always drawn this accent at 38% — the old read never
-    // saw it because it read the button's STYLE object, not the pixels.
-    // What this pins is the HUE that says "active"; the host's dimming is
-    // the host's.
+    // The PAINTED glyph colour — the Icon's own RichText — at the alpha it
+    // is drawn with. 🚨The flyout row used to dim it to 38% as a side effect
+    // of being a disabled PopupMenuItem (traced 2026-09-10: an IconTheme with
+    // opacity 0.38, forty ancestors up); 유저 asked to see it undimmed
+    // (「한번 그냥 흐리지않게 해보자」), so full alpha IS the assertion now —
+    // see `_ControlsAtFullStrength` in panel_flyout.dart.
     Color? inkOf(String key) => tester
         .widget<RichText>(
           find.descendant(
@@ -219,8 +213,7 @@ void main() {
         )
         .text
         .style
-        ?.color
-        ?.withValues(alpha: 1);
+        ?.color;
 
     // No list to open: the controls are on the bar (유저 확정 2026-08-13).
     expect(
