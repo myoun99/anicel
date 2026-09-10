@@ -222,9 +222,14 @@ class _LayerStackPaintPass {
             // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
             // carrying looks exactly like one that never could, and this
             // line is what a hands-on report can show.
+            // ⛔`chain` BELONGS BESIDE THEM FOR THE SAME REASON. It is the
+            // deepest the deferred-image chain has been (1–2 in ordinary
+            // painting); a hands-on report showing it high is the evidence
+            // the crash dump could not give — see [maxDerivedDepth].
             : ' full=${_painter.bufferCache!.fullCount}'
                   ' patched=${_painter.bufferCache!.patchedCount}'
-                  ' carried=${_painter.bufferCache!.scrolledCount}';
+                  ' carried=${_painter.bufferCache!.scrolledCount}'
+                  ' chain=${_painter.bufferCache!.maxDerivedDepth}';
         final top =
             (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value)))

@@ -130,6 +130,48 @@ class DisplayBufferCache {
   /// doors below ask it, so neither can forget the budget.
   bool get _mayDeriveAgain => _derivedDepth < _maxDerivedDepth;
 
+  /// The deepest the chain has ever been this session.
+  ///
+  /// 🚨★★★THE ONE THING THE CRASH DUMP COULD NOT SAY. It proved WHAT
+  /// collapsed (the chain, inside `Rasterizer::DrawToSurfaces`) and HOW BIG
+  /// it was (~2,470 links × 848 bytes = the whole 2MB stack), but not how
+  /// 2,470 derivations happened with no frame reaching the screen in
+  /// between — the heap is not in a WER dump, so the objects could not be
+  /// read. The frame pipeline throttles the UI thread, so ordinary
+  /// per-frame painting cannot produce that number: something paints the
+  /// canvas WITHOUT a frame being drawn. Which something is not known.
+  ///
+  /// So it is measured instead of argued (the counters' own law). In
+  /// normal use this stays at 1–2. Anything above [_deepDeriveSuspicion]
+  /// means a burst of composes the screen never saw, and
+  /// [debugFirstDeepDerive] then holds the stack that was doing it.
+  int maxDerivedDepth = 0;
+
+  /// Far above the 1–2 of ordinary painting, far below the budget — so it
+  /// fires on the real thing and never on a frame that ran long.
+  static const int _deepDeriveSuspicion = 16;
+
+  /// Who was composing when the chain first went deep. Debug builds only:
+  /// the capture is the point, and it costs a stack walk.
+  ///
+  /// ⚠️Recorded ONCE. The tenth caller is the same as the first, and a
+  /// field that keeps being overwritten is a field that says whatever
+  /// happened last.
+  StackTrace? debugFirstDeepDerive;
+
+  void _noteDepth() {
+    if (_derivedDepth > maxDerivedDepth) {
+      maxDerivedDepth = _derivedDepth;
+    }
+    assert(() {
+      if (_derivedDepth == _deepDeriveSuspicion &&
+          debugFirstDeepDerive == null) {
+        debugFirstDeepDerive = StackTrace.current;
+      }
+      return true;
+    }());
+  }
+
   /// A frame reached the screen: every deferred image it drew has been
   /// snapshotted, so the chain behind the kept buffer is gone.
   ///
@@ -200,6 +242,7 @@ class DisplayBufferCache {
     }
     _derivedDepth = derived ? _derivedDepth + 1 : 0;
     if (derived) {
+      _noteDepth();
       _watchRasterizedFrames();
     }
     if (!identical(_image, image)) {

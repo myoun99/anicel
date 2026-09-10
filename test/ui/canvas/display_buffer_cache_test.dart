@@ -175,6 +175,25 @@ void main() {
       );
     });
 
+    test('🔬the peak is remembered, and a deep burst leaves the stack that '
+        'made it — the one thing the dump could not say', () async {
+      await derive(20);
+      cache.noteFrameRasterized();
+      await derive(3);
+
+      expect(
+        cache.maxDerivedDepth,
+        20,
+        reason: 'the PEAK, not the current depth — a burst that has since '
+            'been drawn is exactly what a report needs to show',
+      );
+      expect(
+        cache.debugFirstDeepDerive.toString(),
+        contains('display_buffer_cache.dart'),
+        reason: 'and who was composing when it went deep',
+      );
+    });
+
     test('🚨but composes with NO frame in between still reach the budget — '
         'that is the case the app died in', () async {
       // No `noteFrameRasterized` anywhere in here on purpose: an offscreen
