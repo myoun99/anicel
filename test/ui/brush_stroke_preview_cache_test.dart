@@ -122,6 +122,114 @@ void main() {
     expect(find.byType(RawImage), findsOneWidget);
   });
 
+  group('🚨the rasters run on a POOL that outlives them', () {
+    test('the fan-out cap is a ceiling on LIVE workers, not on requests', () {
+      // ⚠️Not a speed claim. The pool exists because a fresh isolate per
+      // raster starts with every per-isolate static cold — the tip-stamp
+      // cache, and (this is the point) `QaNativeEngine.instance`, which
+      // would mean opening the engine library once per preset.
+      expect(BrushStrokePreviewCache.rasterWorkersFor(1), 1);
+      expect(BrushStrokePreviewCache.rasterWorkersFor(20), 4);
+    });
+
+    testWidgets('⛔a worker does NOT keep the 128 MB stamp budget it inherits', (
+      tester,
+    ) async {
+      // The one thing a pool costs that `Isolate.run` did not: the tip-stamp
+      // cache is a per-isolate static, and the isolate no longer dies. At the
+      // stock 128 MB budget, four workers could sit on half a gigabyte in the
+      // background — which the old-device policy does not allow.
+      final cache = BrushStrokePreviewCache.instance;
+      await tester.runAsync(
+        () => cache.ensure(BrushSettings(hardness: 0.44), 32, 12),
+      );
+      expect(
+        cache.workerStampByteBudget,
+        lessThanOrEqualTo(16 * 1024 * 1024),
+        reason: 'the worker has to shrink the budget it inherits',
+      );
+      expect(
+        cache.workerStampByteBudget,
+        greaterThan(0),
+        reason: 'and not turn the cache off, which would re-render every dab',
+      );
+    });
+
+    testWidgets('more requests than workers all finish, and no extra worker '
+        'is spawned to serve them', (tester) async {
+      final cache = BrushStrokePreviewCache.instance;
+      final cap = BrushStrokePreviewCache.rasterWorkersFor(
+        // The pool sizes itself off the machine; the pin is that whatever it
+        // chose, the request count does not move it.
+        20,
+      );
+      // Distinct settings so nothing shares a bake and every one really goes
+      // to a worker.
+      final requests = <Future<BrushStrokeSample>>[];
+      await tester.runAsync(() async {
+        for (var index = 0; index < 12; index += 1) {
+          requests.add(
+            cache.ensure(BrushSettings(hardness: 0.1 + index * 0.05), 48, 16),
+          );
+        }
+        final samples = await Future.wait(requests);
+        expect(samples, hasLength(12));
+        for (final sample in samples) {
+          expect(sample.image.width, 48);
+        }
+      });
+
+      expect(
+        cache.liveWorkerCount,
+        lessThanOrEqualTo(cap),
+        reason: 'twelve requests must not mint twelve isolates',
+      );
+      expect(
+        cache.liveWorkerCount,
+        greaterThan(0),
+        reason: 'and the pool must actually have been used',
+      );
+    });
+  });
+
+  testWidgets('⛔a pool that lost its workers comes BACK', (tester) async {
+    // The hazard a persistent pool has and `Isolate.run` did not: a worker
+    // that goes away takes its slot with it. If the pool kept counting the
+    // corpse against the cap, one crash would shrink it for the life of the
+    // app — and if it handed the corpse out, the row would wait forever on a
+    // reply nobody is going to send.
+    final cache = BrushStrokePreviewCache.instance;
+    await tester.runAsync(() async {
+      await cache.ensure(BrushSettings(hardness: 0.31), 32, 12);
+      expect(cache.liveWorkerCount, greaterThan(0));
+
+      // A CRASH, not a shutdown: the pool is not told, so the corpse is still
+      // in its list. ⚠️`shutdownWorkersForTests` empties the list itself and
+      // so proves only that the pool can spawn from empty — a mutation that
+      // let dead workers keep their slot walked straight through it.
+      final before = cache.liveWorkerCount;
+      cache.killOneWorkerForTests();
+
+      final after = await cache.ensure(BrushSettings(hardness: 0.32), 32, 12);
+      expect(after.image.width, 32);
+      expect(
+        cache.liveWorkerCount,
+        lessThanOrEqualTo(before),
+        reason: 'the corpse must not still be counted against the cap',
+      );
+      expect(
+        cache.liveWorkerCount,
+        greaterThan(0),
+        reason: 'and a live one has to have taken its place',
+      );
+
+      cache.shutdownWorkersForTests();
+      expect(cache.liveWorkerCount, 0);
+      final revived = await cache.ensure(BrushSettings(hardness: 0.33), 32, 12);
+      expect(revived.image.width, 32);
+    });
+  });
+
   group('🚨the bake is ONE job, and it is the isolate\'s', () {
     test('what comes back is the raster, widened — nothing is recomputed on '
         'this side', () {

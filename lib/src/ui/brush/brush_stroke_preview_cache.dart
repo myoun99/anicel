@@ -76,8 +76,24 @@ class BrushStrokePreviewCache {
   /// competing for them, and it is the one the user is looking at.
   @visibleForTesting
   static int rasterWorkersFor(int cores) => math.max(1, math.min(cores - 1, 4));
-  int _activeRasters = 0;
-  final Queue<void Function()> _rasterQueue = Queue<void Function()>();
+
+  /// The workers, and who is waiting for one.
+  ///
+  /// 🚨THEY OUTLIVE THE RASTER. This used to be `Isolate.run` per sample,
+  /// which spawns and tears down an isolate for every preset — measured at
+  /// 0.6 ms a spawn, so ~32 ms of a 347 ms roster bake, and that is the
+  /// SMALL half of why it had to go. The big half is that a fresh isolate
+  /// starts with every per-isolate static cold, and the two that matter here
+  /// are the tip-stamp cache and — for the native raster this makes possible
+  /// — `QaNativeEngine.instance`, which would mean opening the engine
+  /// library once per preset.
+  final List<_RasterWorker> _workers = <_RasterWorker>[];
+  final Queue<Completer<_RasterWorker>> _waiting =
+      Queue<Completer<_RasterWorker>>();
+
+  /// Spawns in flight, counted so racing callers cannot overshoot the cap
+  /// while they are all awaiting their own [Isolate.spawn].
+  int _spawning = 0;
 
   /// The cached sample for the key, or null (LRU touch on hit). Its image
   /// stays OWNED BY THE CACHE — callers that hold it across frames must
@@ -112,21 +128,11 @@ class BrushStrokePreviewCache {
       // No isolates on web: bake inline (still cached forever).
       baked = bakeBrushStrokeSample(settings, width, height);
     } else {
-      await _acquireRasterSlot();
+      final worker = await _takeWorker();
       try {
-        // 🚨THE WHOLE BAKE GOES OVER, not just the stroke. `Isolate.run`
-        // hands its result back with `Isolate.exit`, which TRANSFERS the
-        // message instead of copying it — so widening the result from an
-        // alpha plane to the four-channel buffer costs nothing on the wire,
-        // while the expansion loop it replaces was running once per preset
-        // ON THE UI ISOLATE, in the same frames the panel was trying to
-        // paint. (The same fact is why the .tvpp import pool returns whole
-        // canvases — `tvpp_import_door.dart`.)
-        baked = await Isolate.run(
-          () => bakeBrushStrokeSample(settings, width, height),
-        );
+        baked = await worker.bake(settings, width, height);
       } finally {
-        _releaseRasterSlot();
+        _releaseWorker(worker);
       }
     }
 
@@ -136,24 +142,57 @@ class BrushStrokePreviewCache {
     );
   }
 
-  Future<void> _acquireRasterSlot() {
-    if (_activeRasters < _maxConcurrentRasters) {
-      _activeRasters += 1;
-      return Future<void>.value();
+  /// A worker that is free, spawning one if the cap allows, else a place in
+  /// the queue. The returned worker is already marked busy — the caller owns
+  /// it until [_releaseWorker].
+  Future<_RasterWorker> _takeWorker() async {
+    // A dead worker holds a slot the cap counts, so it goes before anything
+    // is handed out — otherwise one crash permanently shrinks the pool.
+    _workers.removeWhere((worker) => worker.isDead);
+    for (final worker in _workers) {
+      if (!worker.busy) {
+        worker.busy = true;
+        return worker;
+      }
     }
-    final gate = Completer<void>();
-    _rasterQueue.add(() {
-      _activeRasters += 1;
-      gate.complete();
-    });
-    return gate.future;
+    if (_workers.length + _spawning < _maxConcurrentRasters) {
+      _spawning += 1;
+      try {
+        final worker = await _RasterWorker.spawn();
+        _workers.add(worker);
+        worker.busy = true;
+        return worker;
+      } finally {
+        _spawning -= 1;
+      }
+    }
+    final waiting = Completer<_RasterWorker>();
+    _waiting.add(waiting);
+    return waiting.future;
   }
 
-  void _releaseRasterSlot() {
-    _activeRasters -= 1;
-    if (_rasterQueue.isNotEmpty) {
-      _rasterQueue.removeFirst()();
+  /// ⛔The worker is handed STRAIGHT to the head of the queue rather than
+  /// marked free and picked up later: releasing to `busy = false` and letting
+  /// the waiter re-scan would let a request that arrived afterwards jump in
+  /// front of one that has been queued since before it.
+  void _releaseWorker(_RasterWorker worker) {
+    if (worker.isDead) {
+      _workers.remove(worker);
+      // Whoever is queued gets a FRESH worker rather than the corpse: the
+      // next `_takeWorker` is under the cap again now that this one is gone.
+      final waiting = _waiting.isEmpty ? null : _waiting.removeFirst();
+      if (waiting != null) {
+        unawaited(
+          _takeWorker().then(waiting.complete, onError: waiting.completeError),
+        );
+      }
+      return;
     }
+    if (_waiting.isNotEmpty) {
+      _waiting.removeFirst().complete(worker);
+      return;
+    }
+    worker.busy = false;
   }
 
   /// Test hook: drops every cached image.
@@ -164,6 +203,202 @@ class BrushStrokePreviewCache {
     }
     _store.clear();
   }
+
+  /// Test hook: kills the workers.
+  ///
+  /// ⚠️Production never calls this — the pool is meant to outlive every
+  /// panel. A suite that wants no live isolates at teardown does, and it must
+  /// wait for its own bakes first: a worker killed mid-request leaves its
+  /// caller waiting on a reply that will never come.
+  @visibleForTesting
+  void shutdownWorkersForTests() {
+    for (final worker in _workers) {
+      worker.kill();
+    }
+    _workers.clear();
+    _waiting.clear();
+  }
+
+  /// Test hook: how many workers the pool is holding.
+  @visibleForTesting
+  int get liveWorkerCount => _workers.length;
+
+  /// Test hook: the tip-stamp budget a live worker reported for itself.
+  @visibleForTesting
+  int? get workerStampByteBudget =>
+      _workers.isEmpty ? null : _workers.first.stampByteBudget;
+
+  /// Test hook: kill one worker WITHOUT telling the pool — a crash, not a
+  /// shutdown.
+  ///
+  /// ⚠️It exists because the difference matters and nothing else reaches it:
+  /// [shutdownWorkersForTests] empties the list itself, so a suite built on
+  /// that one proves only that the pool can spawn from empty. What has to be
+  /// pinned is the pool noticing a corpse IN the list — a mutation that let
+  /// dead workers keep their slot passed the shutdown test untouched.
+  @visibleForTesting
+  void killOneWorkerForTests() {
+    if (_workers.isEmpty) {
+      throw StateError('no worker to kill');
+    }
+    _workers.first.kill();
+  }
+}
+
+/// One long-lived raster isolate and the port that reaches it.
+class _RasterWorker {
+  _RasterWorker._(this._events);
+
+  /// The worker's own channel: the handshake arrives here, and so does the
+  /// isolate's DEATH — see [_died].
+  final ReceivePort _events;
+  late final Isolate _isolate;
+  late final SendPort _requests;
+
+  /// Whether a request is out. The pool owns this — see `_takeWorker`.
+  bool busy = false;
+
+  /// The request in flight, so a death can fail it instead of leaving it.
+  Completer<BakedBrushStroke>? _pending;
+  bool _dead = false;
+
+  /// Whether the isolate is gone — the pool drops these rather than hand
+  /// them out or keep counting them against the cap.
+  bool get isDead => _dead;
+
+  /// What the worker set its tip-stamp budget to, as the worker itself
+  /// reports it. ⚠️It is echoed rather than assumed because the budget is a
+  /// PER-ISOLATE static: the main isolate cannot read the worker's, and a
+  /// worker that quietly kept the 128 MB default would look identical from
+  /// here. That is exactly the mutation that survived the first attempt.
+  late final int stampByteBudget;
+
+  static Future<_RasterWorker> spawn() async {
+    final events = ReceivePort();
+    final worker = _RasterWorker._(events);
+    final ready = Completer<SendPort>();
+    events.listen((message) {
+      if (message is List<Object?> && message.first is SendPort) {
+        worker.stampByteBudget = message[1]! as int;
+        ready.complete(message.first! as SendPort);
+        return;
+      }
+      // 🚨ANYTHING ELSE MEANS THE ISOLATE IS GONE — `onExit` sends null, and
+      // `errorsAreFatal` turns an uncaught throw into the same event.
+      // `Isolate.run` used to surface a failure as a rejected future; a
+      // persistent worker that only ever listened for replies would instead
+      // leave the row blank FOREVER, which is strictly worse than the crash.
+      worker._died(message);
+    });
+    worker._isolate = await Isolate.spawn(
+      _rasterWorkerMain,
+      events.sendPort,
+      debugName: 'brush-preview-raster',
+      onExit: events.sendPort,
+      errorsAreFatal: true,
+    );
+    worker._requests = await ready.future;
+    return worker;
+  }
+
+  Future<BakedBrushStroke> bake(
+    BrushSettings settings,
+    int width,
+    int height,
+  ) {
+    if (_dead) {
+      return Future<BakedBrushStroke>.error(
+        StateError('the brush preview raster worker is gone'),
+      );
+    }
+    final pending = Completer<BakedBrushStroke>();
+    _pending = pending;
+    final reply = ReceivePort();
+    reply.listen((answer) {
+      reply.close();
+      if (_pending != pending || pending.isCompleted) {
+        return;
+      }
+      _pending = null;
+      if (answer is! List || answer.length != 2) {
+        pending.completeError(
+          StateError('brush preview raster failed: $answer'),
+        );
+        return;
+      }
+      // 🚨`TransferableTypedData`, NOT the bare list. A `SendPort` COPIES
+      // what it carries, and this buffer is four bytes a pixel — the round
+      // that put the widening inside the worker did it precisely because
+      // `Isolate.run` returns by TRANSFER, and a persistent worker replying
+      // with a plain `Uint8List` would have handed that back.
+      final transferred = answer[0]! as TransferableTypedData;
+      pending.complete((
+        rgba: transferred.materialize().asUint8List(),
+        nameGroundCoverage: answer[1]! as double,
+      ));
+    });
+    _requests.send(<Object?>[settings, width, height, reply.sendPort]);
+    return pending.future;
+  }
+
+  void _died(Object? cause) {
+    _dead = true;
+    _events.close();
+    final pending = _pending;
+    _pending = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.completeError(
+        StateError('the brush preview raster worker died: $cause'),
+      );
+    }
+  }
+
+  void kill() {
+    _dead = true;
+    _events.close();
+    _isolate.kill(priority: Isolate.immediate);
+  }
+}
+
+/// The worker's whole life: answer bake requests until it is killed.
+void _rasterWorkerMain(SendPort handshake) {
+  // 🚨THE STAMP CACHE IS PER ISOLATE, AND THIS ISOLATE NOW LIVES FOREVER.
+  // `Isolate.run` used to take the cache down with it after every raster; a
+  // pooled worker would instead grow toward the 128 MB default and sit on it
+  // in the background, on machines the old-device policy says must not pay
+  // for the desktop's comfort.
+  //
+  // 📏8 MB is the working set with room to spare, not a guess: a preview dab
+  // is at most `height * 0.62` across (42 px at a DPR-2 row) and a mask costs
+  // `size² * 9` bytes, so the whole taper of ONE preset — a quarter-pixel
+  // ladder from nothing up to 42 px — is about 1 MB. A group is six or seven
+  // presets. The masks are re-derivable in microseconds; what the cache
+  // buys is reuse WITHIN a bake, and that fits.
+  BrushTipStampCache.instance.byteBudget = 8 * 1024 * 1024;
+  final requests = ReceivePort();
+  handshake.send(<Object?>[
+    requests.sendPort,
+    BrushTipStampCache.instance.byteBudget,
+  ]);
+  requests.listen((message) {
+    final request = message as List<Object?>;
+    final reply = request[3]! as SendPort;
+    try {
+      final baked = bakeBrushStrokeSample(
+        request[0]! as BrushSettings,
+        request[1]! as int,
+        request[2]! as int,
+      );
+      reply.send(<Object?>[
+        TransferableTypedData.fromList(<Uint8List>[baked.rgba]),
+        baked.nameGroundCoverage,
+      ]);
+    } on Object catch (error) {
+      // The caller is awaiting one message; a string is enough to fail it
+      // with something readable rather than hang.
+      reply.send('$error');
+    }
+  });
 }
 
 /// One baked stroke sample: the picture, and how much INK sits under the
