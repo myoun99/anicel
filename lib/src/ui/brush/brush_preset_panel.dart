@@ -1000,11 +1000,25 @@ class _BrushGroupTab extends StatelessWidget {
 
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
   /// a tab index while a brush is being dragged over it.
-  static const double extent = 26;
+  ///
+  /// 🚨HALF A BRUSH CELL, WIDE RATHER THAN TALL (유저 `brush-group-tab-shape-Q1`
+  /// 답 1, 2026-09-10). Their spec was two sentences that fought each other in
+  /// pixels — 「그룹도 **좀 더 길게**해서 그룹이름 어느정도 **제대로 보이도록**」
+  /// and 「비율적으로 그룹은 **브러시 프리뷰 세로길이의 반**」 — because a brush
+  /// cell is 34 and half of it is 17, which is shorter than the 26 an 11pt name
+  /// was sitting in. The answer reads 「길게」 as WIDTH: the tab gets shorter and
+  /// the rail gets wider, so both sentences hold.
+  ///
+  /// ⚠️AND THE COST WAS TAKEN WITH IT: at the stock 260px panel a rail of 120
+  /// leaves 140 for the grid, which is ONE column of 130px cells. That is on
+  /// the card as the price of the answer, not a regression to fix.
+  static const double extent = 17;
 
-  /// Rail width once names are showing. Wide enough for a short group name
-  /// beside the icon without taking the brush list below a usable width.
-  static const double namedWidth = 96;
+  /// Rail width once names are showing.
+  ///
+  /// 96 cut a group name at two or three characters, which is what 「이름이
+  /// 제대로 보이도록」 was about.
+  static const double namedWidth = 120;
 
   /// The tab's picture: the group's chosen icon, else its first brush, else
   /// a plain folder. Choosing is for when that guess reads wrong.

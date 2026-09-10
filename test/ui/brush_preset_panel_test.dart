@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +13,7 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
 
@@ -624,6 +625,55 @@ void main() {
     );
   });
 
+  testWidgets('🚨a group tab is HALF a brush cell, and wide enough to read', (
+    tester,
+  ) async {
+    // 유저 `brush-group-tab-shape-Q1` 답 1 (2026-09-10). Their spec was two
+    // sentences that fought each other in pixels — 「그룹도 좀 더 길게해서
+    // 그룹이름 어느정도 제대로 보이도록」 and 「비율적으로 그룹은 브러시
+    // 프리뷰 세로길이의 반」 — and the answer reads 「길게」 as WIDTH. Both
+    // halves are pinned here because either one alone reads as arbitrary.
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+    );
+
+    final tab = tester.getSize(_tab('ink'));
+    expect(
+      tab.height * 2,
+      brushPresetRowHeight,
+      reason: 'the tab is half the brush cell it sits beside',
+    );
+    expect(
+      tab.width,
+      greaterThan(brushPresetCellTargetWidth * 0.8),
+      reason: 'and 「길게」 is the WIDTH — 96 cut a name at two characters',
+    );
+
+    // ⛔AND THE NAME STILL FITS ON ITS LINE. Halving the height is what made
+    // this worth a pin: an 11pt line in a 17px tab is the exact collision
+    // the decision existed to resolve, so a future tweak to the margin or
+    // the border has to keep it.
+    final name = find.descendant(
+      of: find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
+      matching: find.text('Ink'),
+    );
+    expect(name, findsOneWidget);
+    // ⛔INTRINSIC height, not the laid-out box. The `Text` sits in an
+    // `Expanded` inside a fixed-height row, so its SIZE is the tab's height
+    // whatever the font does — a first draft asserted that and a mutation
+    // raising the font to 16pt sailed straight through it. What has to be
+    // asked is how tall the line WANTS to be.
+    final paragraph = tester.renderObject<RenderBox>(name);
+    expect(
+      paragraph.getMaxIntrinsicHeight(paragraph.size.width),
+      lessThanOrEqualTo(tab.height),
+      reason: 'the name wants more height than the tab has',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the rail shows names when asked, with the tail clipped', (
     tester,
   ) async {
@@ -1064,10 +1114,30 @@ void main() {
       onGroupsReordered: reordered.add,
     );
 
-    // Tabs are 26px; drag Paint above Ink.
+    // ⛔MEASURE the tab, do not restate its height. This line used to say
+    // "Tabs are 26px" and drag -32; the tab is 17 now (유저
+    // `brush-group-tab-shape-Q1` 답 1) and the number went stale silently —
+    // the drag simply stopped reordering anything.
+    final pitch =
+        tester
+            .getCenter(
+              find.byKey(const ValueKey<String>('brush-preset-tab-entry-paint')),
+            )
+            .dy -
+        tester
+            .getCenter(
+              find.byKey(const ValueKey<String>('brush-preset-tab-entry-ink')),
+            )
+            .dy;
+    // ⚠️AND ADD THE SLOP. `tester.drag` moves in one step, so the first
+    // `kTouchSlop` of it is spent recognising the gesture and never reaches
+    // the list. The old `-32` cleared it only because the tabs were 26: it
+    // left 14, just over half a tab. At 17 the same 32 would leave 14 again
+    // — but half a tab is now 8.5, and the number that mattered was never
+    // written down anywhere.
     await tester.drag(
       find.byKey(const ValueKey<String>('brush-preset-tab-entry-paint')),
-      const Offset(0, -32),
+      Offset(0, -(pitch + kTouchSlop + 4)),
     );
     await tester.pumpAndSettle();
 
