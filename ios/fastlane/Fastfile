@@ -1,4 +1,5 @@
-# TestFlight delivery for a team that owns no Mac.
+# Delivery for a team that owns no Mac: TestFlight for the iPad, and a
+# signed, notarized Mac app handed over as a file.
 #
 # The signing identity lives in a private repository, encrypted, because a
 # CI runner is thrown away after every run. An earlier version asked Apple
@@ -7,39 +8,77 @@
 # allows a handful of distribution certificates before refusing more.
 # `match` keeps ONE certificate and its private key, and every runner
 # restores the same pair.
+#
+# 🚨THIS FILE IS THE ONLY PLACE THAT KNOWS HOW TO SIGN. The CI files hand it
+# raw secrets and stop at "run the lane", and the Mac lanes live here rather
+# than in a second Fastfile for the same reason.
 
 default_platform(:ios)
 
 APP_IDENTIFIER = "com.myoun.anicel".freeze
 
+# .strip on every single-line secret: a value pasted with a trailing newline
+# reaches CI intact, and the failure it causes names something else entirely.
+def asc_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID").strip,
+    issuer_id: ENV.fetch("ASC_ISSUER_ID").strip,
+    key_content: ENV.fetch("ASC_KEY_CONTENT"),
+    in_house: false,
+  )
+end
+
+# match clones the signing repository over HTTPS, so the token has to arrive
+# the way git expects it — base64 of "user:token". It is built HERE: each CI
+# step used to build it for itself, a third copy was about to appear with the
+# Mac workflow, and a header that differs between copies is an auth failure
+# that reads like a wrong token. Which username goes beside the token is the
+# host's business — GitLab takes `oauth2`, GitHub wanted `x-access-token` —
+# and MATCH_GIT_USER says which, `oauth2` when unset. pack("m0") is strict
+# base64: no line wrap, and nothing to require.
+def match_git_authorization
+  user = ENV.fetch("MATCH_GIT_USER", "").strip
+  user = "oauth2" if user.empty?
+  ["#{user}:#{ENV.fetch('MATCH_GIT_TOKEN').strip}"].pack("m0")
+end
+
+# One identity out of the signing repository. readonly would be the safer
+# setting, but it cannot create the pair that does not exist yet; setup_ci
+# turns it on, so it is turned back off. match reaches for Apple only when
+# the repository holds nothing of that type.
+def signing_identity(key, type:, platform:, **options)
+  match(
+    api_key: key,
+    type: type,
+    platform: platform,
+    app_identifier: APP_IDENTIFIER,
+    git_url: ENV.fetch("MATCH_GIT_URL").strip,
+    git_basic_authorization: match_git_authorization,
+    storage_mode: "git",
+    readonly: false,
+    **options
+  )
+end
+
+# No provisioning profile: Developer ID needs one only for the entitlements
+# Apple gates (iCloud, push), and this app asks for none of them — the
+# sandbox, user-selected files, bookmarks and the microphone are granted by
+# the signature alone.
+def developer_id_identity(key)
+  signing_identity(key, type: "developer_id", platform: "macos",
+                   skip_provisioning_profiles: true)
+end
+
 platform :ios do
   desc "Build a signed .ipa and ship it to TestFlight"
   lane :beta do
-    # .strip on every single-line secret: a value pasted with a trailing
-    # newline reaches CI intact, and the failure it causes names something
-    # else entirely.
-    key = app_store_connect_api_key(
-      key_id: ENV.fetch("ASC_KEY_ID").strip,
-      issuer_id: ENV.fetch("ASC_ISSUER_ID").strip,
-      key_content: ENV.fetch("ASC_KEY_CONTENT"),
-      in_house: false,
-    )
+    key = asc_key
 
     # A CI keychain starts empty, and its password has to be one fastlane
     # knows — the default login keychain's is not.
     setup_ci
 
-    # readonly would be the safer setting, but it cannot create the pair
-    # that does not exist yet; setup_ci turns it on, so turn it back off.
-    # match only reaches for Apple when the repository has nothing.
-    match(
-      api_key: key,
-      type: "appstore",
-      app_identifier: APP_IDENTIFIER,
-      git_url: ENV.fetch("MATCH_GIT_URL").strip,
-      storage_mode: "git",
-      readonly: false,
-    )
+    signing_identity(key, type: "appstore", platform: "ios")
 
     # The profile's NAME comes from what match just installed, for the same
     # reason the team does below. A constant held only while nobody else
@@ -93,5 +132,81 @@ platform :ios do
       api_key: key,
       skip_waiting_for_build_processing: true,
     )
+  end
+end
+
+platform :mac do
+  # ⚠️APPLE MAY REFUSE THIS, which is why it is a lane of its own and the Mac
+  # workflow runs it first: a refusal then costs a minute, not a build.
+  # Whether an App Store Connect API key may CREATE a Developer ID
+  # certificate was not settled when this was written (2026-09-11) — the
+  # certificate type is in the API, and Apple's rule elsewhere is that only
+  # the Account Holder makes one. If Apple says no, the certificate is made
+  # once by hand on developer.apple.com and put into the repository with
+  # `match import`; nothing else here changes.
+  desc "Create, or fetch, the Developer ID signing identity"
+  lane :identity do
+    setup_ci
+    developer_id_identity(asc_key)
+  end
+
+  # Direct distribution, as decided for the Mac: the Mac App Store was left
+  # out of the app's registration, so the app is signed with Developer ID,
+  # notarized by Apple, and handed over as a file.
+  desc "Sign, notarize and zip the Mac app for direct distribution"
+  lane :developer_id do
+    # ⚠️ABSOLUTE PATHS, BECAUSE THIS FILE RUNS IN TWO DIRECTORIES. fastlane
+    # runs actions from the project root (ios/) but the Fastfile's own code —
+    # `sh` included — from ./fastlane, so a relative path means one thing to
+    # build_mac_app and another to ditto. These are computed here, inside
+    # ./fastlane, and mean the same thing to both.
+    repo = File.expand_path("../..")
+    output = File.join(repo, "ios", "build", "mac")
+
+    key = asc_key
+    setup_ci
+    developer_id_identity(key)
+    team_id = ENV.fetch("FASTLANE_TEAM_ID").strip
+
+    # The project signs to run locally ("-") under automatic signing — right
+    # for a developer's own Mac, wrong for a build anyone else will open. The
+    # Runner target is pinned to Developer ID for this build only.
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: File.join(repo, "macos", "Runner.xcodeproj"),
+      team_id: team_id,
+      code_sign_identity: "Developer ID Application",
+      targets: ["Runner"],
+    )
+
+    # 🚨Notarization refuses a binary without the hardened runtime and a
+    # secure timestamp, and the project asks for neither — turning them on
+    # there would change every local Mac build to buy what only a
+    # distributed one needs. They are asked for here, where distribution is.
+    app = build_mac_app(
+      workspace: File.join(repo, "macos", "Runner.xcworkspace"),
+      scheme: "Runner",
+      configuration: "Release",
+      export_method: "developer-id",
+      output_directory: output,
+      xcargs: "ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp",
+      export_options: {
+        signingStyle: "manual",
+        signingCertificate: "Developer ID Application",
+        teamID: team_id,
+      },
+    )
+    unless app.to_s.end_with?(".app") && File.directory?(app.to_s)
+      UI.user_error!("the export gave #{app.inspect}, not an .app in #{output}")
+    end
+
+    # Apple's verdict and its ticket, stapled into the app so Gatekeeper can
+    # check it with no network. print_log shows Apple's findings either way.
+    notarize(package: app, api_key: key, print_log: true)
+
+    # ditto, not zip: it keeps the bundle's symlinks and extended attributes,
+    # and an app that lost them no longer matches its own signature.
+    sh("ditto", "-c", "-k", "--keepParent", app,
+       File.join(output, "Anicel-macOS.zip"))
   end
 end

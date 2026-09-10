@@ -118,24 +118,17 @@ jobs:
           # Whichever username the certificates host wants on the other
           # half of the basic-auth pair. GitHub wanted `x-access-token`;
           # GitLab, where the identity lives now, takes `oauth2` with the
-          # token as the password. Unset falls back to `oauth2` below, so
-          # a host move stays a field edit — MATCH_GIT_URL already is one.
+          # token as the password. Unset, the Fastfile uses `oauth2`, so a
+          # host move stays a field edit — MATCH_GIT_URL already is one.
           MATCH_GIT_USER: ${{ secrets.MATCH_GIT_USER }}
           # Non-interactive: a prompt on a runner is a 6-hour hang.
           FASTLANE_SKIP_UPDATE_CHECK: '1'
           FASTLANE_HIDE_CHANGELOG: '1'
         run: |
-          # match clones over HTTPS, so the token has to arrive the way git
-          # expects it — base64 of "user:token". Built here rather than
-          # stored pre-encoded, so the secret stays a plain token.
-          # tr strips the wrap GNU base64 would add; a newline in the
-          # header is an auth failure that reads like a wrong token.
-          MATCH_GIT_BASIC_AUTHORIZATION=$(
-            printf '%s:%s' "${MATCH_GIT_USER:-oauth2}" "$MATCH_GIT_TOKEN" \
-              | base64 | tr -d '\n'
-          )
-          export MATCH_GIT_BASIC_AUTHORIZATION
-          bundle exec fastlane beta
+          # The Fastfile builds the signing repository's basic-auth header
+          # from MATCH_GIT_USER and MATCH_GIT_TOKEN — one place, for this
+          # workflow and both of Codemagic's.
+          bundle exec fastlane ios beta
 
       # The logs are where a signing failure explains itself, and they
       # outlive the runner only if we say so.
