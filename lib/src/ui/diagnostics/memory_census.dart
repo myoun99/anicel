@@ -102,7 +102,19 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'drawings',
       bytes:
           session.renderCaches.brushFrameStore.hotBakedBytes +
-          session.renderCaches.brushFrameStore.coldBakedBytes,
+          session.renderCaches.brushFrameStore.coldBakedBytes +
+          // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
+          // move or a transform holds the pixels it picked up — up to a
+          // whole canvas — in the SAME store, and the readout said
+          // nothing about them: mid-transform the panel showed less
+          // memory than the app was holding, and the difference read as
+          // engine overhead.
+          //
+          // ⛔Folded into `drawings` rather than given a row: it is the
+          // same store holding the same user's artwork, it is zero the
+          // moment the tool parks, and a row of its own would need a
+          // fifth string in five languages to say "usually nothing".
+          session.renderCaches.brushFrameStore.liftedPixelBytes,
     ),
     MemoryCensusItem(
       id: 'sheetInk',

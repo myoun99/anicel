@@ -23,6 +23,19 @@ import 'package:flutter/rendering.dart';
 /// something, the whole canvas freezes rather than one corner of it, which
 /// is the failure everybody notices in the first second.
 class DisplayBufferCache {
+  /// Bytes the kept buffer holds: one canvas-resolution RGBA image, or
+  /// none.
+  ///
+  /// 🔬**Counted because it is not small.** One buffer is the visible
+  /// canvas at 1:1 — 33MB on a 4K view — and it is held for as long as
+  /// nothing changes, which is most of the time. It was outside
+  /// [collectMemoryCensus] until 2026-09-10, so the readout was short by a
+  /// whole canvas per open view and nobody could see it.
+  int get heldBytes {
+    final image = _image;
+    return image == null ? 0 : image.width * image.height * 4;
+  }
+
   ui.Image? _image;
   Rect? _rect;
   Object? _key;
