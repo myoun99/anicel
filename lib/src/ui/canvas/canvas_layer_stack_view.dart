@@ -1661,14 +1661,69 @@ class _LayerStackPainter extends CustomPainter {
     }
   }
 
-  /// Where the LIVE surface changed since the kept buffer was made, in
-  /// canvas space — or null when that cannot be answered.
+  /// What the live surface looks like NOW, per coordinate — or null when
+  /// that cannot be said: the same three cases [_bufferKey] refuses to
+  /// cache for, plus a surface whose tiles cannot be compared to the ones
+  /// a buffer was made from.
   ///
-  /// 🚨Null is the safe answer and it costs only a full re-raster, which is
-  /// what every paint did before the cache existed. It is returned whenever
-  /// the change cannot be located: the same three cases [_bufferKey] refuses
-  /// to cache for, plus a surface whose tiles cannot be compared to the ones
-  /// the buffer was made from.
+  /// The overlay's tiles carry the stroke in flight — but they ACCUMULATE
+  /// for the stroke's whole life (nothing leaves the map until pen-up), so
+  /// "every overlay coordinate" is the bounding box of the WHOLE STROKE by
+  /// the third dab: a long line paid its full length again on every step.
+  /// Identity per coordinate instead, exactly like the committed tiles —
+  /// the overlay replaces a tile's image only when a dab touched it, so an
+  /// unchanged image object IS "this tile did not move".
+  ///
+  /// Committed tiles: a commit replaces the tile, and a decode replaces its
+  /// image. Both are identity changes on the same coordinate.
+  ///
+  /// 🚨★★★**AND THIS WALK CANNOT BE GATED BY THE CACHE'S REVISION** — I
+  /// tried, 2026-09-09, and `stroke_dirty_rect_is_the_dab_test` caught it
+  /// in one run. `revision` is bumped inside `notifyListeners`, and the
+  /// cache SCHEDULES that for the next frame (`_scheduleNotify`), so a
+  /// decode that landed during this frame has already changed
+  /// `imageFor(tile)` while the revision still reads what it read last
+  /// paint. `_bufferKey` can live with that — a stale key costs one frame
+  /// of a reused buffer — but a dirty RECT cannot: the rect is what gets
+  /// repainted, so a coordinate missed here is a coordinate left showing
+  /// the frame before. The walk stays, per-tile identity and all.
+  LiveSurfaceTokens? _liveSurfaceTokens() {
+    final surfacePainter = activeSurfacePainter;
+    if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
+      return null;
+    }
+    final overlay = surfacePainter.overlayModel;
+    if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
+      return null;
+    }
+    if (overlay?.stampImage != null) {
+      return null;
+    }
+    if (!_liveSurfaceIsSpatiallyStable(nodes)) {
+      return null;
+    }
+    final cache = surfacePainter.tileImageCache;
+    return (
+      overlay: <TileCoord, Object>{
+        ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
+      },
+      tiles: <TileCoord, Object>{
+        for (final entry in surfacePainter.surface.tiles.entries)
+          entry.key: cache.imageFor(entry.value) ?? entry.value,
+      },
+    );
+  }
+
+  /// Where the LIVE surface changed since the KEPT buffer was made, in
+  /// canvas space — measured against [DisplayBufferCache.keptTokens], the
+  /// snapshot stored WITH that buffer — plus what the surface looks like
+  /// now, for the buffer this paint is about to store.
+  ///
+  /// 🚨`located: false` is the safe answer and it costs only a full
+  /// re-raster, which is what every paint did before the cache existed. It
+  /// is the answer whenever the change cannot be located
+  /// ([_liveSurfaceTokens]), and whenever nothing is kept to measure from —
+  /// a cold start, or a buffer stored without a snapshot.
   ///
   /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
   /// composite around it does not have to land on them — a posed sibling or
@@ -1676,22 +1731,19 @@ class _LayerStackPainter extends CustomPainter {
   /// trusted the exact rect would leave a hairline of the previous frame.
   /// One pixel is cheap and the alternative is a class of bug that only
   /// shows on some zoom levels.
-  ({bool located, Rect? dirty}) _liveDirtyCanvasRect() {
-    final surfacePainter = activeSurfacePainter;
-    if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
-      return (located: false, dirty: null);
+  ({bool located, Rect? dirty, LiveSurfaceTokens? now})
+  _liveDirtyCanvasRect() {
+    final now = _liveSurfaceTokens();
+    if (now == null) {
+      return (located: false, dirty: null, now: null);
     }
-    final overlay = surfacePainter.overlayModel;
-    if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
-      return (located: false, dirty: null);
+    final kept = bufferCache!.keptTokens;
+    if (kept.tiles.isEmpty) {
+      // Nothing to compare against — the first paint after a cold start,
+      // or a kept image made without a snapshot.
+      return (located: false, dirty: null, now: now);
     }
-    if (overlay?.stampImage != null) {
-      return (located: false, dirty: null);
-    }
-    if (!_liveSurfaceIsSpatiallyStable(nodes)) {
-      return (located: false, dirty: null);
-    }
-    final tileSize = surfacePainter.surface.tileSize.toDouble();
+    final tileSize = activeSurfacePainter!.surface.tileSize.toDouble();
     Rect? dirty;
     void add(Rect rect) => dirty = dirty == null ? rect : dirty!.expandToInclude(rect);
     Rect rectOf(TileCoord coord) => Rect.fromLTWH(
@@ -1700,53 +1752,13 @@ class _LayerStackPainter extends CustomPainter {
       tileSize,
       tileSize,
     );
-    // The overlay's tiles carry the stroke in flight — but they ACCUMULATE
-    // for the stroke's whole life (nothing leaves the map until pen-up), so
-    // "every overlay coordinate" is the bounding box of the WHOLE STROKE by
-    // the third dab: a long line paid its full length again on every step.
-    // Identity per coordinate instead, exactly like the committed loop
-    // below — the overlay replaces a tile's image only when a dab touched
-    // it, so an unchanged image object IS "this tile did not move".
-    final cacheState = bufferCache!;
-    final overlayNow = <TileCoord, Object>{
-      ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
-    };
-    for (final coord in _movedCoords(
-      cacheState.lastOverlayTokens,
-      overlayNow,
-    )) {
+    for (final coord in _movedCoords(kept.overlay, now.overlay)) {
       add(rectOf(coord));
     }
-    cacheState.lastOverlayTokens = overlayNow;
-    // Committed tiles: a commit replaces the tile, and a decode replaces its
-    // Committed tiles: a commit replaces the tile, and a decode replaces its
-    // image. Both are identity changes on the same coordinate.
-    //
-    // 🚨★★★**AND THIS WALK CANNOT BE GATED BY THE CACHE'S REVISION** — I
-    // tried, 2026-09-09, and `stroke_dirty_rect_is_the_dab_test` caught it
-    // in one run. `revision` is bumped inside `notifyListeners`, and the
-    // cache SCHEDULES that for the next frame (`_scheduleNotify`), so a
-    // decode that landed during this frame has already changed
-    // `imageFor(tile)` while the revision still reads what it read last
-    // paint. `_bufferKey` can live with that — a stale key costs one frame
-    // of a reused buffer — but a dirty RECT cannot: the rect is what gets
-    // repainted, so a coordinate missed here is a coordinate left showing
-    // the frame before. The walk stays, per-tile identity and all.
-    final cache = surfacePainter.tileImageCache;
-    final seen = <TileCoord, Object>{
-      for (final entry in surfacePainter.surface.tiles.entries)
-        entry.key: cache.imageFor(entry.value) ?? entry.value,
-    };
-    for (final coord in _movedCoords(cacheState.lastTileTokens, seen)) {
+    for (final coord in _movedCoords(kept.tiles, now.tiles)) {
       add(rectOf(coord));
     }
-    final hadTokens = cacheState.lastTileTokens.isNotEmpty;
-    cacheState.lastTileTokens = seen;
-    if (!hadTokens) {
-      // Nothing to compare against — the first paint after a cold start.
-      return (located: false, dirty: null);
-    }
-    return (located: true, dirty: dirty?.inflate(1));
+    return (located: true, dirty: dirty?.inflate(1), now: now);
   }
 
   /// Everything the composite depends on that the bake's key does not

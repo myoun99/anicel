@@ -4,6 +4,18 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/rendering.dart';
 
+/// What the live surface looked like, per coordinate: the overlay's tile
+/// images, and the committed tiles' decoded images (or the tiles
+/// themselves, until they decode). Identity per coordinate is what lets the
+/// next paint say WHERE the surface changed — see
+/// [DisplayBufferCache.keptTokens].
+typedef LiveSurfaceTokens = ({
+  Map<Object, Object> overlay,
+  Map<Object, Object> tiles,
+});
+
+const LiveSurfaceTokens noLiveSurfaceTokens = (overlay: {}, tiles: {});
+
 /// 🚨★★★ (v) — THE COMPOSITE BUFFER, KEPT WHILE NOTHING HAS CHANGED.
 ///
 /// The single buffer made sampling a property of the display: everything
@@ -55,21 +67,32 @@ class DisplayBufferCache {
   /// apart so a stroke step can still recognise its own previous frame.
   Object? _staticKey;
 
-  /// What the live surface looked like when the kept image was made, so the
-  /// next paint can say WHERE it changed.
+  /// What the live surface looked like WHEN THE KEPT IMAGE WAS MADE, so the
+  /// next paint can say WHERE it changed since.
   ///
   /// 🚨Here rather than on the painter, and that is forced: a
   /// `CustomPainter` is a fresh object every frame, and a stroke step
   /// repaints WITHOUT a widget rebuild, so neither the painter nor `build`
   /// can hold a "since last time". This object is the only thing on that
   /// path that outlives a frame.
+  ///
+  /// 🚨★★★WRITTEN WITH THE IMAGE, IN [store], AND NOWHERE ELSE (F-68 ③,
+  /// 2026-09-11). It used to be re-recorded on EVERY paint, including the
+  /// paints that kept nothing — a floating selection makes the buffer
+  /// uncacheable for the whole session — so after a lift (erase; float up;
+  /// nothing kept) and a confirm (float gone; cacheable again) the patch
+  /// base was the image from BEFORE the lift while the dirty rect was only
+  /// what the confirm changed: the erased ring came back from the old
+  /// buffer and stayed until something else repainted it. On every
+  /// platform, because this is the buffer and not the tiles. A snapshot
+  /// describes exactly one image, and it lives and dies with it.
+  ///
   /// Overlay coordinate → the tile IMAGE it held, so the next paint can
   /// say which tiles a dab actually touched. A bare coordinate SET here
   /// made every step dirty the whole stroke's bounding box — the overlay
   /// accumulates for the stroke's life, so membership alone says "part of
   /// the stroke", not "changed since last paint".
-  Map<Object, Object> lastOverlayTokens = const {};
-  Map<Object, Object> lastTileTokens = const {};
+  LiveSurfaceTokens keptTokens = noLiveSurfaceTokens;
 
 
   /// The kept image for [key] over [rect], or null when there is none.
@@ -251,6 +274,12 @@ class DisplayBufferCache {
   /// carry answers it false. [derived] is the STACK BUDGET above: a carry
   /// draws the kept image too, so it answers true. One flag for both would
   /// let a pan build the chain unwatched.
+  ///
+  /// [tokens] is what the live surface looked like as [image] was made —
+  /// what a later paint measures its dirty rect from. Null when that could
+  /// not be said, and then nothing is kept to measure from: the next paint
+  /// composites whole, which is the honest price of an image nobody can
+  /// describe.
   void store(
     Object key,
     Object staticKey,
@@ -258,6 +287,7 @@ class DisplayBufferCache {
     ui.Image image, {
     bool patched = false,
     bool derived = false,
+    LiveSurfaceTokens? tokens,
   }) {
     if (patched) {
       patchedCount += 1;
@@ -276,6 +306,7 @@ class DisplayBufferCache {
     _rect = rect;
     _key = key;
     _staticKey = staticKey;
+    keptTokens = tokens ?? noLiveSurfaceTokens;
     _tellHeldBytes();
   }
 
@@ -369,11 +400,10 @@ class DisplayBufferCache {
     // Nothing is kept, so nothing can be derived FROM: the next store
     // starts a new chain whatever it is.
     _derivedDepth = 0;
-    // ⛔The snapshots go with the image. Kept across an invalidate they would
+    // ⛔The snapshot goes with the image. Kept across an invalidate it would
     // describe a frame nobody holds any more, and the next paint would
     // "find" a small dirty rect against a base that no longer exists.
-    lastOverlayTokens = const {};
-    lastTileTokens = const {};
+    keptTokens = noLiveSurfaceTokens;
     _tellHeldBytes();
   }
 

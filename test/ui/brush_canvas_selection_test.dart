@@ -2989,6 +2989,68 @@ void main() {
       );
     });
 
+    testWidgets('a SHRINK confirms and settles to the cel: nothing on screen '
+        'where the cel has nothing', (tester) async {
+      // 유저 2026-09-11 (F-68 ③, hands-on on Windows debug AND iPad
+      // release): 「축소시 변형툴 밖의 이전그림 위치에 그림 생기는건 여전히
+      // 존재. 펜으로 바꿔서 그부분 그리려하면 정상적으로 사라짐. 진짜
+      // 보이는거만 문제인듯.」 Every other pin in this group compares the
+      // confirm frame to the SETTLED frame, and if the settled frame is
+      // itself wrong they agree with each other and say nothing. This one
+      // holds the settled screen against the CEL.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await settle(tester);
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 0.5,
+      );
+      await settle(tester);
+      env.commands.commitTransform();
+      await tester.pump();
+      await settle(tester);
+
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final screen = await screenInkMask(tester);
+      final surface = currentSurface(env.coordinator);
+      var truthInk = 0;
+      var ghost = 0;
+      var hole = 0;
+      final where = <String>[];
+      for (var y = 0; y < 600; y += 1) {
+        for (var x = 0; x < 800; x += 1) {
+          final cx = x - origin.dx.round();
+          final cy = y - origin.dy.round();
+          final rgba = cx < 0 || cy < 0
+              ? 0
+              : (surfacePixelRgba(surface, cx, cy) ?? 0);
+          final ink = ((rgba >> 24) & 0xff) != 0;
+          final shown = screen[y * 800 + x];
+          if (ink) truthInk += 1;
+          if (shown && !ink) {
+            ghost += 1;
+            if (where.length < 8) where.add('($x,$y)');
+          }
+          if (ink && !shown) hole += 1;
+        }
+      }
+      expect(truthInk, greaterThan(0), reason: 'the landing has no ink');
+      expect(
+        ghost,
+        0,
+        reason:
+            '$ghost pixels of ink on the settled screen where the cel has '
+            'none (hole $hole of $truthInk) — first at ${where.join(' ')}',
+      );
+    });
+
     testWidgets('what the composition costs the EYE: at most one channel '
         'step, against the screen and against the truth', (tester) async {
       // N4 ②, and it is the judgement that closes the Skia side.

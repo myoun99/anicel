@@ -1,12 +1,15 @@
 part of '../canvas_layer_stack_view.dart';
 
 /// What a display-buffer miss can start from — the carried base to patch
-/// (with the live dirty rect), the previous buffer to scroll, or neither.
+/// (with the live dirty rect), the previous buffer to scroll, or neither —
+/// and what the live surface looks like now, stored with the buffer this
+/// miss makes so the NEXT miss can measure from it.
 typedef _MissPlan = ({
   ({ui.Image image, Rect rect})? base,
   Rect? dirty,
   ({ui.Image image, Rect rect})? scroll,
   bool canScroll,
+  LiveSurfaceTokens? tokens,
 });
 
 /// Who paints a node's children under a walk — the plain walk, or the split
@@ -1103,6 +1106,7 @@ class _LayerStackPaintPass {
         image,
         patched: base != null && dirty != null,
         derived: derived,
+        tokens: miss.tokens,
       );
       if (canScroll) {
         cache.scrolledCount += 1;
@@ -1130,13 +1134,20 @@ class _LayerStackPaintPass {
     final base = cache == null || key == null
         ? null
         : cache.patchBaseFor(_painter.compositeKey, rect);
-    // ⛔ALWAYS, even with no base to patch: this call is also what RECORDS
-    // what the live surface looks like now. Asking it only when a patch was
-    // already possible left the snapshot empty forever, so the first real
-    // stroke step compared against nothing and fell back to a full raster —
-    // measured, with the counter reading zero.
+    // ⛔ALWAYS, even with no base to patch: this call is also what SEES
+    // what the live surface looks like now, and that goes into the store
+    // with the buffer this miss makes. Asking it only when a patch was
+    // already possible left the first buffer without a snapshot, so the
+    // first real stroke step compared against nothing and fell back to a
+    // full raster — measured, with the counter reading zero.
+    //
+    // 🚨★★★SEEN here, RECORDED only by `store` (F-68 ③). Recording on every
+    // call — including the paints a floating selection keeps uncacheable —
+    // moved the snapshot ahead of the image it described, and the patch
+    // after a confirm then carried the ring the lift had erased back from
+    // the buffer made before it.
     final change = cache == null
-        ? (located: false, dirty: null)
+        ? (located: false, dirty: null, now: null)
         : _painter._liveDirtyCanvasRect();
     // ⛔TWO ANSWERS, NOT ONE. `located: false` is "cannot say where"; a null
     // rect with `located: true` is "nothing changed", which is the BEST case
@@ -1161,7 +1172,13 @@ class _LayerStackPaintPass {
     // the overlap would carry a stale live layer with it, and nothing else
     // in the key would notice.
     final canScroll = scroll != null && change.located;
-    return (base: base, dirty: dirty, scroll: scroll, canScroll: canScroll);
+    return (
+      base: base,
+      dirty: dirty,
+      scroll: scroll,
+      canScroll: canScroll,
+      tokens: change.now,
+    );
   }
 
   /// Recomposes only [dirty] over the carried [base]: the old pixels are
@@ -1369,7 +1386,14 @@ class _LayerStackPaintPass {
       DeferredImageDisposer.instance.retire(flat.image);
     }
     if (cache != null && key != null) {
-      cache.store(key, _painter.compositeKey, rect, image, patched: false);
+      cache.store(
+        key,
+        _painter.compositeKey,
+        rect,
+        image,
+        patched: false,
+        tokens: _painter._liveSurfaceTokens(),
+      );
       return _bufferOf(image, rect, owned: false);
     }
     return _bufferOf(image, rect, owned: true);
