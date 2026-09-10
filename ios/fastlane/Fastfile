@@ -60,13 +60,42 @@ def signing_identity(key, type:, platform:, **options)
   )
 end
 
+# ⛔DEVELOPER ID IS THE ONE IDENTITY MATCH CANNOT MINT. Asked through the API
+# key, Apple answered "This operation can only be performed by the Account
+# Holder" (Codemagic, 2026-09-11) — a rule about who asks, not about the
+# key's role. The Account Holder makes the certificate once on
+# developer.apple.com, and its .p12 arrives as two secrets: DEVELOPER_ID_P12
+# (base64) and DEVELOPER_ID_P12_PASSWORD. It goes into the keychain setup_ci
+# made, beside Apple's Developer ID intermediate, which a CI keychain does not
+# carry and codesign needs to finish the chain.
+#
 # No provisioning profile: Developer ID needs one only for the entitlements
 # Apple gates (iCloud, push), and this app asks for none of them — the
 # sandbox, user-selected files, bookmarks and the microphone are granted by
 # the signature alone.
-def developer_id_identity(key)
-  signing_identity(key, type: "developer_id", platform: "macos",
-                   skip_provisioning_profiles: true)
+require "tmpdir"
+
+def import_developer_id
+  keychain = ENV.fetch("MATCH_KEYCHAIN_NAME")
+  keychain_password = ENV.fetch("MATCH_KEYCHAIN_PASSWORD")
+  Dir.mktmpdir do |dir|
+    intermediate = File.join(dir, "DeveloperIDG2CA.cer")
+    sh("curl", "-fsSL", "-o", intermediate,
+       "https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer")
+    import_certificate(
+      certificate_path: intermediate,
+      keychain_name: keychain,
+      keychain_password: keychain_password,
+    )
+    p12 = File.join(dir, "developer_id.p12")
+    File.binwrite(p12, ENV.fetch("DEVELOPER_ID_P12").unpack1("m"))
+    import_certificate(
+      certificate_path: p12,
+      certificate_password: ENV.fetch("DEVELOPER_ID_P12_PASSWORD").strip,
+      keychain_name: keychain,
+      keychain_password: keychain_password,
+    )
+  end
 end
 
 platform :ios do
@@ -136,18 +165,20 @@ platform :ios do
 end
 
 platform :mac do
-  # ⚠️APPLE MAY REFUSE THIS, which is why it is a lane of its own and the Mac
-  # workflow runs it first: a refusal then costs a minute, not a build.
-  # Whether an App Store Connect API key may CREATE a Developer ID
-  # certificate was not settled when this was written (2026-09-11) — the
-  # certificate type is in the API, and Apple's rule elsewhere is that only
-  # the Account Holder makes one. If Apple says no, the certificate is made
-  # once by hand on developer.apple.com and put into the repository with
-  # `match import`; nothing else here changes.
-  desc "Create, or fetch, the Developer ID signing identity"
+  # FIRST, AND ON ITS OWN, so a missing or mistyped secret costs a minute
+  # rather than a build: the Mac workflow runs this before anything slow. It
+  # was built to find out whether Apple would let the API key make the
+  # certificate — Apple would not (see import_developer_id) — and it now
+  # proves the Account Holder's certificate reached a keychain codesign reads.
+  desc "Import the Developer ID identity and prove codesign can see it"
   lane :identity do
     setup_ci
-    developer_id_identity(asc_key)
+    import_developer_id
+    identities = sh("security", "find-identity", "-v", "-p", "codesigning",
+                    log: false)
+    unless identities.include?("Developer ID Application")
+      UI.user_error!("no Developer ID Application identity in the keychain")
+    end
   end
 
   # Direct distribution, as decided for the Mac: the Mac App Store was left
@@ -165,7 +196,7 @@ platform :mac do
 
     key = asc_key
     setup_ci
-    developer_id_identity(key)
+    import_developer_id
     team_id = ENV.fetch("FASTLANE_TEAM_ID").strip
 
     # The project signs to run locally ("-") under automatic signing — right

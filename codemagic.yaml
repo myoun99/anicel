@@ -31,7 +31,10 @@ definitions:
     xcode: latest
     cocoapods: default
     groups:
-      # Apple: ASC_KEY_ID · ASC_ISSUER_ID · ASC_KEY_CONTENT · FASTLANE_TEAM_ID
+      # Apple: ASC_KEY_ID · ASC_ISSUER_ID · ASC_KEY_CONTENT · FASTLANE_TEAM_ID,
+      # and the Mac's Developer ID: DEVELOPER_ID_P12 (base64) ·
+      # DEVELOPER_ID_P12_PASSWORD — made once by the Account Holder, because
+      # Apple will not let an API key make one.
       - appstore
       # The signing repository: MATCH_GIT_URL · MATCH_PASSWORD · MATCH_GIT_TOKEN
       - match
@@ -140,10 +143,10 @@ workflows:
     scripts:
       - *flutter_dependencies
 
-      # ⚠️FIRST, AND ON ITS OWN: the one step Apple may refuse. Whether an App
-      # Store Connect API key may create a Developer ID certificate was not
-      # settled when this was written, and a refusal here costs a minute
-      # instead of a whole build. The Fastfile says what to do if it comes.
+      # FIRST, AND ON ITS OWN: a missing or mistyped Developer ID secret costs
+      # a minute here instead of a whole build. It began as the test of
+      # whether Apple would let the API key make the certificate; Apple would
+      # not, and the Fastfile says where the certificate comes from instead.
       - name: Signing identity (Developer ID)
         script: |
           cd ios
