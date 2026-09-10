@@ -135,9 +135,12 @@ workflows:
   macos-developer-id:
     name: macOS (Developer ID)
     instance_type: mac_mini_m2
-    # The Mac build signs, archives and then waits on Apple's notary service,
-    # which is usually minutes and occasionally much longer.
-    max_build_duration: 60
+    # The Mac build signs, archives and then waits on Apple's notary service.
+    # ⚠️120, Codemagic's ceiling: the FIRST notarization of the new Developer
+    # ID (2026-09-11) was still waiting after more than 20 minutes, inside a
+    # 60-minute budget for the whole build. A build killed mid-wait throws
+    # away an app Apple was about to accept, and the next run waits again.
+    max_build_duration: 120
     environment: *apple_environment
 
     scripts:
