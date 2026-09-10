@@ -387,6 +387,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _bake.onHeldBytesChanged = _reportHeldBytes;
     _syncActiveStandIn();
     _syncImagesWithCache();
+    InputInspector.visible.addListener(_rebuildForInspector);
     unawaited(_ensureImages());
   }
 
@@ -556,6 +557,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   @override
   void dispose() {
+    InputInspector.visible.removeListener(_rebuildForInspector);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, PlaybackQuality.full);
       entry.value.clone.dispose();
@@ -864,20 +866,27 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       }
       final device = box.localToGlobal(Offset.zero) * ratio;
       String fraction(double v) => (v - v.floorToDouble()).toStringAsFixed(3);
-      final probe =
-          'stack boundary device=(${device.dx.toStringAsFixed(2)}, '
-          '${device.dy.toStringAsFixed(2)}) '
-          'fraction=(${fraction(device.dx)}, ${fraction(device.dy)}) '
-          'ratio=${ratio.toStringAsFixed(3)}';
-      if (probe == _lastBoundaryProbe) {
-        return;
-      }
-      _lastBoundaryProbe = probe;
-      InputInspector.note(probe);
+      // PINNED, not noted: a layout fact, read whenever the card is looked
+      // at — the noted line scrolled off under the paint probes before the
+      // hands-on screenshot was taken.
+      InputInspector.pin(
+        'grid',
+        'grid device=(${device.dx.toStringAsFixed(2)}, '
+        '${device.dy.toStringAsFixed(2)}) '
+        'frac=(${fraction(device.dx)}, ${fraction(device.dy)}) '
+        'ratio=${ratio.toStringAsFixed(3)}',
+      );
     });
   }
 
-  static String? _lastBoundaryProbe;
+  /// The card is opened AFTER this view settled, most of the time — and a
+  /// layout fact is only measured on a build. So a rebuild follows the
+  /// toggle, and the pin is there when the card is.
+  void _rebuildForInspector() {
+    if (InputInspector.visible.value && mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -141,6 +141,26 @@ abstract final class InputInspector {
     _bumpRevision();
   }
 
+  /// STATE lines, one per [key], shown above the event rows and kept until
+  /// overwritten — for a fact that describes the session rather than a
+  /// moment, such as where layout put the canvas on the device grid.
+  ///
+  /// ⛔Not [notes]: those hold the last [notesCapacity] EVENTS, and a paint
+  /// probe pushes a layout fact out of them within two frames — the F-67
+  /// hands-on (2026-09-11) came back with a screenshot of the card and the
+  /// one line it was taken for had already scrolled off. Survives [clear]
+  /// for the same reason: clearing is about the event ring, and a layout
+  /// fact is not an event.
+  static final Map<String, String> pinned = <String, String>{};
+
+  static void pin(String key, String line) {
+    if (!visible.value || pinned[key] == line) {
+      return;
+    }
+    pinned[key] = line;
+    _bumpRevision();
+  }
+
   static void record(PointerEvent event) {
     final phase = _phaseOf(event);
     if (phase == null) {
@@ -182,9 +202,10 @@ abstract final class InputInspector {
     _bumpRevision();
   }
 
-  /// Full reset for tests (visibility included).
+  /// Full reset for tests (visibility and the pinned state lines included).
   static void reset() {
     clear();
+    pinned.clear();
     visible.value = false;
   }
 }
@@ -495,6 +516,14 @@ class _InspectorCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  for (final entry in InputInspector.pinned.entries)
+                    Text(
+                      entry.value,
+                      key: ValueKey<String>('input-inspector-pin-${entry.key}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: rowStyle.copyWith(color: AppColors.accent),
+                    ),
                   if (samples.isEmpty)
                     Text(
                       'waiting for input…',

@@ -131,6 +131,44 @@ void main() {
     InputInspector.reset();
   });
 
+  testWidgets('a PINNED line is state: on the card above the rows, and it '
+      'outlives the notes and the clear', (tester) async {
+    // F-67 hands-on (2026-09-11): the layout probe went through `note`,
+    // and the paint probes pushed it out of the five-line ring before the
+    // screenshot — the card came back without the one number it was
+    // opened for. A layout fact is not an event.
+    InputInspector.pin('grid', 'hidden — dropped');
+    expect(InputInspector.pinned, isEmpty);
+
+    InputInspector.visible.value = true;
+    await tester.pumpWidget(harness());
+    InputInspector.pin('grid', 'grid frac=(0.250, 0.000)');
+    for (var i = 0; i < InputInspector.notesCapacity + 3; i += 1) {
+      InputInspector.note('paint $i');
+    }
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('input-inspector-pin-grid')),
+      findsOneWidget,
+    );
+    expect(find.text('grid frac=(0.250, 0.000)'), findsOneWidget);
+
+    InputInspector.clear();
+    await tester.pump();
+    expect(InputInspector.notes, isEmpty);
+    expect(find.text('grid frac=(0.250, 0.000)'), findsOneWidget);
+
+    // Overwritten in place, never a second row.
+    InputInspector.pin('grid', 'grid frac=(0.000, 0.000)');
+    await tester.pump();
+    expect(find.text('grid frac=(0.250, 0.000)'), findsNothing);
+    expect(find.text('grid frac=(0.000, 0.000)'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('input-inspector-pin-grid')),
+      findsOneWidget,
+    );
+  });
+
   test('describe() carries the diagnosis fields', () {
     const event = PointerDownEvent(
       kind: PointerDeviceKind.stylus,
