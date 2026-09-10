@@ -29,6 +29,136 @@ void main() {
     });
   });
 
+  group('⛔a resize is not a reorder', () {
+    Widget gridAt(double width) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: width,
+          height: 400,
+          child: BrushPresetReorderGrid(
+            itemCount: 6,
+            cellHeight: brushPresetRowHeight,
+            itemKey: (index) => ValueKey<String>('cell-$index'),
+            itemBuilder: (context, index) => ColoredBox(
+              color: Colors.blue,
+              child: Center(child: Text('$index')),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('the columns change AT ONCE, with nothing sliding', (
+      tester,
+    ) async {
+      // 유저 H33: 「열이 바껴서 3개나 4개로 늘어날때 필요없는 쓸데없는
+      // 애니메이션 있거든? 그냥 그런거 싹 빼고 심플하게 열이 두개 세개로
+      // 그냥 늘어나게만」.
+      //
+      // ⚠️ONE pump, deliberately — `pumpAndSettle` would run the animation
+      // to its end and report the right answer either way, which is exactly
+      // how this would have gone unnoticed. What the user sees is the FIRST
+      // frame after the splitter moves.
+      await tester.pumpWidget(gridAt(260));
+      expect(brushPresetColumnsFor(260), 2, reason: 'fixture premise');
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('cell-2'))).dy,
+        brushPresetRowHeight,
+        reason: 'fixture premise: at two columns cell 2 opens the SECOND row',
+      );
+
+      await tester.pumpWidget(gridAt(390));
+      await tester.pump();
+
+      expect(brushPresetColumnsFor(390), 3, reason: 'fixture premise');
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('cell-2'))).dy,
+        0,
+        reason: 'at three columns cell 2 closes the FIRST row, and it is '
+            'ALREADY there on the frame the width changed — a cell still '
+            'sliding would read the row it came from',
+      );
+    });
+
+    testWidgets('and the cells follow a splitter that never changes the '
+        'column COUNT', (tester) async {
+      // ⚠️Not a second case of the same thing: a splitter drag spends most of
+      // its frames INSIDE one column count, and the cell width changes on
+      // every one of them. Watching only the count would leave exactly the
+      // swimming 유저 named, just between the steps instead of at them.
+      await tester.pumpWidget(gridAt(260));
+      expect(brushPresetColumnsFor(300), 2, reason: 'fixture premise: still 2');
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('cell-1'))).dx,
+        130,
+        reason: 'fixture premise: half of 260',
+      );
+
+      await tester.pumpWidget(gridAt(300));
+      await tester.pump();
+
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('cell-1'))).dx,
+        150,
+        reason: 'column 1 starts at half of 300 the moment the panel is 300',
+      );
+    });
+
+    testWidgets('a REORDER still slides — the animation was not deleted', (
+      tester,
+    ) async {
+      // The other half: 유저 named the resize, not the drag. A pin that only
+      // said "nothing animates" would pass with the slide ripped out of every
+      // path, and the reorder is what it was written for.
+      //
+      // ⚠️This drives the real drag rather than reading
+      // `brushPresetReorderDuration`: a constant nothing consults is not
+      // evidence, and forcing the duration to zero everywhere would leave
+      // that constant untouched.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 260,
+              height: 400,
+              child: BrushPresetReorderGrid(
+                itemCount: 6,
+                cellHeight: brushPresetRowHeight,
+                itemKey: (index) => ValueKey<String>('cell-$index'),
+                onReorder: (_, _) {},
+                itemBuilder: (context, index) => ColoredBox(
+                  color: Colors.blue,
+                  child: Center(child: Text('$index')),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final displaced = find.byKey(const ValueKey<String>('cell-1'));
+      final home = tester.getTopLeft(displaced).dx;
+      expect(home, greaterThan(0), reason: 'cell 1 starts in column 1');
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
+      );
+      await gesture.moveBy(const Offset(0, 8));
+      await tester.pump();
+      // Cell 0 aims at slot 1, so cell 1 is pushed back to column 0.
+      await gesture.moveBy(const Offset(130, 0));
+      await tester.pump();
+      await tester.pump(brushPresetReorderDuration ~/ 2);
+
+      final midway = tester.getTopLeft(displaced).dx;
+      expect(midway, lessThan(home), reason: 'it has set off');
+      expect(midway, greaterThan(0), reason: 'and has not arrived — it slides');
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+  });
+
   group('the grid reorders', () {
     Future<List<(int, int)>> pumpAndDrag(
       WidgetTester tester, {

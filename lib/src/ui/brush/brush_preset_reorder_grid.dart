@@ -21,6 +21,14 @@ const int brushPresetMaxColumns = 4;
 /// the one on screen.
 const double brushPresetRowHeight = 34.0;
 
+/// How long a cell takes to slide to its new slot during a REORDER.
+///
+/// ⛔A RESIZE GETS `Duration.zero` INSTEAD — see the comment in the grid's
+/// `build`. 유저 H33: a splitter drag re-lays the grid out on every frame, and
+/// a 140ms ease-out restarting on each one is what they saw as 「쓸데없는
+/// 애니메이션」.
+const Duration brushPresetReorderDuration = Duration(milliseconds: 140);
+
 /// How many columns [width] holds.
 int brushPresetColumnsFor(double width) {
   if (!width.isFinite || width <= 0) {
@@ -91,6 +99,11 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
   /// The cell being carried, by its ORIGINAL index.
   int? _dragIndex;
 
+  /// The geometry the last build laid out, so this one can tell a resize
+  /// from a reorder — see the comment in [build].
+  int? _laidOutColumns;
+  double? _laidOutCellWidth;
+
   /// Where it would land if the pointer let go now.
   int? _targetIndex;
 
@@ -142,6 +155,33 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
         final rows = (widget.itemCount / columns).ceil();
         final order = _visualOrder();
 
+        // 🚨A RESIZE IS NOT A REORDER (유저 2026-09-10, H33: 「열이 바껴서 3개나
+        // 4개로 늘어날때 필요없는 쓸데없는 애니메이션 있거든? 그냥 그런거 싹
+        // 빼고 심플하게 열이 두개 세개로 그냥 늘어나게만」).
+        //
+        // A cell's position changes for exactly two reasons, and only one of
+        // them is worth animating. The ORDER changing is a thing the user did
+        // and wants to follow with their eye. The panel getting wider is not:
+        // every frame of a splitter drag re-lays the grid out, so a 140ms
+        // ease-out restarts on every one of them and the cells swim along
+        // behind the splitter instead of going where they belong.
+        //
+        // ⛔So the duration is zero for the build that re-lays out, and back
+        // to 140ms for the next one. The animation is kept for the reorder it
+        // was written for.
+        //
+        // ⚠️CELL WIDTH, not just the column count: a splitter spends most of
+        // its frames INSIDE one count, and the cells have to follow it there
+        // too. Both null on the first build reads as "re-laid out", which is
+        // right — a first build must not animate either.
+        final relaidOut =
+            _laidOutColumns != columns || _laidOutCellWidth != cellWidth;
+        // ⚠️Written during build ON PURPOSE and with no setState: this is
+        // layout the builder just derived, remembered so the NEXT build can
+        // tell what changed. Calling setState here would be the loop.
+        _laidOutColumns = columns;
+        _laidOutCellWidth = cellWidth;
+
         Widget cellAt(int slot) {
           final index = order[slot];
           final left = (slot % columns) * cellWidth;
@@ -158,7 +198,7 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
           );
           return AnimatedPositioned(
             key: ValueKey<Key>(widget.itemKey(index)),
-            duration: const Duration(milliseconds: 140),
+            duration: relaidOut ? Duration.zero : brushPresetReorderDuration,
             curve: Curves.easeOut,
             left: left,
             top: top,
