@@ -3021,6 +3021,49 @@ void main() {
       );
     });
 
+    testWidgets('Escape with the handle still DOWN closes the box for good '
+        '— the rest of the drag reopens nothing', (tester) async {
+      // The box outlives a handle drag (Enter/Escape close it, not the
+      // release), so a drag can outlive its box. `_clearTransform` used to
+      // stop the leftover drag by nulling its five fields from outside;
+      // once those fields moved onto the drag object, the fact that stops
+      // it is the box being gone — and nothing measured that either way.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(env.commands.transformActive, isTrue);
+
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + const Offset(20, 20));
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(30, 30));
+      await tester.pump();
+      expect(
+        env.commands.transformActive,
+        isTrue,
+        reason: 'precondition: the top-left handle drag is live',
+      );
+
+      env.commands.cancelTransform();
+      await tester.pump();
+      expect(env.commands.transformActive, isFalse, reason: 'Escape closed it');
+
+      // The hand keeps going, and then comes off.
+      await gesture.moveTo(origin + const Offset(50, 50));
+      await tester.pump();
+      expect(
+        env.commands.transformActive,
+        isFalse,
+        reason: 'a scale solved from the drag\'s captured affine would put '
+            'the box back up under a session the user has already cancelled',
+      );
+      await gesture.up();
+      await tester.pump();
+      expect(env.commands.transformActive, isFalse);
+      expect(env.commands.movePending, isFalse);
+    });
+
     testWidgets('R17-U 핸들 상시: with the MOVE tool a corner drag scales '
         'WITHOUT Ctrl+T — the grab itself opens the session', (tester) async {
       final env = await pumpSelectionPanel(tester);
