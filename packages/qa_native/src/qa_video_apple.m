@@ -14,6 +14,14 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 
+// ⛔ARC ONLY. The globals below hold AVFoundation objects with no retain,
+// which is correct under ARC and a use-after-free without it — see the
+// COMPILE_OPTIONS beside this file in CMakeLists.txt for the crash that
+// proved it.
+#if !__has_feature(objc_arc)
+#error "qa_video_apple.m must be compiled with ARC (-fobjc-arc)"
+#endif
+
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>

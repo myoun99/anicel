@@ -35,6 +35,17 @@ add_library(qa_engine SHARED
 if(APPLE)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m")
+  # 🚨ARC, as the pod compiles it. CocoaPods turns ARC on by default and this
+  # file is written for it: it keeps AVFoundation objects in globals with no
+  # retain. Built here without the flag, `g_decode_asset` held an autoreleased
+  # asset that was freed when the open's pool drained, and the next reader
+  # built on it crashed inside -[AVAssetReader initWithAsset:] — the tests on
+  # a Mac died of a segmentation fault the app on the iPad never had
+  # (Codemagic, 2026-09-11). The file refuses to compile without ARC, so the
+  # two builds cannot drift apart again.
+  set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/qa_video_apple.m"
+    PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 # ⛔WIN32 only, for the same reason the Apple source above is: an
 # `IMFByteStream` over a range is Media Foundation's problem and nobody
