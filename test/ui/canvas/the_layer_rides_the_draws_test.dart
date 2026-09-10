@@ -24,6 +24,7 @@ import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -380,6 +381,8 @@ void main() {
       WidgetTester tester, {
       required List<ResolvedLayerEffect> effects,
       double opacity = 0.5,
+      double zoom = 1,
+      bool disableBuffer = false,
       SelectionFloatOverlay? floatOverlay,
       ValueListenable<CutStampPreview?>? stampPreview,
     }) async {
@@ -399,13 +402,14 @@ void main() {
                     frameStore: BrushFrameStore(),
                   ),
                   canvasSize: canvasSize,
-                  viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
+                  viewport: CanvasViewport(zoom: zoom, panX: 0, panY: 0),
                   activeSurfacePainter: inkedPainter(
                     stampPreview: stampPreview,
                   ),
                   paintPaper: true,
                   paperBackground: ProjectBackground.defaultBackground,
                   floatOverlay: floatOverlay,
+                  debugDisableSingleBuffer: disableBuffer,
                 ),
               ),
             ),
@@ -483,6 +487,158 @@ void main() {
             'if it does, the paint reached nothing',
       );
     });
+    testWidgets('🚨F-67: the two routes agree on the pixels neither of them '
+        'was asked to change', (tester) async {
+      // 유저 F-67: 「툴을 바꾸거나 선을 그리기 시작하거나 화면을 팬으로
+      // 이동할때, 그 때만. 그릴때는 펜 다운때 시작해서, 펜 업때 원래대로
+      // 돌아오는. 즉 일부 정해진 픽셀이 반픽셀? 움직였다가 돌아오는 현상」.
+      //
+      // 🎯WHY THIS IS THE EXPERIMENT. `needsBuffer` decides whether the
+      // active layer is drawn through a `saveLayer` — an offscreen aligned
+      // to DEVICE pixels — or straight under the fractional CTM. It reads
+      // `drawsDisjointCoverage`, and that flips on exactly the moments 유저
+      // named: pen down (the overlay gains content), pen up (it loses it),
+      // a stamp ghost appearing. If the two routes rasterise the SAME
+      // artwork differently, the flip is the shift.
+      //
+      // 🚨AND THE ONLY MEASUREMENT ON RECORD COVERS TILES. The painter's own
+      // comment says the routes agree to the byte 「with the tile paint this
+      // class actually uses (`isAntiAlias = false`, `FilterQuality.none`)
+      // … 0 of 19200 pixels differ」 — and then names its limit:
+      // 「Antialiased draws do NOT agree」. A REDUCED view samples the flat
+      // active image bilinearly, which is not that paint.
+      //
+      // ⚠️ZOOM 0.63, one of the values that measurement used, and reduced on
+      // purpose: it is where the display law asks for filtering.
+      Future<Uint8List> capture({
+        required bool ghost,
+        required bool disableBuffer,
+      }) async {
+        final preview = ghost
+            ? ValueNotifier<CutStampPreview?>(
+                CutStampPreview(
+                  piece: CutPiece(
+                    image: BrushStampImage(
+                      id: 'ghost',
+                      width: 4,
+                      height: 4,
+                      rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
+                    ),
+                    originLeft: 0,
+                    originTop: 0,
+                  ),
+                  image: await tester.runAsync(_decodedSquare),
+                  canvasRect: const Rect.fromLTWH(0, 0, 4, 4),
+                  opacity: 1,
+                  blendMode: BrushBlendMode.color,
+                ),
+              )
+            : null;
+        if (preview != null) {
+          addTearDown(preview.dispose);
+        }
+        await paintActive(
+          tester,
+          effects: const [],
+          zoom: 0.63,
+          disableBuffer: disableBuffer,
+          stampPreview: preview,
+        );
+        expect(
+          debugLiveLayerRodeTheDraws,
+          ghost ? isFalse : isTrue,
+          reason: 'fixture premise: the ghost is what flips the route',
+        );
+        final painted = tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                of: find.byType(CanvasLayerStackView),
+                matching: find.byType(CustomPaint),
+              ),
+            )
+            .where((paint) => paint.painter != null)
+            .toList();
+        const size = Size(200, 150);
+        final recorder = ui.PictureRecorder();
+        painted.first.painter!.paint(
+          Canvas(recorder, Offset.zero & size),
+          size,
+        );
+        final picture = recorder.endRecording();
+        final image = picture.toImageSync(200, 150);
+        picture.dispose();
+        final bytes = await tester.runAsync(
+          () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+        );
+        image.dispose();
+        return bytes!.buffer.asUint8List();
+      }
+
+      for (final disableBuffer in [false, true]) {
+      // ⛔AND THE KNEE IS ON FOR BOTH READINGS. Without it the scaled
+      // recording never runs at this size, `_activeFlatForRecording` stays
+      // null — it is 「null on every s=1 path」 — and the FLAT blit, the one
+      // draw in the active slot that samples bilinearly, is never executed.
+      // A first version of this test measured only the tile route, which
+      // the painter's own comment had already pinned, and passed without
+      // touching the thing it was written to ask about.
+      MeasurementMode.kneeAtOne.value = true;
+      addTearDown(() => MeasurementMode.kneeAtOne.value = false);
+      final rode = await capture(ghost: false, disableBuffer: disableBuffer);
+      final buffered = await capture(ghost: true, disableBuffer: disableBuffer);
+
+      // ⛔ONLY THE PIXELS NEITHER ROUTE WAS ASKED TO CHANGE. The ghost sits
+      // at canvas (0,0,4,4); at 0.63 that is a handful of screen pixels in
+      // the top-left, and of course they differ — one render has a ghost in
+      // it. Everything from x = 40 on is the same artwork drawn twice, and
+      // it is the only region that can say anything about SAMPLING.
+      var differing = 0;
+      var first = '';
+      for (var y = 0; y < 150; y += 1) {
+        for (var x = 40; x < 200; x += 1) {
+          final i = (y * 200 + x) * 4;
+          if (rode[i] != buffered[i] ||
+              rode[i + 1] != buffered[i + 1] ||
+              rode[i + 2] != buffered[i + 2] ||
+              rode[i + 3] != buffered[i + 3]) {
+            differing += 1;
+            first = first.isEmpty
+                ? '($x,$y) ${rode.sublist(i, i + 4)} vs '
+                      '${buffered.sublist(i, i + 4)}'
+                : first;
+          }
+        }
+      }
+      expect(
+        differing,
+        0,
+        reason: 'the same artwork rasterised two ways at a reduced zoom '
+            '(buffer disabled: $disableBuffer) — a pixel that differs here '
+            'is a half-pixel that appears when the route flips at pen down '
+            'and disappears when it flips back. First: $first',
+      );
+      }
+
+      // 📏WHAT THIS ANSWERED, AND WHAT IT DID NOT (2026-09-10).
+      //
+      // It PASSED, in all four combinations. So the route flip does not
+      // move these pixels, and F-67's leading candidate is not confirmed.
+      //
+      // ⛔It is NOT proof that the flip is innocent, and saying so would be
+      // the ninth entry in this repo's list of greens that measured
+      // nothing. What is unverified is whether the fixture reaches the one
+      // draw in the active slot that samples BILINEARLY — the flat
+      // projection blit. `_activeFlatForRecording` is 「null on every s=1
+      // path」, the knee is forced on above to give the scaled recording a
+      // chance to run, and whether the projection then built for this
+      // painter is not observable from out here. The tile route, which
+      // this certainly does exercise, was already pinned by the
+      // comparisons above.
+      //
+      // 🔜So the next move on F-67 is a probe that says whether the flat
+      // blit executed, not another pixel comparison.
+    });
+
     testWidgets('opacity alone rides the draws', (tester) async {
       await paintActive(tester, effects: const []);
       expect(
