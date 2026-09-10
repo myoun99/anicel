@@ -123,7 +123,18 @@ class _CanvasPanelSelection {
   /// and paint on its first frame instead of waiting a decode round with
   /// four tiles' worth of fallback. Coordinates the lift only partly took
   /// are deliberately absent: see [BitmapTileImageCache.seedScope].
-  ({int liftToken, BrushDab stampDab, Map<TileCoord, BitmapTile> wholeTiles})?
+  ///
+  /// `preLift` and `liftedInk` answer for the coordinates the lift took
+  /// only PART of (F-68 ②): the float's tile there is new and has no
+  /// picture, and the pre-lift picture cut by `liftedInk` is exactly what
+  /// it carries — the selection layer's `_buildFloatSurface` composes it.
+  ({
+    int liftToken,
+    BrushDab stampDab,
+    Map<TileCoord, BitmapTile> wholeTiles,
+    BitmapSurface preLift,
+    ProvisionalInkPainter liftedInk,
+  })?
   handleSelectionLift(CanvasSelectionRegion region) {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {
@@ -233,7 +244,53 @@ class _CanvasPanelSelection {
       activeKey.layerId,
       activeKey.frameId,
     ), whole.keys);
-    return (liftToken: token, stampDab: lift.stampDab, wholeTiles: whole);
+    // 🚨★★★AND WHAT THE LIFT DID AT A COORDINATE IT TOOK ONLY PART OF
+    // (F-68 ②). 「그림의 일부가 1프레임 이상한곳에 생겼다가 사라짐 … 매번
+    // 다른데」.
+    //
+    // The invalidation above covers only what the lift took WHOLE. Where it
+    // took PART of a tile it makes two new tiles with no picture — the
+    // base's, emptied where the float came from, and the float's own — and
+    // the painter answered for the base with the pre-erase tile, lifted
+    // pixels included, and for the float with nothing. While the float sat
+    // on top the two lies cancelled; the frame it moved, the lifted part
+    // stood in its old place and was missing from its new one, for one
+    // frame or for as long as the decode budget deferred the new tiles —
+    // which is why it differed every time.
+    //
+    // ⛔The note this replaces held that a partly lifted coordinate's
+    // 「surviving pixels are still better than none」— true of the
+    // survivors, and a lie about the rest: the same stale picture carries
+    // the lifted part too. Both halves are known here, so both are said,
+    // from the picture the screen already holds cut by the erase's own
+    // bytes: the base keeps what the erase left, the float what it took
+    // (the landing's twin — `_composeCommittedRegionPictures` answers the
+    // same question with the ink put IN).
+    final erase = lift.eraseDab.stamp!;
+    ProvisionalInkPainter cutByTheErase({required bool keepInside}) =>
+        inkCutByMask(
+          erase,
+          left: (lift.eraseDab.center.x - erase.width / 2).round(),
+          top: (lift.eraseDab.center.y - erase.height / 2).round(),
+          keepInside: keepInside,
+        );
+    labProbe(
+      'lift.composeStandIns',
+      () => seedProvisionalTilePictures(
+        preSurface: preLift,
+        postSurface: after,
+        coords: tileCoordsChangedBetween(preLift, after),
+        ink: cutByTheErase(keepInside: false),
+        staleScope: (activeKey.layerId, activeKey.frameId),
+      ),
+    );
+    return (
+      liftToken: token,
+      stampDab: lift.stampDab,
+      wholeTiles: whole,
+      preLift: preLift,
+      liftedInk: cutByTheErase(keepInside: true),
+    );
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands

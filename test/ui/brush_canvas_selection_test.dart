@@ -3560,4 +3560,100 @@ void main() {
       expect(env.commands.polygonPoints, isEmpty);
     });
   });
+
+  group('🚨F-68 ②: a PARTIAL lift', () {
+    // 「그림의 일부가 1프레임 이상한곳에 생겼다가 사라짐 … 매번 다른데」.
+    //
+    // Every other lift in this file takes the WHOLE picture, and a coordinate
+    // taken whole is the one case the lift already answered: it drops the
+    // base's stale entry there. This rect cuts through the tiles along all
+    // four edges, so there the lift takes only PART of a tile — and makes
+    // TWO new tiles with no picture: the base's, emptied where the float
+    // came from, and the float's own. The painter answered for the base with
+    // the pre-erase tile, lifted pixels included, and for the float with
+    // nothing. While the float sat still the two lies cancelled.
+    //
+    // ⛔The base must have been ON SCREEN first: the stale fallback only
+    // answers with pictures that decoded, and a cold cache would let the
+    // first test below pass on the bug.
+    const from = Offset(150, 110);
+    const to = Offset(390, 330);
+
+    testWidgets('leaves no copy of what it took in the old place, and no '
+        'hole in the float, on the frame the float moves', (tester) async {
+      final env = await pumpSelectionPanel(tester, sourceDabs: widePicture);
+      await settle(tester);
+      await dragOnLayer(tester, from, to);
+      await env.setTool(CanvasTool.move);
+      // A MOVE DRAG, not an open box: the drag translates the float's own
+      // surface on the very next frame, while a box's translation waits for
+      // its preview image to decode — and that wait is a different question
+      // from the one this pin asks.
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final hand = await tester.startGesture(origin + (from + to) / 2);
+      await tester.pump();
+      await hand.moveBy(const Offset(70, 50));
+      // ⛔ONE frame, and no `runAsync` before the capture: the float has
+      // moved and nothing the lift created has decoded yet.
+      await tester.pump();
+      final moved = await screenInkMask(tester);
+      // ⛔Against the SAME frame state with its pictures landed: the finger
+      // is still down, so the ants and the box sit exactly where they did.
+      // Compared with a frame that had different chrome, the pixels under a
+      // moved ant line count as ink gone — a first draft measured exactly
+      // that and blamed it on the tiles.
+      await settle(tester);
+      final settled = await screenInkMask(tester);
+      await hand.up();
+      await tester.pump();
+      final settledInk = settled.where((on) => on).length;
+      final delta = inkDelta(moved, settled);
+      expect(settledInk, greaterThan(0), reason: 'the picture has ink at all');
+      expect(
+        delta.ghost,
+        0,
+        reason:
+            '${delta.ghost} pixels of artwork where the settled picture has '
+            'none — what the lift took, drawn back in its old place',
+      );
+      expect(
+        delta.hole,
+        0,
+        reason:
+            '${delta.hole} of $settledInk pixels missing — the float had '
+            'nothing to draw where it took only part of a tile',
+      );
+    });
+
+    testWidgets('shows the picture whole on the frame it lifts', (
+      tester,
+    ) async {
+      // The guard on the fix above, and why its two halves land together:
+      // give the base the truth without giving the float pictures of its
+      // own, and the lifted part vanishes on exactly this frame.
+      final env = await pumpSelectionPanel(tester, sourceDabs: widePicture);
+      await settle(tester);
+      await dragOnLayer(tester, from, to);
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      final lifted = await screenInkMask(tester);
+      // ⛔Against the same box with its pictures landed, for the reason the
+      // pin above gives: a frame with different chrome counts the ink under
+      // an ant line as gone.
+      await settle(tester);
+      final settledLift = await screenInkMask(tester);
+      final delta = inkDelta(lifted, settledLift);
+      expect(
+        delta.hole,
+        0,
+        reason: '${delta.hole} pixels of the picture gone on the lift frame',
+      );
+      expect(
+        delta.ghost,
+        0,
+        reason: '${delta.ghost} pixels of ink the picture never had',
+      );
+    });
+  });
 }

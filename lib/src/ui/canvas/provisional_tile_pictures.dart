@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_stamp_image.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -52,13 +54,17 @@ final Paint _tilePaint = Paint()
 /// synchronously is `decodeImageFromPixelsSync`, and that is Impeller
 /// only while Windows runs Skia in every build.
 ///
-/// ⚠️ PRECONDITION: the commit being stood in for must composite the ink
-/// with plain SOURCE-OVER. That is what this draws, and nothing here can
-/// check it. It holds at the only caller — a lift/move landing commits a
-/// stamp dab at the default [BrushBlendMode.color], which is `srcOver`
-/// (`brush_blend_mode.dart`) — but an erase, a `behind`, or any separable
-/// brush blend would need its own operator, and composing one of those as
-/// srcOver would publish a picture the commit never wrote.
+/// ⚠️ PRECONDITION: the INK owns the operator, and it must be the one the
+/// commit composites with — nothing here can check it. This draws the base
+/// and hands the canvas over; what the ink paints on top is the whole
+/// claim. Two commits, two operators, each matched by its ink:
+///  · a lift/move LANDING commits a stamp dab at the default
+///    [BrushBlendMode.color], which is `srcOver` (`brush_blend_mode.dart`),
+///    and its inks ([inkFromImage], the float) draw srcOver;
+///  · a LIFT commits its erase destination-out from the mask's own bytes,
+///    and [inkCutByMask] draws exactly that (F-68 ②).
+/// A `behind`, or any separable brush blend, would need an ink of its own:
+/// drawn as srcOver it would publish a picture the commit never wrote.
 ///
 /// Returns what it did: coordinates it could not answer for keep today's
 /// behaviour, and the count is how a caller (or a test) sees that without
@@ -178,6 +184,101 @@ ProvisionalInkPainter inkFromImage(ui.Image image, Rect placement) {
   );
   return (canvas, region) {
     canvas.drawImageRect(image, source, placement, _tilePaint);
+    return true;
+  };
+}
+
+/// Ink that CUTS the picture under it by a coverage mask laid at
+/// ([left], [top]) in canvas space — destination-out, so what it draws is
+/// what goes.
+///
+/// [mask] is the erase stamp; only byte 3 of each pixel, the coverage, is
+/// read. [keepInside] says which side of the mask survives:
+///  · false — what a lift's ERASE leaves behind: the coverage is cut out,
+///    exactly as `buildSelectionLiftDabs` commits it (destination-out from
+///    these very bytes);
+///  · true — what the lift CARRIES: everything the coverage did not take is
+///    cut, the tile outside the mask's rect included.
+///
+/// Each run of equal coverage along a row becomes ONE rect at whole pixels
+/// with no anti-aliasing, so every pixel is cut by exactly its own coverage
+/// — what the image inks get from `FilterQuality.none`, reached without an
+/// image. ⛔Not an image: the mask is bytes, and turning bytes into a
+/// picture synchronously is Impeller-only while Windows runs Skia.
+ProvisionalInkPainter inkCutByMask(
+  BrushStampImage mask, {
+  required int left,
+  required int top,
+  required bool keepInside,
+}) {
+  final rgba = mask.rgba;
+  final width = mask.width;
+  final height = mask.height;
+  final paint = Paint()
+    ..blendMode = BlendMode.dstOut
+    ..isAntiAlias = false;
+  void cut(ui.Canvas canvas, int coverage, Rect rect) {
+    if (coverage == 0 || rect.isEmpty) {
+      return;
+    }
+    paint.color = Color.fromARGB(coverage, 0, 0, 0);
+    canvas.drawRect(rect, paint);
+  }
+
+  final maskRect = Rect.fromLTWH(
+    left.toDouble(),
+    top.toDouble(),
+    width.toDouble(),
+    height.toDouble(),
+  );
+  return (canvas, region) {
+    if (keepInside) {
+      // Outside the mask's rect the lift took nothing.
+      for (final band in <Rect>[
+        Rect.fromLTRB(region.left, region.top, region.right, maskRect.top),
+        Rect.fromLTRB(
+          region.left,
+          maskRect.bottom,
+          region.right,
+          region.bottom,
+        ),
+        Rect.fromLTRB(region.left, maskRect.top, maskRect.left, maskRect.bottom),
+        Rect.fromLTRB(
+          maskRect.right,
+          maskRect.top,
+          region.right,
+          maskRect.bottom,
+        ),
+      ]) {
+        cut(canvas, 255, band.intersect(region));
+      }
+    }
+    final fromX = math.max(left, region.left.floor());
+    final toX = math.min(left + width, region.right.ceil());
+    final fromY = math.max(top, region.top.floor());
+    final toY = math.min(top + height, region.bottom.ceil());
+    int removalAt(int row, int x) {
+      final coverage = rgba[(row + x) * 4 + 3];
+      return keepInside ? 255 - coverage : coverage;
+    }
+
+    for (var y = fromY; y < toY; y += 1) {
+      final row = (y - top) * width - left;
+      var x = fromX;
+      while (x < toX) {
+        final removal = removalAt(row, x);
+        var end = x + 1;
+        while (end < toX && removalAt(row, end) == removal) {
+          end += 1;
+        }
+        cut(
+          canvas,
+          removal,
+          Rect.fromLTRB(x.toDouble(), y.toDouble(), end.toDouble(), y + 1),
+        );
+        x = end;
+      }
+    }
     return true;
   };
 }

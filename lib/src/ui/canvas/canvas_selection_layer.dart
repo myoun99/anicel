@@ -242,10 +242,17 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// holds exactly those pixels there, so it can borrow them and paint on
   /// its first frame. A host that has nothing to offer returns an empty
   /// map and the float waits for its own decodes, as it used to.
+  ///
+  /// `preLift` and `liftedInk` cover the coordinates it took only PART of
+  /// (F-68 ②): the pre-lift surface, and an ink that cuts it down to what
+  /// the lift carried. The first float built from the lift composes its
+  /// own pictures there from the two ([_buildFloatSurface]).
   final ({
     int liftToken,
     BrushDab stampDab,
     Map<TileCoord, BitmapTile> wholeTiles,
+    BitmapSurface preLift,
+    ProvisionalInkPainter liftedInk,
   })?
   Function(CanvasSelectionRegion region)?
   onLiftRequested;
@@ -511,6 +518,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasPending = _movePending;
     _liftToken = null;
     _pendingLiftStamp = null;
+    _freshLift = null;
     _moveSessionDirty = false;
     if (wasPending) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -2228,6 +2236,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _floatContentReplaced();
     BitmapTileImageCache.instance.seedScope(_floatStaleScope, lift.wholeTiles);
     _pendingLiftStamp = lift.stampDab;
+    // The float about to be built from this lift gets pictures of its own
+    // where the lift took only PART of a tile (F-68 ②) — consumed by
+    // [_buildFloatSurface].
+    _freshLift = (
+      preLift: lift.preLift,
+      ink: lift.liftedInk,
+      whole: lift.wholeTiles.keys.toSet(),
+    );
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
     widget.onMoveSessionPendingChanged?.call(true);
@@ -3658,7 +3674,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// The floating lift stamp rendered alone (the live float shown while
   /// moving) — the base no longer draws it, the float draws exactly it
   /// (R15-④), so there is never a double image.
+  /// What the NEXT float build needs from the lift that just happened — and
+  /// only that build (F-68 ②).
+  ///
+  /// Where the lift took a coordinate only in part, the float's tile there
+  /// is new and has no picture; [_buildFloatSurface] composes one from the
+  /// pre-lift picture cut by the lift's own coverage, so the float can draw
+  /// it on its first frame. Consumed by that build, and dropped by
+  /// [_clearLiftState] too: it holds the pre-lift SURFACE, which must not
+  /// outlive the one build that reads it.
+  ({BitmapSurface preLift, ProvisionalInkPainter ink, Set<TileCoord> whole})?
+  _freshLift;
+
   BitmapSurface _buildFloatSurface() {
+    final fresh = _freshLift;
+    _freshLift = null;
     final surface = BitmapSurface(canvasSize: widget.canvasSize);
     final pending = _pendingLiftStamp;
     // Recorded HERE so every rebuild site zeroes the drift by
@@ -3669,10 +3699,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (pending == null) {
       return surface;
     }
-    return materializeBrushDabSequenceOnBitmapSurface(
+    final built = materializeBrushDabSequenceOnBitmapSurface(
       surface: surface,
       sequence: BrushDabSequence([pending]),
     ).surface;
+    if (fresh != null && fresh.preLift.tileSize == built.tileSize) {
+      // The coordinates taken WHOLE already borrow the pre-lift tiles
+      // through [_floatStaleScope]; these are the rest. One grid or none:
+      // a coordinate means the same square in both surfaces only when
+      // their tiles are the same size, which the landing checks too.
+      seedProvisionalTilePictures(
+        preSurface: fresh.preLift,
+        postSurface: built,
+        coords: [
+          for (final coord in built.tiles.keys)
+            if (!fresh.whole.contains(coord)) coord,
+        ],
+        ink: fresh.ink,
+        staleScope: _floatStaleScope,
+      );
+    }
+    return built;
   }
 
   /// Canvas-space centre [_floatSurface]'s pixels were materialized at.
