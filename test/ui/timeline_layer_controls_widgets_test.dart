@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 void main() {
   group('TimelineLayerControlsHeader', () {
@@ -465,7 +466,7 @@ void main() {
           _row(layer: layer, fxState: state, onToggleLayerFx: (_) {}),
         );
         expect(
-          tester.widget<IconButton>(fxButton(layer)).tooltip,
+          tester.appIconButton(fxButton(layer)).tooltip,
           expected,
           reason: 'state $state',
         );

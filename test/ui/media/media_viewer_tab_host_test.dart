@@ -436,8 +436,9 @@ void main() {
   });
 }
 
-/// The tooltip an [AppIconButton] is showing — it renders through
-/// `IconButton`, so the message hangs under the button's own key.
+/// The tooltip an [AppIconButton] is showing — its face renders the Tooltip
+/// inside the box the key names, so the message hangs under the button's own
+/// key (it rendered through a Material `IconButton` until 2026-09-10; same place).
 String? _tooltipOf(WidgetTester tester, Finder button) => tester
     .widget<Tooltip>(
       find.descendant(of: button, matching: find.byType(Tooltip)),

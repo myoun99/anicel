@@ -11,6 +11,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 Project _project() {
   return Project(
@@ -78,14 +79,14 @@ void main() {
       );
 
       // Applied by default; a tap bypasses (tooltip mirrors the state).
-      expect(tester.widget<IconButton>(fxButton).tooltip, 'Bypass layer FX');
+      expect(tester.appIconButton(fxButton).tooltip, 'Bypass layer FX');
       await tester.tap(fxButton);
       await tester.pumpAndSettle();
-      expect(tester.widget<IconButton>(fxButton).tooltip, 'Apply layer FX');
+      expect(tester.appIconButton(fxButton).tooltip, 'Apply layer FX');
 
       await tester.tap(fxButton);
       await tester.pumpAndSettle();
-      expect(tester.widget<IconButton>(fxButton).tooltip, 'Bypass layer FX');
+      expect(tester.appIconButton(fxButton).tooltip, 'Bypass layer FX');
     });
 
     testWidgets('the X-sheet header carries the same switch (Axis policy)', (
@@ -121,7 +122,7 @@ void main() {
       expect(fxButton, findsOneWidget);
       await tester.tap(fxButton);
       await tester.pumpAndSettle();
-      expect(tester.widget<IconButton>(fxButton).tooltip, 'Apply layer FX');
+      expect(tester.appIconButton(fxButton).tooltip, 'Apply layer FX');
     });
   });
 }

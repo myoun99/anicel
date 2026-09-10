@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// T17 — a button must answer about NOW, and to do that it has to subscribe
 /// to everything its predicate reads.
@@ -33,10 +34,10 @@ void main() {
         .session;
   }
 
-  // The key sits ON the IconButton (see AppIconButton), so this reads the
-  // widget itself rather than a descendant.
+  // The key sits ON the button's face (see AppIconButton); the probe climbs
+  // from it to the button that owns `onPressed`.
   bool enabled(WidgetTester tester, String keyValue) =>
-      tester.widget<IconButton>(find.byKey(ValueKey<String>(keyValue)))
+      tester.appIconButton(find.byKey(ValueKey<String>(keyValue)))
           .onPressed !=
       null;
 

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 // ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
 // button too. 유저: 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」.
@@ -54,7 +55,7 @@ const _frameId = FrameId('frame-a');
 /// no longer a `PopupMenuItem` and `readCommandEnabled` (which opens a menu)
 /// cannot answer for it.
 bool _barButtonEnabled(WidgetTester tester, ValueKey<String> key) =>
-    tester.widget<IconButton>(find.byKey(key)).onPressed != null;
+    tester.appIconButton(find.byKey(key)).onPressed != null;
 
 void main() {
   testWidgets('ONE delete: no layer button of its own, and no menu entry '

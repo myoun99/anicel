@@ -6,6 +6,7 @@ import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// P2 wiring: the session's onion requests, the O shortcut and the panel.
 void main() {
@@ -68,17 +69,17 @@ void main() {
       const ValueKey<String>('timeline-layer-onion-default-layer-1'),
     );
     expect(rowToggle, findsOneWidget);
-    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin');
+    expect(tester.appIconButton(rowToggle).tooltip, 'Onion skin');
 
     // The row button toggles the layer on.
     await tester.tap(rowToggle);
     await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin (on)');
+    expect(tester.appIconButton(rowToggle).tooltip, 'Onion skin (on)');
 
     // The O key toggles the ACTIVE layer back off.
     await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
     await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin');
+    expect(tester.appIconButton(rowToggle).tooltip, 'Onion skin');
 
     // Peg 1 (before) silences through the panel's light-table strip — the
     // bar's tooltip carries its state.

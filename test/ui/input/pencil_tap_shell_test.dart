@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/input/pencil_interaction_service.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// PEN-5: the shell maps Pencil double-taps onto the tool notifier —
 /// brush↔eraser for the switch actions, no-ops otherwise.
@@ -21,10 +22,10 @@ void main() {
   }
 
   bool toolSelected(WidgetTester tester, String keyValue) {
-    // ToolsPanel buttons are keyed IconButtons carrying isSelected.
+    // ToolsPanel buttons are AppIconButtons, keyed on their face.
     return tester
-        .widget<IconButton>(find.byKey(ValueKey<String>(keyValue)))
-        .isSelected!;
+        .appIconButton(find.byKey(ValueKey<String>(keyValue)))
+        .isSelected;
   }
 
   testWidgets('a Pencil double-tap toggles brush↔eraser; ignore does not', (

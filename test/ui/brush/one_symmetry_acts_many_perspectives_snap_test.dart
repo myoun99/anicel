@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// What the guide LIBRARY list decides — the panel was 7% executed before
 /// this file (the audit's coverage pass, 2026-09-08), so every law below
@@ -209,10 +210,10 @@ void main() {
       );
 
       bool accentedOf(String id) => tester
-          .widget<IconButton>(
+          .appIconButton(
             find.byKey(ValueKey<String>('guide-acting-$id')),
           )
-          .isSelected!;
+          .isSelected;
 
       expect(accentedOf('s1'), isTrue);
       expect(accentedOf('s2'), isFalse);

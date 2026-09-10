@@ -152,11 +152,13 @@ void main() {
         matching: find.byType(IconButton),
       ),
     );
-    // Every AppIconButton mounts exactly one IconButton internally, so a
-    // count above that is a hand-rolled one standing beside them.
+    // AppIconButton mounts NO Material IconButton since 2026-09-10 (its face
+    // is drawn by hand — see [AppIconButtonFace]), so ANY IconButton in this
+    // row is a hand-rolled one standing beside them. The old form counted
+    // "one per AppIconButton" and would now pass with four strangers in it.
     expect(
-      raw.length,
-      wrapped.length,
+      raw,
+      isEmpty,
       reason: 'a hand-rolled IconButton in this row is an exception to the '
           'app icon button law, and this row already declared it joined',
     );

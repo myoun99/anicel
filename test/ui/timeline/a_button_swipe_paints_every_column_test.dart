@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -411,16 +412,16 @@ void main() {
         expect(finder, findsOneWidget, reason: 'fixture premise: $key exists');
         expect(
           tester.widget(finder),
-          isA<IconButton>(),
+          isA<AppIconButtonFace>(),
           reason:
-              '$key must be the rail\'s IconButton. A bare InkWell hovers '
+              '$key must be the app\'s icon button face. A bare InkWell hovers '
               'as a different shape from its neighbours — that is the '
               'report.',
         );
       }
 
-      // …and it still fits. The slot is 16px and an IconButton left alone
-      // asks for 48, so the tight box is load-bearing, not decoration.
+      // …and it still fits. The slot is 16px, and a Material IconButton left alone
+      // asked for 48 (the face asks only for its token), so the tight box stays load-bearing.
       final box = tester.getRect(
         find.byKey(const ValueKey<String>('timeline-lane-toggle-l4')),
       );

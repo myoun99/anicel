@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -44,7 +45,7 @@ Map<String, bool> _bar(WidgetTester tester) {
       if (key is ValueKey<String>) {
         final enabled = switch (widget) {
           TextButton(:final onPressed) => onPressed != null,
-          IconButton(:final onPressed) => onPressed != null,
+          AppIconButtonFace(:final onPressed) => onPressed != null,
           InkWell(:final onTap) => onTap != null,
           _ => null,
         };
@@ -67,6 +68,9 @@ Map<String, bool> _bar(WidgetTester tester) {
 /// because a collapsed panel's tickers run: an `IconButton`'s colour crosses
 /// an `AnimatedTheme`, and a muted ticker left that tween evaluating to the
 /// value it held at the instant of the fold.
+/// (Until 2026-09-10. The app's icon button paints its colour directly now —
+/// there is no AnimatedTheme left to freeze — and this stays because the user
+/// still watches COLOUR.)
 ///
 /// ⚠️Read off the glyph's own `RichText`, not off `Icon.color` — the buttons
 /// whose colour froze are exactly the ones that pass `color: null` and take
@@ -97,7 +101,7 @@ Map<String, Color?> _barInk(WidgetTester tester) {
       final widget = element.widget;
       final key = widget.key;
       if (key is ValueKey<String> &&
-          (widget is IconButton || widget is TextButton)) {
+          (widget is AppIconButtonFace || widget is TextButton)) {
         out[key.value] = inkOf(element);
       }
       element.visitChildren(visit);

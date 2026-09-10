@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
 import 'storyboard_cut_block_probe.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// A COMMITTED SEEK — an arrow-key flip, a ruler release, a `.`/`,` step —
 /// must not rebuild the storyboard panel. It reaches exactly the places
@@ -212,7 +213,7 @@ void main() {
 
     bool pullEnabled() =>
         tester
-            .widget<IconButton>(
+            .appIconButton(
               find.byKey(const ValueKey<String>('pull-blocks-button')),
             )
             .onPressed !=

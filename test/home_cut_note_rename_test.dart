@@ -7,6 +7,7 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/app_icon_button_probe.dart';
 
 void main() {
   testWidgets('long multi-line cut note remains editable and savable', (
@@ -293,7 +294,7 @@ Line 8''';
 
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
-    final undoButton = tester.widget<IconButton>(
+    final undoButton = tester.appIconButton(
       find.byKey(const ValueKey<String>('undo-button')),
     );
     expect(undoButton.onPressed, isNull);

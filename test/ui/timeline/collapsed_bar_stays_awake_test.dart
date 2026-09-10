@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -49,7 +50,7 @@ bool _isCollapsed(WidgetTester tester) => tester
     .widgetList<PanelCollapsedScope>(find.byType(PanelCollapsedScope))
     .any((scope) => scope.collapsed);
 
-/// ⚠️These are plain [TextButton]s and [IconButton]s carrying the key
+/// ⚠️These are plain [TextButton]s and [AppIconButtonFace]s carrying the key
 /// themselves, not one shared type — looking for the wrong one produced a
 /// "Bad state: No element" that reads exactly like a failing app.
 bool? _enabledOf(WidgetTester tester, String key) {
@@ -60,7 +61,7 @@ bool? _enabledOf(WidgetTester tester, String key) {
   final widget = finder.evaluate().first.widget;
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
-    IconButton(:final onPressed) => onPressed != null,
+    AppIconButtonFace(:final onPressed) => onPressed != null,
     InkWell(:final onTap) => onTap != null,
     _ => null,
   };

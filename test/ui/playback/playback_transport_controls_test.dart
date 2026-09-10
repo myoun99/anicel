@@ -10,6 +10,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 void main() {
   Project project() => Project(
@@ -106,7 +108,7 @@ void main() {
       findsNothing,
     );
 
-    IconButton playButton() => tester.widget<IconButton>(
+    AppIconButton playButton() => tester.appIconButton(
       find.byKey(const ValueKey<String>('playback-play-button')),
     );
     expect(playButton().isSelected, isFalse);

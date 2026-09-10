@@ -20,6 +20,8 @@ import '../ui/timeline/timeline_row_chrome_probe.dart';
 
 import '../ui/flyout_test_helpers.dart'
     show flyoutOwnerByItemKey, readCommandEnabled;
+import 'app_icon_button_probe.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -447,7 +449,7 @@ Future<bool> isActionButtonEnabled(
 
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
-    IconButton(:final onPressed) => onPressed != null,
+    AppIconButtonFace(:final onPressed) => onPressed != null,
     _ => isDescendantIconButtonEnabled(tester, button),
   };
 }
@@ -492,8 +494,8 @@ Future<void> dragBlockEndGrip(
 }
 
 bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
-  final iconButton = tester.widget<IconButton>(
-    find.descendant(of: button, matching: find.byType(IconButton)),
+  final iconButton = tester.appIconButton(
+    find.descendant(of: button, matching: find.byType(AppIconButtonFace)),
   );
   return iconButton.onPressed != null;
 }

@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 import '../flyout_test_helpers.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
 /// the text-field bare-letter guard and live re-recording through the
@@ -205,13 +206,13 @@ void main() {
     await tester.tap(addFrame);
     await tester.pumpAndSettle();
     final undoButton = find.byKey(const ValueKey<String>('undo-button'));
-    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+    expect(tester.appIconButton(undoButton).onPressed, isNotNull);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+    expect(tester.appIconButton(undoButton).onPressed, isNull);
 
     // Space starts playback (the playback view mounts). Plain pumps: the
     // playback ticker never lets pumpAndSettle settle.

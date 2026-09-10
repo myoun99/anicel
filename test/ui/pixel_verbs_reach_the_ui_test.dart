@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
 /// + 「버튼 자체도 블록에 따라 활성화 비활성화 제대로 갱신 안되고있어」.
@@ -108,10 +109,10 @@ void main() {
   /// that getter was always right; a stale button means nobody re-read it, so
   /// asserting the getter asserts the half that cannot break.
   ///
-  /// The key rides on the `IconButton` itself, the same handle
+  /// The key rides on the button's face (`AppIconButtonFace`), the same handle
   /// `bar_buttons_follow_the_playhead_test` enumerates by.
   bool buttonEnabled(WidgetTester tester, String key) =>
-      tester.widget<IconButton>(find.byKey(ValueKey<String>(key))).onPressed !=
+      tester.appIconButton(find.byKey(ValueKey<String>(key))).onPressed !=
       null;
 
   testWidgets(

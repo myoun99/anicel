@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
         LayerRowSubject,
         TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -800,7 +801,7 @@ void main() {
       );
       expect(eye, findsOneWidget);
       expect(
-        tester.widget<IconButton>(eye).onPressed,
+        tester.appIconButton(eye).onPressed,
         isNotNull,
         reason: 'the button stays fully NORMAL (no disabled look)',
       );

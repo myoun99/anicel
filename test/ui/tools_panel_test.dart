@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 Widget _panel({
   CanvasTool tool = CanvasTool.brush,
@@ -37,7 +38,7 @@ void main() {
         await tester.pumpWidget(_panel(tool: verb));
         expect(
           tester
-              .widget<IconButton>(
+              .appIconButton(
                 find.byKey(const ValueKey<String>('tool-cut-button')),
               )
               .isSelected,
@@ -80,7 +81,7 @@ void main() {
       await tester.pumpWidget(_panel(tool: CanvasTool.cut));
       expect(
         tester
-            .widget<IconButton>(
+            .appIconButton(
               find.byKey(const ValueKey<String>('tool-select-button')),
             )
             .isSelected,
@@ -150,10 +151,10 @@ void main() {
     testWidgets('marks the active tool as selected', (tester) async {
       await tester.pumpWidget(_panel(tool: CanvasTool.eraser));
 
-      final eraser = tester.widget<IconButton>(
+      final eraser = tester.appIconButton(
         find.byKey(const ValueKey<String>('tool-eraser-button')),
       );
-      final brush = tester.widget<IconButton>(
+      final brush = tester.appIconButton(
         find.byKey(const ValueKey<String>('tool-brush-button')),
       );
       expect(eraser.isSelected, isTrue);
@@ -183,7 +184,7 @@ void main() {
       await tester.pumpWidget(_panel(tool: CanvasTool.select));
       expect(
         tester
-            .widget<IconButton>(
+            .appIconButton(
               find.byKey(const ValueKey<String>('tool-select-button')),
             )
             .isSelected,
@@ -198,7 +199,7 @@ void main() {
         await tester.pumpWidget(_panel(tool: verb));
         expect(
           tester
-              .widget<IconButton>(
+              .appIconButton(
                 find.byKey(const ValueKey<String>('tool-fill-button')),
               )
               .isSelected,

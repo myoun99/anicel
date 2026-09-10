@@ -97,7 +97,7 @@ Future<bool> readCommandEnabled(
     final button = tester.widget(find.byKey(key));
     return switch (button) {
       AppIconButton(:final onPressed) => onPressed != null,
-      IconButton(:final onPressed) => onPressed != null,
+      AppIconButtonFace(:final onPressed) => onPressed != null,
       _ => throw StateError(
         'readCommandEnabled: ${key.value} is neither a flyout item nor a '
         'known button type (${button.runtimeType})',

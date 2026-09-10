@@ -113,11 +113,26 @@ void main() {
     // close it — so the whole accent sequence runs with it open, which is
     // also how a person uses it (straighten, look, flip, look).
     await openViewSettings(tester);
+    // The PAINTED glyph colour — the Icon's own RichText — at FULL alpha.
+    // ⚠️Full alpha on purpose: inside the view-settings flyout the row is a
+    // disabled `PopupMenuItem`, whose ListTile context installs an IconTheme
+    // with opacity 0.38 ABOVE the button (traced 2026-09-10: d=40 of the
+    // icon's ancestors). Material's button merged that opacity as well, so
+    // the flyout has always drawn this accent at 38% — the old read never
+    // saw it because it read the button's STYLE object, not the pixels.
+    // What this pins is the HUE that says "active"; the host's dimming is
+    // the host's.
     Color? inkOf(String key) => tester
-        .widget<IconButton>(find.byKey(ValueKey<String>(key)))
+        .widget<RichText>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(RichText),
+          ),
+        )
+        .text
         .style
-        ?.foregroundColor
-        ?.resolve(const {});
+        ?.color
+        ?.withValues(alpha: 1);
 
     // Straight, unflipped: everything rests on the default ink.
     for (final key in [
@@ -126,24 +141,24 @@ void main() {
       'canvas-viewport-flip',
       'canvas-viewport-flip-vertical',
     ]) {
-      expect(inkOf(key), isNull, reason: '$key rests unaccented');
+      expect(inkOf(key), isNot(AppColors.accent), reason: '$key rests unaccented');
     }
 
     await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
     expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
-    expect(inkOf('canvas-viewport-rotate-ccw'), isNull);
+    expect(inkOf('canvas-viewport-rotate-ccw'), isNot(AppColors.accent));
 
     await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
     await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
     expect(inkOf('canvas-viewport-rotate-ccw'), AppColors.accent);
-    expect(inkOf('canvas-viewport-rotate-cw'), isNull);
+    expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
 
     await tapToolbarButton(tester, 'canvas-viewport-flip');
     expect(inkOf('canvas-viewport-flip'), AppColors.accent);
     await tapToolbarButton(tester, 'canvas-viewport-flip-vertical');
     expect(inkOf('canvas-viewport-flip-vertical'), AppColors.accent);
     await tapToolbarButton(tester, 'canvas-viewport-flip');
-    expect(inkOf('canvas-viewport-flip'), isNull);
+    expect(inkOf('canvas-viewport-flip'), isNot(AppColors.accent));
   });
 
   testWidgets('…and ON THE PILL, where the memo cannot help them', (
@@ -186,25 +201,40 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The PAINTED glyph colour — the Icon's own RichText — at FULL alpha.
+    // ⚠️Full alpha on purpose: inside the view-settings flyout the row is a
+    // disabled `PopupMenuItem`, whose ListTile context installs an IconTheme
+    // with opacity 0.38 ABOVE the button (traced 2026-09-10: d=40 of the
+    // icon's ancestors). Material's button merged that opacity as well, so
+    // the flyout has always drawn this accent at 38% — the old read never
+    // saw it because it read the button's STYLE object, not the pixels.
+    // What this pins is the HUE that says "active"; the host's dimming is
+    // the host's.
     Color? inkOf(String key) => tester
-        .widget<IconButton>(find.byKey(ValueKey<String>(key)))
+        .widget<RichText>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(RichText),
+          ),
+        )
+        .text
         .style
-        ?.foregroundColor
-        ?.resolve(const {});
+        ?.color
+        ?.withValues(alpha: 1);
 
     // No list to open: the controls are on the bar (유저 확정 2026-08-13).
     expect(
       find.byKey(const ValueKey<String>('canvas-viewport-settings')),
       findsNothing,
     );
-    expect(inkOf('canvas-viewport-rotate-cw'), isNull);
+    expect(inkOf('canvas-viewport-rotate-cw'), isNot(AppColors.accent));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-viewport-rotate-cw')),
     );
     await tester.pumpAndSettle();
     expect(inkOf('canvas-viewport-rotate-cw'), AppColors.accent);
-    expect(inkOf('canvas-viewport-rotate-ccw'), isNull);
+    expect(inkOf('canvas-viewport-rotate-ccw'), isNot(AppColors.accent));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-viewport-flip')),

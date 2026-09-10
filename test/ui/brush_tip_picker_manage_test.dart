@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_tip_entry.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_tip_picker.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 BrushTipEntry _tip(String id, String name) {
   final alpha = Uint8List(4 * 4)..fillRange(0, 16, 255);
@@ -125,12 +126,12 @@ void main() {
     );
     await tester.tap(find.byKey(swatch));
     await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(find.byKey(deleteKey)).onPressed, isNull);
+    expect(tester.appIconButton(find.byKey(deleteKey)).onPressed, isNull);
 
     await tester.tap(find.byKey(const ValueKey<String>('brush-tip-cell-a')));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<IconButton>(find.byKey(deleteKey)).onPressed,
+      tester.appIconButton(find.byKey(deleteKey)).onPressed,
       isNotNull,
     );
   });

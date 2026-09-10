@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/range_selections.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// deselect-button — **the tablet's Esc.**
 ///
@@ -53,7 +54,7 @@ void main() {
       reason: '⛔없다가 생기는 UI 금지 — it is dimmed, never absent',
     );
     expect(
-      tester.widget<IconButton>(finder).onPressed,
+      tester.appIconButton(finder).onPressed,
       isNull,
       reason: 'nothing to let go of',
     );
@@ -77,7 +78,7 @@ void main() {
       reason: 'fixture premise',
     );
     expect(
-      tester.widget<IconButton>(find.byKey(button)).onPressed,
+      tester.appIconButton(find.byKey(button)).onPressed,
       isNotNull,
       reason: 'T25: it lights on the same question its press runs',
     );
@@ -104,7 +105,7 @@ void main() {
     expect(session.rowSelection.value, isNotEmpty, reason: 'fixture premise');
 
     expect(
-      tester.widget<IconButton>(find.byKey(button)).onPressed,
+      tester.appIconButton(find.byKey(button)).onPressed,
       isNotNull,
     );
 
@@ -141,7 +142,7 @@ void main() {
       isTrue,
       reason: 'a marquee alone counts — 「지금 뭔가 선택됐나」',
     );
-    expect(tester.widget<IconButton>(find.byKey(button)).onPressed, isNotNull);
+    expect(tester.appIconButton(find.byKey(button)).onPressed, isNotNull);
 
     await tester.tap(find.byKey(button));
     await tester.pumpAndSettle();

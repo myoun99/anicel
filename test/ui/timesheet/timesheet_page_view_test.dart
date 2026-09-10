@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// 150 frames at 24fps and 6s pages = two sheets of paper.
 const _twoPageDuration = 150;
@@ -180,7 +181,7 @@ void main() {
         .data!;
 
     bool enabled(WidgetTester tester, Key key) =>
-        tester.widget<IconButton>(find.byKey(key)).onPressed != null;
+        tester.appIconButton(find.byKey(key)).onPressed != null;
 
     testWidgets('the MODES stay in the pill and the PAGES stand on the left '
         'edge, above / n-N / below', (tester) async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/page_turn_strip.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// The one page cluster the timesheet, the conte and the media viewer
 /// mount (유저 확정 ⑥ 2026-08-13, 「최대한 통일」): ◀ n/N ▶ stood upright,
@@ -39,7 +40,7 @@ void main() {
   );
 
   bool enabled(WidgetTester tester, Key key) =>
-      tester.widget<IconButton>(find.byKey(key)).onPressed != null;
+      tester.appIconButton(find.byKey(key)).onPressed != null;
 
   testWidgets('below two pages there is nothing — no permanently disabled '
       'promise', (tester) async {

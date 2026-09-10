@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -139,6 +140,16 @@ void main() {
       timelineCellGlobalRect(tester, 'draw', 2).topLeft,
     );
 
+    // ⚠️A PAUSE, on purpose. The single tap above is still inside Flutter's
+    // double-tap window (kDoubleTapTimeout), so the next tap on a
+    // neighbouring cell would PAIR with it — the R26 #37 gate rightly refuses
+    // that pair (two different cells) and consumes its record, and the real
+    // double tap then starts one tap late. A person pauses between selecting
+    // and double-tapping. This passed without saying so only because
+    // Material buttons animated their colour for ~200ms after the selection
+    // and pumpAndSettle burned that time; the app's buttons change colour
+    // instantly since 2026-09-10, so the pause is said out loud.
+    await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 100));
     await _doubleTapCell(tester, 'timeline-cell-draw-1');
     expect(
       find.byKey(const ValueKey<String>('rename-frame-dialog')),
