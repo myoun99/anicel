@@ -2093,19 +2093,19 @@ void main() {
       // The regression the first version of this fix shipped, and the test
       // that would have caught it.
       //
-      // `_floatSurface` is rebuilt from an empty surface at five sites, and
-      // three of them regenerate a float that ALREADY EXISTS: a drag
-      // release, every arrow-key nudge, and Ctrl+T over a pending move.
-      // There the previous generation is a legitimate predecessor. Refusing
-      // to borrow across it left a float wider than the painter's four-tile
-      // per-pixel budget three-quarters blank for a frame — and under a
-      // held arrow key, which regenerates about thirty times a second, it
+      // `_floatSurface` used to be rebuilt from an empty surface at five
+      // sites, and three of them regenerated a float that ALREADY EXISTED:
+      // a drag release, every arrow-key nudge, and Ctrl+T over a pending
+      // move. A rebuilt float wider than the painter's four-tile per-pixel
+      // budget was three-quarters blank for a frame — and under a held
+      // arrow key, which regenerated about thirty times a second, it
       // strobed.
       //
-      // So the scope is emptied when the float's CONTENT changes and not
-      // when it merely moves. This is the "merely moves" half, and the
-      // fixture must be WIDER than four tiles or the per-pixel path covers
-      // the mistake and the test proves nothing.
+      // The float is built once per lift now (2026-09-11: once per stamp
+      // IMAGE, so no site can rebuild it for the same pixels). This is the
+      // "merely moves" half, and the fixture must be WIDER than four tiles
+      // or the per-pixel path covers the mistake and the test proves
+      // nothing.
       final env = await pumpSelectionPanel(tester);
       // The float only holds tiles where the lift found pixels, so the
       // fixture's small stroke yields two however wide the marquee is. A
@@ -2760,21 +2760,31 @@ void main() {
     testWidgets('confirm, then undo: the frame after the undo is the '
         'pre-lift picture, and nothing of the float is left to paint over '
         'it', (tester) async {
-      // The undo restores the pre-lift snapshot, so every restored tile is
-      // a new object with no picture — and the base composes each from the
-      // landed tile it replaces (F-68). What this pins is the OTHER half:
-      // that the confirm let the float go. A float that outlived its
-      // session, or a decoded resample kept past it, would paint the
-      // landing over the restored picture — `ghost` ink where the settled
-      // frame has none — and a cover that is not mounted cannot.
+      // The undo restores the pre-lift snapshot — the very tile objects
+      // that were on screen before the lift, pictures and all — so the
+      // frame after it is whole by construction. What this pins is the
+      // other half: that the confirm let the float go. A decoded resample
+      // kept past its session paints the landing over whatever comes
+      // next, the restored picture included — `ghost` ink where the
+      // settled frame has none — and a picture that is let go cannot.
+      //
+      // A WARPED confirm, deliberately: a pure move has no resample image
+      // to keep, so it could not catch a kept one.
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
         sourceDabs: widePicture,
       );
-      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 20,
+        ty: 12,
+        rotationDegrees: 0,
+        scale: 1.5,
+      );
       await settle(tester);
-      env.commands.confirmPendingMove();
+      env.commands.commitTransform();
       await tester.pump();
       await settle(tester);
       expect(env.history.undoCount, greaterThan(0), reason: 'no entry to undo');
@@ -2946,6 +2956,36 @@ void main() {
             'a channel moved by $worst on the confirm frame: $hole pixels of '
             'the landing absent, $ghost pixels of ink that is not there — '
             'first at ${where.join(' ')}',
+      );
+    });
+
+    testWidgets('a second drag on a pending float does not rebuild it — '
+        'the same tiles, moved', (tester) async {
+      // A rebuild is new tile objects with no picture, for the same pixels
+      // — the F-68 family's raw material — and it re-materializes the whole
+      // stamp. The float is materialized once per lift; a move is carried
+      // by the draw offset, so the surface the second drag paints is the
+      // surface the first one made.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      await tester.pump();
+      final first = floatPainters(tester, currentSurface(env.coordinator));
+      expect(first, hasLength(1), reason: 'no float after the first drag');
+
+      await dragOnLayer(tester, const Offset(340, 225), const Offset(380, 250));
+      await tester.pump();
+      final second = floatPainters(tester, currentSurface(env.coordinator));
+      expect(second, hasLength(1), reason: 'no float after the second drag');
+      expect(
+        identical(second.single.surface, first.single.surface),
+        isTrue,
+        reason:
+            'the second drag rebuilt the float: new tile objects for the '
+            'same pixels',
       );
     });
 

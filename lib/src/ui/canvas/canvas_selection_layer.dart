@@ -11,6 +11,7 @@ import '../../services/straight_rgba_image.dart'
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
+import '../../models/brush_stamp_image.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
@@ -2321,6 +2322,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   void _dropFloat() {
     _floatSurface = null;
     _floatSurfaceCentre = null;
+    _floatSurfaceStamp = null;
     _discardFloatResample();
   }
 
@@ -3479,16 +3481,36 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the one build that reads it.
   BitmapSurface? _liftSource;
 
+  /// The float's surface: the pending stamp's IMAGE materialized once, at
+  /// the centre the stamp had then.
+  ///
+  /// Asked again for the same image, it answers with the same surface. A
+  /// move changes the stamp's centre and not its pixels, and
+  /// [_floatDrawCanvasOffset] carries the difference — so the float's
+  /// tiles are made once per lift and decode once. Every site that used
+  /// to rebuild here (a second drag, Ctrl+T over a pending move, Escape
+  /// out of it) was making new tile objects for the same pixels — the
+  /// F-68 family's raw material, plus 651 ms to re-materialize a
+  /// 2340×1654 cel scaled to the pasteboard. Only a different image
+  /// builds: a fresh lift, or a warp folded into the stamp.
   BitmapSurface _buildFloatSurface() {
-    final source = _liftSource ?? _floatSurface;
+    final pending = _pendingLiftStamp;
+    final existing = _floatSurface;
+    if (_liftSource == null &&
+        existing != null &&
+        pending != null &&
+        identical(pending.stamp, _floatSurfaceStamp)) {
+      return existing;
+    }
+    final source = _liftSource ?? existing;
     _liftSource = null;
     final surface = BitmapSurface(canvasSize: widget.canvasSize);
-    final pending = _pendingLiftStamp;
-    // Recorded HERE so every rebuild site zeroes the drift by
-    // construction — [_floatDrawOffset] measures from the place the
-    // surface was actually materialized at, not from the lift, so a
-    // rebuild mid-session cannot leave an offset applied twice.
+    // Recorded HERE so every build zeroes the drift by construction —
+    // [_floatDrawCanvasOffset] measures from the place the surface was
+    // actually materialized at, not from the lift, so a build mid-session
+    // cannot leave an offset applied twice.
     _floatSurfaceCentre = pending?.center;
+    _floatSurfaceStamp = pending?.stamp;
     if (pending == null) {
       return surface;
     }
@@ -3525,6 +3547,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Canvas-space centre [_floatSurface]'s pixels were materialized at.
   CanvasPoint? _floatSurfaceCentre;
+
+  /// The stamp IMAGE [_floatSurface] was materialized from — the identity
+  /// [_buildFloatSurface] reuses the surface by.
+  BrushStampImage? _floatSurfaceStamp;
 
   /// Where the float is drawn relative to its own surface: the live drag
   /// offset, plus the drift its stamp has accumulated since the surface was
