@@ -153,6 +153,11 @@ import 'dart:io';
 ///   tile's participation count before any tile could start — two passes
 ///   to save calls that cost tens of microseconds against a pass that
 ///   costs hundreds of milliseconds.
+///   🚨The originals come back as RUNS and an undo reads its recipe at a
+///   STEP (0 for a uniform one). The first shape — flat bytes out, a flat
+///   stream in — left one Dart call per pixel on each side of the kernel,
+///   and measured in one process it bought 1.6x on flat line art and
+///   nothing on 4K. Written inside this version, before it landed.
 const int kQaEngineAbiVersion = 34;
 
 /// Test hook: point EVERY engine loader at a locally built binary.

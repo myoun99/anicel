@@ -9,7 +9,11 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
+
+import '../helpers/native_engine_path.dart';
 
 /// The PRE-MEASUREMENT `pixel-pass-native` asks for before a line of C is
 /// written (card: 「착수 전에 확인할 것 셋」, ② 언두 레시피가 경계를 넘어야
@@ -57,6 +61,13 @@ import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 /// Prints; asserts only that the work happened.
 void main() {
   const tileSize = defaultCelTileSize;
+  final libraryPath = nativeEngineLibraryPathOrNull();
+
+  tearDown(() {
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = null;
+    QaNativeEngine.debugForceDartFallback = false;
+  });
 
   /// A cel whose every tile is allocated, at one of the recipe's two ends.
   ///
@@ -197,10 +208,47 @@ void main() {
     expect(tiles, greaterThan(0));
   }
 
+  /// Both passes over ONE fixture, in ONE process: the Dart loop and the C
+  /// kernel (ABI 34), each proven to be the one that ran.
+  ///
+  /// 🚨Inside one run, because that is the only comparison this machine can
+  /// make honestly (the ratio note above). And the engine is ASSERTED, not
+  /// assumed: a first A/B set `QA_ENGINE_PATH` on the command line, read two
+  /// near-identical columns, and had nothing to say whether the second one
+  /// had loaded anything at all.
+  void compare(
+    String label,
+    CanvasSize canvas,
+    CelPixelChannel channel, {
+    bool noisy = false,
+  }) {
+    for (final native in [false, true]) {
+      QaNativeEngine.debugResetForTests();
+      QaNativeEngine.debugForceDartFallback = !native;
+      debugQaEngineLibraryPathOverride = native ? libraryPath : null;
+      if (native && libraryPath == null) {
+        // ignore: avoid_print
+        print('[pixel-pass] $label  C: no engine binary here — Dart only');
+        continue;
+      }
+      expect(
+        QaNativeEngine.instance,
+        native ? isNotNull : isNull,
+        reason: 'the ${native ? 'C' : 'Dart'} arm must be the one that runs',
+      );
+      report(
+        '$label  [${native ? 'C' : 'Dart'}]',
+        canvas,
+        channel,
+        noisy: noisy,
+      );
+    }
+  }
+
   test('whole-picture colour pass, by canvas size', () {
-    report('1920x1080 colour', const CanvasSize(width: 1920, height: 1080),
+    compare('1920x1080 colour', const CanvasSize(width: 1920, height: 1080),
         CelPixelChannel.colour);
-    report('3840x2160 colour', const CanvasSize(width: 3840, height: 2160),
+    compare('3840x2160 colour', const CanvasSize(width: 3840, height: 2160),
         CelPixelChannel.colour);
   });
 
@@ -209,13 +257,13 @@ void main() {
     // takes EVERY masked pixel (it must, or undo could not tell an
     // already-empty pixel from one this pass emptied), so it walks the same
     // pixels with a third of the recipe.
-    report('1920x1080 alpha', const CanvasSize(width: 1920, height: 1080),
+    compare('1920x1080 alpha', const CanvasSize(width: 1920, height: 1080),
         CelPixelChannel.alpha);
   });
 
   test('a cel the recipe cannot compress — the RAW read, not the uniform one',
       () {
-    report('1920x1080 colour NOISY', const CanvasSize(width: 1920, height: 1080),
+    compare('1920x1080 colour NOISY', const CanvasSize(width: 1920, height: 1080),
         CelPixelChannel.colour, noisy: true);
   });
 }

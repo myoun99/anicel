@@ -64,8 +64,17 @@ import '../../tool/refactor/clone_scan.dart';
 /// complexity section refuses.
 /// 🔜**A third rectangle-mean makes it a law**, and then it is extracted and
 /// this comes back down.
+/// 89 → 88 (2026-09-10, the pixel pass's recipe builder). The pair that left:
+///
+///     lib/src/services/cel_pixel_overwrite.dart
+///       _RestoreBuilder._openStructures
+///       _RestoreBuilder._addToStructures
+///
+/// Both spelled the same "one raw add and one palette index per pixel" loop.
+/// The C pass feeds the builder RUNS now and a run is filled in bulk, so
+/// neither loop exists any more — the ceiling follows the count down.
 void main() {
-  const ceiling = 89;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

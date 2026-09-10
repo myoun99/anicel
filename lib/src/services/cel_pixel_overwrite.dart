@@ -245,6 +245,16 @@ sealed class CelPixelRestore {
     }
     return flat;
   }
+
+  /// How the C pass reads this recipe: [bytes], the entry for touched pixel
+  /// `i` at `i * step`.
+  ///
+  /// Laid flat ([expand]) unless a shape can say it more cheaply — and the
+  /// cheap answers are the COMMON ones: a uniform recipe is its one value
+  /// stepped 0, a raw one is the buffer it already is, and runs are laid out
+  /// a run at a time.
+  ({Uint8List bytes, int step}) streamFor(int byteCount) =>
+      (bytes: expand(byteCount), step: byteCount);
 }
 
 /// Copies [count] bytes from [from] at [base] into the front of [into] —
@@ -280,6 +290,31 @@ void copyRestoreBytes(Uint8List into, Uint8List from, int base, int count) {
   }
 }
 
+/// Writes [count] copies of [value] end to end into [into] from [at],
+/// doubling the copied span each step — a run costs log(count) copies, not
+/// [count]. (The per-call cost [copyRestoreBytes] avoids is paid here once
+/// per doubling, over spans that grow to the whole run.)
+void _fillRepeated(Uint8List into, int at, Uint8List value, int count) {
+  final span = count * value.length;
+  if (span == 0) {
+    return;
+  }
+  into.setRange(at, at + value.length, value);
+  var filled = value.length;
+  while (filled < span) {
+    final chunk = filled <= span - filled ? filled : span - filled;
+    into.setRange(at + filled, at + filled + chunk, into, at);
+    filled += chunk;
+  }
+}
+
+/// [count] copies of [value], end to end.
+Uint8List _repeatedRun(Uint8List value, int count) {
+  final out = Uint8List(count * value.length);
+  _fillRepeated(out, 0, value, count);
+  return out;
+}
+
 /// Every touched pixel held the SAME value — so the value alone is the
 /// whole recipe.
 ///
@@ -304,6 +339,11 @@ final class UniformCelPixelRestore extends CelPixelRestore {
   void readInto(Uint8List into, int index) {
     copyRestoreBytes(into, value, 0, value.length);
   }
+
+  /// One value, stepped 0: the recipe that matters most is never laid out.
+  @override
+  ({Uint8List bytes, int step}) streamFor(int byteCount) =>
+      (bytes: value, step: 0);
 }
 
 /// The region held few enough distinct values to name each by an index.
@@ -393,6 +433,27 @@ final class RunLengthCelPixelRestore extends CelPixelRestore {
     }
     copyRestoreBytes(into, values, _run * into.length, into.length);
   }
+
+  /// A run at a time rather than a pixel at a time — [readInto]'s cursor
+  /// walk, in bulk. ⚠️Real drawings land HERE (runs beat a palette wherever
+  /// values repeat along a row), so laying this one out per pixel would leave
+  /// their undo paying the Dart loop the C pass exists to remove.
+  @override
+  ({Uint8List bytes, int step}) streamFor(int byteCount) {
+    final flat = Uint8List(touchedPixelCount * byteCount);
+    var at = 0;
+    for (var run = 0; run < lengths.length; run += 1) {
+      final from = run * byteCount;
+      _fillRepeated(
+        flat,
+        at,
+        Uint8List.sublistView(values, from, from + byteCount),
+        lengths[run],
+      );
+      at += lengths[run] * byteCount;
+    }
+    return (bytes: flat, step: byteCount);
+  }
 }
 
 /// More distinct values than a palette can index — the channels are kept
@@ -415,6 +476,10 @@ final class RawCelPixelRestore extends CelPixelRestore {
   void readInto(Uint8List into, int index) {
     copyRestoreBytes(into, values, index * into.length, into.length);
   }
+
+  @override
+  ({Uint8List bytes, int step}) streamFor(int byteCount) =>
+      (bytes: values, step: byteCount);
 }
 
 /// The largest palette [PalettedCelPixelRestore] may build. Beyond this an
@@ -496,17 +561,26 @@ class _RestoreBuilder {
   final List<int> _runLengths = [];
   int _lastRunKey = -1;
 
-  void add(Uint8List channelBytes) {
-    _count += 1;
+  /// Adds [length] touched pixels whose channel bytes are all the
+  /// [byteCount] bytes of [from] at [at] — ONE pixel from the Dart pass, a
+  /// whole RUN from the C one.
+  ///
+  /// 🚨Runs are why the C pass pays off. Fed one pixel at a time, this
+  /// method cost as much as the pixel loop C took over; fed a run, a flat
+  /// cel costs one call per tile.
+  void addRun(Uint8List from, int at, int length) {
+    _count += length;
     if (_uniform) {
       final first = _first;
       if (first == null) {
-        _first = Uint8List.fromList(channelBytes);
+        _first = Uint8List.fromList(
+          Uint8List.sublistView(from, at, at + byteCount),
+        );
         return;
       }
       var same = true;
       for (var byte = 0; byte < byteCount; byte += 1) {
-        if (first[byte] != channelBytes[byte]) {
+        if (first[byte] != from[at + byte]) {
           same = false;
           break;
         }
@@ -515,28 +589,26 @@ class _RestoreBuilder {
         return;
       }
       _uniform = false;
-      _openStructures(first, _count - 1);
+      _openStructures(first, _count - length);
     }
-    _addToStructures(channelBytes);
+    _addRunToStructures(Uint8List.sublistView(from, at, at + byteCount), length);
   }
 
   /// A second distinct value arrived: build what the uniform run would have
   /// built, then carry on the slow way.
   void _openStructures(Uint8List first, int skipped) {
     final raw = BytesBuilder();
-    final indices = <int>[];
     final palette = BytesBuilder();
-    for (var i = 0; i < skipped; i += 1) {
-      raw.add(first);
-      indices.add(0);
-    }
+    // In bulk: the uniform stretch can be millions of pixels long, and one
+    // `add` per pixel is the very cost the optimistic path exists to avoid.
+    raw.add(_repeatedRun(first, skipped));
     palette.add(first);
     var key = 0;
     for (var byte = 0; byte < byteCount; byte += 1) {
       key = (key << 8) | first[byte];
     }
     _raw = raw;
-    _indices = indices;
+    _indices = List<int>.filled(skipped, 0, growable: true);
     _palette = palette;
     _paletteIndexByKey = {key: 0};
     // The uniform stretch that just ended IS the first run, however long it
@@ -546,47 +618,49 @@ class _RestoreBuilder {
     _lastRunKey = key;
   }
 
-  /// One more pixel on the current run, or the start of the next one.
-  void _extendRun(int key, Uint8List channelBytes) {
+  /// [length] more pixels on the current run, or the start of the next one.
+  void _extendRun(int key, Uint8List value, int length) {
     if (key == _lastRunKey) {
-      _runLengths[_runLengths.length - 1] += 1;
+      _runLengths[_runLengths.length - 1] += length;
       return;
     }
     _lastRunKey = key;
-    _runValues.add(channelBytes);
-    _runLengths.add(1);
+    _runValues.add(value);
+    _runLengths.add(length);
   }
 
-  void _addToStructures(Uint8List channelBytes) {
-    _raw!.add(channelBytes);
+  void _addRunToStructures(Uint8List value, int length) {
+    _raw!.add(length == 1 ? value : _repeatedRun(value, length));
     var key = 0;
     for (var byte = 0; byte < byteCount; byte += 1) {
-      key = (key << 8) | channelBytes[byte];
+      key = (key << 8) | value[byte];
     }
     // ⚠️BEFORE the palette's early return: runs are measured even after the
     // palette has overflowed, and that is the whole point — a drawing with
     // more than 256 colours is exactly the drawing the old ladder had to
     // answer with four bytes a pixel.
-    _extendRun(key, channelBytes);
+    _extendRun(key, value, length);
     if (!_paletteOpen) {
       return;
     }
     final byKey = _paletteIndexByKey;
-    final existing = byKey[key];
-    if (existing != null) {
-      _indices.add(existing);
-      return;
+    var index = byKey[key];
+    if (index == null) {
+      if (byKey.length == _maxPaletteEntries) {
+        _paletteOpen = false;
+        _indices.clear();
+        byKey.clear();
+        return;
+      }
+      index = byKey.length;
+      byKey[key] = index;
+      _palette.add(value);
     }
-    if (byKey.length == _maxPaletteEntries) {
-      _paletteOpen = false;
-      _indices.clear();
-      byKey.clear();
-      return;
+    if (length == 1) {
+      _indices.add(index);
+    } else {
+      _indices.addAll(List<int>.filled(length, index));
     }
-    final index = byKey.length;
-    byKey[key] = index;
-    _palette.add(channelBytes);
-    _indices.add(index);
   }
 
   /// Null when the pass touched nothing.
@@ -683,25 +757,18 @@ typedef CelPixelWalk =
     'value must carry exactly the channel bytes.',
   );
   final builder = value == null ? null : _RestoreBuilder(channel.byteCount);
+  final pass = (
+    channel: channel,
+    tileSize: surface.tileSize,
+    value: value,
+    restore: restore,
+    selector: selector,
+    builder: builder,
+  );
   final engine = QaNativeEngine.instance;
   final rewrite = engine == null
-      ? _dartTileRewrite(
-          channel: channel,
-          tileSize: surface.tileSize,
-          value: value,
-          restore: restore,
-          selector: selector,
-          builder: builder,
-        )
-      : _nativeTileRewrite(
-          engine,
-          channel: channel,
-          tileSize: surface.tileSize,
-          value: value,
-          restore: restore,
-          selector: selector,
-          builder: builder,
-        );
+      ? _dartTileRewrite(pass)
+      : _nativeTileRewrite(engine, pass);
 
   final rebuilt = <TileCoord, BitmapTile>{};
   try {
@@ -733,16 +800,20 @@ typedef CelPixelWalk =
 /// only addressing a recipe has.
 typedef _TileRewrite = BitmapTile? Function(BitmapTile tile, Uint8List? mask);
 
+/// One pass, named once: everything both rewrites read.
+typedef _Pass = ({
+  CelPixelChannel channel,
+  int tileSize,
+  Uint8List? value,
+  CelPixelRestore? restore,
+  CelColorKey? selector,
+  _RestoreBuilder? builder,
+});
+
 /// The pass in Dart: the reference `cel_pixel_pass_parity_test.dart`
 /// compares the C pass against byte for byte, and what runs with no engine.
-_TileRewrite _dartTileRewrite({
-  required CelPixelChannel channel,
-  required int tileSize,
-  required Uint8List? value,
-  required CelPixelRestore? restore,
-  required CelColorKey? selector,
-  required _RestoreBuilder? builder,
-}) {
+_TileRewrite _dartTileRewrite(_Pass pass) {
+  final (:channel, :tileSize, :value, :restore, :selector, :builder) = pass;
   final byteCount = channel.byteCount;
   final original = Uint8List(byteCount);
   final incoming = Uint8List(byteCount);
@@ -770,7 +841,7 @@ _TileRewrite _dartTileRewrite({
       for (var byte = 0; byte < byteCount; byte += 1) {
         original[byte] = view[offset + channel.byteOffset(byte)];
       }
-      builder?.add(original);
+      builder?.addRun(original, 0, 1);
       if (restore != null) {
         // ⛔A recipe shorter than its walk was built over some other
         // surface. The C pass has to refuse it — reading on there reads
@@ -810,19 +881,13 @@ _TileRewrite _dartTileRewrite({
 /// The pass in C (ABI 34): `qa_cel_pixel_pass_tile`, one tile per call.
 ///
 /// The participation law, the blend and the lazy copy run in the kernel;
-/// the RECIPE stays here. C hands back each tile's originals in walk order
-/// and [_RestoreBuilder] — the one place a recipe's shape is chosen — reads
-/// them exactly as it reads the Dart pass's, so the compression is never
-/// written twice (the card's fork ②: C speaks flat bytes, Dart compresses).
-_TileRewrite _nativeTileRewrite(
-  QaNativeEngine engine, {
-  required CelPixelChannel channel,
-  required int tileSize,
-  required Uint8List? value,
-  required CelPixelRestore? restore,
-  required CelColorKey? selector,
-  required _RestoreBuilder? builder,
-}) {
+/// the RECIPE stays here. C hands back each tile's originals as RUNS and
+/// [_RestoreBuilder] — the one place a recipe's shape is chosen — takes them
+/// a run at a time, so the compression is never written twice (the card's
+/// fork ②: C speaks the bytes, Dart compresses). An undo hands C the recipe
+/// the way [CelPixelRestore.streamFor] lays it out.
+_TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
+  final (:channel, :tileSize, :value, :restore, :selector, :builder) = pass;
   final byteCount = channel.byteCount;
   final base = channel.byteOffset(0);
   final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
@@ -834,41 +899,48 @@ _TileRewrite _nativeTileRewrite(
     }
     return true;
   }(), 'the C pass addresses channel byte i at base + i * stride');
+  final stream = restore?.streamFor(byteCount);
   engine.stageCelPixelPass(
-    byteCount: byteCount,
-    byteOffsetBase: base,
-    byteOffsetStride: stride,
-    takesEmptyPixels: channel.takesEmptyPixels,
-    isUndo: restore != null,
-    incoming: value ?? restore!.expand(byteCount),
-    hasSelector: selector != null,
-    selectorRed: selector?.red ?? 0,
-    selectorGreen: selector?.green ?? 0,
-    selectorBlue: selector?.blue ?? 0,
-    selectorTolerance: selector?.tolerance ?? 0,
-    selectorKeepsMatches: selector?.keepsMatches ?? false,
+    CelPixelStage(
+      byteCount: byteCount,
+      byteOffsetBase: base,
+      byteOffsetStride: stride,
+      takesEmptyPixels: channel.takesEmptyPixels,
+      tileSize: tileSize,
+      isUndo: restore != null,
+      incoming: value ?? stream!.bytes,
+      incomingCount: restore?.touchedPixelCount ?? 1,
+      incomingStep: stream?.step ?? 0,
+      selector: selector == null
+          ? null
+          : (
+              red: selector.red,
+              green: selector.green,
+              blue: selector.blue,
+              tolerance: selector.tolerance,
+              keepsMatches: selector.keepsMatches,
+            ),
+    ),
   );
-  final original = Uint8List(byteCount);
   var index = 0;
   return (tile, mask) {
-    final pass = tile.readPixels(
+    final result = tile.readPixels(
       (pixels, _) => engine.celPixelPassTile(
         inPixels: pixels,
-        tileSize: tileSize,
         mask: mask,
         startIndex: index,
-        wantOriginals: builder != null,
+        wantRuns: builder != null,
       ),
     );
-    index += pass.count;
-    final originals = pass.originals;
-    if (builder != null && originals != null) {
-      for (var at = 0; at < originals.length; at += byteCount) {
-        copyRestoreBytes(original, originals, at, byteCount);
-        builder.add(original);
+    index += result.count;
+    final values = result.runValues;
+    final lengths = result.runLengths;
+    if (builder != null && values != null && lengths != null) {
+      for (var run = 0; run < lengths.length; run += 1) {
+        builder.addRun(values, run * byteCount, lengths[run]);
       }
     }
-    final pixels = pass.pixels;
+    final pixels = result.pixels;
     return pixels == null
         ? null
         : BitmapTile.adoptNative(size: tileSize, pixels: pixels);

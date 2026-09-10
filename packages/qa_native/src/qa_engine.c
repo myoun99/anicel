@@ -4864,6 +4864,15 @@ typedef struct {
   // GLOBAL walk index, and coverage does not blend — the recipe already
   // holds what the pixel was, so putting it back is a plain assignment.
   int32_t is_undo;
+  // Pixels per tile side — one number for every tile of a pass.
+  int32_t tile_size;
+  // Undo only: how many entries [incoming] holds, and how far apart they
+  // sit. A recipe laid flat steps byte_count per touched pixel; a UNIFORM
+  // recipe is one value stepped 0, so the case that matters most — line art
+  // is flat, and every recolour after the first leaves it flat — is never
+  // laid out at all.
+  int32_t incoming_count;
+  int32_t incoming_step;
 } qa_cel_pixel_spec;
 
 QA_EXPORT int32_t qa_cel_pixel_spec_sizeof(void) {
@@ -4903,7 +4912,8 @@ static int32_t qa_cel_pixel_participates(const qa_cel_pixel_spec* spec,
   return spec->takes_empty_pixels ? 1 : (alpha > 0 ? 1 : 0);
 }
 
-// Runs the pass over ONE tile. Returns 1 when anything was written.
+// Runs the pass over ONE tile. Returns 1 when anything was written, 0 when
+// nothing was, and -1 when an undo walk reaches past the end of its stream.
 //
 // [in_pixels] is the tile's own bytes and is never written; [out_pixels] is
 // a caller-owned scratch of the same size that receives a COPY at the first
@@ -4912,32 +4922,43 @@ static int32_t qa_cel_pixel_participates(const qa_cel_pixel_spec* spec,
 // object — the copy-on-write law of `rewriteTileLazily`, in C.
 //
 // [mask] is tile-local coverage or NULL for full coverage.
-// [incoming] is `byte_count` bytes going forward, or the whole originals
-// stream on undo (indexed by the global walk index), [incoming_count]
-// entries long.
-// [originals_out] receives this tile's originals, TILE-LOCAL (entry 0 is
-// this tile's first touched pixel), or NULL when no recipe is wanted.
+// [incoming] is `byte_count` bytes going forward; on undo it is the recipe,
+// read at `index * incoming_step` for global walk index `index` and
+// `incoming_count` entries long (see the spec).
 // [start_index] is the global walk index this tile starts at.
+// [run_values_out] / [run_lengths_out] receive this tile's ORIGINALS as runs
+// — consecutive touched pixels whose channel bytes are equal share one entry
+// — or are NULL when no recipe is wanted. A run never spans two tiles here;
+// the recipe builder joins them across tiles, so this only has to be exact,
+// not maximal.
+// [counts_out] receives { touched pixels, runs }.
 //
-// Returns -1 when an undo walk reaches past the end of its stream. A recipe
-// shorter than the walk it replays was built over some other surface, and
-// the Dart reference refuses it too; here the alternative is reading
-// whatever memory follows the stream.
+// 🚨RUNS, NOT FLAT BYTES — that is what makes this pass worth having in C.
+// The first version handed the originals back one entry per pixel, and the
+// Dart loop feeding them to the recipe builder cost as much as the loop this
+// replaced: measured in one process, 21 -> 13 ns/px on flat line art, and no
+// gain at all on 4K. A flat cel is one run per tile.
+//
+// A recipe shorter than the walk it replays was built over some other
+// surface, and the Dart reference refuses it too; here the alternative is
+// reading whatever memory follows the stream.
 QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
                                          uint8_t* out_pixels,
-                                         int32_t tile_size,
                                          const uint8_t* mask,
                                          const qa_cel_pixel_spec* spec,
                                          const uint8_t* incoming,
-                                         int64_t incoming_count,
-                                         uint8_t* originals_out,
                                          int64_t start_index,
-                                         int32_t* count_out) {
-  const int32_t pixel_count = tile_size * tile_size;
+                                         uint8_t* run_values_out,
+                                         int32_t* run_lengths_out,
+                                         int32_t* counts_out) {
+  const int32_t pixel_count = spec->tile_size * spec->tile_size;
   const int32_t bytes = spec->byte_count;
   const int32_t base = spec->byte_offset_base;
   const int32_t stride = spec->byte_offset_stride;
+  const int64_t incoming_count = spec->incoming_count;
+  const ptrdiff_t incoming_step = spec->incoming_step;
   int32_t copied = 0;
+  int32_t runs = 0;
   int64_t index = start_index;
 
   for (int32_t pixel = 0; pixel < pixel_count; pixel += 1) {
@@ -4949,34 +4970,54 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
       continue;
     }
     if (spec->is_undo && index >= incoming_count) {
-      *count_out = (int32_t)(index - start_index);
+      counts_out[0] = (int32_t)(index - start_index);
+      counts_out[1] = runs;
       return -1;
     }
     if (!copied) {
       memcpy(out_pixels, in_pixels, (size_t)pixel_count * 4);
       copied = 1;
     }
+    if (run_values_out != NULL) {
+      int32_t same = 0;
+      if (runs > 0) {
+        const uint8_t* last = run_values_out + (ptrdiff_t)(runs - 1) * bytes;
+        same = 1;
+        for (int32_t byte = 0; byte < bytes; byte += 1) {
+          if (last[byte] != in_pixels[offset + base + (ptrdiff_t)byte * stride]) {
+            same = 0;
+            break;
+          }
+        }
+      }
+      if (same) {
+        run_lengths_out[runs - 1] += 1;
+      } else {
+        uint8_t* next = run_values_out + (ptrdiff_t)runs * bytes;
+        for (int32_t byte = 0; byte < bytes; byte += 1) {
+          next[byte] = in_pixels[offset + base + (ptrdiff_t)byte * stride];
+        }
+        run_lengths_out[runs] = 1;
+        runs += 1;
+      }
+    }
     const uint8_t* source =
-        spec->is_undo ? incoming + index * (ptrdiff_t)bytes : incoming;
-    const ptrdiff_t local = (ptrdiff_t)(index - start_index) * bytes;
+        spec->is_undo ? incoming + index * incoming_step : incoming;
     for (int32_t byte = 0; byte < bytes; byte += 1) {
       const ptrdiff_t at = offset + base + (ptrdiff_t)byte * stride;
-      const uint8_t original = in_pixels[at];
-      if (originals_out != NULL) {
-        originals_out[local + byte] = original;
-      }
       // 🚨UNDO WRITES, IT DOES NOT BLEND — the same law the Dart loop's
       // comment states at length: running the recipe through the blend only
       // converges toward the original and never reaches it.
       out_pixels[at] = (spec->is_undo || mask_value == 255)
                            ? source[byte]
-                           : qa_cel_pixel_blend(original, source[byte],
+                           : qa_cel_pixel_blend(in_pixels[at], source[byte],
                                                 mask_value);
     }
     index += 1;
   }
 
-  *count_out = (int32_t)(index - start_index);
+  counts_out[0] = (int32_t)(index - start_index);
+  counts_out[1] = runs;
   return copied;
 }
 
@@ -5010,4 +5051,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // 비우기 pass over one tile, lazy copy included. One tile per call: the
 // originals stream is shared across tiles in walk order, so a batched,
 // pooled form would need every tile's count before any could start.
+// Originals come back as RUNS, and an undo reads its recipe at a step
+// (0 for a uniform one) - the flat-bytes shape left a Dart call per pixel on
+// each side of the kernel. Changed inside this version, before it landed.
 QA_EXPORT int32_t qa_engine_abi_version(void) { return 34; }
