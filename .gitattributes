@@ -12,3 +12,17 @@
 # hook — `tool/*.sh` is run by the merge gate and by the Stop hook.
 .githooks/** text eol=lf
 *.sh text eol=lf
+
+# 🚨★★FLUTTER REWRITES ITS PLUGIN REGISTRANTS ON EVERY COMMAND, IN LF.
+#
+# A checkout under `core.autocrlf` hands them back as CRLF, so every lane
+# that ran one flutter command showed these seven files as modified — line
+# endings and nothing else — and `lane.sh land` refuses a dirty lane. The
+# trunk never saw it (its copies were written LF long ago), which is why it
+# read as a lane problem. Checked out as LF, the checkout and the writer
+# agree.
+linux/flutter/generated_plugin_registrant.* text eol=lf
+linux/flutter/generated_plugins.cmake text eol=lf
+windows/flutter/generated_plugin_registrant.* text eol=lf
+windows/flutter/generated_plugins.cmake text eol=lf
+macos/Flutter/GeneratedPluginRegistrant.swift text eol=lf
