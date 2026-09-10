@@ -78,7 +78,17 @@ workflows:
           list="$CM_BUILD_DIR/build/parity.txt"
           bash tool/native_parity_tests.sh > "$list"
           echo "parity subset: $(wc -l < "$list") of $(find test -name '*_test.dart' | wc -l) files"
-          xargs flutter test --no-pub < "$list"
+          # 🚨A native crash says nothing in this log but "segmentation
+          # fault" — the stack is in the crash report macOS writes beside it,
+          # on a machine thrown away when the build ends. It is printed
+          # before failing, or the next run is another guess: the first fix
+          # for the Apple reader (2026-09-11) went into a function the crash
+          # never reached.
+          xargs flutter test --no-pub < "$list" || {
+            status=$?
+            python3 tool/print_mac_crash_reports.py
+            exit $status
+          }
 
       # Flutter's own artifacts first. fastlane's build_app then archives and
       # signs what this produced — signing here would be thrown away.

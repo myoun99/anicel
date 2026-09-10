@@ -75,7 +75,13 @@ jobs:
           # exits 1 when it selects nothing, which fails this step under -e.
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
-          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt"
+          # A native crash is one line here; its stack is in the crash report
+          # macOS writes beside it — see codemagic.yaml's same step.
+          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt" || {
+            status=$?
+            python3 tool/print_mac_crash_reports.py
+            exit $status
+          }
 
       # Flutter's own artifacts first (the Dart AOT snapshot, the engine,
       # the qa_native pod). fastlane's build_app then archives and signs
