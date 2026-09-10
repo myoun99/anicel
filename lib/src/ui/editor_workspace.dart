@@ -481,6 +481,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   @override
   void didHaveMemoryPressure() {
     widget.session.respondToMemoryPressure();
+    // The storyboard's thumbnails live in THIS State, not the session, so
+    // the warning reaches them here.
+    _storyboardThumbnails.respondToMemoryPressure();
   }
 
   /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**
@@ -996,6 +999,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
       invalidationHub: widget.session.renderCaches.cacheInvalidationHub,
+      // The census cannot reach a widget State; the session can be reached.
+      onHeldBytesChanged: (bytes) =>
+          widget.session.renderCaches.storyboardThumbnailBytes = bytes,
     );
     _layoutPersistence._layoutStore =
         widget.layoutStore ??

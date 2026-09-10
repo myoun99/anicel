@@ -516,6 +516,8 @@ enum AppStrings {
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
   String get memoryItemImageCache => _s('memoryItemImageCache');
+  String get memoryItemStoryboardThumbnails =>
+      _s('memoryItemStoryboardThumbnails');
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaDiagnostics => _s('containerAreaDiagnostics');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
@@ -1572,6 +1574,7 @@ enum AppStrings {
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
     'memoryItemImageCache': 'Image cache',
+    'memoryItemStoryboardThumbnails': 'Storyboard thumbnails',
     'containerAreaSettings': 'Settings',
     'containerAreaDiagnostics': 'Diagnostics log',
     'containerAreaSessionScratch': 'Session scratch',
@@ -2518,6 +2521,7 @@ enum AppStrings {
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
     'memoryItemImageCache': '画像キャッシュ',
+    'memoryItemStoryboardThumbnails': '絵コンテのサムネイル',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
     'containerAreaSessionScratch': 'セッション作業領域',
@@ -3516,6 +3520,7 @@ enum AppStrings {
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
     'memoryItemImageCache': '이미지 캐시',
+    'memoryItemStoryboardThumbnails': '콘티 썸네일',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
     'containerAreaSessionScratch': '세션 작업 공간',
@@ -4529,6 +4534,7 @@ enum AppStrings {
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
     'memoryItemImageCache': "Cache d'images",
+    'memoryItemStoryboardThumbnails': 'Vignettes du storyboard',
     'containerAreaSettings': 'Réglages',
     'containerAreaDiagnostics': 'Journal de diagnostic',
     'containerAreaSessionScratch': 'Espace de session',
@@ -5510,6 +5516,7 @@ enum AppStrings {
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
     'memoryItemImageCache': '图像缓存',
+    'memoryItemStoryboardThumbnails': '分镜缩略图',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
     'containerAreaSessionScratch': '会话暂存区',

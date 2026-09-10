@@ -19,6 +19,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/playback/editor_cache_invalidation_hub.dart';
+import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 
 void main() {
@@ -319,5 +320,118 @@ void main() {
       expect(store.thumbnailFor(cut(layerVisible: false), 0), isNotNull);
     });
     await tester.pump();
+  });
+
+  // 2026-09-11: the store held every panel ever looked at, uncounted. It is
+  // bounded now by ONE VIEWER'S SHARE (`ViewerRasterBudget`); its test seam
+  // scales a "page" down so four 2×2 pictures fill the budget.
+  group('bounded in bytes, like a viewer', () {
+    // A 2×2 picture costs 16 bytes. A 16-byte page makes the budget four
+    // pages (64 bytes, four pictures) and the pressure floor one picture.
+    setUp(() => ViewerRasterBudget.debugPageBytesOverride = 16);
+    tearDown(() => ViewerRasterBudget.debugPageBytesOverride = null);
+
+    Future<void> ask(
+      WidgetTester tester,
+      StoryboardCutThumbnailStore store,
+      List<int> frames,
+    ) async {
+      await tester.runAsync(() async {
+        for (final frame in frames) {
+          store.thumbnailFor(cut(), frame);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      // Pictures let go are disposed after the next frame.
+      await tester.pump();
+    }
+
+    testWidgets('holds at most its budget: the least recently asked-for '
+        'picture goes first, and comes back when asked again', (tester) async {
+      var renders = 0;
+      final reported = <int>[];
+      final store = StoryboardCutThumbnailStore(
+        render: (_, _, _) {
+          renders += 1;
+          return tinyImage();
+        },
+        onHeldBytesChanged: reported.add,
+      );
+      addTearDown(store.dispose);
+
+      await ask(tester, store, [0, 1, 2, 3, 4]);
+      expect(renders, 5);
+      expect(store.thumbnailBytes, 64, reason: 'four pictures fit, not five');
+      expect(reported.last, 64, reason: 'the census hears what is held');
+
+      // Frame 0 was the least recently asked-for, so it went. Asking again
+      // renders it again — an evicted panel must not stay empty for good.
+      await ask(tester, store, [0]);
+      expect(renders, 6, reason: 'the evicted panel came back');
+      expect(store.thumbnailFor(cut(), 0), isNotNull);
+    });
+
+    testWidgets('a picture asked for again is kept over one that was not', (
+      tester,
+    ) async {
+      var renders = 0;
+      final store = StoryboardCutThumbnailStore(
+        render: (_, _, _) {
+          renders += 1;
+          return tinyImage();
+        },
+      );
+      addTearDown(store.dispose);
+
+      await ask(tester, store, [0, 1, 2, 3]);
+      expect(store.thumbnailFor(cut(), 0), isNotNull);
+      // The fifth picture pushes out frame 1 — nobody asked for it since —
+      // and not frame 0, which was just asked for.
+      await ask(tester, store, [4]);
+      expect(store.thumbnailFor(cut(), 0), isNotNull, reason: 'kept');
+      expect(renders, 5, reason: 'frame 0 was still held — no re-render');
+      await ask(tester, store, [1]);
+      expect(renders, 6, reason: 'frame 1 went, so asking for it renders');
+    });
+
+    testWidgets('the memory warning halves it and gives pictures back, '
+        'never below one page', (tester) async {
+      final reported = <int>[];
+      var notified = 0;
+      final store = StoryboardCutThumbnailStore(
+        render: (_, _, _) => tinyImage(),
+        onHeldBytesChanged: reported.add,
+      );
+      addTearDown(store.dispose);
+
+      await ask(tester, store, [0, 1, 2, 3]);
+      store.addListener(() => notified += 1);
+      store.respondToMemoryPressure();
+      expect(store.thumbnailBytes, 32, reason: 'halved: two pictures left');
+      expect(reported.last, 32);
+      expect(
+        notified,
+        1,
+        reason: 'panels still showing a dropped picture must rebuild',
+      );
+      await tester.pump();
+      store
+        ..respondToMemoryPressure()
+        ..respondToMemoryPressure();
+      expect(store.thumbnailBytes, 16, reason: 'never below one page');
+      await tester.pump();
+    });
+
+    testWidgets('disposing tells the census nothing is held', (tester) async {
+      final reported = <int>[];
+      final store = StoryboardCutThumbnailStore(
+        render: (_, _, _) => tinyImage(),
+        onHeldBytesChanged: reported.add,
+      );
+      await ask(tester, store, [0]);
+      expect(reported.last, 16);
+      store.dispose();
+      expect(reported.last, 0);
+    });
   });
 }

@@ -202,6 +202,12 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'viewerPages',
       bytes: session.renderCaches.viewerRasterBytes,
     ),
+    // Pushed by the workspace, whose State owns the store — see
+    // [RenderCaches.storyboardThumbnailBytes].
+    MemoryCensusItem(
+      id: 'storyboardThumbnails',
+      bytes: session.renderCaches.storyboardThumbnailBytes,
+    ),
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
   return MemoryCensus(

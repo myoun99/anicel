@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
@@ -85,6 +86,8 @@ void main() {
     WidgetTester tester, {
     required int imageNodesBelow,
     bool disableBake = false,
+    void Function(int bytes)? onBufferBytes,
+    DisplayBufferCache? bufferCache,
   }) async {
     // Warmed BEFORE mount so the sync sweep adopts at first build —
     // the bake-extent suite's discipline against the fake-clock race.
@@ -133,6 +136,8 @@ void main() {
                 paintPaper: true,
                 paperBackground: const ProjectBackground.color(0xFF00FF00),
                 debugDisableBake: disableBake,
+                onBufferBytes: onBufferBytes,
+                debugBufferCache: bufferCache,
               ),
             ),
           ),
@@ -207,6 +212,28 @@ void main() {
       mounted.bake.rasterCount,
       1,
       reason: 'past the threshold the bottom of the stack is one blit',
+    );
+  });
+
+  testWidgets('the census hears the blit: the view reports the bake in '
+      'the same number as its display buffer (2026-09-11)', (tester) async {
+    final reported = <int>[];
+    final buffer = DisplayBufferCache();
+    final mounted = await pump(
+      tester,
+      imageNodesBelow: 7,
+      onBufferBytes: reported.add,
+      bufferCache: buffer,
+    );
+    await paintBytes(tester, mounted.painter);
+
+    expect(mounted.bake.rasterCount, 1);
+    expect(mounted.bake.heldBytes, greaterThan(0));
+    expect(
+      reported.last,
+      buffer.heldBytes + mounted.bake.heldBytes,
+      reason: 'one number for the census — the buffer AND the blit beside '
+          'it, which nobody counted before',
     );
   });
 }

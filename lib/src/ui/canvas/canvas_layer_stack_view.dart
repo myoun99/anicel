@@ -377,7 +377,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void initState() {
     super.initState();
-    _bufferCache.onHeldBytesChanged = widget.onBufferBytes;
+    // ONE number for the census: the display buffer AND the bake beside it
+    // are both this view holding a raster of itself (2026-09-11 — the
+    // bake's visible-rect raster had been counted by nobody).
+    _bufferCache.onHeldBytesChanged = (bytes) {
+      _bufferBytes = bytes;
+      _reportHeldBytes();
+    };
+    _bake.onHeldBytesChanged = _reportHeldBytes;
     _syncActiveStandIn();
     _syncImagesWithCache();
     unawaited(_ensureImages());
@@ -478,6 +485,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
+
+  /// The display buffer's last reported bytes — kept so a change in the
+  /// bake can be reported in the same sum.
+  int _bufferBytes = 0;
+
+  void _reportHeldBytes() =>
+      widget.onBufferBytes?.call(_bufferBytes + _bake.heldBytes);
   late final DisplayBufferCache _bufferCache =
       widget.debugBufferCache ?? DisplayBufferCache();
 
@@ -547,8 +561,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       entry.value.clone.dispose();
     }
     _images.clear();
-    // The buffer goes with this view; the books must not keep charging for
-    // a canvas nobody is looking at any more.
+    // The buffer and the bake go with this view; the books must not keep
+    // charging for a canvas nobody is looking at any more. Unhooked FIRST,
+    // or disposing them would report their last bytes after this zero.
+    _bufferCache.onHeldBytesChanged = null;
+    _bake.onHeldBytesChanged = null;
     widget.onBufferBytes?.call(0);
     _bake.dispose();
     _bufferCache.dispose();

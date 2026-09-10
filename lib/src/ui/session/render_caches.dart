@@ -91,6 +91,9 @@ class RenderCaches {
 
   /// What the editing canvas's display buffer holds — one canvas-resolution
   /// image, 33MB on a 4K view, kept for as long as nothing changes.
+  /// 🆕2026-09-11: and the static-composite bake beside it — one visible-rect
+  /// raster (~9MB at 1928×1200) that nobody counted. The same view reports
+  /// both as this one number.
   ///
   /// 🚨PUSHED, for the reason above it: the buffer lives in a widget State
   /// the session does not own. ⚠️A plain int rather than the viewers' map
@@ -98,6 +101,15 @@ class RenderCaches {
   /// editing canvas). A second one would need the map — and would silently
   /// overwrite this until someone noticed, which is why it is written down.
   int canvasBufferBytes = 0;
+
+  /// What the storyboard's and the conte's thumbnails hold — every panel
+  /// picture still inside its budget (one viewer's share of this device).
+  ///
+  /// 🚨PUSHED, for the reason above it: the store lives in the workspace's
+  /// State, which the session does not own. Until 2026-09-11 nothing
+  /// counted it at all — no budget and no census row, and a panel looked
+  /// at once stayed resident until the workspace closed.
+  int storyboardThumbnailBytes = 0;
 
   /// What the media viewers hold between them.
   int get viewerRasterBytes {

@@ -88,6 +88,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'panelRasters' => strings.memoryItemPanelRasters,
       'viewerPages' => strings.memoryItemViewerPages,
       'imageCache' => strings.memoryItemImageCache,
+      'storyboardThumbnails' => strings.memoryItemStoryboardThumbnails,
       _ => id,
     };
   }

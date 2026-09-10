@@ -298,6 +298,7 @@ void main() {
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
     'memoryItemImageCache': (s) => s.memoryItemImageCache,
+    'memoryItemStoryboardThumbnails': (s) => s.memoryItemStoryboardThumbnails,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,

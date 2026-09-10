@@ -73,6 +73,7 @@ void main() {
       'panelRasters',
       'viewerPages',
       'imageCache',
+      'storyboardThumbnails',
     });
   });
 
@@ -143,5 +144,16 @@ void main() {
           'that call returns 0 on Windows and Linux — the census owns '
           'the platform question now',
     );
+  });
+
+  test('🚨the storyboard thumbnails are a census row — pushed by the '
+      'workspace, read here (2026-09-11)', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    session.renderCaches.storyboardThumbnailBytes = 12345;
+    final row = collectMemoryCensus(
+      session,
+    ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
+    expect(row.bytes, 12345);
   });
 }

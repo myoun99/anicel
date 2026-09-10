@@ -8,7 +8,9 @@ import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
+import '../native/qa_native_engine.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
+import 'media/viewer_raster_budget.dart';
 
 /// One picture the storyboard shows: a cut, composited at one of its
 /// frames.
@@ -70,11 +72,22 @@ typedef StoryboardThumbnailResolver =
 /// cut and the hub says which cut, so every panel of it re-renders. That is
 /// correct rather than merely convenient — a drawing may be exposed under
 /// several panels at once.
+///
+/// 🚨★★BOUNDED IN BYTES since 2026-09-11. It used to hold every panel ever
+/// looked at — at the conte's 640px, about 0.9MB a 16:9 cell — until the
+/// workspace closed, and nothing counted it: no budget, no census row, and
+/// a deleted cut's pictures stayed. It now takes ONE VIEWER'S SHARE of the
+/// device ([ViewerRasterBudget]): like the viewer's pages, these pictures
+/// are a view of the drawings that re-renders on demand, so they answer to
+/// the same device law and hear the same memory warning instead of a
+/// third number. The least recently asked-for picture goes first — which
+/// is also how a deleted cut's pictures leave.
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
     required Future<ui.Image?> Function(Cut cut, int frameIndex, int width)
     render,
     EditorCacheInvalidationHub? invalidationHub,
+    this.onHeldBytesChanged,
   }) : _render = render,
        _hub = invalidationHub {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
@@ -88,6 +101,22 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   final Map<CutId, int> _editGenerations = {};
   final Set<StoryboardThumbnailKey> _rendering = {};
   bool _disposed = false;
+
+  /// Told whenever [thumbnailBytes] changes, so an owner the memory census
+  /// CAN reach is able to report a store that lives in a widget State — the
+  /// same shape as `DisplayBufferCache.onHeldBytesChanged`.
+  final void Function(int bytes)? onHeldBytesChanged;
+
+  /// One viewer's share of this device, halved by the memory warning — see
+  /// the class doc for why a viewer's.
+  final ViewerRasterBudget _budget = ViewerRasterBudget(
+    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+  );
+
+  int _heldBytes = 0;
+
+  /// What the held pictures cost resident, 4 bytes a pixel.
+  int get thumbnailBytes => _heldBytes;
 
   /// The cached thumbnail for [cut] at [frameIndex]; kicks an async
   /// (re)render when the signature changed, returning the stale image
@@ -103,7 +132,12 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       _rendering.add(key);
       _startRender(cut, key, signature);
     }
-    return _images[key];
+    final held = _images.remove(key);
+    if (held != null) {
+      // Asked for: to the young end of the eviction order.
+      _images[key] = held;
+    }
+    return held;
   }
 
   void _startRender(Cut cut, StoryboardThumbnailKey key, String signature) {
@@ -117,14 +151,18 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
             }
             final previous = _images.remove(key);
             if (previous != null) {
+              _heldBytes -= ViewerRasterBudget.costOf(previous);
               _retire(previous);
             }
             if (image != null) {
               _images[key] = image;
+              _heldBytes += ViewerRasterBudget.costOf(image);
             }
             // A signature change DURING the render re-kicks on the rebuild
             // this notify triggers.
             _renderedSignatures[key] = signature;
+            _evictBeyondBudget();
+            _reportHeldBytes();
             notifyListeners();
           })
           .catchError((Object error, StackTrace stack) {
@@ -148,6 +186,41 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
           }),
     );
   }
+
+  /// Lets go of the least recently asked-for pictures until the held ones
+  /// fit the budget — never the newest, which is what a panel just asked
+  /// for (the same rule as every other cache here).
+  void _evictBeyondBudget() {
+    while (_heldBytes > _budget.byteBudget && _images.length > 1) {
+      final oldest = _images.keys.first;
+      final image = _images.remove(oldest)!;
+      _heldBytes -= ViewerRasterBudget.costOf(image);
+      _retire(image);
+      // 🚨The signature goes WITH the picture. Kept, it would tell the next
+      // [thumbnailFor] that this panel is already rendered, and the panel
+      // would stay an empty block for good.
+      _renderedSignatures.remove(oldest);
+    }
+  }
+
+  /// The OS says memory is tight: halve, never below one viewer page, and
+  /// give back what no longer fits. Idempotent — see [ViewerRasterBudget].
+  void respondToMemoryPressure() {
+    if (!_budget.respondToMemoryPressure()) {
+      return;
+    }
+    final before = _images.length;
+    _evictBeyondBudget();
+    if (_images.length != before) {
+      _reportHeldBytes();
+      // Panels still showing an evicted picture must rebuild before it is
+      // disposed — [_retire] waits for the next frame, and this notify is
+      // what puts a rebuild into that frame.
+      notifyListeners();
+    }
+  }
+
+  void _reportHeldBytes() => onHeldBytesChanged?.call(_heldBytes);
 
   /// Coalesces invalidation-driven notifies: a stroke commits MANY hub
   /// events, one microtask notify covers them all.
@@ -246,6 +319,8 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       image.dispose();
     }
     _images.clear();
+    _heldBytes = 0;
+    _reportHeldBytes();
     super.dispose();
   }
 }

@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/rendering.dart';
 
+import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
+
 /// 🚨★★★ (v) 1단계 — THE PART OF THE COMPOSITE A STROKE CANNOT CHANGE,
 /// recorded once and replayed.
 ///
@@ -34,6 +36,18 @@ import 'package:flutter/rendering.dart';
 class StaticCompositeBake {
   final Map<String, ui.Picture> _slots = {};
   final Map<String, ui.Image> _rasters = {};
+
+  /// Told whenever [heldBytes] changes. The view that owns this bake reports
+  /// it together with its display buffer — both are that view holding a
+  /// raster of itself, and the census cannot reach a widget State.
+  void Function()? onHeldBytesChanged;
+
+  int _heldBytes = 0;
+
+  /// What the rasterised slots cost resident: one visible-rect image each
+  /// (~9MB at a 1928×1200 view). Counted since 2026-09-11 — until then the
+  /// memory readout never saw them.
+  int get heldBytes => _heldBytes;
 
   /// What the current slots were recorded against. Null means "nothing
   /// recorded yet".
@@ -82,6 +96,10 @@ class StaticCompositeBake {
       image.dispose();
     }
     _rasters.clear();
+    if (_heldBytes != 0) {
+      _heldBytes = 0;
+      onHeldBytesChanged?.call();
+    }
   }
 
   /// Keeps the slots only while [key] is unchanged.
@@ -175,6 +193,8 @@ class StaticCompositeBake {
         picture.dispose();
       }
       _rasters[id] = held;
+      _heldBytes += estimatedImageBytes(width, height);
+      onHeldBytesChanged?.call();
     }
     canvas.drawImageRect(
       held,

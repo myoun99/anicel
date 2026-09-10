@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -37,6 +38,14 @@ void main() {
         isNotNull,
         reason: 'the placeholder must give way to the rendered thumbnail',
       );
+
+      // 2026-09-11: and the census hears it — the store lives in the
+      // workspace's State, so the workspace pushes what it holds onto the
+      // session the census reads.
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      expect(session.renderCaches.storyboardThumbnailBytes, greaterThan(0));
     });
   });
 }

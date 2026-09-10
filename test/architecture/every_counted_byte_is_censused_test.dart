@@ -95,6 +95,58 @@ void main() {
       reason: 'the ledger names counters that no longer exist',
     );
   });
+
+  // 🆕2026-09-11 — THE BLIND SPOT OF THE TEST ABOVE. It finds holders by
+  // their byte COUNTER, and a holder that never learned its own size has
+  // no counter to find. The storyboard's thumbnails were exactly that:
+  // every panel ever looked at, at 640px, resident until the workspace
+  // closed and named by nothing. So this looks for the other half of the
+  // shape — a field that keeps images — and demands a counter or a reason.
+  test('every field that keeps images is counted, or says why not', () {
+    final missing = <String>[];
+    final live = <String>{};
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) {
+        continue;
+      }
+      final path = entity.path.replaceAll(r'\', '/');
+      final relative = path.substring(path.indexOf('lib/'));
+      if (relative.startsWith('lib/dev/')) {
+        continue;
+      }
+      final source = entity.readAsStringSync();
+      for (final match in _imageHolder.allMatches(source)) {
+        final entry = '$relative → ${match.group(1)}';
+        live.add(entry);
+        final answer = _imageHolders[entry];
+        if (answer == null) {
+          missing.add(entry);
+        } else if (answer.startsWith('counted:')) {
+          // Counted means a counter THIS file declares — which the test
+          // above then holds to the census.
+          final getter = answer.substring('counted:'.length);
+          if (!RegExp(r'\bint get ' + getter + r'\b').hasMatch(source)) {
+            missing.add(
+              '$entry (claims counted:$getter — the file has no such '
+              'counter)',
+            );
+          }
+        }
+      }
+    }
+    expect(
+      missing,
+      isEmpty,
+      reason:
+          'a field that keeps ui.Images is counted by the census '
+          '(counted:<its byte getter>) or ledgered with a reason',
+    );
+    expect(
+      _imageHolders.keys.where((entry) => !live.contains(entry)),
+      isEmpty,
+      reason: 'the ledger names image holders that no longer exist',
+    );
+  });
 }
 
 /// `int get <something>Bytes` — the shape every byte counter in this app
@@ -141,4 +193,76 @@ const _notCensused = <String, String>{
       'mask alphas) and sums them; ALSO ledgered because the bare name is '
       'shared with BrushTipStampCache, so a name match would pass this '
       'entry for the wrong reason',
+  'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
+      'via:storyboardThumbnailBytes — the store lives in the workspace '
+      'State the session does not own, so the workspace pushes it onto '
+      'RenderCaches, the way the canvas buffer and the viewers are',
+  'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
+      'via:canvasBufferBytes — the view that owns the bake reports it '
+      'together with its display buffer: both are the view holding a '
+      'raster of itself',
+};
+
+/// A class-level field that KEEPS `ui.Image`s — a map, list or set of them,
+/// or an `Expando` hanging them on other objects (the tile cache does:
+/// found by widening this the day it was written, 2026-09-11). Record keys
+/// are allowed — `Map<(A, B), ui.Image>` is still a holder.
+/// Crude on purpose, like [_counter]: a holder that hides from this also
+/// hides from the reader looking for one.
+final _imageHolder = RegExp(
+  '^  (?:static )?(?:late )?(?:final )?'
+  '(?:LinkedHashMap|Map|List|Set|Expando)<'
+  r'[^;=]*\bui\.Image\??>+\s+(\w+)\s*[=;]',
+  multiLine: true,
+);
+
+/// Every field that keeps images, and how its bytes are answered for:
+/// `counted:<getter>` names the byte counter the same file declares (the
+/// census test holds that counter to the census); anything else is why it
+/// is not a holding the readout should carry.
+const _imageHolders = <String, String>{
+  'lib/src/ui/storyboard_cut_thumbnail_store.dart → _images':
+      'counted:thumbnailBytes',
+  'lib/src/ui/storyboard_cut_blocks_painter.dart → thumbnails':
+      'a cut block borrows one picture per cell from the storyboard '
+      'thumbnail store, which owns and counts them (thumbnailBytes); the '
+      'block only carries them into a paint',
+  'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
+      'NOT COUNTED YET — the GPU texture of every decoded tile, alive as '
+      'long as the tile OBJECT (a Finalizer frees it), so whatever keeps an '
+      'old tile alive (undo history, the eight retained scopes) keeps its '
+      'texture too. Closes with a live-texture counter and a census row: '
+      'C-ipad-crash, 2026-09-11, where the share nobody counted reached '
+      '1.1GB on an iPhone',
+  'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _provisional':
+      'NOT COUNTED YET, with _images — the stand-in a tile shows while its '
+      'own decode is in flight, retired exactly once when the real image '
+      'lands',
+  'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
+      'counted:heldBytes',
+  'lib/src/ui/envelope/envelope_image_cache.dart → _images':
+      'a handful of decoded logos and stamps, one per role, decoded once '
+      'for the life of the workspace; its own doc says it needs an eviction '
+      'the day it holds cels',
+  'lib/src/ui/export/export_preview_engine.dart → _cache':
+      'the export window preview: an LRU of at most `capacity` frames, owned '
+      'by the window State and gone when the window closes',
+  'lib/src/ui/import/import_preview.dart → _frames':
+      'the import window preview frames, freed when the window closes or '
+      'the pick changes',
+  'lib/src/ui/playback/canvas_track_stack_view.dart → _heldFrames':
+      'clones of the composites on screen, one per covered cut; each is '
+      'pinned in the composite cache (`_heldPins`), which the census reads '
+      'as playbackFrames',
+  'lib/src/ui/playback/canvas_track_stack_view.dart → _heldSources':
+      'identities only: the cache images the clones came from, possibly '
+      'already disposed; nothing is held through them',
+  'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
+      'the tiles of the stroke in progress, each freed as it settles into '
+      'the surface',
+  'lib/src/ui/canvas/active_stroke_overlay.dart → tileImages':
+      'an unmodifiable VIEW of _tileImages: the same holding, not a second',
+  'lib/src/ui/canvas/deferred_image_disposal.dart → _buckets':
+      'images already let go, kept only for the frames the raster thread '
+      'may still read; a disposal queue, not a holding',
 };
