@@ -5,6 +5,7 @@
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
 #   bash tool/lane.sh list             what is open right now
 #   bash tool/lane.sh drop  <name>     throw a lane away (its commits go with it)
+#   bash tool/lane.sh sweep            delete the empty shells left by Windows
 #
 # 🚨WHY A SCRIPT AND NOT A PARAGRAPH. Round 8 ran ten lanes at once and every
 # rule below was learned by breaking it. A paragraph is read once; this is read
@@ -62,6 +63,9 @@ lane_path() { echo "$LANES/lane-$1"; }
 
 cmd_open() {
   local name="${1:-}"; [ -n "$name" ] || die "open needs a name"
+  # Clear the shells first, so a name freed by a landed lane is usable again
+  # rather than burned for ever. It only ever removes what is not a worktree.
+  cmd_sweep >/dev/null
   local p; p="$(lane_path "$name")"
   [ -e "$p" ] && die "already there: $p (pick another name — reusing a path mixes the old build cache in)"
   git -C "$ROOT" worktree add "$p" -b "work/$name" "$TRUNK" >/dev/null || die "worktree add failed"
@@ -109,6 +113,41 @@ warn_if_engine_is_stale() {
 
 cmd_list() {
   git -C "$ROOT" worktree list | grep -E "lane-" || echo "(none)"
+}
+
+# 🚨THE SHELLS ACCUMULATE, AND THEY ARE NOT HARMLESS. `land` and `drop` both
+# try `worktree remove` and then `rm -rf`, and on Windows BOTH fail while any
+# file under the directory is locked — a dart analysis server, a flutter_tester
+# that has not exited, an editor with the folder open. What is left is a
+# directory with no `.git` in it, and refusal 1 exists because `git -C` on one
+# of those runs in the MAIN CHECKOUT.
+#
+# 🧪Measured 2026-09-10: 88 of the 96 directories under `.claude/worktrees`
+# were shells, three days after the round that made them. They also BURN THE
+# NAME — `open` refuses a path that exists, so every landed lane's name is
+# unusable for ever unless something removes it.
+#
+# ⛔It deletes ONLY a directory that git does not list as a worktree AND that
+# holds no `.git`. Either test alone is not enough: a live worktree that git
+# has not been pruned about still holds its `.git` file, and a directory git
+# still lists must never be removed behind git's back.
+cmd_sweep() {
+  local registered
+  registered="|$(git -C "$ROOT" worktree list --porcelain \
+    | sed -n 's|^worktree .*/worktrees/||p' | tr '\n' '|')"
+  local gone=0 kept=0 d name
+  for d in "$LANES"/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    if [ -e "$d/.git" ] || [ "$name" = "logs" ] \
+      || echo "$registered" | grep -q "|$name|"; then
+      kept=$((kept + 1))
+      continue
+    fi
+    rm -rf "$d" 2>/dev/null && gone=$((gone + 1)) || kept=$((kept + 1))
+  done
+  git -C "$ROOT" worktree prune
+  echo "lane: swept $gone shell(s); $kept left (live worktrees and locked ones)"
 }
 
 cmd_drop() {
@@ -185,5 +224,6 @@ case "${1:-}" in
   land) shift; cmd_land "$@" ;;
   list) shift; cmd_list "$@" ;;
   drop) shift; cmd_drop "$@" ;;
-  *) sed -n '2,8p' "$0"; exit 2 ;;
+  sweep) shift; cmd_sweep "$@" ;;
+  *) sed -n '2,9p' "$0"; exit 2 ;;
 esac
