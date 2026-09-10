@@ -1,14 +1,18 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_stamp_image.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'raster_picture.dart';
 import 'tile_origin.dart';
+import 'tile_predecessors.dart';
 import 'tiles_under_rect.dart';
 
 /// Draws, in CANVAS coordinates, the picture the screen is ALREADY showing
@@ -151,22 +155,15 @@ final Paint _tilePaint = Paint()
     canvas.clipRect(pasteboard);
     final complete = ink(canvas, origin & Size.square(tileExtent));
     canvas.restore();
-    final picture = recorder.endRecording();
     if (!complete) {
-      picture.dispose();
+      recorder.endRecording().dispose();
       skipped += 1;
       continue;
     }
-    // ⚠️`toImageSync` THROWS — `static_raster.dart` says so where it wraps the
-    // same call. A dispose on the next line runs only when it did not, so the
-    // refusal arm kept the picture. The refusal above already disposes; this
-    // makes the two arms agree by structure instead of by remembering.
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(tileSize, tileSize);
-    } finally {
-      picture.dispose();
-    }
+    // The raster and its `finally` are [rasterPicture]'s: the refusal arm
+    // above disposes, the raster arm disposes inside the helper, and the two
+    // agree by structure instead of by remembering.
+    final image = rasterPicture(recorder, tileSize, tileSize);
     images.putProvisional(tile, image);
     seeded += 1;
   }
@@ -345,4 +342,139 @@ ProvisionalInkPainter inkFromSurface(
     }
     return true;
   };
+}
+
+/// 🚨★★★THE TRUTHFUL STAND-IN: the predecessor's picture plus the byte
+/// difference (F-68 root fix, 2026-09-11).
+///
+/// A tile that has no picture yet is drawn, until its decode lands, from
+/// something else — and what that something else IS was the whole family
+/// of one-frame ghosts. The coordinate fallback drew the last picture
+/// DECODED at the coordinate, a previous generation picked by timing:
+/// right when the edit added ink, wrong when it removed any. This draws
+/// the tile the commit replaced (its picture is on screen already) and
+/// then, over it, every pixel the new tile disagrees on — as runs of equal
+/// colour, one whole-pixel rect each, `BlendMode.src` so a pixel that
+/// became transparent becomes transparent. Exact whichever way the edit
+/// went, and cheap in proportion to the CHANGE, not the tile: 🧪measured on
+/// brush-made tiles, an erase over 500×300 px was 1,044 rects across six
+/// tiles, a 120 px stroke 34, a hard hatch 666 — and a soft gradient laid
+/// on nothing was 46k per tile, which is why [rectBudget] exists and why
+/// exceeding it composes nothing (the caller keeps today's answer).
+///
+/// The predecessor's own picture may itself be a stand-in; the chain
+/// cannot run away, because every tile's real decode is already in
+/// flight and replaces its stand-in when it lands.
+///
+/// ⚠️STRAIGHT ALPHA IN, PREMULTIPLIED OUT. Tile bytes are straight RGBA
+/// (the app's storage convention); `Paint.color` takes straight ARGB and
+/// the engine premultiplies at the draw — the same conversion the decode
+/// path makes, so the composed pixel is the decoded pixel.
+///
+/// Returns the stand-in it put in [cache] for [tile] (ownership transferred
+/// there), and the rects it spent, or null image and zero rects when it
+/// declined: predecessor missing, its picture missing, or over budget.
+({ui.Image? image, int rects}) composePredecessorStandIn({
+  required BitmapTileImageCache cache,
+  required BitmapTile tile,
+  required TilePredecessor predecessor,
+  required int rectBudget,
+}) {
+  final before = predecessor.tile;
+  ui.Image? beforeImage;
+  if (before != null) {
+    beforeImage = cache.displayImageFor(before);
+    if (beforeImage == null && before.hasInk) {
+      // Pixels stood here and nothing on screen shows them: composing now
+      // would publish the difference over nothing, a tile missing its base.
+      return (image: null, rects: 0);
+    }
+  }
+  final size = tile.size;
+  final pixels = size * size;
+  // One pass over both tiles, as 32-bit words: each run of consecutive
+  // pixels that differ from the predecessor AND share one colour becomes
+  // a rect. Recorded first, drawn only if the whole tile fits the budget —
+  // a tile drawn by halves would be exactly the kind of picture this
+  // exists to replace.
+  final runX = <int>[];
+  final runY = <int>[];
+  final runW = <int>[];
+  final runArgb = <int>[];
+  final complete = tile.readPixels((_, afterView) {
+    final after = afterView.buffer.asUint32List(afterView.offsetInBytes, pixels);
+    bool walk(Uint32List? beforeWords) {
+      for (var y = 0; y < size; y++) {
+        final row = y * size;
+        var x = 0;
+        while (x < size) {
+          final word = after[row + x];
+          final previous = beforeWords == null ? 0 : beforeWords[row + x];
+          if (word == previous) {
+            x++;
+            continue;
+          }
+          final start = x;
+          x++;
+          while (x < size &&
+              after[row + x] == word &&
+              (beforeWords == null ? 0 : beforeWords[row + x]) != word) {
+            x++;
+          }
+          if (runX.length >= rectBudget) {
+            return false;
+          }
+          runX.add(start);
+          runY.add(y);
+          runW.add(x - start);
+          runArgb.add(word);
+        }
+      }
+      return true;
+    }
+
+    if (before == null) {
+      return walk(null);
+    }
+    return before.readPixels(
+      (_, beforeView) => walk(
+        beforeView.buffer.asUint32List(beforeView.offsetInBytes, pixels),
+      ),
+    );
+  });
+  if (!complete) {
+    return (image: null, rects: 0);
+  }
+  final extent = size.toDouble();
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder, Rect.fromLTWH(0, 0, extent, extent));
+  if (beforeImage != null) {
+    canvas.drawImage(beforeImage, Offset.zero, _tilePaint);
+  }
+  final paint = Paint()
+    ..blendMode = BlendMode.src
+    ..isAntiAlias = false;
+  for (var i = 0; i < runX.length; i++) {
+    // Little-endian RGBA word: r is the low byte, a the high one.
+    final word = runArgb[i];
+    paint.color = Color.fromARGB(
+      (word >> 24) & 0xFF,
+      word & 0xFF,
+      (word >> 8) & 0xFF,
+      (word >> 16) & 0xFF,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        runX[i].toDouble(),
+        runY[i].toDouble(),
+        runW[i].toDouble(),
+        1,
+      ),
+      paint,
+    );
+  }
+  final image = rasterPicture(recorder, size, size);
+  cache.putProvisional(tile, image);
+  TilePredecessors.instance.drop(tile);
+  return (image: image, rects: runX.length);
 }

@@ -40,6 +40,7 @@ import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../../services/cel_source_effect_pass.dart';
+import 'raster_picture.dart';
 
 part 'layer_stack/layer_stack_paint_pass.dart';
 
@@ -810,8 +811,60 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
+  /// 🔬F-67 (2026-09-11): where this stack's top-left lands on the DEVICE
+  /// grid, printed to the input inspector once per change.
+  ///
+  /// 유저 F-67: 「툴을 바꾸거나 선을 그리기 시작하거나 화면을 팬으로 이동할때,
+  /// 그 때만 … 일부 정해진 픽셀이 반픽셀 움직였다가 돌아오는 현상」, at zoom
+  /// ≥ 100% on the drawing. Three mechanisms were measured and cleared in
+  /// the test shell — the route flip inside the buffer (byte-identical), the
+  /// pan snap (whole device pixels), the display filter (`none` at ≥1) — and
+  /// the one left is the one a shell cannot see: THIS widget's own device
+  /// offset, which layout owns. R11 put it on the grid at 1.25 and 1.35 in
+  /// the shell; the real app's panel set, ruler widths and UI scale are
+  /// what the shell does not have. When the fraction here is not 0 on the
+  /// frame the pixels move, #1100's mechanism (a stable picture replayed at
+  /// an integral offset, a live repaint at the fractional one) is the
+  /// cause; when it is 0, it is not, and the search moves on. Either way it
+  /// is a number rather than a guess.
+  ///
+  /// Post-frame, because layout has to have run; deduplicated, because a
+  /// probe that prints every frame is one nobody reads; behind the
+  /// inspector's visibility, because release builds are the ones that get
+  /// reported and this must cost nothing when it is off.
+  void _noteBoundaryOnGrid(BuildContext context) {
+    if (!InputInspector.visible.value) {
+      return;
+    }
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) {
+        return;
+      }
+      final device = box.localToGlobal(Offset.zero) * ratio;
+      String fraction(double v) => (v - v.floorToDouble()).toStringAsFixed(3);
+      final probe =
+          'stack boundary device=(${device.dx.toStringAsFixed(2)}, '
+          '${device.dy.toStringAsFixed(2)}) '
+          'fraction=(${fraction(device.dx)}, ${fraction(device.dy)}) '
+          'ratio=${ratio.toStringAsFixed(3)}';
+      if (probe == _lastBoundaryProbe) {
+        return;
+      }
+      _lastBoundaryProbe = probe;
+      InputInspector.note(probe);
+    });
+  }
+
+  static String? _lastBoundaryProbe;
+
   @override
   Widget build(BuildContext context) {
+    _noteBoundaryOnGrid(context);
     final nodes = _resolvedTree(widget.nodes);
     // 🚨(v) — the recordings survive only while everything they were
     // recorded against holds still.

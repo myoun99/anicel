@@ -12,6 +12,7 @@ import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
 import 'deferred_image_disposal.dart';
+import 'tile_predecessors.dart';
 
 /// What has been asked of the engine for one tile that has no picture yet.
 ///
@@ -290,8 +291,10 @@ class BitmapTileImageCache extends ChangeNotifier {
       _decodeAsk[tile] = null;
       _images[tile] = image;
       _imageFinalizer.attach(tile, image);
-      // Truth has landed; the stand-in has nothing left to stand in for.
+      // Truth has landed; the stand-in has nothing left to stand in for,
+      // and neither has the predecessor it would have been composed from.
       _dropProvisional(tile);
+      TilePredecessors.instance.drop(tile);
       final scoped = _latestDecodedByScope.remove(staleScope);
       // Re-insert: this scope becomes the most recently used.
       (_latestDecodedByScope[staleScope] =
@@ -371,8 +374,10 @@ class BitmapTileImageCache extends ChangeNotifier {
     _images[tile] = image;
     _imageFinalizer.attach(tile, image);
     // An adopted picture IS the truth (the overlay decoded exactly these
-    // bytes), so it retires a stand-in just as a decode would.
+    // bytes), so it retires a stand-in just as a decode would — and the
+    // predecessor with it.
     _dropProvisional(tile);
+    TilePredecessors.instance.drop(tile);
     final scoped = _latestDecodedByScope.remove(staleScope);
     (_latestDecodedByScope[staleScope] =
             scoped ?? <TileCoord, BitmapTile>{})[placed.coord] =

@@ -1094,13 +1094,7 @@ class _LayerStackPaintPass {
       _paintContent(into, rasterRect: rect, rasterScale: 1);
       derived = false;
     }
-    final picture = recorder.endRecording();
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(width, height);
-    } finally {
-      picture.dispose();
-    }
+    final image = rasterPicture(recorder, width, height);
     if (cache != null && key != null) {
       cache.store(
         key,
@@ -1329,14 +1323,7 @@ class _LayerStackPaintPass {
       _painter._activeFlatForRecording = null;
       _painter._paperInsetForRecording = null;
     }
-    final picture = recorder.endRecording();
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(size.width, size.height);
-    } finally {
-      picture.dispose();
-    }
-    return image;
+    return rasterPicture(recorder, size.width, size.height);
   }
 
   _DisplayBuffer? _composeScaledBuffer(Rect rect) {

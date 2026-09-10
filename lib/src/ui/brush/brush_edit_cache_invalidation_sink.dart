@@ -4,6 +4,7 @@ import '../../models/frame_composite_cache_key.dart';
 import '../../models/layer_tile_cache_key.dart';
 import '../../models/playback_preview_cache_key.dart';
 import '../../services/cache_invalidation_executor.dart';
+import '../canvas/tile_predecessors.dart';
 
 /// Debug/manual cache invalidation recorder for standalone Brush hosts
 /// (the timesheet ink stack and the smoke screens run without the editor
@@ -37,8 +38,12 @@ class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) =>
-      _record(brushFrames, invalidation);
+  void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {
+    // The standalone hosts draw through the same painter as the editor, so
+    // their tiles need the same truthful first frame (F-68 root fix).
+    notePredecessorsFromInvalidation(invalidation);
+    _record(brushFrames, invalidation);
+  }
 
   @override
   void invalidateFrameComposite(FrameCompositeCacheKey key) =>

@@ -26,6 +26,8 @@ class _SurfacePaintPass {
   late final Map<TileCoord, BitmapTile?>? _settleHold;
   late int _pixelFallbackBudget;
   late int _syncUploadBudget;
+  late int _predecessorRectBudget;
+  late int _predecessorTileBudget;
   late final Rect _visibleRect;
   Set<TileCoord>? _committedWins;
   List<PlacedTile>? _pendingDecodes;
@@ -137,6 +139,17 @@ class _SurfacePaintPass {
     // renderer this is developed on. That is precisely why it needs to be
     // reasoned about rather than measured here.
     _syncUploadBudget = BitmapSurfacePainter.decodeStartBudget;
+    // The truthful stand-in's budgets (F-68 root fix). RECTS, because that
+    // is what the composition costs: an erase is a few hundred long runs,
+    // a soft gradient laid on nothing is tens of thousands of one-pixel
+    // ones. 32k rects is an eighth of what the per-pixel fallback below
+    // already spends on its four tiles, so nothing here is a new cost
+    // ceiling — it is a cheaper answer tried first. And a tile cap, because
+    // the byte walk is ~1 ms a tile in Dart and a whole-canvas commit is a
+    // thousand tiles: the walk is visible-first, so the tiles that miss
+    // out are off-screen ones, and they keep today's answer this frame.
+    _predecessorRectBudget = BitmapSurfacePainter.debugPredecessorRectBudget;
+    _predecessorTileBudget = 16;
     // R27 #2: the budget goes to tiles the user can actually SEE. Since
     // the walk below is now visible-only, every coordinate it reaches
     // already shows — no separate visibility test is needed.
@@ -368,10 +381,28 @@ class _SurfacePaintPass {
         _syncUploadBudget -= 1;
       }
     }
-    tileImage ??= _painter.tileImageCache.latestImageForCoord(
-      placed.coord,
-      scope: _painter.staleScope,
-    );
+    // 🚨★★★A KNOWN PREDECESSOR FORBIDS THE COORDINATE FALLBACK. The tile
+    // the commit replaced, plus the bytes that differ, is exact whichever
+    // way the edit went; the coordinate fallback is the last picture
+    // DECODED here, and for an edit that removed ink that is the removed
+    // ink — F-68 ①②③, every one. So a tile whose commit announced its
+    // predecessor composes from it, and when that does not fit this
+    // paint's budget it falls to the per-pixel path (exact, four a paint)
+    // and then to NOTHING — a blank tile for a frame is a gap, the old
+    // picture is a lie, and only one of those was a bug report. The
+    // coordinate fallback remains for tiles nobody announced: an import,
+    // a cold activation — content that ADDS, where it was always right.
+    final predecessor = tileImage == null
+        ? TilePredecessors.instance.of(tile)
+        : null;
+    if (predecessor != null) {
+      tileImage = _composeFromPredecessor(placed, predecessor);
+    } else {
+      tileImage ??= _painter.tileImageCache.latestImageForCoord(
+        placed.coord,
+        scope: _painter.staleScope,
+      );
+    }
     if (tileImage != null) {
       _drawTileImage(tileImage, placed);
     } else if (_pixelFallbackBudget > 0) {
@@ -397,6 +428,32 @@ class _SurfacePaintPass {
       // [MeasurementMode.showUnpaintedTiles].
       _painter._markUnpainted(_canvas, placed);
     }
+  }
+
+  /// [placed]'s stand-in composed from its predecessor, put in the cache
+  /// and returned — or null when there is no predecessor, its picture is
+  /// not on screen, or the composition would exceed what is left of this
+  /// paint's budgets (spent on the answer, not the attempt).
+  ui.Image? _composeFromPredecessor(
+    PlacedTile placed,
+    TilePredecessor predecessor,
+  ) {
+    if (_predecessorTileBudget <= 0 || _predecessorRectBudget <= 0) {
+      return null;
+    }
+    final cache = _painter.tileImageCache;
+    final composed = composePredecessorStandIn(
+      cache: cache,
+      tile: placed.tile,
+      predecessor: predecessor,
+      rectBudget: _predecessorRectBudget,
+    );
+    if (composed.image == null) {
+      return null;
+    }
+    _predecessorTileBudget -= 1;
+    _predecessorRectBudget -= composed.rects;
+    return composed.image;
   }
 
   /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended

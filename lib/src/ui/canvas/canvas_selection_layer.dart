@@ -40,6 +40,7 @@ import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'tile_predecessors.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 
@@ -3703,6 +3704,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       surface: surface,
       sequence: BrushDabSequence([pending]),
     ).surface;
+    // 🚨★★★THE FLOAT'S TILES GET PREDECESSORS TOO (F-68 root fix). The
+    // float is not a cel, so no commit announces it — but its pixels came
+    // from somewhere the screen already shows: on the lift, from the
+    // pre-lift surface at the same coordinates (a whole-taken tile is the
+    // same bytes, a partly taken one differs where the mask cut); on a
+    // rebuild, from the float surface being replaced (the same bytes at a
+    // new object). The painter composes each float tile's first-frame
+    // picture from that, exactly as it does for a cel tile.
+    final source = fresh?.preLift ?? _floatSurface;
+    if (source != null) {
+      TilePredecessors.instance.noteBetween(
+        source,
+        built,
+        coords: built.tiles.keys,
+      );
+    }
     if (fresh != null && fresh.preLift.tileSize == built.tileSize) {
       // The coordinates taken WHOLE already borrow the pre-lift tiles
       // through [_floatStaleScope]; these are the rest. One grid or none:

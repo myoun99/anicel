@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../core/draw_space.dart';
 import 'colour_key_shader.dart';
 import '../../services/composite_effect_paint.dart';
+import 'raster_picture.dart';
 
 /// The largest side a sub-tree's own raster may have, in device pixels.
 ///
@@ -342,15 +343,14 @@ ui.Image applyEffectSteps({
       // plain rect over it.
       into.drawRect(rect, paint);
     }
-    final stepPicture = stepRecorder.endRecording();
     // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
     // and the shader — this loop runs once per effect step, so a failure part
-    // way along a chain leaked every step it had already built.
+    // way along a chain leaked every step it had already built. The picture's
+    // release is [rasterPicture]'s; the shader's is this frame's own.
     final ui.Image next;
     try {
-      next = stepPicture.toImageSync(pixelWidth, pixelHeight);
+      next = rasterPicture(stepRecorder, pixelWidth, pixelHeight);
     } finally {
-      stepPicture.dispose();
       shader?.dispose();
     }
     if (!identical(image, source)) {
@@ -368,17 +368,11 @@ void _finishSubtreeRaster({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
 }) {
-  final picture = recorder.endRecording();
   assert(() {
     debugSubtreeRasterCount += 1;
     return true;
   }());
-  final ui.Image raster;
-  try {
-    raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
-  } finally {
-    picture.dispose();
-  }
+  final raster = rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
   // ⛔BOTH stay alive until the compose is done. A crossfade blits the raw
   // scope and the stepped one in the same structure, and disposing the raw
   // one here would have left the unfiltered pass reading freed pixels.

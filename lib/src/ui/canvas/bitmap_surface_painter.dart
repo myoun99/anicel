@@ -18,7 +18,9 @@ import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
+import 'tile_predecessors.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
@@ -243,6 +245,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// per-frame UI-thread cost (copy + premultiply per start) against how
   /// many frames a full-canvas convergence takes.
   static const int decodeStartBudget = BitmapTileImageCache.decodeStartBudget;
+
+  /// Rects one paint may spend composing predecessor stand-ins (F-68 root
+  /// fix). 32k: an eighth of what the per-pixel fallback spends on its four
+  /// tiles, so a cheaper answer tried first and never a new ceiling.
+  ///
+  /// Settable so a test can push a composition over budget and pin what
+  /// happens then — the per-pixel path, never the coordinate picture.
+  static int debugPredecessorRectBudget = 32768;
 
   /// Starts the decode work [paintContentInto]'s collect pass would have
   /// started — budgeted and visible-first exactly the same way — WITHOUT
