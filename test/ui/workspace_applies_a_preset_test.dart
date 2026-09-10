@@ -172,14 +172,17 @@ void main() {
     await pick(tester, one);
     await setSizeAt(tester, 0.2);
     final drawing = size(tester);
+    // The brush moves on, so nothing it does on the way back can re-file
+    // `one` — only the eraser touches it from here.
+    await pick(tester, two);
 
-    // The eraser takes up the brush it inherits, and is set bigger.
+    // The eraser picks `one` for itself and is set bigger.
     await takeUp(tester, 'eraser');
+    await pick(tester, one);
     await setSizeAt(tester, 0.8);
     expect(size(tester), isNot(drawing), reason: 'premise');
 
     await takeUp(tester, 'brush');
-    await pick(tester, two);
     await pick(tester, one);
 
     expect(
