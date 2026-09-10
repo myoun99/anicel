@@ -1,6 +1,4 @@
-        /* A square dab is axis-aligned by construction now, so there is no
-           rotated-rect case left to test for. */
-        coverage = 1.0;// Anicel native engine core (R18 A-track).
+// Anicel native engine core (R18 A-track).
 //
 // ONE portable C source, cross-compiled per platform (Windows DLL, macOS
 // dylib, Android .so, ...). Every function here has a Dart REFERENCE
