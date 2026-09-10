@@ -120,15 +120,12 @@ class _CanvasPanelLift {
   }
 
   /// Gives the tiles a landing just created a picture of themselves,
-  /// composed from what the float is already showing.
+  /// composed from what the float is already showing — the whole landing
+  /// painted by the canvas on the frame it lands.
   ///
-  /// This is the answer to the same question the hold covers for, and it
-  /// runs first: what it can seed leaves the pending set, so the float is
-  /// clipped to a smaller region — or to nothing at all, which is the
-  /// whole landing painted by the canvas on the frame it lands.
-  ///
-  /// Silent about coordinates it cannot answer for, deliberately: those
-  /// keep the hold, which is today's behaviour and correct.
+  /// Silent about coordinates it cannot answer for, deliberately: the
+  /// painter composes those from their predecessor (`TilePredecessors`,
+  /// F-68) as far as its budget reaches, and the rest wait for the decode.
   /// ⛔IT NO LONGER TAKES THE LANDING RECT, AND THAT IS THE FIX, NOT A
   /// TIDY-UP (F-68). While the rect was in scope the wrong coordinate set
   /// was one expression away — `tileCoordsIn(landing.tileRange(...))` — and

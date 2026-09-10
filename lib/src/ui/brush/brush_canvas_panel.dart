@@ -17,7 +17,6 @@ import '../../services/undo_surface_snapshot.dart';
 import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/cut_piece.dart' show CutPiece;
-import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
@@ -63,8 +62,6 @@ import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import 'brush_cursor_overlay.dart';
-import '../../models/dirty_region.dart';
-import '../../models/tile_coord.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/provisional_tile_pictures.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
@@ -1412,20 +1409,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // cel's tight ink bounds.
               contentBoundsProvider:
                   _activeCelContentBounds,
-              // The float stays up until the
-              // committed surface can paint
-              // what the session just landed —
-              // its destination tiles are new
-              // objects with no decoded image
-              // for a frame or two, and the
-              // base's stale fallback answers
-              // for them with the tiles the
-              // LIFT ERASED.
-              committedRegionPendingTiles:
-                  _selectionSeat.committedRegionPendingTiles,
-              // And where the float's own picture
-              // can be composed onto those tiles,
-              // they stop being pending at all.
+              // The float's own picture, composed
+              // onto the tiles a landing creates,
+              // so the base paints the landing on
+              // the frame it lands — its
+              // destination tiles are new objects
+              // with no decoded image for a frame
+              // or two.
               composeCommittedRegionPictures:
                   _lift._composeCommittedRegionPictures,
               // Pending move sessions hold the

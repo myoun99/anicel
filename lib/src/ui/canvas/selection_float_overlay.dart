@@ -39,7 +39,6 @@ class SelectionFloatPaint {
     this.imageLeft = 0,
     this.imageTop = 0,
     this.clip,
-    this.holdClip,
   }) : surfaceOffset = surfaceOffset ?? CanvasPoint(x: 0, y: 0);
 
   /// The float's own surface (a pure MOVE: the translation is byte-exact, so
@@ -58,10 +57,6 @@ class SelectionFloatPaint {
   /// the commit will not deliver.
   final Rect? clip;
 
-  /// While a post-commit HOLD is up, the float is drawn ONLY over the tiles
-  /// the base cannot paint yet. Canvas coordinates, like everything here.
-  final ui.Path? holdClip;
-
   bool get isEmpty => surface == null && image == null;
 
   void paintInto(Canvas canvas) {
@@ -69,10 +64,6 @@ class SelectionFloatPaint {
       return;
     }
     canvas.save();
-    final hold = holdClip;
-    if (hold != null) {
-      canvas.clipPath(hold);
-    }
     final bounds = clip;
     if (bounds != null) {
       canvas.clipRect(bounds);
@@ -109,8 +100,7 @@ class SelectionFloatPaint {
           identical(other.image, image) &&
           other.imageLeft == imageLeft &&
           other.imageTop == imageTop &&
-          other.clip == clip &&
-          identical(other.holdClip, holdClip);
+          other.clip == clip;
 
   @override
   int get hashCode => Object.hash(
@@ -121,7 +111,6 @@ class SelectionFloatPaint {
     imageLeft,
     imageTop,
     clip,
-    identityHashCode(holdClip),
   );
 }
 

@@ -2,8 +2,7 @@ part of '../brush_canvas_panel.dart';
 
 /// The SELECTION SEAT — what the panel does with the selection layer:
 /// recording its changes into history, answering the idle region, a
-/// lift, clipping a stroke to it, and the tiles a committed region still
-/// owes — as its own object.
+/// lift, and clipping a stroke to it — as its own object.
 ///
 /// 🚨A collaborator carved out of `_BrushCanvasPanelState` (the audit's SRP
 /// cut, 2026-09-02). Measured before cutting: three State members shared.
@@ -66,75 +65,16 @@ class _CanvasPanelSelection {
 
   int _liftTokenSeq = 0;
 
-  /// WHICH tiles the committed surface holds under this canvas rect have
-  /// no decoded image yet — the tiles the selection layer keeps its float
-  /// over until they arrive. Empty means the base can paint the lot.
+  /// Lifts [region]'s pixels out of the cel (R19 pixel model): the erase
+  /// lands raw, the stamp comes back to float. Null when the shape covers
+  /// no pixels.
   ///
-  /// A coordinate with NO tile counts as ready: the surface has nothing to
-  /// draw there, so waiting on it would wait forever.
-  ///
-  /// ⚠️ The set, not a bool. The base becomes paintable 32 tiles a paint,
-  /// so a single yes/no made the float cover the whole landing until the
-  /// last tile arrived — double-compositing every partial-alpha pixel
-  /// under it, and, when the float could not paint, showing the user the
-  /// convergence itself, tile by tile.
-  Set<TileCoord> committedRegionPendingTiles(DirtyRegion landing) {
-    final coordinator = _state.widget._editableCoordinator;
-    if (coordinator == null) {
-      return const <TileCoord>{};
-    }
-    final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
-    final size = surface.tileSize;
-    final cache = BitmapTileImageCache.instance;
-    // ⚠️ tileAt, NOT `surface.tiles[...]`. `tiles` is
-    // `Map.unmodifiable(_tiles)` — a getter that COPIES the cel's whole
-    // tile map on every call — so indexing it inside this walk made one
-    // predicate O(coords × tiles) entry copies instead of O(coords) hash
-    // lookups. Measured on the real surface at the 8192² the canvas dialog
-    // allows (1024 tiles): 82.7 ms per walk against 28 µs, and the walk
-    // that finds everything ready is by definition the complete one, so
-    // that stall landed on the release frame of every confirm.
-    var pending = const <TileCoord>{};
-    for (final coord in tileCoordsIn(landing.tileRange(tileSize: size))) {
-      final tile = surface.tileAt(coord);
-      // `displayImageFor`, not `imageFor`: the question this predicate
-      // asks is "can the base paint here", and a stand-in composed from
-      // the very picture the hold would show is an answer to it. Reading
-      // truth only would keep the float clipped over coordinates the
-      // canvas is already drawing correctly — the same coordinate
-      // source-over'd twice, which is how partial-alpha edges came out
-      // darker on a wide landing.
-      if (tile != null && cache.displayImageFor(tile) == null) {
-        if (identical(pending, const <TileCoord>{})) {
-          pending = <TileCoord>{};
-        }
-        pending.add(coord);
-      }
-    }
-    return pending;
-  }
-
-  /// shape covers no pixels.
-  ///
-  /// [wholeTiles] names the coordinates the lift took ENTIRELY — the ones
-  /// left with nothing behind — paired with the tiles that held them
-  /// before. The float that is about to be built from this stamp holds,
-  /// at those coordinates, exactly those pixels, so it can borrow them
-  /// and paint on its first frame instead of waiting a decode round with
-  /// four tiles' worth of fallback. Coordinates the lift only partly took
-  /// are deliberately absent: see [BitmapTileImageCache.seedScope].
-  ///
-  /// `preLift` and `liftedInk` answer for the coordinates the lift took
-  /// only PART of (F-68 ②): the float's tile there is new and has no
-  /// picture, and the pre-lift picture cut by `liftedInk` is exactly what
-  /// it carries — the selection layer's `_buildFloatSurface` composes it.
-  ({
-    int liftToken,
-    BrushDab stampDab,
-    Map<TileCoord, BitmapTile> wholeTiles,
-    BitmapSurface preLift,
-    ProvisionalInkPainter liftedInk,
-  })?
+  /// `preLift` is the surface the lift copied from — the predecessor of
+  /// every tile the float built from this stamp will have (F-68), so the
+  /// float can draw on its first frame. The erased tiles need nothing
+  /// from here: the commit funnel announces both surfaces, and the painter
+  /// composes them from their predecessors like any other edit.
+  ({int liftToken, BrushDab stampDab, BitmapSurface preLift})?
   handleSelectionLift(CanvasSelectionRegion region) {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {
@@ -183,114 +123,15 @@ class _CanvasPanelSelection {
       region: _state.widget.selectionCommands?.region,
     );
     _state._rebuild(() {});
-    final whole = <TileCoord, BitmapTile>{};
-    // ⚠️ The LIFT'S tile range, not the whole cel. This walked
-    // `preLift.tiles.entries` — one whole-map copy, then a full 256 KB
-    // read per emptied tile — over every tile the cel had, including all
-    // the ones the erase could not possibly have touched. A coordinate
-    // outside the region's bounds cannot have been emptied by it, so the
-    // answer is the same and the work is the lift's size instead of the
-    // drawing's.
-    final size = preLift.tileSize;
-    // Coverage, not the tight fold: the sweep has to reach every tile the
-    // erase could have touched, and only an ADDING step can widen that.
-    final bounds = region.coverageBounds;
-    final range = tileRangeCovering(
-      left: bounds.left,
-      top: bounds.top,
-      right: bounds.right,
-      bottom: bounds.bottom,
-      tileSize: size,
-    );
-    for (final coord in tileCoordsIn(range)) {
-      final before = preLift.tileAt(coord);
-      if (before == null) {
-        continue;
-      }
-      // Untouched by the erase => structural sharing hands back the SAME
-      // object, and a coordinate the lift did not take cannot be one it
-      // took whole. Free, and it skips the byte scan entirely.
-      final left = after.tileAt(coord);
-      if (identical(left, before)) {
-        continue;
-      }
-      // Emptied by the erase => the lift took this coordinate whole. Both
-      // answers mean that now — a commit DROPS a tile it emptied — so the
-      // absence and the inkless tile are one branch. `hasInk` reads the
-      // tile's own view and caches; `tile.pixels` would be a 256 KB
-      // defensive COPY per call.
-      if (left == null || !left.hasInk) {
-        whole[coord] = before;
-      }
-    }
-    // The base must stop answering for what the lift took. Its bucket
-    // still holds the pre-erase tiles at these coordinates, so without
-    // this it redraws the artwork in its ORIGINAL place while the float
-    // draws it in the new one — two copies at the start, and on the
-    // confirm frame a picture that is in the old place and absent from
-    // the new one.
-    //
-    // Only the coordinates the lift took WHOLE: there the truth is
-    // emptiness, so drawing nothing is right. A partially lifted
-    // coordinate keeps its entry, because its surviving pixels are still
-    // better than none.
-    //
-    // ⚠️ This was written once before and reverted, on the word of a test
-    // that counted INK rather than looking at where it was. The base's
-    // displaced copy is ink too, so removing it read as losing coverage.
-    // The oracle asks about position now, and says the opposite.
-    final activeKey = coordinator.activeFrameKey;
-    BitmapTileImageCache.instance.invalidateCoords((
-      activeKey.layerId,
-      activeKey.frameId,
-    ), whole.keys);
-    // 🚨★★★AND WHAT THE LIFT DID AT A COORDINATE IT TOOK ONLY PART OF
-    // (F-68 ②). 「그림의 일부가 1프레임 이상한곳에 생겼다가 사라짐 … 매번
-    // 다른데」.
-    //
-    // The invalidation above covers only what the lift took WHOLE. Where it
-    // took PART of a tile it makes two new tiles with no picture — the
-    // base's, emptied where the float came from, and the float's own — and
-    // the painter answered for the base with the pre-erase tile, lifted
-    // pixels included, and for the float with nothing. While the float sat
-    // on top the two lies cancelled; the frame it moved, the lifted part
-    // stood in its old place and was missing from its new one, for one
-    // frame or for as long as the decode budget deferred the new tiles —
-    // which is why it differed every time.
-    //
-    // ⛔The note this replaces held that a partly lifted coordinate's
-    // 「surviving pixels are still better than none」— true of the
-    // survivors, and a lie about the rest: the same stale picture carries
-    // the lifted part too. Both halves are known here, so both are said,
-    // from the picture the screen already holds cut by the erase's own
-    // bytes: the base keeps what the erase left, the float what it took
-    // (the landing's twin — `_composeCommittedRegionPictures` answers the
-    // same question with the ink put IN).
-    final erase = lift.eraseDab.stamp!;
-    ProvisionalInkPainter cutByTheErase({required bool keepInside}) =>
-        inkCutByMask(
-          erase,
-          left: (lift.eraseDab.center.x - erase.width / 2).round(),
-          top: (lift.eraseDab.center.y - erase.height / 2).round(),
-          keepInside: keepInside,
-        );
-    labProbe(
-      'lift.composeStandIns',
-      () => seedProvisionalTilePictures(
-        preSurface: preLift,
-        postSurface: after,
-        coords: tileCoordsChangedBetween(preLift, after),
-        ink: cutByTheErase(keepInside: false),
-        staleScope: (activeKey.layerId, activeKey.frameId),
-      ),
-    );
-    return (
-      liftToken: token,
-      stampDab: lift.stampDab,
-      wholeTiles: whole,
-      preLift: preLift,
-      liftedInk: cutByTheErase(keepInside: true),
-    );
+    // 🪦Two things stood here until 2026-09-11, both about the frame the
+    // lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에 생겼다가
+    // 사라짐 … 매번 다른데」): the cel's stale-fallback bucket forgot the
+    // coordinates the lift took whole, and the erased tiles were seeded
+    // with the pre-lift picture cut by the erase's own bytes. The commit
+    // funnel now announces both surfaces of every edit and the painter
+    // composes each new tile from its predecessor plus the diff — with
+    // that on and both of these off, every lift pin stayed green (M5).
+    return (liftToken: token, stampDab: lift.stampDab, preLift: preLift);
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands

@@ -1969,17 +1969,18 @@ void main() {
       //
       // The float surface is materialised fresh from the lift, so every
       // tile object is new and the identity-keyed image cache misses on
-      // all of them. The painter's answer to a missing image is to borrow
-      // whatever decoded last at that COORDINATE within its stale scope —
-      // and the float was the one painter in lib/ built without a scope,
-      // which put it in a bucket shared by every float ever lifted. The
-      // second Ctrl+T of a session therefore drew the FIRST one's artwork,
-      // at the first one's place and size, into this float's tile grid.
+      // all of them. The painter's answer to a missing image used to be to
+      // borrow whatever decoded last at that COORDINATE within its stale
+      // scope — and the float was the one painter in lib/ built without a
+      // scope, which put it in a bucket shared by every float ever lifted.
+      // The second Ctrl+T of a session therefore drew the FIRST one's
+      // artwork, at the first one's place and size, into this float's tile
+      // grid. (Since 2026-09-11 every float tile knows its predecessor and
+      // never reaches that fallback; the invariant below is what says so.)
       //
       // Stated as the invariant rather than the symptom: a painter may not
       // put ink where its own surface is empty. That holds whatever the
-      // borrowing policy is, and it is what fails if the opt-out is
-      // removed.
+      // borrowing policy is.
       final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
 
@@ -2586,16 +2587,12 @@ void main() {
     });
 
     testWidgets('a WIDE move confirms with the picture on screen too — the '
-        'other branch of the hold', (tester) async {
-      // The move path holds a float SURFACE rather than a resample image,
-      // and it is the path the 208,234-pixel double-composite was measured
-      // on. Both branches are clipped to the tiles the base cannot paint
-      // yet, so both need a landing wider than one decode round.
-      //
-      // This one is GREEN without the fix, deliberately: the move path
-      // already worked, and what it guards is that clipping the hold to
-      // the pending tiles does not take away pixels the base still cannot
-      // paint. A clip that is too eager fails here and nowhere else.
+        'float-surface branch of the compose', (tester) async {
+      // The move path hands the base a float SURFACE rather than a
+      // resample image, and it is the path the 208,234-pixel
+      // double-composite was measured on (when a hold still covered the
+      // landing). Both branches need a landing wider than one decode
+      // round, or the base paints it on its own and the test is vacuous.
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
@@ -2760,6 +2757,198 @@ void main() {
       );
     });
 
+    testWidgets('confirm, then undo: the frame after the undo is the '
+        'pre-lift picture, and nothing of the float is left to paint over '
+        'it', (tester) async {
+      // The undo restores the pre-lift snapshot, so every restored tile is
+      // a new object with no picture — and the base composes each from the
+      // landed tile it replaces (F-68). What this pins is the OTHER half:
+      // that the confirm let the float go. A float that outlived its
+      // session, or a decoded resample kept past it, would paint the
+      // landing over the restored picture — `ghost` ink where the settled
+      // frame has none — and a cover that is not mounted cannot.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      await settle(tester);
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      await settle(tester);
+      expect(env.history.undoCount, greaterThan(0), reason: 'no entry to undo');
+
+      env.history.undo();
+      await tester.pump();
+      final afterUndo = await screenInkMask(tester);
+      expect(
+        floatPainters(tester, currentSurface(env.coordinator)),
+        isEmpty,
+        reason: 'a float is still mounted after the undo',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsNothing,
+        reason: 'a decoded resample is still mounted after the undo',
+      );
+
+      await settle(tester);
+      final settled = await screenInkMask(tester);
+      final settledInk = settled.where((on) => on).length;
+      final delta = inkDelta(afterUndo, settled);
+      expect(settledInk, greaterThan(0), reason: 'the restored picture has ink');
+      expect(
+        delta.ghost,
+        0,
+        reason:
+            '${delta.ghost} pixels of the landing are still drawn over the '
+            'restored picture',
+      );
+      expect(
+        delta.hole,
+        lessThan((settledInk * 0.1).round()),
+        reason:
+            'the undo frame lost the picture: ${delta.hole} of $settledInk '
+            'absent',
+      );
+    });
+
+    testWidgets('Enter in the middle of a handle drag lands the picture on '
+        'screen: the WINDOW the preview decoded is handed to the base', (
+      tester,
+    ) async {
+      // Mid-drag the preview resamples only the viewport's window of the
+      // picture (ABI 26), and Enter can arrive while the drag is down. The
+      // confirm recomputes the whole rect, so the decoded window is not
+      // `identical`ly what lands — and until 2026-09-11 a hold covered the
+      // base with it. Now it is composed onto the base's tiles the way the
+      // whole picture is, and this frame has to come out exact wherever
+      // the window reaches, which is everything on screen.
+      //
+      // ⚠️ The predecessor path is switched OFF for the measurement (rect
+      // budget 0). With it on, a picture of small hard squares composes
+      // exactly from the diff and the window contributes nothing, so the
+      // pin would stay green with the window refused. A soft landing blows
+      // that budget in the app; a zero budget is the same state, reached
+      // without a fixture that takes seconds to materialise.
+      final budget = BitmapSurfacePainter.debugPredecessorRectBudget;
+      BitmapSurfacePainter.debugPredecessorRectBudget = 0;
+      addTearDown(
+        () => BitmapSurfacePainter.debugPredecessorRectBudget = budget,
+      );
+      const big = CanvasSize(width: 1800, height: 1400);
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        canvasSize: big,
+        // Past the 800×600 test viewport in both directions, so a window
+        // really is smaller than the picture — and dense enough that the
+        // viewport holds more inked tiles than the per-pixel path's four.
+        sourceDabs: [
+          for (var y = 100; y <= 1140; y += 80)
+            for (var x = 100; x <= 1460; x += 80)
+              dab(x.toDouble(), y.toDouble()),
+        ],
+        viewport: seedFromRender(tester, CanvasViewport()),
+      );
+      await settle(tester);
+
+      // The top-left handle is the one on screen to grab.
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(
+        origin + const Offset(100, 100),
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(60, 55));
+      await tester.pump();
+      // The DECODE, not the resample: `previewIsUp` is the fallback
+      // painter, which is up for the float surface as well.
+      bool decodedPreviewIsUp() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .any((painter) => painter.float.image != null);
+      await pumpUntil(
+        tester,
+        decodedPreviewIsUp,
+        reason: 'the drag-time resample to decode',
+      );
+      final window = debugLastResampledFloat!.stamp!;
+      expect(
+        window.width,
+        lessThan(1200),
+        reason:
+            'the decoded preview is the whole picture, not a window of it '
+            '— bad premise',
+      );
+
+      env.commands.commitTransform();
+      // The release changes nothing about the landing — the box closed
+      // under it, and its release only lowers the drag flags — but it
+      // does change the CHROME, and both captures have to be taken with
+      // the same chrome to compare pictures.
+      await gesture.up();
+      await tester.pump();
+      final atConfirm = await screenBytes(tester);
+      expect(
+        floatPainters(tester, currentSurface(env.coordinator)),
+        isEmpty,
+        reason: 'the landing is still being covered for',
+      );
+
+      await settle(tester);
+      final settled = await screenBytes(tester);
+      final settledInk = await screenInkMask(tester);
+      // Anti-vacuity: more inked tiles on screen than the per-pixel path
+      // paints in a frame, or a refused window would go unnoticed.
+      final inkedTiles = <int>{};
+      for (var i = 0; i < settledInk.length; i += 1) {
+        if (settledInk[i]) {
+          inkedTiles.add((i ~/ 800 ~/ 256) * 16 + (i % 800) ~/ 256);
+        }
+      }
+      expect(
+        inkedTiles.length,
+        greaterThan(4),
+        reason: 'the landing on screen fits the per-pixel budget — vacuous',
+      );
+      // Ink absent on the confirm frame is a hole (a tile nothing painted);
+      // ink present where the settled frame has none is a ghost (a wrong
+      // picture). A channel step or two on a resampled edge is the
+      // composition's premultiplied rounding, which the parity sweep
+      // bounds at two — neither of the other two is allowed at all.
+      bool red(Uint8List px, int i) =>
+          px[i] > 128 && px[i + 1] < 100 && px[i + 2] < 100;
+      var hole = 0;
+      var ghost = 0;
+      var worst = 0;
+      final where = <String>[];
+      for (var i = 0; i < settled.length; i += 4) {
+        final now = red(atConfirm, i);
+        final later = red(settled, i);
+        var pixelWorst = 0;
+        for (var c = 0; c < 4; c += 1) {
+          final delta = (atConfirm[i + c] - settled[i + c]).abs();
+          if (delta > pixelWorst) pixelWorst = delta;
+        }
+        if (pixelWorst > worst) worst = pixelWorst;
+        if (later && !now) hole += 1;
+        if (now && !later) ghost += 1;
+        if (pixelWorst > 2 && where.length < 12) {
+          where.add('(${(i ~/ 4) % 800},${(i ~/ 4) ~/ 800}):$pixelWorst');
+        }
+      }
+      expect(
+        worst,
+        lessThanOrEqualTo(2),
+        reason:
+            'a channel moved by $worst on the confirm frame: $hole pixels of '
+            'the landing absent, $ghost pixels of ink that is not there — '
+            'first at ${where.join(' ')}',
+      );
+    });
+
     testWidgets('what the composition costs the EYE: at most one channel '
         'step, against the screen and against the truth', (tester) async {
       // N4 ②, and it is the judgement that closes the Skia side.
@@ -2912,10 +3101,9 @@ void main() {
         findsNothing,
         reason: 'a stale resample was held over the landing',
       );
-      // And nothing is built to stand in its place. `_floatContentReplaced`
-      // has just emptied the float's stale scope, so a surface built here
-      // would have no image and nothing to borrow for any of its tiles —
-      // measured 20 tiles, 0 decoded, 0 borrowable, contributing zero
+      // And nothing is built to stand in its place: the session ends on
+      // the confirm, so a float surface built here would be new tiles with
+      // no picture — measured 20 tiles, 0 decoded, contributing zero
       // pixels — after re-materialising the whole warped stamp to make it.
       final committed = env.coordinator.currentSurfaceOf(
         env.coordinator.activeFrameKey,
@@ -2929,8 +3117,8 @@ void main() {
         floats,
         isEmpty,
         reason:
-            'a float was built into an emptied scope: it cannot paint, and '
-            'making it costs a full re-materialisation of the stamp',
+            'a float was built for a session that is over: it cannot paint, '
+            'and making it costs a full re-materialisation of the stamp',
       );
     });
 

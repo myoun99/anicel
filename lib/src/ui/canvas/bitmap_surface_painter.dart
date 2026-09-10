@@ -104,10 +104,11 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` must
   /// pass one: the transform float went without, which put it in a bucket
   /// shared by every float ever lifted, so opening a second transform drew
-  /// the FIRST one's artwork at the first one's place and size. Where a
-  /// lineage's CONTENT is replaced rather than edited, the owner empties
-  /// its scope at that moment — [BitmapTileImageCache.resetScope] — rather
-  /// than going without one.
+  /// the FIRST one's artwork at the first one's place and size.
+  ///
+  /// The fallback is the last resort, not the first: a tile that knows its
+  /// predecessor (`TilePredecessors`, F-68) composes its own stand-in and
+  /// never reaches it. It answers only for tiles nobody told about.
   final Object? staleScope;
 
   final BitmapTileImageCache tileImageCache;

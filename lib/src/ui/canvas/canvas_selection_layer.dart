@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import '../../services/straight_rgba_image.dart'
     show decodeStraightRgbaImage, decodedImageStillWanted;
 import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
 import '../../models/canvas_point.dart';
@@ -18,7 +17,6 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/dirty_region.dart';
-import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
@@ -39,7 +37,6 @@ import 'selection_drag.dart';
 import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'provisional_tile_pictures.dart';
-import 'bitmap_tile_image_cache.dart';
 import 'tile_predecessors.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
@@ -80,7 +77,6 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
-    this.committedRegionPendingTiles,
     this.composeCommittedRegionPictures,
     this.transformOptions = TransformToolOptions.defaults,
     this.floatOverlay,
@@ -99,48 +95,18 @@ class CanvasSelectionLayer extends StatefulWidget {
 
   /// Offers the host the picture the screen is showing over the landing
   /// rect, so the tiles the commit just created can draw THEMSELVES on the
-  /// next frame instead of being covered for.
+  /// frame they land.
   ///
-  /// The hold above is a cover: the float keeps painting where the base
-  /// cannot. This is the other move — give the base a picture — and it is
-  /// strictly better where it applies, because a covered tile is a second
-  /// widget clipped over the canvas and an answered one is just the canvas.
-  /// Whatever this cannot answer for, the hold still covers; the two are
-  /// read through the same predicate, so a tile is never both.
+  /// The base composes its own stand-in for any tile that knows its
+  /// predecessor (F-68, `TilePredecessors`) — but that is a diff, and it
+  /// is budgeted; a landing is dense, and the float holds it as ONE image
+  /// already. `_handTheLandingToTheBase` has the measurement that keeps
+  /// this hook while every other per-path seeding went.
   ///
   /// [paintInk] draws in CANVAS coordinates and reports whether it drew
   /// everything that belongs in the rect it was given.
   final void Function(ProvisionalInkPainter paintInk)?
   composeCommittedRegionPictures;
-
-  /// WHICH tiles of the canvas rect a session just landed into the host's
-  /// committed surface cannot PAINT yet — the ones whose tile exists but
-  /// has no decoded image. Empty means the base is ready everywhere.
-  ///
-  /// The float is kept over exactly those tiles until they arrive.
-  /// Dropping it the moment the stamp is handed over left two frames with
-  /// the artwork nowhere: the stamp's destination tiles are new objects,
-  /// so they have no image yet, and the base painter's stale fallback
-  /// answers with the tiles the LIFT ERASED. The float meanwhile holds
-  /// exactly those bytes at exactly that place — that is P3a's
-  /// preview/commit byte-identity contract — so keeping it one moment
-  /// longer is not a patch over the gap, it is the picture.
-  ///
-  /// ⚠️ Tiles, not a yes/no. This began as a bool and released
-  /// all-or-nothing, which cost twice over on a big landing. The base
-  /// becomes paintable 32 tiles a paint, so while it converged the float
-  /// still covered the WHOLE rect: partial-alpha pixels took a second
-  /// source-over and feathered edges read darker (measured on a
-  /// whole-picture move of a 2340×1654 cel: 208,234 pixels differing
-  /// across two frames, every one darker). And when the hold could not
-  /// engage, that same convergence was the user-visible "I can watch it
-  /// apply tile by tile". A tile is drawn by the float or by the base,
-  /// never both and never neither.
-  ///
-  /// A host that does not supply this clears the float immediately, which
-  /// is the old behaviour; the focused tests rely on it.
-  final Set<TileCoord> Function(DirtyRegion landing)?
-  committedRegionPendingTiles;
 
   /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in,
   /// where a scale drag anchors, how the resample turns pixels into other
@@ -238,23 +204,10 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
   ///
-  /// `wholeTiles` names the coordinates the lift took ENTIRELY, paired
-  /// with the tiles that held them before — the float about to be built
-  /// holds exactly those pixels there, so it can borrow them and paint on
-  /// its first frame. A host that has nothing to offer returns an empty
-  /// map and the float waits for its own decodes, as it used to.
-  ///
-  /// `preLift` and `liftedInk` cover the coordinates it took only PART of
-  /// (F-68 ②): the pre-lift surface, and an ink that cuts it down to what
-  /// the lift carried. The first float built from the lift composes its
-  /// own pictures there from the two ([_buildFloatSurface]).
-  final ({
-    int liftToken,
-    BrushDab stampDab,
-    Map<TileCoord, BitmapTile> wholeTiles,
-    BitmapSurface preLift,
-    ProvisionalInkPainter liftedInk,
-  })?
+  /// `preLift` is the surface the lift copied from: the predecessor of
+  /// every tile of the float built from this stamp (F-68), which is how
+  /// that float paints on its first frame — see [_buildFloatSurface].
+  final ({int liftToken, BrushDab stampDab, BitmapSurface preLift})?
   Function(CanvasSelectionRegion region)?
   onLiftRequested;
 
@@ -519,7 +472,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasPending = _movePending;
     _liftToken = null;
     _pendingLiftStamp = null;
-    _freshLift = null;
+    _liftSource = null;
     _moveSessionDirty = false;
     if (wasPending) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -558,12 +511,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         }
-        // NOT cleared here — see _holdFloatUntilCommittedCanPaint, called
-        // once this setState has run.
+        // The float outlives the session by exactly one call: the base is
+        // handed its picture, then it goes. Not under an open box — the
+        // box's own commit closes it before calling here, and a confirm
+        // that finds it open leaves the float for that.
+        if (_transform == null) {
+          _handTheLandingToTheBase(pending);
+          _dropFloat();
+        }
       });
-      if (_transform == null) {
-        _holdFloatUntilCommittedCanPaint(pending);
-      }
     } else {
       _pendingLiftStamp = null;
       _liftToken = null;
@@ -851,7 +807,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   @override
   void dispose() {
-    _cancelFloatHold();
     widget.selectionCommands?.removeListener(_adoptChannelRegion);
     widget.selectionCommands?.unbind(this);
     if (_drag != null) {
@@ -1737,10 +1692,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ui.Image? _resampledFloatImage;
   BrushDab? _resampledImageDab;
 
-  /// Set by a commit that has checked the decoded preview is the CURRENT
-  /// state's — so [_clearTransform] may hold it over even though it is a
-  /// window rather than the whole landed picture. Consumed there.
-  bool _holdDecodedPreview = false;
+  /// Whether the decoded preview is what the confirm in progress lands —
+  /// the whole landed picture, or (a confirm in the middle of a handle
+  /// drag) the on-screen window of it.
+  ///
+  /// Set by the three CONFIRM paths from [_decodedPreviewIsCurrent], and
+  /// set BEFORE they replace the pending stamp: the answer stops being
+  /// askable after. Read twice, and in this order — [_clearTransform]
+  /// keeps the image instead of discarding it, then [_landedInkPainter]
+  /// hands it to the base as the landing's own picture. Lowered with the
+  /// image, in [_discardFloatResample], so it can never vouch for a
+  /// picture that is gone.
+  bool _previewIsWhatLands = false;
 
   /// Whether the decoded preview belongs to the state about to be
   /// committed: the decode has caught up to the newest resample, and that
@@ -1749,6 +1712,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Asked BEFORE the commit mutates anything — the key includes the
   /// pending stamp's bytes by identity, so after `_pendingLiftStamp` is
   /// replaced there is no way to ask it any more.
+  ///
+  /// At rest this is exactly `identical(_resampledImageDab, landed)`: the
+  /// commit's key asks for no window, so a cache hit hands it the very
+  /// dab the preview decoded. Mid-drag the preview is a WINDOW (ABI 26),
+  /// the commit recomputes the whole rect, and only this can still say
+  /// that the window is current.
   bool _decodedPreviewIsCurrent() {
     final decoded = _resampledImageDab;
     final cached = _resampledFloat;
@@ -1886,6 +1855,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _resampledImageDab = null;
     _resampledFloatImage?.dispose();
     _resampledFloatImage = null;
+    _previewIsWhatLands = false;
     // The hook holds a whole resampled cel. Letting it outlive the session
     // that made it would keep that buffer resident for as long as the app
     // runs, which is the same defect in a debug build that the assert
@@ -1913,30 +1883,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Closes the transform box.
   ///
-  /// [keepLandedPreview] is passed by the three CONFIRM paths, and only
-  /// by them: the decoded resample is the picture that just landed, so it
-  /// stays to cover the frames before the base can paint it, and the
-  /// float surface is not rebuilt at all — see
-  /// [_holdFloatUntilCommittedCanPaint] for what that rebuild cost and
-  /// why what it built could not draw. The keep is conditional on the
-  /// image being `identical`ly the dab that landed, so a decode that the
-  /// confirm's synchronous recompute overtook is discarded as before.
-  void _clearTransform({bool keepLandedPreview = false}) {
-    final landed = _pendingLiftStamp;
-    final keepPreview =
-        keepLandedPreview &&
-        landed != null &&
-        // Either the decoded image IS what landed (an unclipped preview,
-        // reused by the commit), or it is the up-to-date WINDOW of it.
-        //
-        // A window still serves the hold, and serves it exactly: what the
-        // hold has to cover is the part of the screen the base cannot
-        // paint yet, and the window is the part of the screen. The
-        // identity test alone would refuse it and leave that frame blank
-        // — one frame of the picture missing, which is the thing the hold
-        // exists to prevent (유저 법: 한 프레임 보이는 건 무조건 걸린다).
-        (identical(_resampledImageDab, landed) || _holdDecodedPreview);
-    _holdDecodedPreview = false;
+  /// [confirming] is passed by the three CONFIRM paths, and only by them:
+  /// the session ends on the caller's next line, so the float is not
+  /// rebuilt (a rebuild re-materializes the whole stamp — 651 ms of a
+  /// 2,060 ms confirm frame on a 2340×1654 cel scaled to the pasteboard —
+  /// to make tiles nothing will paint), and the decoded resample stays
+  /// when it is what lands ([_previewIsWhatLands]), so that
+  /// [_handTheLandingToTheBase] can give it to the base. A decode the
+  /// confirm's synchronous recompute overtook is discarded as before: an
+  /// absent picture beats a wrong one.
+  ///
+  /// A WINDOW counts (유저 법: 한 프레임 보이는 건 무조건 걸린다). Enter
+  /// can arrive with a handle drag still down, and then the newest decode
+  /// is the viewport's window of the picture (ABI 26). The identity test
+  /// alone refused it, and that frame lost the landing outside the four
+  /// tiles the base can paint per pixel.
+  void _clearTransform({bool confirming = false}) {
+    final keepPreview = confirming && _previewIsWhatLands;
     // A drag still down when the box closes under it is NOT dropped here:
     // its release still has to lower the drag-active flags. What stops it
     // moving anything is that the box is gone, which
@@ -1964,22 +1927,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _discardFloatResample();
+    if (confirming) {
+      // The landing is warped and the float is not, so the float has
+      // nothing to give the base — and nothing to stay for.
+      _floatSurface = null;
+      return;
+    }
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
-    //
-    // ⚠️ EXCEPT on a confirm whose preview could not be kept. There
-    // `_floatContentReplaced()` has just emptied the float's stale scope,
-    // so a surface built here has no decoded image and nothing to borrow
-    // for any of its tiles — measured on a warm-cache Ctrl+T confirm, 20
-    // tiles, 0 and 0. Building it re-materialises the entire warped stamp
-    // (651 ms on a 2340×1654 cel scaled to the pasteboard) to produce
-    // something that cannot draw. The other callers — Escape over a
-    // pending move, a tool switch — did not empty the scope, and there
-    // the previous generation is a legitimate predecessor.
-    final canPaintIfBuilt = !keepLandedPreview;
-    _floatSurface = _movePending && canPaintIfBuilt
-        ? _buildFloatSurface()
-        : null;
+    _floatSurface = _movePending ? _buildFloatSurface() : null;
   }
 
   /// True when THIS Ctrl+T session opened the lift (Escape then reverts
@@ -2057,10 +2013,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _holdDecodedPreview = _decodedPreviewIsCurrent();
+      _previewIsWhatLands = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
       final boundary = _meshBoundary(meshPoints);
-      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = warped;
         // A warped region collapses to its boundary polygon: the mesh
@@ -2068,7 +2023,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // warped outline, not the old step list.
         _setRegion(CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)));
         _moveSessionDirty = true;
-        _clearTransform(keepLandedPreview: true);
+        _clearTransform(confirming: true);
       });
       _confirmMoveSession();
       return;
@@ -2085,11 +2040,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _holdDecodedPreview = _decodedPreviewIsCurrent();
+      _previewIsWhatLands = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
-      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = warped;
         _setRegion(
@@ -2098,7 +2052,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               : region.mapped((point) => _applyHomography(h, point)),
         );
         _moveSessionDirty = true;
-        _clearTransform(keepLandedPreview: true);
+        _clearTransform(confirming: true);
       });
       _confirmMoveSession();
       return;
@@ -2106,14 +2060,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!affine.isIdentity && pending != null) {
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _holdDecodedPreview = _decodedPreviewIsCurrent();
+      _previewIsWhatLands = _decodedPreviewIsCurrent();
       _recordTransformRecall(affine);
-      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = _warpedFloat() ?? pending;
         _setRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
-        _clearTransform(keepLandedPreview: true);
+        _clearTransform(confirming: true);
       });
       _confirmMoveSession();
       return;
@@ -2230,174 +2183,78 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     _liftToken = lift.liftToken;
-    // A fresh lift is a picture this scope has never seen — except at the
-    // coordinates it took whole, where the surface it copied from IS this
-    // float's own previous generation. Emptying and then seeding says
-    // both things in the right order.
-    _floatContentReplaced();
-    BitmapTileImageCache.instance.seedScope(_floatStaleScope, lift.wholeTiles);
+    // Where the float about to be built from this lift got its pixels —
+    // the predecessor of each of its tiles, for its first frame (F-68).
+    // Consumed by [_buildFloatSurface].
+    _liftSource = lift.preLift;
     _pendingLiftStamp = lift.stampDab;
-    // The float about to be built from this lift gets pictures of its own
-    // where the lift took only PART of a tile (F-68 ②) — consumed by
-    // [_buildFloatSurface].
-    _freshLift = (
-      preLift: lift.preLift,
-      ink: lift.liftedInk,
-      whole: lift.wholeTiles.keys.toSet(),
-    );
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
     widget.onMoveSessionPendingChanged?.call(true);
     return true;
   }
 
-  /// The transform float's stale-fallback lineage — ONE object for every
+  /// The bucket the float's decoded tiles are filed under — ONE for every
   /// float this app ever lifts.
   ///
-  /// A scope per generation would be worse than none: the cache retains
-  /// eight and evicts the least recent, so a session of transforms would
-  /// push out the `(layerId, frameId)` buckets the brush depends on.
-  static final Object _floatStaleScope = Object();
+  /// Filed, never read back: every float tile knows its predecessor
+  /// ([_buildFloatSurface]), and a tile that does never falls to the
+  /// cache's coordinate fallback. It is still not the null bucket, which
+  /// every painter that names no lineage shares — opening a second
+  /// transform once drew the FIRST one's artwork at the first one's place
+  /// and size out of exactly that sharing (measured: 36 pixels of ink where
+  /// this float's own surface is empty). And one bucket rather than one
+  /// per generation: the cache retains eight and evicts the least recent,
+  /// so a session of transforms would push out the `(layerId, frameId)`
+  /// buckets the brush depends on.
+  static final Object _floatLineage = Object();
 
-  /// Empties [_floatStaleScope] — call wherever the float is about to
-  /// hold a DIFFERENT picture, never where it holds the same one
-  /// somewhere else.
+  /// Hands the base the picture of what this session just landed, so the
+  /// tiles the commit created can draw THEMSELVES on the frame they land.
   ///
-  /// That distinction is the whole fix. `_floatSurface` is rebuilt from
-  /// an empty surface at five sites, and three of them regenerate a
-  /// float that already exists — a drag release, every arrow-key nudge,
-  /// and Ctrl+T over a pending move. There the previous generation IS a
-  /// legitimate predecessor and borrowing it is correct; refusing to
-  /// borrow left a float wider than the painter's four-tile per-pixel
-  /// budget three-quarters blank for a frame, and a held arrow key
-  /// strobed it thirty times a second. Only a LIFT, and a warp that
-  /// resamples the stamp, give the float a picture its scope has never
-  /// seen.
-  void _floatContentReplaced() {
-    // A hold from the previous session must not survive into this one, or
-    // it would clear the float that just replaced the one it was watching.
-    _cancelFloatHold();
-    BitmapTileImageCache.instance.resetScope(_floatStaleScope);
-  }
-
-  VoidCallback? _floatHold;
-
-  void _cancelFloatHold() {
-    // The clip goes with the hold. A leftover set would clip the NEXT
-    // float — `_floatContentReplaced` cancels a hold precisely because a
-    // new lift is taking the old one's place.
-    _floatHoldTiles = null;
-    final hold = _floatHold;
-    if (hold == null) {
-      return;
-    }
-    _floatHold = null;
-    BitmapTileImageCache.instance.removeListener(hold);
-  }
-
-  /// Keeps the float on screen until the host's committed surface can
-  /// paint what the session just landed.
+  /// The stamp's destination tiles are brand-new objects with no decoded
+  /// image for a frame or two. The base composes its own stand-in for any
+  /// tile that knows its predecessor (F-68, `TilePredecessors`): the
+  /// picture before plus the bytes that changed — exact, and budgeted. A
+  /// landing changes nearly every pixel it covers, so its diff blows the
+  /// rect budget and the tile falls to the four-tile per-pixel path, then
+  /// to nothing. Measured (2026-09-11, mutant M5): with every per-path
+  /// seeding off, every LIFT pin in the selection suite stayed green and
+  /// every LANDING pin went red. The float already holds the landing as
+  /// ONE image, and `drawImage` costs the same however dense the picture
+  /// is — so the landing is the one place a picture is still handed over
+  /// rather than diffed.
   ///
-  /// The stamp's destination tiles are brand-new objects, so they have no
-  /// decoded image for a frame or two, and the base painter's stale
-  /// fallback answers for them with the tiles the LIFT ERASED — emptiness
-  /// where the artwork should be. Measured, the whole selection vanished
-  /// for two frames on every confirm.
-  ///
-  /// Holding rather than opting out is the point: an opt-out only moves
-  /// the base onto its per-pixel path, which covers four tiles a frame and
-  /// leaves a full-canvas commit unpainted. The float already holds these
-  /// exact bytes at this exact place, so it is the correct picture, not a
-  /// stand-in for one.
-  ///
-  /// The hold covers exactly the tiles the base cannot paint yet, and
-  /// shrinks as they arrive: see [CanvasSelectionLayer
-  /// .committedRegionPendingTiles] for why a bool was not enough.
-  ///
-  /// On the Ctrl+T (warped) path what is held is the decoded RESAMPLE —
-  /// one image of exactly the bytes that landed, at exactly the rect they
-  /// landed in — rather than a float surface rebuilt from the warped
-  /// stamp. That rebuild was two defects in one line: it re-materialised
-  /// the whole stamp a second time (the confirm is already landing those
-  /// same pixels; measured 651 ms of a 2,060 ms confirm frame on a
-  /// 2340×1654 cel scaled to the pasteboard) and it produced all-new
-  /// tiles with no cache entries, so what it built could not paint —
-  /// measured 6 tiles, 0 decoded, 0 borrowable.
-  ///
-  /// ⚠️ The resample image is kept only when it IS what landed
-  /// (`identical` on the dab it was decoded from). It is deliberately the
-  /// last COMPLETED resample and a synchronous recompute on the confirm
-  /// can overtake it, so holding it unconditionally would paint one
-  /// transform state over another — a wrong picture where today there is
-  /// an absent one. When it does not match, the old float rebuild still
-  /// runs.
-  void _holdFloatUntilCommittedCanPaint(BrushDab landed) {
-    _cancelFloatHold();
-    // The pending stamp is gone by now, so the float's drift has to come
-    // from the dab that actually landed.
-    _floatHoldCentre = landed.center;
-    final stamp = landed.stamp;
-    if (stamp == null) {
-      setState(_releaseFloatHold);
-      return;
-    }
-    // The landing rect, by the same arithmetic the stamp blend uses.
-    final landing = stamp.landingRect(landed.center);
-    // FIRST, and before the pending set is read: every coordinate this
-    // answers for is one the base can now paint, so it drops out of the
-    // hold instead of being covered — which is also what keeps the two
-    // from compositing the same partial-alpha pixels twice. It runs even
-    // when the host offers no pending-tile hook, because giving the base
-    // a picture is worth doing whether or not anything is covering for it.
+  /// 🪦Until 2026-09-11 this also kept the float MOUNTED over whatever it
+  /// could not answer for — a "hold", clipped to the base's pending tiles
+  /// and released as they decoded. The isolated mutant said the hold was
+  /// carrying nothing the compose did not (hold off, compose on: the whole
+  /// suite green), and a cover that is never mounted cannot mis-clip,
+  /// cannot composite a partial-alpha edge twice, and cannot outlive its
+  /// release.
+  void _handTheLandingToTheBase(BrushDab landed) {
     final compose = widget.composeCommittedRegionPictures;
-    if (compose != null) {
-      final ink = _landedInkPainter(landed, landing);
-      if (ink != null) {
-        compose(ink);
-      }
-    }
-    final pendingTiles = widget.committedRegionPendingTiles;
-    if (pendingTiles == null) {
-      setState(_releaseFloatHold);
+    final stamp = landed.stamp;
+    if (compose == null || stamp == null) {
       return;
     }
-    final initial = pendingTiles(landing);
-    if (initial.isEmpty) {
-      setState(_releaseFloatHold);
-      return;
+    final ink = _landedInkPainter(landed, stamp.landingRect(landed.center));
+    if (ink != null) {
+      compose(ink);
     }
-    void release() {
-      if (!mounted) {
-        _cancelFloatHold();
-        return;
-      }
-      final still = pendingTiles(landing);
-      if (still.isEmpty) {
-        _cancelFloatHold();
-        setState(_releaseFloatHold);
-        return;
-      }
-      if (still.length == _floatHoldTiles?.length) {
-        // Same count means the same set here: tiles only ever leave it.
-        return;
-      }
-      setState(() => _floatHoldTiles = still);
-    }
-
-    setState(() => _floatHoldTiles = initial);
-    _floatHold = release;
-    BitmapTileImageCache.instance.addListener(release);
   }
 
-  /// The picture of the landing that this session is holding, ready to be
-  /// composed into the base's new tiles — or null when it has none.
+  /// The picture of the landing that this session holds, as ink the base
+  /// can compose onto its new tiles — or null when it has none.
   ///
-  /// The two branches are the two things a confirm can be holding, and
-  /// they are the same two the hold itself draws:
+  /// The two branches are the two things a confirm can be holding:
   ///
-  ///  - the decoded RESAMPLE, when it is `identical`ly the dab that
-  ///    landed. One image of exactly the landed bytes at exactly the
-  ///    landed rect.
+  ///  - the decoded RESAMPLE, when [_previewIsWhatLands]: the whole landed
+  ///    picture, or — a confirm in the middle of a handle drag — the
+  ///    on-screen WINDOW of it (ABI 26). Either sits at the rect its own
+  ///    dab lands in, by the one arithmetic the stamp blend uses. A window
+  ///    is handed over as [inkFromWindow], which answers only for the
+  ///    tiles it touches.
   ///  - the FLOAT SURFACE, for a move, which is materialized once at
   ///    [_floatSurfaceCentre] and translated afterwards. The delta is
   ///    taken in CANVAS space from the centre the pixels were made at to
@@ -2415,21 +2272,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final left = landing.left;
     final top = landing.top;
     final resampled = _resampledFloatImage;
-    // The identity test stays exact here, and must: this hands the BASE a
-    // picture covering the landed rect, so a viewport WINDOW would be both
-    // misplaced and short. A windowed commit therefore gets no provisional
-    // compose and waits for the real cel — which is only slower, never
-    // wrong, because the visual hold above is still covering the screen.
-    if (resampled != null && identical(_resampledImageDab, landed)) {
-      return inkFromImage(
-        resampled,
-        Rect.fromLTWH(
-          left.toDouble(),
-          top.toDouble(),
-          resampled.width.toDouble(),
-          resampled.height.toDouble(),
-        ),
+    final decodedFrom = _resampledImageDab;
+    final decodedStamp = decodedFrom?.stamp;
+    if (resampled != null &&
+        decodedFrom != null &&
+        decodedStamp != null &&
+        _previewIsWhatLands) {
+      final at = decodedStamp.landingRect(decodedFrom.center);
+      final placement = Rect.fromLTWH(
+        at.left.toDouble(),
+        at.top.toDouble(),
+        resampled.width.toDouble(),
+        resampled.height.toDouble(),
       );
+      return identical(decodedFrom, landed)
+          ? inkFromImage(resampled, placement)
+          : inkFromWindow(resampled, placement);
     }
     final float = _floatSurface;
     final from = _floatSurfaceCentre;
@@ -2453,72 +2311,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  /// Drops everything the hold was keeping alive. Call inside a setState.
+  /// Lets go of everything the float was — the surface, the centre it was
+  /// materialized at, the decoded resample. Call inside a setState, and
+  /// only once the landing has been handed to the base: the compose reads
+  /// all three.
   ///
-  /// Both, always: whichever of the two the confirm chose to hold, the
-  /// other is already null, and a kept resample image that outlived its
-  /// hold would keep painting over the base for the rest of the session.
-  void _releaseFloatHold() {
-    _floatHoldTiles = null;
-    _floatHoldCentre = null;
+  /// All of it, always: a kept resample image that outlived the session
+  /// would keep painting one transform state over every later edit.
+  void _dropFloat() {
     _floatSurface = null;
     _floatSurfaceCentre = null;
     _discardFloatResample();
   }
 
-  /// While non-null, the float paints ONLY these tile coordinates — the
-  /// ones the base surface cannot paint yet.
-  Set<TileCoord>? _floatHoldTiles;
-
-  /// [_floatHoldTiles] as one screen-space path, or null when nothing is
-  /// held.
-  ///
-  /// The tile size comes from the float's own surface where there is one
-  /// and from the host's committed geometry otherwise — the held resample
-  /// is a single image with no grid of its own, and the tiles being waited
-  /// on are the BASE's.
-  ui.Path? _floatHoldClipPath() {
-    final tiles = _floatHoldTiles;
-    if (tiles == null || tiles.isEmpty) {
-      return null;
-    }
-    final size = (_floatSurface ?? BitmapSurface(canvasSize: widget.canvasSize))
-        .tileSize
-        .toDouble();
-    final path = ui.Path();
-    for (final coord in tiles) {
-      // CANVAS coordinates (TS1): the float draws inside an already
-      // viewport-transformed canvas now, and the mask has to be in the same
-      // space as the thing it masks. It used to be mapped to the screen here
-      // because it wrapped widgets instead.
-      path.addRect(
-        Rect.fromLTRB(
-          coord.x * size,
-          coord.y * size,
-          (coord.x + 1) * size,
-          (coord.y + 1) * size,
-        ),
-      );
-    }
-    return path;
-  }
-
   /// What is floating right now, in canvas space — see [SelectionFloatPaint].
   ///
-  /// The three reasons to draw a float are unchanged; only where the drawing
+  /// The two reasons to draw a float are unchanged; only where the drawing
   /// happens moved. A warp open ⇒ the resampled preview IS the result. A pure
   /// move ⇒ the untouched lift at an offset is byte-exact by short circuit.
-  /// And a HOLD, the one that outlives the session: after a confirm the stamp
-  /// has landed but its destination tiles have no decoded image yet, so the
-  /// base cannot paint what it was just handed — the float can, and it holds
-  /// those exact bytes at that exact place.
   SelectionFloatPaint _floatPaint({
     required ui.Image? resampledImage,
     required BrushDab? resampledDab,
     required BitmapSurface? floatSurface,
     required SelectionAffine? transform,
   }) {
-    final holdClip = _floatHoldClipPath();
     final pasteboard = Rect.fromLTRB(
       widget.canvasSize.pasteboardLeft.toDouble(),
       widget.canvasSize.pasteboardTop.toDouble(),
@@ -2543,35 +2359,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // edge loses those pixels on Enter, and a preview that kept showing
         // them would be promising something the commit will not deliver.
         clip: pasteboard,
-        holdClip: holdClip,
       );
     }
     if (floatSurface != null &&
-        (_drag is MoveDrag ||
-            transform != null ||
-            _movePending ||
-            _floatHold != null)) {
+        (_drag is MoveDrag || transform != null || _movePending)) {
       return SelectionFloatPaint(
         surface: BitmapSurfacePainter(
           surface: floatSurface,
           viewport: widget.viewport,
           showTransparentBackground: false,
-          // ONE scope for every float this app ever lifts, and it is emptied
-          // when a lift gives the float new pixels — see [_floatStaleScope].
-          // Without a scope at all, which is what this was, the float shared
-          // the null bucket with every float ever lifted, so opening a second
-          // transform painted the FIRST one's artwork at the first one's place
-          // and size: measured, 36 pixels of ink where this float's own
-          // surface is empty.
-          //
-          // ⚠️ That ghost is a DUPLICATE, not a move. The base painter's own
-          // fallback is on and its (layerId, frameId) bucket still holds the
-          // pre-erase tiles, so on the same frame it redraws the artwork in
-          // place — 48 ink pixels over a base surface that contains none.
-          staleScope: _floatStaleScope,
+          // The float's own bucket, never the null one — see
+          // [_floatLineage] for the ghost that sharing drew.
+          staleScope: _floatLineage,
         ),
         surfaceOffset: _floatDrawCanvasOffset,
-        holdClip: holdClip,
       );
     }
     return SelectionFloatPaint();
@@ -2604,7 +2405,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
-    _floatContentReplaced();
     _pendingLiftStamp = _warpedFloat() ?? pending;
     final region = _region;
     if (region != null) {
@@ -3672,24 +3472,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The floating lift stamp rendered alone (the live float shown while
-  /// moving) — the base no longer draws it, the float draws exactly it
-  /// (R15-④), so there is never a double image.
-  /// What the NEXT float build needs from the lift that just happened — and
-  /// only that build (F-68 ②).
-  ///
-  /// Where the lift took a coordinate only in part, the float's tile there
-  /// is new and has no picture; [_buildFloatSurface] composes one from the
-  /// pre-lift picture cut by the lift's own coverage, so the float can draw
-  /// it on its first frame. Consumed by that build, and dropped by
-  /// [_clearLiftState] too: it holds the pre-lift SURFACE, which must not
-  /// outlive the one build that reads it.
-  ({BitmapSurface preLift, ProvisionalInkPainter ink, Set<TileCoord> whole})?
-  _freshLift;
+  /// The surface the lift that just happened took its pixels from — the
+  /// predecessor of every tile the NEXT float build makes, and only that
+  /// build's (F-68). Consumed by [_buildFloatSurface], and dropped by
+  /// [_clearLiftState] too: it is a whole surface, and must not outlive
+  /// the one build that reads it.
+  BitmapSurface? _liftSource;
 
   BitmapSurface _buildFloatSurface() {
-    final fresh = _freshLift;
-    _freshLift = null;
+    final source = _liftSource ?? _floatSurface;
+    _liftSource = null;
     final surface = BitmapSurface(canvasSize: widget.canvasSize);
     final pending = _pendingLiftStamp;
     // Recorded HERE so every rebuild site zeroes the drift by
@@ -3712,39 +3504,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // rebuild, from the float surface being replaced (the same bytes at a
     // new object). The painter composes each float tile's first-frame
     // picture from that, exactly as it does for a cel tile.
-    final source = fresh?.preLift ?? _floatSurface;
-    if (source != null) {
+    //
+    // And EVERY float tile says where it came from, even when the answer
+    // is nowhere: a tile with a known predecessor never borrows whatever
+    // last decoded at its coordinate, which for a float would be an
+    // earlier float's picture at an earlier float's place.
+    if (source != null && source.tileSize == built.tileSize) {
       TilePredecessors.instance.noteBetween(
         source,
         built,
         coords: built.tiles.keys,
       );
-    }
-    if (fresh != null && fresh.preLift.tileSize == built.tileSize) {
-      // The coordinates taken WHOLE already borrow the pre-lift tiles
-      // through [_floatStaleScope]; these are the rest. One grid or none:
-      // a coordinate means the same square in both surfaces only when
-      // their tiles are the same size, which the landing checks too.
-      seedProvisionalTilePictures(
-        preSurface: fresh.preLift,
-        postSurface: built,
-        coords: [
-          for (final coord in built.tiles.keys)
-            if (!fresh.whole.contains(coord)) coord,
-        ],
-        ink: fresh.ink,
-        staleScope: _floatStaleScope,
-      );
+    } else {
+      for (final tile in built.tiles.values) {
+        TilePredecessors.instance.note(tile, null);
+      }
     }
     return built;
   }
 
   /// Canvas-space centre [_floatSurface]'s pixels were materialized at.
   CanvasPoint? _floatSurfaceCentre;
-
-  /// The landed centre while a hold is up — the pending stamp is gone by
-  /// then, but the float still has to be drawn where it landed.
-  CanvasPoint? _floatHoldCentre;
 
   /// Where the float is drawn relative to its own surface: the live drag
   /// offset, plus the drift its stamp has accumulated since the surface was
@@ -3761,14 +3541,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the float wrapped widgets. It draws inside a viewport-transformed canvas
   /// now, so they meet here instead — and the drag delta comes back through
   /// the same mapping that carried it out, rotation and flip included.
-  ///
-  /// ⚠️It is applied INSIDE the hold's clip: the clip is a mask over the
-  /// base's not-yet-paintable tiles, and what has to fill it is whatever the
-  /// float shows there AFTER the offset.
   CanvasPoint get _floatDrawCanvasOffset {
     final dragged = _moveCanvasDelta;
     final from = _floatSurfaceCentre;
-    final to = _pendingLiftStamp?.center ?? _floatHoldCentre;
+    final to = _pendingLiftStamp?.center;
     if (from == null || to == null) {
       return dragged;
     }
