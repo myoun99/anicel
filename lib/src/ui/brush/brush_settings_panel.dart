@@ -533,16 +533,14 @@ class _RotationModeRow extends StatelessWidget {
             key: const ValueKey<String>('brush-tool-rotation-menu-button'),
             label: _labelFor(state.rotationMode),
             tooltip: AppText.strings.brTipRotation,
-            entriesBuilder: () => [
-              for (final candidate in BrushTipRotationMode.values)
-                PanelFlyoutItem(
-                  keyValue: 'brush-tool-rotation-${candidate.name}',
-                  label: _labelFor(candidate),
-                  checked: candidate == state.rotationMode,
-                  onSelected: () =>
-                      onChanged(state.copyWith(rotationMode: candidate)),
-                ),
-            ],
+            entriesBuilder: () => panelFlyoutChoices(
+              values: BrushTipRotationMode.values,
+              current: state.rotationMode,
+              keyPrefix: 'brush-tool-rotation-',
+              labelOf: _labelFor,
+              onPicked: (mode) =>
+                  onChanged(state.copyWith(rotationMode: mode)),
+            ),
           ),
         ],
       ),
@@ -786,16 +784,14 @@ class _DualBlendRow extends StatelessWidget {
             // state owns the appearance of one, and this button can dim
             // itself.
             enabled: enabled,
-            entriesBuilder: () => [
-              for (final candidate in SeparableBlendMode.values)
-                PanelFlyoutItem(
-                  keyValue: 'brush-tool-dual-blend-${candidate.name}',
-                  label: candidate.labelFor(language),
-                  checked: candidate == state.dualCompositeMode,
-                  onSelected: () =>
-                      onChanged(state.copyWith(dualCompositeMode: candidate)),
-                ),
-            ],
+            entriesBuilder: () => panelFlyoutChoices(
+              values: SeparableBlendMode.values,
+              current: state.dualCompositeMode,
+              keyPrefix: 'brush-tool-dual-blend-',
+              labelOf: (mode) => mode.labelFor(language),
+              onPicked: (mode) =>
+                  onChanged(state.copyWith(dualCompositeMode: mode)),
+            ),
           ),
         ],
       ),

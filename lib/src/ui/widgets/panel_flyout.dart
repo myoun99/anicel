@@ -149,6 +149,36 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   final VoidCallback? onSelected;
 }
 
+/// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'`, the
+/// one equal to [current] marked as current, and a pick reported through
+/// [onPicked].
+///
+/// ★THE VALUE PICKER, WRITTEN ONCE. Six lists spelled this loop out — the
+/// brush's tip rotation and dual blend, the strip's blend, the onion skin's
+/// step and colour mode, a row's blend — and the clone ratchet named the
+/// pair that made the count rise. What differs between them is the label and
+/// what a pick writes, which is exactly what the parameters are.
+///
+/// 🚨CURRENT IS [PanelFlyoutItem.selected], NEVER [PanelFlyoutItem.checked].
+/// All six copies said `checked`, which draws a check glyph on the current
+/// row — the mark 「선택 표시는 색상만」 forbids and the one that widens
+/// the row it lands on. `checked` is a toggle's field; none of these is one.
+List<PanelFlyoutEntry> panelFlyoutChoices<T extends Enum>({
+  required Iterable<T> values,
+  required T current,
+  required String keyPrefix,
+  required String Function(T value) labelOf,
+  required ValueChanged<T> onPicked,
+}) => [
+  for (final value in values)
+    PanelFlyoutItem(
+      keyValue: '$keyPrefix${value.name}',
+      label: labelOf(value),
+      selected: value == current,
+      onSelected: () => onPicked(value),
+    ),
+];
+
 /// Shows the shared flyout anchored under [anchorContext]'s widget and runs
 /// the picked item's [PanelFlyoutItem.onSelected] after the menu closes.
 ///

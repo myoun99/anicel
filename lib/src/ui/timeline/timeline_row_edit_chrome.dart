@@ -942,30 +942,30 @@ class _TimelineRowEditChromeLayerState
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-none',
           label: AppText.strings.tlRunEdgeNone,
-          checked: target.mode == null,
+          selected: target.mode == null,
           onSelected: () => pick(null),
         ),
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-hold',
           label: AppText.strings.tlRunEdgeHold,
-          checked: target.mode == TimelineRunEdgeMode.hold,
+          selected: target.mode == TimelineRunEdgeMode.hold,
           onSelected: () => pick(TimelineRunEdgeMode.hold),
         ),
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-repeat',
           label: AppText.strings.tlRepeat,
-          checked:
+          selected:
               target.mode == TimelineRunEdgeMode.repeat && !target.hasPattern,
           onSelected: () => pick(TimelineRunEdgeMode.repeat),
         ),
         // Listed while a selection can scope it — or one already does (the
-        // checked row doubles as the "this edge repeats a SELECTION"
+        // current row doubles as the "this edge repeats a SELECTION"
         // status).
         if (selectionScopes || target.hasPattern)
           PanelFlyoutItem(
             keyValue: 'run-edge-mode-repeat-selection',
             label: AppText.strings.tlRepeatSelection,
-            checked:
+            selected:
                 target.mode == TimelineRunEdgeMode.repeat && target.hasPattern,
             onSelected: () =>
                 pick(TimelineRunEdgeMode.repeat, scopeToSelection: true),

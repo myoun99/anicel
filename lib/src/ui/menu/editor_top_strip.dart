@@ -1083,27 +1083,25 @@ class _BlendModeControl extends StatelessWidget {
             // becomes Flexible inside it, so it ellipsizes rather than
             // overflowing the width the strip budgeted.
             expand: true,
-            entriesBuilder: () => [
-              // ONE list for every tool that composites — TS8 유저 법:
-              // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
-              // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
-              // joining `toolHasBlendMode` is all it took: the eraser's
-              // single-entry case is the `toolLocked` box above, so this
-              // list needs no per-tool filter to obey that law.
-              for (final candidate in BrushBlendMode.values)
-                PanelFlyoutItem(
-                  keyValue: 'brush-tool-blend-${candidate.name}',
-                  label: candidate.labelFor(language),
-                  checked: candidate == mode,
-                  // Writes to whichever drawer the armed tool owns — the
-                  // BRUSH's is its own shape, so the mode picked here is
-                  // the mode that brush keeps and exports. The button
-                  // never names a tool (유저 확정: 블렌드모드 선택도 툴에
-                  // 산다).
-                  onSelected: () =>
-                      brushTool.value = state.withActiveBlendMode(candidate),
-                ),
-            ],
+            // ONE list for every tool that composites — TS8 유저 법:
+            // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
+            // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
+            // joining `toolHasBlendMode` is all it took: the eraser's
+            // single-entry case is the `toolLocked` box above, so this
+            // list needs no per-tool filter to obey that law.
+            entriesBuilder: () => panelFlyoutChoices(
+              values: BrushBlendMode.values,
+              current: mode,
+              keyPrefix: 'brush-tool-blend-',
+              labelOf: (candidate) => candidate.labelFor(language),
+              // Writes to whichever drawer the armed tool owns — the
+              // BRUSH's is its own shape, so the mode picked here is
+              // the mode that brush keeps and exports. The button
+              // never names a tool (유저 확정: 블렌드모드 선택도 툴에
+              // 산다).
+              onPicked: (candidate) =>
+                  brushTool.value = state.withActiveBlendMode(candidate),
+            ),
           ),
         );
       },

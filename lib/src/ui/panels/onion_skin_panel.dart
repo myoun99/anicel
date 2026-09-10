@@ -84,19 +84,17 @@ class OnionSkinPanel extends StatelessWidget {
                     label: _stepLabel(settings.step),
                     tooltip: AppText.strings.onionPegCountHelp,
                     expand: true,
-                    entriesBuilder: () => [
-                      for (final step in OnionSkinStep.values)
-                        PanelFlyoutItem(
-                          keyValue: 'onion-step-${step.name}',
-                          label: switch (step) {
-                            OnionSkinStep.blocks => 'Blocks (drawings)',
-                            OnionSkinStep.frames => 'Frames',
-                          },
-                          checked: settings.step == step,
-                          onSelected: () =>
-                              onChanged(settings.copyWith(step: step)),
-                        ),
-                    ],
+                    entriesBuilder: () => panelFlyoutChoices(
+                      values: OnionSkinStep.values,
+                      current: settings.step,
+                      keyPrefix: 'onion-step-',
+                      labelOf: (step) => switch (step) {
+                        OnionSkinStep.blocks => 'Blocks (drawings)',
+                        OnionSkinStep.frames => 'Frames',
+                      },
+                      onPicked: (step) =>
+                          onChanged(settings.copyWith(step: step)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -106,16 +104,14 @@ class OnionSkinPanel extends StatelessWidget {
                     label: _modeLabel(settings.mode),
                     tooltip: AppText.strings.onionGhostColorHelp,
                     expand: true,
-                    entriesBuilder: () => [
-                      for (final mode in OnionSkinMode.values)
-                        PanelFlyoutItem(
-                          keyValue: 'onion-mode-${mode.name}',
-                          label: _modeLabel(mode),
-                          checked: settings.mode == mode,
-                          onSelected: () =>
-                              onChanged(settings.copyWith(mode: mode)),
-                        ),
-                    ],
+                    entriesBuilder: () => panelFlyoutChoices(
+                      values: OnionSkinMode.values,
+                      current: settings.mode,
+                      keyPrefix: 'onion-mode-',
+                      labelOf: _modeLabel,
+                      onPicked: (mode) =>
+                          onChanged(settings.copyWith(mode: mode)),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
