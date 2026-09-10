@@ -203,6 +203,10 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
   /// repeat and the move after it flipped the mode again (11 flips in one
   /// four-repeat stroke, counted by the pin with this policy removed).
   ///
+  /// ⚠️Lighter buttons do not retire this: `a57e2566` took the ink out of
+  /// the app's icon buttons, and without the policy the flip still rebuilt
+  /// 62 InkResponses and cost +30ms (2026-09-11).
+  ///
   /// ⚠️**TRADITIONAL, not touch** — a focus highlight then follows FOCUS,
   /// not the last device. Nothing in this app takes focus from a pointer
   /// (InkWells, buttons and sliders never request it on a tap; the one

@@ -48,8 +48,9 @@ void main() {
       flips,
       0,
       reason: '🚨each flip rebuilds every InkResponse on the screen — the '
-          'editor held 156, and the pen-down after Ctrl+Z paid for all of '
-          'them in the first frame of the stroke',
+          'editor held 156 (62 after the icon buttons lost their ink), and '
+          'the pen-down after Ctrl+Z paid for all of them in the first frame '
+          'of the stroke',
     );
     expect(
       FocusManager.instance.highlightMode,

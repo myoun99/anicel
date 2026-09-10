@@ -24,26 +24,33 @@ import '../helpers/panel_finders.dart';
 ///
 /// 🎯**WHAT IT FOUND: THE KEYBOARD, NOT THE UNDO.** Under the framework's
 /// automatic focus highlight strategy, Ctrl+Z switched the highlight mode to
-/// traditional and the pen-down after it switched it back to touch; every
-/// `InkResponse` on the screen (156) rebuilt on that flip, and the stroke's
-/// first frame painted 1892 render objects instead of 974 — +43ms. The arms
-/// proved it: a bare Shift press with no undo cost the same
-/// (`H30_ARM=key-only`), the rail's undo pressed with the pen flipped
-/// nothing (`H30_ARM=button-undo` — it pays a smaller bill of its own,
-/// 1321 painted), and pinning the mode brought the keyboard arm back to
-/// 974. The fix is [AnicelBinding.applyFocusHighlightPolicy];
-/// `H30_POLICY=automatic` puts the framework default back to reproduce it.
+/// traditional and the pen-down after it switched it back to touch, and
+/// every `InkResponse` on the screen rebuilt on that flip — 156 of them on
+/// 2026-09-10, when the stroke's first frame painted 1892 render objects
+/// instead of 974, +43ms. The arms proved it: a bare Shift press with no
+/// undo cost the same (`H30_ARM=key-only`), the rail's undo pressed with the
+/// pen flipped nothing (`H30_ARM=button-undo`, below), and pinning the mode
+/// brought the keyboard arm back to the control. The fix is
+/// [AnicelBinding.applyFocusHighlightPolicy]; `H30_POLICY=automatic` puts
+/// the framework default back to reproduce it.
+///
+/// ⚠️**LIGHTER BUTTONS DID NOT RETIRE THE POLICY.** `a57e2566` took the ink
+/// out of the app's icon buttons; re-measured on 2026-09-11 with
+/// `H30_POLICY=automatic`, the flip still rebuilt 62 InkResponses and
+/// painted 1717 against the control's 855 — +30ms.
 ///
 /// ⚠️**THE RAIL BUTTON ARM PAYS A BILL A REAL PEN DOES NOT.** Pressed with
-/// the pen, the rail's undo left the next stroke's first frame painting
-/// 1321 render objects — the whole tool rail, 347 of them inside its own
-/// boundary (`H30_PAINTED=1` names them: `tools-panel` and its twelve
-/// buttons). That is the pressed button's hover highlight fading out, and
-/// it lands on the pen-down only because a tap followed by a stroke
-/// teleports the test's stylus (one device, id 0). A pen that hovers to the
-/// canvas (`button-undo-hover`) or leaves the digitizer's range
-/// (`button-undo-lift`) paints 974 / 976 — the control's count,
-/// the lifted pen's 2 being the tool cursor ring coming back with it.
+/// the pen, the rail's undo leaves the next stroke's first frame painting
+/// the whole tool rail inside its own boundary (`H30_PAINTED=1` names it:
+/// `tools-panel` and its twelve buttons) — 1118 against 855 since
+/// `a57e2566`, 1321 against 974 before it. That is the pressed button's
+/// hover state clearing, and it lands on the pen-down only because a tap
+/// followed by a stroke teleports the test's stylus (one device, id 0). A
+/// pen that hovers to the canvas (`button-undo-hover`) paints the control's
+/// count, 855; one that leaves the digitizer's range (`button-undo-lift`)
+/// painted 976 against 974 before `a57e2566`, the 2 being the tool cursor
+/// ring coming back with it. The undo+redo arm's last tap lands on a redo
+/// button that is disabled by then: 857 now, 1321 before `a57e2566`.
 ///
 /// 🚨★★★**EVERY STROKE MUST BE A BRUSH STROKE, AND EVERY UNDO MUST UNDO
 /// ONE — ASSERTED, NOT HOPED.** The first version of this file started its
@@ -396,12 +403,13 @@ void main() {
     ///
     /// ⚠️A tap followed by a stroke TELEPORTS the pen: taps and strokes share
     /// one stylus device (id 0), and `MouseTracker` hover-tracks a stylus, so
-    /// the button's hover exit — and with it a repaint of the whole tool rail,
-    /// 347 render objects inside the rail's own boundary — lands on the
-    /// stroke's pen-down. A real pen leaves the button first: it HOVERS to
-    /// the canvas (`button-undo-hover`) or leaves the digitizer's range
-    /// (`button-undo-lift`, a pen that does not report hover), and the 50ms
-    /// highlight fade is over before it touches down.
+    /// the button's hover exit — and with it a repaint of the whole tool rail
+    /// inside the rail's own boundary, 263 render objects since `a57e2566`
+    /// (347 before) — lands on the stroke's pen-down. A real pen leaves the
+    /// button first: it HOVERS to the canvas (`button-undo-hover`) or leaves
+    /// the digitizer's range (`button-undo-lift`, a pen that does not report
+    /// hover), and the button's hover state has cleared before it touches
+    /// down.
     Future<void> pressRailButton(String key) async {
       final button = find.byKey(ValueKey<String>(key));
       await tester.tap(button, kind: PointerDeviceKind.stylus);
