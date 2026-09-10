@@ -129,10 +129,13 @@ class _CanvasPanelLift {
   ///
   /// Silent about coordinates it cannot answer for, deliberately: those
   /// keep the hold, which is today's behaviour and correct.
-  void _composeCommittedRegionPictures(
-    DirtyRegion landing,
-    ProvisionalInkPainter paintInk,
-  ) {
+  /// ⛔IT NO LONGER TAKES THE LANDING RECT, AND THAT IS THE FIX, NOT A
+  /// TIDY-UP (F-68). While the rect was in scope the wrong coordinate set
+  /// was one expression away — `tileCoordsIn(landing.tileRange(...))` — and
+  /// that expression is what shipped. Removing the parameter makes it
+  /// unwritable here: the only geometry this method can reach is the two
+  /// surfaces, and they answer the whole question.
+  void _composeCommittedRegionPictures(ProvisionalInkPainter paintInk) {
     final coordinator = _state.widget._editableCoordinator;
     final preSurface = _preLandingSurface;
     _preLandingSurface = null;
@@ -146,12 +149,41 @@ class _CanvasPanelLift {
         postSurface.tileSize != preSurface.tileSize) {
       return;
     }
-    final coords = tileCoordsIn(
-      landing.tileRange(tileSize: postSurface.tileSize),
-    );
+    // 🚨★★★A LANDING CHANGES TWO PLACES, AND THIS USED TO ASK ABOUT ONE
+    // (유저 2026-09-10, F-68).
+    //
+    // 「크기를 기존보다 키울때는 문제없는거같음 … 근데 문제는 기존보다 축소시
+    // 축소 바깥의 기존그림영역의 그림이 1프레임 생겼다가 사라지는듯. 심지어
+    // 안사라질때도있음. 그럴땐 다시 변형시작하거나 그림 갱신하는 동작하면
+    // 사라짐.」
+    //
+    // A transform lands pixels in one rect and EMPTIES the one it lifted
+    // them from. This asked `landing.tileRange(...)` — the destination —
+    // so the emptied coordinates got no picture of themselves, and the
+    // painter fell through to `BitmapTileImageCache.latestImageForCoord`,
+    // which is documented as answering 「with a DIFFERENT tile's picture …
+    // the reason a stroke could land and show the artwork that was there
+    // before it」. The artwork the transform had just erased was drawn back
+    // in its old place until the new empty tile's decode landed — for a
+    // frame, or for as long as the decode budget deferred it, which is
+    // 유저's 「안 사라질 때도 있음」.
+    //
+    // ⚠️ENLARGING HID IT. The destination covers the source when the
+    // transform grows, so the stale coordinates were repainted anyway. Only
+    // a shrink leaves the vacated ring outside — which is exactly where and
+    // only where 유저 saw it.
+    //
+    // 🎯THE DIFF, NOT A SECOND RECT — see [tileCoordsChangedBetween], which
+    // is where that reasoning lives now.
+    final coords = tileCoordsChangedBetween(preSurface, postSurface);
     // Under the probe because it is the one part of a confirm whose cost
     // scales with the LANDING rather than with the change: a whole-canvas
     // stamp is every tile of the cel, at a `toImageSync` each.
+    //
+    // ✏️It scales with what the landing CHANGED now, which is the landing
+    // plus whatever it emptied (F-68). A whole-canvas stamp is the same
+    // number it always was — every tile — and a small one pays for its own
+    // vacated ring, which is precisely the work that was missing.
     final activeKey = coordinator.activeFrameKey;
     labProbe(
       'confirm.composeStandIns',

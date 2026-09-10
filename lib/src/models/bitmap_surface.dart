@@ -405,3 +405,30 @@ void _validateTileEntry(TileCoord key, BitmapTile tile, BitmapSurface surface) {
     );
   }
 }
+
+/// Every coordinate whose tile [after] does not share with [before] — what
+/// an edit CHANGED, asked of the two surfaces instead of of its geometry.
+///
+/// 🚨★★★AN EDIT CAN CHANGE TWO PLACES (유저 2026-09-10, F-68). A transform
+/// lands pixels in one rect and EMPTIES the one it lifted them from, and a
+/// caller that asks 「where did it land?」 gets half the answer. The half it
+/// misses is invisible when the destination is larger — it covers the
+/// source — and shows as the pre-edit artwork left standing in the vacated
+/// ring when it is smaller, which is exactly where 유저 saw it.
+///
+/// ⛔A SECOND RECT WOULD BE A PROXY. Unioning the landing with the lift's
+/// source is one more piece of geometry to keep in step with the commit,
+/// and it still only approximates the question. The surfaces answer it
+/// outright: tiles are immutable and shared by identity, so an untouched
+/// coordinate is `identical` for free and a changed one cannot hide.
+///
+/// ⚠️Absence counts. A coordinate present in one and missing from the other
+/// changed — `tileAt` answers null there, and null is not identical to a
+/// tile.
+List<TileCoord> tileCoordsChangedBetween(
+  BitmapSurface before,
+  BitmapSurface after,
+) => [
+  for (final coord in <TileCoord>{...before.tiles.keys, ...after.tiles.keys})
+    if (!identical(before.tileAt(coord), after.tileAt(coord))) coord,
+];

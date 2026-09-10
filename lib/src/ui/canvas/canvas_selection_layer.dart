@@ -109,7 +109,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   ///
   /// [paintInk] draws in CANVAS coordinates and reports whether it drew
   /// everything that belongs in the rect it was given.
-  final void Function(DirtyRegion landing, ProvisionalInkPainter paintInk)?
+  final void Function(ProvisionalInkPainter paintInk)?
   composeCommittedRegionPictures;
 
   /// WHICH tiles of the canvas rect a session just landed into the host's
@@ -2336,7 +2336,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (compose != null) {
       final ink = _landedInkPainter(landed, landing);
       if (ink != null) {
-        compose(landing, ink);
+        compose(ink);
       }
     }
     final pendingTiles = widget.committedRegionPendingTiles;
