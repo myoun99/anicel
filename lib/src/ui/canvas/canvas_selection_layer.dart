@@ -312,8 +312,277 @@ class _ResampleKey {
   int get hashCode => Object.hash(mode, identityHashCode(source), shape);
 }
 
+/// What the resample preview asks of the layer: the open warp as the layer
+/// holds it, and a way to say the picture changed.
+abstract interface class _OpenWarp {
+  bool get mounted;
+
+  /// What a resample of the open warp belongs to — null when there is
+  /// nothing to resample (identity, or no box at all).
+  _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible});
+
+  /// The visible rect the PREVIEW clips to mid-drag; null means all of it.
+  SelectionVisibleRect? _previewVisibleRect();
+
+  /// The pending stamp through the open warp, or its [visible] window.
+  BrushDab? _resampleOpenTransform({SelectionVisibleRect? visible});
+
+  /// The decoded picture changed — repaint.
+  void _previewChanged();
+}
+
+/// The float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
+/// mesh): the newest resample of the pending stamp through the warp, and
+/// the decoded copy of the last resample that finished — the picture the
+/// screen draws.
+///
+/// Owned by the layer for the layer's lifetime, and EMPTY outside a warp
+/// session: every session end calls [discard], which is also what lets go
+/// of a whole-picture image (tens of megabytes on a big cel). The layer
+/// keeps the warp's geometry and answers for it through [_OpenWarp]; this
+/// keeps the pictures, and the coalescing that makes them.
+class _FloatResamplePreview {
+  _FloatResamplePreview(this._warp);
+
+  final _OpenWarp _warp;
+
+  /// The newest resample, keyed by what it belongs to. Computed and stored
+  /// before its decode is even requested.
+  ({_ResampleKey key, BrushDab dab})? _resampled;
+
+  /// The premultiplied copy for display, and the dab it was decoded FROM.
+  ///
+  /// Kept as a pair, and deliberately NOT compared against [_resampled]:
+  /// the newest resample is computed and stored before its decode is even
+  /// requested, so a guard demanding the two agree would hide the preview
+  /// for the whole time a decode is in flight — which is most of a drag.
+  /// The float would blink back to its untransformed self on every
+  /// pointer move.
+  ///
+  /// Showing the last COMPLETED resample instead is both the honest
+  /// picture (it is a real state the transform passed through) and the
+  /// whole point of coalescing. The last scheduling always runs, so the
+  /// picture just before Enter is always the exact one.
+  ui.Image? _image;
+  BrushDab? _imageDab;
+
+  /// The decoded picture, or null while nothing has decoded.
+  ui.Image? get image => _image;
+
+  /// The dab [image] was decoded from — where it goes, and what it is.
+  BrushDab? get imageDab => _imageDab;
+
+  /// Whether the decoded preview is what the confirm in progress lands —
+  /// the whole landed picture, or (a confirm in the middle of a handle
+  /// drag) the on-screen window of it.
+  ///
+  /// Set by [noteWhatLands] from the three CONFIRM paths, BEFORE they
+  /// replace the pending stamp: the answer stops being askable after.
+  /// Read twice, and in this order — `_clearTransform` keeps the image
+  /// instead of discarding it ([stopAtTheDecoded]), then
+  /// `_landedInkPainter` hands it to the base as the landing's own
+  /// picture. Lowered with the image, in [discard], so it can never vouch
+  /// for a picture that is gone.
+  bool _isWhatLands = false;
+  bool get isWhatLands => _isWhatLands;
+
+  void noteWhatLands() {
+    _isWhatLands = _decodedIsCurrent();
+  }
+
+  /// Whether the decoded preview belongs to the state about to be
+  /// committed: the decode has caught up to the newest resample, and that
+  /// resample is the one the current transform + viewport asks for.
+  ///
+  /// Asked BEFORE the commit mutates anything — the key includes the
+  /// pending stamp's bytes by identity, so after `_pendingLiftStamp` is
+  /// replaced there is no way to ask it any more.
+  ///
+  /// At rest this is exactly `identical(imageDab, landed)`: the commit's
+  /// key asks for no window, so a cache hit hands it the very dab the
+  /// preview decoded. Mid-drag the preview is a WINDOW (ABI 26), the
+  /// commit recomputes the whole rect, and only this can still say that
+  /// the window is current.
+  bool _decodedIsCurrent() {
+    final decoded = _imageDab;
+    final cached = _resampled;
+    return _image != null &&
+        decoded != null &&
+        cached != null &&
+        identical(decoded, cached.dab) &&
+        cached.key ==
+            _warp._currentResampleKey(visible: _warp._previewVisibleRect());
+  }
+
+  int _imageRequest = 0;
+  bool _inFlight = false;
+  bool _dirty = false;
+
+  /// Ask for the preview to catch up.
+  ///
+  /// Safe to call from inside a setState: it never calls setState itself.
+  /// The decode callback does, and that is always a later turn.
+  void schedule() {
+    _dirty = true;
+    _runIfIdle();
+  }
+
+  /// Coalescing is the whole design. One resample may be in flight; every
+  /// pointer move that arrives while it is only sets the dirty flag, and
+  /// the decode callback runs the LAST state rather than each intermediate
+  /// one. Without it a drag would queue one full-canvas resample per
+  /// pointer event and fall further behind with every frame.
+  ///
+  /// It also degrades honestly. On a machine with no native engine the
+  /// Dart reference is roughly fifteen times slower, so the preview
+  /// updates a few times a second while the handles and the ants stay at
+  /// 60 fps — and the state just before Enter is always the exact one,
+  /// because the last scheduling always runs.
+  void _runIfIdle() {
+    if (_inFlight || !_dirty) {
+      return;
+    }
+    // The PREVIEW clips to the viewport (ABI 26). A whole-picture
+    // transform is millions of pixels and the screen holds under one, so
+    // most of every pointer move used to go into pixels nobody could see.
+    // The window keeps the whole rect's pixel grid, so what is drawn is
+    // exactly what the commit will land there — measured byte for byte
+    // over 70 transforms in `resample_clip_parity_test.dart`.
+    //
+    // A selection that already fits gets no window at all, and stays on
+    // the path where the commit reuses this very buffer.
+    final visible = _warp._previewVisibleRect();
+    final key = _warp._currentResampleKey(visible: visible);
+    if (key == null) {
+      _dirty = false;
+      if (_resampled != null || _image != null) {
+        discard();
+      }
+      return;
+    }
+    if (_resampled?.key == key) {
+      _dirty = false;
+      return;
+    }
+    _dirty = false;
+    final dab = _warp._resampleOpenTransform(visible: visible);
+    final stamp = dab?.stamp;
+    if (dab == null || stamp == null) {
+      return;
+    }
+    _resampled = (key: key, dab: dab);
+    assert(_recordResampledFloat(dab));
+
+    // decodeImageFromPixels wants premultiplied bytes; the resampler
+    // produces straight alpha, which is the app's storage convention and
+    // must stay that way — premultiplying the RESULT would round the very
+    // colours Pick exists to carry through untouched. So the copy is for
+    // display only and the dab keeps its own bytes.
+    //
+    // The copy and the multiply are ONE native pass into native memory,
+    // the same fused kernel the fill overlay uses. Doing it as a Dart
+    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
+    // allocation and a second full traversal on every frame of a drag,
+    // which on a whole-picture transform is tens of megabytes per pointer
+    // move.
+    //
+    // 🪦It was written out here until 2026-09-09, ending 「The scratch is
+    // freed in the decode callback, on every path」 — which was true of
+    // every path THROUGH the callback, and the callback has a road that
+    // never reaches it. [decodeStraightRgbaImage] is the same pass with
+    // the release in a `finally`, and hand-rolling it beside it was a copy.
+    final request = ++_imageRequest;
+    _inFlight = true;
+    unawaited(() async {
+      final ui.Image? image;
+      try {
+        image = await decodedImageStillWanted(
+          decodeStraightRgbaImage(
+            rgba: stamp.rgba,
+            width: stamp.width,
+            height: stamp.height,
+          ),
+          wanted: () => _warp.mounted && request == _imageRequest,
+        );
+      } finally {
+        // 🚨★★★**THE GATE IS EXACTLY THE UPLOAD'S LIFETIME, and it is
+        // released structurally so it cannot be skipped.** A refused
+        // decode used to leave it closed for ever: the handles and the
+        // marching ants kept running at 60 fps while the transformed
+        // pixels stopped, permanently, for that widget.
+        //
+        // ⛔It is NOT folded into [_imageRequest], and the two are not two
+        // spellings of one fact. The request says WHICH ask is current;
+        // this says whether an upload is outstanding — see the throughput
+        // rule this function's header states. That is why [discard]
+        // invalidates the ask and deliberately leaves the gate CLOSED: a
+        // discarded upload is still holding a whole-picture scratch and
+        // still occupying the engine. Making one field answer both would
+        // start a second full-canvas upload on every crossing back
+        // through identity.
+        _inFlight = false;
+      }
+      if (image == null) {
+        return;
+      }
+      _image?.dispose();
+      _image = image;
+      _imageDab = dab;
+      _warp._previewChanged();
+      _runIfIdle();
+    }());
+  }
+
+  /// Lets go of everything: the cache, the decoded image, an in-flight
+  /// decode's claim on the result. Every session end, and the layer's
+  /// dispose — the image is a GPU allocation the size of the selection.
+  void discard() {
+    _imageRequest += 1; // Invalidate an in-flight decode.
+    _dirty = false;
+    _resampled = null;
+    _imageDab = null;
+    _image?.dispose();
+    _image = null;
+    _isWhatLands = false;
+    // The hook holds a whole resampled cel. Letting it outlive the session
+    // that made it would keep that buffer resident for as long as the app
+    // runs, which is the same defect in a debug build that the assert
+    // guard prevents in a release one.
+    assert(_recordResampledFloat(null));
+  }
+
+  /// Keeps the decoded image and the dab it came from, and lets go of
+  /// everything that would replace them — the cache, an in-flight decode.
+  /// The confirm that keeps the landing's own picture past the box; see
+  /// [isWhatLands].
+  void stopAtTheDecoded() {
+    _imageRequest += 1; // Invalidate an in-flight decode.
+    _dirty = false;
+    _resampled = null;
+  }
+
+  /// The cached resample, or a fresh one — what every COMMIT path calls.
+  ///
+  /// Deliberately asks for no window. The preview clips to the viewport
+  /// and its cache entry is keyed on that, so this cannot hit it: the
+  /// commit gets the whole picture or computes it, and never lands a
+  /// rectangle of one.
+  BrushDab? warped() {
+    final key = _warp._currentResampleKey();
+    if (key == null) {
+      return null;
+    }
+    final cached = _resampled;
+    if (cached != null && cached.key == key) {
+      return cached.dab;
+    }
+    return _warp._resampleOpenTransform();
+  }
+}
+
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin
+    implements _OpenWarp {
   /// The live selection, mirrored from [CanvasSelectionCommands.region]
   /// (R28-S: the channel OWNS it, so it survives this layer unmounting on
   /// a tool switch — see the channel's own note).
@@ -559,6 +828,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// The floating copy of the selected pixels (built once at drag start).
   BitmapSurface? _floatSurface;
 
+  /// The float through the open warp, resampled and decoded for the
+  /// screen — see [_FloatResamplePreview]. Empty outside a warp session.
+  late final _FloatResamplePreview _preview = _FloatResamplePreview(this);
+
   /// The drag so far in WHOLE CANVAS PIXELS — what a move can actually
   /// land on (TP5).
   ///
@@ -722,7 +995,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             oldWidget.transformOptions.meshRows !=
                 widget.transformOptions.meshRows)) {
       setState(_syncOffsetsToMode);
-      _scheduleFloatResample();
+      _preview.schedule();
       _syncAnts();
     }
     // The preview is clipped to what is on screen, so MOVING the screen
@@ -731,13 +1004,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // is neither — the box would keep painting the window it was given
     // and the picture would simply be absent outside it.
     if (_transform != null && oldWidget.viewport != widget.viewport) {
-      _scheduleFloatResample();
+      _preview.schedule();
     }
     if (oldWidget._resampleMode != widget._resampleMode) {
       // P3a: flipping the switch with a box already open re-resamples on
       // the spot. Waiting for the next drag would show the old kernel's
       // picture and land the new one's.
-      _scheduleFloatResample();
+      _preview.schedule();
     }
     // Note what is NOT here: cancelling an open polygon trace on a tool
     // change. This layer does not mount for the painting tools, so on the
@@ -821,12 +1094,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // the stamp landed back where it was LIFTED, so the transform read as
     // "did it commit or not?". Fold the affine in first: whatever the box
     // showed is what lands.
-    // P3a: `_warpedFloat` covers the quad and the mesh too, which this
+    // P3a: the preview's `warped()` covers the quad and the mesh too, which this
     // path never did — an unmount during a perspective or mesh session
     // used to land the UNwarped float.
     final pendingStamp = _pendingLiftStamp == null
         ? null
-        : (_warpedFloat() ?? _pendingLiftStamp);
+        : (_preview.warped() ?? _pendingLiftStamp);
     final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -845,7 +1118,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // this path — dispose does not close the box, it folds it — so the
     // discard has to be explicit here or every tool switch during a
     // transform leaks a full-selection image.
-    _discardFloatResample();
+    _preview.discard();
     _cursor.dispose();
     _ants.dispose();
     super.dispose();
@@ -942,7 +1215,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       _transform = edit(affine);
     });
-    _scheduleFloatResample();
+    _preview.schedule();
     _syncAnts();
   }
 
@@ -969,7 +1242,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _stashedCornerOffsets = null;
       _stashedMeshOffsets = null;
     });
-    _scheduleFloatResample();
+    _preview.schedule();
     _syncAnts();
   }
 
@@ -1552,6 +1825,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// dozens of times a second. At rest there is one resample, it computes
   /// the whole rect, and the commit reuses that very buffer — so the
   /// byte-identity path the tool has always had survives untouched.
+  @override
   SelectionVisibleRect? _previewVisibleRect() {
     if (_drag is! TransformDrag) {
       return null;
@@ -1577,6 +1851,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         : rounded;
   }
 
+  @override
   _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible}) {
     final stamp = _pendingLiftStamp?.stamp;
     if (stamp == null) {
@@ -1620,6 +1895,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The float through whatever warp is open — the ONE place the three
   /// warp functions are called from during a session.
+  @override
   BrushDab? _resampleOpenTransform({SelectionVisibleRect? visible}) {
     final pending = _pendingLiftStamp;
     if (pending == null) {
@@ -1657,211 +1933,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The cached resample, or a fresh one — what every COMMIT path calls.
-  ///
-  /// Deliberately asks for no window. The preview clips to the viewport
-  /// and its cache entry is keyed on that, so this cannot hit it: the
-  /// commit gets the whole picture or computes it, and never lands a
-  /// rectangle of one.
-  BrushDab? _warpedFloat() {
-    final key = _currentResampleKey();
-    if (key == null) {
-      return null;
-    }
-    final cached = _resampledFloat;
-    if (cached != null && cached.key == key) {
-      return cached.dab;
-    }
-    return _resampleOpenTransform();
-  }
-
-  ({_ResampleKey key, BrushDab dab})? _resampledFloat;
-
-  /// The premultiplied copy for display, and the dab it was decoded FROM.
-  ///
-  /// Kept as a pair, and deliberately NOT compared against
-  /// [_resampledFloat]: the newest resample is computed and stored before
-  /// its decode is even requested, so a guard demanding the two agree
-  /// would hide the preview for the whole time a decode is in flight —
-  /// which is most of a drag. The float would blink back to its
-  /// untransformed self on every pointer move.
-  ///
-  /// Showing the last COMPLETED resample instead is both the honest
-  /// picture (it is a real state the transform passed through) and the
-  /// whole point of coalescing. The last scheduling always runs, so the
-  /// picture just before Enter is always the exact one.
-  ui.Image? _resampledFloatImage;
-  BrushDab? _resampledImageDab;
-
-  /// Whether the decoded preview is what the confirm in progress lands —
-  /// the whole landed picture, or (a confirm in the middle of a handle
-  /// drag) the on-screen window of it.
-  ///
-  /// Set by the three CONFIRM paths from [_decodedPreviewIsCurrent], and
-  /// set BEFORE they replace the pending stamp: the answer stops being
-  /// askable after. Read twice, and in this order — [_clearTransform]
-  /// keeps the image instead of discarding it, then [_landedInkPainter]
-  /// hands it to the base as the landing's own picture. Lowered with the
-  /// image, in [_discardFloatResample], so it can never vouch for a
-  /// picture that is gone.
-  bool _previewIsWhatLands = false;
-
-  /// Whether the decoded preview belongs to the state about to be
-  /// committed: the decode has caught up to the newest resample, and that
-  /// resample is the one the current transform + viewport asks for.
-  ///
-  /// Asked BEFORE the commit mutates anything — the key includes the
-  /// pending stamp's bytes by identity, so after `_pendingLiftStamp` is
-  /// replaced there is no way to ask it any more.
-  ///
-  /// At rest this is exactly `identical(_resampledImageDab, landed)`: the
-  /// commit's key asks for no window, so a cache hit hands it the very
-  /// dab the preview decoded. Mid-drag the preview is a WINDOW (ABI 26),
-  /// the commit recomputes the whole rect, and only this can still say
-  /// that the window is current.
-  bool _decodedPreviewIsCurrent() {
-    final decoded = _resampledImageDab;
-    final cached = _resampledFloat;
-    return _resampledFloatImage != null &&
-        decoded != null &&
-        cached != null &&
-        identical(decoded, cached.dab) &&
-        cached.key == _currentResampleKey(visible: _previewVisibleRect());
-  }
-
-  int _resampleImageRequest = 0;
-  bool _resampleInFlight = false;
-  bool _resampleDirty = false;
-
-  /// Ask for the preview to catch up.
-  ///
-  /// Safe to call from inside a setState: it never calls setState itself.
-  /// The decode callback does, and that is always a later turn.
-  void _scheduleFloatResample() {
-    _resampleDirty = true;
-    _runFloatResampleIfIdle();
-  }
-
-  /// Coalescing is the whole design. One resample may be in flight; every
-  /// pointer move that arrives while it is only sets the dirty flag, and
-  /// the decode callback runs the LAST state rather than each intermediate
-  /// one. Without it a drag would queue one full-canvas resample per
-  /// pointer event and fall further behind with every frame.
-  ///
-  /// It also degrades honestly. On a machine with no native engine the
-  /// Dart reference is roughly fifteen times slower, so the preview
-  /// updates a few times a second while the handles and the ants stay at
-  /// 60 fps — and the state just before Enter is always the exact one,
-  /// because the last scheduling always runs.
-  void _runFloatResampleIfIdle() {
-    if (_resampleInFlight || !_resampleDirty) {
-      return;
-    }
-    // The PREVIEW clips to the viewport (ABI 26). A whole-picture
-    // transform is millions of pixels and the screen holds under one, so
-    // most of every pointer move used to go into pixels nobody could see.
-    // The window keeps the whole rect's pixel grid, so what is drawn is
-    // exactly what the commit will land there — measured byte for byte
-    // over 70 transforms in `resample_clip_parity_test.dart`.
-    //
-    // A selection that already fits gets no window at all, and stays on
-    // the path where the commit reuses this very buffer.
-    final visible = _previewVisibleRect();
-    final key = _currentResampleKey(visible: visible);
-    if (key == null) {
-      _resampleDirty = false;
-      if (_resampledFloat != null || _resampledFloatImage != null) {
-        _discardFloatResample();
-      }
-      return;
-    }
-    if (_resampledFloat?.key == key) {
-      _resampleDirty = false;
-      return;
-    }
-    _resampleDirty = false;
-    final dab = _resampleOpenTransform(visible: visible);
-    final stamp = dab?.stamp;
-    if (dab == null || stamp == null) {
-      return;
-    }
-    _resampledFloat = (key: key, dab: dab);
-    assert(_recordResampledFloat(dab));
-
-    // decodeImageFromPixels wants premultiplied bytes; the resampler
-    // produces straight alpha, which is the app's storage convention and
-    // must stay that way — premultiplying the RESULT would round the very
-    // colours Pick exists to carry through untouched. So the copy is for
-    // display only and the dab keeps its own bytes.
-    //
-    // The copy and the multiply are ONE native pass into native memory,
-    // the same fused kernel the fill overlay uses. Doing it as a Dart
-    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
-    // allocation and a second full traversal on every frame of a drag,
-    // which on a whole-picture transform is tens of megabytes per pointer
-    // move.
-    //
-    // 🪦It was written out here until 2026-09-09, ending 「The scratch is
-    // freed in the decode callback, on every path」 — which was true of
-    // every path THROUGH the callback, and the callback has a road that
-    // never reaches it. [decodeStraightRgbaImage] is the same pass with
-    // the release in a `finally`, and hand-rolling it beside it was a copy.
-    final request = ++_resampleImageRequest;
-    _resampleInFlight = true;
-    unawaited(() async {
-      final ui.Image? image;
-      try {
-        image = await decodedImageStillWanted(
-          decodeStraightRgbaImage(
-            rgba: stamp.rgba,
-            width: stamp.width,
-            height: stamp.height,
-          ),
-          wanted: () => mounted && request == _resampleImageRequest,
-        );
-      } finally {
-        // 🚨★★★**THE GATE IS EXACTLY THE UPLOAD'S LIFETIME, and it is
-        // released structurally so it cannot be skipped.** A refused
-        // decode used to leave it closed for ever: the handles and the
-        // marching ants kept running at 60 fps while the transformed
-        // pixels stopped, permanently, for that widget.
-        //
-        // ⛔It is NOT folded into [_resampleImageRequest], and the two are
-        // not two spellings of one fact. The request says WHICH ask is
-        // current; this says whether an upload is outstanding — see the
-        // throughput rule this function's header states. That is why
-        // [_discardFloatResample] invalidates the ask and deliberately
-        // leaves the gate CLOSED: a discarded upload is still holding a
-        // whole-picture scratch and still occupying the engine. Making
-        // one field answer both would start a second full-canvas upload
-        // on every crossing back through identity.
-        _resampleInFlight = false;
-      }
-      if (image == null) {
-        return;
-      }
-      setState(() {
-        _resampledFloatImage?.dispose();
-        _resampledFloatImage = image;
-        _resampledImageDab = dab;
-      });
-      _runFloatResampleIfIdle();
-    }());
-  }
-
-  void _discardFloatResample() {
-    _resampleImageRequest += 1; // Invalidate an in-flight decode.
-    _resampleDirty = false;
-    _resampledFloat = null;
-    _resampledImageDab = null;
-    _resampledFloatImage?.dispose();
-    _resampledFloatImage = null;
-    _previewIsWhatLands = false;
-    // The hook holds a whole resampled cel. Letting it outlive the session
-    // that made it would keep that buffer resident for as long as the app
-    // runs, which is the same defect in a debug build that the assert
-    // guard prevents in a release one.
-    assert(_recordResampledFloat(null));
+  @override
+  void _previewChanged() {
+    setState(() {});
   }
 
   /// The mesh's outer boundary ring (top row → right column → bottom row
@@ -1889,7 +1963,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// rebuilt (a rebuild re-materializes the whole stamp — 651 ms of a
   /// 2,060 ms confirm frame on a 2340×1654 cel scaled to the pasteboard —
   /// to make tiles nothing will paint), and the decoded resample stays
-  /// when it is what lands ([_previewIsWhatLands]), so that
+  /// when it is what lands (`_FloatResamplePreview.isWhatLands`), so that
   /// [_handTheLandingToTheBase] can give it to the base. A decode the
   /// confirm's synchronous recompute overtook is discarded as before: an
   /// absent picture beats a wrong one.
@@ -1900,7 +1974,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// alone refused it, and that frame lost the landing outside the four
   /// tiles the base can paint per pixel.
   void _clearTransform({bool confirming = false}) {
-    final keepPreview = confirming && _previewIsWhatLands;
+    final keepPreview = confirming && _preview.isWhatLands;
     // A drag still down when the box closes under it is NOT dropped here:
     // its release still has to lower the drag-active flags. What stops it
     // moving anything is that the box is gone, which
@@ -1921,13 +1995,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (keepPreview) {
       // The image and the dab it was decoded from stay together and stay
       // paired; only the machinery that would replace them goes.
-      _resampleImageRequest += 1; // Invalidate an in-flight decode.
-      _resampleDirty = false;
-      _resampledFloat = null;
+      _preview.stopAtTheDecoded();
       _floatSurface = null;
       return;
     }
-    _discardFloatResample();
+    _preview.discard();
     if (confirming) {
       // The landing is warped and the float is not, so the float has
       // nothing to give the base — and nothing to stay for.
@@ -2001,12 +2073,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     // R20-D3: an open mesh resamples through the triangulated warp.
-    // `_warpedFloat` returns the buffer the PREVIEW is already showing
+    // `_preview.warped()` returns the buffer the PREVIEW is already showing
     // when nothing has changed since, so Enter lands the same bytes the
     // screen held rather than a second computation that ought to match.
     final meshPoints = _meshPoints;
     if (meshPoints != null && pending != null) {
-      final warped = _warpedFloat() ?? pending;
+      final warped = _preview.warped() ?? pending;
       if (identical(warped, pending)) {
         setState(_clearTransform);
         _syncAnts();
@@ -2014,7 +2086,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _previewIsWhatLands = _decodedPreviewIsCurrent();
+      _preview.noteWhatLands();
       _recordTransformRecall(affine);
       final boundary = _meshBoundary(meshPoints);
       setState(() {
@@ -2032,7 +2104,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R20-D2: an open quad resamples through the homography instead.
     final warpCorners = _warpCorners;
     if (warpCorners != null && pending != null) {
-      final warped = _warpedFloat() ?? pending;
+      final warped = _preview.warped() ?? pending;
       if (identical(warped, pending)) {
         // Untouched (or degenerate) quad: close the box, session pends on.
         setState(_clearTransform);
@@ -2041,7 +2113,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _previewIsWhatLands = _decodedPreviewIsCurrent();
+      _preview.noteWhatLands();
       _recordTransformRecall(affine);
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
@@ -2061,10 +2133,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!affine.isIdentity && pending != null) {
       // Asked here, before anything moves: the answer stops being
       // askable the moment `_pendingLiftStamp` is replaced.
-      _previewIsWhatLands = _decodedPreviewIsCurrent();
+      _preview.noteWhatLands();
       _recordTransformRecall(affine);
       setState(() {
-        _pendingLiftStamp = _warpedFloat() ?? pending;
+        _pendingLiftStamp = _preview.warped() ?? pending;
         _setRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
         _clearTransform(confirming: true);
@@ -2156,7 +2228,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // ants and the box while the PICTURE stays where it was — and Enter
       // then lands the ink where the outline is, not where the artwork
       // was drawn. Every path that changes the open warp has to say so.
-      _scheduleFloatResample();
+      _preview.schedule();
       return;
     }
     final region = _region;
@@ -2250,7 +2322,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// The two branches are the two things a confirm can be holding:
   ///
-  ///  - the decoded RESAMPLE, when [_previewIsWhatLands]: the whole landed
+  ///  - the decoded RESAMPLE, when it is what lands
+  ///    (`_FloatResamplePreview.isWhatLands`): the whole landed
   ///    picture, or — a confirm in the middle of a handle drag — the
   ///    on-screen WINDOW of it (ABI 26). Either sits at the rect its own
   ///    dab lands in, by the one arithmetic the stamp blend uses. A window
@@ -2272,13 +2345,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ) {
     final left = landing.left;
     final top = landing.top;
-    final resampled = _resampledFloatImage;
-    final decodedFrom = _resampledImageDab;
+    final resampled = _preview.image;
+    final decodedFrom = _preview.imageDab;
     final decodedStamp = decodedFrom?.stamp;
     if (resampled != null &&
         decodedFrom != null &&
         decodedStamp != null &&
-        _previewIsWhatLands) {
+        _preview.isWhatLands) {
       final at = decodedStamp.landingRect(decodedFrom.center);
       final placement = Rect.fromLTWH(
         at.left.toDouble(),
@@ -2323,7 +2396,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _floatSurface = null;
     _floatSurfaceCentre = null;
     _floatSurfaceStamp = null;
-    _discardFloatResample();
+    _preview.discard();
   }
 
   /// What is floating right now, in canvas space — see [SelectionFloatPaint].
@@ -2407,7 +2480,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
-    _pendingLiftStamp = _warpedFloat() ?? pending;
+    _pendingLiftStamp = _preview.warped() ?? pending;
     final region = _region;
     if (region != null) {
       _setRegion(region.mapped(affine.apply));
@@ -2784,7 +2857,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// preview stopped updating" being impossible and being a future bug.
   void _updateTransformDrag(TransformDrag drag, CanvasPoint pointer) {
     _updateTransformDragGeometry(drag, pointer);
-    _scheduleFloatResample();
+    _preview.schedule();
   }
 
   void _updateTransformDragGeometry(TransformDrag drag, CanvasPoint pointer) {
@@ -3133,7 +3206,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _floatSurface = null;
     }
     if (wasTransformDrag && _transform != null) {
-      _scheduleFloatResample();
+      _preview.schedule();
     }
     if (notify && drag != null) {
       _notifyDragActive(false);
@@ -3588,8 +3661,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final warpCorners = _warpCorners;
     // The image and the dab it was decoded from travel together, so the
     // rect the preview draws into always belongs to the pixels in it.
-    final resampledImage = _resampledFloatImage;
-    final resampledDab = _resampledImageDab;
+    final resampledImage = _preview.image;
+    final resampledDab = _preview.imageDab;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
