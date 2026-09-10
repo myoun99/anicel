@@ -66,7 +66,11 @@ void main() {
     Timer.run(() => timerFired = true);
     final rgba = await backend.frame(opened.token, 1);
     final wonRace = timerFired;
-    expect(rgba, isNotNull, reason: 'the frame must actually decode');
+    // WHY a frame did not come is the native reader's own sentence — and on
+    // a machine nobody here can sit at (Codemagic's Mac), it is the only
+    // account of it there will be.
+    final why = rgba == null ? await backend.lastError() : '';
+    expect(rgba, isNotNull, reason: 'the frame must actually decode: $why');
     await backend.close(opened.token);
     return wonRace;
   }

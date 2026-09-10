@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 // Mirrors qa_video_encode.c's ABI v21 values.
 #define QA_VIDEO_CONTAINER_MP4 0
@@ -291,9 +292,22 @@ int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
                                            &pixel_buffer) != kCVReturnSuccess) {
       return 0;
     }
-    CVPixelBufferLockBaseAddress(pixel_buffer, 0);
+    // 🚨The same check the reader makes, for the same reason: on a machine
+    // without the media hardware a pool can hand back a buffer that will not
+    // lock, or one smaller than asked, and writing a whole frame into it was
+    // a segmentation fault instead of a refused frame.
+    if (CVPixelBufferLockBaseAddress(pixel_buffer, 0) != kCVReturnSuccess) {
+      CVPixelBufferRelease(pixel_buffer);
+      return 0;
+    }
     uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
     const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+    if (base == NULL || stride < (size_t)g_apple.width * 4 ||
+        CVPixelBufferGetHeight(pixel_buffer) < (size_t)g_apple.height) {
+      CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+      CVPixelBufferRelease(pixel_buffer);
+      return 0;
+    }
     // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
     // with alpha keeps the real channel and pads TRANSPARENT (a hairline
     // of paper would read as content in a compositing master).
@@ -821,17 +835,74 @@ int32_t qa_video_apple_decode_info(int32_t* stored_width,
   return 1;
 }
 
+/// A pixel format's four-character code, printable — or as hex when it is
+/// one of the numeric codes.
+static void qa_apple_format_name(OSType format, char* out, size_t capacity) {
+  const unsigned char code[4] = {
+      (unsigned char)((format >> 24) & 0xFF),
+      (unsigned char)((format >> 16) & 0xFF),
+      (unsigned char)((format >> 8) & 0xFF),
+      (unsigned char)(format & 0xFF),
+  };
+  for (int i = 0; i < 4; i += 1) {
+    if (code[i] < 0x20 || code[i] > 0x7E) {
+      snprintf(out, capacity, "0x%08X", (unsigned int)format);
+      return;
+    }
+  }
+  snprintf(out, capacity, "'%c%c%c%c'", code[0], code[1], code[2], code[3]);
+}
+
 /// Copies one BGRA pixel buffer out as straight RGBA at the stored size.
 ///
 /// ⚠️`bytesPerRow` is NOT width×4. A hardware decoder pads rows, and reading
 /// them as if it did not is the Apple twin of the stride bug the Windows
 /// path already carries a comment about.
-static void qa_apple_copy_bgra(CVPixelBufferRef buffer, uint8_t* rgba) {
-  CVPixelBufferLockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
-  const uint8_t* base = (const uint8_t*)CVPixelBufferGetBaseAddress(buffer);
-  const size_t pitch = CVPixelBufferGetBytesPerRow(buffer);
+///
+/// 🚨★★★**IT CHECKS WHAT IT WAS HANDED BEFORE IT READS A BYTE.** The BGRA the
+/// reader asks for comes out of a hardware scaler, and a machine without one
+/// hands back something else — Codemagic's Mac is a VM (`IOServiceMatching
+/// failed for: AppleM2ScalerParavirtDriver`, 2026-09-10). This used to read
+/// the STORED size out of whatever arrived: past the end of a smaller or
+/// planar buffer, or through a base address that was never mapped. The test
+/// process died of a segmentation fault and no sentence anywhere said why.
+/// A picture it cannot copy is now an error naming what it was, and the
+/// asker gets no frame — the answer every other unreadable frame gives.
+static int qa_apple_copy_bgra(CVPixelBufferRef buffer,
+                              uint8_t* rgba,
+                              char* error,
+                              int32_t error_capacity) {
   const int32_t width = g_decode_width;
   const int32_t height = g_decode_height;
+  const OSType format = CVPixelBufferGetPixelFormatType(buffer);
+  const size_t have_width = CVPixelBufferGetWidth(buffer);
+  const size_t have_height = CVPixelBufferGetHeight(buffer);
+  if (format != kCVPixelFormatType_32BGRA || CVPixelBufferIsPlanar(buffer) ||
+      have_width < (size_t)width || have_height < (size_t)height) {
+    char name[16];
+    char why[160];
+    qa_apple_format_name(format, name, sizeof name);
+    snprintf(why, sizeof why,
+             "the reader handed back a %s picture of %zux%zu, not the BGRA "
+             "%dx%d this copy reads",
+             name, have_width, have_height, (int)width, (int)height);
+    qa_apple_set_error(error, error_capacity, why);
+    return 0;
+  }
+  if (CVPixelBufferLockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly) !=
+      kCVReturnSuccess) {
+    qa_apple_set_error(error, error_capacity,
+                       "the reader's picture would not lock for reading");
+    return 0;
+  }
+  const uint8_t* base = (const uint8_t*)CVPixelBufferGetBaseAddress(buffer);
+  const size_t pitch = CVPixelBufferGetBytesPerRow(buffer);
+  if (base == NULL || pitch < (size_t)width * 4) {
+    CVPixelBufferUnlockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
+    qa_apple_set_error(error, error_capacity,
+                       "the reader's picture has no readable rows");
+    return 0;
+  }
   for (int32_t y = 0; y < height; y += 1) {
     const uint8_t* row = base + (size_t)y * pitch;
     uint8_t* out = rgba + (size_t)y * (size_t)width * 4;
@@ -843,6 +914,7 @@ static void qa_apple_copy_bgra(CVPixelBufferRef buffer, uint8_t* rgba) {
     }
   }
   CVPixelBufferUnlockBaseAddress(buffer, kCVPixelBufferLock_ReadOnly);
+  return 1;
 }
 
 /// Walks the reader forward until the picture for [index] is in hand.
@@ -908,9 +980,10 @@ int32_t qa_video_apple_decode_read(int64_t index,
                            "that frame could not be read");
         return 0;
       }
-      qa_apple_copy_bgra(pixels, rgba);
+      const int copied =
+          qa_apple_copy_bgra(pixels, rgba, error, error_capacity);
       CFRelease(sample);
-      return 1;
+      return copied;
     }
     qa_apple_set_error(error, error_capacity, "that frame could not be read");
     return 0;
