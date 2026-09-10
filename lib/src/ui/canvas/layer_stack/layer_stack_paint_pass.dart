@@ -34,6 +34,33 @@ class _LayerStackPaintPass {
 
   final _LayerStackPainter _painter;
 
+  /// How THIS view samples artwork — the T21 / D14 display law, asked once
+  /// so the walk cannot disagree with the buffer.
+  ///
+  /// 🚨★★★SAMPLING IS A PROPERTY OF THE DISPLAY, NOT OF THE LAYER (유저 확정
+  /// T21, 2026-08-13: 「줌이 정한다 — 확대는 `none`, 축소는 필터, 액티브인지는
+  /// 안 묻는다」; the whole law and its reasons are in
+  /// [filterQualityForDisplayScale]).
+  ///
+  /// ⛔The buffered route has read it since it was written. The WALK — the
+  /// fallback for a rotated/flipped view, or an active layer the flat
+  /// projection refuses — was still handing every cached image a flat
+  /// `low`, which filtered a MAGNIFIED view. Two routes sampling differently
+  /// is the T21 defect wearing a different hat: the artwork changed
+  /// depending on which one the frame happened to take.
+  ///
+  /// 🔜ONE RESIDUE, NAMED RATHER THAN FORGOTTEN. When the walk reaches the
+  /// active layer's TILES — the last fallback of the last fallback, after
+  /// the flat projection and the stand-in have both refused — those draw
+  /// through `BitmapSurfacePainter` at `none`, so a reduced view still
+  /// aliases them beside filtered neighbours. It is not a constant to
+  /// change: a tile is filtered with no neighbours to sample, so `low`
+  /// there buys a seam at every tile boundary instead. The buffered route
+  /// is what actually solves it (composite at canvas resolution, resample
+  /// once), and that route already runs everywhere it can.
+  ui.FilterQuality get _displayQuality =>
+      filterQualityForDisplayScale(displayScaleOf(_painter.viewport.zoom));
+
   // One paint's geometry: set by [paint] before the walk below reads it.
   // The page rect, the on-screen part of the pasteboard, the content the
   // display buffer must cover, and the live surface's extent read once.
@@ -614,7 +641,7 @@ class _LayerStackPaintPass {
           ),
           flat.worldRect,
           _withLayerPaint(
-            Paint()..filterQuality = ui.FilterQuality.low,
+            Paint()..filterQuality = _displayQuality,
             ridingPaint,
           ),
         );
@@ -653,11 +680,11 @@ class _LayerStackPaintPass {
             standIn.image.height.toDouble(),
           ),
           standIn.worldRect,
-          // `low`, exactly like the cached-image route this
+          // The display law, exactly like the cached-image route this
           // image was drawn by one frame ago — the handoff into
           // the stand-in must be byte-identical.
           _withLayerPaint(
-            Paint()..filterQuality = ui.FilterQuality.low,
+            Paint()..filterQuality = _displayQuality,
             ridingPaint,
           ),
         );
@@ -744,10 +771,20 @@ class _LayerStackPaintPass {
       opacity: opacity,
       blendMode: blendMode,
       effects: effects,
-      // A4: today's value, now in writing. `low` is bilinear —
-      // the same sampling every non-active layer has always
-      // taken on this route.
-      filterQuality: ui.FilterQuality.low,
+      // 🚨THE ZOOM DECIDES, HERE TOO (T21 / D14). This used to be a
+      // flat `low` — 「the same sampling every non-active layer has
+      // always taken on this route」 — and that is exactly half of
+      // the law: it filtered a REDUCED view, which is right, and it
+      // also filtered a MAGNIFIED one, which is not. 유저 확정
+      // (T21): 「줌이 정한다 — 확대는 `none`, 축소는 필터, 액티브인지는
+      // 안 묻는다」.
+      //
+      // The buffered route above has read [filterQualityForDisplayScale]
+      // since it was written; this WALK is the fallback it leaves
+      // behind (rotation/flip, or an active layer the flat projection
+      // refuses), and a fallback that samples differently is a second
+      // answer to the same question.
+      filterQuality: _displayQuality,
       // Onion-skin Colors mode: the ghost CONVERTS fully to the
       // tint — every drawn pixel takes the tint's RGB, only alpha
       // survives (TVPaint's look, R11-①; modulate kept light

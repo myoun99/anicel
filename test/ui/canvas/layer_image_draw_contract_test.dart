@@ -83,6 +83,49 @@ void main() {
     );
   });
 
+  test('🚨D14: the layer stack names NO filtering quality of its own — the '
+      'zoom decides', () {
+    // 유저 D14 답 1 (2026-08-25, re-affirmed 2026-09-10): 「축소일 때만 low
+    // 로」, with the condition attached in the same breath — 「액티브레이어랑
+    // 다른레이어랑 구분둬서 적용한다거나 그런거 너무 심하거든? 그림 자체에
+    // 통일해서 적용」. That IS T21, and [filterQualityForDisplayScale] is
+    // where it lives.
+    //
+    // ⛔THE RATCHET IS A SOURCE SCAN, not a rendered comparison, and the
+    // reason is the one this repo keeps re-learning: a behaviour test
+    // passes while two routes happen to agree, and says nothing about the
+    // third one someone adds next week. What must not come back is a
+    // filtering constant WRITTEN HERE.
+    //
+    // `none` is not filtering — it is the absence of it — and the 1:1
+    // blits in this file (patch base, scroll carry, group image) state it
+    // precisely because they resample nothing. `low`/`medium`/`high` are
+    // the ones that mean "and here is how I sample", which is the
+    // question this file no longer gets to answer.
+    final source = File(
+      'lib/src/ui/canvas/layer_stack/layer_stack_paint_pass.dart',
+    ).readAsLinesSync();
+    final found = <String>[];
+    for (var i = 0; i < source.length; i += 1) {
+      final line = source[i];
+      if (line.trimLeft().startsWith('//') || line.trimLeft().startsWith('///')) {
+        continue;
+      }
+      if (line.contains('FilterQuality.low') ||
+          line.contains('FilterQuality.medium') ||
+          line.contains('FilterQuality.high')) {
+        found.add('${i + 1}: ${line.trim()}');
+      }
+    }
+    expect(
+      found,
+      isEmpty,
+      reason: 'the walk must read _displayQuality, not name a quality — a '
+          'route that samples differently from the buffered one is T21 '
+          'wearing a different hat',
+    );
+  });
+
   test('the sampling-hiding conveniences stay out', () {
     // `paintImage` and `DecorationImage` wrap the same engine draw behind
     // their OWN quality defaults, which is the exact drift the required
@@ -134,16 +177,23 @@ void main() {
 /// class the allowlist describes — and the ratchet catching its own
 /// author on the very next canvas PR is the mechanism working.
 /// **36** at ⓔ stage 5a: +1 in canvas_layer_stack_view — the scaled
-/// buffer's active-flat blit, 1:1 src/dst at FilterQuality.low: LOW on
-/// purpose and on its own Paint, because under the scaled recording the
-/// active layer must resample under the SAME filter as every other
-/// layer's image — that uniformity is the T21 closure below the knee.
+/// buffer's active-flat blit, on its own Paint, because under the scaled
+/// recording the active layer must resample under the SAME filter as every
+/// other layer's image — that uniformity is the T21 closure below the knee.
+/// ✏️It said LOW **on purpose** until 2026-09-10 (D14). The requirement was
+/// never the constant, it was the SAMENESS: all three draws in this file
+/// now read `_LayerStackPaintPass._displayQuality`, so they still agree
+/// with each other and they also agree with the buffered route, which had
+/// been reading [filterQualityForDisplayScale] all along. A flat `low`
+/// filtered a MAGNIFIED view, which is the half of T21 the walk was still
+/// getting wrong (유저 확정: 「확대는 `none`」).
 /// **37** at the open-staleness round: +1 in canvas_layer_stack_view —
-/// the FIRST-ACTIVATION stand-in blit in the active slot, LOW on its own
-/// Paint on purpose: it is the very image the cached-image route drew one
-/// frame earlier at the same rect, and the handoff into the stand-in must
-/// be byte-identical (the same sampling the [_PaintImage] route states
-/// through drawPosedLayerImage).
+/// the FIRST-ACTIVATION stand-in blit in the active slot, on its own Paint:
+/// it is the very image the cached-image route drew one frame earlier at
+/// the same rect, and the handoff into the stand-in must be byte-identical
+/// (the same sampling the [_PaintImage] route states through
+/// drawPosedLayerImage). ✏️Also LOW until D14, and still byte-identical
+/// for the same reason: both ends read the one law.
 /// **38** at the every-node-is-a-picture round: +1 in
 /// canvas_layer_stack_view — a GROUP no longer composites through
 /// `saveLayer`; it rasterises to a `ui.Image` and blits it. That blit is
