@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -436,6 +437,63 @@ void main() {
         tester.getSemantics(find.byKey(const ValueKey('a11y-a'))).id,
         isNot(tester.getSemantics(find.byKey(const ValueKey('a11y-b'))).id),
       );
+      handle.dispose();
+    });
+
+    testWidgets('🚨a screen reader\'s "double-tap to activate" presses the '
+        'button ONCE — and a finger still presses it once, not twice', (
+      tester,
+    ) async {
+      // 유저 2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이 필요없을거같고,
+      // 스크린리더만 있으면좋을까싶은데」. The claim fires from the pointer
+      // stream, so the face's own callback was a silent no-op — and a screen
+      // reader's activation arrives as SemanticsAction.tap, not a pointer, so
+      // it called that no-op (measured: 0 on master and on the light face).
+      var fired = 0;
+      final handle = tester.ensureSemantics();
+      await pump(
+        tester,
+        AppIconButton(
+          keyValue: 'reader',
+          tooltip: 'Reader',
+          icon: const Icon(Icons.draw),
+          onPressed: () => fired += 1,
+        ),
+      );
+      final node = tester.getSemantics(
+        find.byKey(const ValueKey<String>('reader')),
+      );
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+      tester.binding.renderViews.first.owner!.semanticsOwner!.performAction(
+        node.id,
+        SemanticsAction.tap,
+      );
+      await tester.pump(const Duration(seconds: 2));
+      expect(fired, 1, reason: 'the screen reader pressed it');
+
+      await tester.tap(find.byKey(const ValueKey<String>('reader')));
+      await tester.pump(const Duration(seconds: 2));
+      expect(fired, 2, reason: 'a finger still presses it exactly once');
+      handle.dispose();
+    });
+
+    testWidgets('a DISABLED button offers a screen reader nothing to press', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pump(
+        tester,
+        const AppIconButton(
+          keyValue: 'reader-dead',
+          tooltip: 'Reader dead',
+          icon: Icon(Icons.draw),
+          onPressed: null,
+        ),
+      );
+      final node = tester.getSemantics(
+        find.byKey(const ValueKey<String>('reader-dead')),
+      );
+      expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
       handle.dispose();
     });
 

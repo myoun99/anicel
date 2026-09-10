@@ -157,7 +157,8 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 ///  * the `Tooltip` itself (so `find.byTooltip` and touch long-press are
 ///    exactly what they were);
 ///  * ONE semantics node: button / enabled / selected / focusable / focused
-///    and its tap action, with the tooltip on it;
+///    and its tap action, with the tooltip on it. The tap action FIRES —
+///    [AppIconButtonFace.onSemanticTap] (유저 2026-09-10);
 ///  * the colours, by Material's ORDER and not only its defaults: the
 ///    button's own style (the accent, on the ON state), then the app's
 ///    `IconButtonTheme`, then M3's defaults — first non-null wins, as in
@@ -263,11 +264,18 @@ class AppIconButton extends StatelessWidget {
       child: AppIconButtonFace(
         key: ValueKey<String>(keyValue),
         tooltip: tooltip,
-        // ⛔The face keeps a SILENT callback — it decides the enabled look
-        // and answers keyboard and semantic activation exactly as the
-        // Material button did (with the no-op), but a face that fired here
-        // AND from the claim would fire twice.
+        // ⛔The face keeps a SILENT callback for everything a pointer or a
+        // key can do — it decides the enabled look and answers the keyboard
+        // with the no-op, as the Material button did: a face that fired here
+        // AND from the claim would fire twice. The keyboard stays silent by
+        // 유저's call (2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이
+        // 필요없을거같고」).
         onPressed: silentPress(onPressed),
+        // 🚨…but a screen reader is not a pointer: its activation arrives as
+        // SemanticsAction.tap, which the claim never hears, so the node gets
+        // the REAL callback (「스크린리더만 있으면좋을까싶은데」). Measured
+        // before: 0 fires, on master and on the light face alike.
+        onSemanticTap: onPressed,
         isSelected: isSelected,
         minWidth: onGrid(size.minWidth),
         maxWidth: onGrid(size.maxWidth),
@@ -284,8 +292,10 @@ class AppIconButton extends StatelessWidget {
 }
 
 /// The part of an [AppIconButton] you can see and hear: its box, its glyph,
-/// its tooltip, its semantics node and the hover / pressed / focus layer —
-/// and nothing that fires.
+/// its tooltip, its semantics node and the hover / pressed / focus layer.
+/// A press is the claim's to fire, never this; the one thing it does fire
+/// is a screen reader's activation ([onSemanticTap]), which no pointer
+/// carries.
 ///
 /// Public because it is what [AppIconButton.keyValue] names: a test that
 /// finds a button by its key finds THIS, exactly where the Material
@@ -295,6 +305,7 @@ class AppIconButtonFace extends StatefulWidget {
     super.key,
     required this.tooltip,
     required this.onPressed,
+    required this.onSemanticTap,
     required this.isSelected,
     required this.minWidth,
     required this.maxWidth,
@@ -308,6 +319,12 @@ class AppIconButtonFace extends StatefulWidget {
 
   /// The SILENT callback [AppIconButton] hands down: non-null means enabled.
   final VoidCallback? onPressed;
+
+  /// What a screen reader's activation calls: the REAL callback. Its
+  /// "double-tap to activate" arrives as `SemanticsAction.tap`, not as a
+  /// pointer, so the claim never hears it and nothing fires twice. Null
+  /// exactly when [onPressed] is.
+  final VoidCallback? onSemanticTap;
   final bool isSelected;
   final double minWidth;
   final double maxWidth;
@@ -492,7 +509,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
       selected: widget.isSelected,
       focusable: enabled,
       focused: _hasFocus,
-      onTap: widget.onPressed,
+      onTap: widget.onSemanticTap,
       child: Tooltip(
         message: widget.tooltip,
         child: Actions(
