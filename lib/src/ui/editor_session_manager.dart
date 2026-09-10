@@ -1602,6 +1602,7 @@ class EditorSessionManager extends ChangeNotifier
   /// questions — does not apply here: the difference becomes the ARGUMENT,
   /// so there is no flag and nothing to read twice.
   void _stepHistory(void Function() move) {
+    final documentBefore = repository.currentProject;
     final beforeLayers = List<Layer>.of(
       activeCutOrNull?.layers ?? const <Layer>[],
     );
@@ -1611,6 +1612,47 @@ class EditorSessionManager extends ChangeNotifier
         activeCutControllers.timelineController.currentFrameIndex;
 
     move();
+    // 🚨★★★**THE TIDY-UP FOLLOWS THE DOCUMENT, NOT THE KEYPRESS.** Every
+    // step used to run [refreshAfterCutCommand] — which DROPS THE COPIED
+    // FRAME and CLEARS THE FRAME-RANGE SELECTION, rebuilds the cut
+    // controllers and wakes every session listener. That is what a CUT
+    // command owes. Pressing Ctrl+Z after a brush stroke owes none of it,
+    // and paid all of it: the user's clipboard and their band went away
+    // because of an edit that moved no row.
+    //
+    // ⚠️And the forward direction never did this. `HistoryManager`'s own
+    // doc says 「brush strokes execute here WITHOUT a session notify, so
+    // nothing else would ever tell them a stroke landed」 — the buttons
+    // subscribe to the history, the canvas repaints off the invalidation
+    // the commit sends. Undo is the same edit run backwards and owed the
+    // same silence; it was the one direction that shouted.
+    //
+    // 🔬**THE WHOLE FAMILY, not the symptom.** Of the 53 command classes
+    // that enter history, exactly five never touch the repository:
+    // `BrushStrokeHistoryCommand`, `BrushLiftMoveHistoryCommand`,
+    // `CelPixelOverwriteCommand`, `ToggleIdInSetCommand` and
+    // `RekeyBrushFramesCommand` — and the last is only ever composed INTO a
+    // step that also moves layers, so its group does move the document and
+    // does get the tidy-up. One question answers all five.
+    //
+    // ⚠️`identical` on the PROJECT is that question exactly, not a proxy
+    // for it: `ProjectRepository` swaps the whole immutable project on
+    // every structural edit ([ProjectRepository.replaceProject],
+    // [ProjectRepository.updateProject]), and the five above write the
+    // brush store or a `ValueNotifier` instead. Unchanged identity means no
+    // cut, layer, frame or attribute moved — so the layer-preference walk
+    // has nothing to prefer and the controller rebuild nothing to rebuild.
+    //
+    // ⛔**IT IS NOT A PERFORMANCE FIX, and was measured not to be one.**
+    // Written while chasing H30 (유저 실기 2026-09-10: 「그리다가 언두하고
+    // 빠르게 다음 스트로크 그리면 렉이 심하거든?」) on the theory that this
+    // notify was the hitch. With this early return in place that stroke
+    // still dirties 33 `LayoutBuilder`s against a control's 12 and still
+    // paints 2011 render objects against 877 — unchanged to the object.
+    // H30 has its own card and its own benchmark.
+    if (identical(documentBefore, repository.currentProject)) {
+      return;
+    }
     final preferredLayerId = preferredLayerAfterLayerListChange(
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
