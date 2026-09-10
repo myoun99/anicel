@@ -116,6 +116,12 @@ jobs:
           MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
+          # Whichever username the certificates host wants on the other
+          # half of the basic-auth pair. GitHub wanted `x-access-token`;
+          # GitLab, where the identity lives now, takes `oauth2` with the
+          # token as the password. Unset falls back to `oauth2` below, so
+          # a host move stays a field edit — MATCH_GIT_URL already is one.
+          MATCH_GIT_USER: ${{ secrets.MATCH_GIT_USER }}
           # Non-interactive: a prompt on a runner is a 6-hour hang.
           FASTLANE_SKIP_UPDATE_CHECK: '1'
           FASTLANE_HIDE_CHANGELOG: '1'
@@ -126,7 +132,8 @@ jobs:
           # tr strips the wrap GNU base64 would add; a newline in the
           # header is an auth failure that reads like a wrong token.
           MATCH_GIT_BASIC_AUTHORIZATION=$(
-            printf 'x-access-token:%s' "$MATCH_GIT_TOKEN" | base64 | tr -d '\n'
+            printf '%s:%s' "${MATCH_GIT_USER:-oauth2}" "$MATCH_GIT_TOKEN" \
+              | base64 | tr -d '\n'
           )
           export MATCH_GIT_BASIC_AUTHORIZATION
           bundle exec fastlane beta

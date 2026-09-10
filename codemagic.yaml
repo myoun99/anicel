@@ -1,0 +1,127 @@
+# TestFlight from Codemagic — the same build `.github/workflows/testflight.yml`
+# makes, on a macOS machine that is not GitHub's.
+#
+# WHY THIS FILE EXISTS. The GitHub account was suspended on 2026-09-01 and
+# Actions went with it, so there is no Mac in the pipeline any more and no
+# build has reached the iPad since. This is the second Mac, not a replacement:
+# when the account comes back both point at the SAME signing identity and
+# either can ship.
+#
+# 🚨IT CALLS THE SAME FASTLANE LANE. `ios/fastlane/Fastfile` is untouched and
+# is the only place that knows how to sign and upload. A second description of
+# signing living here is exactly the copy this project refuses — the steps
+# below stop at "run the lane".
+#
+# ⚠️THE SIGNING IDENTITY MOVED. match kept it in a private GitHub repository,
+# which the suspension locked away along with everything else; the certificate
+# and its private key cannot be read, so a new pair lives in a private GitLab
+# repository now. `MATCH_GIT_URL` was already a secret rather than a literal,
+# so nothing in the Fastfile changed — only the value.
+#
+# ⛔NO `triggering:` SECTION, ON PURPOSE. Without one this workflow runs only
+# when somebody starts it (UI or API), which is what the GitHub workflow's
+# `workflow_dispatch` buys. A build costs a TestFlight slot and macOS minutes,
+# so it runs when somebody wants to hold the app.
+
+workflows:
+  ios-testflight:
+    name: TestFlight (iOS)
+    instance_type: mac_mini_m2
+    # Long enough for a cold pod install and the native core, short enough
+    # that a stalled build does not sit for an hour.
+    max_build_duration: 45
+
+    environment:
+      flutter: 3.44.2
+      xcode: latest
+      cocoapods: default
+      groups:
+        # Apple: ASC_KEY_ID · ASC_ISSUER_ID · ASC_KEY_CONTENT · FASTLANE_TEAM_ID
+        - appstore
+        # The signing repository: MATCH_GIT_URL · MATCH_PASSWORD · MATCH_GIT_TOKEN
+        - match
+      vars:
+        # match clones over HTTPS. GitLab takes `oauth2` with the token as the
+        # password; GitHub wanted `x-access-token`. Naming it here keeps the
+        # Fastfile and both CI files ignorant of which host they are on —
+        # testflight.yml reads the same name.
+        MATCH_GIT_USER: oauth2
+
+    scripts:
+      - name: Flutter dependencies
+        script: flutter pub get
+
+      # The Apple-side correctness check stays ON the release path, exactly
+      # where testflight.yml put it. A check the shipping path cannot skip is
+      # worth more than a thorough one somewhere else — the nightly answers
+      # the same question, but a build is not a nightly.
+      - name: Native core (Apple clang)
+        script: |
+          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ci-apple --config Release
+
+      - name: Parity against the Apple-built engine
+        script: |
+          set -euo pipefail
+          # ⛔EXPORTED HERE, not in a per-step `environment:` block: that key
+          # is a GitHub Actions shape and Codemagic would ignore it silently.
+          # An ignored QA_REQUIRE_NATIVE is the one failure this step cannot
+          # report — the suite would SKIP and still print "All tests passed".
+          export QA_ENGINE_PATH="$CM_BUILD_DIR/build/ci-apple/libqa_engine.dylib"
+          # A missing engine must FAIL rather than skip: a skipped parity suite
+          # and a passing one look identical in a summary, which is exactly how
+          # #614 hid for five rounds.
+          export QA_REQUIRE_NATIVE=1
+          # `|| true` because grep exits 1 on no matches, and under `set -e`
+          # that would kill the step before the guard below could say why.
+          list="$CM_BUILD_DIR/build/parity.txt"
+          grep -rl 'native_engine_path\|qa_engine_abi\|QaNativeEngine\|src/native/' \
+            test --include='*_test.dart' | sort > "$list" || true
+          count=$(wc -l < "$list")
+          echo "parity subset: $count of $(find test -name '*_test.dart' | wc -l) files"
+          # A selector that matched nothing would sail through green — the one
+          # way this check could quietly stop checking.
+          if [ "$count" -eq 0 ]; then
+            echo "no parity tests selected"
+            exit 1
+          fi
+          xargs flutter test --no-pub < "$list"
+
+      # Flutter's own artifacts first. fastlane's build_app then archives and
+      # signs what this produced — signing here would be thrown away.
+      #
+      # ⚠️THE OFFSET IS NOT DECORATION. CFBundleVersion is
+      # $(FLUTTER_BUILD_NUMBER) and App Store Connect refuses a build number it
+      # has already seen for this version. GitHub's runs numbered the builds
+      # that are already up there; Codemagic starts its own count at 1 and
+      # would collide with every one of them. Adding 1000 puts this run above
+      # anything Actions can have shipped, and both counters still only climb.
+      - name: Build Flutter iOS artifacts
+        script: |
+          flutter build ios --release --no-codesign \
+            --build-number=$((BUILD_NUMBER + 1000))
+
+      - name: Build and upload
+        script: |
+          cd ios
+          bundle install
+          # The token has to arrive the way git expects it — base64 of
+          # "user:token". Built here rather than stored pre-encoded, so the
+          # secret stays a plain token that can be rotated in one field.
+          # tr strips the wrap GNU base64 would add; a newline in the header
+          # is an auth failure that reads like a wrong token.
+          MATCH_GIT_BASIC_AUTHORIZATION=$(
+            printf '%s:%s' "${MATCH_GIT_USER:-oauth2}" "$MATCH_GIT_TOKEN" \
+              | base64 | tr -d '\n'
+          )
+          export MATCH_GIT_BASIC_AUTHORIZATION
+          # Non-interactive: a prompt on a runner is a 45-minute hang.
+          export FASTLANE_SKIP_UPDATE_CHECK=1
+          export FASTLANE_HIDE_CHANGELOG=1
+          bundle exec fastlane beta
+
+    artifacts:
+      - ios/build/*.ipa
+      # Where a signing failure explains itself. They outlive the machine
+      # only if we say so.
+      - /Users/builder/Library/Logs/gym/*.log
