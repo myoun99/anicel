@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'command.dart';
 import 'memory_pressure_budget.dart';
+import 'persistence/volatile_scratch_files.dart';
 
 /// The undo byte budget for THIS machine — physical RAM/8, clamped.
 ///
@@ -109,7 +110,20 @@ class HistoryManager extends ChangeNotifier {
   /// pressure lowers it separately and is never raised by that act.
   int get byteBudget => _budget.bytes;
 
-  set byteBudget(int value) => _budget.bytes = value;
+  /// 🚨★★★**AND THE PARKING ROOM'S CEILING, FROM THIS ONE CALL.** A
+  /// parked payload is this budget spent somewhere else — it is in the
+  /// 휘발성 room precisely because RAM had no space for it — so the room
+  /// may weigh what the stack was allowed to weigh, and the two numbers
+  /// must not be settable apart. 유저 확정 2026-09-10.
+  ///
+  /// ⛔Pressure does NOT come through here. [_budget] alone drops when the
+  /// OS says RAM is tight; the room is not RAM, and shedding history to
+  /// relieve memory it was never holding would be the ceiling answering a
+  /// question that was not asked of it.
+  set byteBudget(int value) {
+    _budget.bytes = value;
+    VolatileScratchFiles.ceilingBytes = value;
+  }
 
   /// Bytes the snapshot entries currently report — BOTH stacks
   /// (accumulation-guard oracle).

@@ -41,7 +41,20 @@ void main() {
       'entry is lost, and every undo still has its picture', () async {
     final coordinator = BrushCanvasFixture.createCoordinator();
     final key = coordinator.activeFrameKey;
-    final history = HistoryManager()..byteBudget = 1;
+    // 🚨★★★**SMALL FOR RAM, BUT NOT SMALLER THAN THE ROOM NEEDS.** One
+    // number is both the RAM budget and the 휘발성 room's ceiling, and it
+    // is set from one call so the two cannot drift — so the fixture value
+    // that used to live here (1 byte, meaning 「smaller than any entry」)
+    // now ALSO says 「and the disk may hold nothing」. Under that, shedding
+    // is the correct answer and this test would be asserting against the
+    // law it belongs to.
+    //
+    // Measured on this fixture (2026-09-10): the five confirms retain
+    // 192 KiB of pixels and park to 1,318 bytes of compressed files. 16
+    // KiB is far below the one and far above the other, which is the same
+    // relationship a real machine has — hundreds of megabytes of budget
+    // against parked payloads that measure kilobytes.
+    final history = HistoryManager()..byteBudget = 16 * 1024;
 
     // ⚠️A confirm that CREATES its tiles owes nothing — undoing it
     // restores their absence, and no snapshot is keeping them alive. So
