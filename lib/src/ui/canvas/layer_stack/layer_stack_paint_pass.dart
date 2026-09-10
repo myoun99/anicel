@@ -626,6 +626,10 @@ class _LayerStackPaintPass {
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
       final flat = _painter._activeFlatForRecording;
       if (flat != null) {
+        assert(() {
+          debugActiveSlotDraw = ActiveSlotDraw.flat;
+          return true;
+        }());
         // ⓔ 5단계: under the scaled recording the active layer is
         // ONE image like every other layer, resampled by the
         // recording's transform under the SAME filter — that
@@ -647,6 +651,10 @@ class _LayerStackPaintPass {
         );
       } else if (standIn != null &&
           standIn.shouldStandInFor(_painter.activeSurfacePainter!)) {
+        assert(() {
+          debugActiveSlotDraw = ActiveSlotDraw.standIn;
+          return true;
+        }());
         // The FIRST-ACTIVATION swap window: while any of the
         // promoted surface's tiles is still undecoded, the walk
         // could show only its budgets' worth and leave the rest
@@ -693,6 +701,10 @@ class _LayerStackPaintPass {
         // skipped this frame, so its decode starts must not be.
         _painter.activeSurfacePainter!.startPendingDecodes(into);
       } else {
+        assert(() {
+          debugActiveSlotDraw = ActiveSlotDraw.tiles;
+          return true;
+        }());
         _painter.activeSurfacePainter!.paintContentInto(
           into,
           layerPaint: ridingPaint,

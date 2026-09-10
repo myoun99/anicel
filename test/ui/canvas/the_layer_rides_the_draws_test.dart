@@ -356,16 +356,24 @@ void main() {
     // — that is the point — so a pixel comparison cannot say WHICH ran.
     const canvasSize = CanvasSize(width: 64, height: 64);
 
+    // 🚨ONE TILE OBJECT FOR EVERY PAINT, and it is what makes the FLAT
+    // route reachable at all (F-67). `BitmapTileImageCache` keys on the
+    // tile OBJECT, and `ActiveLayerFlatProjection.buildOrNull` reads the
+    // SINGLETON: a fixture that minted a fresh tile per paint left the
+    // singleton empty, the projection refused, and every comparison
+    // silently took the tile route — which the probe now says out loud.
+    var sharedTile = BitmapTile.blank(size: 16);
+    sharedTile = writeRgbaColorToBitmapTile(
+      tile: sharedTile,
+      x: 4,
+      y: 4,
+      color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
+    );
+
     BitmapSurfacePainter inkedPainter({
       ValueListenable<CutStampPreview?>? stampPreview,
     }) {
-      var tile = BitmapTile.blank(size: 16);
-      tile = writeRgbaColorToBitmapTile(
-        tile: tile,
-        x: 4,
-        y: 4,
-        color: RgbaColor(r: 0, g: 0, b: 255, a: 255),
-      );
+      final tile = sharedTile;
       return BitmapSurfacePainter(
         surface: BitmapSurface(
           canvasSize: canvasSize,
@@ -549,6 +557,16 @@ void main() {
           ghost ? isFalse : isTrue,
           reason: 'fixture premise: the ghost is what flips the route',
         );
+        // 🚨AND WHICH DRAW IT WAS. The active layer reaches the screen three
+        // ways and only one of them samples bilinearly; a comparison that
+        // silently took the tile route proves the half the painter's own
+        // measurement already proved. The first version of this test did
+        // exactly that and nothing in the result could say so.
+        expect(
+          debugActiveSlotDraw,
+          isNotNull,
+          reason: 'the active slot painted nothing at all',
+        );
         final painted = tester
             .widgetList<CustomPaint>(
               find.descendant(
@@ -584,8 +602,39 @@ void main() {
       // touching the thing it was written to ask about.
       MeasurementMode.kneeAtOne.value = true;
       addTearDown(() => MeasurementMode.kneeAtOne.value = false);
+      // ⛔AND THE DEVICE RATIO IS 1, WHICH IS NOT COSMETIC. The knee gate is
+      // `zoom · dpr < 1`, and a widget test's view reports 3 — so at zoom
+      // 0.63 the product is 1.89, the scaled recording never runs, and the
+      // paint falls to the s=1 buffer whose active slot draws TILES. That
+      // is exactly what the probe reported before this line existed, and it
+      // is why a comparison can look reduced while sampling like a
+      // magnified one.
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      // ⛔AND THE TILE HAS TO BE DECODED IN THE SINGLETON. The flat
+      // projection reads `BitmapTileImageCache.instance` and refuses when an
+      // operand is missing; a refusal falls all the way back to the walk,
+      // and the walk draws tiles. `runAsync` because the upload lands on the
+      // engine, which a widget test's fake clock never completes.
+      await tester.runAsync(() async {
+        BitmapTileImageCache.instance.ensureDecoded(
+          (coord: TileCoord(x: 0, y: 0), tile: sharedTile),
+        );
+        while (BitmapTileImageCache.instance.imageFor(sharedTile) == null) {
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+        }
+      });
+      expect(
+        BitmapTileImageCache.instance.imageFor(sharedTile),
+        isNotNull,
+        reason: 'fixture premise: the flat projection refuses outright when '
+            'an operand has no decoded image, and it reads the SINGLETON',
+      );
+      debugActiveSlotDraw = null;
       final rode = await capture(ghost: false, disableBuffer: disableBuffer);
+      final rodeDraw = debugActiveSlotDraw;
       final buffered = await capture(ghost: true, disableBuffer: disableBuffer);
+      final bufferedDraw = debugActiveSlotDraw;
 
       // ⛔ONLY THE PIXELS NEITHER ROUTE WAS ASKED TO CHANGE. The ghost sits
       // at canvas (0,0,4,4); at 0.63 that is a handful of screen pixels in
@@ -617,26 +666,49 @@ void main() {
             'is a half-pixel that appears when the route flips at pen down '
             'and disappears when it flips back. First: $first',
       );
-      }
 
-      // 📏WHAT THIS ANSWERED, AND WHAT IT DID NOT (2026-09-10).
+      // 📏WHICH DRAW THIS COMPARED — the question the first version could
+      // not answer (F-67). The active layer reaches the screen three ways
+      // and only one of them samples BILINEARLY; a comparison that took the
+      // tile route proves the half the painter's own measurement already
+      // proved, and nothing in a green could say which it was.
       //
-      // It PASSED, in all four combinations. So the route flip does not
-      // move these pixels, and F-67's leading candidate is not confirmed.
+      // ⛔BOTH RENDERS MUST HAVE TAKEN THE SAME ARM. Otherwise this compares
+      // two rasterizers rather than two routes, and agreeing would be luck.
+      expect(
+        rodeDraw,
+        bufferedDraw,
+        reason: 'the two renders took different draws in the active slot '
+            '($rodeDraw vs $bufferedDraw) — that is a comparison of two '
+            'rasterizers, not of the two routes',
+      );
+      // 📏WHAT THE PROBE SAID, AND WHAT IS STILL OPEN (2026-09-10).
       //
-      // ⛔It is NOT proof that the flip is innocent, and saying so would be
-      // the ninth entry in this repo's list of greens that measured
-      // nothing. What is unverified is whether the fixture reaches the one
-      // draw in the active slot that samples BILINEARLY — the flat
-      // projection blit. `_activeFlatForRecording` is 「null on every s=1
-      // path」, the knee is forced on above to give the scaled recording a
-      // chance to run, and whether the projection then built for this
-      // painter is not observable from out here. The tile route, which
-      // this certainly does exercise, was already pinned by the
-      // comparisons above.
+      // It says **tiles** — so every "0 pixels differ" above is about the
+      // route the painter's own byte-parity measurement already covers, and
+      // F-67's actual suspect, the FLAT projection blit (the one draw in
+      // this slot that samples bilinearly), has still never been compared.
+      // The earlier round could not tell; that is what this probe is for.
       //
-      // 🔜So the next move on F-67 is a probe that says whether the flat
-      // blit executed, not another pixel comparison.
+      // ⛔RULED OUT ON THE WAY, so the next round does not re-walk them:
+      //  · the tile IS decoded in the SINGLETON the projection reads — the
+      //    fixture used to mint a fresh tile per paint, which left the
+      //    cache empty and the projection refusing outright;
+      //  · the knee is forced on, and the view's ratio is forced to 1 —
+      //    a widget test reports 3, so `zoom · dpr` was 1.89 and the gate
+      //    (`< 1`) never opened at all.
+      // Neither was enough, so something further along still refuses.
+      //
+      // ⚠️THE ASSERTION IS THE ONE THING THAT IS TRUE: both renders must
+      // take the SAME arm, or the comparison is between two rasterizers
+      // rather than two routes and agreeing would be luck. Pinning `flat`
+      // here would pin a wish.
+      expect(
+        rodeDraw,
+        isNotNull,
+        reason: 'nothing painted in the active slot at all',
+      );
+      }
     });
 
     testWidgets('opacity alone rides the draws', (tester) async {

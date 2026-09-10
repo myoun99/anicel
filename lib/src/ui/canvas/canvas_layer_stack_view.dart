@@ -1305,6 +1305,40 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
 @visibleForTesting
 bool? debugLiveLayerRodeTheDraws;
 
+/// Which draw the active slot actually used, for the frame just painted —
+/// null until one paints.
+///
+/// 🚨★★★A COMPARISON CANNOT SAY WHICH DRAW IT COMPARED (F-67, 2026-09-10).
+/// The active layer has three ways to reach the screen and they do not
+/// sample alike: the FLAT projection is one image drawn through the display
+/// filter (bilinear at a reduced zoom), the STAND-IN likewise, and TILES go
+/// through `BitmapSurfacePainter` at `FilterQuality.none`. The painter's own
+/// byte-parity measurement covers the tile paint and names its limit —
+/// 「Antialiased draws do NOT agree」 — so a pixel comparison that silently
+/// took the tile route proves the half that was already proven.
+///
+/// That is exactly what happened: `the_layer_rides_the_draws_test`'s first
+/// F-67 comparison passed without touching the flat blit, and nothing in
+/// the result could say so. This is the answer to that.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+ActiveSlotDraw? debugActiveSlotDraw;
+
+/// The three ways the active layer's own content reaches a paint.
+@visibleForTesting
+enum ActiveSlotDraw {
+  /// The flat projection: one image, resampled by the CTM under the
+  /// display filter. ⚠️THE ONE THAT SAMPLES BILINEARLY at a reduced zoom.
+  flat,
+
+  /// The first-activation stand-in, same shape as [flat].
+  standIn,
+
+  /// The surface painter's own tiles, at `FilterQuality.none`.
+  tiles,
+}
+
 Paint _withLayerPaint(Paint draw, Paint? layer) {
   if (layer == null) {
     return draw;
