@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../services/straight_rgba_image.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/cut_piece.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -122,12 +123,25 @@ class _CutPieceImageHostState extends State<CutPieceImageHost> {
 /// (2치 보존) and the canvas draws its own tiles with `FilterQuality.none`,
 /// so this is what "원본그대로" means here: magnify to the same hard pixels
 /// the commit will put down, rather than a smoothed guess at them.
+/// [blendMode] is how the pixels COMPOSITE, and it follows the same split
+/// again: the cursor ghost stands for a landing, so it draws with the
+/// stamp's own composite, while the panel thumbnail stands for what is HELD
+/// and keeps the plain default. 유저 2026-09-10 (F-69): 「잘라내기툴의 스탬프,
+/// 불투명도같은건 커서 프리뷰에 반영되는데 합성모드가 반영안되고있음」.
+///
+/// ⛔IT IS A RAW `ui.BlendMode`, AND THE CALLER DECIDES IT. Which mode a
+/// preview of a landing draws with is the stroke overlay's law, not this
+/// helper's — `_SurfacePaintPass._livePreviewPaint` owns it and the ghost
+/// reads it from there (유저: 「같은 로직 그대로 재사용하면 확실할거같은데」).
+/// Taking a [BrushBlendMode] here would be this file answering that
+/// question a second time.
 void paintCutPiece(
   Canvas canvas,
   Rect target,
   CutPiece piece,
   ui.Image? image, {
   double opacity = 1,
+  ui.BlendMode blendMode = ui.BlendMode.srcOver,
 }) {
   if (image == null || target.isEmpty) {
     return;
@@ -161,9 +175,15 @@ void paintCutPiece(
   // the BUFFER (「Null when the buffer carries it, so nothing applies
   // twice」). So the ghost inherits the layer for free, and applying it
   // again here would darken it against every other pixel of the same row.
+  //
+  // 🚨AND THE STAMP'S OWN BLEND RIDES THE SAME PAINT (F-69). The two halves
+  // of "what would land" are the tool's opacity and the tool's composite,
+  // and only one of them was reaching the ghost. The caller says which
+  // mode — see [blendMode] — so this stays one draw with one paint.
   final paint = Paint()
     ..filterQuality = FilterQuality.none
     ..isAntiAlias = false
+    ..blendMode = blendMode
     ..color = const Color(0xFF000000).withValues(alpha: opacity.clamp(0, 1));
   if (!piece.flipHorizontal && !piece.flipVertical) {
     canvas.drawImageRect(
@@ -279,6 +299,7 @@ class CutStampPreview {
     required this.image,
     required this.canvasRect,
     required this.opacity,
+    required this.blendMode,
   });
 
   final CutPiece piece;
@@ -297,6 +318,12 @@ class CutStampPreview {
   /// The stamp tool's opacity: what a click would press with.
   final double opacity;
 
+  /// The stamp tool's own composite — the other half of "what a click would
+  /// press with" (F-69). ⛔The TOOL's, not the layer's: the layer is applied
+  /// once to the buffer this ghost is drawn into, which is why the ghost
+  /// inherits it for free and must not apply it again (F-33, above).
+  final BrushBlendMode blendMode;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -304,7 +331,8 @@ class CutStampPreview {
           identical(other.piece, piece) &&
           identical(other.image, image) &&
           other.canvasRect == canvasRect &&
-          other.opacity == opacity;
+          other.opacity == opacity &&
+          other.blendMode == blendMode;
 
   @override
   int get hashCode => Object.hash(
@@ -312,6 +340,7 @@ class CutStampPreview {
     identityHashCode(image),
     canvasRect,
     opacity,
+    blendMode,
   );
 }
 

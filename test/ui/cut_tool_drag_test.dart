@@ -579,6 +579,53 @@ void main() {
     );
   });
 
+  testWidgets('🐛유저 F-69: the cursor preview wears the stamp BLEND too', (
+    tester,
+  ) async {
+    // 「잘라내기툴의 스탬프, 불투명도같은건 커서 프리뷰에 반영되는데
+    // 합성모드가 반영안되고있음」.
+    //
+    // 🚨THE PIN IS BESIDE THE OPACITY ONE ON PURPOSE. They are the two
+    // halves of "what a click would press with", and only one of them was
+    // making the trip. A ghost that shows the strength but not the
+    // composite is not a preview of anything the click will do.
+    final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
+    await env.setTool(
+      CanvasTool.cutStamp,
+      stampBlend: BrushBlendMode.multiply,
+    );
+    env.slot.hold(
+      CutPiece(
+        image: BrushStampImage(
+          id: 'p',
+          width: 20,
+          height: 12,
+          rgba: Uint8List(20 * 12 * 4)..fillRange(0, 20 * 12 * 4, 200),
+        ),
+        originLeft: 4,
+        originTop: 6,
+      ),
+    );
+    await tester.pump();
+
+    final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: origin + const Offset(120, 160));
+    await tester.pump();
+    await gesture.moveTo(origin + const Offset(120, 160));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<CutStampPreviewPublisher>(
+            find.byType(CutStampPreviewPublisher),
+          )
+          .preview!
+          .blendMode,
+      BrushBlendMode.multiply,
+    );
+  });
+
   testWidgets('what was held lands byte-for-byte, in the same place', (
     tester,
   ) async {

@@ -44,6 +44,7 @@ class _CanvasPanelToolCursor {
         height,
       ),
       opacity: _state.widget.brushToolState.cutStampOpacity,
+      blendMode: _state.widget.brushToolState.cutStampBlendMode,
     );
   }
 

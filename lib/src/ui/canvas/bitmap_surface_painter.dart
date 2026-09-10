@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 
 import '../../models/bitmap_surface.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';

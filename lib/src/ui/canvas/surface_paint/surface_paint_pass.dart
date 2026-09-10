@@ -399,32 +399,57 @@ class _SurfacePaintPass {
     }
   }
 
-  /// The paint the overlay's tiles and stamp draw with: a pre-blended
-  /// overlay blits (src where it replaces the committed tiles), an
-  /// erasing one cuts out (dstOut), a blend-mode preview blends, else the
-  /// tile paint.
-  Paint _overlayPaintFor(ActiveStrokeOverlayModel overlay) {
-    return overlay.preBlended
-        ? (_overlayReplacesCoords
+  /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
+  /// overlay blits (src where it replaces the committed tiles), an erasing
+  /// one cuts out (dstOut), a blend-mode preview blends, else the tile
+  /// paint.
+  ///
+  /// 🚨★★★ONE FUNCTION FOR EVERY PREVIEW OF A LANDING, not just the stroke
+  /// overlay's (유저 2026-09-10, F-69: 「프리뷰 그냥 어차피 브러시랑 똑같은데
+  /// 브러시랑 같은취급? 같은 로직 그대로 재사용하면 확실할거같은데」). The cut
+  /// tool's hover ghost was drawing with a paint of its own that knew about
+  /// opacity and nothing else, so 「불투명도같은건 커서 프리뷰에 반영되는데
+  /// 합성모드가 반영안되고있음」. It is a `BrushDab` like any other
+  /// (`buildCutPasteDab`), so it previews like one.
+  ///
+  /// ⚠️THE ARGUMENTS ARE THE FOUR FACTS, not the overlay — the ghost is not
+  /// one and never will be (it borrows an image the cut slot owns, which is
+  /// why it has a slot of its own; see [CutStampPreview]). What it shares is
+  /// the DECISION, and that is what lives here.
+  Paint _livePreviewPaint({
+    required BrushBlendMode blendMode,
+    required bool erase,
+    required bool preBlended,
+    required bool replacesCoords,
+  }) {
+    return preBlended
+        ? (replacesCoords
               ? _tileImagePaint
               : (Paint()
                   ..filterQuality = FilterQuality.none
                   ..isAntiAlias = false
                   ..blendMode = BlendMode.src))
-        : overlay.erase
+        : erase
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false
             ..blendMode = BlendMode.dstOut)
-        : overlay.blendMode.previewBlendMode != BlendMode.srcOver
+        : blendMode.previewBlendMode != BlendMode.srcOver
         // BB-1: the brush blend previews live (tiles never overlap,
         // so per-tile draws blend each pixel exactly once).
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false
-            ..blendMode = overlay.blendMode.previewBlendMode)
+            ..blendMode = blendMode.previewBlendMode)
         : _tileImagePaint;
   }
+
+  Paint _overlayPaintFor(ActiveStrokeOverlayModel overlay) => _livePreviewPaint(
+    blendMode: overlay.blendMode,
+    erase: overlay.erase,
+    preBlended: overlay.preBlended,
+    replacesCoords: _overlayReplacesCoords,
+  );
 
   void _paintOverlay() {
     if (_overlay != null) {
@@ -498,6 +523,22 @@ class _SurfacePaintPass {
         preview.piece,
         preview.image,
         opacity: preview.opacity,
+        // F-69: the ghost's composite comes out of the SAME function the
+        // stroke overlay's does.
+        //
+        // ⛔`preBlended: false` is not a shortcut. Pre-blending is what buys
+        // a live STROKE its byte-exact preview (R27 #4), and it buys it by
+        // running the commit's CPU kernels over the overlay's tiles against
+        // the cel. A hover ghost has no committed tiles to stand for: it is
+        // redrawn on every pointer move, never committed, and gone the
+        // moment the click lands — at which point the real stroke overlay
+        // takes over and IS pre-blended.
+        blendMode: _livePreviewPaint(
+          blendMode: preview.blendMode,
+          erase: preview.blendMode == BrushBlendMode.erase,
+          preBlended: false,
+          replacesCoords: false,
+        ).blendMode,
       );
     }
   }

@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -538,6 +539,7 @@ void main() {
           image: await tester.runAsync(_decodedSquare),
           canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
           opacity: 1,
+          blendMode: BrushBlendMode.color,
         ),
       );
       addTearDown(preview.dispose);
