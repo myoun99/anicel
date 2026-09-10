@@ -15,6 +15,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'tool_settings_section.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
 import 'transform_tool_options.dart';
@@ -222,12 +223,10 @@ class _ShapeFillSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListView(
-      key: const ValueKey<String>('tool-settings-fill-shape'),
-      padding: const EdgeInsets.all(12),
+    return ToolSettingsSection(
+      tool: 'fill-shape',
+      title: AppText.strings.toolShapeFill,
       children: [
-        Text(AppText.strings.toolShapeFill, style: theme.textTheme.titleSmall),
         _ClosePolygonButton(
           shapeKind: shapeKind,
           selectionCommands: selectionCommands,
@@ -257,20 +256,16 @@ class _CutGrabSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      key: const ValueKey<String>('tool-settings-cut-grab'),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SettingsPromptText(AppText.strings.toolCutHint),
-          _ClosePolygonButton(
-            shapeKind: shapeKind,
-            selectionCommands: selectionCommands,
-          ),
-        ],
-      ),
+    return ToolSettingsSection(
+      tool: 'cut-grab',
+      scrolls: false,
+      children: [
+        SettingsPromptText(AppText.strings.toolCutHint),
+        _ClosePolygonButton(
+          shapeKind: shapeKind,
+          selectionCommands: selectionCommands,
+        ),
+      ],
     );
   }
 }
@@ -339,24 +334,24 @@ class _CutStampSettings extends StatelessWidget {
     final theme = Theme.of(context);
     final holder = slot;
     if (holder == null) {
-      return const SizedBox.shrink(
-        key: ValueKey<String>('tool-settings-cut-stamp'),
-      );
+      // ⚠️Still wearing the section's key: the panel has nothing to show for
+      // a host that owns no cut slot, and a section that renders nothing has
+      // to be findable saying so.
+      return SizedBox.shrink(key: ToolSettingsSection.keyFor('cut-stamp'));
     }
     return ListenableBuilder(
       listenable: holder,
       builder: (context, _) {
         final piece = holder.piece;
         if (piece == null) {
-          return Padding(
-            key: const ValueKey<String>('tool-settings-cut-stamp'),
-            padding: const EdgeInsets.all(12),
-            child: SettingsPromptText(AppText.strings.toolCutNothingHeld),
+          return ToolSettingsSection(
+            tool: 'cut-stamp',
+            scrolls: false,
+            children: [SettingsPromptText(AppText.strings.toolCutNothingHeld)],
           );
         }
-        return ListView(
-          key: const ValueKey<String>('tool-settings-cut-stamp'),
-          padding: const EdgeInsets.all(12),
+        return ToolSettingsSection(
+          tool: 'cut-stamp',
           children: [
             Text(
               'Holding ${piece.image.width}×${piece.image.height} px',
@@ -472,17 +467,15 @@ class _SelectionSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
-    return ListView(
-      key: const ValueKey<String>('tool-settings-selection'),
-      padding: const EdgeInsets.all(12),
+    // R26 #12: the rectangle/lasso CHOICE lives in the tool library
+    // (two tools there), so the settings panel no longer duplicates
+    // it — only the mask knobs remain.
+    return ToolSettingsSection(
+      tool: 'selection',
+      title: AppText.strings.toolSelect,
       children: [
-        // R26 #12: the rectangle/lasso CHOICE lives in the tool library
-        // (two tools there), so the settings panel no longer duplicates
-        // it — only the mask knobs remain.
-        Text(AppText.strings.toolSelect, style: theme.textTheme.titleSmall),
         _ClosePolygonButton(
           shapeKind: state.activeShapeKind,
           selectionCommands: commands,
@@ -750,11 +743,10 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final canEdit = widget.selectionCommands?.canEditTransform ?? false;
     final options = widget.options;
     final onOptions = canEdit ? widget.onOptionsChanged : null;
-    return ListView(
-      key: const ValueKey<String>('tool-settings-move'),
-      padding: const EdgeInsets.all(12),
+    return ToolSettingsSection(
+      tool: 'move',
+      title: AppText.strings.toolMove,
       children: [
-        Text(AppText.strings.toolMove, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         _channel(
           keyValue: 'move-x-field',
@@ -950,11 +942,10 @@ class _EyedropperSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final handler = onChanged;
-    return ListView(
-      key: const ValueKey<String>('tool-settings-eyedropper'),
-      padding: const EdgeInsets.all(12),
+    return ToolSettingsSection(
+      tool: 'eyedropper',
+      title: AppText.strings.toolEyedropper,
       children: [
-        Text(AppText.strings.toolEyedropper, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         Text(
           AppText.strings.toolEyedropperReference,
@@ -1006,12 +997,10 @@ class _FillSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListView(
-      key: const ValueKey<String>('tool-settings-fill'),
-      padding: const EdgeInsets.all(12),
+    return ToolSettingsSection(
+      tool: 'fill',
+      title: AppText.strings.toolFill,
       children: [
-        Text(AppText.strings.toolFill, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         FieldSlider(
           key: const ValueKey<String>('fill-tolerance-slider'),
