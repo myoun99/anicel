@@ -68,6 +68,30 @@ void main() {
       expect(ended.containsKey('W'), isFalse);
     });
 
+    test('⛔★★★답을 받고 일감으로 이어진 카드는 끝난 것이 아니다', () {
+      // 🚨MEASURED 2026-09-10 ON `F-34`. A card can raise a question, get the
+      // answer, and carry on as work — the options stay on it for ever, so
+      // `cardAsks` keeps saying yes and the guard was refusing every record
+      // about that work, INCLUDING the one saying the code had landed. The
+      // card sat in 착수 가능 with no way to say it was done.
+      // ⚠️The difference from `W-Q1` above is one thing only: a 대분류 arrived
+      // AFTER the answer, so the board draws this as work rather than as a
+      // question waiting to be answered.
+      final ended = endedFrom([
+        '{"kind":"item","id":"W","at":"질문","title":"물음","where":"거기",'
+            '"why":"막혔다","options":[{"key":"1","label":"A"},{"key":"2","label":"B"}],'
+            '"recommend":"1","ts":"2026-08-31T01:00:00Z"}',
+        '{"kind":"item","id":"W","answer":"1","ts":"2026-08-31T02:00:00Z"}',
+        '{"kind":"item","id":"W","at":"남은 것","rest":"답대로 만든다",'
+            '"ts":"2026-08-31T03:00:00Z"}',
+      ]);
+      expect(
+        ended.containsKey('W'),
+        isFalse,
+        reason: '답 뒤에 대분류가 왔으면 그 카드는 일감이다',
+      );
+    });
+
     test('⛔살아 있는 카드는 끝난 것이 아니다', () {
       final ended = endedFrom([
         '{"kind":"item","id":"W","at":"남은 것","title":"작업","rest":"할 것",'
