@@ -264,12 +264,12 @@ class AppIconButton extends StatelessWidget {
       child: AppIconButtonFace(
         key: ValueKey<String>(keyValue),
         tooltip: tooltip,
-        // ⛔The face keeps a SILENT callback for everything a pointer or a
-        // key can do — it decides the enabled look and answers the keyboard
-        // with the no-op, as the Material button did: a face that fired here
-        // AND from the claim would fire twice. The keyboard stays silent by
+        // ⛔The face keeps a SILENT callback. It decides the enabled look,
+        // and it is what the keyboard's Enter/Space reach — silent by
         // 유저's call (2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이
-        // 필요없을거같고」).
+        // 필요없을거같고」). ⚠️Never wire the face's POINTER path to a real
+        // callback: the claim already fires every press, and a face that
+        // fired too would fire twice.
         onPressed: silentPress(onPressed),
         // 🚨…but a screen reader is not a pointer: its activation arrives as
         // SemanticsAction.tap, which the claim never hears, so the node gets
