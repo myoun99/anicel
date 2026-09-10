@@ -21,6 +21,19 @@
 # would just be a way to not think.
 set -u
 
+# ⚠️ONLY THE TRUNK IS GATED — and everything is the trunk until it is named
+# here. The gate exists because CI runs on a master push and master must not
+# go red; a MIRROR runs no CI, so refusing a push to one buys nothing and
+# costs the backup itself. 2026-09-10: 969 commits sat on a single disk with
+# no copy anywhere because this hook could not tell a mirror from the trunk.
+#
+# ⛔Default-deny on purpose: an unnamed remote is still gated. The failure
+# that matters is master going red, so a new mirror has to say so here rather
+# than an unknown remote sailing through.
+case "${1:-}" in
+  backup) exit 0 ;;
+esac
+
 ZERO='0000000000000000000000000000000000000000'
 # Board files, and nothing else. ⚠️Kept in step with ci.yml's `scope` job —
 # they answer the same question and a difference between them would mean a
