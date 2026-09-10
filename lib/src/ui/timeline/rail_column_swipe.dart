@@ -29,6 +29,45 @@ typedef RailToggleColumn<TRow> = ({
 /// identity the sweep dedupes by so one drag paints each row once.
 typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
 
+/// [RailColumnSwipe.rowsIn] for a strip of UNIFORM PITCH: the rows a
+/// segment covers are the whole index range between the row holding one
+/// end and the row holding the other, ends included, clipped to [count].
+///
+/// 🚨★★★BOTH TIMELINE GRIDS ARE THAT STRIP, AND WRITING IT TWICE IS A COPY
+/// WHATEVER THE TEXT (유저: 「사본 남으면 진짜 용서안할게」). The rail's rows
+/// and the x-sheet's columns are one `layerRowHeight` apart — the same rail
+/// turned on its side — so they had the same division in point form all
+/// along; splitting the point into a segment (F-66) is only what made the
+/// clone long enough to see, and the architecture ratchet named the pair
+/// the moment it did.
+///
+/// ⛔The STORYBOARD rail is not this strip and must not be pushed into it:
+/// it stacks a transition row, S rows and a V row at three heights with
+/// lane groups between them, so it walks its own layout instead.
+///
+/// [origin] is where row 0 starts — the layer rail's leading spacer, and 0
+/// for a strip that begins at its own edge. [rowAt] is the ONLY thing left
+/// that differs between the two: what a row at an index IS, and what
+/// identity it carries.
+List<RailSwipeRow<TRow>> uniformRailRowsIn<TRow>({
+  required double from,
+  required double to,
+  required double origin,
+  required double pitch,
+  required int count,
+  required RailSwipeRow<TRow> Function(int index) rowAt,
+}) {
+  var first = (((from <= to ? from : to) - origin) / pitch).floor();
+  var last = (((from <= to ? to : from) - origin) / pitch).floor();
+  if (first < 0) {
+    first = 0;
+  }
+  if (last > count - 1) {
+    last = count - 1;
+  }
+  return [for (var index = first; index <= last; index += 1) rowAt(index)];
+}
+
 /// Turns a vertical drag that STARTS on a rail row's button into a
 /// Krita-style paint-swipe down the rows.
 ///
@@ -45,13 +84,13 @@ typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
 /// the same buttons, laid out by the same [layerRailTrailingCells] — had no
 /// swipe at all. 유저: 「타임라인이랑 왜 통일안한거지?」. Anything that lays
 /// rows in a column can wear it now; what a host supplies is its columns and
-/// a way to name the row at a rail-local y.
+/// a way to name the rows a stretch of rail holds.
 class RailColumnSwipe<TRow> extends StatefulWidget {
   const RailColumnSwipe({
     super.key,
     required this.axis,
     required this.columns,
-    required this.rowAt,
+    required this.rowsIn,
     required this.child,
   });
 
@@ -63,8 +102,30 @@ class RailColumnSwipe<TRow> extends StatefulWidget {
   /// band holds it.
   final List<RailToggleColumn<TRow>> columns;
 
-  /// The row at a rail-local position ALONG the rail, or null for a spacer.
-  final RailSwipeRow<TRow>? Function(double alongPosition) rowAt;
+  /// The rows a SEGMENT of the rail covers, in layout order — every row
+  /// whose extent meets the stretch between [from] and [to], either way
+  /// round, spacers left out. A segment of no length is the row under a
+  /// point, so it answers with exactly that one row (or none).
+  ///
+  /// 🚨★★★A SEGMENT, NOT A POINT, AND THAT IS F-66 (유저 2026-09-10):
+  ///
+  /// > 「레이어라벨의 fx나 비지블버튼의 **드래그 일괄조작**이 이상함. 해당
+  /// > 위치에 커서가 가면 off로 구현한거같은데, 이 경우 **렉걸리는** 상태에서
+  /// > 아래로 끌면 **중간에 조작이 안 걸리는 레이어가 생긴다**」
+  ///
+  /// It WAS a point — `rowAt(along)`, asked once per pointer move — and a
+  /// pointer move is not a promise to visit every row on the way. Drop a
+  /// frame and the cursor arrives five rows down having reported nothing in
+  /// between, so five rows were never painted. 유저 named the fix in the
+  /// same message: 「**마지막으로 위치한 커서 사이 레이어들** 조작시키는게
+  /// 렉걸려도 문제없이 조작될듯」.
+  ///
+  /// ⛔A DROPPED FRAME MUST MAKE THE SEGMENT LONGER, NEVER SPARSER, which is
+  /// why the host answers for a stretch rather than the widget sampling one.
+  /// A sampler needs a step, a step needs to be shorter than the shortest
+  /// row, and the storyboard rail alone stacks three row heights — the host
+  /// is the only one that knows its own layout, and it walks it exactly.
+  final List<RailSwipeRow<TRow>> Function(double from, double to) rowsIn;
 
   final Widget child;
 
@@ -80,6 +141,18 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// The pointer that opened this gesture — the latch asks whether a control
   /// claimed it. No drag callback carries the id, so a Listener reads it.
   int? _downPointer;
+
+  /// How far along the rail this sweep has already been carried — the
+  /// press, then wherever each update left it.
+  ///
+  /// 🚨★★★THE SWEEP IS CONTINUOUS AND THE POINTER IS NOT. Every update
+  /// paints the whole stretch from here to where it lands, so the rows an
+  /// unreported move flew over are painted by the move that arrives. ⛔It is
+  /// set on the PRESS as well, not on the first update: the recogniser
+  /// reports its start where the press was ([DragStartBehavior.down]), and a
+  /// segment that began at the first update instead would leave the rows
+  /// between the press and it unswept.
+  double? _sweptTo;
 
   void _paintAt(RailSwipeRow<TRow>? row) {
     final column = _column;
@@ -118,8 +191,29 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   double _across(Offset local) =>
       widget.axis == Axis.vertical ? local.dx : local.dy;
 
+  /// The row under a POINT — the segment of no length, asked of the one
+  /// resolver the host implements.
+  ///
+  /// ⛔The host is NOT asked twice, once for points and once for stretches.
+  /// Two questions that must agree about where a row begins are two answers
+  /// that will one day disagree ([[no-copy-to-share]]); a point is a segment
+  /// whose ends meet.
+  RailSwipeRow<TRow>? _rowAt(double along) {
+    final rows = widget.rowsIn(along, along);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Paints every row between where the sweep last reached and [along].
+  void _sweepTo(double along) {
+    final from = _sweptTo ?? along;
+    _sweptTo = along;
+    for (final row in widget.rowsIn(from, along)) {
+      _paintAt(row);
+    }
+  }
+
   int _columnAt(Offset local) {
-    final row = widget.rowAt(_along(local));
+    final row = _rowAt(_along(local));
     if (row == null) {
       return -1;
     }
@@ -134,7 +228,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   }
 
   bool _start(int columnIndex, double alongPosition) {
-    final row = widget.rowAt(alongPosition);
+    final row = _rowAt(alongPosition);
     if (row == null) {
       return false;
     }
@@ -169,6 +263,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     final pressedItsButton = pointer != null && controlOwnsTap(pointer);
     _targetValue = pressedItsButton ? value : !value;
     _painted.clear();
+    _sweptTo = alongPosition;
     if (pressedItsButton) {
       _painted.add(row.id);
     } else {
@@ -181,6 +276,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     _column = null;
     _targetValue = null;
     _painted.clear();
+    _sweptTo = null;
   }
 
   @override
@@ -196,7 +292,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
         columnAt: _columnAt,
         alongOf: _along,
         onStart: _start,
-        onUpdate: (along) => _paintAt(widget.rowAt(along)),
+        onUpdate: _sweepTo,
         onEnd: _end,
         child: widget.child,
       ),

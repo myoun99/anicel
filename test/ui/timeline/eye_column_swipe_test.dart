@@ -69,6 +69,7 @@ Widget _grid({
 Future<List<LayerId>> _swipeDownTheEyeColumn(
   WidgetTester tester, {
   required bool withBlendColumn,
+  List<double> stepsInRows = const [1, 1],
 }) async {
   // 🚨THE FIXTURE HAS TO ACTUALLY FLIP. A harness that only RECORDS the
   // toggle cannot measure the law the sweep follows now: the button fires on
@@ -119,10 +120,13 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
   await tester.pump();
   await gesture.moveBy(const Offset(0, 20));
   await tester.pump();
-  await gesture.moveBy(Offset(0, rowPitch));
-  await tester.pump();
-  await gesture.moveBy(Offset(0, rowPitch));
-  await tester.pump();
+  // ⚠️Each step is ONE pointer event however far it goes — which is the
+  // whole of F-66: a step of two rows is what a dropped frame looks like,
+  // and the row it flew over is never named by any event.
+  for (final rows in stepsInRows) {
+    await gesture.moveBy(Offset(0, rowPitch * rows));
+    await tester.pump();
+  }
   await gesture.up();
   await tester.pumpAndSettle();
   return toggled;
@@ -161,6 +165,30 @@ void main() {
       reason:
           'the eye band must follow the rail\'s own trailing order, not a '
           'hand-written tail that predates the blend column',
+    );
+  });
+
+  // 🚨★★★F-66 ON THE REAL RAIL (유저 2026-09-10): 「**렉걸리는** 상태에서
+  // 아래로 끌면 **중간에 조작이 안 걸리는 레이어가 생긴다**」. The two cases
+  // above step a row at a time, so they pass just as well when the sweep
+  // only ever paints the row under the cursor. This one drops the frame.
+  testWidgets('a pointer that JUMPS a row still paints the row it flew '
+      'over', (tester) async {
+    final toggled = await _swipeDownTheEyeColumn(
+      tester,
+      withBlendColumn: false,
+      // ONE event from row a to row c. layer-b is never under the cursor
+      // when anything is reported.
+      stepsInRows: const [2],
+    );
+    expect(
+      toggled,
+      [
+        const LayerId('layer-a'),
+        const LayerId('layer-b'),
+        const LayerId('layer-c'),
+      ],
+      reason: 'the segment between two events is what the sweep paints',
     );
   });
 }

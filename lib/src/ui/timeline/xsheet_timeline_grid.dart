@@ -603,7 +603,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         RailColumnSwipe<TimelineDisplayRow>(
                           axis: Axis.horizontal,
                           columns: _columns.swipeColumns(),
-                          rowAt: (along) => _columns.columnAtX(along, entries),
+                          rowsIn: (from, to) =>
+                              _columns.columnsIn(from, to, entries),
                           child: Row(
                             children: [
                               for (

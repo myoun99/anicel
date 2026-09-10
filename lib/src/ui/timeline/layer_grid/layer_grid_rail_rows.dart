@@ -22,8 +22,10 @@ class _LayerGridRailRows {
   /// window never changes it; that is the whole point of the model.
   double get naturalRailWidth => _state._metrics.layerControlsWidth;
 
-  /// Resolves a rail-local vertical position to the row there — LANE ROWS
-  /// INCLUDED. Spacer gaps and positions past the window return null.
+  /// Resolves a STRETCH of rail-local vertical positions to the rows it
+  /// covers — LANE ROWS INCLUDED, spacer gaps and rows past the window left
+  /// out, in top-to-bottom order whichever way the stretch was given (F-66;
+  /// the reason a segment is asked for at all is in [RailColumnSwipe.rowsIn]).
   ///
   /// The ROW rather than its layer, because a swipe needs its DEPTH: the
   /// leading columns sit after the folder indent, so their x is a function
@@ -39,20 +41,31 @@ class _LayerGridRailRows {
   /// skipped. 유저 2026-08-29: 「버튼이면 다 가능하도록」.
   ///
   /// ⚠️The uniform division holds for lane rows too — measured, both are
-  /// 28.0 tall and meet with no gap.
-  TimelineDisplayRow? _rowAtRailY(
-    double localY,
+  /// 28.0 tall and meet with no gap. That is what makes this rail the
+  /// UNIFORM strip, so the walk is [uniformRailRowsIn]'s and all that is
+  /// left here is what a row at an index is.
+  List<RailSwipeRow<TimelineDisplayRow>> _railRowsIn(
+    double fromY,
+    double toY,
     List<TimelineDisplayRow> windowRows,
     double leadingSpacerHeight,
-  ) {
-    final indexInWindow =
-        ((localY - leadingSpacerHeight) / _state._metrics.layerRowHeight)
-            .floor();
-    if (indexInWindow < 0 || indexInWindow >= windowRows.length) {
-      return null;
-    }
-    return windowRows[indexInWindow];
-  }
+  ) => uniformRailRowsIn<TimelineDisplayRow>(
+    from: fromY,
+    to: toY,
+    origin: leadingSpacerHeight,
+    pitch: _state._metrics.layerRowHeight,
+    count: windowRows.length,
+    rowAt: (index) => _railSwipeRow(windowRows[index]),
+  );
+
+  /// A row as the shared swipe wants it. The identity is what the sweep
+  /// dedupes by, and a lane row and its owner share a layer — so it is
+  /// BOTH.
+  RailSwipeRow<TimelineDisplayRow> _railSwipeRow(TimelineDisplayRow row) => (
+    row: row,
+    depth: row.depth,
+    id: '${row.layer.id.value}/${row.lane?.laneId ?? ''}',
+  );
 
   // ⛔"Which DISPLAY row the selection sits on" was written out here — a
   // second copy of [indexOfDisplayRow], which the ↑/↓ walk and the flip HUD
@@ -335,26 +348,12 @@ class _LayerGridRailRows {
           child: RailColumnSwipe<TimelineDisplayRow>(
             axis: Axis.vertical,
             columns: swipeColumns,
-            rowAt: (localY) {
-              final row = _rowAtRailY(
-                localY,
-                windowRows,
-                leadingRowSpacerHeight,
-              );
-              return row == null
-                  ? null
-                  : (
-                      row: row,
-                      depth: row.depth,
-                      // A lane row and its
-                      // owner share a layer,
-                      // so the sweep dedupes
-                      // by BOTH.
-                      id:
-                          '${row.layer.id.value}'
-                          '/${row.lane?.laneId ?? ''}',
-                    );
-            },
+            rowsIn: (fromY, toY) => _railRowsIn(
+              fromY,
+              toY,
+              windowRows,
+              leadingRowSpacerHeight,
+            ),
             child: Stack(
               children: [
                 Column(

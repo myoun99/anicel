@@ -11,31 +11,36 @@ class _XSheetGridColumns {
 
   final _XSheetTimelineGridState _state;
 
-  /// The layer column at a strip-local x — the x-sheet's answer to the
-  /// rail's "which row is under the press".
+  /// The layer columns a STRETCH of strip-local x covers — the x-sheet's
+  /// answer to the rail's "which rows did the sweep pass over" (F-66; why
+  /// a stretch rather than a point is in [RailColumnSwipe.rowsIn]).
   ///
-  /// 🚨A DIVISION, not a walk: every column header is one
-  /// [TimelineGridMetrics.layerRowHeight] wide, lane columns included, so
-  /// the pitch is uniform. The vertical rail has to walk its rows because
-  /// theirs are not.
+  /// 🚨THE UNIFORM STRIP, which is the rail's own walk ([uniformRailRowsIn])
+  /// — every column header is one [TimelineGridMetrics.layerRowHeight] wide,
+  /// lane columns included, and this sheet IS the rail turned on its side.
+  /// ⛔So the division is not written here a second time; what is this
+  /// grid's own is only what a column at an index is. [origin] is 0 because
+  /// the strip starts at its own edge, unlike the rail's spacer.
   ///
-  /// A LANE column answers null, exactly as the rail's lane rows do: it
-  /// carries none of these toggles, so there is nothing for a sweep to
-  /// paint on it.
-  RailSwipeRow<TimelineDisplayRow>? columnAtX(
-    double alongX,
+  /// A LANE column is still IN the list — it carries none of these toggles,
+  /// so the column itself reads null and the sweep steps over it, exactly
+  /// as it does for the rail's lane rows.
+  List<RailSwipeRow<TimelineDisplayRow>> columnsIn(
+    double fromX,
+    double toX,
     List<TimelineDisplayRow> entries,
-  ) {
-    if (alongX < 0) {
-      return null;
-    }
-    final index = alongX ~/ _state._metrics.layerRowHeight;
-    if (index < 0 || index >= entries.length) {
-      return null;
-    }
-    final entry = entries[index];
-    return (row: entry, depth: entry.depth, id: entry.address);
-  }
+  ) => uniformRailRowsIn<TimelineDisplayRow>(
+    from: fromX,
+    to: toX,
+    origin: 0,
+    pitch: _state._metrics.layerRowHeight,
+    count: entries.length,
+    rowAt: (index) => (
+      row: entries[index],
+      depth: entries[index].depth,
+      id: entries[index].address,
+    ),
+  );
 
   /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
   /// laid on the header's own extent: the rail's row width turned on its side

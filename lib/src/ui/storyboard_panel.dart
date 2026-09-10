@@ -152,7 +152,7 @@ part 'storyboard/storyboard_rail_rows.dart';
 /// One row of the storyboard rail, as the shared swipe sees it.
 ///
 /// Three kinds share the rail and they do not share a subject — see
-/// `_railSubjectAtY`, the only place that builds one.
+/// `_StoryboardRailRows.railRowsIn`, the only place that builds one.
 typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 
 /// One row of a track group's rail, as the strip column lays it out.
@@ -1583,7 +1583,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             child: RailColumnSwipe<StoryboardRailRow>(
                               axis: Axis.vertical,
                               columns: _railRows._railSwipeColumns(),
-                              rowAt: _railRows.railRowAtY,
+                              rowsIn: _railRows.railRowsIn,
                               child: Column(
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,

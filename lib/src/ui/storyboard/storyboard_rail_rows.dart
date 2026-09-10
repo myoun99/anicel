@@ -329,10 +329,11 @@ class _StoryboardRailRows {
     return extent;
   }
 
-  /// Which rail row a swipe is over. The rail stacks three kinds and they
-  /// do NOT share a subject: a V row's eye is its CUT's picture, while an S
-  /// row's and the transition row's are that LAYER's own. One column, two
-  /// verbs — so the row carries which it is rather than the column guessing.
+  /// Which rail rows a swipe SEGMENT crosses. The rail stacks three kinds
+  /// and they do NOT share a subject: a V row's eye is its CUT's picture,
+  /// while an S row's and the transition row's are that LAYER's own. One
+  /// column, two verbs — so the row carries which it is rather than the
+  /// column guessing.
   ///
   /// 🚨[layer] null means the V row. It is not "no subject": the V row's
   /// subject is a cut and is looked up per press, because the cut under the
@@ -345,44 +346,67 @@ class _StoryboardRailRows {
   /// test did not notice because it only asked about the three cuts. Every
   /// row that HAS the column has to answer; the column decides what it can
   /// paint, by returning null.
-  StoryboardRailRow? _railSubjectAtY(double localY) {
+  ///
+  /// 🚨★★★AND IT WALKS A STRETCH, NOT A POINT (F-66; the reason is in
+  /// [RailColumnSwipe.rowsIn]). THIS is the rail the walk exists for — it
+  /// stacks a transition row, S rows and a V row at three different heights
+  /// with the lane groups between them, so no division names its rows and
+  /// no sampling step is short enough to be safe.
+  ///
+  /// ⚠️It still stops at the far end of the segment, so a press near the top
+  /// of a hundred-track board costs what it always did rather than the whole
+  /// board.
+  List<RailSwipeRow<StoryboardRailRow>> railRowsIn(double fromY, double toY) {
+    final lo = fromY <= toY ? fromY : toY;
+    final hi = fromY <= toY ? toY : fromY;
+    final rows = <RailSwipeRow<StoryboardRailRow>>[];
+
+    // Takes the row when its extent meets the segment. The identity is what
+    // the sweep dedupes by, so it has to separate a track's V row from its
+    // S rows.
+    void take(StoryboardRailRow subject, double rowTop, double extent) {
+      if (rowTop <= hi && rowTop + extent > lo) {
+        rows.add((
+          row: subject,
+          depth: 0,
+          id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
+        ));
+      }
+    }
+
     var top = 0.0;
     for (final track in _state.widget.project.tracks) {
+      if (top > hi) {
+        break;
+      }
       // The rail draws the transition row, then the S rows, then the V row
       // (④) — the same order [_trackGroupExtentAboveVRow] sums.
-      if (localY >= top && localY < top + _transitionRowHeight) {
-        return (track: track, layer: track.transitionLayer, seSlot: null);
-      }
+      take(
+        (track: track, layer: track.transitionLayer, seSlot: null),
+        top,
+        _transitionRowHeight,
+      );
       var slotTop = top + _transitionRowHeight;
       for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
         // The S ROW itself stands at the top of its group; the lanes that
         // follow it are the rest of [_seRowGroupExtent] and carry no column
-        // of their own.
-        if (localY >= slotTop && localY < slotTop + _seRowHeight) {
-          return (track: track, layer: _trackSeAt(track, slot), seSlot: slot);
-        }
+        // of their own — so the walk steps OVER them, which is the thing a
+        // fixed sampling step could never be trusted to do.
+        take(
+          (track: track, layer: _trackSeAt(track, slot), seSlot: slot),
+          slotTop,
+          _seRowHeight,
+        );
         slotTop += _seRowGroupExtent(track, slot);
       }
-      final vTop = top + _trackGroupExtentAboveVRow(track);
-      if (localY >= vTop && localY < vTop + _state.widget.trackLaneHeight) {
-        return (track: track, layer: null, seSlot: null);
-      }
+      take(
+        (track: track, layer: null, seSlot: null),
+        top + _trackGroupExtentAboveVRow(track),
+        _state.widget.trackLaneHeight,
+      );
       top += _trackGroupExtent(track);
     }
-    return null;
-  }
-
-  /// The same, as the shared swipe wants it. The identity is what the sweep
-  /// dedupes by, so it has to separate a track's V row from its S rows.
-  RailSwipeRow<StoryboardRailRow>? railRowAtY(double localY) {
-    final subject = _railSubjectAtY(localY);
-    return subject == null
-        ? null
-        : (
-            row: subject,
-            depth: 0,
-            id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
-          );
+    return rows;
   }
 
   /// What THIS rail can toggle, handed to the ONE construction every rail
