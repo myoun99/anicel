@@ -9,7 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
+import 'package:anicel/src/services/brush_tip_defaults.dart';
 
 void main() {
   test('⛔no eraser group, and no preset smuggling one in', () {
@@ -109,6 +111,38 @@ void main() {
             'only in fields the picker cannot show',
       );
       seen[key] = preset.name;
+    }
+  });
+
+  test('🚨every tip a preset names also SHIPS in the tip library', () {
+    // A saved library stores a tip by ID and `loadOrDefaults` resolves it
+    // back through `defaultBrushTipEntries`. So a mask that ships on a preset
+    // but not as a library entry survives only until the first save: after
+    // that the brush silently falls back to its round tip, and the only way
+    // to notice is to save, reload and see a brush change shape.
+    //
+    // 🚨Wet Blot shipped exactly that way and nobody saw it (found 2026-09-10,
+    // by a preset test that reloaded the roster's LAST entry). This pins the
+    // invariant so the next tip cannot repeat it.
+    final library = defaultBrushTipEntries.map((entry) => entry.id).toSet();
+    for (final preset in defaultBrushPresets) {
+      final settings = preset.settings;
+      for (final mask in <BrushTipMask?>[
+        settings.tipMask,
+        settings.dualMask,
+        settings.textureMaskSource,
+      ]) {
+        if (mask == null) {
+          continue;
+        }
+        expect(
+          library,
+          contains(mask.id),
+          reason:
+              '"${preset.name}" draws with ${mask.id}, which the tip library '
+              'cannot hand back after a save',
+        );
+      }
     }
   });
 

@@ -19,6 +19,7 @@ const BrushGroupId _oilGroup = BrushGroupId('builtin-paint-group');
 const BrushGroupId _airbrushGroup = BrushGroupId('builtin-airbrush-group');
 const BrushGroupId _blendGroup = BrushGroupId('builtin-blend-group');
 const BrushGroupId _textureGroup = BrushGroupId('builtin-texture-group');
+const BrushGroupId _decorationGroup = BrushGroupId('builtin-decoration-group');
 
 /// Built-in library groups seeded alongside [defaultBrushPresets].
 ///
@@ -99,11 +100,20 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
     name: 'Texture',
     icon: BrushGroupIcon.texture,
   ),
+  // 🚨THE SCATTER GROUP (유저 `brush-roster-Q1` 답 2: the whole roster in one
+  // round). It is last because it is the only group that does not paint a
+  // MEDIUM — these are marks thrown at a finished drawing, and every one of
+  // them needs the kind of mask nothing here had: an ANGULAR one.
+  const BrushGroup(
+    id: _decorationGroup,
+    name: 'Decoration',
+    icon: BrushGroupIcon.star,
+  ),
 ]);
 
 /// Built-in brush presets seeded when no user preset library exists yet.
 ///
-/// A working starting set covering the eight media a drawing tool is expected
+/// A working starting set covering the media a drawing tool is expected
 /// to ship with, not a curated artist pack. Users can delete or extend them;
 /// the library file then persists their choice.
 ///
@@ -182,6 +192,41 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureMaskSource: paperGrainTextureMask,
       textureDensity: 0.55,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
+    ),
+  ),
+  // 🚨TWO MORE GRADES, because a pencil set IS its grades. 2H is hard and
+  // pale, 4B is soft and dark, and the pair is what makes the middle grades
+  // already here read as a set rather than as three similar pencils.
+  BrushPreset(
+    id: const BrushPresetId('builtin-hard-pencil'),
+    name: 'Hard Pencil 2H',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 3,
+      hardness: 0.95,
+      flow: 0.55,
+      spacing: 0.05,
+      opacity: 0.75,
+      textureMaskSource: paperGrainTextureMask,
+      textureScale: 1.0,
+      textureDensity: 0.35,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.75),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-dark-pencil'),
+    name: 'Dark Pencil 4B',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 8,
+      hardness: 0.5,
+      flow: 1.0,
+      spacing: 0.05,
+      tipMask: grainBrushTipMask,
+      textureMaskSource: paperGrainTextureMask,
+      textureScale: 1.4,
+      textureDensity: 0.7,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
     ),
   ),
   BrushPreset(
@@ -342,6 +387,50 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // mask coverage too, and would binarize a grain or chalk tip whole.
       antiAlias: BrushAntiAlias.none,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.85),
+    ),
+  ),
+  // 🚨KABURA PEN (カブラペン) IS CLIP STUDIO'S THIRD NIB and the roster had
+  // two. It sits between them by construction: a G-Pen's line swells hard
+  // under pressure and a Maru Pen's barely does, so this one takes the middle
+  // floor rather than a new idea.
+  BrushPreset(
+    id: const BrushPresetId('builtin-kabura-pen'),
+    name: 'Kabura Pen',
+    groupId: _penGroup,
+    settings: BrushSettings(
+      size: 7,
+      hardness: 1.0,
+      flow: 1.0,
+      spacing: 0.05,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.55),
+    ),
+  ),
+  // ⛔A TECHNICAL PEN IGNORES PRESSURE, and that is not an omission: ミリペン
+  // draws one width because the nib cannot open. Leaving the curve off is the
+  // brush — it is also the one row here whose absence of a curve is what
+  // separates it from every other nib.
+  BrushPreset(
+    id: const BrushPresetId('builtin-technical-pen'),
+    name: 'Technical Pen',
+    groupId: _penGroup,
+    settings: BrushSettings(size: 3, hardness: 1.0, flow: 1.0, spacing: 0.04),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-rough-ink'),
+    name: 'Rough Ink',
+    groupId: _penGroup,
+    settings: BrushSettings(
+      size: 9,
+      hardness: 1.0,
+      flow: 1.0,
+      spacing: 0.05,
+      // The LINE is clean and the EDGE is not: a dual grain bites the
+      // silhouette without touching the nib's own pressure response.
+      dualMask: grainBrushTipMask,
+      dualMaskScale: 0.45,
+      dualDensity: 0.45,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.4),
+      roundnessJitter: 0.2,
     ),
   ),
   BrushPreset(
@@ -844,6 +933,45 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
+  // 🚨HATCHING IS THE BRISTLE TIP HELD AT A FIXED ANGLE, and that is the
+  // whole brush: parallel lines that stay parallel however the hand turns,
+  // which is what a hatching pass is. ⛔`rotationMode.direction` would defeat
+  // it — the lines would follow the stroke and never cross.
+  BrushPreset(
+    id: const BrushPresetId('builtin-hatching'),
+    name: 'Hatching',
+    groupId: _textureGroup,
+    settings: BrushSettings(
+      size: 16,
+      hardness: 1.0,
+      flow: 0.9,
+      spacing: 0.06,
+      tipMask: bristleBrushTipMask,
+      rotationMode: BrushTipRotationMode.fixed,
+      angleDegrees: 45,
+      roundness: 0.7,
+      opacityJitter: 0.15,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-rough-edge'),
+    name: 'Rough Edge',
+    groupId: _textureGroup,
+    settings: BrushSettings(
+      size: 22,
+      hardness: 0.9,
+      flow: 1.0,
+      spacing: 0.1,
+      tipMask: chalkBrushTipMask,
+      // The EDGE is what varies, not the fill: roundness jitter chews the
+      // silhouette while the dual grain keeps the inside from going flat.
+      roundnessJitter: 0.45,
+      angleJitter: 0.5,
+      dualMask: grainBrushTipMask,
+      dualMaskScale: 0.5,
+      dualDensity: 0.6,
+    ),
+  ),
   BrushPreset(
     id: const BrushPresetId('builtin-concrete'),
     name: 'Concrete',
@@ -859,6 +987,113 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureScale: 0.8,
       textureDensity: 0.75,
       roundnessJitter: 0.3,
+    ),
+  ),
+  // ---- Decoration ------------------------------------------------------
+  // 🚨EVERY ONE OF THESE IS A SCATTER, which is the group's whole idea: one
+  // press throws a handful of marks instead of laying one. The fields are the
+  // placement ones P20 shipped and the panel now reaches
+  // (`scatterRadiusRatio` / `scatterCount` / the jitters), so the roster could
+  // grow this far with no engine change at all.
+  //
+  // ⚠️Scatter and jitter are exactly what the row preview does NOT draw (see
+  // the header). These five are told apart by their TIPS, which is why four
+  // new masks came with them.
+  BrushPreset(
+    id: const BrushPresetId('builtin-grass'),
+    name: 'Grass',
+    groupId: _decorationGroup,
+    settings: BrushSettings(
+      size: 26,
+      hardness: 1.0,
+      flow: 0.95,
+      spacing: 0.6,
+      tipMask: leafBrushTipMask,
+      // Blades stand UP and lean a little, so the tip follows the stroke
+      // rather than the fixed angle a fallen-leaf pile wants.
+      rotationMode: BrushTipRotationMode.direction,
+      angleDegrees: 90,
+      angleJitter: 0.12,
+      roundness: 0.35,
+      sizeJitter: 0.45,
+      scatterRadiusRatio: 0.8,
+      scatterCount: 5,
+      scatterBothAxes: false,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-sparkle'),
+    name: 'Sparkle',
+    groupId: _decorationGroup,
+    settings: BrushSettings(
+      size: 22,
+      hardness: 1.0,
+      flow: 1.0,
+      spacing: 1.2,
+      tipMask: starBrushTipMask,
+      angleJitter: 0.25,
+      sizeJitter: 0.6,
+      opacityJitter: 0.4,
+      scatterRadiusRatio: 1.6,
+      scatterCount: 3,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-snow'),
+    name: 'Snow',
+    groupId: _decorationGroup,
+    settings: BrushSettings(
+      size: 18,
+      hardness: 1.0,
+      flow: 0.9,
+      spacing: 1.0,
+      tipMask: flakeBrushTipMask,
+      // ⚠️A flake has six-fold symmetry, so a full half-turn of jitter says
+      // the same thing twice — a sixth of a turn is all the variety there is.
+      angleJitter: 0.17,
+      sizeJitter: 0.55,
+      opacityJitter: 0.3,
+      scatterRadiusRatio: 2.0,
+      scatterCount: 4,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-bubble'),
+    name: 'Bubble',
+    groupId: _decorationGroup,
+    settings: BrushSettings(
+      size: 24,
+      hardness: 1.0,
+      // Bubbles overlap without adding up: the ring is thin, and a low flow
+      // is what keeps a cluster from reading as one solid blob.
+      flow: 0.55,
+      spacing: 1.4,
+      tipMask: ringBrushTipMask,
+      sizeJitter: 0.65,
+      opacityJitter: 0.35,
+      scatterRadiusRatio: 1.8,
+      scatterCount: 3,
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-leaves'),
+    name: 'Leaves',
+    groupId: _decorationGroup,
+    settings: BrushSettings(
+      size: 28,
+      hardness: 1.0,
+      flow: 0.9,
+      spacing: 0.9,
+      tipMask: leafBrushTipMask,
+      // ⛔The opposite of Grass on purpose, out of the same tip: leaves lie at
+      // every angle and grass stands up. One mask, two brushes — which is
+      // what a full turn of angle jitter buys, and it is also what keeps the
+      // two rows from being one brush wearing two names.
+      angleJitter: 1.0,
+      sizeJitter: 0.5,
+      roundnessJitter: 0.25,
+      scatterRadiusRatio: 1.5,
+      scatterCount: 4,
     ),
   ),
 ]);

@@ -54,7 +54,10 @@ class BrushPresetFileService {
   // 8: the paper texture stores its SOURCE plus invert/brightness/contrast,
   // where 7 stored one mask with the levels already baked in. A 7 file would
   // read its baked mask back as a source and bake the levels a second time.
-  static const int libraryVersion = 8;
+  // 9: the roster grew by twelve built-ins and a Decoration group. An 8 file
+  // was written before those existed, so keeping it would hide every new row
+  // behind a library the user never edited.
+  static const int libraryVersion = 9;
 
   /// Reads the preset library; a missing, unreadable or older file yields the
   /// built-in defaults (nothing is written back until the next save).

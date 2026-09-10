@@ -35,6 +35,37 @@ final BrushTipMask spongeBrushTipMask = _generateSpongeMask();
 /// for.
 final BrushTipMask wetBlotBrushTipMask = _generateWetBlotMask();
 
+/// The DECORATION tips (유저 확정 `brush-roster-Q1 = 2`: the whole roster in
+/// one round, with its new procedural masks made together so their looks can
+/// be judged side by side).
+///
+/// 🚨THEY ARE ANGULAR, which is what nothing here had: every mask above is a
+/// disc modulated by DISTANCE, so a scatter brush could only ever throw
+/// round blobs. A sparkle needs rays and a snowflake needs six of them, so
+/// the law reads the pixel's ANGLE — and both of them read it the same way,
+/// which is why there is one [_rayMask] and not two generators.
+final BrushTipMask starBrushTipMask = _rayMask(
+  'builtin-star',
+  arms: 4,
+  sharpness: 3.0,
+  core: 0.16,
+);
+final BrushTipMask flakeBrushTipMask = _rayMask(
+  'builtin-flake',
+  arms: 6,
+  sharpness: 6.0,
+  core: 0.22,
+);
+
+/// A bubble: bright rim, hollow middle. ⚠️Not the wet blot's gain-at-the-rim
+/// — that one still fills its interior, this one is empty there, which is
+/// what makes a bubble read as glass rather than as a puddle.
+final BrushTipMask ringBrushTipMask = _generateRingMask();
+
+/// A leaf/blade: a pointed lens, so a scatter of them lands as foliage
+/// rather than as dots. The one non-round footprint here.
+final BrushTipMask leafBrushTipMask = _generateLeafMask();
+
 /// Canvas-anchored PAPER texture (see `textureMask`): seamless two-octave
 /// noise. A texture mask is sampled with wrapping, so any discontinuity
 /// across the tile edge would print a visible grid over the artwork.
@@ -181,6 +212,83 @@ BrushTipMask _generateSpongeMask() {
     ),
   );
   return BrushTipMask(id: 'builtin-sponge', size: _maskSize, alpha: alpha);
+}
+
+/// [arms] rays out of a soft core: `cos(arms × θ)` raised to [sharpness],
+/// fading to nothing at the rim, over a disc of solid centre [core].
+///
+/// ⚠️ONE GENERATOR FOR BOTH ANGULAR TIPS, parameterized rather than copied:
+/// a sparkle is four sharp rays and a snowflake is six blunter ones, and
+/// that is the whole difference between them. A third angular tip needs no
+/// new function either.
+BrushTipMask _rayMask(
+  String id, {
+  required int arms,
+  required double sharpness,
+  required double core,
+}) => _discMask(id, (x, y, dx, edge) {
+  // The core is solid, so the rays have something to come out of.
+  if (edge <= core) {
+    return 255.0;
+  }
+  final dy = y + 0.5 - _discCenter;
+  final angle = math.atan2(dy, dx);
+  final ray = math.max(0.0, math.cos(angle * arms));
+  final along = math.pow(ray, sharpness).toDouble();
+  // Rays thin out towards the rim rather than stopping at it.
+  final reach = 1.0 - (edge - core) / (1.0 - core);
+  return 255.0 * along * reach * reach;
+});
+
+/// An annulus: nothing inside, a bright band at [_ringRadius], nothing past
+/// it. The band's own falloff is what keeps the edge from aliasing.
+BrushTipMask _generateRingMask() => _discMask('builtin-ring', (x, y, dx, edge) {
+  const band = 0.18;
+  final offBand = (edge - _ringRadius).abs();
+  if (offBand >= band) {
+    return 0;
+  }
+  final across = 1.0 - offBand / band;
+  return 255.0 * across * across;
+});
+
+/// Where the bubble's wall sits, as a fraction of the disc radius.
+const double _ringRadius = 0.82;
+
+/// A pointed lens — the intersection of two circles whose centres sit off
+/// to either side, which is the cheapest shape that comes to a point at
+/// both ends.
+///
+/// ⛔Not `_discMask`: that walks ONE disc and hands the law a distance from
+/// its centre, and a lens is defined by its distance from two others. The
+/// walk here is the whole buffer, which is also why the leaf may be longer
+/// than the disc is wide.
+BrushTipMask _generateLeafMask() {
+  final alpha = Uint8List(_maskSize * _maskSize);
+  // Two circles of this radius, centres pushed apart along x: the further
+  // apart, the narrower and more pointed the leaf.
+  const lensRadius = _maskSize * 0.62;
+  const lensOffset = _maskSize * 0.40;
+  for (var y = 0; y < _maskSize; y += 1) {
+    for (var x = 0; x < _maskSize; x += 1) {
+      final px = x + 0.5 - _discCenter;
+      final py = y + 0.5 - _discCenter;
+      final left = math.sqrt(
+        (px + lensOffset) * (px + lensOffset) + py * py,
+      );
+      final right = math.sqrt(
+        (px - lensOffset) * (px - lensOffset) + py * py,
+      );
+      final into = math.min(lensRadius - left, lensRadius - right);
+      if (into <= 0) {
+        continue;
+      }
+      // Solid along the spine, softening to the outline.
+      final fill = math.min(1.0, into / (lensRadius * 0.22));
+      alpha[y * _maskSize + x] = (255.0 * fill * fill).round().clamp(0, 255);
+    }
+  }
+  return BrushTipMask(id: 'builtin-leaf', size: _maskSize, alpha: alpha);
 }
 
 /// One round tip: [law] stamped once over the full [_discRadius] disc of a

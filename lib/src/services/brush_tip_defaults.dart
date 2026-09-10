@@ -16,6 +16,11 @@ final List<BrushTipEntry> defaultBrushTipEntries = List.unmodifiable([
   _entry(grainBrushTipMask, 'Grain'),
   _entry(bristleBrushTipMask, 'Bristle'),
   _entry(spongeBrushTipMask, 'Sponge'),
+  _entry(wetBlotBrushTipMask, 'Wet Blot'),
+  _entry(starBrushTipMask, 'Star'),
+  _entry(flakeBrushTipMask, 'Snowflake'),
+  _entry(ringBrushTipMask, 'Ring'),
+  _entry(leafBrushTipMask, 'Leaf'),
   _entry(paperGrainTextureMask, 'Paper Grain'),
   _entry(canvasWeaveTextureMask, 'Canvas Weave'),
 ]);

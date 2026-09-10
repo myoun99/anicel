@@ -17,6 +17,10 @@ void main() {
     bristleBrushTipMask,
     spongeBrushTipMask,
     wetBlotBrushTipMask,
+    starBrushTipMask,
+    flakeBrushTipMask,
+    ringBrushTipMask,
+    leafBrushTipMask,
     paperGrainTextureMask,
     canvasWeaveTextureMask,
   ];
@@ -51,6 +55,10 @@ void main() {
       'builtin-bristle': 251426,
       'builtin-sponge': 73504,
       'builtin-wet-blot': 366774,
+      'builtin-star': 54112,
+      'builtin-flake': 63448,
+      'builtin-ring': 151608,
+      'builtin-leaf': 131836,
       'builtin-paper-grain': 702170,
       'builtin-canvas-weave': 692736,
     };
