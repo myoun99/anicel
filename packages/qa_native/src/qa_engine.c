@@ -38,6 +38,9 @@
 #else
 #include <sys/sysinfo.h>
 #endif
+// stdio for /proc/self/smaps_rollup in qa_process_footprint_bytes -- libc,
+// not a link dependency.
+#include <stdio.h>
 
 #if defined(_WIN32)
 #define QA_EXPORT __declspec(dllexport)
@@ -4696,12 +4699,21 @@ QA_EXPORT int64_t qa_physical_memory_bytes(void) {
 // What THIS PROCESS is holding right now, in bytes; 0 when the platform
 // will not say.
 //
-// The number a jetsam report calls `rpages x pageSize` - which is the
-// number that decides whether the app is about to be killed. Physical
-// RAM (qa_physical_memory_bytes above) answers a different question and
-// has been standing in for this one: on iOS an app may use far less than
-// the device has, so a budget scaled from the machine can be double what
-// the process is allowed.
+// ONE QUESTION, ANSWERED BY EVERY PLATFORM IN ITS OWN WORDS: the bytes
+// that belong to this process alone and come back when it exits. That is
+// the number each OS puts next to the app in its own task manager -- Task
+// Manager's "Memory" column, Activity Monitor's "Memory", the number a
+// jetsam report calls `rpages x pageSize`. The user asked for the panel to
+// show that same number (2026-09-10), so all three arms answer it.
+//
+// The Apple arm has been here since v29. Windows and Linux used to return
+// 0 with a note that a per-process API would add a link dependency to a
+// file that deliberately has none. It does not: kernel32 exports
+// K32GetProcessMemoryInfo, so Windows needs GetProcAddress and no import
+// library, and Linux reads a file.
+//
+// Physical RAM (qa_physical_memory_bytes above) answers a different
+// question and had been standing in for this one.
 QA_EXPORT int64_t qa_process_footprint_bytes(void) {
 #if defined(__APPLE__)
   task_vm_info_data_t info;
@@ -4711,11 +4723,72 @@ QA_EXPORT int64_t qa_process_footprint_bytes(void) {
     return (int64_t)info.phys_footprint;
   }
   return 0;
-#else
-  // Windows and Linux answer this through per-process APIs that would
-  // add a link dependency to a file that deliberately has none. 0 means
-  // "not measured here" and the caller says so rather than guessing.
+#elif defined(_WIN32)
+  // PROCESS_MEMORY_COUNTERS_EX2 (Windows 10 1809+) carries
+  // PrivateWorkingSetSize: the RESIDENT bytes no other process shares,
+  // which is what Task Manager's "Memory" column shows. The struct is
+  // declared here rather than included because psapi.h only grew it in
+  // newer SDKs, and this file compiles against whatever the platform
+  // hands it.
+  //
+  // NOT PrivateUsage from the smaller EX struct: that is private COMMIT,
+  // which on this app reads 237MB where the working set reads 139MB
+  // (measured 2026-09-10). They are two different questions, so an older
+  // Windows gets 0 -- "not measured here" -- rather than a number that
+  // quietly means something else.
+  typedef struct {
+    DWORD cb;
+    DWORD PageFaultCount;
+    SIZE_T PeakWorkingSetSize;
+    SIZE_T WorkingSetSize;
+    SIZE_T QuotaPeakPagedPoolUsage;
+    SIZE_T QuotaPagedPoolUsage;
+    SIZE_T QuotaPeakNonPagedPoolUsage;
+    SIZE_T QuotaNonPagedPoolUsage;
+    SIZE_T PagefileUsage;
+    SIZE_T PeakPagefileUsage;
+    SIZE_T PrivateUsage;
+    SIZE_T PrivateWorkingSetSize;
+    ULONG64 SharedCommitUsage;
+  } qa_pmc_ex2;
+  typedef BOOL(WINAPI * qa_get_pmi)(HANDLE, void *, DWORD);
+  HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+  qa_get_pmi get_process_memory_info =
+      kernel32 == NULL ? NULL
+                       : (qa_get_pmi)(void *)GetProcAddress(
+                             kernel32, "K32GetProcessMemoryInfo");
+  if (get_process_memory_info != NULL) {
+    qa_pmc_ex2 counters;
+    memset(&counters, 0, sizeof(counters));
+    counters.cb = (DWORD)sizeof(counters);
+    if (get_process_memory_info(GetCurrentProcess(), &counters,
+                                (DWORD)sizeof(counters))) {
+      return (int64_t)counters.PrivateWorkingSetSize;
+    }
+  }
   return 0;
+#else
+  // Linux and Android: /proc/self/smaps_rollup is the kernel's own sum
+  // over every mapping (4.14+), so this is one small read instead of a
+  // walk of /proc/self/smaps. Private_Clean + Private_Dirty is the same
+  // quantity the other two arms return -- pages no other process shares.
+  FILE *rollup = fopen("/proc/self/smaps_rollup", "r");
+  if (rollup == NULL) {
+    return 0;
+  }
+  char line[256];
+  int64_t private_kb = 0;
+  int found = 0;
+  while (fgets(line, (int)sizeof(line), rollup) != NULL) {
+    long long value = 0;
+    if (sscanf(line, "Private_Clean: %lld kB", &value) == 1 ||
+        sscanf(line, "Private_Dirty: %lld kB", &value) == 1) {
+      private_kb += (int64_t)value;
+      found = 1;
+    }
+  }
+  fclose(rollup);
+  return found ? private_kb * 1024 : 0;
 #endif
 }
 

@@ -107,10 +107,16 @@ import 'dart:io';
 ///   from the machine can be double what the process is permitted, and
 ///   the app that dies has no way to say how big it had grown. The
 ///   footprint is the number a jetsam report calls `rpages × pageSize`.
-///   Apple answers both (`task_info`/`os_proc_available_memory`);
-///   Windows and Linux answer the availability half and report 0 —
-///   "not measured here" — for the footprint, which would otherwise
-///   cost this deliberately dependency-free file a link against psapi.
+///   🆕**2026-09-10 — every platform answers the footprint now**, and the
+///   version did NOT move: the signature is unchanged, so an older binary
+///   still returns 0 and the caller still reads that as "not measured".
+///   The note that used to stand here — Windows and Linux report 0
+///   because a per-process API would cost a link against psapi — was
+///   wrong about the cost: kernel32 exports `K32GetProcessMemoryInfo`
+///   (GetProcAddress, no import library) and Linux reads
+///   `/proc/self/smaps_rollup`. All three arms now return the same
+///   quantity: pages no other process shares, which is the number each
+///   OS's own task manager shows.
 /// - v30: `qa_zstd_*` — the cel compressor (vendored zstd 1.5.6). Cel
 ///   blobs are decompressed on the MAIN isolate in frame time whenever a
 ///   cold cel is promoted, and deflate was spending 3.35ms of a 16.7ms

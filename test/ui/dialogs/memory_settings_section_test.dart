@@ -25,11 +25,11 @@ void main() {
     final census = collectMemoryCensus(session);
 
     // 🚨THE WHOLE POINT OF TWO TOTALS. A fresh session holds almost
-    // nothing, but the PROCESS holds the engine, Skia, the Dart heap, the
-    // binary and the typefaces. If these were ever equal, the panel would
+    // nothing, but the PROCESS holds the Dart heap, Skia's arenas and the
+    // engine's own allocations. If these were ever equal, the panel would
     // be lying about one of them.
     expect(
-      census.rssBytes,
+      census.footprintBytes,
       greaterThan(census.trackedBytes),
       reason:
           'the process is always larger than what we can enumerate — '
@@ -37,20 +37,23 @@ void main() {
     );
     expect(
       census.untrackedBytes,
-      census.rssBytes - census.trackedBytes,
+      census.footprintBytes - census.trackedBytes,
       reason: 'the gap is named rather than left as arithmetic',
     );
   });
 
-  test('the RSS number is answered on THIS platform', () {
+  test('the process number is answered on THIS platform', () {
     final session = newSession();
     addTearDown(session.dispose);
-    // ⛔THE BUG THIS REPLACED. The System row asked the native engine for
-    // `processFootprintBytes`, which ABI v29 answers only on Apple
-    // platforms — so Windows and Linux printed "not measured here" for the
-    // one number the row exists to show. `ProcessInfo.currentRss` answers
-    // everywhere, which is why the census uses it.
-    expect(collectMemoryCensus(session).rssBytes, greaterThan(0));
+    // ⛔THE BUG THIS REPLACED, TWICE. First the System row asked the engine
+    // for `processFootprintBytes` when ABI v29 answered only on Apple, so
+    // Windows and Linux printed "not measured here". The census then used
+    // `ProcessInfo.currentRss`, which answers everywhere but counts pages
+    // SHARED with other processes, so it never matched the task manager
+    // the user was looking at. The engine answers on every platform now
+    // and RSS is only the no-engine fallback — either way this is a real
+    // number, which is what the row exists to show.
+    expect(collectMemoryCensus(session).footprintBytes, greaterThan(0));
   });
 
   test('every item carries a label, and the ids are the census ids', () {

@@ -35,12 +35,16 @@ class MemoryCensusItem {
 /// OS number and ours are the same: 「os합이랑 우리가 쓰는 합이랑 다르다면
 /// os합 보여주고 우리가쓰는 합 보여주고 그 합 안에서 항목 나눠서 보여줌」.
 ///
-/// **They are different, and cannot be made the same.** [rssBytes] is the
-/// whole process — the Flutter engine, Skia, the Dart heap, the binary,
-/// the embedded typefaces, the native library. [trackedBytes] is what this
+/// **They are different, and cannot be made the same.** [footprintBytes]
+/// is the whole process as the OS counts it; [trackedBytes] is what this
 /// app can enumerate. The gap is not a leak and not an error; it is
 /// everything we did not write. So the panel shows both, and breaks items
 /// out inside OURS, which is the branch 유저 chose.
+///
+/// 🆕유저 2026-09-10: 「같은수로 하고싶은데 다른 멀티플랫폼도 같아지는건가?」
+/// — the big number is now the SAME number that OS's own task manager
+/// puts next to the app, and it is that on every platform. See
+/// [footprintBytes].
 ///
 /// ⛔ONE CENSUS. Preferences ▸ System already prints a memory line, and the
 /// new Memory tab prints more of the same numbers. Two counters would
@@ -54,19 +58,33 @@ class MemoryCensusItem {
 @immutable
 class MemoryCensus {
   const MemoryCensus({
-    required this.rssBytes,
+    required this.footprintBytes,
     required this.items,
     this.availableBytes,
   });
 
-  /// What the OS says this PROCESS occupies in physical RAM.
+  /// What the OS says this PROCESS is holding — the SAME number that OS's
+  /// own task manager shows next to the app.
   ///
-  /// 🚨`ProcessInfo.currentRss`, NOT the native engine's
-  /// `processFootprintBytes` — ABI v29 answers that one only on Apple
-  /// platforms and returns 0 on Windows and Linux, which is why the System
-  /// section has been printing "not measured here" on the very machine
-  /// this is developed on. The Dart VM measures RSS everywhere.
-  final int rssBytes;
+  /// 🎯ONE QUESTION ON EVERY PLATFORM: the bytes that belong to this
+  /// process alone and come back when it exits. Windows private working
+  /// set (작업 관리자 ▸ 메모리), Apple `phys_footprint` (활성 상태 보기 ▸
+  /// 메모리, and the number jetsam reads), Linux/Android `Private_Clean +
+  /// Private_Dirty`. ⚠️They are NOT comparable between systems — each is
+  /// its own system's answer — and that is exactly the point: whatever the
+  /// user is looking at, this matches it.
+  ///
+  /// ⛔NOT `ProcessInfo.currentRss` any more, and the note that used to
+  /// stand here — "the native engine answers only on Apple" — is what
+  /// changed: `qa_process_footprint_bytes` answers everywhere now.
+  /// RSS is `WorkingSet64`, which counts pages SHARED with other
+  /// processes: the DLLs and the mapped typefaces. Measured here
+  /// 2026-09-10, idle release: 194.8MB RSS against 139.3MB private, and
+  /// the 55.5MB gap is shared pages — not a leak, and not ours.
+  ///
+  /// ⚠️RSS remains the fallback, and only for a run with no native engine
+  /// at all, where every other native number is already absent too.
+  final int footprintBytes;
 
   /// How much more the OS will let this process take, where the platform
   /// says. Null where it will not — the number refuses to guess, and the
@@ -76,7 +94,7 @@ class MemoryCensus {
   /// The enumerable holdings, largest first.
   final List<MemoryCensusItem> items;
 
-  /// The sum of what we can account for. Always less than [rssBytes].
+  /// The sum of what we can account for. Always less than [footprintBytes].
   int get trackedBytes {
     var total = 0;
     for (final item in items) {
@@ -85,12 +103,18 @@ class MemoryCensus {
     return total;
   }
 
-  /// Everything in the process that is not one of our caches: the engine,
-  /// Skia, the Dart heap, the binary, the typefaces. Named rather than
-  /// left as arithmetic, because a reader who sees only the gap assumes a
-  /// leak.
+  /// Everything private to this process that is not one of our caches: the
+  /// Dart heap, Skia's and the engine's allocations, the AOT snapshot's
+  /// writable pages. Named rather than left as arithmetic, because a
+  /// reader who sees only the gap assumes a leak.
+  ///
+  /// ⛔The BINARY and the TYPEFACES used to be listed here and no longer
+  /// belong: [footprintBytes] counts private pages, and a mapped DLL or a
+  /// mapped .ttf is neither private nor charged to us (measured here
+  /// 2026-09-10: 293MB of images and 82MB of mapped files, none of it in
+  /// the number the user reads).
   int get untrackedBytes {
-    final rest = rssBytes - trackedBytes;
+    final rest = footprintBytes - trackedBytes;
     return rest < 0 ? 0 : rest;
   }
 }
@@ -181,10 +205,13 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
   return MemoryCensus(
-    rssBytes: ProcessInfo.currentRss,
-    // ⛔The availability half IS answered everywhere — ABI v29 only
-    // withholds the FOOTPRINT on Windows and Linux. Dropping this would
-    // throw away the one number the native engine can still give.
+    // ⛔The PLATFORM's own answer, not the Dart VM's RSS — see
+    // [MemoryCensus.footprintBytes] for why they differ and which one the
+    // user is looking at. `ProcessInfo.currentRss` stands in only when no
+    // native engine loaded at all.
+    footprintBytes:
+        QaNativeEngine.instance?.processFootprintBytes ??
+        ProcessInfo.currentRss,
     availableBytes: QaNativeEngine.instance?.availableMemoryBytes,
     items: items,
   );

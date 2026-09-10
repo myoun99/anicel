@@ -67,8 +67,8 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
     final census = collectMemoryCensus(widget.session);
     setState(() {
       _census = census;
-      if (census.rssBytes > _peakBytes) {
-        _peakBytes = census.rssBytes;
+      if (census.footprintBytes > _peakBytes) {
+        _peakBytes = census.footprintBytes;
       }
     });
   }
@@ -99,7 +99,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
     // ⛔The layout is the same whether or not a sample has landed: the
     // space is reserved and only the numbers change (the app's no-UI-that-
     // pops-into-existence rule).
-    final rss = census?.rssBytes ?? 0;
+    final footprint = census?.footprintBytes ?? 0;
     final tracked = census?.trackedBytes ?? 0;
     final untracked = census?.untrackedBytes ?? 0;
     final available = census?.availableBytes;
@@ -113,13 +113,13 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
         children: [
           _TotalRow(
             label: strings.memoryProcessTotal,
-            value: _mb(rss),
+            value: _mb(footprint),
             emphasis: true,
           ),
           const SizedBox(height: 6),
           _LiveBar(
             trackedBytes: tracked,
-            totalBytes: rss,
+            totalBytes: footprint,
             peakBytes: _peakBytes,
           ),
           const SizedBox(height: 6),

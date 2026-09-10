@@ -79,13 +79,16 @@ class _MemoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🚨ONE CENSUS, shared with Preferences ▸ Memory. It also fixed what
-    // this row said on Windows: it used to ask the native engine for the
-    // process footprint, and ABI v29 answers that only on Apple platforms
-    // — so the developer machine this is built on printed "not measured
-    // here" for the one number the row exists to show.
+    // 🚨ONE CENSUS, shared with Preferences ▸ Memory. What it hands back is
+    // the platform's own PRIVATE footprint — the same number that OS's task
+    // manager shows next to the app — with RSS standing in only where no
+    // native engine loaded at all.
+    // ⛔This row once asked the engine directly and printed "not measured
+    // here" on Windows and Linux, because ABI v29 answered only on Apple.
+    // The engine answers everywhere now (2026-09-10) and the census stays
+    // the ONE place that decides which number this is.
     final census = collectMemoryCensus(session);
-    final footprint = census.rssBytes;
+    final footprint = census.footprintBytes;
     final available = census.availableBytes;
     final interrupted = MemoryBlackBox.lastUnfinished;
     return Column(
