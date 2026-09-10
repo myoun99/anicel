@@ -7,6 +7,7 @@ import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_effect.dart';
 import '../../../models/layer_id.dart';
+import '../../../models/reorder_target.dart';
 import '../../../models/track.dart';
 import '../../../models/track_id.dart';
 import '../../text/app_strings.dart';
@@ -480,15 +481,18 @@ class RowOrderDrag {
     final subject = _subject;
     cancel();
     if (subject is TrackRowSubject) {
-      // R5 #9. The caret is a SLOT (between rows) and the model wants an
-      // INDEX: landing after yourself means one fewer position once you
-      // are lifted out, which is the off-by-one every reorder has.
+      // R5 #9. The caret is a SLOT (between rows) and the model wants a
+      // TARGET: landing after yourself means one fewer position once you
+      // are lifted out. That sentence is now [reorderTargetForSlot]'s, and
+      // this is the boundary it names — the brush rail had the same
+      // arithmetic written differently and got it wrong (유저 2026-09-10,
+      // a group that would not go to the bottom).
       final tracks = _tracksNow();
       final from = tracks.indexWhere((track) => track.id == subject.trackId);
       if (trackSlot == null || from < 0) {
         return;
       }
-      final to = trackSlot > from ? trackSlot - 1 : trackSlot;
+      final to = reorderTargetForSlot(slot: trackSlot, movedIndex: from);
       if (to == from) {
         return;
       }

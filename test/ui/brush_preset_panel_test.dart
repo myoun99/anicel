@@ -601,6 +601,65 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('🐛유저 2026-09-10: a group dragged to the BOTTOM lands at the '
+      'bottom, not one above it', (tester) async {
+    // 「브러시 탭 그룹 움직일때 그룹 하나를 맨 밑으로 옮기려하면 맨 밑의 한칸
+    // 위로 강제로 이동」.
+    //
+    // 🚨THE END OF THE LIST IS THE ONLY PLACE THIS IS VISIBLE. The rail read
+    // its TARGET (an index in the list without the dragged tab) against
+    // `widget.groups` (the list that still holds it), so every landing at or
+    // past the moved tab's own place came out one short — and one short is
+    // indistinguishable from correct everywhere except the last slot, where
+    // there is nothing after it to absorb the error.
+    const sketch = BrushGroupId('sketch');
+    List<BrushGroup>? reordered;
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+        BrushGroup(id: sketch, name: 'Sketch'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      onGroupsReordered: (groups) => reordered = groups,
+    );
+
+    // ⚠️The pitch is MEASURED, not written down. A test that hard-codes the
+    // tab height stops testing the drag and starts testing the constant —
+    // this file already had one, and it broke on the height change rather
+    // than on any behaviour.
+    final pitch =
+        tester.getCenter(_tab('paint')).dy - tester.getCenter(_tab('ink')).dy;
+    expect(pitch, greaterThan(0), reason: 'fixture premise: the rail is a column');
+
+    // Ink is first; drag it past Sketch. ⚠️IN STEPS, WITH A PUMP EACH: the
+    // list re-reads the carried item's overlap every frame, and one long
+    // jump asks it to resolve two crossings in a single update.
+    // `kTouchSlop` is spent before the gesture reaches the item at all.
+    final drag = await tester.startGesture(tester.getCenter(_tab('ink')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await drag.moveBy(const Offset(0, kTouchSlop + 2));
+    await tester.pump();
+    for (var step = 0; step < 8; step += 1) {
+      await drag.moveBy(Offset(0, pitch / 2));
+      await tester.pump();
+    }
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(reordered, isNotNull, reason: 'the drag reordered');
+    expect(
+      reordered!.map((group) => group.id.value).toList(),
+      <String>['paint', 'sketch', 'ink'],
+      reason: 'Ink went all the way down, not to the middle',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a chosen icon replaces the first-brush face', (tester) async {
     await _pumpPanel(
       tester,
@@ -625,14 +684,16 @@ void main() {
     );
   });
 
-  testWidgets('🚨a group tab is HALF a brush cell, and wide enough to read', (
-    tester,
-  ) async {
+  testWidgets('🚨a group tab is TWO THIRDS of a brush cell, and wide enough '
+      'to read', (tester) async {
     // 유저 `brush-group-tab-shape-Q1` 답 1 (2026-09-10). Their spec was two
     // sentences that fought each other in pixels — 「그룹도 좀 더 길게해서
     // 그룹이름 어느정도 제대로 보이도록」 and 「비율적으로 그룹은 브러시
     // 프리뷰 세로길이의 반」 — and the answer reads 「길게」 as WIDTH. Both
     // halves are pinned here because either one alone reads as arbitrary.
+    //
+    // The FRACTION then moved on sight: 유저 2026-09-10, 「지금 브러시의
+    // 절반인데 너무 작으니 2/3로 하고싶고」.
     await _pumpPanel(
       tester,
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
@@ -640,10 +701,15 @@ void main() {
     );
 
     final tab = tester.getSize(_tab('ink'));
+    // ⚠️THE ROUNDING, NOT THE FRACTION. 34 does not divide by 3, and a
+    // 22.67 row would put every tab boundary on a third of a logical pixel
+    // — a seam between tabs at every DPR. Asserting the ROUNDED two thirds
+    // still fails the moment either number moves without the other, which
+    // is the whole job of this line.
     expect(
-      tab.height * 2,
-      brushPresetRowHeight,
-      reason: 'the tab is half the brush cell it sits beside',
+      tab.height,
+      (brushPresetRowHeight * 2 / 3).roundToDouble(),
+      reason: 'the tab is two thirds of the brush cell it sits beside',
     );
     expect(
       tab.width,
@@ -651,8 +717,8 @@ void main() {
       reason: 'and 「길게」 is the WIDTH — 96 cut a name at two characters',
     );
 
-    // ⛔AND THE NAME STILL FITS ON ITS LINE. Halving the height is what made
-    // this worth a pin: an 11pt line in a 17px tab is the exact collision
+    // ⛔AND THE NAME STILL FITS ON ITS LINE. Shrinking the height is what
+    // made this worth a pin: an 11pt line in a 23px tab is the collision
     // the decision existed to resolve, so a future tweak to the margin or
     // the border has to keep it.
     final name = find.descendant(

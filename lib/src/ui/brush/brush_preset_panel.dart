@@ -8,6 +8,7 @@ import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/reorder_target.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
@@ -518,15 +519,24 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // The root section is not a group and always sorts last.
       return;
     }
-    final clamped = newIndex.clamp(0, tabs.length - 1);
-    final anchor = clamped < widget.groups.length
-        ? widget.groups[clamped]
-        : null;
+    // ⚠️`onReorderItem` (not the obsolete `onReorder`) already lifted the
+    // dragged tab out of the count, so this is a TARGET — see
+    // [reorderAnchorAt], which is the one place that arithmetic lives.
+    //
+    // The root tab rides along at the end of `tabs` and is not in `groups`,
+    // and it needs no translation: groups come first, so a group's index is
+    // the same in both. A target past the last group is the append, which is
+    // the very move 유저 could not make.
+    final anchor = reorderAnchorAt(
+      widget.groups,
+      movedIndex: oldIndex,
+      target: newIndex,
+    );
     onReordered(
       moveBrushGroupInLibrary(
         groups: widget.groups,
         movedId: moved.id,
-        insertBeforeId: anchor?.id == moved.id ? null : anchor?.id,
+        insertBeforeId: anchor?.id,
       ),
     );
   }
@@ -540,14 +550,20 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       return;
     }
     final moved = visible[oldIndex];
-    final without = [...visible]..removeAt(oldIndex);
-    final clamped = newIndex.clamp(0, without.length);
+    // The grid reports a TARGET too — the same law, from the same file, as
+    // the rail above. It used to be spelled out here and only here, which is
+    // how the rail came to have a different one.
+    final anchor = reorderAnchorAt(
+      visible,
+      movedIndex: oldIndex,
+      target: newIndex,
+    );
     onReordered(
       moveBrushPresetInLibrary(
         presets: widget.presets,
         movedId: moved.id,
         targetGroupId: _openGroupId,
-        insertBeforeId: clamped < without.length ? without[clamped].id : null,
+        insertBeforeId: anchor?.id,
       ),
     );
   }
@@ -1001,18 +1017,29 @@ class _BrushGroupTab extends StatelessWidget {
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
   /// a tab index while a brush is being dragged over it.
   ///
-  /// 🚨HALF A BRUSH CELL, WIDE RATHER THAN TALL (유저 `brush-group-tab-shape-Q1`
-  /// 답 1, 2026-09-10). Their spec was two sentences that fought each other in
-  /// pixels — 「그룹도 **좀 더 길게**해서 그룹이름 어느정도 **제대로 보이도록**」
-  /// and 「비율적으로 그룹은 **브러시 프리뷰 세로길이의 반**」 — because a brush
-  /// cell is 34 and half of it is 17, which is shorter than the 26 an 11pt name
-  /// was sitting in. The answer reads 「길게」 as WIDTH: the tab gets shorter and
-  /// the rail gets wider, so both sentences hold.
+  /// 🚨TWO THIRDS OF A BRUSH CELL, WIDE RATHER THAN TALL.
+  ///
+  /// The shape came from `brush-group-tab-shape-Q1` 답 1 (2026-09-10): the
+  /// spec was two sentences that fought each other in pixels — 「그룹도 **좀
+  /// 더 길게**해서 그룹이름 어느정도 **제대로 보이도록**」 and 「비율적으로
+  /// 그룹은 **브러시 프리뷰 세로길이의 반**」 — because a brush cell is 34 and
+  /// an 11pt name had been sitting in 26. The answer reads 「길게」 as WIDTH:
+  /// the tab gets shorter and the rail gets wider, so both sentences hold.
+  ///
+  /// The FRACTION then moved once, on sight: 유저 2026-09-10, 「지금 브러시의
+  /// 절반인데 너무 작으니 2/3로 하고싶고」. A half was 17; two thirds of 34 is
+  /// 22.67, and this is the nearest whole pixel to it.
+  ///
+  /// ⚠️ROUNDED ON PURPOSE. 34 does not divide by 3, and the rail is a list of
+  /// fixed-height rows with backgrounds: a 22.67 row puts every boundary on a
+  /// third of a logical pixel, which is a seam between tabs at every DPR. The
+  /// pin asserts the rounding rather than the fraction, so it still fails if
+  /// either number moves without the other.
   ///
   /// ⚠️AND THE COST WAS TAKEN WITH IT: at the stock 260px panel a rail of 120
   /// leaves 140 for the grid, which is ONE column of 130px cells. That is on
   /// the card as the price of the answer, not a regression to fix.
-  static const double extent = 17;
+  static const double extent = 23;
 
   /// Rail width once names are showing.
   ///
