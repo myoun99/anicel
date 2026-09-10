@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../timeline/layer_label_controls.dart' show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,8 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
@@ -122,6 +126,33 @@ class GuideLibraryList extends StatelessWidget {
     onGuidesCommitted(guides.replacing(guide));
   }
 
+  /// 유저 (guide-sym): 「**이름변경 버튼을 비지블 버튼 왼쪽에**, 공통 이름변경
+  /// 창」 — and 공통 is [AppPromptDialog], the app's one "type a short
+  /// string" window, reached through the one dialog verb. ⛔Not a window of
+  /// its own: the trim, the empty check and Enter-submits are decided
+  /// there, and a second copy is where those three drift apart again.
+  ///
+  /// A guide's name is a LABEL, like a layer's — the canvas paints it over
+  /// the axis — so an empty one is refused, the way `renameLayerEmpty`
+  /// refuses. (A frame's name may be empty because it is a link key, which
+  /// this is not.)
+  Future<void> _rename(BuildContext context, DrawingGuide guide) {
+    final strings = AppText.strings;
+    return askThenCommit<String>(
+      context,
+      dialog: (_) => AppPromptDialog.keyed(
+        keyPrefix: 'guide-rename',
+        title: strings.renameGuideTitle,
+        titleIcon: Icons.drive_file_rename_outline,
+        fieldLabel: strings.renameGuideField,
+        initialValue: guide.name,
+        confirmLabel: strings.commonRename,
+        emptyError: strings.renameGuideEmpty,
+      ),
+      commit: (name) => _replace(guide.copyWith(name: name)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
@@ -148,6 +179,7 @@ class GuideLibraryList extends StatelessWidget {
             ),
             onVisibleChanged: (visible) =>
                 _replace(guide.copyWith(visible: visible)),
+            onRename: () => unawaited(_rename(context, guide)),
             onDelete: () => _delete(guide.id),
           ),
         const Divider(height: 12),
@@ -171,6 +203,7 @@ class GuideLibraryList extends StatelessWidget {
             ),
             onVisibleChanged: (visible) =>
                 _replace(guide.copyWith(visible: visible)),
+            onRename: () => unawaited(_rename(context, guide)),
             onDelete: () => _delete(guide.id),
           ),
         if (guides.isEmpty)
@@ -235,6 +268,7 @@ class _GuideRow extends StatelessWidget {
     required this.onSelected,
     required this.onActingChanged,
     required this.onVisibleChanged,
+    required this.onRename,
     required this.onDelete,
   });
 
@@ -244,6 +278,7 @@ class _GuideRow extends StatelessWidget {
   final VoidCallback onSelected;
   final ValueChanged<bool> onActingChanged;
   final ValueChanged<bool> onVisibleChanged;
+  final VoidCallback onRename;
   final VoidCallback onDelete;
 
   @override
@@ -268,12 +303,41 @@ class _GuideRow extends StatelessWidget {
           // `circle_outlined` for `check_circle` — a check mark, which the
           // app's selection law names outright: 「선택 표시는 색상만」, never
           // a check and never a filled chip ([[ui-selection-style]]).
-          icon: const Icon(Icons.circle_outlined),
+          //
+          // 🚨THE INNER DOT — 유저 2026-09-10 (guide-sym): 「적용/미적용 동그란
+          // 버튼에 **적용 시 안에 동그라미**(환경설정▸입력▸태블릿서비스
+          // 버튼처럼)」. That button is a stock Material radio
+          // (`input_settings_dialog.dart`, 'settings-tablet-standard'):
+          // ON is a ring with a filled dot in the accent, OFF the bare
+          // ring. `radio_button_checked`/`_unchecked` ARE that pair of
+          // glyphs, so the model and the copy are the same drawing.
+          //
+          // ⚠️It does NOT reopen the line above. A check mark is a
+          // DIFFERENT shape saying "done"; this is one shape whose middle
+          // fills, at the same size, in the same accent the colour rule
+          // already puts there. ⛔And still never a filled chip — the rim
+          // stays a ring, so nothing about the button's box changes.
+          icon: Icon(
+            acting ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+          ),
           onPressed: () => onActingChanged(!acting),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 유저 (guide-sym): 「**이름변경 버튼을 비지블 버튼 왼쪽에**」 — the
+            // position is the instruction, so it is first in this Row and
+            // stays first. The verb it opens is the shared one; see
+            // `GuideLibraryList._rename`.
+            AppIconButton(
+              keyValue: 'guide-rename-${guide.id.value}',
+              tooltip: strings.commonRename,
+              // The rename family's glyph everywhere it has a button of its
+              // own (`brush-tip-rename`), and the same icon the window
+              // wears in its own title.
+              icon: const Icon(Icons.drive_file_rename_outline),
+              onPressed: onRename,
+            ),
             // ⛔NOT a hand-rolled eye. 유저 (F-58): 「비지블버튼은
             // 다른곳에서도 쓰니까 공용화/통일화」 — and this was the last
             // copy, the one that dimmed its OFF state in a colour of its

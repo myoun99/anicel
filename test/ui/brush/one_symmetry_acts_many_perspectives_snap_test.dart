@@ -140,6 +140,194 @@ void main() {
     });
   });
 
+  /// Mounts the list without tapping anything — for the tests that read the
+  /// row's chrome, or that drive a window the list opens.
+  Future<void> pumpList(
+    WidgetTester tester,
+    CutGuides guides, {
+    void Function(CutGuides)? onCommitted,
+  }) => tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: GuideLibraryList(
+          guides: guides,
+          canvasSize: canvas,
+          selectedGuideId: null,
+          onGuidesCommitted: onCommitted ?? (_) {},
+          onGuideSelected: (_) {},
+        ),
+      ),
+    ),
+  );
+
+  group('the acting button\'s glyph', () {
+    IconData glyphOf(WidgetTester tester, String id) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>('guide-acting-$id')),
+            matching: find.byType(Icon),
+          ),
+        )
+        .icon!;
+
+    testWidgets('🚨ON wears a DOT INSIDE the ring and OFF the bare ring — '
+        '유저 2026-09-10: 「적용/미적용 동그란 버튼에 적용 시 안에 동그라미'
+        '(환경설정▸입력▸태블릿서비스 버튼처럼)」, and that button is a radio', (
+      tester,
+    ) async {
+      await pumpList(
+        tester,
+        CutGuides(
+          guides: [
+            symmetry('s1'),
+            symmetry('s2'),
+            perspective('p1'),
+            perspective('p2', snapEnabled: false),
+          ],
+          activeSymmetryId: const GuideId('s1'),
+        ),
+      );
+
+      // BOTH families, and both states of each: the row is written twice,
+      // so a dot added to one copy alone would still read as done.
+      expect(glyphOf(tester, 's1'), Icons.radio_button_checked);
+      expect(glyphOf(tester, 's2'), Icons.radio_button_unchecked);
+      expect(glyphOf(tester, 'p1'), Icons.radio_button_checked);
+      expect(glyphOf(tester, 'p2'), Icons.radio_button_unchecked);
+    });
+
+    testWidgets('🚨the COLOUR still carries the state too — the dot says it '
+        'louder, it does not replace the app\'s selection language', (
+      tester,
+    ) async {
+      await pumpList(
+        tester,
+        CutGuides(
+          guides: [symmetry('s1'), symmetry('s2')],
+          activeSymmetryId: const GuideId('s1'),
+        ),
+      );
+
+      bool accentedOf(String id) => tester
+          .widget<IconButton>(
+            find.byKey(ValueKey<String>('guide-acting-$id')),
+          )
+          .isSelected!;
+
+      expect(accentedOf('s1'), isTrue);
+      expect(accentedOf('s2'), isFalse);
+    });
+  });
+
+  group('the rename entrance', () {
+    // 유저 (guide-sym): 「이름변경 버튼을 비지블 버튼 왼쪽에, 공통 이름변경 창」.
+    testWidgets('🚨both families carry one, and it sits to the LEFT of the '
+        'visible button — the position is the instruction', (tester) async {
+      await pumpList(
+        tester,
+        CutGuides(guides: [symmetry('s1'), perspective('p1')]),
+      );
+
+      for (final id in ['s1', 'p1']) {
+        final rename = find.byKey(ValueKey<String>('guide-rename-$id'));
+        final visible = find.byKey(ValueKey<String>('guide-visible-$id'));
+        expect(rename, findsOneWidget, reason: 'the $id row has no rename');
+        expect(
+          tester.getTopLeft(rename).dx,
+          lessThan(tester.getTopLeft(visible).dx),
+          reason: 'the $id row put it on the wrong side of the eye',
+        );
+      }
+    });
+
+    testWidgets('🚨it opens the app\'s SHARED prompt window, and the name it '
+        'pops lands on that guide alone', (tester) async {
+      CutGuides? committed;
+      await pumpList(
+        tester,
+        CutGuides(guides: [symmetry('s1'), symmetry('s2')]),
+        onCommitted: (next) => committed = next,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('guide-rename-s2')));
+      await tester.pumpAndSettle();
+
+      // The four keys AppPromptDialog.keyed derives — a window of this
+      // panel's own would not have them.
+      expect(
+        find.byKey(const ValueKey<String>('guide-rename-dialog')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('guide-rename-text-field')),
+        '  오른쪽 대칭  ',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('guide-rename-ok-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        committed!.guideFor(const GuideId('s2'))!.name,
+        '오른쪽 대칭',
+        reason: 'the shared window trims; a private one used not to',
+      );
+      expect(committed!.guideFor(const GuideId('s1'))!.name, 's1');
+    });
+
+    testWidgets('⛔an EMPTY name is refused inline and commits nothing — the '
+        'overlay paints this name over the axis, so a blank one has nothing '
+        'to draw', (tester) async {
+      CutGuides? committed;
+      await pumpList(
+        tester,
+        CutGuides(guides: [symmetry('s1')]),
+        onCommitted: (next) => committed = next,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('guide-rename-s1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('guide-rename-text-field')),
+        '   ',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('guide-rename-ok-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('guide-rename-dialog')),
+        findsOneWidget,
+        reason: 'the window stays open with its error',
+      );
+      expect(committed, isNull);
+    });
+
+    testWidgets('a cancelled window renames nothing', (tester) async {
+      CutGuides? committed;
+      await pumpList(
+        tester,
+        CutGuides(guides: [symmetry('s1')]),
+        onCommitted: (next) => committed = next,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('guide-rename-s1')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('guide-rename-text-field')),
+        'never',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('guide-rename-cancel-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(committed, isNull);
+    });
+  });
+
   group('picking a row', () {
     testWidgets('a press anywhere on the row picks that guide — both '
         'families, so neither is the one you cannot reach', (tester) async {

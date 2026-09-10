@@ -376,3 +376,57 @@ CanvasPoint constrainedVanishingPointTarget(
   if (!shape.constrainToEyeLevel) return target;
   return projectOntoAxis(shape.eyeLevel, target);
 }
+
+/// [shape] with its eye level moved to [eyeLevel] — the OTHER half of the
+/// same constraint.
+///
+/// 유저 (guide-sym): 「소실점 아이레벨 고정 시 **아이레벨을 움직이면 소실점도**
+/// — 로직부터 통일」. While [PerspectiveShape.constrainToEyeLevel] is on the
+/// points sit ON the horizon, so a horizon that slid out from under them
+/// would break that invariant the instant it moved;
+/// [constrainedVanishingPointTarget] binds the point's drag and this binds
+/// the horizon's. ⚠️Every mover of the eye level goes through HERE — an
+/// adjustment per handle is how the two ends of one rule drift apart.
+///
+/// The carry is the RIGID motion from the old axis to the new one, applied
+/// through [mapGuides]' own vanishing-point map: a two-line definition
+/// arrives as two moved lines and a direction as a turned direction.
+/// Nothing is flattened to a bare point — see
+/// [constrainedVanishingPointTarget] for why that would throw away the
+/// lines the user drew.
+///
+/// With the flag off the eye level moves alone: a deliberately-broken
+/// horizon is a real drawing, and this is a default, not a law.
+PerspectiveShape movedEyeLevel(PerspectiveShape shape, GuideAxis eyeLevel) {
+  if (!shape.constrainToEyeLevel) {
+    return shape.copyWith(eyeLevel: eyeLevel);
+  }
+  final motion = axisMotion(shape.eyeLevel, eyeLevel);
+  return shape.copyWith(
+    eyeLevel: eyeLevel,
+    vanishingPoints: [
+      for (final point in shape.vanishingPoints)
+        _mapVanishingPoint(point, motion),
+    ],
+  );
+}
+
+/// The rigid motion that carries [from] onto [to]: the turn between their
+/// angles about [from]'s origin, then the shift between their origins.
+///
+/// The rotation fixes `from.origin`, so the shift is simply added to its
+/// translation column rather than composed as a second map.
+GuideTransform axisMotion(GuideAxis from, GuideAxis to) {
+  final turn = GuideTransform.rotation(
+    from.origin,
+    to.angleDegrees - from.angleDegrees,
+  );
+  return GuideTransform(
+    turn.a,
+    turn.b,
+    turn.c,
+    turn.d,
+    turn.tx + (to.origin.x - from.origin.x),
+    turn.ty + (to.origin.y - from.origin.y),
+  );
+}

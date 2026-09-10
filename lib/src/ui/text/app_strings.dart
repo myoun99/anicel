@@ -255,6 +255,12 @@ enum AppStrings {
   String get renameKeyTitle => _s('renameKeyTitle');
   String get renameKeyField => _s('renameKeyField');
 
+  /// A drawing guide's name — the label the overlay paints over its axis,
+  /// so an empty one has nothing to draw and is refused.
+  String get renameGuideTitle => _s('renameGuideTitle');
+  String get renameGuideField => _s('renameGuideField');
+  String get renameGuideEmpty => _s('renameGuideEmpty');
+
   /// The cut's note — empty is allowed, it CLEARS the note.
   String get cutNoteTitle => _s('cutNoteTitle');
   String get cutNoteField => _s('cutNoteField');
@@ -1332,6 +1338,9 @@ enum AppStrings {
     'renameFrameField': 'Frame name',
     'renameKeyTitle': 'Rename key',
     'renameKeyField': 'Key name',
+    'renameGuideTitle': 'Rename guide',
+    'renameGuideField': 'Guide name',
+    'renameGuideEmpty': 'Guide name cannot be empty.',
     'cutNoteTitle': 'Edit cut note',
     'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
@@ -2233,6 +2242,9 @@ enum AppStrings {
     'renameFrameField': 'フレーム名',
     'renameKeyTitle': 'キー名の変更',
     'renameKeyField': 'キー名',
+    'renameGuideTitle': 'ガイド名の変更',
+    'renameGuideField': 'ガイド名',
+    'renameGuideEmpty': 'ガイド名を空にはできません。',
     'cutNoteTitle': 'カットメモの編集',
     'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
@@ -3228,6 +3240,9 @@ enum AppStrings {
     'renameFrameField': '프레임 이름',
     'renameKeyTitle': '키 이름 변경',
     'renameKeyField': '키 이름',
+    'renameGuideTitle': '가이드 이름 변경',
+    'renameGuideField': '가이드 이름',
+    'renameGuideEmpty': '가이드 이름은 비울 수 없습니다.',
     'cutNoteTitle': '컷 메모 편집',
     'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
@@ -4225,6 +4240,9 @@ enum AppStrings {
     'renameFrameField': "Nom de l'image",
     'renameKeyTitle': 'Renommer la clé',
     'renameKeyField': 'Nom de la clé',
+    'renameGuideTitle': 'Renommer le repère',
+    'renameGuideField': 'Nom du repère',
+    'renameGuideEmpty': 'Le nom du repère ne peut pas être vide.',
     'cutNoteTitle': 'Modifier la note du plan',
     'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
@@ -5239,6 +5257,9 @@ enum AppStrings {
     'renameFrameField': '帧名称',
     'renameKeyTitle': '重命名关键帧',
     'renameKeyField': '关键帧名称',
+    'renameGuideTitle': '重命名参考线',
+    'renameGuideField': '参考线名称',
+    'renameGuideEmpty': '参考线名称不能为空。',
     'cutNoteTitle': '编辑镜头备注',
     'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',

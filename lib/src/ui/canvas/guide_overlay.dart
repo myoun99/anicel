@@ -29,7 +29,12 @@ const int _raysPerVanishingPoint = 12;
 /// What a press on the guide overlay grabbed.
 enum GuideHandleKind {
   /// The symmetry axis's origin, or a perspective guide's eye-level
-  /// origin — dragging moves the whole guide.
+  /// origin — dragging slides that line.
+  ///
+  /// It moves the whole guide while the perspective's
+  /// `constrainToEyeLevel` is on, because the vanishing points ride the
+  /// horizon then; with it off the horizon slides alone. See
+  /// `movedEyeLevel`.
   origin,
 
   /// The far end of the symmetry axis — dragging rotates it.
@@ -542,13 +547,16 @@ CutGuides dragGuideHandle(
       };
     case PerspectiveShape():
       switch (handle.kind) {
+        // Both eye-level handles go through [movedEyeLevel], which is where
+        // the constraint decides whether the vanishing points come along —
+        // 유저: 「로직부터 통일」. Sliding and tilting are two ways to move ONE
+        // line, so they must not each hold an opinion about it.
         case GuideHandleKind.origin:
-          next = shape.copyWith(
-            eyeLevel: shape.eyeLevel.copyWith(origin: to),
-          );
+          next = movedEyeLevel(shape, shape.eyeLevel.copyWith(origin: to));
         case GuideHandleKind.eyeLevelAngle:
-          next = shape.copyWith(
-            eyeLevel: shape.eyeLevel.copyWith(
+          next = movedEyeLevel(
+            shape,
+            shape.eyeLevel.copyWith(
               angleDegrees: _angleTowards(shape.eyeLevel.origin, to),
             ),
           );

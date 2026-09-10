@@ -171,6 +171,57 @@ void main() {
       expect(_perspectiveOf(tilted).eyeLevel.origin, _point(100, 100));
     });
 
+    // 유저 (guide-sym): 「소실점 아이레벨 고정 시 아이레벨을 움직이면 소실점도」.
+    // BOTH eye-level handles are wired to the one rule — sliding and tilting
+    // are two ways to move one line.
+    test('sliding the eye level carries the vanishing points', () {
+      final guides = _perspective();
+      final handle = guideHandles(guides)
+          .firstWhere((h) => h.kind == GuideHandleKind.origin);
+
+      final slid = dragGuideHandle(guides, handle, _point(140, 160));
+
+      final at = _perspectiveOf(slid).vanishingPoints.first.resolve().position!;
+      expect(at.x, closeTo(440, 1e-9));
+      expect(at.y, closeTo(160, 1e-9));
+      // The vertical family is a DIRECTION; a slide does not move it.
+      expect(
+        _perspectiveOf(slid).vanishingPoints[1],
+        isA<VanishingPointTowards>(),
+      );
+      expect(
+        _perspectiveOf(slid).vanishingPoints[1].resolve().isInfinite,
+        isTrue,
+      );
+    });
+
+    test('tilting the eye level carries the vanishing points', () {
+      final guides = _perspective();
+      final handle = guideHandles(guides)
+          .firstWhere((h) => h.kind == GuideHandleKind.eyeLevelAngle);
+
+      final tilted = dragGuideHandle(guides, handle, _point(100, 220));
+
+      expect(_perspectiveOf(tilted).eyeLevel.angleDegrees, closeTo(90, 1e-9));
+      final at =
+          _perspectiveOf(tilted).vanishingPoints.first.resolve().position!;
+      expect(at.x, closeTo(100, 1e-9));
+      expect(at.y, closeTo(400, 1e-9), reason: 'turned with the horizon');
+    });
+
+    test('an unconstrained eye level moves alone', () {
+      final guides = _perspective(constrainToEyeLevel: false);
+      final handle = guideHandles(guides)
+          .firstWhere((h) => h.kind == GuideHandleKind.origin);
+
+      final slid = dragGuideHandle(guides, handle, _point(140, 160));
+
+      expect(_perspectiveOf(slid).eyeLevel.origin, _point(140, 160));
+      final at = _perspectiveOf(slid).vanishingPoints.first.resolve().position!;
+      expect(at.x, closeTo(400, 1e-9));
+      expect(at.y, closeTo(100, 1e-9));
+    });
+
     test('a handle for a guide that is gone changes nothing', () {
       final guides = _symmetry();
       final handle = guideHandles(guides).first;

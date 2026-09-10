@@ -26,6 +26,9 @@ SymmetryShape _symmetry({
   lineSymmetry: lineSymmetry,
 );
 
+GuideAxis _horizon(double x, double y, double angle) =>
+    GuideAxis(origin: _point(x, y), angleDegrees: angle);
+
 PerspectiveShape _perspective(
   List<VanishingPoint> points, {
   bool snapEnabled = true,
@@ -347,6 +350,97 @@ void main() {
 
       expect(shape.vanishingPoints.single, lines);
       expect(shape.vanishingPoints.single.resolve().position!.y, closeTo(5, 1e-9));
+    });
+  });
+
+  // 유저 (guide-sym): 「소실점 아이레벨 고정 시 아이레벨을 움직이면 소실점도」 —
+  // the other half of the constraint. The horizon's move is bound here, the
+  // point's drag in `constrainedVanishingPointTarget`.
+  group('movedEyeLevel', () {
+    test('sliding the horizon carries the vanishing points with it', () {
+      final shape = _perspective([VanishingPointAt(_point(300, 100))]);
+
+      final moved = movedEyeLevel(shape, _horizon(50, 130, 0));
+
+      _expectPoint(
+        moved.vanishingPoints.single.resolve().position!,
+        350,
+        130,
+      );
+    });
+
+    test('tilting the horizon turns them about its origin', () {
+      final shape = _perspective([VanishingPointAt(_point(300, 100))]);
+
+      final moved = movedEyeLevel(shape, _horizon(0, 100, 90));
+
+      _expectPoint(moved.vanishingPoints.single.resolve().position!, 0, 400);
+    });
+
+    test('a carried point is still ON the horizon afterwards', () {
+      // The invariant the flag names, checked rather than assumed: whatever
+      // the motion, the point and its projection onto the new eye level are
+      // the same place.
+      final shape = _perspective([VanishingPointAt(_point(300, 100))]);
+
+      for (final axis in [
+        _horizon(50, 130, 0),
+        _horizon(0, 100, 90),
+        _horizon(-40, 20, 37),
+      ]) {
+        final moved = movedEyeLevel(shape, axis);
+        final at = moved.vanishingPoints.single.resolve().position!;
+        final onLine = projectOntoAxis(moved.eyeLevel, at);
+        _expectPoint(onLine, at.x, at.y);
+      }
+    });
+
+    test('a point at INFINITY turns with the horizon but does not slide', () {
+      final shape = _perspective([VanishingPointTowards(dx: 0, dy: 1)]);
+
+      final slid = movedEyeLevel(shape, _horizon(50, 130, 0));
+      expect(slid.vanishingPoints.single, VanishingPointTowards(dx: 0, dy: 1));
+
+      final tilted = movedEyeLevel(shape, _horizon(0, 100, 90));
+      final turned = tilted.vanishingPoints.single as VanishingPointTowards;
+      expect(turned.dx, closeTo(-1, 1e-9));
+      expect(turned.dy, closeTo(0, 1e-9));
+    });
+
+    test('a two-line definition arrives as two moved lines', () {
+      // ⛔Not flattened to the bare crossing: the lines the user drew are
+      // what lets them grab one later and slide the convergence.
+      final shape = _perspective([
+        VanishingPointFromLines(
+          GuideLine(a: _point(0, 0), b: _point(10, 10)),
+          GuideLine(a: _point(0, 10), b: _point(10, 0)),
+        ),
+      ]);
+
+      final moved = movedEyeLevel(shape, _horizon(50, 130, 0));
+
+      final carried = moved.vanishingPoints.single as VanishingPointFromLines;
+      _expectPoint(carried.first.a, 50, 30);
+      _expectPoint(carried.first.b, 60, 40);
+      _expectPoint(carried.second.a, 50, 40);
+      _expectPoint(carried.second.b, 60, 30);
+    });
+
+    test('with the constraint off the horizon moves alone', () {
+      // A deliberately-broken horizon is a real drawing.
+      final shape = _perspective(
+        [VanishingPointAt(_point(300, 100))],
+        constrainToEyeLevel: false,
+      );
+
+      final moved = movedEyeLevel(shape, _horizon(50, 130, 25));
+
+      expect(moved.eyeLevel, _horizon(50, 130, 25));
+      _expectPoint(
+        moved.vanishingPoints.single.resolve().position!,
+        300,
+        100,
+      );
     });
   });
 }
