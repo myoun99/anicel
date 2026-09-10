@@ -100,8 +100,10 @@ class FrameStatsSnapshot {
 
   /// ⚠️These two used to report the app's cacheable population MINUS the
   /// four artwork pictures, which carried `willChange: true` and so never
-  /// entered the cache at all. R11 retired those hints, so the artwork can
-  /// enter now: **a RISE here is the expected reading, not a leak.**
+  /// entered the cache at all. R11 retired those hints; R12 (2026-09-11)
+  /// put them back on the two DRAWING pictures (the editing stack and
+  /// `BrushEditCanvasView`), so the playback pictures can enter and the
+  /// drawing ones never do — see `canvas_layer_stack_view.dart`.
   ///
   /// It is also the only route from Dart to observe whether the artwork
   /// actually did enter, which makes a Windows before/after reading the

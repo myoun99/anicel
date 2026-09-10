@@ -90,11 +90,11 @@ void main() {
         );
         final painter = customPaint.painter! as BitmapSurfacePainter;
 
-        // ⛔R11 retired the hint. The Skia raster cache bakes this picture
-        // again, and that is now safe: the cached layer's integer-snapped
-        // origin is where layout puts it anyway. Read the history at the
-        // top of `bypass_raster_cache_wiring_test.dart` before restoring.
-        expect(customPaint.willChange, isFalse);
+        // R12 put the hint back on the two drawing pictures: the hop came
+        // back with the chain on the grid (F-67, 2026-09-11), so the
+        // integer-snap theory R11 retired it on does not cover the flip.
+        // The history is at the top of `bypass_raster_cache_wiring_test.dart`.
+        expect(customPaint.willChange, isTrue);
         expect(identical(painter.surface, surface), isTrue);
         expect(painter.viewport, viewport);
         expect(identical(painter.overlayModel, overlayModel), isTrue);

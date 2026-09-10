@@ -1015,7 +1015,28 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // The retirement is one commit and reverts whole. The cheap positive
       // check that it did what it claims: Settings ▸ Frame Stats on
       // Windows, where `pictureCacheCount` should RISE.
+      //
+      //  · R12 (2026-09-11) — the hint is BACK on the two DRAWING pictures
+      //    (this one and `BrushEditCanvasView`'s), and only those. F-67
+      //    (유저 09-10): the hop returned — pen-down/up, tool change, pan,
+      //    at zoom >= 100% only — and the hands-on read the pinned probe
+      //    on the frame it happened: `grid device=(40, 40) frac=(0.000,
+      //    0.000) ratio=1.000`. The chain was on the grid, at 100%
+      //    scaling — the case the block above says CANNOT hop. And the
+      //    shell probe (`the_canvas_raster_holds_still_through_a_stroke`)
+      //    says this boundary's OWN raster is byte-identical through
+      //    pen-down, mid-stroke and pen-up at 110%. So what flips is not
+      //    our picture and not the translation: the engine's cached raster
+      //    of this display list differs from its live one for a reason the
+      //    snap theory does not name, and the only switch that makes the
+      //    flip impossible is the one #1103 device-verified — no cache
+      //    entry, so nothing to flip into. What the cache bought here is
+      //    gone anyway: with the display buffer this display list is the
+      //    paper and ONE image blit, replayed for next to nothing. The
+      //    playback pictures keep the cache — they change every tick and a
+      //    hold is the case where caching is a win, not a hop.
       child: CustomPaint(
+        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,

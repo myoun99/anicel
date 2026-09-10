@@ -50,7 +50,13 @@ class BrushEditCanvasView extends StatelessWidget {
       key: const ValueKey<String>('brush-edit-canvas-view-boundary'),
       child: CustomPaint(
         key: const ValueKey<String>('brush-edit-canvas-custom-paint'),
-        // ⛔The `willChange: true` hint that stood here is GONE. It kept
+        // R12 (2026-09-11): the hint is BACK, with the editing stack's —
+        // the hop returned on a chain that was on the grid at 100%
+        // scaling, so the paragraph below no longer describes the whole
+        // mechanism; the history and the measurement are in
+        // `canvas_layer_stack_view.dart` (the R12 entry).
+        willChange: true,
+        // ⛔The `willChange: true` hint that stood here was GONE (R11). It kept
         // the Skia raster cache from baking this picture, because a cached
         // layer's origin snaps to integer device pixels while a live
         // repaint used the fractional offset layout produced — so the

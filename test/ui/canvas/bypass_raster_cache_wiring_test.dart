@@ -94,6 +94,18 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// axis-aligned artwork edge when a panel opens, a tool is picked or the
 /// active layer changes, at zoom >= 100%, on WINDOWS only (Impeller
 /// carries no such cache, so mobile never had it).
+///
+///  · R12 (2026-09-11) — and that is what happened. F-67: the hop came
+///    back at pen-down/up, tool change and pan, zoom >= 100%; the hands-on
+///    read the pinned grid probe ON the frame: device (40, 40), fraction
+///    0, ratio 1.0 — the chain on the grid at 100% scaling, the case R11
+///    said cannot hop. And `the_canvas_raster_holds_still_through_a_stroke`
+///    measures the boundary's own raster byte-identical through a stroke
+///    at 110%. So the flip is between the engine's cached raster and its
+///    live one, for a reason the snap does not name. This file now pins
+///    the hint PRESENT on the two DRAWING pictures (the ones that flip
+///    still↔live under the hand) and ABSENT on the two playback pictures
+///    (which change every tick; a hold is the cache's win).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('project');
@@ -127,8 +139,8 @@ void main() {
   );
 
   testWidgets(
-    'the editing stack picture no longer refuses the raster cache — '
-    'willChange pinned ABSENT (R11 replaced it)',
+    'the editing stack picture refuses the raster cache — willChange pinned '
+    'PRESENT (R12 put it back)',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -163,16 +175,14 @@ void main() {
 
       expect(
         stackPaint.willChange,
-        isFalse,
-        reason: 'R11 retired the hint. The cache snaps a stable picture '
-            'layer to INTEGRAL device translation — which is where layout '
-            'now puts it anyway, so the cached and the live render land in '
-            'the same place and there is nothing to flip between. If you '
-            'are putting this back, read the history at the top of this '
-            'file: the thing to check first is whether the chain is still '
-            'on the grid ON THE FRAME OF A LAYOUT CHANGE '
-            '(canvas_boundary_on_grid_test.dart), because that frame is '
-            'what #1106 actually got wrong.',
+        isTrue,
+        reason: 'R12 put the hint back on the drawing pictures: the hop '
+            'returned with the chain ON the grid at 100% scaling (F-67 '
+            'hands-on, 2026-09-11), so the cached and the live render of '
+            'this display list differ for a reason the snap does not name, '
+            'and refusing the cache is the one switch that removes the '
+            'flip by construction. If you are taking it out again, the '
+            'device A/B is the only oracle — read the history at the top.',
       );
     },
   );
