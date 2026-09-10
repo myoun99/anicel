@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/lane_range_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -28,8 +29,33 @@ void main() {
   // `s.laneMove` is one the campaign reports UNNAMED and never runs a
   // mutant against — every law below lives in those two files and they
   // had no witness the campaign could see.
-  FrameRangeMoveDrag rangeMove(EditorSessionManager s) => s.rangeMove;
+  //
+  // ⚠️Since G5 (2026-09-10) the frame-range move's laws live in TWO files:
+  // the verbs here and the gesture object under `drags/`. Both are imported
+  // and both are named below, for the same reason.
+  FrameRangeMoveDragVerbs rangeMove(EditorSessionManager s) => s.rangeMove;
   LaneRangeMoveDragVerbs laneMove(EditorSessionManager s) => s.laneMove;
+
+  /// The cut-local move's FACTORY, asked directly — the refusal itself,
+  /// rather than the bool the verb translates it into.
+  FrameRangeMoveDrag? beginRangeMoveDrag(EditorSessionManager s) =>
+      FrameRangeMoveDrag.begin(
+        roles: (
+          project: s,
+          selection: s,
+          changes: s,
+          controllers: s.activeCutControllers,
+          internals: s,
+          blockMove: s.drawingBlockMove,
+          renderCaches: s.renderCaches,
+          camera: s.camera,
+          transitions: s.transitions,
+          trackSe: s.trackSe,
+        ),
+        rowSpans: s.rowSpans,
+        folders: s.folders,
+        rangeSelections: s.rangeSelections,
+      );
 
   /// A session with TWO blocks on layer A (frames 0 and 3, length 1 each)
   /// and an empty layer B below.
@@ -49,6 +75,51 @@ void main() {
       s.layers.firstWhere((l) => l.id == layerB.id),
     );
   }
+
+  test('the FACTORY is the refusal (G5): a span with nothing to move builds '
+      'NO drag, a span with a block builds one', () {
+    final (s, a, _) = fixture();
+
+    // A camera row's raw span carries no keys and no blocks.
+    s.updateFrameRangeSelectionDrag(
+      layerId: s.layers.firstWhere((l) => l.kind == LayerKind.camera).id,
+      anchorIndex: 2,
+      headIndex: 5,
+    );
+    expect(
+      beginRangeMoveDrag(s),
+      isNull,
+      reason:
+          'a refused move builds NOTHING — mid-drag state that cannot exist '
+          'while there is no drag is the whole point of the shape',
+    );
+
+    // …and a MULTI-row span of rows that carry nothing refuses on the
+    // other arm — the frame-axis slide's, which asks its own question
+    // ("is any row retimable AND carrying a whole block, or is a key
+    // riding?") and must answer no the same way.
+    final instruction = s.layers.firstWhere(
+      (l) => l.kind == LayerKind.instruction,
+    );
+    s.updateFrameRangeSelectionDrag(
+      layerId: instruction.id,
+      anchorIndex: 2,
+      headIndex: 3,
+      headLayerId: s.layers.firstWhere((l) => l.kind == LayerKind.camera).id,
+    );
+    expect(s.frameRangeSelection.value!.spanLayerIds.length, greaterThan(1));
+    expect(beginRangeMoveDrag(s), isNull);
+
+    // A whole block inside the span IS a move.
+    s.updateFrameRangeSelectionDrag(
+      layerId: a.id,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    final drag = beginRangeMoveDrag(s);
+    expect(drag, isNotNull);
+    drag!.cancel();
+  });
 
   test('a drag SNAPS to whole blocks: half-covering a block extends the '
       'selection through it', () {

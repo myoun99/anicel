@@ -2258,10 +2258,26 @@ class EditorSessionManager extends ChangeNotifier
   // ── the frame-range move drag: its own object, in its own file ────────
   //
   // The first collaborator carved out of this class (2026-09-02, the audit's
-  // SRP cut): the drag's state and steps live in `FrameRangeMoveDrag`
-  // (session/frame_range_move_drag.dart). Callers name it — a forwarder
-  // here would be a second name for the same verb (round 8, G4).
-  late final FrameRangeMoveDrag rangeMove = FrameRangeMoveDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, camera: camera, folders: folders, rangeSelections: rangeSelections, rowSpans: rowSpans, blockMove: drawingBlockMove, transitions: transitions, trackSe: trackSe, internals: this, renderCaches: renderCaches);
+  // SRP cut): the verbs live in `FrameRangeMoveDragVerbs`
+  // (session/frame_range_move_drag.dart) and one gesture's state lives in
+  // the `FrameRangeMoveDrag` its factory returns (session/drags/). Callers
+  // name it — a forwarder here would be a second name for the same verb
+  // (round 8, G4).
+  late final FrameRangeMoveDragVerbs rangeMove = FrameRangeMoveDragVerbs(
+    project: this,
+    selection: this,
+    changes: this,
+    controllers: activeCutControllers,
+    camera: camera,
+    folders: folders,
+    rangeSelections: rangeSelections,
+    rowSpans: rowSpans,
+    blockMove: drawingBlockMove,
+    transitions: transitions,
+    trackSe: trackSe,
+    internals: this,
+    renderCaches: renderCaches,
+  );
 
   /// The door a collaborator announces through — `notifyListeners` is
   /// protected, and a collaborator is not a subclass.

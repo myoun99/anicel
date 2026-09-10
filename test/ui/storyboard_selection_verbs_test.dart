@@ -236,6 +236,30 @@ void main() {
   });
 
   group('Range MOVE on an S row', () {
+    test('a span that covers nothing REFUSES, and the refusal arms nothing '
+        '— the drag object is what a begin either builds or does not', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayer2Id,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 5,
+      );
+      expect(
+        session.trackFrameRangeSelection.value,
+        isNotNull,
+        reason: 'the empty row still SELECTS — only the move refuses',
+      );
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_seLayer2Id), isFalse);
+
+      // 🚨The half-drag pin: a refused begin used to leave the axis, the
+      // grabbed row and the captured sources standing, so the steps after
+      // it ran against whatever the attempt had written down. There is no
+      // object now, so there is nothing for them to run against.
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.rangeMove.endFrameRangeMoveDrag();
+      expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
     test('slides the selected sounds along the GLOBAL axis, one undo', () {
       final session = sessionFor();
       session.updateTrackRowRangeSelectionByFrame(
