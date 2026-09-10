@@ -23,6 +23,17 @@ import 'package:flutter/rendering.dart';
 /// something, the whole canvas freezes rather than one corner of it, which
 /// is the failure everybody notices in the first second.
 class DisplayBufferCache {
+  /// Told whenever [heldBytes] changes, so an owner that the memory census
+  /// CAN reach is able to report a buffer that lives in a widget State.
+  ///
+  /// ⚠️A callback rather than the census reading this object: the census
+  /// pulls from holders the session owns, and a canvas view is not one —
+  /// the same reason the media viewers push
+  /// ([RenderCaches.viewerRasterBytesByViewer]).
+  void Function(int bytes)? onHeldBytesChanged;
+
+  void _tellHeldBytes() => onHeldBytesChanged?.call(heldBytes);
+
   /// Bytes the kept buffer holds: one canvas-resolution RGBA image, or
   /// none.
   ///
@@ -265,6 +276,7 @@ class DisplayBufferCache {
     _rect = rect;
     _key = key;
     _staticKey = staticKey;
+    _tellHeldBytes();
   }
 
   /// The previous image, when the only thing that moved since is the LIVE
@@ -362,6 +374,7 @@ class DisplayBufferCache {
     // "find" a small dirty rect against a base that no longer exists.
     lastOverlayTokens = const {};
     lastTileTokens = const {};
+    _tellHeldBytes();
   }
 
   void dispose() {

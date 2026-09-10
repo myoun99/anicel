@@ -532,6 +532,9 @@ class _InteractiveCanvasBuild {
       // preview the way they occlude the landed pixels.
       floatOverlay: floatOverlay,
       imageCache: frame.session.renderCaches.layerFrameImageCache,
+      // The census cannot reach a widget State; the session can be reached.
+      onBufferBytes: (bytes) =>
+          frame.session.renderCaches.canvasBufferBytes = bytes,
       canvasSize: _canvasSize,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers

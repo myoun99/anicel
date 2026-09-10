@@ -41,7 +41,19 @@ void main() {
       for (final match in _counter.allMatches(entity.readAsStringSync())) {
         final name = match.group(1)!;
         final entry = '$relative → $name';
-        if (_notCensused[entry] != null) {
+        final excuse = _notCensused[entry];
+        if (excuse != null) {
+          // 🚨A HOLDING REPORTED THROUGH SOMETHING ELSE STILL HAS TO BE
+          // REPORTED. `via:<symbol>` says the census reads that instead —
+          // the push paths, where a widget State writes its bytes onto
+          // something the session owns. Checked, not taken on trust.
+          if (excuse.startsWith('via:')) {
+            final forwarder = excuse.substring(4).split(' ').first;
+            if (!census.contains('.$forwarder')) {
+              missing.add('$entry (claims via:$forwarder — census has no '
+                  'such reader)');
+            }
+          }
           continue;
         }
         // The census reads counters by name. A getter it never names is a
@@ -118,14 +130,15 @@ const _notCensused = <String, String>{
       'a CEILING. What is actually held is counted by the two playback '
       'caches the census already reads',
 
-  // — Real holdings the census cannot reach yet. ⚠️Each says what closes it.
+  // — Real holdings that reach the census through something else. The
+  // `via:` prefix names the reader, and the test checks it exists.
   'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
-      'REAL and uncounted: one canvas-resolution image per open canvas '
-      'view (33MB at 4K). The census PULLS from holders the session owns '
-      'and this one lives in a widget State, so it needs the pushed path '
-      'RenderCaches.viewerRasterBytesByViewer already uses — next round',
+      'via:canvasBufferBytes — the census PULLS from holders the session '
+      'owns and this lives in a widget State, so the view pushes it onto '
+      'RenderCaches, the way the media viewers already do',
   'lib/src/native/native_upload_cache.dart → residentBytes':
-      'REAL and uncounted: the engine keeps two of these (stamp bytes, '
-      'mask alphas) inside QaNativeEngine, byte-budgeted but not reported. '
-      'Closing it means exposing them off the engine — next round',
+      'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
+      'mask alphas) and sums them; ALSO ledgered because the bare name is '
+      'shared with BrushTipStampCache, so a name match would pass this '
+      'entry for the wrong reason',
 };

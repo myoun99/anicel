@@ -1,6 +1,7 @@
 import 'dart:io' show ProcessInfo;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
@@ -139,9 +140,38 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     ),
     MemoryCensusItem(
       id: 'brushTips',
-      bytes: BrushTipStampCache.instance.residentBytes,
+      bytes:
+          BrushTipStampCache.instance.residentBytes +
+          // ⛔The NATIVE copies of the same things belong on the same row:
+          // a stamp's bytes and a mask's alphas uploaded for the kernels.
+          // They were byte-budgeted and reported to nobody, so they read
+          // as engine overhead — 2026-09-10.
+          (QaNativeEngine.instance?.nativeUploadBytes ?? 0),
     ),
-    MemoryCensusItem(id: 'panelRasters', bytes: StaticRaster.censusBytes),
+    // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
+    // is allowed 100 MiB and 1000 entries by default and nothing in this
+    // app ever set either — so the readout could not say whether it held
+    // nothing or a tenth of a gigabyte. It answers now, and
+    // [AnicelBinding] gives it a ceiling that suits an app which decodes
+    // its own pixels.
+    //
+    // ⚠️A source scan cannot find this one: the ratchet reads `lib/`, and
+    // this counter lives in the framework. It is here because someone
+    // looked, which is the argument for looking.
+    MemoryCensusItem(
+      id: 'imageCache',
+      bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
+    ),
+    MemoryCensusItem(
+      id: 'panelRasters',
+      bytes:
+          StaticRaster.censusBytes +
+          // ⛔The editing canvas's display buffer belongs on the same row:
+          // it is a panel holding a raster of itself, one canvas-resolution
+          // image (33MB at 4K) kept for as long as nothing changes. It
+          // lives in a widget State, so it is PUSHED here — 2026-09-10.
+          session.renderCaches.canvasBufferBytes,
+    ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].
     MemoryCensusItem(

@@ -87,6 +87,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'brushTips' => strings.memoryItemBrushTips,
       'panelRasters' => strings.memoryItemPanelRasters,
       'viewerPages' => strings.memoryItemViewerPages,
+      'imageCache' => strings.memoryItemImageCache,
       _ => id,
     };
   }

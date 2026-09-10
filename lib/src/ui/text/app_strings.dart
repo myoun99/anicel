@@ -509,6 +509,7 @@ enum AppStrings {
   String get memoryItemBrushTips => _s('memoryItemBrushTips');
   String get memoryItemPanelRasters => _s('memoryItemPanelRasters');
   String get memoryItemViewerPages => _s('memoryItemViewerPages');
+  String get memoryItemImageCache => _s('memoryItemImageCache');
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaDiagnostics => _s('containerAreaDiagnostics');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
@@ -1560,6 +1561,7 @@ enum AppStrings {
     'memoryItemBrushTips': 'Brush tips',
     'memoryItemPanelRasters': 'Panel rasters',
     'memoryItemViewerPages': 'Viewer pages',
+    'memoryItemImageCache': 'Image cache',
     'containerAreaSettings': 'Settings',
     'containerAreaDiagnostics': 'Diagnostics log',
     'containerAreaSessionScratch': 'Session scratch',
@@ -2501,6 +2503,7 @@ enum AppStrings {
     'memoryItemBrushTips': 'ブラシ先端',
     'memoryItemPanelRasters': 'パネルのラスター',
     'memoryItemViewerPages': 'ビューアのページ',
+    'memoryItemImageCache': '画像キャッシュ',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
     'containerAreaSessionScratch': 'セッション作業領域',
@@ -3494,6 +3497,7 @@ enum AppStrings {
     'memoryItemBrushTips': '브러시 팁',
     'memoryItemPanelRasters': '패널 래스터',
     'memoryItemViewerPages': '뷰어 페이지',
+    'memoryItemImageCache': '이미지 캐시',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
     'containerAreaSessionScratch': '세션 작업 공간',
@@ -4502,6 +4506,7 @@ enum AppStrings {
     'memoryItemBrushTips': 'Pointes de brosse',
     'memoryItemPanelRasters': 'Rasters de panneau',
     'memoryItemViewerPages': 'Pages de la visionneuse',
+    'memoryItemImageCache': "Cache d'images",
     'containerAreaSettings': 'Réglages',
     'containerAreaDiagnostics': 'Journal de diagnostic',
     'containerAreaSessionScratch': 'Espace de session',
@@ -5479,6 +5484,7 @@ enum AppStrings {
     'memoryItemBrushTips': '笔尖',
     'memoryItemPanelRasters': '面板栅格',
     'memoryItemViewerPages': '查看器页面',
+    'memoryItemImageCache': '图像缓存',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
     'containerAreaSessionScratch': '会话暂存区',

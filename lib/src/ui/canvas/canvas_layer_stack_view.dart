@@ -205,6 +205,7 @@ class CanvasLayerStackView extends StatefulWidget {
     this.debugDisableBake = false,
     this.debugDisableSingleBuffer = false,
     this.debugBufferCache,
+    this.onBufferBytes,
   });
 
   /// 🚨A cache the TEST owns, so it can read how each frame was built.
@@ -213,6 +214,12 @@ class CanvasLayerStackView extends StatefulWidget {
   /// the contract rather than a debugging aid.
   @visibleForTesting
   final DisplayBufferCache? debugBufferCache;
+
+  /// Told how many bytes the display buffer holds, whenever that changes
+  /// (and 0 when this view goes away). The memory census cannot reach a
+  /// widget State, so the owner that CAN be reached writes it down — the
+  /// same push the media viewers use.
+  final void Function(int bytes)? onBufferBytes;
 
   /// 🚨(v) 2단계 — turns the single composite buffer OFF, so a test can
   /// render the SAME tree both ways and compare the pixels.
@@ -369,6 +376,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void initState() {
     super.initState();
+    _bufferCache.onHeldBytesChanged = widget.onBufferBytes;
     _syncActiveStandIn();
     _syncImagesWithCache();
     unawaited(_ensureImages());
@@ -538,6 +546,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       entry.value.clone.dispose();
     }
     _images.clear();
+    // The buffer goes with this view; the books must not keep charging for
+    // a canvas nobody is looking at any more.
+    widget.onBufferBytes?.call(0);
     _bake.dispose();
     _bufferCache.dispose();
     super.dispose();

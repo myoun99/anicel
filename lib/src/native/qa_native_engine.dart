@@ -1145,6 +1145,16 @@ class QaNativeEngine {
     byteBudget: stampUploadByteBudget,
   );
 
+  /// Bytes the two native upload caches hold between them — the stamp
+  /// bytes and the mask alphas copied into native memory.
+  ///
+  /// 🔬Counted so the memory readout can NAME them. Both are
+  /// byte-budgeted and neither reported to anyone, so their bytes landed
+  /// in `untrackedBytes` and read as engine overhead — which is exactly
+  /// how a cache stops being anybody's business.
+  int get nativeUploadBytes =>
+      stampUploads.residentBytes + _maskUploads.residentBytes;
+
   /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
   /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
   /// newest entry always survives even when it alone exceeds the budget.

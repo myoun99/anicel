@@ -88,6 +88,16 @@ class RenderCaches {
   /// gap would land in `untrackedBytes` and read as engine overhead.
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
+  /// What the editing canvas's display buffer holds — one canvas-resolution
+  /// image, 33MB on a 4K view, kept for as long as nothing changes.
+  ///
+  /// 🚨PUSHED, for the reason above it: the buffer lives in a widget State
+  /// the session does not own. ⚠️A plain int rather than the viewers' map
+  /// because `CanvasLayerStackView` has exactly ONE construction site (the
+  /// editing canvas). A second one would need the map — and would silently
+  /// overwrite this until someone noticed, which is why it is written down.
+  int canvasBufferBytes = 0;
+
   /// What the media viewers hold between them.
   int get viewerRasterBytes {
     var total = 0;

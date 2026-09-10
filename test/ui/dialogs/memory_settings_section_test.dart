@@ -69,6 +69,7 @@ void main() {
       'brushTips',
       'panelRasters',
       'viewerPages',
+      'imageCache',
     });
   });
 

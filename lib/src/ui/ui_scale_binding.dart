@@ -163,5 +163,24 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
   void initInstances() {
     super.initInstances();
     _instance = this;
+    // 🚨★★★THE FRAMEWORK'S IMAGE CACHE GETS A CEILING THAT MATCHES WHAT
+    // THIS APP ACTUALLY ASKS OF IT — which is nothing.
+    //
+    // Flutter allows it 100 MiB and 1000 entries. Those defaults are for
+    // an app whose pictures ARE `ImageProvider`s. This one decodes its own
+    // pixels and hands `ui.Image`s to `RawImage`: `lib/` contains no
+    // `Image.asset`, no `AssetImage`, no `MemoryImage`, no
+    // `precacheImage` — nothing that reaches this cache at all (grepped
+    // 2026-09-10).
+    //
+    // ⛔SO THIS SAVES NOTHING TODAY, and the comment says so rather than
+    // claiming a win: the cache is empty, and the memory readout now has
+    // a row that shows it. What the ceiling buys is that an
+    // `Image.asset` added in a list one day cannot quietly take a tenth
+    // of a gigabyte before anyone notices — the allowance matches the use
+    // instead of the framework's guess about a different kind of app.
+    PaintingBinding.instance.imageCache
+      ..maximumSizeBytes = 8 * 1024 * 1024
+      ..maximumSize = 50;
   }
 }

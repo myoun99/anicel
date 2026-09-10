@@ -294,6 +294,7 @@ void main() {
     'memoryItemBrushTips': (s) => s.memoryItemBrushTips,
     'memoryItemPanelRasters': (s) => s.memoryItemPanelRasters,
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
+    'memoryItemImageCache': (s) => s.memoryItemImageCache,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
