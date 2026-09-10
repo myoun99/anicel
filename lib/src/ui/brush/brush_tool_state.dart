@@ -1,5 +1,6 @@
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
@@ -231,6 +232,7 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
+    SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
     double textureBrightness = 0.0,
@@ -275,6 +277,7 @@ class BrushToolState {
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
+      dualCompositeMode: dualCompositeMode,
       textureMaskSource: textureMaskSource,
       textureInvert: textureInvert,
       textureBrightness: textureBrightness,
@@ -369,6 +372,7 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
+    SeparableBlendMode? dualCompositeMode,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -420,6 +424,8 @@ class BrushToolState {
         dualMask: dualMask,
         dualMaskScale: dualMaskScale ?? 1.0,
         dualDensity: dualDensity ?? 1.0,
+        dualCompositeMode:
+            dualCompositeMode ?? SeparableBlendMode.multiply,
         textureMaskSource: textureMaskSource,
         textureInvert: textureInvert ?? false,
         textureBrightness: textureBrightness ?? 0.0,
@@ -469,6 +475,7 @@ class BrushToolState {
     scatterCount: clampScatterCount(s.scatterCount),
     dualMaskScale: clampDualMaskScale(s.dualMaskScale),
     dualDensity: clampZeroToOne(s.dualDensity),
+    dualCompositeMode: s.dualCompositeMode,
     textureScale: clampDualMaskScale(s.textureScale),
     textureDensity: clampZeroToOne(s.textureDensity),
     textureBrightness: clampSignedUnit(s.textureBrightness),
@@ -569,6 +576,9 @@ class BrushToolState {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+
+  /// See [BrushShape.dualCompositeMode].
+  SeparableBlendMode get dualCompositeMode => shape.dualCompositeMode;
   /// What the PICKER shows — the texture as chosen, before the levels.
   BrushTipMask? get textureMaskSource => shape.textureMaskSource;
   bool get textureInvert => shape.textureInvert;
@@ -880,6 +890,7 @@ class BrushToolState {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
+    SeparableBlendMode? dualCompositeMode,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
     double textureBrightness = 0.0,
@@ -935,6 +946,8 @@ class BrushToolState {
           scatterBothAxes: scatterBothAxes,
           dualMask: dualMask,
           dualMaskScale: dualMaskScale,
+          dualDensity: dualDensity,
+          dualCompositeMode: dualCompositeMode,
           textureMaskSource: textureMask,
           textureScale: textureScale,
           textureDensity: textureDensity,

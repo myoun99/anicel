@@ -1110,6 +1110,7 @@ enum AppStrings {
 
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
+  String get brDualBlend => _s('brDualBlend');
   String get brEditGroup => _s('brEditGroup');
   String get brFolderIcon => _s('brFolderIcon');
   String get brFolderName => _s('brFolderName');
@@ -1928,6 +1929,7 @@ enum AppStrings {
     'tlAutoFrame': 'Make a frame where there is none',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
+    'brDualBlend': 'Dual blend',
     'brEditGroup': 'Edit group',
     'brFolderIcon': 'Folder icon',
     'brFolderName': 'Folder name',
@@ -2900,6 +2902,7 @@ enum AppStrings {
     'tlAutoFrame': '空のセルに描いたらフレームを作る',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
+    'brDualBlend': 'デュアルの合成',
     'brEditGroup': 'グループを編集',
     'brFolderIcon': 'フォルダーのアイコン',
     'brFolderName': 'フォルダー名',
@@ -3894,6 +3897,7 @@ enum AppStrings {
     'tlAutoFrame': '빈 칸에 그리면 프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
+    'brDualBlend': '듀얼 합성',
     'brEditGroup': '그룹 편집',
     'brFolderIcon': '폴더 아이콘',
     'brFolderName': '폴더 이름',

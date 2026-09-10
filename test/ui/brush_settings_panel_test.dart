@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -282,8 +287,11 @@ void main() {
   );
 
   group('placement dynamics', () {
-    Future<BrushToolState Function()> pumpPanel(WidgetTester tester) async {
-      var state = BrushToolState.defaults;
+    Future<BrushToolState Function()> pumpPanel(
+      WidgetTester tester, {
+      BrushToolState? initial,
+    }) async {
+      var state = initial ?? BrushToolState.defaults;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -339,6 +347,108 @@ void main() {
       expect(read().textureDensity, 1.0);
       expect(read().textureBrightness, 0.0);
       expect(read().textureContrast, 0.0);
+    });
+
+    testWidgets('🐛the dual sliders reach the engine WITH a mask picked', (
+      tester,
+    ) async {
+      // 🚨THE TEST ABOVE ONLY EVER ASKED THE DEAD CASE. "Present, and DEAD:
+      // with no mask there is nothing for them to scale" is true and it is
+      // half the question — a row that is disabled cannot say whether the
+      // enabled one writes anywhere. `BrushToolState.copyWith` took a
+      // `dualDensity` and did not pass it to the shape, so the density
+      // slider moved and nothing changed, and every assertion in this file
+      // agreed with it.
+      final mask = BrushTipMask(
+        id: 'dual-row-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
+      );
+      expect(read().dualMask, isNotNull, reason: 'fixture premise');
+      expect(read().dualDensity, 1.0);
+
+      final density = find.byKey(
+        const ValueKey<String>('brush-tool-dual-density-slider'),
+      );
+      await tester.ensureVisible(density);
+      await tester.drag(density, const Offset(-60, 0));
+      await tester.pumpAndSettle();
+      expect(
+        read().dualDensity,
+        lessThan(1.0),
+        reason: 'the slider must reach the shape, not just move',
+      );
+
+      final scale = find.byKey(
+        const ValueKey<String>('brush-tool-dual-scale-slider'),
+      );
+      await tester.ensureVisible(scale);
+      await tester.drag(scale, const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(read().dualMaskScale, greaterThan(1.0));
+    });
+
+    testWidgets('the dual BLEND is pickable, and it is a row like the others',
+        (tester) async {
+      // v33 gave the dual tip a composite mode and both importers read one;
+      // without this row a brush could arrive with a mode and never be
+      // edited to one. Its two neighbours — the dual scale and density —
+      // have had rows since they existed.
+      final mask = BrushTipMask(
+        id: 'dual-blend-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.dual, mask),
+      );
+      expect(read().dualCompositeMode, SeparableBlendMode.multiply);
+
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-dual-blend-menu-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-tool-dual-blend-add')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        read().dualCompositeMode,
+        SeparableBlendMode.add,
+        reason: 'the picked mode must reach the shape — 加算 is Clip Studio '
+            'index 12, one of the two actually found in a real file',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('⛔the dual blend row keeps its place with no mask picked', (
+      tester,
+    ) async {
+      // 「없다가 생기는 UI 금지」, the same law the mask sliders above obey:
+      // the row is here and DEAD, not absent and then suddenly present.
+      final read = await pumpPanel(tester);
+      expect(read().dualMask, isNull);
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-dual-blend-menu-button'),
+      );
+      expect(button, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-dual-blend-add')),
+        findsNothing,
+        reason: 'with no dual tip there is nothing for a mode to combine',
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('the jitter sliders reach the engine', (tester) async {

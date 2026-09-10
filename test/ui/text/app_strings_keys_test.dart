@@ -595,6 +595,7 @@ void main() {
     'brStabilizer': (s) => s.brStabilizer,
     'brBlend': (s) => s.brBlend,
     'brBlendMode': (s) => s.brBlendMode,
+    'brDualBlend': (s) => s.brDualBlend,
     'brFeather': (s) => s.brFeather,
     'brTolerance': (s) => s.brTolerance,
     'brGapClose': (s) => s.brGapClose,

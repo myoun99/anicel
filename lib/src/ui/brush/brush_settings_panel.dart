@@ -5,6 +5,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_rotation_mode.dart';
+import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -352,6 +353,7 @@ class BrushSettingsPanel extends StatelessWidget {
                 ? null
                 : (value) => onChanged(state.copyWith(dualDensity: value)),
           ),
+          _DualBlendRow(state: state, onChanged: onChanged),
           BrushTipPickerRow(
             label: AppText.strings.brTexture,
             role: BrushTipRole.texture,
@@ -730,6 +732,70 @@ class _PanelSlider extends StatelessWidget {
           SizedBox(
             width: PressureCurveButton.slotWidth,
             child: trailing,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// How the DUAL mask COMBINES with the coverage under it.
+///
+/// 🚨A brush could ARRIVE with a mode and never be edited to one (v33). Both
+/// source formats carry it — Clip Studio's `DualBrushCompositeMode`, whose
+/// 加算 shows up in the user's own files, and Photoshop's `dualBrush.BlnM`,
+/// eight codes across 765 brushes — the engine reads them now, and the dual
+/// mask's other knobs have had rows here all along.
+///
+/// ⛔A `PanelFlyoutButton` row, the shape this panel already uses for tip
+/// rotation. Twelve entries is what a flyout is for; the segmented button
+/// above is for the four-way edge step, and a third control shape would be
+/// a new convention for no reason.
+class _DualBlendRow extends StatelessWidget {
+  const _DualBlendRow({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final language = AppText.language;
+    // ⛔The row is ALWAYS here and goes DEAD without a dual tip — the same
+    // shape the two sliders above it take, and 「없다가 생기는 UI 금지」: the
+    // mask rows used to mount only once a mask was picked, which shoved
+    // four rows under the finger that had just come back from the popup.
+    final enabled = state.dualMask != null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              AppText.strings.brDualBlend,
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
+          PanelFlyoutButton(
+            key: const ValueKey<String>('brush-tool-dual-blend-menu-button'),
+            label: state.dualCompositeMode.labelFor(language),
+            tooltip: AppText.strings.brDualBlend,
+            // ⛔`enabled`, NOT an empty list. `showMenu` asserts on one, and
+            // a button that opens nothing is 「잠궜는데 바꿀 수 있으면 잠금이
+            // 아니잖아」 — the flyout's own doc says a host that needs a shut
+            // state owns the appearance of one, and this button can dim
+            // itself.
+            enabled: enabled,
+            entriesBuilder: () => [
+              for (final candidate in SeparableBlendMode.values)
+                PanelFlyoutItem(
+                  keyValue: 'brush-tool-dual-blend-${candidate.name}',
+                  label: candidate.labelFor(language),
+                  checked: candidate == state.dualCompositeMode,
+                  onSelected: () =>
+                      onChanged(state.copyWith(dualCompositeMode: candidate)),
+                ),
+            ],
           ),
         ],
       ),
