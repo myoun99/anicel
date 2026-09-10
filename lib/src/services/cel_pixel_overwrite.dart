@@ -203,6 +203,39 @@ sealed class CelPixelRestore {
   void readInto(Uint8List into, int index);
 }
 
+/// Copies [count] bytes from [from] at [base] into the front of [into] —
+/// what every [CelPixelRestore.readInto] does, written once.
+///
+/// ⛔**NOT `into.setRange(…)`, AND THE REASON IS MEASURED.** A recipe is
+/// read ONCE PER TOUCHED PIXEL — 2.2 million times on a 1920x1080 undo —
+/// and `setRange`'s fixed per-call cost dwarfs the one to three bytes it
+/// moves.
+///
+/// 🧪`cel_pixel_pass_benchmark_test.dart`, whole-picture undo on 128px
+/// tiles. ⚠️THE UNIT IS A RATIO, NOT MILLISECONDS: this machine runs other
+/// lanes' gates, and the same code measured 23 and 39 ns/px an hour apart.
+/// The FORWARD pass never calls this function, so `undo / forward` inside
+/// ONE run is the load-free instrument. Median of 3-4 runs per arm:
+///
+/// | recipe read            | `setRange` | this loop |
+/// |------------------------|-----------:|----------:|
+/// | alpha, 1 byte          |      1.152 | **0.856** |
+/// | colour, 3 bytes        |      0.934 | **0.866** |
+/// | raw, 3 bytes at offset |      0.437 | **0.313** |
+///
+/// The arms do not overlap on any of the three.
+///
+/// 🚨The tell was the ASYMMETRY, not any absolute number: the alpha undo
+/// cost MORE than its own forward pass — same walk, same write,
+/// `_RestoreBuilder.add` instead of this — while moving a third of the
+/// bytes a colour pass moves. A cost that does not shrink with the byte
+/// count is a per-CALL cost.
+void copyRestoreBytes(Uint8List into, Uint8List from, int base, int count) {
+  for (var byte = 0; byte < count; byte += 1) {
+    into[byte] = from[base + byte];
+  }
+}
+
 /// Every touched pixel held the SAME value — so the value alone is the
 /// whole recipe.
 ///
@@ -220,7 +253,7 @@ final class UniformCelPixelRestore extends CelPixelRestore {
 
   @override
   void readInto(Uint8List into, int index) {
-    into.setRange(0, value.length, value);
+    copyRestoreBytes(into, value, 0, value.length);
   }
 }
 
@@ -245,7 +278,7 @@ final class PalettedCelPixelRestore extends CelPixelRestore {
   @override
   void readInto(Uint8List into, int index) {
     final base = indices[index] * into.length;
-    into.setRange(0, into.length, palette, base);
+    copyRestoreBytes(into, palette, base, into.length);
   }
 }
 
@@ -300,7 +333,7 @@ final class RunLengthCelPixelRestore extends CelPixelRestore {
       _runStart += lengths[_run];
       _run += 1;
     }
-    into.setRange(0, into.length, values, _run * into.length);
+    copyRestoreBytes(into, values, _run * into.length, into.length);
   }
 }
 
@@ -317,7 +350,7 @@ final class RawCelPixelRestore extends CelPixelRestore {
 
   @override
   void readInto(Uint8List into, int index) {
-    into.setRange(0, into.length, values, index * into.length);
+    copyRestoreBytes(into, values, index * into.length, into.length);
   }
 }
 
