@@ -127,7 +127,10 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'drawings',
       bytes:
           session.renderCaches.brushFrameStore.hotBakedBytes +
-          session.renderCaches.brushFrameStore.coldBakedBytes +
+          // ⛔NOT `coldBakedBytes` (2026-09-11): a cooled cel is written to
+          // the run's 이사대기 room and only a file ref stays in memory —
+          // those are bytes on DISK. Counted here, 「ours」 swelled and the
+          // engine's share shrank by exactly as much.
           // 🚨LIFTED PIXELS COUNT, and were missing until 2026-09-10. A
           // move or a transform holds the pixels it picked up — up to a
           // whole canvas — in the SAME store, and the readout said
@@ -144,12 +147,10 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     MemoryCensusItem(
       id: 'sheetInk',
       bytes:
+          // Resident only, like the drawings row above.
           session.renderCaches.conteInkRowStore.hotBakedBytes +
-          session.renderCaches.conteInkRowStore.coldBakedBytes +
           session.renderCaches.conteInkPageStore.hotBakedBytes +
-          session.renderCaches.conteInkPageStore.coldBakedBytes +
-          session.renderCaches.envelopeInkStore.hotBakedBytes +
-          session.renderCaches.envelopeInkStore.coldBakedBytes,
+          session.renderCaches.envelopeInkStore.hotBakedBytes,
     ),
     MemoryCensusItem(id: 'undo', bytes: session.historyManager.retainedBytes),
     MemoryCensusItem(

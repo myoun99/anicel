@@ -182,6 +182,12 @@ const _notCensused = <String, String>{
       'a CEILING. What is actually held is counted by the two playback '
       'caches the census already reads',
 
+  // — On DISK, not in RAM. The census is a RAM readout.
+  'lib/src/services/brush_frame_store.dart → coldBakedBytes':
+      'bytes on DISK: cooling writes a cel to the 이사대기 room of the run '
+      '(ScratchCelFiles) and keeps only a file ref in memory — the census '
+      'counts what is resident (2026-09-11: it used to add these as RAM)',
+
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
   'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
