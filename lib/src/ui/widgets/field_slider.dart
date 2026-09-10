@@ -247,10 +247,13 @@ class FieldSlider extends StatefulWidget {
 }
 
 class _FieldSliderState extends State<FieldSlider> {
-  /// The ink on a bar — WHITE, on the fill and on the empty track alike.
+  /// The ink on a bar — [AppColors.inkOnPaint], on the fill and on the empty
+  /// track alike.
   ///
   /// 🚨유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 **공용 색바뀌는 텍스트ui
-  /// 쓰는게아니라 흰색 고정**으로 해도 문제없을거같음. 흰색고정으로 하고」.
+  /// 쓰는게아니라 흰색 고정**으로 해도 문제없을거같음. 흰색고정으로 하고」 —
+  /// and 2026-09-11 (H38) the fixed colour turned black: 「그냥 검정색으로
+  /// 통일해보자. 흰색 좀 보기힘들어」, the ink the brush cell's name wears too.
   ///
   /// ⛔`textOnColor` does NOT run here any more, and the hard-stopped
   /// gradient that swapped ink halfway through a word went with it — one
@@ -259,7 +262,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// It also settles the open question the accent-fill round left behind
   /// (「채움 위에서 라벨의 흐린 위계가 평평해진다 … 보기 나쁘면 알파로
   /// 되살릴 수 있다」): label and value are one ink now, by decision.
-  static const Color _ink = Color(0xFFFFFFFF);
+  static const Color _ink = AppColors.inkOnPaint;
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;

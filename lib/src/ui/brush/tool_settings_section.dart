@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/content_scrollbar.dart';
+
 /// THE shell a tool's settings section wears inside the tool settings panel.
 ///
 /// 🚨ONE PLACE FOR THREE FACTS, because eight sections had written all three
@@ -61,7 +63,15 @@ class ToolSettingsSection extends StatelessWidget {
       ...children,
     ];
     if (scrolls) {
-      return ListView(key: keyFor(tool), padding: inset, children: rows);
+      // H35: the tool settings panel's content keeps its bar in view.
+      return ContentScrollbar(
+        builder: (context, controller) => ListView(
+          key: keyFor(tool),
+          controller: controller,
+          padding: inset,
+          children: rows,
+        ),
+      );
     }
     return Padding(
       key: keyFor(tool),

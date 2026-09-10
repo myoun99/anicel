@@ -74,6 +74,8 @@ class BrushSettingsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return EditorPanelFrame(
       title: AppText.strings.brushSettingsTitle,
+      // H35: the tool settings panel's content keeps its bar in view.
+      bodyLane: true,
       child: Column(
         key: const ValueKey<String>('brush-settings-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,

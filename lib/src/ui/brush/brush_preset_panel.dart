@@ -14,7 +14,9 @@ import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../panels/editor_panel_frame.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
+import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
@@ -772,81 +774,87 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final reorderable = widget.onGroupsReordered != null;
     return SizedBox(
       key: _railKey,
-      // The tab's own width, nothing added: the rail's scrollbar is laid
-      // over the tabs and only while they overflow, so the rail no longer
-      // pays a lane's width for a bar that is usually not there.
-      width: _railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent,
-      // The bar comes from `AppScrollBehavior` now — same widget, same
-      // rules — so asking for one here would only be a second.
-      child: ReorderableListView.builder(
-        key: const ValueKey<String>('brush-preset-tab-rail'),
-        scrollController: _railController,
-        buildDefaultDragHandles: false,
-        itemCount: tabs.length,
-        onReorderStart: (_) => setState(() => _railDragging = true),
-        // 🚨★★★THE FLAG OUTLIVES THE DROP BY A FRAME (유저 2026-09-01,
-        // F-60, with the recipe: 「3번째 브러시 그룹을 드래그해서 4번째랑
-        // 자리바꾸기 … 커밋될때? 끝날때 빨간화면떴어」).
-        //
-        // ⛔Clearing it here — synchronously — put the tooltips back in the
-        // SAME frame that `ReorderableListView` revives the dragged item
-        // from the inactive list by global key. Flutter named the collision
-        // itself:
-        //
-        //   A _RenderLayoutBuilder was mutated in performLayout.
-        //   _RenderTheater._addDeferredChild ← _OverlayEntryLocation._activate
-        //     ← _OverlayPortalElement.activate ← Element._activateRecursively
-        //   error-causing widget: ReorderableListView-[brush-preset-tab-rail]
-        //
-        // A `Tooltip` is an `OverlayPortal`; reviving one adds a deferred
-        // child to the theater, and that is illegal inside the panel's
-        // `LayoutBuilder` layout callback. Everything after it in 유저's log
-        // — the ink `referenceBox.attached` asserts, the semantics
-        // `traversalParentIdentifier` failure, buttons vanishing on hover
-        // across the whole app — is the wreckage of that one frame.
-        //
-        // ⚠️A post-frame callback, not a timer: the next frame is exactly
-        // when the revival is over and no more than that.
-        onReorderEnd: (_) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) {
-              return;
-            }
-            setState(() => _railDragging = false);
-          });
-        },
-        onReorderItem: _handleTabReorder,
-        itemBuilder: (context, index) {
-          final group = tabs[index];
-          final tab = _BrushGroupTab(
-            keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
-            label: group?.name ?? _rootSectionLabel,
-            icon: group?.icon,
-            showIcon: _railShowIcon,
-            showName: _railShowName,
-            showTooltip: !_railDragging,
-            onEdit: group == null || widget.onGroupEdited == null
-                ? null
-                : () => _editGroup(group),
-            // The tab wears its group's first brush, so a chalk group
-            // looks chalky and no one has to pick an icon.
-            preview: _firstPresetIn(group?.id),
-            selected: group?.id == open,
-            onTap: () => _openTab(group?.id),
-          );
-          return KeyedSubtree(
-            key: ValueKey<String>(
-              'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
-            ),
-            // The root section is not a group and always sorts last, so
-            // only real tabs drag.
-            child: reorderable && group != null
-                ? _dismissTooltipsOnPress(
-                    ReorderableDragStartListener(index: index, child: tab),
-                  )
-                : tab,
-          );
-        },
+      // The tabs' own width plus a LANE (H35, 유저 2026-09-11: 「그룹쪽이랑
+      // 브러시리스트쪽 … 내용물에 공통적으로 스크롤바 넣자. 항상 보이도록」).
+      // ↩️This said the opposite on purpose until then: the bar was laid
+      // over the tabs and only while they overflowed, so the rail paid
+      // nothing for a bar that was usually not there — and on a tablet there
+      // was no bar at all.
+      width:
+          (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
+          AppScrollbarLane.wide,
+      child: ContentScrollbar(
+        controller: _railController,
+        builder: (context, controller) => ReorderableListView.builder(
+          key: const ValueKey<String>('brush-preset-tab-rail'),
+          scrollController: controller,
+          buildDefaultDragHandles: false,
+          itemCount: tabs.length,
+          onReorderStart: (_) => setState(() => _railDragging = true),
+          // 🚨★★★THE FLAG OUTLIVES THE DROP BY A FRAME (유저 2026-09-01,
+          // F-60, with the recipe: 「3번째 브러시 그룹을 드래그해서 4번째랑
+          // 자리바꾸기 … 커밋될때? 끝날때 빨간화면떴어」).
+          //
+          // ⛔Clearing it here — synchronously — put the tooltips back in the
+          // SAME frame that `ReorderableListView` revives the dragged item
+          // from the inactive list by global key. Flutter named the collision
+          // itself:
+          //
+          //   A _RenderLayoutBuilder was mutated in performLayout.
+          //   _RenderTheater._addDeferredChild ← _OverlayEntryLocation._activate
+          //     ← _OverlayPortalElement.activate ← Element._activateRecursively
+          //   error-causing widget: ReorderableListView-[brush-preset-tab-rail]
+          //
+          // A `Tooltip` is an `OverlayPortal`; reviving one adds a deferred
+          // child to the theater, and that is illegal inside the panel's
+          // `LayoutBuilder` layout callback. Everything after it in 유저's log
+          // — the ink `referenceBox.attached` asserts, the semantics
+          // `traversalParentIdentifier` failure, buttons vanishing on hover
+          // across the whole app — is the wreckage of that one frame.
+          //
+          // ⚠️A post-frame callback, not a timer: the next frame is exactly
+          // when the revival is over and no more than that.
+          onReorderEnd: (_) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) {
+                return;
+              }
+              setState(() => _railDragging = false);
+            });
+          },
+          onReorderItem: _handleTabReorder,
+          itemBuilder: (context, index) {
+            final group = tabs[index];
+            final tab = _BrushGroupTab(
+              keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
+              label: group?.name ?? _rootSectionLabel,
+              icon: group?.icon,
+              showIcon: _railShowIcon,
+              showName: _railShowName,
+              showTooltip: !_railDragging,
+              onEdit: group == null || widget.onGroupEdited == null
+                  ? null
+                  : () => _editGroup(group),
+              // The tab wears its group's first brush, so a chalk group
+              // looks chalky and no one has to pick an icon.
+              preview: _firstPresetIn(group?.id),
+              selected: group?.id == open,
+              onTap: () => _openTab(group?.id),
+            );
+            return KeyedSubtree(
+              key: ValueKey<String>(
+                'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
+              ),
+              // The root section is not a group and always sorts last, so
+              // only real tabs drag.
+              child: reorderable && group != null
+                  ? _dismissTooltipsOnPress(
+                      ReorderableDragStartListener(index: index, child: tab),
+                    )
+                  : tab,
+            );
+          },
+        ),
       ),
     );
   }
@@ -857,11 +865,20 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// column, so nothing here branches on the width and there is no view
   /// where reordering quietly stops working.
   Widget _buildList(List<BrushPreset> visible, bool reorderable) {
+    // 🚨H37 (유저 2026-09-11): 「이름이나 스트로크 프리뷰 없애고 팁 이미지?
+    // 아이콘만 남게하면 그에 맞춰서 공간 줄이도록」 — a cell is as wide as what
+    // it draws, the way the rail's tabs already are. The four-column ceiling
+    // is about reading STROKES side by side, so a list of bare tips has none.
+    final tipsOnly = !_showName && !_showStrokePreview;
     return BrushPresetReorderGrid(
       key: const ValueKey<String>('brush-preset-list'),
       scrollController: _scrollController,
       itemCount: visible.length,
       cellHeight: brushPresetRowHeight,
+      cellTargetWidth: tipsOnly
+          ? _BrushPresetRow.tipsOnlyWidth
+          : brushPresetCellTargetWidth,
+      maxColumns: tipsOnly ? null : brushPresetMaxColumns,
       itemKey: (index) =>
           ValueKey<String>('brush-preset-entry-${visible[index].id.value}'),
       onDragStart: () => _dragging = true,
@@ -984,7 +1001,13 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_tabs.isNotEmpty) _buildRail(),
-                      Expanded(child: _buildList(visible, reorderable)),
+                      Expanded(
+                        child: ContentScrollbar(
+                          controller: _scrollController,
+                          builder: (context, _) =>
+                              _buildList(visible, reorderable),
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -1265,6 +1288,15 @@ class _BrushPresetRow extends StatelessWidget {
   final bool showStrokePreview;
   final bool showName;
 
+  static const double _barWidth = 5;
+  static const double _tipSide = 24;
+  static const double _tipGap = 6;
+  static const double _trailing = 2;
+
+  /// A cell showing the tip and nothing else (H37) — the list's counterpart
+  /// of the rail's `extent`: exactly the width of what is drawn.
+  static const double tipsOnlyWidth = _barWidth + _tipSide + _trailing;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1283,7 +1315,7 @@ class _BrushPresetRow extends StatelessWidget {
             child: Row(
               children: [
                 SizedBox(
-                  width: 5,
+                  width: _barWidth,
                   child: selected
                       ? Center(
                           child: Container(
@@ -1299,8 +1331,8 @@ class _BrushPresetRow extends StatelessWidget {
                 ),
                 if (showTipIcon) ...[
                   Container(
-                    width: 24,
-                    height: 24,
+                    width: _tipSide,
+                    height: _tipSide,
                     decoration: ShapeDecoration(
                       color: colorScheme.surfaceContainerHighest,
                       shape: AppShapes.container(
@@ -1311,10 +1343,11 @@ class _BrushPresetRow extends StatelessWidget {
                     clipBehavior: Clip.antiAlias,
                     child: BrushTipPreview(settings: preset.settings),
                   ),
-                  const SizedBox(width: 6),
+                  if (showName || showStrokePreview)
+                    const SizedBox(width: _tipGap),
                 ],
                 Expanded(child: _rowBody(colorScheme)),
-                const SizedBox(width: 2),
+                const SizedBox(width: _trailing),
               ],
             ),
           ),
@@ -1344,23 +1377,16 @@ class _BrushPresetRow extends StatelessWidget {
         ),
       );
     }
-    // 🚨THE NAME MOVED INTO THE PREVIEW, and that is the point: it rides the
-    // stroke (유저 2026-09-08), so its ink has to be picked from what the
-    // stroke actually put behind it, and only the widget holding the raster
-    // knows that. The old `Stack` here wrote in a theme colour — the same
-    // family the stroke is tinted with — which is why a name on a thick
-    // stroke was invisible (유저 2026-09-10). The placement decision and the
-    // ⛔rejected 78%-alpha plate travelled with it.
+    // 🚨THE NAME MOVED INTO THE PREVIEW: it rides the stroke (유저
+    // 2026-09-08). Its ink was picked from what the stroke put behind it
+    // until H38 fixed it black and dead centre (2026-09-11) — see
+    // `BrushStrokePreview._nameOverlay`, which owns the placement, the ink
+    // and the ⛔rejected 78%-alpha plate.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: BrushStrokePreview(
         settings: preset.settings,
         name: showName ? preset.name : null,
-        // The row paints nothing of its own when it is not selected, so the
-        // panel's surface IS the ground under the sample.
-        nameGround: selected
-            ? colorScheme.surfaceContainerHigh
-            : colorScheme.surface,
       ),
     );
   }

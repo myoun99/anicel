@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
-import 'package:anicel/src/ui/theme/text_on_ground.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
@@ -243,24 +242,20 @@ void main() {
 
       final baked = bakeBrushStrokeSample(settings, 64, 20);
 
-      expect(baked.rgba, hasLength(alpha.length * 4));
+      expect(baked, hasLength(alpha.length * 4));
       for (var index = 0; index < alpha.length; index += 1) {
         final base = index * 4;
         expect(
           [
-            baked.rgba[base],
-            baked.rgba[base + 1],
-            baked.rgba[base + 2],
-            baked.rgba[base + 3],
+            baked[base],
+            baked[base + 1],
+            baked[base + 2],
+            baked[base + 3],
           ],
           everyElement(alpha[index]),
           reason: 'premultiplied WHITE: every channel is the coverage',
         );
       }
-      expect(
-        baked.nameGroundCoverage,
-        brushStrokeNameGroundCoverage(alpha, width: 64, height: 20),
-      );
     });
 
     test('🚨the fan-out leaves the UI isolate a core, and stops climbing '
@@ -363,111 +358,38 @@ void main() {
     });
   });
 
-  group('🚨the name is written on what the SAMPLE put behind it', () {
-    test('coverage reads 0 on a bare sample and 1 on a solid one', () {
-      expect(
-        brushStrokeNameGroundCoverage(Uint8List(64 * 32), width: 64, height: 32),
-        0.0,
-      );
-      expect(
-        brushStrokeNameGroundCoverage(
-          Uint8List(64 * 32)..fillRange(0, 64 * 32, 255),
-          width: 64,
-          height: 32,
-        ),
-        1.0,
-      );
-    });
-
-    test('⛔it measures the NAME\'s band, not the whole picture', () {
-      // Ink only in the top quarter — above where the name sits. A whole-
-      // picture mean would report a quarter covered; the band reports none,
-      // which is the difference between white ink and black ink.
-      const width = 64;
-      const height = 32;
-      final topOnly = Uint8List(width * height);
-      topOnly.fillRange(0, width * (height ~/ 4), 255);
-
-      expect(
-        brushStrokeNameGroundCoverage(topOnly, width: width, height: height),
-        0.0,
-      );
-    });
-
-    testWidgets('🚨the row WRITES with the law\'s ink, not a theme colour', (
+  group('🚨H38: the name is written BLACK, dead centre', () {
+    testWidgets('one ink over every ground, in the middle of the row', (
       tester,
     ) async {
+      // 유저 2026-09-11: 「브러시 버튼도 지금 뒤 색에 따라 흰색이나
+      // 검정색인데, 하나로 통일하고싶거든? 그냥 검정색통일. 공용슬라이더랑
+      // 똑같이 검정색 통일하고 텍스트 위치도 중앙아래가 아니라 완전중앙으로」.
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetDevicePixelRatio);
-      // A solid brush, so the band under the name really is covered — the
-      // case that was invisible: white-ish text on a white-ish stroke.
-      final settings = BrushSettings(hardness: 1, flow: 1, opacity: 1);
-      const rowGround = Color(0xFF202020);
-      final rasterWidth = brushStrokePreviewRasterWidth(120, 1);
-
-      await tester.runAsync(
-        () => BrushStrokePreviewCache.instance.ensure(
-          settings,
-          rasterWidth,
-          24,
-        ),
-      );
-      final coverage = BrushStrokePreviewCache.instance
-          .sampleFor(settings, rasterWidth, 24)!
-          .nameGroundCoverage;
-      expect(
-        coverage,
-        greaterThan(0.5),
-        reason: 'fixture premise: this brush really does cover the band',
-      );
-
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData.dark(),
           home: Center(
             child: SizedBox(
+              key: const ValueKey<String>('row'),
               width: 120,
               height: 24,
               child: BrushStrokePreview(
-                settings: settings,
+                settings: BrushSettings(hardness: 1, flow: 1, opacity: 1),
                 name: 'Ink Pen',
-                nameGround: rowGround,
               ),
             ),
           ),
         ),
       );
 
-      final text = tester.widget<Text>(find.text('Ink Pen'));
-      final strokeInk = ThemeData.dark().colorScheme.onSurface;
+      final name = find.text('Ink Pen');
+      expect(tester.widget<Text>(name).style?.color, AppColors.inkOnPaint);
       expect(
-        text.style?.color,
-        textOnColor(Color.lerp(rowGround, strokeInk, coverage)!),
-      );
-      expect(
-        text.style?.color,
-        isNot(strokeInk),
-        reason: 'the old ink was the same family the stroke is tinted with',
-      );
-    });
-
-    test('a bright stroke and a bare row take OPPOSITE inks', () {
-      const rowGround = Color(0xFF202020);
-      const strokeInk = Color(0xFFF0F0F0);
-
-      final onStroke = textOnColor(
-        Color.lerp(rowGround, strokeInk, 1.0)!,
-      );
-      final offStroke = textOnColor(
-        Color.lerp(rowGround, strokeInk, 0.0)!,
-      );
-
-      expect(onStroke, textOnLightGroundColor);
-      expect(offStroke, textOnDarkGroundColor);
-      expect(
-        onStroke,
-        isNot(offStroke),
-        reason: 'this is the whole reason the coverage has to be measured',
+        tester.getCenter(name),
+        tester.getCenter(find.byKey(const ValueKey<String>('row'))),
+        reason: '「중앙아래가 아니라 완전중앙」',
       );
     });
   });

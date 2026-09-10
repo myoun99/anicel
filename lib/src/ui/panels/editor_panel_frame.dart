@@ -16,6 +16,7 @@ class EditorPanelFrame extends StatelessWidget {
     this.trailing,
     this.bodyPadding = const EdgeInsets.all(10),
     this.bodyScrolls = true,
+    this.bodyLane = false,
   });
 
   final String title;
@@ -26,6 +27,10 @@ class EditorPanelFrame extends StatelessWidget {
   /// See [EditorPanelBody.scrollable]: false for a panel that owns its own
   /// scrolling, so the two never stack.
   final bool bodyScrolls;
+
+  /// See [EditorPanelBody.lane]: the scrolling body keeps an always-shown
+  /// bar in a lane of its own.
+  final bool bodyLane;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +43,7 @@ class EditorPanelFrame extends StatelessWidget {
           ? EditorPanelBody(
               padding: bodyPadding,
               scrollable: bodyScrolls,
+              lane: bodyLane,
               debugLabel: 'body:$title',
               child: child,
             )
@@ -55,6 +61,7 @@ class EditorPanelFrame extends StatelessWidget {
                 final body = EditorPanelBody(
                   padding: bodyPadding,
                   scrollable: bodyScrolls,
+                  lane: bodyLane,
                   debugLabel: 'body:$title',
                   child: child,
                 );

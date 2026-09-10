@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 
 /// R11-④: the Tool Library / Tool Settings panels follow the active tool.
 void main() {
@@ -665,6 +666,49 @@ void main() {
   });
 
   group('ToolSettingsPanel', () {
+    testWidgets('🚨H35: the tool panels\' lists keep their bar in view — '
+        'the library\'s tiles and every tool\'s settings', (tester) async {
+      // 유저 2026-09-11: 「내용물에 공통적으로 스크롤바 넣자. 항상 보이도록
+      // … 일단 툴설정패널에도 넣고싶거든. 당장은 그 두개만」.
+      for (final tool in [
+        CanvasTool.select,
+        CanvasTool.cut,
+        CanvasTool.fill,
+        CanvasTool.move,
+      ]) {
+        await tester.pumpWidget(
+          app(
+            ToolLibraryPanel(
+              key: ValueKey<String>('library-$tool'),
+              tool: tool,
+              onToolChanged: (_) {},
+              brushLibrary: const SizedBox.shrink(),
+            ),
+          ),
+        );
+        expect(find.byType(ContentScrollbar), findsOneWidget, reason: '$tool');
+      }
+      for (final tool in [
+        CanvasTool.brush,
+        CanvasTool.fill,
+        CanvasTool.select,
+        CanvasTool.eyedropper,
+      ]) {
+        await tester.pumpWidget(
+          app(
+            ToolSettingsPanel(
+              key: ValueKey<String>('settings-$tool'),
+              state: BrushToolState.defaults.copyWith(tool: tool),
+              onChanged: (_) {},
+              fillOptions: const FloodFillOptions(),
+              onFillOptionsChanged: (_) {},
+            ),
+          ),
+        );
+        expect(find.byType(ContentScrollbar), findsOneWidget, reason: '$tool');
+      }
+    });
+
     testWidgets('fill shows the flood knobs and reports edits', (tester) async {
       final changes = <FloodFillOptions>[];
       await tester.pumpWidget(

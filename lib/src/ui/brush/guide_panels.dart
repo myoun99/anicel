@@ -10,6 +10,7 @@ import '../../models/drawing_guide.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
+import '../widgets/content_scrollbar.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
@@ -156,67 +157,70 @@ class GuideLibraryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    return ListView(
-      key: const ValueKey<String>('tool-library-guide-list'),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      children: [
-        _GuideGroupHeader(
-          label: strings.guideKindSymmetry,
-          onAdd: () => _add(GuideKind.symmetry),
-          addKey: 'guide-add-symmetry',
-        ),
-        for (final guide in guides.symmetryGuides)
-          _GuideRow(
-            guide: guide,
-            selected: guide.id == selectedGuideId,
-            acting: guides.activeSymmetryId == guide.id,
-            onSelected: () => onGuideSelected(guide.id),
-            onActingChanged: (acting) => onGuidesCommitted(
-              guides.copyWith(
-                activeSymmetryId: acting ? guide.id : null,
-                clearActiveSymmetry: !acting,
-              ),
-            ),
-            onVisibleChanged: (visible) =>
-                _replace(guide.copyWith(visible: visible)),
-            onRename: () => unawaited(_rename(context, guide)),
-            onDelete: () => _delete(guide.id),
+    return ContentScrollbar(
+      builder: (context, controller) => ListView(
+        key: const ValueKey<String>('tool-library-guide-list'),
+        controller: controller,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        children: [
+          _GuideGroupHeader(
+            label: strings.guideKindSymmetry,
+            onAdd: () => _add(GuideKind.symmetry),
+            addKey: 'guide-add-symmetry',
           ),
-        const Divider(height: 12),
-        _GuideGroupHeader(
-          label: strings.guideKindPerspective,
-          onAdd: () => _add(GuideKind.perspective),
-          addKey: 'guide-add-perspective',
-        ),
-        for (final guide in guides.perspectiveGuides)
-          _GuideRow(
-            guide: guide,
-            selected: guide.id == selectedGuideId,
-            acting: (guide.shape as PerspectiveShape).snapEnabled,
-            onSelected: () => onGuideSelected(guide.id),
-            onActingChanged: (snapping) => _replace(
-              guide.copyWith(
-                shape: (guide.shape as PerspectiveShape).copyWith(
-                  snapEnabled: snapping,
+          for (final guide in guides.symmetryGuides)
+            _GuideRow(
+              guide: guide,
+              selected: guide.id == selectedGuideId,
+              acting: guides.activeSymmetryId == guide.id,
+              onSelected: () => onGuideSelected(guide.id),
+              onActingChanged: (acting) => onGuidesCommitted(
+                guides.copyWith(
+                  activeSymmetryId: acting ? guide.id : null,
+                  clearActiveSymmetry: !acting,
+                ),
+              ),
+              onVisibleChanged: (visible) =>
+                  _replace(guide.copyWith(visible: visible)),
+              onRename: () => unawaited(_rename(context, guide)),
+              onDelete: () => _delete(guide.id),
+            ),
+          const Divider(height: 12),
+          _GuideGroupHeader(
+            label: strings.guideKindPerspective,
+            onAdd: () => _add(GuideKind.perspective),
+            addKey: 'guide-add-perspective',
+          ),
+          for (final guide in guides.perspectiveGuides)
+            _GuideRow(
+              guide: guide,
+              selected: guide.id == selectedGuideId,
+              acting: (guide.shape as PerspectiveShape).snapEnabled,
+              onSelected: () => onGuideSelected(guide.id),
+              onActingChanged: (snapping) => _replace(
+                guide.copyWith(
+                  shape: (guide.shape as PerspectiveShape).copyWith(
+                    snapEnabled: snapping,
+                  ),
+                ),
+              ),
+              onVisibleChanged: (visible) =>
+                  _replace(guide.copyWith(visible: visible)),
+              onRename: () => unawaited(_rename(context, guide)),
+              onDelete: () => _delete(guide.id),
+            ),
+          if (guides.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                strings.guideLibraryEmpty,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-            onVisibleChanged: (visible) =>
-                _replace(guide.copyWith(visible: visible)),
-            onRename: () => unawaited(_rename(context, guide)),
-            onDelete: () => _delete(guide.id),
-          ),
-        if (guides.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              strings.guideLibraryEmpty,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -393,13 +397,16 @@ class GuideSettings extends StatelessWidget {
       );
     }
     final shape = guide.shape;
-    return ListView(
-      key: ValueKey<String>('guide-settings-${guide.id.value}'),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      children: switch (shape) {
-        SymmetryShape() => _symmetryFields(context, guide, shape),
-        PerspectiveShape() => _perspectiveFields(context, guide, shape),
-      },
+    return ContentScrollbar(
+      builder: (context, controller) => ListView(
+        key: ValueKey<String>('guide-settings-${guide.id.value}'),
+        controller: controller,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: switch (shape) {
+          SymmetryShape() => _symmetryFields(context, guide, shape),
+          PerspectiveShape() => _perspectiveFields(context, guide, shape),
+        },
+      ),
     );
   }
 

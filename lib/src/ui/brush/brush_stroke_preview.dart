@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../theme/text_on_ground.dart';
+import '../theme/app_theme.dart' show AppColors;
 import 'brush_stroke_preview_cache.dart';
 
 /// The raster width LADDER, in logical pixels.
@@ -56,22 +56,12 @@ int brushStrokePreviewRasterWidth(
 /// never a re-raster, which is what un-jams the brush list's scroll. The
 /// image bakes alpha only; the theme color tints it at paint time.
 class BrushStrokePreview extends StatefulWidget {
-  const BrushStrokePreview({
-    super.key,
-    required this.settings,
-    this.name,
-    this.nameGround,
-  });
+  const BrushStrokePreview({super.key, required this.settings, this.name});
 
   final BrushSettings settings;
 
   /// Drawn ON the sample when set — see [_nameOverlay].
   final String? name;
-
-  /// The row's own colour behind the sample, for picking the name's ink.
-  /// Required in practice whenever [name] is set; the surface is the
-  /// sensible fallback for a caller that has no other ground.
-  final Color? nameGround;
 
   @override
   State<BrushStrokePreview> createState() => _BrushStrokePreviewState();
@@ -137,47 +127,31 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         }));
   }
 
-  /// The name, written on whatever the sample actually put behind it.
+  /// The name, written over the sample — BLACK and dead centre.
   ///
-  /// 🚨THE INK IS THE SHARED LAW, NOT A THEME COLOUR (유저 2026-09-10: 「브러시
-  /// 이름 텍스트가 너무 안보이는데 공용 뒤 색에따라 색 바꾸는 텍스트 사용한다
-  /// 던가? 타임라인 프레임블록에서 쓰던 공용텍스트있잖아」 — and the law's own
-  /// file quotes the same instruction from 09-08). It used to be
-  /// `onSurfaceVariant`, which is the SAME family the stroke is tinted with,
-  /// so a name centred on a thick stroke was writing white on white.
+  /// 🚨H38 (유저 2026-09-11): 「브러시 버튼도 지금 뒤 색에 따라 흰색이나
+  /// 검정색인데, 하나로 통일하고싶거든? 그냥 검정색통일. 공용슬라이더랑
+  /// 똑같이 검정색 통일하고 텍스트 위치도 중앙아래가 아니라 완전중앙으로
+  /// 해보자」. ↩️What it replaces was the user's own twice over, and stays
+  /// written so neither comes back as a "fix": 09-08 put the name 「중앙
+  /// 살짝아래」 over the stroke, and 09-10 had it pick black or white from
+  /// what the stroke put behind it (`textOnColor` over a measured band). A
+  /// fixed ink has nothing to measure, so the band went with it.
   ///
-  /// ⚠️`textOnColor` needs the composited ground, and here that is the row's
-  /// colour with `nameGroundCoverage` of stroke ink laid over it.
-  ///
-  /// 🚨THE NAME RIDES THE STROKE (유저 2026-09-08: 「스트로크가 젤 밑에 중앙에
-  /// 깔려있고, 그 위에 오버레이로 **스트로크랑 겹치든 말든** 중앙 살짝아래에
-  /// 이름있고」). ⛔The 78%-alpha plate this replaced existed to keep the two
-  /// apart, and the user asked for them not to be kept apart.
-  ///
-  /// ⚠️`Alignment(0, 0.5)` is 「살짝 아래」 read literally: the middle of the
-  /// region between the centre (0) and the bottom (1). The band the ink is
-  /// measured over is written from these same two facts — see
-  /// [brushStrokeNameBandTop].
-  Widget _nameOverlay(String name, Color strokeInk, double coverage) {
-    final ground = Color.lerp(
-      widget.nameGround ?? strokeInk,
-      strokeInk,
-      coverage,
-    )!;
-    return Align(
-      alignment: const Alignment(0, 0.5),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Text(
-          name,
-          maxLines: 1,
-          textAlign: TextAlign.center,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11, color: textOnColor(ground)),
-        ),
+  /// 🚨THE NAME STILL RIDES THE STROKE (유저 2026-09-08: 「스트로크랑 겹치든
+  /// 말든」). ⛔The 78%-alpha plate that once kept the two apart stays gone.
+  Widget _nameOverlay(String name) => Center(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Text(
+        name,
+        maxLines: 1,
+        textAlign: TextAlign.center,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11, color: AppColors.inkOnPaint),
       ),
-    );
-  }
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +197,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           return SizedBox(
             width: width.toDouble(),
             height: height.toDouble(),
-            child: name == null ? null : _nameOverlay(name, strokeInk, 0),
+            child: name == null ? null : _nameOverlay(name),
           );
         }
         // ⛔NOT `ColorFiltered`, which is the same tint at a wildly
@@ -256,7 +230,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           fit: StackFit.expand,
           children: [
             picture,
-            _nameOverlay(name, strokeInk, sample.nameGroundCoverage),
+            _nameOverlay(name),
           ],
         );
       },

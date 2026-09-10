@@ -123,7 +123,7 @@ class BrushStrokePreviewCache {
     int width,
     int height,
   ) async {
-    final BakedBrushStroke baked;
+    final Uint8List baked;
     if (kIsWeb) {
       // No isolates on web: bake inline (still cached forever).
       baked = bakeBrushStrokeSample(settings, width, height);
@@ -137,8 +137,7 @@ class BrushStrokePreviewCache {
     }
 
     return BrushStrokeSample(
-      image: await uploadRawRgba(baked.rgba, width: width, height: height),
-      nameGroundCoverage: baked.nameGroundCoverage,
+      image: await uploadRawRgba(baked, width: width, height: height),
     );
   }
 
@@ -259,7 +258,7 @@ class _RasterWorker {
   bool busy = false;
 
   /// The request in flight, so a death can fail it instead of leaving it.
-  Completer<BakedBrushStroke>? _pending;
+  Completer<Uint8List>? _pending;
   bool _dead = false;
 
   /// Whether the isolate is gone — the pool drops these rather than hand
@@ -301,17 +300,17 @@ class _RasterWorker {
     return worker;
   }
 
-  Future<BakedBrushStroke> bake(
+  Future<Uint8List> bake(
     BrushSettings settings,
     int width,
     int height,
   ) {
     if (_dead) {
-      return Future<BakedBrushStroke>.error(
+      return Future<Uint8List>.error(
         StateError('the brush preview raster worker is gone'),
       );
     }
-    final pending = Completer<BakedBrushStroke>();
+    final pending = Completer<Uint8List>();
     _pending = pending;
     final reply = ReceivePort();
     reply.listen((answer) {
@@ -320,7 +319,7 @@ class _RasterWorker {
         return;
       }
       _pending = null;
-      if (answer is! List || answer.length != 2) {
+      if (answer is! List || answer.length != 1) {
         pending.completeError(
           StateError('brush preview raster failed: $answer'),
         );
@@ -332,10 +331,7 @@ class _RasterWorker {
       // `Isolate.run` returns by TRANSFER, and a persistent worker replying
       // with a plain `Uint8List` would have handed that back.
       final transferred = answer[0]! as TransferableTypedData;
-      pending.complete((
-        rgba: transferred.materialize().asUint8List(),
-        nameGroundCoverage: answer[1]! as double,
-      ));
+      pending.complete(transferred.materialize().asUint8List());
     });
     _requests.send(<Object?>[settings, width, height, reply.sendPort]);
     return pending.future;
@@ -390,8 +386,7 @@ void _rasterWorkerMain(SendPort handshake) {
         request[2]! as int,
       );
       reply.send(<Object?>[
-        TransferableTypedData.fromList(<Uint8List>[baked.rgba]),
-        baked.nameGroundCoverage,
+        TransferableTypedData.fromList(<Uint8List>[baked]),
       ]);
     } on Object catch (error) {
       // The caller is awaiting one message; a string is enough to fail it
@@ -401,87 +396,29 @@ void _rasterWorkerMain(SendPort handshake) {
   });
 }
 
-/// One baked stroke sample: the picture, and how much INK sits under the
-/// preset's name.
+/// One baked stroke sample.
 ///
-/// 🚨THE NAME RIDES THE STROKE (유저 2026-09-08), so the thing behind it is
-/// not a colour anyone can look up — it is the row's ground with a variable
-/// amount of stroke on top. `textOnColor` needs the COMPOSITED ground, which
-/// is what [nameGroundCoverage] supplies: 0 is bare row, 1 is solid ink.
-/// It rides with the image because it is measured from the very bytes the
-/// image is uploaded from, and it is a property of the same bake.
+/// ↩️It also carried how much INK sat under the preset's name, measured from
+/// the bake's own bytes, so the name could pick black or white by its ground
+/// (유저 2026-09-10). H38 (2026-09-11) fixed the name's ink — 「그냥
+/// 검정색통일」 — and a fixed ink has nothing to measure, so the measurement
+/// went with it.
 class BrushStrokeSample {
-  const BrushStrokeSample({
-    required this.image,
-    required this.nameGroundCoverage,
-  });
+  const BrushStrokeSample({required this.image});
 
   final ui.Image image;
 
-  /// 0..1 mean alpha under the name's box — see [brushStrokeNameBandTop].
-  final double nameGroundCoverage;
-
-  BrushStrokeSample cloneImage() => BrushStrokeSample(
-    image: image.clone(),
-    nameGroundCoverage: nameGroundCoverage,
-  );
+  BrushStrokeSample cloneImage() => BrushStrokeSample(image: image.clone());
 }
 
-/// The box the preset name occupies, as fractions of the sample.
-///
-/// ⚠️ONE PLACE, because two would drift: the widget PLACES the text with
-/// these and the rasterizer MEASURES with them. They describe an 11pt line
-/// centred at `Alignment(0, 0.5)` — the middle of the region between the
-/// centre and the bottom — in a row about thirty logical pixels tall, and
-/// the middle 70% of the width, which is where a one-line ellipsized name
-/// actually lands.
-const double brushStrokeNameBandTop = 0.52;
-const double brushStrokeNameBandBottom = 0.98;
-const double brushStrokeNameBandLeft = 0.15;
-const double brushStrokeNameBandRight = 0.85;
-
-/// Mean coverage under the name's box, 0..1.
-double brushStrokeNameGroundCoverage(
-  Uint8List alpha, {
-  required int width,
-  required int height,
-}) {
-  final top = (height * brushStrokeNameBandTop).floor().clamp(0, height - 1);
-  final bottom = (height * brushStrokeNameBandBottom).ceil().clamp(
-    top + 1,
-    height,
-  );
-  final left = (width * brushStrokeNameBandLeft).floor().clamp(0, width - 1);
-  final right = (width * brushStrokeNameBandRight).ceil().clamp(
-    left + 1,
-    width,
-  );
-  var total = 0;
-  for (var y = top; y < bottom; y += 1) {
-    final row = y * width;
-    for (var x = left; x < right; x += 1) {
-      total += alpha[row + x];
-    }
-  }
-  final count = (bottom - top) * (right - left);
-  return count <= 0 ? 0.0 : total / (count * 255.0);
-}
-
-/// Everything one bake produces: the pixels as they will be uploaded, and
-/// the ink measured from the very same pass.
-///
-/// ⚠️They travel together because they are made together — see
-/// [BrushStrokeSample], which is this pair once the pixels are an image.
-typedef BakedBrushStroke = ({Uint8List rgba, double nameGroundCoverage});
-
-/// One preview bake, start to finish: raster the stroke, widen it to the
-/// pixel format the upload wants, and measure the ink under the name.
+/// One preview bake, start to finish: raster the stroke and widen it to the
+/// pixel format the upload wants.
 ///
 /// 🚨THIS IS THE ISOLATE'S WHOLE JOB. Everything here used to be split — the
-/// stroke over there, the widening and the measuring back on the UI isolate —
+/// stroke over there, the widening back on the UI isolate —
 /// and the split cost the UI a full-buffer loop per preset for nothing (the
 /// result is transferred, not copied; see `_rasterize`).
-BakedBrushStroke bakeBrushStrokeSample(
+Uint8List bakeBrushStrokeSample(
   BrushSettings settings,
   int width,
   int height,
@@ -498,17 +435,7 @@ BakedBrushStroke bakeBrushStrokeSample(
     rgba[base + 2] = value;
     rgba[base + 3] = value;
   }
-  return (
-    rgba: rgba,
-    // Measured off the bytes that are already in hand, because a `ui.Image`
-    // can only be read back asynchronously — asking the GPU for these pixels
-    // once per row is the cost this avoids.
-    nameGroundCoverage: brushStrokeNameGroundCoverage(
-      alpha,
-      width: width,
-      height: height,
-    ),
-  );
+  return rgba;
 }
 
 /// The stroke-sample rasterizer (moved OUT of the widget so the isolate

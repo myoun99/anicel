@@ -351,11 +351,11 @@ void main() {
       );
     });
 
-    testWidgets('🚨the ink is fixed WHITE — no ground law, no mask', (
-      tester,
-    ) async {
+    testWidgets('🚨the ink is ONE fixed colour, black — no ground law, no '
+        'mask', (tester) async {
       // 유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 공용 색바뀌는 텍스트ui
-      // 쓰는게아니라 흰색 고정으로 해도 문제없을거같음」.
+      // 쓰는게아니라 흰색 고정으로 해도 문제없을거같음」 — and 2026-09-11
+      // (H38): 「그냥 검정색으로 통일해보자. 흰색 좀 보기힘들어」.
       final value = ValueNotifier<double>(0.5);
       addTearDown(value.dispose);
       await tester.pumpWidget(harness(value: value));
@@ -363,7 +363,7 @@ void main() {
       for (final text in tester.widgetList<Text>(valueTextOf(sliderKey))) {
         expect(
           text.style?.color,
-          const Color(0xFFFFFFFF),
+          AppColors.inkOnPaint,
           reason: 'label and value alike, over the fill and over the track',
         );
       }

@@ -22,6 +22,14 @@ void main() {
       );
     });
 
+    test('🚨H37: cells as narrow as a bare tip, and no ceiling', () {
+      // 유저 2026-09-11: 「아이콘만 남게하면 그에 맞춰서 공간 줄이도록」 —
+      // the four-column ceiling is about reading STROKES side by side.
+      expect(brushPresetColumnsFor(260, cellWidth: 31, maxColumns: null), 8);
+      expect(brushPresetColumnsFor(2000, cellWidth: 31, maxColumns: null), 64);
+      expect(brushPresetColumnsFor(20, cellWidth: 31, maxColumns: null), 1);
+    });
+
     test('a panel too narrow for one cell still draws one', () {
       expect(brushPresetColumnsFor(40), 1);
       expect(brushPresetColumnsFor(0), 1);

@@ -29,13 +29,19 @@ const double brushPresetRowHeight = 34.0;
 /// 애니메이션」.
 const Duration brushPresetReorderDuration = Duration(milliseconds: 140);
 
-/// How many columns [width] holds.
-int brushPresetColumnsFor(double width) {
+/// How many columns [width] holds, for cells [cellWidth] wide — at most
+/// [maxColumns], or as many as fit when that is null (H37: a list of bare
+/// tips has no strokes to keep readable).
+int brushPresetColumnsFor(
+  double width, {
+  double cellWidth = brushPresetCellTargetWidth,
+  int? maxColumns = brushPresetMaxColumns,
+}) {
   if (!width.isFinite || width <= 0) {
     return 1;
   }
-  final fit = (width / brushPresetCellTargetWidth).floor();
-  return fit.clamp(1, brushPresetMaxColumns);
+  final fit = (width / cellWidth).floor();
+  return fit.clamp(1, maxColumns ?? math.max(1, fit));
 }
 
 /// A grid whose cells can be dragged into a new order.
@@ -62,6 +68,8 @@ class BrushPresetReorderGrid extends StatefulWidget {
     required this.itemBuilder,
     required this.itemKey,
     required this.cellHeight,
+    this.cellTargetWidth = brushPresetCellTargetWidth,
+    this.maxColumns = brushPresetMaxColumns,
     this.scrollController,
     this.onReorder,
     this.onDragStart,
@@ -79,6 +87,12 @@ class BrushPresetReorderGrid extends StatefulWidget {
   final Key Function(int index) itemKey;
 
   final double cellHeight;
+
+  /// How wide a cell wants to be, and the most columns there may be — the
+  /// panel's answer to what a cell is showing (H37).
+  final double cellTargetWidth;
+  final int? maxColumns;
+
   final ScrollController? scrollController;
 
   /// Old index, new index — the same contract `ReorderableListView` used, so
@@ -149,8 +163,12 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
       builder: (context, constraints) {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
-            : brushPresetCellTargetWidth;
-        final columns = brushPresetColumnsFor(width);
+            : widget.cellTargetWidth;
+        final columns = brushPresetColumnsFor(
+          width,
+          cellWidth: widget.cellTargetWidth,
+          maxColumns: widget.maxColumns,
+        );
         final cellWidth = width / columns;
         final rows = (widget.itemCount / columns).ceil();
         final order = _visualOrder();

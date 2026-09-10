@@ -5,6 +5,7 @@ import '../../models/canvas_shape_kind.dart';
 import '../text/app_strings.dart';
 import 'brush_tool_state.dart';
 import 'transform_tool_options.dart';
+import '../widgets/content_scrollbar.dart';
 import '../widgets/settings_prompt_text.dart';
 
 /// One shape tile, in rail order.
@@ -118,6 +119,17 @@ class ToolLibraryPanel extends StatelessWidget {
   /// itself instead.
   final Widget? guideLibrary;
 
+  /// A tile list with its bar beside it — every list this panel shows is
+  /// one (H35: 「툴 라이브러리 패널 … 내용물에 공통적으로 스크롤바 넣자」).
+  Widget _tileList(String keyValue, List<Widget> tiles) => ContentScrollbar(
+    builder: (context, controller) => ListView(
+      key: ValueKey<String>(keyValue),
+      controller: controller,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: tiles,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     switch (tool) {
@@ -125,10 +137,9 @@ class ToolLibraryPanel extends StatelessWidget {
       case CanvasTool.eraser:
         return brushLibrary;
       case CanvasTool.select:
-        return ListView(
-          key: const ValueKey<String>('tool-library-selection'),
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          children: _shapeTileWidgets(
+        return _tileList(
+          'tool-library-selection',
+          _shapeTileWidgets(
             verb: CanvasTool.select,
             keyPrefix: 'sub-tool-select',
             labelTemplate: AppText.strings.toolShapeSelectTemplate,
@@ -143,10 +154,7 @@ class ToolLibraryPanel extends StatelessWidget {
       // different outline.
       case CanvasTool.cut:
       case CanvasTool.cutStamp:
-        return ListView(
-          key: const ValueKey<String>('tool-library-cut'),
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          children: [
+        return _tileList('tool-library-cut', [
             ..._shapeTileWidgets(
               verb: CanvasTool.cut,
               keyPrefix: 'sub-tool-cut',
@@ -168,10 +176,7 @@ class ToolLibraryPanel extends StatelessWidget {
       // one thing inside each tile and no modifier is needed.
       case CanvasTool.fill:
       case CanvasTool.fillShape:
-        return ListView(
-          key: const ValueKey<String>('tool-library-fill'),
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          children: [
+        return _tileList('tool-library-fill', [
             _SubToolTile(
               keyValue: 'sub-tool-fill-bucket',
               icon: Icons.format_color_fill,
@@ -194,10 +199,8 @@ class ToolLibraryPanel extends StatelessWidget {
         final onOptions = onTransformOptionsChanged;
         return ValueListenableBuilder<TransformToolOptions>(
           valueListenable: transformOptions ?? _fallbackTransformOptions,
-          builder: (context, options, _) => ListView(
-            key: const ValueKey<String>('tool-library-transform'),
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            children: [
+          builder: (context, options, _) =>
+              _tileList('tool-library-transform', [
               _SubToolTile(
                 keyValue: 'sub-tool-transform-normal',
                 icon: Icons.crop_free,

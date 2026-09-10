@@ -13,6 +13,8 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
@@ -407,6 +409,76 @@ void main() {
     await toggle('brush-preset-view-name-toggle');
     expect(find.text('Marker'), findsNothing);
     expect(find.byType(BrushTipPreview), findsOneWidget);
+  });
+
+  testWidgets('🚨H37: with only the tips showing, a cell is as wide as a tip '
+      '— and the columns are not capped at four', (tester) async {
+    // 유저 2026-09-11: 「그룹이름처럼 이름이나 스트로크 프리뷰 없애고 팁
+    // 이미지? 아이콘만 남게하면 그에 맞춰서 공간 줄이도록」.
+    Future<void> toggle(String keyValue) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(keyValue)));
+      await tester.pumpAndSettle();
+    }
+
+    Finder cell(int index) =>
+        find.byKey(ValueKey<String>('brush-preset-entry-m$index'));
+
+    await _pumpPanel(
+      tester,
+      presets: [
+        for (var i = 0; i < 12; i += 1)
+          _marker().copyWith(id: BrushPresetId('m$i'), name: 'M$i'),
+      ],
+    );
+    final withStrokes = tester.getSize(cell(0)).width;
+
+    await toggle('brush-preset-view-stroke-toggle');
+    await toggle('brush-preset-view-name-toggle');
+
+    expect(
+      tester.getSize(cell(0)).width,
+      lessThan(withStrokes / 2),
+      reason: 'the cell kept the width of a stroke it no longer draws',
+    );
+    final columns = {
+      for (var i = 0; i < 12; i += 1) tester.getTopLeft(cell(i)).dx,
+    };
+    expect(
+      columns.length,
+      greaterThan(brushPresetMaxColumns),
+      reason: 'a row of bare tips is not four strokes side by side',
+    );
+  });
+
+  testWidgets('🚨H35: the rail and the list each keep a bar in view — with '
+      'nothing to scroll, too', (tester) async {
+    // 유저 2026-09-11: 「그룹쪽이랑 브러시리스트쪽. 그니까 내용물에
+    // 공통적으로 스크롤바 넣자. 항상 보이도록」.
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+    );
+
+    expect(
+      find.descendant(
+        of: find.byType(BrushPresetPanel),
+        matching: find.byType(ContentScrollbar),
+      ),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(BrushPresetPanel),
+        matching: find.byType(AppControllerScrollbar),
+      ),
+      findsNWidgets(2),
+      reason: 'one brush fits, and the lanes are there anyway',
+    );
   });
 
   testWidgets('the rail lists groups in order with the root tab last', (
@@ -1369,26 +1441,19 @@ void main() {
     expect(find.byType(BrushStrokePreview), findsOneWidget);
   });
 
-  testWidgets('the name rides the stroke, centred and slightly low', (
+  testWidgets('🚨the name rides the stroke, DEAD CENTRE (H38)', (
     tester,
   ) async {
-    // 유저 2026-09-08: 「스트로크가 젤 밑에 중앙에 깔려있고, 그 위에
-    // 오버레이로 스트로크랑 겹치든 말든 중앙 살짝아래에 이름있고」.
-    // `Alignment(0, 0.5)` is 「살짝 아래」 read literally — the middle of the
-    // region between the centre and the bottom. The name used to sit at
-    // `centerRight` on a 78%-alpha plate, so this alignment alone fails on
-    // the old row.
+    // 유저 2026-09-08 put the name over the stroke 「중앙 살짝아래」 — it used
+    // to sit at `centerRight` on a 78%-alpha plate — and 2026-09-11 (H38)
+    // moved it: 「텍스트 위치도 중앙아래가 아니라 완전중앙으로 해보자」.
+    // It still rides the stroke; only the height changed.
     await _pumpPanel(tester, presets: [_calligraphy()]);
 
     expect(
-      find.ancestor(
-        of: find.text('Calligraphy'),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Align && widget.alignment == const Alignment(0, 0.5),
-        ),
-      ),
-      findsOneWidget,
+      tester.getCenter(find.text('Calligraphy')),
+      tester.getCenter(find.byType(BrushStrokePreview)),
+      reason: '「중앙아래가 아니라 완전중앙」',
     );
   });
 }
