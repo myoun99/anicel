@@ -28,7 +28,12 @@ void main() {
   /// the trade this repo does not make (「결정 주석은 절대 지우지 않는다」),
   /// and shrinking the class to fit is a different round on the app's
   /// hottest file.
-  const longClasses = 53;
+  ///
+  /// ⚠️53 → 52 on 2026-09-10: `EdgeDrag` (1,350 lines) left the list when
+  /// its two gestures became objects in `session/drags/`, and neither
+  /// replacement joined it — the biggest, `ExposureEdgeDrag`, is 508. The
+  /// rule above cuts both ways, so the ceiling follows it down.
+  const longClasses = 52;
 
   late CleanCodeScan scan;
   setUpAll(() {
