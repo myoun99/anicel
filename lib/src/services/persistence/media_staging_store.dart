@@ -42,20 +42,20 @@ import 'session_scratch.dart';
 /// nothing remembers cannot be remembered wrongly.
 class MediaStagingStore {
   MediaStagingStore({String? directoryPath})
-    : directoryPath = (directoryPath ?? defaultDirectory()).replaceAll(
-        r'\',
-        '/',
-      );
+    : _injected = directoryPath?.replaceAll(r'\', '/');
 
   /// `<container>/Sessions/<this run>/Staged`.
   ///
   /// 🚨It moved out of the flat `<container>/Staged` and into THIS RUN'S
   /// room ([SessionScratch]) so that a file's lifetime is written in its
   /// path: the room goes when the run ends normally, and a room still
-  /// standing at the next launch is a crash whose staged media recovery
-  /// can offer back. ⛔The container gained no new KIND of tenant by this —
+  /// standing at the next launch belonged to a run that crashed — which
+  /// takes it then. ⛔The container gained no new KIND of tenant by this —
   /// staged media is what it always was; it gained a place where 「until
   /// this run is over」 is expressible.
+  ///
+  /// ⚠️**CALLING THIS BUILDS AND LOCKS THE ROOM**, which is why
+  /// [directoryPath] resolves it on use rather than in the constructor.
   static String defaultDirectory() => SessionScratch.stagedFolder();
 
   /// Test seam: do the staging work HERE instead of in an isolate.
@@ -88,7 +88,19 @@ class MediaStagingStore {
   /// and deleted the lot; that sweep is gone — the room's lifetime replaced
   /// it — but [find] and [list] still stand on the same comparison, so the
   /// normalisation stays where it cannot be forgotten.
-  final String directoryPath;
+  /// 🚨★★★**RESOLVED ON USE, NOT IN THE CONSTRUCTOR** — because resolving
+  /// it BUILDS AND LOCKS the run's room ([SessionScratch.stagedFolder]),
+  /// and this store is constructed while the editor comes up. A `final`
+  /// field computed in the initialiser therefore made every launch leave a
+  /// locked, empty room behind, whether or not the user ever carried a
+  /// single file. 유저 확정 2026-09-10: 「애초에 안생기도록」.
+  ///
+  /// ⚠️An injected path is kept as given — a test's folder is not the
+  /// run's room and must not summon one.
+  String get directoryPath =>
+      _injected ?? defaultDirectory().replaceAll(r'\', '/');
+
+  final String? _injected;
 
   /// Where [poolPath]'s staged bytes live, framed or not.
   ///
@@ -312,23 +324,23 @@ class MediaStagingStore {
     }
   }
 
-  // 🪦**THE AGE SWEEP MOVED ONTO THE ROOM** — see
-  // [SessionScratch.deleteFoldersOfEndedRunsOlderThan]. It used to live
-  // here as `sweepAbandoned`, and its own doc said why it had to use age:
-  // 「the obvious sweep — delete anything no open project claims — cannot
-  // be written safely: at launch nothing is open yet, so the live set is
-  // empty and the sweep would take everything」, and 「being handed a
-  // PARTIAL live set is the one mistake this class cannot make, so it is
-  // not asked for one」.
+  // 🪦**THE AGE SWEEP MOVED ONTO THE ROOM, AND THEN THE AGE ITSELF WENT** —
+  // see [SessionScratch.deleteFoldersOfRunsThatEnded]. It used to live here
+  // as `sweepAbandoned`, and its own doc said why it had to use age: 「the
+  // obvious sweep — delete anything no open project claims — cannot be
+  // written safely: at launch nothing is open yet, so the live set is empty
+  // and the sweep would take everything」, and 「being handed a PARTIAL live
+  // set is the one mistake this class cannot make, so it is not asked for
+  // one」.
   //
   // ⛔**Both halves of that still hold and neither is being taken back.**
-  // What changed is that a staged file now sits in the room of the RUN
-  // that staged it, and a room can be asked whether its owner is still
-  // here without anybody handing over a list. So the sweep still refuses
-  // a live set, and it no longer has to wait a month to tell a crash from
-  // an abandonment: a crashed run's staged media is offered back, and only
-  // a room nobody came back to for 30 days (유저 2026-08-26: 「30일좋고」)
-  // goes.
+  // What changed is that a staged file now sits in the room of the RUN that
+  // staged it, and a room can be asked whether its owner is still here
+  // without anybody handing over a list. The month is gone with it (유저
+  // 확정 2026-09-10, reversing 「30일좋고」 of 08-26): it bought the chance
+  // to tell a crash from an abandonment, and that only mattered while a
+  // crashed run's staged media was going to be offered back. It is not.
+  // A room whose run ended goes at the next launch, staged media and all.
 
   /// Every staged file, for the settings list that shows what the app
   /// container holds.

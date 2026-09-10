@@ -12,9 +12,10 @@ import 'app_support_path.dart';
 ///
 /// [appSupportFilePath] states the price of admission — 「what a new tenant
 /// owes is a LIFETIME」 — so here is this one's, and it is the shortest in
-/// the container: **one run of the app.** A folder still standing when the
-/// app starts is not a leftover to tidy silently, it is the evidence that
-/// a run ended without saying goodbye.
+/// the container: **one run of the app.** A room still standing when the
+/// app starts belonged to a run that ended without saying goodbye, and it
+/// goes at once — see [deleteFoldersOfRunsThatEnded] for why nothing is
+/// kept back from it any more.
 ///
 /// ⛔**NOT beside the project file.** The rule this facility partly
 /// reverses (`fdd328ba`, R22-C) was written with TWO reasons — 「no temp
@@ -29,7 +30,7 @@ import 'app_support_path.dart';
 /// POSIX alike, with no list of live sessions to be handed and get wrong.
 /// (The staged-media sweep this replaces refused a live set for exactly
 /// that reason and had to fall back on age; the refusal is kept and the
-/// answer is better — see [deleteFoldersOfEndedRunsOlderThan].)
+/// answer is better — see [deleteFoldersOfRunsThatEnded].)
 ///
 /// ⚠️**AND THE TEST CORPUS CANNOT REACH THAT ANSWER.** A lock held by a
 /// DIFFERENT process needs a second process, and this repo forbids a test
@@ -79,11 +80,11 @@ class SessionScratch {
   /// This run's room NAME: the pid, and the moment this run first asked.
   ///
   /// 🚨★★★**THE PID ALONE WOULD MAKE US ADOPT A DEAD RUN'S ROOM.** Ids are
-  /// reused: a run that crashed as 4312 leaves a room full of staged media
-  /// that recovery is supposed to offer back, and the next run to be handed
-  /// 4312 would walk straight into it — drawing with a stranger's carried
-  /// bytes, and then deleting that evidence on its way out as though it
-  /// were its own. The timestamp makes the name unrepeatable; the pid stays
+  /// reused: a run that crashed as 4312 leaves a room full of staged media,
+  /// and the next run to be handed 4312 would walk straight into it —
+  /// drawing with a stranger's carried bytes, and then deleting them on its
+  /// way out as though it were its own. The timestamp makes the name
+  /// unrepeatable; the pid stays
   /// because a person looking in the container should be able to tell which
   /// window this was.
   ///
@@ -101,6 +102,23 @@ class SessionScratch {
 
   /// Creates this run's room and takes its lock, once.
   ///
+  /// 🚨★★★**NOBODY CALLS THIS AT LAUNCH ANY MORE — A RUN THAT STAGES
+  /// NOTHING LEAVES NO ROOM AT ALL.** It used to run unconditionally from
+  /// the editor's `initState`, so every launch built and locked a room
+  /// whether or not one byte ever went into it; six of the seven rooms on
+  /// the author's machine held nothing but their lock file. 유저 확정
+  /// 2026-09-10: 「애초에 안생기도록」. The two folder getters below already
+  /// call this, so the room now appears at the first REAL use.
+  ///
+  /// 🚨★★★**AND THAT IS ALSO WHAT KEEPS THE SWEEP OFF A LIVE ROOM.**
+  /// [deleteFoldersOfRunsThatEnded] no longer waits for an age, so the
+  /// window between 「the room exists」 and 「its lock is held」 is a window
+  /// in which another launching instance would judge this room dead. Two
+  /// things close it: the lock is taken BEFORE the room holds anything (see
+  /// the order below), and the sweep runs at LAUNCH while this now runs at
+  /// first use — usually minutes apart, and never in the same instant the
+  /// way two `initState`s were.
+  ///
   /// ⚠️Idempotent and cheap to call from every entry point, because there
   /// is no single 「the app started」 in this codebase that a test also
   /// goes through.
@@ -109,20 +127,27 @@ class SessionScratch {
       return;
     }
     final room = thisRunsFolder();
-    Directory('$room/Staged').createSync(recursive: true);
-    Directory('$room/Volatile').createSync(recursive: true);
-    final lock = File('$room/$_lockName');
-    // 🚨**IT HAS CONTENT ON PURPOSE.** The name is what a person reading
-    // the container needs, and — the reason it is not optional — an EMPTY
-    // lock file makes the truncation hazard in [_runHasEnded] invisible:
-    // opening a 0-byte file for writing truncates nothing, so nothing
-    // moves its mtime and a probe that got the mode wrong would look
-    // correct on every platform until the day it did not. With bytes in
-    // it, getting that mode wrong is measurable.
-    lock.writeAsStringSync(_runId);
+    // ⛔**THE LOCK LANDS BEFORE THE ROOM HOLDS ANYTHING.** `createSync`
+    // with `recursive` builds the room and the lock file in one call, and
+    // the lock is taken on the next — so the only state another instance
+    // can ever see without a lock is an empty directory. Creating `Staged`
+    // and `Volatile` first (which is what this did) meant a room could
+    // stand there looking complete, and unlocked, for as long as three
+    // filesystem calls.
+    final lock = File('$room/$_lockName')..createSync(recursive: true);
     final handle = lock.openSync(mode: FileMode.append);
     handle.lockSync(FileLock.exclusive);
+    // 🚨**IT HAS CONTENT ON PURPOSE**, and the content is written UNDER the
+    // lock. The name is what a person reading the container needs, and —
+    // the reason it is not optional — an EMPTY lock file makes the
+    // truncation hazard in [_runHasEnded] invisible: opening a 0-byte file
+    // for writing truncates nothing, so a probe that got the mode wrong
+    // would look correct on every platform until the day it did not. With
+    // bytes in it, getting that mode wrong is measurable.
+    handle.writeStringSync(_runId);
     _held = handle;
+    Directory('$room/Staged').createSync();
+    Directory('$room/Volatile').createSync();
   }
 
   static RandomAccessFile? _held;
@@ -145,50 +170,40 @@ class SessionScratch {
     _deleteFolder(Directory(thisRunsFolder()));
   }
 
-  /// Deletes the VOLATILE folder of every run that is no longer here.
+  /// Deletes the WHOLE room of every run that is no longer here. The
+  /// container's ONE sweep. Answers how many rooms went.
   ///
-  /// ⛔Staged media is deliberately left standing: a run that ended without
-  /// deleting its own room crashed, and what it was carrying is exactly
-  /// what recovery has to be able to offer. Undo payloads have no such
-  /// second life — they name a history that died with its isolate.
+  /// 🚨★★★**THE 30-DAY RULE IS GONE, AND SO IS RECOVERY** (유저 확정
+  /// 2026-09-10, reversing their own 「30일좋고」 of 2026-08-26). The month
+  /// existed to tell a crash from an abandonment, and that distinction only
+  /// ever mattered because a crashed run's room was going to be OFFERED
+  /// BACK. It cannot be, and the user weighed exactly why: a room holds the
+  /// cels that had COOLED, never the hot ones, so what it could hand back
+  /// is an arbitrary part of a drawing — 「콜드셀만 복구하는건 굉장히
+  /// 어정쩡하다 … 그림이 전부 복구되는거라면 복구를 생각했겠는데」. With
+  /// nothing to offer back there is nothing to wait for.
   ///
-  /// ⚠️Called once per launch. Answers how many folders it emptied.
-  static int deleteVolatileFilesOfRunsThatEnded() {
+  /// ⛔**SO THE STAGED MEDIA GOES TOO**, which the volatile-only sweep this
+  /// replaces deliberately spared. That is the reversal, stated plainly so
+  /// nobody restores the sparing as a bug fix.
+  ///
+  /// ⚠️Two sweeps stood here, one taking `Volatile/` at once and one taking
+  /// the room after a month. Once the month goes they are the same rule
+  /// written twice — the room's deletion already takes `Volatile/` with it
+  /// — and the pair would drift the first time either learned something.
+  ///
+  /// 🚨**IT IS NOT A LEAK-FINDER, and must never become one.** The obvious
+  /// sweep — 「delete anything no open project claims」 — is still refused
+  /// for the reason `MediaStagingStore` recorded: at launch nothing is open
+  /// yet, so the live set is empty and it would take everything. This asks
+  /// one question, 「is that run still here」, and the lock answers it.
+  ///
+  /// ⚠️Called ONCE PER LAUNCH. A live room is never a candidate, so 「a
+  /// session open longer than the window must not have its own bytes
+  /// taken」 is structural rather than a rule about when to call.
+  static int deleteFoldersOfRunsThatEnded() {
     var swept = 0;
     for (final folder in _foldersOfRunsThatEnded()) {
-      if (_deleteFolder(Directory('${folder.path}/Volatile'))) {
-        swept += 1;
-      }
-    }
-    return swept;
-  }
-
-  /// Deletes the WHOLE room of every ended run older than [olderThan].
-  ///
-  /// 🚨**THIS IS WHERE THE 30-DAY RULE WENT** (유저 2026-08-26: 「30일좋고」),
-  /// and it now measures the right thing. It used to sweep staged FILES by
-  /// age, on the reasoning that 「a staged file is written once and never
-  /// touched, so an old one belongs to a project that was never saved」 —
-  /// true, but it could not tell a crash from an abandonment and so had to
-  /// wait a month before touching either. A room says which: a room whose
-  /// run ended crashed, and one that has sat there a month crashed and was
-  /// never come back for.
-  ///
-  /// ⚠️Called ONCE PER LAUNCH — and it is the container's ONLY sweep now
-  /// that the recovery snapshots are gone. A live room is never a
-  /// candidate, so the old caveat 「a session open longer than the window
-  /// must not have its own bytes taken」 is now structural rather than a
-  /// rule about when to call.
-  static int deleteFoldersOfEndedRunsOlderThan({
-    Duration olderThan = const Duration(days: 30),
-    DateTime? now,
-  }) {
-    final cutoff = (now ?? DateTime.now()).subtract(olderThan);
-    var swept = 0;
-    for (final folder in _foldersOfRunsThatEnded()) {
-      if (!_startedBefore(folder, cutoff)) {
-        continue;
-      }
       if (_deleteFolder(folder)) {
         swept += 1;
       }
@@ -196,45 +211,20 @@ class SessionScratch {
     return swept;
   }
 
-  /// When that run STARTED, read from its lock file rather than its folder.
-  ///
-  /// 🚨★★★**A DIRECTORY'S MTIME IS NOT WHEN THE RUN BEGAN — IT IS THE LAST
-  /// TIME ANYTHING INSIDE IT MOVED.** Removing `Volatile/` changes the
-  /// parent's mtime, and [deleteVolatileFilesOfRunsThatEnded] does exactly
-  /// that at every launch. Ageing on the folder would therefore reset the
-  /// clock on each start and no room would ever reach thirty days: it would
-  /// look like a working sweep and quietly keep everything for ever.
-  ///
-  /// The lock file is written once, when the room is built, and nothing
-  /// touches it again. ⚠️A room with no lock file at all cannot say when it
-  /// began, so it is not aged out here — it is the shape a run that died
-  /// mid-creation leaves, it holds nothing, and the volatile sweep already
-  /// treats it as ended.
-  static bool _startedBefore(Directory folder, DateTime cutoff) {
-    final stat = FileStat.statSync('${folder.path}/$_lockName');
-    return stat.type != FileSystemEntityType.notFound &&
-        stat.modified.isBefore(cutoff);
-  }
-
-  // 🪦**NO 「delete THAT room」 VERB YET, ON PURPOSE.** The roadmap's
-  // 「복구 안 함」 answer needs one, but nothing can call it correctly until
-  // a room can say WHICH project it was carrying — that is the round that
-  // makes the leftover rooms the recovery target. (`Recovery/` itself is
-  // already gone — its snapshots were deleted in 2026-09-08.)
-  // A seam nobody calls is a seam that drifts from the only caller it will
-  // ever have.
-
   static Iterable<Directory> _foldersOfRunsThatEnded() sync* {
     final root = Directory(rootFolder());
     if (!root.existsSync()) {
       return;
     }
-    final mine = thisRunsFolder();
     for (final entity in root.listSync(followLinks: false)) {
-      if (entity is! Directory || entity.path.replaceAll(r'\', '/') == mine) {
-        continue;
-      }
-      if (_runHasEnded(entity)) {
+      // ⛔**OUR OWN ROOM IS EXCLUDED IN [_runHasEnded], AND ONLY THERE.**
+      // The same name comparison stood here too until 2026-09-10, and
+      // mutation showed what that costs: with either copy present the
+      // other could be deleted outright and every test stayed green, so
+      // neither was pinned and either could rot unnoticed. The predicate
+      // is the semantic home — 「has that run ended」 about the run asking
+      // is 「no」 — and this loop is just a loop.
+      if (entity is Directory && _runHasEnded(entity)) {
         yield entity;
       }
     }
@@ -256,13 +246,19 @@ class SessionScratch {
     }
     RandomAccessFile? probe;
     try {
-      // 🚨★★★**`append`, NEVER `write` — `write` TRUNCATES.** Truncating is
-      // a write, a write moves the file's mtime, and that mtime is the only
-      // record of when the room was built ([_startedBefore]). Probing with
-      // `write` would reset every room's age on every launch, so no room
-      // would ever reach thirty days — and the sweep would look like it was
-      // working the whole time. `append` opens for writing (which an
-      // exclusive lock needs) and writes nothing.
+      // 🚨★★★**`append`, NEVER `write` — `write` TRUNCATES.** On POSIX the
+      // open SUCCEEDS on a lock file a live run holds (only the lock is
+      // refused, on the line below), so `write` would empty that run's lock
+      // file before we ever learn it is alive — and an empty lock file is
+      // the one shape that makes a mode mistake here invisible, which is
+      // why [ensureThisRunsFolder] puts bytes in it on purpose. `append`
+      // opens for writing (which an exclusive lock needs) and writes
+      // nothing.
+      //
+      // ⚠️It also used to guard the room's AGE, which was read from this
+      // file's mtime; the age is gone with the 30-day rule
+      // ([deleteFoldersOfRunsThatEnded]) and the mode still matters for the
+      // reason above.
       probe = lock.openSync(mode: FileMode.append);
       probe.lockSync(FileLock.exclusive);
       probe.unlockSync();

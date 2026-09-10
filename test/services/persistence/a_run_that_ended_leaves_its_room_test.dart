@@ -1,15 +1,24 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/main.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 
-/// 🚨★★★**A FOLDER STILL STANDING AT LAUNCH IS EVIDENCE, NOT LITTER.**
+/// 🚨★★★**A ROOM STILL STANDING AT LAUNCH BELONGED TO A RUN THAT DIED, AND
+/// IT GOES.** The app container's per-run room holds staged media on its
+/// way INTO the next save and volatile payloads that die with the run. A
+/// normal exit takes the whole room; a launch takes the whole room of every
+/// run that is no longer here.
 ///
-/// The app container's per-run room holds two things with different
-/// meanings: staged media on its way INTO the next save, and volatile
-/// payloads that die with the run. A normal exit takes the whole room. So
-/// a room that survives says its run ended without saying goodbye — and
-/// what it was carrying is exactly what recovery has to offer back.
+/// ⚠️**THIS FILE USED TO PIN THE OPPOSITE, AND THE REVERSAL IS THE POINT.**
+/// Staged media was spared and rooms were aged out over 30 days (유저
+/// 2026-08-26: 「30일좋고」) because a crashed run's carry was going to be
+/// offered back. 유저 확정 2026-09-10 that it will not be: a room holds only
+/// the cels that had COOLED — the hot ones died with the process — so it
+/// could only ever return an arbitrary part of a picture. 「콜드셀만
+/// 복구하는건 굉장히 어정쩡하다 … 그림이 전부 복구되는거라면 복구를
+/// 생각했겠는데」. With nothing to offer back there is nothing to wait for,
+/// and the two sweeps collapse into one.
 ///
 /// ⚠️**WHAT THESE TESTS CANNOT REACH.** 「Is that other run still alive?」
 /// is answered by trying to take its lock, and the honest case — a lock
@@ -49,20 +58,7 @@ void main() {
     File('${folder.path}/Volatile/undo.bin').writeAsBytesSync([4, 5]);
     if (withLock) {
       // Written and CLOSED — the shape a crashed run leaves behind.
-      //
-      // 🚨CONTENT, not an empty file, and the mutation is why: opening a
-      // 0-byte file for writing truncates nothing, so a probe that used
-      // the truncating mode moved no mtime and the age test passed while
-      // measuring nothing. With bytes here, the wrong mode is visible.
-      final lock = File('${folder.path}/run.lock')..writeAsStringSync(name);
-      // ⚠️And STAMPED IN THE PAST, because the assertion that nothing
-      // moves this clock runs microseconds after the write: at the
-      // filesystem's timestamp resolution「a moment ago」and「now」are the
-      // same value, so a probe that DID move it looked innocent. An hour
-      // back is outside any resolution and still far inside the 30 days.
-      lock.setLastModifiedSync(
-        DateTime.now().subtract(const Duration(hours: 1)),
-      );
+      File('${folder.path}/run.lock').writeAsStringSync(name);
     }
     return folder;
   }
@@ -72,15 +68,62 @@ void main() {
 
     expect(Directory(SessionScratch.stagedFolder()).existsSync(), isTrue);
     expect(Directory(SessionScratch.volatileFolder()).existsSync(), isTrue);
-    expect(File('${SessionScratch.thisRunsFolder()}/run.lock').existsSync(),
-        isTrue);
+    expect(
+      File('${SessionScratch.thisRunsFolder()}/run.lock').existsSync(),
+      isTrue,
+    );
+  });
+
+  test('🚨★★★nothing builds the room until something actually needs it — a '
+      'run that stages nothing leaves NOTHING', () {
+    // 유저 확정 2026-09-10 (「애초에 안생기도록」). The editor used to call
+    // `ensureThisRunsFolder` from `initState`, so every launch left a
+    // locked, empty room behind — six of the seven on the author's machine
+    // held nothing but their lock file.
+    expect(
+      Directory(SessionScratch.thisRunsFolder()).existsSync(),
+      isFalse,
+      reason: 'asking for the PATH must not build anything — that is the '
+          'whole difference between an eager and a lazy room',
+    );
+
+    final staged = SessionScratch.stagedFolder();
+
+    expect(
+      Directory(staged).existsSync(),
+      isTrue,
+      reason: 'and the first real use builds and locks it',
+    );
+  });
+
+  testWidgets('🚨★★★AND BOOTING THE WHOLE APP BUILDS NO ROOM — the launch '
+      'that stages nothing leaves the container as it found it', (
+    tester,
+  ) async {
+    final dead = endedRun('99030');
+
+    await tester.pumpWidget(const AnicelApp());
+    await tester.pump();
+
+    expect(
+      dead.existsSync(),
+      isFalse,
+      reason: 'the one thing a launch DOES owe the container: every room '
+          'whose run has ended goes, whole',
+    );
+    expect(
+      Directory(SessionScratch.thisRunsFolder()).existsSync(),
+      isFalse,
+      reason: '⛔and the one thing it must stop doing: `initState` built and '
+          'locked this run\'s room whether or not a byte ever went into it, '
+          'which is where the pile of empty rooms came from',
+    );
   });
 
   test('⛔ the room is not named by pid alone — a reused id must not let a '
       'run adopt a dead run\'s room', () {
     // Walking into a crashed run's room means drawing with a stranger's
-    // carried bytes and then deleting the evidence recovery was going to
-    // offer back.
+    // carried bytes, and then deleting them on the way out as our own.
     expect(
       SessionScratch.thisRunsFolder().split('/').last,
       isNot('$pid'),
@@ -111,145 +154,112 @@ void main() {
       isFalse,
       reason: 'the gate already asked before this ran: the work was saved '
           'or it was discarded, and staged bytes for a project the user '
-          'threw away are not something to keep offering back',
+          'threw away are not something to keep',
     );
   });
 
-  test('🚨 the launch sweep takes an ended run\'s VOLATILE and leaves its '
-      'STAGED standing', () {
+  test('🚨★★★the launch sweep takes an ended run\'s room WHOLE — its staged '
+      'media goes with its undo payloads', () {
     final dead = endedRun('99001');
     SessionScratch.ensureThisRunsFolder();
 
-    expect(SessionScratch.deleteVolatileFilesOfRunsThatEnded(), 1);
+    expect(SessionScratch.deleteFoldersOfRunsThatEnded(), 1);
 
-    expect(Directory('${dead.path}/Volatile').existsSync(), isFalse);
     expect(
-      File('${dead.path}/Staged/carried.bin').existsSync(),
-      isTrue,
-      reason: 'a run that ended without deleting its own room CRASHED, and '
-          'what it was carrying is what recovery has to be able to offer — '
-          'undo payloads name a history that died with its isolate',
+      dead.existsSync(),
+      isFalse,
+      reason: 'the reversal: staged media used to be spared here so recovery '
+          'could offer it back, and recovery is gone',
     );
+  });
+
+  test('🚨★★★and it does not wait 30 days — a room that died a moment ago '
+      'goes at the very next launch', () {
+    final justDied = endedRun('99012');
+    SessionScratch.ensureThisRunsFolder();
+
+    expect(
+      SessionScratch.deleteFoldersOfRunsThatEnded(),
+      1,
+      reason: 'the month bought the chance to tell a crash from an '
+          'abandonment, and that only mattered while a crash was going to '
+          'be offered back',
+    );
+    expect(justDied.existsSync(), isFalse);
   });
 
   test('⛔ the sweep never touches OUR room', () {
     SessionScratch.ensureThisRunsFolder();
     File('${SessionScratch.volatileFolder()}/live.bin').writeAsBytesSync([9]);
+    File('${SessionScratch.stagedFolder()}/live.bin').writeAsBytesSync([9]);
 
-    SessionScratch.deleteVolatileFilesOfRunsThatEnded();
+    expect(SessionScratch.deleteFoldersOfRunsThatEnded(), 0);
 
     expect(
       File('${SessionScratch.volatileFolder()}/live.bin').existsSync(),
       isTrue,
       reason: 'taking bytes from the session that is still drawing with '
-          'them is the one thing this sweep must never do',
+          'them is the one thing this sweep must never do — and now that '
+          'it deletes the ROOM, getting this wrong costs the staged media '
+          'too',
+    );
+    expect(
+      File('${SessionScratch.stagedFolder()}/live.bin').existsSync(),
+      isTrue,
+    );
+  });
+
+  test('🚨★★★OUR room is spared BY NAME, not because we happen to hold its '
+      'lock', () {
+    // 🚨**THE OBVIOUS VERSION OF THIS TEST PASSES FOR THE WRONG REASON.**
+    // Build the room the normal way and Windows spares it whichever guard
+    // you delete: a byte-range lock this process holds is refused even to
+    // this process, so the probe fails and the room reads as live. Three
+    // mutants — both identity guards off, and each alone — all survived
+    // that shape (2026-09-10).
+    //
+    // ⛔And the platform it passes on is the one where it does not matter.
+    // POSIX `fcntl` locks belong to the PROCESS, so on iPad, Android, Mac
+    // and Linux the probe takes our own lock happily and the name is the
+    // ONLY thing standing between a live session and having its room —
+    // staged media, cooled cels and all — deleted underneath it. That got
+    // sharper this round: the sweep no longer waits, so a broken guard
+    // costs the work immediately rather than in a month.
+    //
+    // So the room is built here WITHOUT its lock, which is the state the
+    // guard alone can answer for.
+    final mine = Directory(SessionScratch.thisRunsFolder());
+    Directory('${mine.path}/Staged').createSync(recursive: true);
+    File('${mine.path}/Staged/live.bin').writeAsBytesSync([9]);
+
+    expect(SessionScratch.deleteFoldersOfRunsThatEnded(), 0);
+
+    expect(
+      File('${mine.path}/Staged/live.bin').existsSync(),
+      isTrue,
+      reason: 'a lockless room is 「ended」 to every other name — ours has to '
+          'be answered before the lock is ever asked',
     );
   });
 
   test('a room with no lock at all counts as ended', () {
-    // The shape a run leaves when it dies between creating the folders and
-    // opening the lock. Nothing is coming back for it.
+    // The shape a run leaves when it dies between creating the room and
+    // taking its lock. Nothing is coming back for it.
     final dead = endedRun('99002', withLock: false);
     SessionScratch.ensureThisRunsFolder();
 
-    expect(SessionScratch.deleteVolatileFilesOfRunsThatEnded(), 1);
-    expect(Directory('${dead.path}/Volatile').existsSync(), isFalse);
+    expect(SessionScratch.deleteFoldersOfRunsThatEnded(), 1);
+    expect(dead.existsSync(), isFalse);
   });
 
-  // The three claims `media_staging_store_test` used to pin on
-  // `sweepAbandoned`, now asked of the room that replaced it.
-
-  // ⚠️Aged by moving the CLOCK, not the folder: `Directory` has no
-  // `setLastModified`, and the seam exists for exactly this.
-  DateTime inDays(int days) => DateTime.now().add(Duration(days: days));
-
-  test('a room nobody came back to for 30 days goes whole', () {
-    final stale = endedRun('99010');
+  test('every ended room goes in one pass, and a live one still stands', () {
+    final a = endedRun('99020');
+    final b = endedRun('99021');
     SessionScratch.ensureThisRunsFolder();
 
-    expect(SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: inDays(40)), 1);
-    expect(stale.existsSync(), isFalse);
-  });
-
-  test('🚨 and the launch that empties its Volatile does NOT reset its 30 '
-      'days', () {
-    // A directory's mtime is the last time anything inside it moved, so
-    // ageing on the FOLDER would be reset by the volatile sweep that runs
-    // beside this one at every launch — no room would ever reach thirty
-    // days, and it would look like a working sweep the whole time.
-    final stale = endedRun('99015');
-    final lock = File('${stale.path}/run.lock');
-    final born = lock.lastModifiedSync();
-    SessionScratch.ensureThisRunsFolder();
-
-    expect(SessionScratch.deleteVolatileFilesOfRunsThatEnded(), 1);
-
-    expect(
-      lock.lastModifiedSync(),
-      born,
-      reason: '🚨ASKING whether that run is still alive must not touch the '
-          'only record of when it started — a probe that opens the lock '
-          'for writing with truncation resets the clock, and then every '
-          'room looks newborn at every launch',
-    );
-    // 🚨A moment the two candidate clocks DISAGREE about, which is the
-    // only kind that measures anything here. The cutoff lands half an hour
-    // ago: the lock still says an hour ago (older — sweep it), the FOLDER
-    // says「just now」because deleting `Volatile/` touched it (younger —
-    // keep it). Pushing the clock a plain 40 days ahead does not
-    // discriminate: a folder stamped「now」is still well inside that.
-    final halfAnHourAgo = DateTime.now()
-        .add(const Duration(days: 30))
-        .subtract(const Duration(minutes: 30));
-    expect(
-      SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: halfAnHourAgo),
-      1,
-      reason: 'the age comes from the lock file, written once when the room '
-          'was built and never touched again',
-    );
-    expect(stale.existsSync(), isFalse);
-  });
-
-  test('🚨 and nothing at all while the rooms are recent — this sweep can '
-      'never be the thing that empties a live session', () {
-    endedRun('99012');
-    endedRun('99013');
-    SessionScratch.ensureThisRunsFolder();
-
-    expect(
-      SessionScratch.deleteFoldersOfEndedRunsOlderThan(),
-      0,
-      reason: 'a crash a minute ago is exactly what recovery is for',
-    );
-  });
-
-  test('the window is the recovery snapshots\' 30 days, not a second number '
-      'to keep in step', () {
-    final room = endedRun('99014');
-    SessionScratch.ensureThisRunsFolder();
-
-    expect(
-      SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: inDays(29)),
-      0,
-      reason: '29 days is inside it',
-    );
-    expect(room.existsSync(), isTrue);
-    expect(SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: inDays(31)), 1);
-  });
-
-  test('⛔ the 30-day sweep never takes OUR room either, however old it '
-      'looks', () {
-    SessionScratch.ensureThisRunsFolder();
-
-    expect(
-      SessionScratch.deleteFoldersOfEndedRunsOlderThan(now: inDays(400)),
-      0,
-    );
-    expect(
-      Directory(SessionScratch.thisRunsFolder()).existsSync(),
-      isTrue,
-      reason: 'a session left open for a year, or a machine whose clock '
-          'jumped, must not be able to make a LIVE room look abandoned',
-    );
+    expect(SessionScratch.deleteFoldersOfRunsThatEnded(), 2);
+    expect(a.existsSync(), isFalse);
+    expect(b.existsSync(), isFalse);
+    expect(Directory(SessionScratch.thisRunsFolder()).existsSync(), isTrue);
   });
 }

@@ -173,13 +173,17 @@ void main() {
       expect(store.list(), isEmpty);
     });
 
-    // 🪦**THE THREE SWEEP TESTS MOVED WITH THE SWEEP.** They pinned
-    // `sweepAbandoned` — 30 days, nothing taken while everything is
-    // recent, the window shared with recovery snapshots. The lifetime is
-    // the RUN'S ROOM now, so the same three claims are pinned in
-    // `a_run_that_ended_leaves_its_room_test` where the thing that answers
-    // them lives. ⛔They are not gone; a claim with no test is what this
-    // note exists to prevent someone concluding.
+    // 🪦**THE SWEEP TESTS MOVED WITH THE SWEEP, AND THEN TWO OF THEM WERE
+    // REVERSED.** They pinned `sweepAbandoned` — 30 days, nothing taken
+    // while everything is recent, the window shared with recovery
+    // snapshots. The lifetime is the RUN'S ROOM now, and 유저 확정
+    // 2026-09-10 dropped both the month and the recovery it was waiting
+    // for: a room whose run has ended goes at the next launch, staged
+    // media and all. What survives of the three is the claim that a LIVE
+    // room is never touched. All of it is pinned in
+    // `a_run_that_ended_leaves_its_room_test`, where the thing that
+    // answers it lives. ⛔A claim with no test is what this note exists to
+    // prevent someone concluding.
 
     test('a half-written file is never mistaken for a staged one', () async {
       final path = sourceFile('take.wav');

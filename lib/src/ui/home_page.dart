@@ -305,16 +305,17 @@ class _HomePageState extends State<HomePage> {
     // the interval rebuild it; the settings notifier is the one source.
     _syncAutosaveService();
     AppSave.settings.addListener(_syncAutosaveService);
-    // This run's room in the app container, and the two answers a launch
-    // owes the rooms of runs that ended: their VOLATILE payloads go now
-    // (an undo history that died with its isolate has no second life),
-    // their STAGED media stays — a run that ended without deleting its own
-    // room crashed, and what it was carrying is what recovery offers back.
-    // The 30-day rule moved onto the room itself: one that has sat there a
-    // month crashed and was never come back for.
-    SessionScratch.ensureThisRunsFolder();
-    SessionScratch.deleteVolatileFilesOfRunsThatEnded();
-    SessionScratch.deleteFoldersOfEndedRunsOlderThan();
+    // The one answer a launch owes the app container: the room of every run
+    // that is no longer here goes, whole, now. 유저 확정 2026-09-10 — there
+    // is no recovery to hold anything back for, because a room only ever
+    // held the cels that had COOLED and handing back part of a drawing is
+    // worse than handing back none.
+    //
+    // ⛔**AND THIS RUN'S OWN ROOM IS NOT BUILT HERE.** It used to be, so a
+    // launch that staged nothing still left a locked, empty room behind;
+    // `stagedFolder`/`volatileFolder` build it at the first real use
+    // instead ([SessionScratch.ensureThisRunsFolder]).
+    SessionScratch.deleteFoldersOfRunsThatEnded();
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,

@@ -14,10 +14,24 @@ import 'session_scratch.dart';
 /// is the ceiling this removes: cooled cels now weigh a path and a length.
 ///
 /// ⛔**Not「a cache」.** These bytes are the only copy of that picture
-/// outside the hot tier, which is why the room they live in is the one
-/// whose contents a crash leaves standing ([SessionScratch]) and not the
-/// one that is wiped. Losing a cache costs time; losing this costs the
-/// drawing.
+/// outside the hot tier while the run lasts — losing one mid-session costs
+/// the drawing, not time — which is why the cooling pass treats a refusal
+/// as 「stay hot」 rather than a drop, and why the save retires each file
+/// only once it has adopted that cel (`BrushFrameStore._dropCold`).
+///
+/// 🚨★★★**BUT THEY DO NOT SURVIVE THE RUN, AND THAT IS NOW DELIBERATE.**
+/// This doc used to say the room was 「the one whose contents a crash
+/// leaves standing」, on the way to a round that would offer them back. It
+/// will not happen: a room holds only the cels that had COOLED — the hot
+/// ones died with the process — so what it could return is an arbitrary
+/// part of a picture. 유저 확정 2026-09-10: 「콜드셀만 복구하는건 굉장히
+/// 어정쩡하다 … 그림이 전부 복구되는거라면 복구를 생각했겠는데」. The room
+/// of an ended run goes at the next launch
+/// ([SessionScratch.deleteFoldersOfRunsThatEnded]).
+///
+/// ⚠️So the thing that protects a long session's work is the AUTOSAVE
+/// TICK writing the project file, not this store. That is the same answer
+/// the recovery sidecars got when they were deleted in 2026-09-08.
 ///
 /// ⚠️The name is DERIVED from the cel's archive entry name — the same rule
 /// the staged media and the conform follow ("under a name derived by rule
