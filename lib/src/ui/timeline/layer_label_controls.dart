@@ -362,8 +362,9 @@ class LayerBlendModeChip extends StatelessWidget {
             padding: vertical
                 ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
                 : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-            entriesBuilder: () => panelFlyoutChoices(
-              values: LayerBlendMode.optionsFor(isGroup: isGroup),
+            entriesBuilder: () => LayerBlendMode.optionsFor(
+              isGroup: isGroup,
+            ).asFlyoutChoices(
               current: blendMode,
               keyPrefix: optionKeyPrefix,
               labelOf: (mode) => mode.labelFor(language),

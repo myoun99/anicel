@@ -84,8 +84,7 @@ class OnionSkinPanel extends StatelessWidget {
                     label: _stepLabel(settings.step),
                     tooltip: AppText.strings.onionPegCountHelp,
                     expand: true,
-                    entriesBuilder: () => panelFlyoutChoices(
-                      values: OnionSkinStep.values,
+                    entriesBuilder: () => OnionSkinStep.values.asFlyoutChoices(
                       current: settings.step,
                       keyPrefix: 'onion-step-',
                       labelOf: (step) => switch (step) {
@@ -104,8 +103,7 @@ class OnionSkinPanel extends StatelessWidget {
                     label: _modeLabel(settings.mode),
                     tooltip: AppText.strings.onionGhostColorHelp,
                     expand: true,
-                    entriesBuilder: () => panelFlyoutChoices(
-                      values: OnionSkinMode.values,
+                    entriesBuilder: () => OnionSkinMode.values.asFlyoutChoices(
                       current: settings.mode,
                       keyPrefix: 'onion-mode-',
                       labelOf: _modeLabel,

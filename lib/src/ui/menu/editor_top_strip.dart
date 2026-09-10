@@ -1089,8 +1089,7 @@ class _BlendModeControl extends StatelessWidget {
             // joining `toolHasBlendMode` is all it took: the eraser's
             // single-entry case is the `toolLocked` box above, so this
             // list needs no per-tool filter to obey that law.
-            entriesBuilder: () => panelFlyoutChoices(
-              values: BrushBlendMode.values,
+            entriesBuilder: () => BrushBlendMode.values.asFlyoutChoices(
               current: mode,
               keyPrefix: 'brush-tool-blend-',
               labelOf: (candidate) => candidate.labelFor(language),

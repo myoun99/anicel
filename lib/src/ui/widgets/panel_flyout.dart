@@ -163,21 +163,25 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 /// All six copies said `checked`, which draws a check glyph on the current
 /// row — the mark 「선택 표시는 색상만」 forbids and the one that widens
 /// the row it lands on. `checked` is a toggle's field; none of these is one.
-List<PanelFlyoutEntry> panelFlyoutChoices<T extends Enum>({
-  required Iterable<T> values,
-  required T current,
-  required String keyPrefix,
-  required String Function(T value) labelOf,
-  required ValueChanged<T> onPicked,
-}) => [
-  for (final value in values)
-    PanelFlyoutItem(
-      keyValue: '$keyPrefix${value.name}',
-      label: labelOf(value),
-      selected: value == current,
-      onSelected: () => onPicked(value),
-    ),
-];
+///
+/// An extension on the values because they ARE the subject:
+/// `BrushBlendMode.values.asFlyoutChoices(…)` reads as what it builds.
+extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
+  List<PanelFlyoutEntry> asFlyoutChoices({
+    required T current,
+    required String keyPrefix,
+    required String Function(T value) labelOf,
+    required ValueChanged<T> onPicked,
+  }) => [
+    for (final value in this)
+      PanelFlyoutItem(
+        keyValue: '$keyPrefix${value.name}',
+        label: labelOf(value),
+        selected: value == current,
+        onSelected: () => onPicked(value),
+      ),
+  ];
+}
 
 /// Shows the shared flyout anchored under [anchorContext]'s widget and runs
 /// the picked item's [PanelFlyoutItem.onSelected] after the menu closes.

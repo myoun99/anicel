@@ -533,8 +533,7 @@ class _RotationModeRow extends StatelessWidget {
             key: const ValueKey<String>('brush-tool-rotation-menu-button'),
             label: _labelFor(state.rotationMode),
             tooltip: AppText.strings.brTipRotation,
-            entriesBuilder: () => panelFlyoutChoices(
-              values: BrushTipRotationMode.values,
+            entriesBuilder: () => BrushTipRotationMode.values.asFlyoutChoices(
               current: state.rotationMode,
               keyPrefix: 'brush-tool-rotation-',
               labelOf: _labelFor,
@@ -784,8 +783,7 @@ class _DualBlendRow extends StatelessWidget {
             // state owns the appearance of one, and this button can dim
             // itself.
             enabled: enabled,
-            entriesBuilder: () => panelFlyoutChoices(
-              values: SeparableBlendMode.values,
+            entriesBuilder: () => SeparableBlendMode.values.asFlyoutChoices(
               current: state.dualCompositeMode,
               keyPrefix: 'brush-tool-dual-blend-',
               labelOf: (mode) => mode.labelFor(language),
