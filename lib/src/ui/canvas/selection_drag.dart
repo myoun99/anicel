@@ -146,13 +146,115 @@ final class MoveDrag extends SelectionDrag {
   Offset screenDelta = Offset.zero;
 }
 
+/// Which part of the Ctrl+T box a drag grabbed.
+enum TransformHandle {
+  topLeft,
+  topRight,
+  bottomRight,
+  bottomLeft,
+  topEdge,
+  rightEdge,
+  bottomEdge,
+  leftEdge,
+  rotate,
+  inside,
+}
+
+/// The grabbed handle's BASE-LOCAL coordinates (relative to the base box
+/// center = the affine pivot); null for rotate/inside.
+CanvasPoint? handleLocal(TransformHandle handle, double w, double h) {
+  switch (handle) {
+    case TransformHandle.topLeft:
+      return CanvasPoint(x: -w / 2, y: -h / 2);
+    case TransformHandle.topRight:
+      return CanvasPoint(x: w / 2, y: -h / 2);
+    case TransformHandle.bottomRight:
+      return CanvasPoint(x: w / 2, y: h / 2);
+    case TransformHandle.bottomLeft:
+      return CanvasPoint(x: -w / 2, y: h / 2);
+    case TransformHandle.topEdge:
+      return CanvasPoint(x: 0, y: -h / 2);
+    case TransformHandle.rightEdge:
+      return CanvasPoint(x: w / 2, y: 0);
+    case TransformHandle.bottomEdge:
+      return CanvasPoint(x: 0, y: h / 2);
+    case TransformHandle.leftEdge:
+      return CanvasPoint(x: -w / 2, y: 0);
+    case TransformHandle.rotate:
+    case TransformHandle.inside:
+      return null;
+  }
+}
+
 /// A drag on the Ctrl+T box — a scale/rotate handle, a 퍼스 corner, a 메쉬
 /// control point, or the inside.
 ///
 /// The box itself is NOT here: it survives the release (Enter/Escape close
 /// it), so the affine, the base box and the warp offsets stay on the layer.
-final class TransformDrag extends SelectionDrag {
-  TransformDrag({required super.pointer});
+///
+/// ⛔WHAT THE PRESS GRABBED IS ONE OF EXACTLY TWO THINGS, so it is two
+/// subtypes and not five nullable fields the press had to set in an
+/// agreeing pattern. Every begin site set the pointer plus EITHER the warp
+/// points and their start offsets OR the handle and its start affine, and
+/// nothing but the shape of that code said the two never mix.
+sealed class TransformDrag extends SelectionDrag {
+  TransformDrag({required super.pointer, required this.startPointer});
+
+  /// Where the drag went down, in canvas space — every branch measures its
+  /// displacement from here.
+  final CanvasPoint startPointer;
+}
+
+/// A control-point drag — one corner in 퍼스, one grid point in 메쉬, or the
+/// two corners 퍼스's edge handle carries together (F-42, 유저 2026-08-29).
+final class WarpPointDrag extends TransformDrag {
+  WarpPointDrag({
+    required super.pointer,
+    required super.startPointer,
+    required this.points,
+    required this.startOffsets,
+  });
+
+  /// WHICH control points this drag carries — one index for a corner or a
+  /// mesh point, TWO for 퍼스's edge handle, which moves the edge's pair
+  /// together (F-42, 유저 2026-08-29).
+  ///
+  /// ⛔A LIST RATHER THAN A SECOND FIELD. An `int? warpDragCorner` beside
+  /// a `warpDragEdge` would be two fields answering one question — "what
+  /// moves?" — and the day they disagreed the drag would move a corner AND
+  /// an edge ([[make-the-invariant-unrepresentable]]).
+  ///
+  /// ⚠️NULL IS REACHABLE and means something: the press landed INSIDE the
+  /// mesh boundary but not on a point. It carried no point before this
+  /// field became a list, and it still carries none — `[null]` would make
+  /// the update move offset 0.
+  final List<int>? points;
+
+  /// The offsets as the press found them — the drag adds ONE displacement
+  /// to these rather than accumulating frame by frame.
+  final List<CanvasPoint> startOffsets;
+}
+
+/// A scale, rotate or inside drag on the affine box.
+final class BoxHandleDrag extends TransformDrag {
+  BoxHandleDrag({
+    required super.pointer,
+    required super.startPointer,
+    required this.handle,
+    required this.start,
+    required this.lastAngle,
+  });
+
+  final TransformHandle handle;
+
+  /// The affine as the press found it. The scale solver works from this,
+  /// so a drag is one solve from the start rather than a chain of deltas.
+  final SelectionAffine start;
+
+  /// The rotate knob's wrapped-delta accumulator (the camera lever rule):
+  /// continuous across the ±180° seam. Meaningless for the other handles,
+  /// which never read it.
+  double lastAngle;
 }
 
 /// The polygon's press: it has no drag verb at all — the aim is taken where

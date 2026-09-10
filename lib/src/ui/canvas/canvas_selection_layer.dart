@@ -350,46 +350,6 @@ class _ResampleKey {
   int get hashCode => Object.hash(mode, identityHashCode(source), shape);
 }
 
-/// Which part of the Ctrl+T box a drag grabbed.
-enum _TransformHandle {
-  topLeft,
-  topRight,
-  bottomRight,
-  bottomLeft,
-  topEdge,
-  rightEdge,
-  bottomEdge,
-  leftEdge,
-  rotate,
-  inside,
-}
-
-/// The grabbed handle's BASE-LOCAL coordinates (relative to the base box
-/// center = the affine pivot); null for rotate/inside.
-CanvasPoint? _handleLocal(_TransformHandle handle, double w, double h) {
-  switch (handle) {
-    case _TransformHandle.topLeft:
-      return CanvasPoint(x: -w / 2, y: -h / 2);
-    case _TransformHandle.topRight:
-      return CanvasPoint(x: w / 2, y: -h / 2);
-    case _TransformHandle.bottomRight:
-      return CanvasPoint(x: w / 2, y: h / 2);
-    case _TransformHandle.bottomLeft:
-      return CanvasPoint(x: -w / 2, y: h / 2);
-    case _TransformHandle.topEdge:
-      return CanvasPoint(x: 0, y: -h / 2);
-    case _TransformHandle.rightEdge:
-      return CanvasPoint(x: w / 2, y: 0);
-    case _TransformHandle.bottomEdge:
-      return CanvasPoint(x: 0, y: h / 2);
-    case _TransformHandle.leftEdge:
-      return CanvasPoint(x: -w / 2, y: 0);
-    case _TransformHandle.rotate:
-    case _TransformHandle.inside:
-      return null;
-  }
-}
-
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin {
   /// The live selection, mirrored from [CanvasSelectionCommands.region]
@@ -671,16 +631,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return Offset(mapped.x, mapped.y);
   }
 
-  // Ctrl+T free-transform session (P9b): the composite affine, the base
+  // Ctrl+T free-transform session (P9b): the composite affine and the base
   // box it manipulates (the shape's AABB at session start; its center is
-  // the affine pivot) and the per-drag solving context.
+  // the affine pivot). The per-drag solving context is NOT here — it lives
+  // on [TransformDrag] and dies with the gesture.
   SelectionAffine? _transform;
   double _baseBoxWidth = 0;
   double _baseBoxHeight = 0;
-  _TransformHandle? _transformDragHandle;
-  SelectionAffine? _transformDragStart;
-  CanvasPoint? _transformDragStartPointer;
-  double _transformLastAngle = 0;
 
   /// Screen-space hit slack around a handle (≥ touch-friendly).
   static const double _handleHitRadius = 16;
@@ -1275,17 +1232,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   int _stashedMeshColumns = 0;
   int _stashedMeshRows = 0;
 
-  /// WHICH control points this drag carries — one index for a corner or a
-  /// mesh point, TWO for 퍼스's edge handle, which moves the edge's pair
-  /// together (F-42, 유저 2026-08-29).
-  ///
-  /// ⛔A LIST RATHER THAN A SECOND FIELD. An `int? _warpDragCorner` beside
-  /// a `_warpDragEdge` would be two fields answering one question — "what
-  /// moves?" — and the day they disagreed the drag would move a corner AND
-  /// an edge ([[make-the-invariant-unrepresentable]]).
-  List<int>? _warpDragPoints;
-  List<CanvasPoint>? _warpDragStartOffsets;
-
   TransformMode get _mode => widget.transformOptions.mode;
   int get _meshColumns => widget.transformOptions.meshColumns;
   int get _meshRows => widget.transformOptions.meshRows;
@@ -1316,11 +1262,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ];
   }
 
-  static const List<_TransformHandle> _cornerHandles = [
-    _TransformHandle.topLeft,
-    _TransformHandle.topRight,
-    _TransformHandle.bottomRight,
-    _TransformHandle.bottomLeft,
+  static const List<TransformHandle> _cornerHandles = [
+    TransformHandle.topLeft,
+    TransformHandle.topRight,
+    TransformHandle.bottomRight,
+    TransformHandle.bottomLeft,
   ];
 
   /// The mesh grid's BASE points over the pending stamp's rect, row-major
@@ -1982,13 +1928,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // exists to prevent (유저 법: 한 프레임 보이는 건 무조건 걸린다).
         (identical(_resampledImageDab, landed) || _holdDecodedPreview);
     _holdDecodedPreview = false;
+    // A drag still down when the box closes under it is NOT dropped here:
+    // its release still has to lower the drag-active flags. What stops it
+    // moving anything is that the box is gone, which
+    // [_updateTransformDragGeometry] asks for itself — this used to say the
+    // same thing by nulling five per-drag fields at a distance.
     _transform = null;
     _transformOpenedLift = false;
     _baseBoxWidth = 0;
     _baseBoxHeight = 0;
-    _transformDragHandle = null;
-    _transformDragStart = null;
-    _transformDragStartPointer = null;
     _cornerOffsets = null;
     _meshOffsets = null;
     _meshOffsetColumns = 0;
@@ -1997,8 +1945,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _stashedMeshOffsets = null;
     _stashedMeshColumns = 0;
     _stashedMeshRows = 0;
-    _warpDragPoints = null;
-    _warpDragStartOffsets = null;
     if (keepPreview) {
       // The image and the dab it was decoded from stay together and stay
       // paired; only the machinery that would replace them goes.
@@ -2789,7 +2735,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _baseBoxHeight = box.height;
     final implicit = SelectionAffine(pivot: box.center);
     final handle = _hitTestTransformHandle(event.localPosition, implicit);
-    if (handle == null || handle == _TransformHandle.inside) {
+    if (handle == null || handle == TransformHandle.inside) {
       // Inside/miss: fall through to the ordinary move-drag flow — but
       // remember WHICH (TP4). "Inside" is the box the user can see, and
       // the box is the promise: 유저 확정 (변형툴 라운드 ④) already said
@@ -2800,7 +2746,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _baseBoxHeight = 0;
       return (
         transform: null,
-        insideImplicitBox: handle == _TransformHandle.inside,
+        insideImplicitBox: handle == TransformHandle.inside,
       );
     }
     if (_region == null) {
@@ -2899,14 +2845,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       setState(() {
-        _drag = TransformDrag(pointer: event.pointer);
-        // ⚠️NULL IS REACHABLE and means something: the press landed
-        // INSIDE the mesh boundary but not on a point. It carried no
-        // point before this field became a list, and it still carries
-        // none — `[null]` would make the update move offset 0.
-        _warpDragPoints = pointIndex == null ? null : [pointIndex];
-        _warpDragStartOffsets = List.of(_meshOffsets ?? const []);
-        _transformDragStartPointer = canvasPoint;
+        _drag = WarpPointDrag(
+          pointer: event.pointer,
+          startPointer: canvasPoint,
+          points: pointIndex == null ? null : [pointIndex],
+          startOffsets: List.of(_meshOffsets ?? const []),
+        );
       });
       _notifyDragActive(true);
       return;
@@ -2924,10 +2868,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       );
       if (cornerIndex != null) {
         setState(() {
-          _drag = TransformDrag(pointer: event.pointer);
-          _warpDragPoints = [cornerIndex];
-          _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
-          _transformDragStartPointer = canvasPoint;
+          _drag = WarpPointDrag(
+            pointer: event.pointer,
+            startPointer: canvasPoint,
+            points: [cornerIndex],
+            startOffsets: List.of(_cornerOffsets ?? const []),
+          );
         });
         _notifyDragActive(true);
         return;
@@ -2937,7 +2883,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (!_offsetsAreZero(_cornerOffsets) &&
           !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
           _hitTestTransformHandle(event.localPosition, openTransform) ==
-              _TransformHandle.inside) {
+              TransformHandle.inside) {
         return;
       }
     }
@@ -2967,22 +2913,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         : null;
     if (edgePair != null && cornersPlaced != null) {
       setState(() {
-        _drag = TransformDrag(pointer: event.pointer);
-        _warpDragPoints = edgePair;
-        _warpDragStartOffsets = List.of(_cornerOffsets ?? const []);
-        _transformDragStartPointer = canvasPoint;
+        _drag = WarpPointDrag(
+          pointer: event.pointer,
+          startPointer: canvasPoint,
+          points: edgePair,
+          startOffsets: List.of(_cornerOffsets ?? const []),
+        );
       });
       _notifyDragActive(true);
       return;
     }
     setState(() {
-      _drag = TransformDrag(pointer: event.pointer);
-      _transformDragHandle = handle;
-      _transformDragStart = openTransform;
-      _transformDragStartPointer = canvasPoint;
-      if (handle == _TransformHandle.rotate) {
-        _transformLastAngle = _pointerAngleAbout(canvasPoint, openTransform);
-      }
+      _drag = BoxHandleDrag(
+        pointer: event.pointer,
+        startPointer: canvasPoint,
+        handle: handle,
+        start: openTransform,
+        // Only the rotate knob reads it, and it needs the angle the press
+        // was at so the first move is a delta rather than a jump.
+        lastAngle: handle == TransformHandle.rotate
+            ? _pointerAngleAbout(canvasPoint, openTransform)
+            : 0,
+      );
     });
     _notifyDragActive(true);
     return;
@@ -3003,7 +2955,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case MoveDrag():
         setState(() => drag.screenDelta += event.delta);
       case TransformDrag():
-        _updateTransformDrag(_toCanvas(event.localPosition));
+        _updateTransformDrag(drag, _toCanvas(event.localPosition));
     }
   }
 
@@ -3011,94 +2963,110 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// then ask the preview to catch up. Wrapping rather than sprinkling the
   /// call through five early returns is the difference between "the mesh
   /// preview stopped updating" being impossible and being a future bug.
-  void _updateTransformDrag(CanvasPoint pointer) {
-    _updateTransformDragGeometry(pointer);
+  void _updateTransformDrag(TransformDrag drag, CanvasPoint pointer) {
+    _updateTransformDragGeometry(drag, pointer);
     _scheduleFloatResample();
   }
 
-  void _updateTransformDragGeometry(CanvasPoint pointer) {
-    // A control point drag — one corner in 퍼스, one grid point in 메쉬.
-    //
-    // The pointer is pulled back through the affine before it becomes a
-    // displacement, so a point dragged on a rotated box moves the way the
-    // hand did rather than along the box's own axes.
-    final dragPoints = _warpDragPoints;
-    final startOffsets = _warpDragStartOffsets;
+  void _updateTransformDragGeometry(TransformDrag drag, CanvasPoint pointer) {
     final affine = _transform;
-    if (dragPoints != null && startOffsets != null && affine != null) {
-      final startPointer = _transformDragStartPointer;
-      if (startPointer == null) {
-        return;
+    if (affine == null) {
+      // The box closed under the drag (Escape mid-gesture). The contact is
+      // still down and its release still lowers the drag flags, but there
+      // is nothing left to move — see [_clearTransform], which used to say
+      // this by nulling this drag's fields from outside it.
+      return;
+    }
+    switch (drag) {
+      case WarpPointDrag():
+        _dragWarpPoints(drag, affine, pointer);
+      case BoxHandleDrag():
+        _dragBoxHandle(drag, pointer);
+    }
+  }
+
+  /// A control point drag — one corner in 퍼스, one grid point in 메쉬.
+  ///
+  /// The pointer is pulled back through the affine before it becomes a
+  /// displacement, so a point dragged on a rotated box moves the way the
+  /// hand did rather than along the box's own axes.
+  void _dragWarpPoints(
+    WarpPointDrag drag,
+    SelectionAffine affine,
+    CanvasPoint pointer,
+  ) {
+    final dragPoints = drag.points;
+    if (dragPoints == null) {
+      return;
+    }
+    final startOffsets = drag.startOffsets;
+    final from = affine.applyInverse(drag.startPointer);
+    final to = affine.applyInverse(pointer);
+    final dx = to.x - from.x;
+    final dy = to.y - from.y;
+    // ONE displacement, applied to every point the drag carries: an edge
+    // handle moves its two corners by the same vector, so the edge stays
+    // straight and its length is preserved unless a corner is dragged
+    // afterwards.
+    final moved = [
+      for (var i = 0; i < startOffsets.length; i += 1)
+        dragPoints.contains(i)
+            ? CanvasPoint(
+                x: startOffsets[i].x + dx,
+                y: startOffsets[i].y + dy,
+              )
+            : startOffsets[i],
+    ];
+    setState(() {
+      if (_mode == TransformMode.mesh) {
+        _meshOffsets = moved;
+      } else {
+        _cornerOffsets = moved;
       }
-      final from = affine.applyInverse(startPointer);
-      final to = affine.applyInverse(pointer);
-      final dx = to.x - from.x;
-      final dy = to.y - from.y;
-      // ONE displacement, applied to every point the drag carries: an edge
-      // handle moves its two corners by the same vector, so the edge stays
-      // straight and its length is preserved unless a corner is dragged
-      // afterwards.
-      final moved = [
-        for (var i = 0; i < startOffsets.length; i += 1)
-          dragPoints.contains(i)
-              ? CanvasPoint(
-                  x: startOffsets[i].x + dx,
-                  y: startOffsets[i].y + dy,
-                )
-              : startOffsets[i],
-      ];
-      setState(() {
-        if (_mode == TransformMode.mesh) {
-          _meshOffsets = moved;
-        } else {
-          _cornerOffsets = moved;
-        }
-      });
-      _syncAnts();
-      return;
-    }
-    final handle = _transformDragHandle;
-    final start = _transformDragStart;
-    final startPointer = _transformDragStartPointer;
-    if (handle == null || start == null || startPointer == null) {
-      return;
-    }
-    switch (handle) {
-      case _TransformHandle.inside:
+    });
+    _syncAnts();
+  }
+
+  void _dragBoxHandle(BoxHandleDrag drag, CanvasPoint pointer) {
+    final start = drag.start;
+    switch (drag.handle) {
+      case TransformHandle.inside:
         setState(() {
           _transform = start.copyWith(
-            tx: start.tx + pointer.x - startPointer.x,
-            ty: start.ty + pointer.y - startPointer.y,
+            tx: start.tx + pointer.x - drag.startPointer.x,
+            ty: start.ty + pointer.y - drag.startPointer.y,
           );
         });
-      case _TransformHandle.rotate:
+      case TransformHandle.rotate:
         // Wrapped-delta accumulation (the camera lever rule): continuous
         // across the ±180° seam. Canvas-space angles, so the P8 view
         // rotation/flip never skews the feel.
         final current = _transform ?? start;
         final angle = _pointerAngleAbout(pointer, current);
-        var delta = angle - _transformLastAngle;
+        var delta = angle - drag.lastAngle;
         while (delta > 180) {
           delta -= 360;
         }
         while (delta < -180) {
           delta += 360;
         }
-        _transformLastAngle = angle;
+        drag.lastAngle = angle;
         setState(() {
           _transform = current.copyWith(
             rotationDegrees: current.rotationDegrees + delta,
           );
         });
-      case _TransformHandle.topLeft:
-      case _TransformHandle.topRight:
-      case _TransformHandle.bottomRight:
-      case _TransformHandle.bottomLeft:
-      case _TransformHandle.topEdge:
-      case _TransformHandle.rightEdge:
-      case _TransformHandle.bottomEdge:
-      case _TransformHandle.leftEdge:
-        setState(() => _transform = _solveScaleDrag(start, handle, pointer));
+      case TransformHandle.topLeft:
+      case TransformHandle.topRight:
+      case TransformHandle.bottomRight:
+      case TransformHandle.bottomLeft:
+      case TransformHandle.topEdge:
+      case TransformHandle.rightEdge:
+      case TransformHandle.bottomEdge:
+      case TransformHandle.leftEdge:
+        setState(
+          () => _transform = _solveScaleDrag(start, drag.handle, pointer),
+        );
     }
   }
 
@@ -3124,10 +3092,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// would otherwise look here for a path that has moved.
   SelectionAffine _solveScaleDrag(
     SelectionAffine start,
-    _TransformHandle handle,
+    TransformHandle handle,
     CanvasPoint pointer,
   ) {
-    final grabbed = _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
+    final grabbed = handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
     final centerPivot =
         (widget.transformOptions.anchor == TransformAnchor.center) !=
         HardwareKeyboard.instance.isAltPressed;
@@ -3342,11 +3310,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _shapeNeedsLift = true;
     }
     _drag = null;
-    _transformDragHandle = null;
-    _transformDragStart = null;
-    _transformDragStartPointer = null;
-    _warpDragPoints = null;
-    _warpDragStartOffsets = null;
     if (_transform == null && !_movePending) {
       _floatSurface = null;
     }
@@ -3549,11 +3512,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return Offset(mapped.x, mapped.y);
   }
 
-  static const List<_TransformHandle> _edgeHandles = [
-    _TransformHandle.topEdge,
-    _TransformHandle.rightEdge,
-    _TransformHandle.bottomEdge,
-    _TransformHandle.leftEdge,
+  static const List<TransformHandle> _edgeHandles = [
+    TransformHandle.topEdge,
+    TransformHandle.rightEdge,
+    TransformHandle.bottomEdge,
+    TransformHandle.leftEdge,
   ];
 
   /// The two QUAD corners an edge handle carries in 퍼스 (F-42).
@@ -3562,12 +3525,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// builds it — so an edge is the pair that bounds it. Null for anything
   /// that is not an edge, which is how the caller falls through to the
   /// affine path for the rotate knob and the inside grab.
-  static List<int>? _edgeCornerPair(_TransformHandle handle) =>
+  static List<int>? _edgeCornerPair(TransformHandle handle) =>
       switch (handle) {
-        _TransformHandle.topEdge => const [0, 1],
-        _TransformHandle.rightEdge => const [1, 2],
-        _TransformHandle.bottomEdge => const [2, 3],
-        _TransformHandle.leftEdge => const [3, 0],
+        TransformHandle.topEdge => const [0, 1],
+        TransformHandle.rightEdge => const [1, 2],
+        TransformHandle.bottomEdge => const [2, 3],
+        TransformHandle.leftEdge => const [3, 0],
         _ => null,
       };
 
@@ -3593,11 +3556,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// be grabbable to open one. Otherwise 메쉬 — whose handles are grid
   /// points that do not exist until the box does — would be a mode you
   /// could select and then never enter.
-  List<_TransformHandle> get _scaleHandles {
+  List<TransformHandle> get _scaleHandles {
     final open = switch (_mode) {
       TransformMode.normal => _cornerHandles,
       TransformMode.perspective => _edgeHandles,
-      TransformMode.mesh => const <_TransformHandle>[],
+      TransformMode.mesh => const <TransformHandle>[],
     };
     if (_transform != null) {
       return open;
@@ -3670,24 +3633,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  _TransformHandle? _hitTestTransformHandle(
+  TransformHandle? _hitTestTransformHandle(
     Offset local,
     SelectionAffine affine,
   ) {
     if ((local - _rotateKnobOffset(affine)).distance <= _handleHitRadius) {
-      return _TransformHandle.rotate;
+      return TransformHandle.rotate;
     }
     for (final handle in _scaleHandles) {
       final position = _mapLocalToViewport(
         affine,
-        _handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
+        handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
       );
       if ((local - position).distance <= _handleHitRadius) {
         return handle;
       }
     }
     if (_transformedBoxShape(affine).containsPoint(_toCanvas(local))) {
-      return _TransformHandle.inside;
+      return TransformHandle.inside;
     }
     return null;
   }
@@ -4005,7 +3968,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _mapLocalToViewport(
                   chromeAffine,
-                  _handleLocal(handle, chromeWidth, chromeHeight)!,
+                  handleLocal(handle, chromeWidth, chromeHeight)!,
                 ),
             ],
             knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
@@ -4025,7 +3988,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _mapLocalToViewport(
                   chromeAffine,
-                  _handleLocal(handle, chromeWidth, chromeHeight)!,
+                  handleLocal(handle, chromeWidth, chromeHeight)!,
                 ),
             ],
             knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
