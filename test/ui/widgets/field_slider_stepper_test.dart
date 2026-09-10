@@ -31,7 +31,7 @@ void main() {
         min: 0,
         max: 1,
         label: 'Size',
-        valueText: '50%',
+        unit: '%',
         onChanged: (_) {},
       ),
     );
@@ -48,7 +48,7 @@ void main() {
         value: 0.5,
         min: 0,
         max: 1,
-        valueText: '50%',
+        unit: '%',
         onChanged: (_) {},
       ),
     );
@@ -66,7 +66,7 @@ void main() {
           min: 0,
           max: 1,
           label: 'Size',
-          valueText: '50%',
+          unit: '%',
           onChanged: enabled ? (_) {} : null,
         ),
       );
@@ -91,7 +91,8 @@ void main() {
           max: 1,
           divisions: 100,
           label: 'Size',
-          valueText: '${(value * 100).round()}%',
+          unit: '%',
+          displayScale: 100,
           onChanged: (next) => setState(() => value = next),
         ),
       ),

@@ -143,9 +143,11 @@ void main() {
       reason: 'reset restores the SHAPE, and only the shape',
     );
 
-    // And it is on screen, at ×4, drawn whether or not it is the default.
-    expect(find.text('×4'), findsOneWidget);
-    expect(find.text('×1'), findsNWidgets(2));
+    // And it is on screen, at ×4.0, drawn whether or not it is the default.
+    // ⚠️The tenth is always written (F-34): `×1` beside `×1.5` was the same
+    // digit-count flicker the bars were carrying.
+    expect(find.text('×4.0'), findsOneWidget);
+    expect(find.text('×1.0'), findsNWidgets(2));
   });
 
   testWidgets('a point dragged to the right EDGE is not deleted', (

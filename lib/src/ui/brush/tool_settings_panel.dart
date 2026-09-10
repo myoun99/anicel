@@ -412,8 +412,7 @@ class _CutStampSettings extends StatelessWidget {
               max: 400,
               divisions: 400 - CutPiece.minScalePercent,
               value: piece.scalePercent.clamp(1, 400).toDouble(),
-              valueText: sliderValueText(piece.scalePercent, unit: '%'),
-              valueTextBuilder: (next) => sliderValueText(next, unit: '%'),
+              unit: '%',
               onChanged: (value) =>
                   holder.updatePose(scalePercent: value.round()),
             ),
@@ -502,10 +501,10 @@ class _SelectionSettings extends StatelessWidget {
             divisions: 40,
             value: maskOptions.growPx.toDouble().clamp(-20, 20),
             label: AppText.strings.brGrowShrink,
-            valueText: maskOptions.growPx == 0
+            unit: ' px',
+            valueTextBuilder: (grow, derived) => grow == 0
                 ? 'off'
-                : '${maskOptions.growPx > 0 ? '+' : ''}'
-                      '${sliderValueText(maskOptions.growPx, unit: ' px')}',
+                : '${grow > 0 ? '+' : ''}$derived',
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(growPx: value.round())),
           ),
@@ -517,9 +516,9 @@ class _SelectionSettings extends StatelessWidget {
             divisions: 50,
             value: maskOptions.featherPx.clamp(0, 50),
             label: AppText.strings.brFeather,
-            valueText: maskOptions.featherPx <= 0
-                ? 'off'
-                : sliderValueText(maskOptions.featherPx, unit: ' px'),
+            unit: ' px',
+            valueTextBuilder: (feather, derived) =>
+                feather <= 0 ? 'off' : derived,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
           ),
@@ -1009,7 +1008,6 @@ class _FillSettings extends StatelessWidget {
           divisions: 128,
           value: options.tolerance.toDouble().clamp(0, 128),
           label: AppText.strings.brTolerance,
-          valueText: sliderValueText(options.tolerance),
           onChanged: (value) =>
               onChanged(options.copyWith(tolerance: value.round())),
         ),
@@ -1021,7 +1019,7 @@ class _FillSettings extends StatelessWidget {
           divisions: 4,
           value: options.expandPx.toDouble().clamp(0, 4),
           label: AppText.strings.brExpand,
-          valueText: sliderValueText(options.expandPx, unit: ' px'),
+          unit: ' px',
           onChanged: (value) =>
               onChanged(options.copyWith(expandPx: value.round())),
         ),
@@ -1033,9 +1031,8 @@ class _FillSettings extends StatelessWidget {
           divisions: 8,
           value: options.gapClosePx.toDouble().clamp(0, 8),
           label: AppText.strings.brGapClose,
-          valueText: options.gapClosePx == 0
-              ? 'off'
-              : sliderValueText(options.gapClosePx, unit: ' px'),
+          unit: ' px',
+          valueTextBuilder: (gap, derived) => gap == 0 ? 'off' : derived,
           onChanged: (value) =>
               onChanged(options.copyWith(gapClosePx: value.round())),
         ),

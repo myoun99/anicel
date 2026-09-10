@@ -71,11 +71,6 @@ class BrushSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spacingLabel = sliderValueText(state.spacing * 100, unit: '%');
-    final hardnessLabel = sliderValueText(state.hardness * 100, unit: '%');
-    final flowLabel = sliderValueText(state.flow * 100, unit: '%');
-    final roundnessLabel = sliderValueText(state.roundness * 100, unit: '%');
-    final angleLabel = sliderValueText(state.angleDegrees, unit: '°');
     return EditorPanelFrame(
       title: AppText.strings.brushSettingsTitle,
       child: Column(
@@ -92,7 +87,8 @@ class BrushSettingsPanel extends StatelessWidget {
           const _GroupHeader('Ink', first: true),
           _PanelSlider(
             label: AppText.strings.brFlow,
-            valueLabel: flowLabel,
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampUnit(state.flow),
             min: 0,
             max: 1,
@@ -120,7 +116,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brHardness,
-            valueLabel: hardnessLabel,
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampUnit(state.hardness),
             min: 0,
             max: 1,
@@ -140,7 +137,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brRoundness,
-            valueLabel: roundnessLabel,
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampRoundness(state.roundness),
             min: BrushToolState.minRoundness,
             max: 1,
@@ -149,7 +147,7 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brAngle,
-            valueLabel: angleLabel,
+            unit: '°',
             value: BrushToolState.clampAngleDegrees(state.angleDegrees),
             min: BrushToolState.minAngleDegrees,
             max: BrushToolState.maxAngleDegrees,
@@ -159,7 +157,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brSpacing,
-            valueLabel: spacingLabel,
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampSpacing(state.spacing),
             min: BrushToolState.minSpacing,
             max: BrushToolState.maxSpacing,
@@ -174,7 +173,8 @@ class BrushSettingsPanel extends StatelessWidget {
           const _GroupHeader('Randomness'),
           _PanelSlider(
             label: AppText.strings.brSizeJitter,
-            valueLabel: '${(state.sizeJitter * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.sizeJitter),
             min: 0,
             max: 1,
@@ -183,7 +183,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brOpacityJitter,
-            valueLabel: '${(state.opacityJitter * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.opacityJitter),
             min: 0,
             max: 1,
@@ -193,7 +194,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brAngleJitter,
-            valueLabel: '${(state.angleJitter * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.angleJitter),
             min: 0,
             max: 1,
@@ -202,7 +204,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brRoundnessJitter,
-            valueLabel: '${(state.roundnessJitter * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.roundnessJitter),
             min: 0,
             max: 1,
@@ -212,7 +215,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brSpacingJitter,
-            valueLabel: '${(state.spacingJitter * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.spacingJitter),
             min: 0,
             max: 1,
@@ -235,7 +239,8 @@ class BrushSettingsPanel extends StatelessWidget {
           // moved out from under the finger.
           _PanelSlider(
             label: AppText.strings.brPaintAmount,
-            valueLabel: '${(state.paintAmount * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.paintAmount),
             min: 0,
             max: 1,
@@ -246,7 +251,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brPaintDensity,
-            valueLabel: '${(state.paintDensity * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.paintDensity),
             min: 0,
             max: 1,
@@ -257,7 +263,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brColorStretch,
-            valueLabel: '${(state.colorStretch * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.colorStretch),
             min: 0,
             max: 1,
@@ -271,7 +278,8 @@ class BrushSettingsPanel extends StatelessWidget {
             // A ratio of the brush size, so scatter keeps its character as
             // the brush grows.
             label: AppText.strings.brScatter,
-            valueLabel: '${(state.scatterRadiusRatio * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampScatterRadius(state.scatterRadiusRatio),
             min: 0,
             max: 4,
@@ -281,12 +289,17 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brScatterCount,
-            valueLabel: '${state.scatterCount}',
             value: BrushToolState.clampScatterCount(
               state.scatterCount,
             ).toDouble(),
             min: 1,
             max: 16,
+            // A COUNT of dabs, so the bar stops between them — F-34's own
+            // sentence (「데이터적으로 소수점이 필요없는것들 정수화 … 조절시
+            // 자연수이도록」) and the same fix the RGB channel and the
+            // opacity bars already carry. Without it the bar hands 8.4 to an
+            // int and its own readout has to write `8.0`.
+            divisions: 15,
             keyValue: 'brush-tool-scatter-count-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterCount: value.round())),
@@ -312,7 +325,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brScale,
-            valueLabel: '${(state.dualMaskScale * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
             min: 0.05,
             max: 10,
@@ -328,7 +342,8 @@ class BrushSettingsPanel extends StatelessWidget {
           // could only have at full strength.
           _PanelSlider(
             label: AppText.strings.brTextureDensity,
-            valueLabel: '${(state.dualDensity * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.dualDensity),
             min: 0,
             max: 1,
@@ -353,7 +368,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brScale,
-            valueLabel: '${(state.textureScale * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampDualMaskScale(state.textureScale),
             min: 0.05,
             max: 10,
@@ -365,7 +381,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brTextureDensity,
-            valueLabel: '${(state.textureDensity * 100).round()}%',
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampZeroToOne(state.textureDensity),
             min: 0,
             max: 1,
@@ -388,10 +405,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brTextureBrightness,
-            valueLabel: sliderValueText(
-              state.textureBrightness * 100,
-              unit: '%',
-            ),
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampSignedUnit(state.textureBrightness),
             min: -1,
             max: 1,
@@ -403,10 +418,8 @@ class BrushSettingsPanel extends StatelessWidget {
           ),
           _PanelSlider(
             label: AppText.strings.brTextureContrast,
-            valueLabel: sliderValueText(
-              state.textureContrast * 100,
-              unit: '%',
-            ),
+            unit: '%',
+            displayScale: 100,
             value: BrushToolState.clampSignedUnit(state.textureContrast),
             min: -1,
             max: 1,
@@ -420,7 +433,6 @@ class BrushSettingsPanel extends StatelessWidget {
           // of brush presets on purpose.
           _PanelSlider(
             label: AppText.strings.brStabilizer,
-            valueLabel: '${state.stabilizerStrength.round()}',
             value: BrushToolState.clampStabilizerStrength(
               state.stabilizerStrength,
             ),
@@ -648,18 +660,27 @@ class _AntiAliasRow extends StatelessWidget {
 class _PanelSlider extends StatelessWidget {
   const _PanelSlider({
     required this.label,
-    required this.valueLabel,
     required this.value,
     required this.min,
     required this.max,
     required this.keyValue,
     required this.onChanged,
+    this.unit = '',
+    this.displayScale = 1,
+    this.divisions,
     this.scale = FieldSliderScale.linear,
     this.trailing,
   });
 
   final String label;
-  final String valueLabel;
+
+  /// ⛔THE ROW PASSES A UNIT, NEVER A NUMBER (F-34). Seventeen of these rows
+  /// wrote `'${(x * 100).round()}%'` by hand — a rounding the bar had not
+  /// done, so a spacing holding 12.4% read `12%`, and the digit count came
+  /// and went with the value.
+  final String unit;
+  final double displayScale;
+  final int? divisions;
   final double value;
   final double min;
   final double max;
@@ -688,7 +709,9 @@ class _PanelSlider extends StatelessWidget {
       min: min,
       max: max,
       label: label,
-      valueText: valueLabel,
+      unit: unit,
+      displayScale: displayScale,
+      divisions: divisions,
       scale: scale,
       onChanged: onChanged,
     );

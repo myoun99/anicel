@@ -167,7 +167,7 @@ void main() {
     final bar = tester.widget<FieldSlider>(
       find.byKey(const ValueKey<String>('cut-scale-slider')),
     );
-    expect(bar.valueText, '175%');
+    expect(find.text('175%'), findsOneWidget);
     expect(bar.label, AppText.strings.brSize);
     expect(
       bar.divisions,

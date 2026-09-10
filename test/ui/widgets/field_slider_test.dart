@@ -2,7 +2,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/text/vertical_writing.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
@@ -27,11 +26,11 @@ void main() {
     FieldSliderScale scale = FieldSliderScale.linear,
     int? divisions,
     String? label = 'Test',
+    String unit = '',
+    double displayScale = 1,
     bool enabled = true,
     List<double>? changeEnds,
-    String Function(double)? format,
   }) {
-    final fmt = format ?? (v) => v.toStringAsFixed(2);
     return MaterialApp(
       theme: buildAppTheme(),
       home: Scaffold(
@@ -48,7 +47,8 @@ void main() {
                 scale: scale,
                 divisions: divisions,
                 label: label,
-                valueText: fmt(v),
+                unit: unit,
+                displayScale: displayScale,
                 onChanged: enabled ? (next) => value.value = next : null,
                 onChangeEnd: changeEnds?.add,
               ),
@@ -161,16 +161,221 @@ void main() {
     expect(value.value, moreOrLessEquals(0.25, epsilon: 0.02));
   });
 
-  testWidgets('micro variant (no label) centers the value text', (
-    tester,
-  ) async {
-    final value = ValueNotifier<double>(1);
-    await tester.pumpWidget(
-      harness(value: value, label: null, format: (v) => '100%'),
+  group('F-34: the bar chooses its own digit count, from its own step', () {
+    // 유저 확정 2026-09-01 (선택 1): 「슬라이더가 스스로 정한다 — 위젯이
+    // 자기 스텝을 보고 자릿수를 고른다」, and 2026-08-31 for why it must not
+    // depend on the VALUE: 「소수점이 있는 슬라이더는 처음부터 소수점까지
+    // 보여주도록. 없는 UI가 생겨나지 않게 하라는 원칙이 이 경우를 말함」.
+    String written(WidgetTester tester) => tester
+        .widgetList<Text>(
+          find.descendant(of: find.byKey(sliderKey), matching: find.byType(Text)),
+        )
+        .last
+        .data!;
+
+    testWidgets('whole steps write NO decimal', (tester) async {
+      final value = ValueNotifier<double>(128);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(value: value, min: 0, max: 255, divisions: 255),
+      );
+      expect(written(tester), '128');
+    });
+
+    testWidgets('a whole-per-cent bar is whole THROUGH its display scale — '
+        'a hundred divisions of a 0..1 model', (tester) async {
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          displayScale: 100,
+          unit: '%',
+        ),
+      );
+      expect(written(tester), '50%');
+    });
+
+    testWidgets('a CONTINUOUS bar keeps its decimal at a whole value — this '
+        'is the digit that used to appear and disappear', (tester) async {
+      final value = ValueNotifier<double>(24);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(value: value, min: 1, max: 100, unit: ' px'),
+      );
+      expect(written(tester), '24.0 px');
+
+      // …and the same bar mid-drag. The COUNT is what may not change.
+      await tester.drag(trackOf(sliderKey), const Offset(7, 0));
+      await tester.pump();
+      expect(written(tester), matches(r'^\d+\.\d px$'));
+    });
+
+    testWidgets('an EXPONENTIAL sweep always can, so it always writes one', (
+      tester,
+    ) async {
+      final value = ValueNotifier<double>(10);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          min: 1,
+          max: 100,
+          scale: FieldSliderScale.exponential,
+          unit: ' px',
+        ),
+      );
+      expect(written(tester), '10.0 px');
+    });
+
+    testWidgets('a step that is fractional in DISPLAY units keeps the '
+        'decimal — 255 stops over 100% is 0.4% apart', (tester) async {
+      final value = ValueNotifier<double>(100);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          min: 0,
+          max: 255,
+          divisions: 255,
+          displayScale: 100 / 255,
+          unit: '%',
+        ),
+      );
+      expect(written(tester), '39.2%');
+    });
+
+    testWidgets('🚨the MICRO opacity bar writes the number alone', (
+      tester,
+    ) async {
+      // 유저 2026-09-10: 「타임라인 레이어영역에 있는 슬라이더 미니버전.
+      // 미니버전은 텍스트에 % 표기 삭제. 그냥 안보이게」.
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: trackWidth,
+                child: FieldSlider.opacity(
+                  key: sliderKey,
+                  value: value.value,
+                  height: 18,
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('50'), findsOneWidget);
+      expect(find.text('50%'), findsNothing);
+    });
+
+    testWidgets('⛔and a bar whose label sits BESIDE it keeps its unit — '
+        '`label == null` is both kinds, so the rule lives in the opacity '
+        'variant and not in the writing', (tester) async {
+      // The export bitrate, the autosave minutes and the stage alpha are all
+      // label-less bars in roomy rows. `12` with no ` Mb` is not the ask.
+      final value = ValueNotifier<double>(12);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          label: null,
+          min: 0,
+          max: 50,
+          divisions: 50,
+          unit: ' Mb',
+        ),
+      );
+      expect(find.text('12 Mb'), findsOneWidget);
+    });
+  });
+
+  group('the writing on the bar', () {
+    Finder valueTextOf(Key key) => find.descendant(
+      of: find.byKey(key),
+      matching: find.byType(Text),
     );
-    final text = tester.getCenter(find.text('100%'));
-    final bar = tester.getCenter(trackOf(sliderKey));
-    expect((text.dx - bar.dx).abs(), lessThan(1));
+
+    testWidgets('micro variant (no label) centers the value text', (
+      tester,
+    ) async {
+      final value = ValueNotifier<double>(1);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          label: null,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          displayScale: 100,
+        ),
+      );
+      final text = tester.getCenter(find.text('100'));
+      final bar = tester.getCenter(trackOf(sliderKey));
+      expect((text.dx - bar.dx).abs(), lessThan(1));
+    });
+
+    testWidgets('🚨the NUMBER is set solid — a trailing letter-space is half '
+        'a pixel of left bias, and 유저 saw it', (tester) async {
+      // 「해당 불투명도 슬라이더의 텍스트가 제대로 중앙정렬이 아닌거같음.
+      // 두자리수가 미묘하게 왼쪽에 치우쳐있음」 (2026-09-10). `labelSmall`
+      // carries letterSpacing 0.5 and Flutter lays it after the LAST glyph
+      // too, so the centred box is wider than the glyphs in it.
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        harness(
+          value: value,
+          label: null,
+          min: 0,
+          max: 1,
+          divisions: 100,
+          displayScale: 100,
+        ),
+      );
+      final style = tester.widget<Text>(valueTextOf(sliderKey)).style!;
+      expect(style.letterSpacing, 0);
+      // ⚠️The control: the theme really does carry a spacing to remove.
+      expect(
+        Typography.material2021().white.labelSmall?.letterSpacing,
+        isNot(0),
+      );
+    });
+
+    testWidgets('🚨the ink is fixed WHITE — no ground law, no mask', (
+      tester,
+    ) async {
+      // 유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 공용 색바뀌는 텍스트ui
+      // 쓰는게아니라 흰색 고정으로 해도 문제없을거같음」.
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(harness(value: value));
+
+      for (final text in tester.widgetList<Text>(valueTextOf(sliderKey))) {
+        expect(
+          text.style?.color,
+          const Color(0xFFFFFFFF),
+          reason: 'label and value alike, over the fill and over the track',
+        );
+      }
+      expect(
+        find.descendant(
+          of: find.byKey(sliderKey),
+          matching: find.byType(ShaderMask),
+        ),
+        findsNothing,
+        reason: 'one colour needs no gradient to swap it at the fill edge',
+      );
+    });
   });
 
   testWidgets('disabled slider ignores input and dims', (tester) async {
@@ -220,7 +425,7 @@ void main() {
                     min: 0,
                     max: 1,
                     label: 'Test',
-                    valueText: v.toStringAsFixed(2),
+                    unit: ' px',
                     onChanged: (next) => value.value = next,
                   ),
                 ),
@@ -275,7 +480,7 @@ void main() {
                     min: 0,
                     max: 1,
                     label: 'Test',
-                    valueText: v.toStringAsFixed(2),
+                    unit: ' px',
                     onChanged: (next) => value.value = next,
                     onChangeEnd: commits.add,
                   ),
@@ -397,7 +602,7 @@ void main() {
                       min: 0,
                       max: 1,
                       height: 18,
-                      valueText: '${(v * 100).round()}%',
+                      displayScale: 100,
                       onChanged: (next) => value.value = next,
                     ),
                   ),
@@ -467,7 +672,7 @@ void main() {
                   min: 0,
                   max: 1,
                   label: 'Test',
-                  valueText: v.toStringAsFixed(2),
+                  unit: ' px',
                   onChanged: (next) => value.value = next,
                   onChangeEnd: commits.add,
                 ),
@@ -515,7 +720,7 @@ void main() {
                   min: 0,
                   max: 1,
                   label: 'Test',
-                  valueText: v.toStringAsFixed(2),
+                  unit: ' px',
                   onChanged: (next) => value.value = next,
                 ),
               ),
@@ -547,14 +752,12 @@ void main() {
             height: trackWidth,
             child: ValueListenableBuilder<double>(
               valueListenable: value,
-              builder: (context, v, _) => FieldSlider(
+              // The x-sheet's own bar: an opacity fader stood up.
+              builder: (context, v, _) => FieldSlider.opacity(
                 key: sliderKey,
                 axis: Axis.vertical,
                 value: v,
-                min: 0,
-                max: 1,
                 height: 18,
-                valueText: '${(v * 100).round()}%',
                 onChanged: (next) => value.value = next,
               ),
             ),
@@ -595,25 +798,53 @@ void main() {
       expect(value.value, greaterThan(0.6));
     });
 
-    testWidgets('the readout stands up, and 100% costs two cells', (
-      tester,
-    ) async {
+    testWidgets('🚨the readout LIES DOWN — 세로쓰기 세로표기', (tester) async {
+      // 유저 2026-09-10: 「x시트의 불투명도바는 세로쓰기 세로표기로 바꾸자」
+      // — the reading they named on 2026-08-24 (F-27, 「se블록의 이름이
+      // 세로쓰기세로표기 인거같은데, 가로쓰기 세로표기가 되도록」), where
+      // the before state was the glyphs LYING DOWN along the column.
       final value = ValueNotifier<double>(1);
       addTearDown(value.dispose);
       await tester.pumpWidget(verticalHarness(value));
 
-      final written = tester.widget<VerticalWritingText>(
-        find.byType(VerticalWritingText),
-      );
-      expect(written.text, '100%');
-      // Three-digit 縦中横: `100` in one cell, `%` in the next.
       expect(
-        verticalTextCells(
-          written.text,
-          tateChuYokoDigits: written.tateChuYokoDigits,
+        find.descendant(
+          of: find.byKey(sliderKey),
+          matching: find.byType(RotatedBox),
         ),
-        hasLength(2),
+        findsOneWidget,
+        reason: 'one quarter turn, and the whole readout takes it',
       );
+      expect(
+        tester
+            .widget<RotatedBox>(
+              find.descendant(
+                of: find.byKey(sliderKey),
+                matching: find.byType(RotatedBox),
+              ),
+            )
+            .quarterTurns,
+        1,
+        reason: 'clockwise — the same way the vertical table turns a glyph',
+      );
+      // ⛔NOT the vertical-writing table any more: it set `100%` as
+      // three-digit 縦中横, a HORIZONTAL number inside a vertical column,
+      // which is the 가로쓰기 the user is asking away from.
+      expect(find.byType(VerticalWritingText), findsNothing);
+      // And it is still the MICRO variant, so no per cent (2026-09-10).
+      expect(find.text('100'), findsOneWidget);
+    });
+
+    testWidgets('the turned readout does not shorten the bar — the SLOT '
+        'gives the track its length', (tester) async {
+      final value = ValueNotifier<double>(1);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(verticalHarness(value));
+
+      // The x-sheet gives this column 42px and the drag math measures the
+      // slot (`_trackExtent = constraints.maxHeight`), so a readout that
+      // sized the bar would put the fill and the finger on two scales.
+      expect(tester.getSize(trackOf(sliderKey)).height, trackWidth);
     });
   });
 }

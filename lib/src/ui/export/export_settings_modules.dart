@@ -613,8 +613,8 @@ class ExportFormatModule extends StatelessWidget {
 
   /// Zero is AUTO — the encoder picks — so the bar's low end is a word,
   /// not a number.
-  static String _bitrateText(num mbps) =>
-      mbps <= 0 ? 'Auto' : sliderValueText(mbps, unit: ' Mb');
+  static String _bitrateText(double mbps, String derived) =>
+      mbps <= 0 ? 'Auto' : derived;
 
   Widget _bitrateRow() => ExportModuleRow(
     label: AppText.strings.exBitrate,
@@ -624,7 +624,7 @@ class ExportFormatModule extends StatelessWidget {
       min: 0,
       max: 50,
       divisions: 50,
-      valueText: _bitrateText(selection.videoBitrateMbps),
+      unit: ' Mb',
       valueTextBuilder: _bitrateText,
       onChanged: enabled
           ? (next) =>
@@ -641,8 +641,6 @@ class ExportFormatModule extends StatelessWidget {
       min: 1,
       max: 100,
       divisions: 99,
-      valueText: sliderValueText(selection.jpgQuality),
-      valueTextBuilder: sliderValueText,
       onChanged: enabled
           ? (next) => _change(selection.copyWith(jpgQuality: next.round()))
           : null,

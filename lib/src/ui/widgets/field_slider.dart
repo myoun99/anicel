@@ -7,35 +7,43 @@ import 'package:flutter/services.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
-import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
-import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import 'app_icon_button.dart';
 import 'axis_bar_gesture.dart';
 import 'superellipse_clip.dart';
 import '../repaint_props.dart';
 
-/// THE value text a slider shows (F-9, 유저 2026-08-24).
+/// THE number a slider writes: [value] to [decimals] places, then [unit].
+///
+/// F-9 (유저 2026-08-24):
 ///
 /// > 「슬라이더 값에 소수점 텍스트 표시 (1.2px) … 브러시 사이즈만이 아니라
 /// > **조절 가능한 모든 슬라이더**」
 ///
-/// One decimal, and a whole number stays whole: `1.2 px`, `50%`, `2 px`. The
-/// panels used to `.round()` at each call site, so a bar you could set to 1.2
-/// read `1` — and then setting it again from the number you could see moved
-/// the value. Rounding is a DISPLAY choice, and it was being made by twenty
-/// call sites that could not agree.
+/// The panels used to `.round()` at each call site, so a bar you could set to
+/// 1.2 read `1` — and then setting it again from the number you could see
+/// moved the value. Rounding is a DISPLAY choice, and it was being made by
+/// twenty call sites that could not agree.
 ///
-/// ⚠️A slider whose value really is an integer (a tolerance, a count, an RGB
-/// channel) renders identically through here — no `.0` appears — which is why
-/// every caller can use it and none has to decide.
-String sliderValueText(num value, {String unit = ''}) {
-  final rounded = (value * 10).round() / 10;
-  final text = rounded == rounded.roundToDouble()
-      ? rounded.toStringAsFixed(0)
-      : rounded.toStringAsFixed(1);
-  return '$text$unit';
+/// 🚨F-34 (유저 확정 2026-09-01, 선택 1) is why [decimals] has NO DEFAULT:
+///
+/// > 「**슬라이더가 스스로 정한다 — 위젯이 자기 스텝을 보고 자릿수를
+/// > 고른다**」
+///
+/// This used to hide the decimal whenever the value happened to be whole, so
+/// one bar read `1`, then `1.2` under the same finger, then `1` again — 유저
+/// 2026-08-31: 「소수점이 있는 슬라이더는 처음부터 소수점까지 보여주도록.
+/// **없는 UI가 생겨나지 않게 하라는 원칙이 이 경우를 말함**」. The digit
+/// count belongs to the BAR (`_FieldSliderState._decimals`), and the few
+/// labels that are not plain numbers (`L50`, `off`, `Auto`) name their own.
+String sliderValueText(num value, {required int decimals, String unit = ''}) {
+  final text = value.toStringAsFixed(decimals);
+  // ⚠️`-0`: a value a hair below zero rounds to zero and KEEPS its sign, and
+  // `-0%` beside a `0%` reads as a different number. Rounding alone can reach
+  // it, so the guard is here rather than at the values.
+  final zero = 0.toStringAsFixed(decimals);
+  return '${text == '-$zero' ? zero : text}$unit';
 }
 
 /// How a [FieldSlider] maps track position to value.
@@ -55,8 +63,12 @@ enum FieldSliderScale {
 /// row plus a slider plus a trailing value text.
 ///
 /// Variants and interactions:
-/// - `label == null` renders the micro variant (value only, centered) for
-///   tight inline slots such as timeline layer rows.
+/// - `label == null` renders the micro variant (value only, centered) — the
+///   timeline's inline slots, and equally a dialog row whose label is a
+///   `Text` BESIDE the bar. ⚠️Those two are not the same situation even
+///   though they take the same branch, which is why the `%`-dropping rule
+///   sits in [FieldSlider.opacity] and not in the writing.
+/// - A STOOD-UP bar writes the same row, turned a quarter clockwise.
 /// - Drag or tap sets the value by absolute track position; holding Shift
 ///   switches to relative movement at 1/10 speed for fine control.
 /// - The scroll wheel steps the value by 1% of the track (Shift: 0.1%); with
@@ -84,9 +96,11 @@ class FieldSlider extends StatefulWidget {
     required this.min,
     required this.max,
     required this.onChanged,
-    required this.valueText,
+    this.unit = '',
+    this.displayScale = 1,
     this.onChangeEnd,
     this.valueTextBuilder,
+    this.restingText,
     this.restingAccent,
     this.label,
     this.scale = FieldSliderScale.linear,
@@ -118,8 +132,8 @@ class FieldSlider extends StatefulWidget {
   /// ⛔THE RANGE AND THE FORMAT ARE FIXED HERE, not repeated per call. Six
   /// bars were each typing `min: 0, max: 1` with the same `value * 100`
   /// builder — six places to forget the divisions, and all six had. The
-  /// resting [valueText] stays the caller's, because the legend's master bar
-  /// reads `OPAC` at rest and the row's reads its number.
+  /// resting [restingText] stays the caller's, because the legend's master
+  /// bar reads `OPAC` at rest and the row's reads its number.
   ///
   /// ⚠️Not every slider is integral and this does not claim they are: brush
   /// SIZE goes down to 0.7, the pressure curve is a gamma, and the transform
@@ -128,8 +142,8 @@ class FieldSlider extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    required this.valueText,
     this.onChangeEnd,
+    this.restingText,
     this.restingAccent,
     this.label,
     this.height = 24,
@@ -139,10 +153,21 @@ class FieldSlider extends StatefulWidget {
        max = 1,
        divisions = 100,
        scale = FieldSliderScale.linear,
-       valueTextBuilder = _opacityPercentText;
-
-  static String _opacityPercentText(double value) =>
-      sliderValueText(value * 100, unit: '%');
+       // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
+       // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
+       // % 표기 삭제. 그냥 안보이게**」) — the layer rows, the storyboard's SE
+       // rows, the x-sheet's stood-up rail and the legend's master bar.
+       //
+       // ⛔Here and not in [_FieldSliderState._textFor]: `label == null` is
+       // ALSO how a bar whose label sits BESIDE it is built (the stage
+       // dialog's alpha, the export bitrate, the autosave minutes), and
+       // those would have lost ` Mb` and their minutes with it. A bar that
+       // says OPACITY in the column it lives in is what the user pointed at.
+       unit = label == null ? '' : '%',
+       // A hundred divisions of a 0..1 model IS a whole per cent on screen,
+       // and saying the scale here is what lets the digit rule see that.
+       displayScale = 100,
+       valueTextBuilder = null;
 
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
@@ -159,11 +184,25 @@ class FieldSlider extends StatefulWidget {
   /// [onChanged] and the real write through this.
   final ValueChanged<double>? onChangeEnd;
 
-  /// Formats the live display text during a drag. Commit-on-release
-  /// consumers don't rebuild this widget per move, so [valueText] would
-  /// freeze while the bar echoes the gesture — this builder keeps the text
-  /// following. Null falls back to [valueText] throughout.
-  final String Function(double value)? valueTextBuilder;
+  /// What follows the number — `%`, ` px`, `°`.
+  ///
+  /// ⛔THE DIGITS ARE NOT HERE and are not the caller's: the bar reads its
+  /// own step for those (F-34, [_FieldSliderState._decimals]).
+  final String unit;
+
+  /// The factor between the number the MODEL holds and the number the bar
+  /// WRITES — 100 for a 0..1 opacity shown as per cent.
+  ///
+  /// A field rather than arithmetic at the call site because the digit rule
+  /// has to read the step THROUGH it: a per-cent bar with a hundred
+  /// divisions steps by a whole per cent, and only this says so.
+  final double displayScale;
+
+  /// Replaces the number for values that do not READ as one — `off`, `Auto`,
+  /// `L50`. It is handed the value AND the text the bar would have written,
+  /// so an exception decorates the derived number instead of deriving a
+  /// second one with a digit count of its own.
+  final String Function(double value, String derived)? valueTextBuilder;
 
   /// Fill/edge color while NOT interacting; the drag always paints the
   /// accent (the legend's master-opacity bar reads gray at rest, accent
@@ -173,8 +212,10 @@ class FieldSlider extends StatefulWidget {
   /// Inside-left label; `null` renders the micro variant (value only).
   final String? label;
 
-  /// Preformatted display string ('80%', '24 px', '45°', 'off').
-  final String valueText;
+  /// What the bar reads WHILE NOBODY IS TOUCHING IT, when that is not its
+  /// number at all: the legend's master bar reads `OPAC` at rest and its per
+  /// cent while it is being dragged (R4 #6). Null = the number, always.
+  final String? restingText;
 
   final FieldSliderScale scale;
 
@@ -195,9 +236,10 @@ class FieldSlider extends StatefulWidget {
   /// is dragged up/down — the x-sheet's stood-up rail, where a 28px column
   /// has no room for a horizontal fader.
   ///
-  /// A parameter and not a `RotatedBox`: the horizontal recognizer judges
-  /// by the pointer's GLOBAL delta direction in the arena, so a turned
-  /// slider never receives an on-screen vertical drag at all.
+  /// ⛔THE BAR ITSELF IS NEVER A `RotatedBox`: the horizontal recognizer
+  /// judges by the pointer's GLOBAL delta direction in the arena, so a
+  /// turned slider would never receive an on-screen vertical drag at all.
+  /// Its WRITING is turned, which is a different question — see [build].
   final Axis axis;
 
   @override
@@ -205,7 +247,19 @@ class FieldSlider extends StatefulWidget {
 }
 
 class _FieldSliderState extends State<FieldSlider> {
-  static const Color _valueInk = Color(0xFFE8ECEE);
+  /// The ink on a bar — WHITE, on the fill and on the empty track alike.
+  ///
+  /// 🚨유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 **공용 색바뀌는 텍스트ui
+  /// 쓰는게아니라 흰색 고정**으로 해도 문제없을거같음. 흰색고정으로 하고」.
+  ///
+  /// ⛔`textOnColor` does NOT run here any more, and the hard-stopped
+  /// gradient that swapped ink halfway through a word went with it — one
+  /// colour needs no mask. The ground law itself STANDS (the timeline's
+  /// thirty-one call sites still read it); this surface stopped asking it.
+  /// It also settles the open question the accent-fill round left behind
+  /// (「채움 위에서 라벨의 흐린 위계가 평평해진다 … 보기 나쁘면 알파로
+  /// 되살릴 수 있다」): label and value are one ink now, by decision.
+  static const Color _ink = Color(0xFFFFFFFF);
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
@@ -431,11 +485,48 @@ class _FieldSliderState extends State<FieldSlider> {
     widget.onChangeEnd?.call(value);
   }
 
+  /// How many digits this bar writes after the point — THE SAME COUNT AT
+  /// EVERY VALUE, which is the whole of F-34 (유저 확정 2026-09-01: 「위젯이
+  /// 자기 스텝을 보고 자릿수를 고른다」).
+  ///
+  /// The only question is 「can this bar land BETWEEN two whole numbers?」:
+  ///  * an EXPONENTIAL sweep multiplies, so it lands anywhere;
+  ///  * a bar with no [FieldSlider.divisions] is continuous, so it lands
+  ///    anywhere;
+  ///  * otherwise every reachable value is `min + k·step`, whole for every
+  ///    k exactly when min and step are both whole — IN DISPLAY UNITS,
+  ///    which is what [FieldSlider.displayScale] is for.
+  ///
+  /// ⛔It does not ask what the CURRENT value is. That is the bug: a rule
+  /// that hides the decimal for a whole value makes the digit count appear
+  /// and disappear under the finger, which is 「없다가 생기는 UI」.
+  int get _decimals {
+    final divisions = widget.divisions;
+    if (widget.scale == FieldSliderScale.exponential || divisions == null) {
+      return 1;
+    }
+    final step = (widget.max - widget.min) * widget.displayScale / divisions;
+    final origin = widget.min * widget.displayScale;
+    return _isWhole(step) && _isWhole(origin) ? 0 : 1;
+  }
+
+  static bool _isWhole(double value) =>
+      (value - value.roundToDouble()).abs() < 1e-9;
+
+  /// The text this bar writes for [value] — the ONE place that is decided.
+  String _textFor(double value) {
+    final derived = sliderValueText(
+      value * widget.displayScale,
+      decimals: _decimals,
+      unit: widget.unit,
+    );
+    return widget.valueTextBuilder?.call(value, derived) ?? derived;
+  }
+
   double get _radius => widget.height < 20 ? 3 : 4;
 
   /// Where the fill starts, in track space — 0 for a quantity, the neutral
-  /// value for a balance ([FieldSlider.fillOrigin]). Read by the painter AND
-  /// by the writing's clip, which is why it is one getter.
+  /// value for a balance ([FieldSlider.fillOrigin]).
   double get _originFraction => widget.fillOrigin == null
       ? 0.0
       : _tFor(widget.fillOrigin!).clamp(0.0, 1.0);
@@ -443,87 +534,70 @@ class _FieldSliderState extends State<FieldSlider> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final accentColor = widget.restingAccent ?? AppColors.accent;
-    // 🚨THE INK COMES FROM THE GROUND LAW, NOT FROM A NEW CONTRAST SUM
-    // (`law-패널`, 유저 2026-09-08). The track has TWO grounds now that the
-    // fill is solid accent, so the writing is laid twice — once in each
-    // ground's ink — and the fill's own rectangle clips the second. The
-    // dim/bright hierarchy the row already had survives as an ALPHA on
-    // whichever ink the law picked, so it reads the same over both.
-    // ⚠️These colours only survive where the mask does not reach — the
-    // shader replaces the ink wherever a fill exists. The ALPHA does
-    // survive `srcIn`, which is how a dimmer label could be expressed later
-    // if the flattened pair turns out to read worse (유저: 「심플하게
-    // 가자고 … 세부적인건 끝나고 조절하게」).
-    final labelStyle = textTheme.labelSmall?.copyWith(color: AppColors.textDim);
+    final labelStyle = textTheme.labelSmall?.copyWith(color: _ink);
     final valueStyle = textTheme.labelSmall?.copyWith(
-      color: _valueInk,
+      color: _ink,
       fontFeatures: const [FontFeature.tabularFigures()],
+      // ⛔NO LETTER SPACING ON THE NUMBER. `labelSmall` carries 0.5 and
+      // Flutter lays it after the LAST glyph too, so a centred `50` sits
+      // half a space left of centre — 유저 2026-09-10: 「해당 불투명도
+      // 슬라이더의 텍스트가 제대로 중앙정렬이 아닌거같음. **두자리수가
+      // 미묘하게 왼쪽에 치우쳐있음**」. A number is set solid; the LABEL
+      // beside it is a word and keeps the theme's spacing.
+      letterSpacing: 0,
     );
     // An active gesture echoes locally (snapped like the emitted value);
     // otherwise display derives from widget.value (fully controlled).
     final gestureT = _gestureT;
     final dragging = gestureT != null;
     final t = dragging ? _tFor(_valueFor(gestureT)) : _tFor(widget.value);
-    final valueText = dragging && widget.valueTextBuilder != null
-        ? widget.valueTextBuilder!(_valueFor(gestureT))
-        : widget.valueText;
+    final valueText = dragging
+        ? _textFor(_valueFor(gestureT))
+        : widget.restingText ?? _textFor(widget.value);
 
-    Widget buildInner(TextStyle? labelStyle, TextStyle? valueStyle) {
-      final Widget inner;
-      if (widget.label == null) {
-      // Stood up, the readout reads DOWN the bar through the shared
-      // vertical-writing table, with three-digit 縦中横 so `100%` costs
-      // two cells rather than four.
-      inner = Center(
-        child: _vertical
-            ? VerticalWritingText(
-                text: valueText,
-                tateChuYokoDigits: 3,
-                style: valueStyle,
-              )
-            : Text(
-                valueText,
-                maxLines: 1,
-                overflow: TextOverflow.clip,
-                style: valueStyle,
-              ),
+    final Widget writing;
+    if (widget.label == null) {
+      writing = Center(
+        child: Text(
+          valueText,
+          maxLines: 1,
+          overflow: TextOverflow.clip,
+          style: valueStyle,
+        ),
       );
     } else {
-      inner = Flex(
-        direction: widget.axis,
+      writing = Row(
         children: [
           Expanded(
-            child: _vertical
-                ? VerticalWritingText(text: widget.label!, style: labelStyle)
-                : Text(
-                    widget.label!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: labelStyle,
-                  ),
+            child: Text(
+              widget.label!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle,
+            ),
           ),
-          if (_vertical) VerticalWritingText(
-                  text: valueText,
-                  tateChuYokoDigits: 3,
-                  style: valueStyle,
-                ) else Text(valueText, maxLines: 1, style: valueStyle),
+          Text(valueText, maxLines: 1, style: valueStyle),
         ],
       );
-      }
-      return inner;
     }
-
-    final inner = _FieldSliderWriting(
-      axis: widget.axis,
-      near: math.min(_originFraction, t),
-      far: math.max(_originFraction, t),
-      padding: _vertical
-          ? const EdgeInsets.symmetric(vertical: 8)
-          : const EdgeInsets.symmetric(horizontal: 8),
-      onFill: textOnColor(accentColor),
-      onTrack: textOnColor(AppColors.surface),
-      child: buildInner(labelStyle, valueStyle),
+    // 🚨A STOOD-UP BAR IS THE ROW, TURNED — 세로쓰기 세로표기 (유저
+    // 2026-09-10: 「x시트의 불투명도바는 **세로쓰기 세로표기**로 바꾸자」).
+    // That is the reading 유저 named on 2026-08-24 for the SE blocks —
+    // 「se블록의 이름이 세로쓰기세로표기 인거같은데, 가로쓰기 세로표기가
+    // 되도록」, where the before state was `VerticalLatinForm.sideways`:
+    // the glyphs LIE DOWN and the line reads along the column.
+    //
+    // ⛔It is NOT the vertical-writing table any more. That stacked one
+    // glyph per cell and set `100%` as three-digit 縦中横 to keep it to two
+    // cells — a horizontal number inside a vertical column, which is
+    // exactly the 가로쓰기 the user is asking away from.
+    //
+    // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
+    // gesture, while a turned recognizer would never see an on-screen
+    // vertical drag at all (see [FieldSlider.axis]).
+    final Widget inner = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: writing,
     );
 
     Widget bar = LayoutBuilder(
@@ -548,14 +622,12 @@ class _FieldSliderState extends State<FieldSlider> {
                     ? AppColors.accent
                     : (widget.restingAccent ?? AppColors.accent),
               ),
-              // ⚠️The writing carries its own padding now: its clip has to
-              // measure the TRACK, and a Padding above it would hand it a
-              // box eight pixels narrower on each side than the fill it is
-              // clipping against.
               child: SizedBox(
                 width: _vertical ? widget.height : null,
                 height: _vertical ? null : widget.height,
-                child: inner,
+                child: _vertical
+                    ? RotatedBox(quarterTurns: 1, child: inner)
+                    : inner,
               ),
             ),
           ),
@@ -608,7 +680,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final claimed = Semantics(
       slider: true,
       label: widget.label,
-      value: widget.valueText,
+      value: valueText,
       // T11: this press is the slider's. The claim is [DragVerbClaim] now —
       // the same four lines used to sit here, in the splitter and in the
       // rail's swipe column, three copies of one law.
@@ -731,66 +803,6 @@ class _FieldSliderStepper extends StatelessWidget {
         icon: Icon(icon, color: color),
         onPressed: enabled ? () => onStep(direction) : null,
       );
-}
-
-/// The row's label and value, written ONCE and recoloured at the fill's edge.
-///
-/// 🚨A solid fill gives the track two grounds and one string can straddle
-/// them, so the ink has to change PART WAY THROUGH a word. Two things this
-/// deliberately is not:
-/// ⛔**Not one ink picked by where the text sits** — that needs a threshold
-/// nobody decided, and inventing one is what `law-패널` forbids.
-/// ⛔**Not the writing laid twice and clipped** — that was the first shape
-/// tried, and it puts TWO Text widgets in the tree for one string: assistive
-/// tech reads the row twice and `find.text` stops being unique (two slider
-/// tests said so immediately).
-/// ⇒ A hard-stopped gradient through [BlendMode.srcIn]: one widget, one
-/// semantics node, and both colours still come from [textOnColor].
-class _FieldSliderWriting extends StatelessWidget {
-  const _FieldSliderWriting({
-    required this.axis,
-    required this.near,
-    required this.far,
-    required this.padding,
-    required this.onFill,
-    required this.onTrack,
-    required this.child,
-  });
-
-  final Axis axis;
-
-  /// The fill's span in track fractions, already ordered.
-  final double near;
-  final double far;
-
-  final EdgeInsets padding;
-  final Color onFill;
-  final Color onTrack;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final writing = Padding(padding: padding, child: child);
-    if (far <= near) {
-      return writing;
-    }
-    return ShaderMask(
-      blendMode: BlendMode.srcIn,
-      shaderCallback: (bounds) => LinearGradient(
-        // ⚠️A vertical bar fills UPWARD, so its gradient runs bottom-to-top
-        // — the same inversion the painter applies.
-        begin: axis == Axis.horizontal
-            ? Alignment.centerLeft
-            : Alignment.bottomCenter,
-        end: axis == Axis.horizontal
-            ? Alignment.centerRight
-            : Alignment.topCenter,
-        colors: [onTrack, onTrack, onFill, onFill, onTrack, onTrack],
-        stops: [0, near, near, far, far, 1],
-      ).createShader(bounds),
-      child: writing,
-    );
-  }
 }
 
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {

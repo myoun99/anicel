@@ -210,12 +210,13 @@ void main() {
     final bar = tester.widget<FieldSlider>(
       find.byKey(const ValueKey<String>('export-format-bitrate')),
     );
-    expect(bar.valueText, 'Auto');
+    expect(find.text('Auto'), findsOneWidget);
     expect(
-      bar.valueTextBuilder!(12),
+      bar.valueTextBuilder!(12, '12 Mb'),
       '12 Mb',
-      reason: 'and a real rate says its unit while the bar is dragged',
+      reason: 'and a real rate keeps the number the bar wrote, unit and all',
     );
+    expect(bar.unit, ' Mb');
   });
 
   testWidgets('⛔a DISABLED module hands the bar no onChanged, so it dims '

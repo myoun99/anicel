@@ -937,7 +937,7 @@ class _BrushValueBars extends StatelessWidget {
                 // Equal travel multiplies the value, so the left half covers
                 // the small sizes where a pixel matters.
                 scale: FieldSliderScale.exponential,
-                valueText: sliderValueText(state.size, unit: ' px'),
+                unit: ' px',
                 height: _barHeight,
                 onChanged: sizeOn
                     ? (value) => brushTool.value = brushTool.value.copyWith(
@@ -960,10 +960,6 @@ class _BrushValueBars extends StatelessWidget {
                 // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
                 // 채워지게).
                 value: BrushToolState.clampOpacity(state.activeOpacity),
-                valueText: sliderValueText(
-                  state.activeOpacity * 100,
-                  unit: '%',
-                ),
                 height: _barHeight,
                 onChanged: opacityOn
                     ? (value) => brushTool.value = brushTool.value

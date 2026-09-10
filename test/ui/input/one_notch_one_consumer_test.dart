@@ -44,7 +44,6 @@ void main() {
                     max: 1,
                     value: slider,
                     label: 'Probe',
-                    valueText: '$slider',
                     onChanged: (next) => setState(() => slider = next),
                   ),
                 ),

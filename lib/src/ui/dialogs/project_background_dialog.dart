@@ -194,19 +194,18 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
           min: 0,
           max: 255,
           divisions: 255,
-          valueText: _alphaPercent(value),
-          valueTextBuilder: _alphaPercent,
+          unit: '%',
+          // ⛔The per cent is NOT rounded to a whole one (F-9): the track has
+          // one stop per BYTE, so its steps really are 0.4% apart and a whole
+          // per cent would show two neighbouring bytes as the same number.
+          // Saying the scale is how the bar knows that — 255 stops over
+          // 100% is a fractional step, so it keeps a decimal (F-34).
+          displayScale: 100 / 255,
           onChanged: (next) => setState(() => onChanged(next)),
         ),
       ),
     ],
   );
-
-  /// ⛔The per cent is NOT rounded to a whole one (F-9): the track has one
-  /// stop per byte, so the steps really are 0.4% apart and a whole per
-  /// cent would show two neighbouring bytes as the same number.
-  static String _alphaPercent(double alpha) =>
-      sliderValueText(alpha / 255 * 100, unit: '%');
 
   /// The pasteboard's extent as the MULTIPLE of the canvas it reaches:
   /// a margin of 0.5 on each side is a stage twice the canvas wide.
@@ -328,8 +327,10 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
                     min: 0,
                     max: 2,
                     divisions: 40,
-                    valueText: _extentText(_pasteboardMargin),
-                    valueTextBuilder: _extentText,
+                    // ⚠️An exception: the number on the bar is not the
+                    // value but what the value REACHES — a margin of 0.5
+                    // per side is a stage twice the canvas wide.
+                    valueTextBuilder: (margin, _) => _extentText(margin),
                     onChanged: (next) =>
                         setState(() => _pasteboardMargin = next),
                   ),

@@ -6,8 +6,12 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The filled bar is the accent ITSELF (유저 2026-09-08), and the writing on
-/// it takes its ink from the one ground law rather than from a second sum.
+/// The filled bar is the accent ITSELF (유저 2026-09-08).
+///
+/// ⚠️The writing on it no longer asks the ground law anything: 유저 2026-09-10
+/// 「흰색 고정으로 하고」 settled that, and the white ink is pinned in
+/// `field_slider_test.dart`. What remains here is the FILL, plus the law's own
+/// anti-fork check — the timeline is its reader now.
 void main() {
   Widget host(Widget child) => MaterialApp(
     home: Scaffold(
@@ -23,7 +27,7 @@ void main() {
           min: 0,
           max: 1,
           label: 'Size',
-          valueText: '50%',
+          unit: '%',
           onChanged: (_) {},
         ),
       ),
@@ -56,7 +60,7 @@ void main() {
           min: 0,
           max: 1,
           label: 'Size',
-          valueText: '50%',
+          unit: '%',
           onChanged: (_) {},
         ),
       ),
@@ -95,10 +99,4 @@ void main() {
     );
   });
 
-  test('the accent takes dark writing and the track takes light', () {
-    // The reason the slider needed the law at all: its two grounds land on
-    // opposite sides of the crossover.
-    expect(textOnColor(AppColors.accent), textOnLightGroundColor);
-    expect(textOnColor(AppColors.surface), textOnDarkGroundColor);
-  });
 }

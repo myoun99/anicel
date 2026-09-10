@@ -139,11 +139,11 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
             max: 2,
             value: gain,
             label: strings.audioGainLabel,
-            // The bar reads percent, so the numeric field must TYPE
-            // percent: without this a typed 80 means 80× and clamps to
-            // the 2.0 ceiling — 200% from a keystroke that asked for 80.
-            valueText: _gainText(gain),
-            valueTextBuilder: _gainText,
+            // A gain of 1 is 100%: the bar reads the multiplier as a
+            // percentage, which is the unit the mixer's own scale is drawn
+            // in.
+            unit: '%',
+            displayScale: 100,
             onChanged: (value) => setState(() => _gainDrag = value),
             onChangeEnd: (value) {
               setState(() => _gainDrag = null);
@@ -179,10 +179,10 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               // side it is panned to, so hard left reads as "fully left"
               // rather than as an empty fader.
               fillOrigin: 0,
-              // Same unit contract as the fader: the label says L50/R50,
-              // so the field takes ±100.
-              valueText: _panText(pan),
-              valueTextBuilder: _panText,
+              // ⚠️An exception to the bar's own number, and one the F-34
+              // card named: a pan is a SIDE and a distance, `L50`/`R50`,
+              // so the sign becomes a letter and never a minus.
+              valueTextBuilder: (pan, _) => _panText(pan),
               onChanged: (value) => setState(() => _panDrag = value),
               onChangeEnd: (value) {
                 setState(() => _panDrag = null);
@@ -198,16 +198,13 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
     );
   }
 
-  static String _gainText(double gain) =>
-      sliderValueText(gain * 100, unit: '%');
-
   static String _panText(double pan) {
     if (pan == 0) {
       return 'C';
     }
     return pan < 0
-        ? 'L${sliderValueText(-pan * 100)}'
-        : 'R${sliderValueText(pan * 100)}';
+        ? 'L${sliderValueText(-pan * 100, decimals: 0)}'
+        : 'R${sliderValueText(pan * 100, decimals: 0)}';
   }
 }
 

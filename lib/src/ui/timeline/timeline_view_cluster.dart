@@ -164,14 +164,8 @@ class TimelineViewCluster extends StatelessWidget {
               TimelineZoomLimits.maxPixelsPerFrame,
             ),
             // Zoom reads as percent of the default frame width.
-            valueText: sliderValueText(
-              pixelsPerFrame / TimelineZoomLimits.defaultPixelsPerFrame * 100,
-              unit: '%',
-            ),
-            valueTextBuilder: (value) => sliderValueText(
-              value / TimelineZoomLimits.defaultPixelsPerFrame * 100,
-              unit: '%',
-            ),
+            unit: '%',
+            displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
             height: 18,
             // Quantized to WHOLE pixels per frame (R4 #5): the raw drag
             // emitted sub-pixel widths, rebuilding the entire grid many

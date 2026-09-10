@@ -3894,10 +3894,6 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                           'storyboard-track-opacity-${track.id.value}',
                         ),
                         value: trackOpacity.clamp(0.0, 1.0).toDouble(),
-                        valueText: sliderValueText(
-                          trackOpacity * 100,
-                          unit: '%',
-                        ),
                         height: 18,
                         onChanged: onTrackOpacityChanged,
                         onChangeEnd: onTrackOpacityChangeEnd,

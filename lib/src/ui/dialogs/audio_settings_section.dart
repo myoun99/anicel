@@ -85,9 +85,10 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   }
 
   /// Mic gain reads as a SIGNED dB: +6 and -6 are different places, and a
-  /// bare `6` on the boost side would read as the default.
-  static String _signedDb(num db) =>
-      '${db > 0 ? '+' : ''}${sliderValueText(db)}';
+  /// bare `6` on the boost side would read as the default. The minus is the
+  /// number's own; only the plus has to be added.
+  static String _signedDb(double db, String derived) =>
+      '${db > 0 ? '+' : ''}$derived';
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +302,6 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     min: -AudioSyncSettings.maxMicGainDb.toDouble(),
                     max: AudioSyncSettings.maxMicGainDb.toDouble(),
                     divisions: AudioSyncSettings.maxMicGainDb * 2,
-                    valueText: _signedDb(settings.micGainDb),
                     valueTextBuilder: _signedDb,
                     onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                       settings.copyWith(
@@ -411,8 +411,6 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                     min: 0,
                     max: AudioSyncSettings.maxCountInSeconds.toDouble(),
                     divisions: AudioSyncSettings.maxCountInSeconds,
-                    valueText: sliderValueText(settings.countInSeconds),
-                    valueTextBuilder: sliderValueText,
                     onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
                       settings.copyWith(
                         countInSeconds: AudioSyncSettings.clampCountInSeconds(

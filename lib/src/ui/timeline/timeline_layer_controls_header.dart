@@ -626,7 +626,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
             child: FieldSlider.opacity(
               key: const ValueKey<String>('legend-opacity'),
               value: displayedOpacity.clamp(0.0, 1.0).toDouble(),
-              valueText: 'OPAC',
+              // The COLUMN's name while it rests, its number while it is
+              // dragged (R4 #6) — the one bar whose resting text is not
+              // its value.
+              restingText: 'OPAC',
               height: 18,
               restingAccent: colorScheme.onSurfaceVariant.withValues(
                 alpha: 0.45,

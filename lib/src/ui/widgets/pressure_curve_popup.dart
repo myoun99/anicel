@@ -502,7 +502,9 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              '×${sliderValueText(draft.maximum)}',
+              // A ceiling read to the tenth, always: `×1` beside `×1.5` was
+              // the same digit-count flicker F-34 named on the bars.
+              '×${sliderValueText(draft.maximum, decimals: 1)}',
               key: ValueKey<String>('curve-maximum-${source.name}'),
               style: AnchoredPopupText.caption,
             ),

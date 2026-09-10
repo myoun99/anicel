@@ -50,9 +50,18 @@ void main() {
     await pumpSection(tester);
 
     final gain = barAt(tester, 'settings-mic-gain-slider');
-    expect(gain.valueText, '0', reason: 'no gain is plain zero');
-    expect(gain.valueTextBuilder!(6), '+6');
-    expect(gain.valueTextBuilder!(-6), '-6');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('settings-mic-gain-slider')),
+        matching: find.text('0'),
+      ),
+      findsOneWidget,
+      reason: 'no gain is plain zero',
+    );
+    // ⚠️The hook DECORATES the number the bar derived — it does not format a
+    // second one, which is how the digit count stays the bar's (F-34).
+    expect(gain.valueTextBuilder!(6, '6'), '+6');
+    expect(gain.valueTextBuilder!(-6, '-6'), '-6');
   });
 
   testWidgets('mic gain runs symmetrically around zero, one stop per dB', (
@@ -91,7 +100,14 @@ void main() {
     countIn.onChanged!(3);
     await tester.pump();
     expect(manager.appSettings.audioSyncSettings.value.countInSeconds, 3);
-    expect(barAt(tester, 'settings-count-in-slider').valueText, '3');
+    // One stop per second, so the bar writes no decimal of its own (F-34).
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('settings-count-in-slider')),
+        matching: find.text('3'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('⛔no raw Material Slider is left in Preferences ▸ Audio — a '

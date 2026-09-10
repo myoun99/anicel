@@ -847,8 +847,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// The row's opacity slider, live-following the session's drag preview
   /// when it targets this layer (the master bar sweep, UI-R6 #2). Stood up
   /// like every other control in a column: the fader fills upward and its
-  /// readout writes downward (`RotatedBox` was not an option — see
-  /// [FieldSlider.axis]).
+  /// readout reads down the column, lying on its side (유저 2026-09-10:
+  /// 「x시트의 불투명도바는 세로쓰기 세로표기로」). ⚠️The BAR is still not a
+  /// `RotatedBox` — only its writing is; see [FieldSlider.axis].
   Widget _opacityField() => layerOpacityField(
     layer: layer,
     keyPrefix: keyPrefix,

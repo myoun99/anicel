@@ -93,20 +93,11 @@ class AutosaveSettingsSection extends StatelessWidget {
                                   AppSaveSettings
                                       .defaultPeriodicSnapshotMinutes)
                               .toDouble(),
-                      valueText: sliderValueText(
-                        settings.periodicSnapshotMinutes ??
-                            AppSaveSettings.defaultPeriodicSnapshotMinutes,
-                        unit: AppText.strings.commonMinutesShort,
-                      ),
                       // ⛔No rounding here: the track has one stop per
-                      // minute, so `next` IS whole, and `sliderValueText`
-                      // renders a whole number whole. (`onChanged` below
-                      // still rounds — that is the MODEL's int, not the
-                      // label's text.)
-                      valueTextBuilder: (next) => sliderValueText(
-                        next,
-                        unit: AppText.strings.commonMinutesShort,
-                      ),
+                      // minute, so the bar's own readout writes no decimal
+                      // at all. (`onChanged` below still rounds — that is
+                      // the MODEL's int, not the label's text.)
+                      unit: AppText.strings.commonMinutesShort,
                       onChanged: settings.periodicSnapshotMinutes == null
                           ? null
                           : (next) => session.setSaveSettings(

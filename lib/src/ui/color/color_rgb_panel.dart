@@ -52,10 +52,9 @@ class ColorRgbPanel extends StatelessWidget {
           max: 255,
           value: value.toDouble(),
           label: label,
-          valueText: '$value',
-          valueTextBuilder: (v) => '${v.round()}',
           // A channel is a whole number of steps, so the bar snaps to them
-          // instead of handing 137.4 to a byte.
+          // instead of handing 137.4 to a byte — and that is also what tells
+          // the bar's own readout to write no decimal (F-34).
           divisions: 255,
           onChanged: (v) => onColorChanged(withValue(v.round())),
         ),

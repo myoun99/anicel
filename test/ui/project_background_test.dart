@@ -157,15 +157,26 @@ void main() {
         255,
         reason: 'a byte has 255 steps — 0.4963 of one is not a colour',
       );
-      expect(paper.valueText, '100%');
+      Finder writtenOn(String key) => find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(Text),
+      );
+      expect(
+        tester.widget<Text>(writtenOn('background-paper-alpha')).data,
+        '100.0%',
+      );
 
       paper.onChanged!(128);
       await tester.pump();
       expect(
-        barAt(tester, 'background-paper-alpha').valueText,
+        tester.widget<Text>(writtenOn('background-paper-alpha')).data,
         '50.2%',
         reason: '128 of 255 is not a whole half — F-9 says show what it is',
       );
+      // 🚨And the digit is there AT EVERY VALUE, which is F-34: 255 stops
+      // over 100% is a fractional step, so full alpha reads `100.0%` and not
+      // `100%`. The count is the bar's, and it does not move.
+      expect(find.text('100%'), findsNothing);
     });
 
     testWidgets('🚨the pasteboard extent reads as the MULTIPLE of the canvas '
@@ -177,16 +188,16 @@ void main() {
 
       final extent = barAt(tester, 'background-pasteboard-extent');
       expect(
-        extent.valueTextBuilder!(0),
+        extent.valueTextBuilder!(0, '0.0'),
         '×1.0',
         reason: 'no margin is the canvas itself',
       );
       expect(
-        extent.valueTextBuilder!(0.5),
+        extent.valueTextBuilder!(0.5, '0.5'),
         '×2.0',
         reason: 'half a canvas on EACH side is twice the canvas',
       );
-      expect(extent.valueTextBuilder!(2), '×5.0');
+      expect(extent.valueTextBuilder!(2, '2.0'), '×5.0');
     });
 
     testWidgets('⛔the stage bars are FieldSliders like every other bar in '

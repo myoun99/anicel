@@ -454,7 +454,6 @@ void main() {
                   min: 0,
                   max: 1,
                   axis: axis,
-                  valueText: '0.5',
                   onChanged: (_) {},
                 ),
               ),

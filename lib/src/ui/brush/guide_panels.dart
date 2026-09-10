@@ -362,7 +362,6 @@ class GuideSettings extends StatelessWidget {
           key: const ValueKey<String>('guide-line-count'),
           label: strings.guideLineCount,
           value: shape.lineCount.toDouble(),
-          valueText: sliderValueText(shape.lineCount),
           min: 2,
           max: maxSymmetryLineCount.toDouble(),
           // Mirrored copies come in pairs, so the count steps by two there.

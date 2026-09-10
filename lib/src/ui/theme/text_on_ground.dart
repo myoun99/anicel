@@ -14,6 +14,11 @@ import 'dart:ui';
 /// accent made that claim true, so the law moved here rather than being
 /// copied. `timeline_cell_style.dart` re-exports it, so the timeline's
 /// thirty-one call sites keep their import.
+///
+/// ⚠️The SLIDER is no longer one of the readers — 유저 2026-09-10 asked for
+/// one fixed white there (「흰색 고정으로 하고」). The law stays here and
+/// stays shared: it is where the next self-painted surface asks, and moving
+/// it back would be the copy this file exists to prevent.
 const Color textOnLightGroundColor = Color(0xFF000000);
 const Color textOnDarkGroundColor = Color(0xFFFFFFFF);
 

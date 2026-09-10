@@ -24,7 +24,6 @@ Widget layerOpacityField({
     key: ValueKey<String>('$keyPrefix-layer-opacity-${layer.id}'),
     axis: axis,
     value: value,
-    valueText: sliderValueText(value * 100, unit: '%'),
     height: 18,
     onChanged: (opacity) => onChanged(layer.id, opacity),
     onChangeEnd: onChangeEnd == null

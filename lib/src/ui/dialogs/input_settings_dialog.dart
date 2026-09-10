@@ -51,9 +51,12 @@ class InputSettingsSection extends StatelessWidget {
                   max: 4.0,
                   scale: FieldSliderScale.exponential,
                   label: strings.inputPressureSoftHard,
-                  valueText: settings.pressureCurveGamma == 1.0
+                  // ⚠️An exception to the bar's own number, twice over: the
+                  // neutral gamma is a WORD, and a curve exponent is read to
+                  // the hundredth (×1.05 and ×1.1 are different pens).
+                  valueTextBuilder: (gamma, _) => gamma == 1.0
                       ? strings.inputPressureLinear
-                      : '×${settings.pressureCurveGamma.toStringAsFixed(2)}',
+                      : '×${gamma.toStringAsFixed(2)}',
                   onChanged: (gamma) => AppInput.settings.value = AppInput
                       .settings
                       .value
@@ -86,13 +89,10 @@ class InputSettingsSection extends StatelessWidget {
                   max: 8000,
                   scale: FieldSliderScale.exponential,
                   label: strings.inputSpeedReference,
-                  // F-9: the shared formatter, not a local `.round()` — a
-                  // bar shows the value it actually has, and a whole number
-                  // renders whole through it anyway.
-                  valueText: sliderValueText(
-                    settings.speedReferencePixelsPerSecond,
-                    unit: ' px/s',
-                  ),
+                  // F-9/F-34: the bar writes its own number — a local
+                  // `.round()` here is a display decision the call site does
+                  // not get to make.
+                  unit: ' px/s',
                   onChanged: (reference) =>
                       AppInput.settings.value = AppInput.settings.value
                           .copyWith(

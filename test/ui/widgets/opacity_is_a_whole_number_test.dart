@@ -42,7 +42,7 @@ void main() {
     final seen = <double>[];
     await dragAcross(
       tester,
-      FieldSlider.opacity(value: 0.5, valueText: '50%', onChanged: seen.add),
+      FieldSlider.opacity(value: 0.5, onChanged: seen.add),
     );
     expect(seen, isNotEmpty, reason: 'the drag has to move the bar at all');
     for (final value in seen) {
@@ -68,11 +68,7 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 200,
-              child: FieldSlider.opacity(
-                value: 0.5,
-                valueText: '50%',
-                onChanged: seen.add,
-              ),
+              child: FieldSlider.opacity(value: 0.5, onChanged: seen.add),
             ),
           ),
         ),
