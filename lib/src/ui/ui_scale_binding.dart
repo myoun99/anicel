@@ -182,5 +182,39 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
     PaintingBinding.instance.imageCache
       ..maximumSizeBytes = 8 * 1024 * 1024
       ..maximumSize = 50;
+    // H30: a shortcut must not rebuild every button — see the method.
+    applyFocusHighlightPolicy(focusManager);
+  }
+
+  /// 🚨★★★**THE FOCUS HIGHLIGHT MODE STAYS PUT — THE INPUT DEVICE DOES NOT
+  /// FLIP IT.** H30 (유저 실기 2026-09-10): 「그리다가 언두하고 빠르게 다음
+  /// 스트로크 그리면 렉이 심하거든? 0.1초정도 끊긴다」.
+  ///
+  /// Under the framework's automatic strategy a key press switches
+  /// [FocusManager.highlightMode] to traditional and the next stylus or
+  /// touch pointer switches it back — and every `InkResponse` and
+  /// `FocusableActionDetector` listens. The editor screen held 156
+  /// InkResponses; on the pen-down after Ctrl+Z each one rebuilt, and that
+  /// frame painted 1892 render objects instead of 974, +43ms in the debug
+  /// benchmark (`test/ui/undo_then_next_stroke_benchmark_test.dart`). A bare
+  /// Shift press cost the same with no undo at all: a drawing app alternates
+  /// shortcuts and the pen all day, so this was the next stroke of EVERY
+  /// shortcut — and holding one while the pen moved was worse: each key
+  /// repeat and the move after it flipped the mode again (11 flips in one
+  /// four-repeat stroke, counted by the pin with this policy removed).
+  ///
+  /// ⚠️**TRADITIONAL, not touch** — a focus highlight then follows FOCUS,
+  /// not the last device. Nothing in this app takes focus from a pointer
+  /// (InkWells, buttons and sliders never request it on a tap; the one
+  /// `requestFocus` in `lib/` is the shortcut dialog's key recorder, grepped
+  /// 2026-09-10), so a pen or touch user sees what they always saw, and a
+  /// keyboard user who tabs through the chrome keeps the highlight that
+  /// touch would hide for good.
+  ///
+  /// Static and handed the manager because `flutter_test` replaces the
+  /// [FocusManager] after every test: a test applies THIS policy to its own
+  /// manager rather than restating it.
+  static void applyFocusHighlightPolicy(FocusManager focusManager) {
+    focusManager.highlightStrategy = FocusHighlightStrategy.alwaysTraditional;
   }
 }
