@@ -1789,7 +1789,19 @@ class EditorSessionManager extends ChangeNotifier
   // The second collaborator (session/edge_drag.dart): the exposure, cut
   // and transition edge drags with their snapshots. Callers name it
   // (round 8, G4).
-  late final EdgeDrag edgeDrag = EdgeDrag(project: this, selection: this, changes: this, controllers: activeCutControllers, folders: folders, rangeSelections: rangeSelections, storyboardCursor: storyboardCursor, trackSe: trackSe, transitions: transitions, exposureVerbs: exposureVerbs, internals: this);
+  late final EdgeDragVerbs edgeDrag = EdgeDragVerbs(
+    project: this,
+    selection: this,
+    changes: this,
+    controllers: activeCutControllers,
+    folders: folders,
+    rangeSelections: rangeSelections,
+    storyboardCursor: storyboardCursor,
+    trackSe: trackSe,
+    transitions: transitions,
+    exposureVerbs: exposureVerbs,
+    internals: this,
+  );
 
   /// The transition row as the in-flight edge drag would leave it — the
   /// strip renders THIS while a grip is held, so the mark follows the hand

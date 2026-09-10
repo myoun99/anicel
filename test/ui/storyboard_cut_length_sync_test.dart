@@ -192,6 +192,52 @@ void main() {
       expect(cut.duration, minimumCutDurationFor(cut));
     });
 
+    test('the FOLLOWING cut rides that end: a shrink hands its frames to a '
+        'DETACHED next cut\'s gap, and growth eats the gap before pushing', () {
+      // ⛔The comma's half of the END-boundary gap rule had NO witness: a
+      // mutant that fed it `growth: 0` — the rule reached, the answer
+      // always "the gap does not move" — survived the whole suite
+      // (2026-09-10). The trim's half was covered; this is the other
+      // caller, and after G5-2 they are one function in two files.
+      final (session, _, _, _) = scene();
+      final cutId = session.activeCutId!;
+      session.cutVerbs.createCut();
+      final nextId = session.repository
+          .requireProject()
+          .tracks
+          .first
+          .cuts[1]
+          .id;
+      // Detach the next cut: slide it four frames later, the gesture that
+      // re-times a cut into its own free space.
+      expect(session.cutMove.beginCutMoveDrag(nextId), isTrue);
+      session.cutMove.updateCutMoveDrag(4);
+      session.cutMove.endCutMoveDrag();
+      expect(session.cutById(nextId)!.leadingGapFrames, 4);
+
+      // SHRINK: the detached cut holds its global position, so the gap
+      // absorbs every frame the cut's end gave up.
+      session.edgeDrag.beginCutEdgeDrag(
+        cutId: cutId,
+        edge: TimelineBlockEdge.end,
+      );
+      session.edgeDrag.updateCutEdgeDrag(-3);
+      session.edgeDrag.endCutEdgeDrag();
+      expect(session.cutById(cutId)!.duration, 21);
+      expect(session.cutById(nextId)!.leadingGapFrames, 7);
+
+      // GROWTH: the same rule the other way — the gap is spent first, and
+      // the next cut holds still until it runs out.
+      session.edgeDrag.beginCutEdgeDrag(
+        cutId: cutId,
+        edge: TimelineBlockEdge.end,
+      );
+      session.edgeDrag.updateCutEdgeDrag(2);
+      session.edgeDrag.endCutEdgeDrag();
+      expect(session.cutById(cutId)!.duration, 23);
+      expect(session.cutById(nextId)!.leadingGapFrames, 5);
+    });
+
     test('a row whose stored end already disagrees with the cut is brought '
         'back onto it, not further off', () {
       final (session, storyboardId, _, _) = scene();

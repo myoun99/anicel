@@ -772,4 +772,4 @@ CutVerbs cutVerbsOf(EditorSessionManager session) => session.cutVerbs;
 /// campaign skipped exactly the code that round wrote. ⛔Widening the runner to
 /// transitive reachability was tried and reverted (one small file drew 390
 /// namers); a collaborator that holds a law gets a test that names it instead.
-EdgeDrag edgeDragOf(EditorSessionManager session) => session.edgeDrag;
+EdgeDragVerbs edgeDragOf(EditorSessionManager session) => session.edgeDrag;

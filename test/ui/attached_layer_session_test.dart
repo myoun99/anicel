@@ -423,6 +423,46 @@ void main() {
     );
   });
 
+  test('a REFUSED comma grip leaves the drag already in flight exactly as '
+      'it was — the attach row stands down, it does not void the base\'s '
+      'drag', () {
+    final (s, base) = sessionWithBase();
+    s.createDrawingAtCurrentFrame();
+    s.folders.addAttachedLayer(AttachedPlacement.above);
+    s.createDrawingAtCurrentFrame();
+    final attachId = s.activeLayer!.id;
+    s.selectLayer(base.id);
+
+    // A comma drag on the BASE is in flight and has moved.
+    expect(
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: base.id,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      ),
+      isTrue,
+    );
+    s.edgeDrag.updateExposureEdgeDrag(2);
+
+    // A second grip lands on the synced attach row and is refused. The slot
+    // is only ever cleared by the drag's own end/cancel, so the release
+    // still commits what the pointer asked for.
+    expect(
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: attachId,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      ),
+      isFalse,
+    );
+    s.edgeDrag.endExposureEdgeDrag();
+    expect(
+      cutLayers(s).firstWhere((l) => l.id == base.id).timeline[0]!.length,
+      3,
+      reason: 'the refused grip must not have thrown the live drag away',
+    );
+  });
+
   test('deleting the base cascades over its attach rows in ONE undo (R28 '
       '#14: no drawing floor stands in the way)', () {
     final (s, base) = sessionWithBase();

@@ -231,6 +231,53 @@ void main() {
       expect(s.activeLayer!.timeline[0]!.length, baseTimeline[0]!.length! + 3);
     });
 
+    test('a selection holding ONE block is still a single-block drag: the '
+        'START edge MOVES the block, it does not shorten it in place', () {
+      // ⛔This arm had NO witness (2026-09-10): a mutant that dropped the
+      // "more than one block" test — every comma drag inside a selection
+      // becoming a BULK retime — survived every exposure-drag test, because
+      // nothing in the tree drove a START edge at all. The two paths agree
+      // on the end edge and disagree here: the bulk turns an edge delta into
+      // a LENGTH delta (the start holds), the single drag moves the edge.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+      // Room to drag the front in: the END comma, the verb above.
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: layer.id,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(4);
+      s.edgeDrag.endExposureEdgeDrag();
+      final baseLength = s.activeLayer!.timeline[0]!.length!;
+      expect(baseLength, 5);
+
+      s.updateFrameRangeSelectionDrag(
+        layerId: layer.id,
+        anchorIndex: 0,
+        headIndex: 2,
+      );
+      expect(
+        s.edgeDrag.beginExposureEdgeDrag(
+          layerId: layer.id,
+          blockStartIndex: 0,
+          edge: TimelineBlockEdge.start,
+        ),
+        isTrue,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(2);
+      s.edgeDrag.endExposureEdgeDrag();
+
+      final after = s.activeLayer!.timeline;
+      expect(
+        after.containsKey(0),
+        isFalse,
+        reason: 'the block left frame 0 — a bulk retime would have held it',
+      );
+      expect(after[2]?.length, baseLength - 2);
+    });
+
     test('cancel drops the preview without repo or history traces', () {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       s.createDrawingAtCurrentFrame();
