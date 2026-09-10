@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/rendering.dart';
 
 /// 🚨★★★ (v) — THE COMPOSITE BUFFER, KEPT WHILE NOTHING HAS CHANGED.
@@ -103,12 +104,17 @@ class DisplayBufferCache {
   /// (0x80000001). Read from the dump with WinDbg; board card
   /// `app-crash-stack-overflow-in-engine` has the walk.
   ///
-  /// ⚠️A COUNT, BECAUSE RASTERIZATION IS NOT OBSERVABLE FROM DART. The
-  /// chain truly breaks whenever a buffer rasterizes — normally every
-  /// frame, so the real depth is 1 — but nothing in the framework will say
-  /// that it did. Counting derivations is the conservative half: it can
-  /// only OVER-estimate the danger, and over-estimating costs one full
-  /// compose, which is what every frame cost before patching existed.
+  /// 🎯THE COUNT IS RESET BY THE ONE EVENT THAT COLLAPSES THE CHAIN — a
+  /// frame finishing RASTERIZATION. Drawing the newest buffer snapshots it,
+  /// which releases its display list, which releases the buffer before it,
+  /// all the way down: the crash landed inside `Rasterizer::DrawToSurfaces`
+  /// for exactly that reason. So "derivations since the last rasterized
+  /// frame" is not an approximation of the chain — it IS the chain.
+  ///
+  /// [FrameTiming] reports only frames that were rasterized, which is
+  /// precisely the signal wanted: a burst of composes with no frame drawn
+  /// in between (an offscreen bake, a raster thread left behind) produces
+  /// no timing, so the count keeps climbing and the budget below fires.
   int _derivedDepth = 0;
 
   /// The most derivations allowed before the next compose has to start
@@ -123,6 +129,38 @@ class DisplayBufferCache {
   /// Whether the kept image may be drawn into the next one at all. Both
   /// doors below ask it, so neither can forget the budget.
   bool get _mayDeriveAgain => _derivedDepth < _maxDerivedDepth;
+
+  /// A frame reached the screen: every deferred image it drew has been
+  /// snapshotted, so the chain behind the kept buffer is gone.
+  ///
+  /// ⚠️Called for frames that RASTERIZED, never for work that only painted
+  /// — that difference is the whole point.
+  void noteFrameRasterized() {
+    _derivedDepth = 0;
+  }
+
+  bool _watchingFrames = false;
+
+  /// Subscribes to raster completions the first time anything derives.
+  ///
+  /// ⚠️Lazily, and never in a bare unit test: `SchedulerBinding.instance`
+  /// throws without a binding, and there are no frames there to reset on
+  /// anyway — the same shape [DeferredImageDisposer.retire] uses.
+  void _watchRasterizedFrames() {
+    if (_watchingFrames) {
+      return;
+    }
+    final SchedulerBinding binding;
+    try {
+      binding = SchedulerBinding.instance;
+    } on Object catch (_) {
+      return;
+    }
+    _watchingFrames = true;
+    binding.addTimingsCallback(_onFramesRasterized);
+  }
+
+  void _onFramesRasterized(List<FrameTiming> timings) => noteFrameRasterized();
 
   /// The generation count itself, for the test that pins the budget.
   @visibleForTesting
@@ -161,6 +199,9 @@ class DisplayBufferCache {
       fullCount += 1;
     }
     _derivedDepth = derived ? _derivedDepth + 1 : 0;
+    if (derived) {
+      _watchRasterizedFrames();
+    }
     if (!identical(_image, image)) {
       _image?.dispose();
     }
@@ -267,7 +308,15 @@ class DisplayBufferCache {
     lastTileTokens = const {};
   }
 
-  void dispose() => invalidate();
+  void dispose() {
+    if (_watchingFrames) {
+      _watchingFrames = false;
+      // The binding outlives this cache; a callback left on it would keep
+      // the object alive and go on resetting a counter nobody reads.
+      SchedulerBinding.instance.removeTimingsCallback(_onFramesRasterized);
+    }
+    invalidate();
+  }
 
   /// Whether anything is kept — the seam a cost test reads.
   @visibleForTesting

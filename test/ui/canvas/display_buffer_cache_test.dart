@@ -155,5 +155,33 @@ void main() {
 
       expect(cache.debugDerivedDepth, 0);
     });
+
+    test('🎯a RASTERIZED frame collapses the chain, so the count follows it '
+        'instead of climbing forever', () async {
+      await derive(5);
+      expect(cache.debugDerivedDepth, 5);
+
+      // What the engine did at that moment: drawing the newest buffer
+      // snapshots it, which releases the display list behind it, all the
+      // way down. Nothing is left to recurse over.
+      cache.noteFrameRasterized();
+
+      expect(cache.debugDerivedDepth, 0);
+      expect(
+        cache.patchBaseFor('static', rect),
+        isNotNull,
+        reason: 'and the fast path is open again — a frame that reached the '
+            'screen must not cost the next compose anything',
+      );
+    });
+
+    test('🚨but composes with NO frame in between still reach the budget — '
+        'that is the case the app died in', () async {
+      // No `noteFrameRasterized` anywhere in here on purpose: an offscreen
+      // bake, or a raster thread left behind, produces no frame timing.
+      await derive(200);
+
+      expect(cache.patchBaseFor('static', rect), isNull);
+    });
   });
 }
