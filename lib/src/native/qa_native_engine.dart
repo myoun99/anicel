@@ -2008,8 +2008,14 @@ final class QaComposeTileItemStruct extends Struct {
 }
 
 /// A fresh premultiplied stamp buffer (R23 fill overlay): [view] feeds
-/// `ui.decodeImageFromPixels`; call [free] in the decode callback (the
-/// engine has consumed the bytes by then).
+/// `ui.decodeImageFromPixels`, and [free] releases it.
+///
+/// ⛔**NOT in the decode callback.** This line used to say that, and it was
+/// the bug: `ui.decodeImageFromPixels` does not invoke its callback when it
+/// REFUSES, so a failed decode leaked the whole scratch. All four call sites
+/// were moved to a `finally` (see [debugLiveCount], and the note beside the
+/// one in `straight_rgba_image.dart` — "THE `finally` IS THE FIX") and this
+/// sentence outlived them, telling the next reader to put it back.
 class QaStampScratch {
   QaStampScratch._(this.view, this._buffer) {
     _live += 1;

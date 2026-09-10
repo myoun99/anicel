@@ -61,8 +61,12 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///    layout change — exactly what those chrome actions produce — paints
 ///    with the previous compensation while the unchanged picture is still
 ///    CACHED, and the snap is live again.
-///    `integral_layer_offset_test.dart` quantifies that one-frame gap
-///    deterministically.
+///    ⚠️This line used to send the reader to
+///    `integral_layer_offset_test.dart`. R11 retired the wrapper and its
+///    test together (`53d4b39b`), because the premise went: layout does
+///    not produce a fractional offset any more. What quantifies the gap
+///    now is `canvas_boundary_on_grid_test.dart`'s "ON THE FRAME OF A
+///    LAYOUT CHANGE" group.
 ///
 ///  · R11 — the quantization round, and why this file now pins the
 ///    absence. Read #1106's failure precisely: it is NOT "the wrapper is

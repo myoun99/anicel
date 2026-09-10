@@ -49,9 +49,12 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// device-confirmed by the #1100 A/B. The shipping answer is
 /// `willChange: true` on the artwork pictures (refuse the cache —
 /// `bypass_raster_cache_wiring_test.dart`, restored 2026-08-17 after the
-/// #1106 wrapper-only attempt was device-refuted) composed with
-/// `IntegralLayerOffset` for the settled-state layer offset
-/// (`integral_layer_offset_test.dart`, one-frame gap quantified there).
+/// #1106 wrapper-only attempt was device-refuted).
+/// ⛔It is NOT composed with `IntegralLayerOffset` any more: R11 retired
+/// that wrapper and its test in `53d4b39b`, because layout stopped producing
+/// a fractional offset at all — every app-chosen offset from the window
+/// origin down is an integral count of device pixels IN LAYOUT. The pin for
+/// that is `canvas_boundary_on_grid_test.dart`.
 void main() {
   const canvasSize = CanvasSize(width: 512, height: 512);
   const tileSize = 256;

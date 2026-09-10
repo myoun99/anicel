@@ -49,8 +49,13 @@ class Cut {
 
   // The V-track transform/fade left the cut (R4): the effects live on
   // [Track.transformTrack], keys on the GLOBAL frame axis — moving a cut
-  // does not move them, and a legacy cut-level 'transform' entry is
-  // lifted onto the track at load (track_transform_migration.dart).
+  // does not move them.
+  // ⛔A legacy cut-level 'transform' entry is NOT lifted anywhere: since
+  // `85ec3f59` tore the V row's transform down there is nothing to load it
+  // into, so `Track.fromJson` reads the key and DROPS it and an old project
+  // opens one row lighter. This comment said "lifted onto the track at load
+  // (track_transform_migration.dart)" — the file went with that commit and
+  // the sentence outlived both it and the behaviour it described.
 
   Cut copyWith({
     CutId? id,
@@ -118,8 +123,8 @@ class Cut {
       guides: json['guides'] == null
           ? null
           : CutGuides.fromJson(json['guides'] as Map<String, dynamic>),
-      // Legacy 'transform' entries are read by Track.fromJson's lift, not
-      // here — the cut model carries no transform any more (R4). The old
+      // Legacy 'transform' entries are read and dropped by Track.fromJson,
+      // not here — the cut model carries no transform any more (R4). The old
       // 'folders' table stays ignored the same way (no production data).
     );
   }
