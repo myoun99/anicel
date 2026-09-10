@@ -220,7 +220,14 @@ void main() {
 /// **37** since the surface paint pass draws a tile through one call: its
 /// three identical tile blits (replaced, held, live) are `_drawTileImage`,
 /// one raw draw at `tileOriginOffset` with the same tile image paint.
-const int _knownRawDraws = 37;
+/// **38** at the predecessor round (2026-09-11): +1 in
+/// provisional_tile_pictures — `composePredecessorStandIn` draws the
+/// predecessor tile's picture 1:1 onto the stand-in recorder under
+/// `_tilePaint` (`FilterQuality.none`, `isAntiAlias: false`), the same class
+/// as the seeder's base draw beside it. ⚠️It landed two commits before this
+/// line: this file does not import what it scans, so `affected_tests` never
+/// selected it — CLAUDE.md's source-scanning-contract rule, one more time.
+const int _knownRawDraws = 38;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
