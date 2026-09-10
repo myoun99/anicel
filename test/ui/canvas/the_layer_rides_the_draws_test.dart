@@ -682,31 +682,31 @@ void main() {
             '($rodeDraw vs $bufferedDraw) — that is a comparison of two '
             'rasterizers, not of the two routes',
       );
-      // 📏WHAT THE PROBE SAID, AND WHAT IS STILL OPEN (2026-09-10).
+      // 📏WHICH DRAW EACH READING REACHES (corrected 2026-09-10).
       //
-      // It says **tiles** — so every "0 pixels differ" above is about the
-      // route the painter's own byte-parity measurement already covers, and
-      // F-67's actual suspect, the FLAT projection blit (the one draw in
-      // this slot that samples bilinearly), has still never been compared.
-      // The earlier round could not tell; that is what this probe is for.
+      // Buffer ON: both renders draw the active layer as the FLAT
+      // projection — the one draw in this slot that samples bilinearly,
+      // F-67's suspect — and the pixels above agree to the byte. Buffer
+      // OFF: there is no scaled recording to run inside, so the slot draws
+      // TILES, the painter's own byte-parity route.
       //
-      // ⛔RULED OUT ON THE WAY, so the next round does not re-walk them:
-      //  · the tile IS decoded in the SINGLETON the projection reads — the
+      // 🪦The first probe run was recorded as "it says tiles", and F-67 was
+      // left open on the flat blit because of it. It was reading this loop's
+      // LAST reading — buffer off, whose answer is tiles by construction.
+      // Naming the buffer state in the reason is what showed it.
+      //
+      // ⛔What it took to make the flat reachable, so it is not re-walked:
+      //  · the tile is decoded in the SINGLETON the projection reads — the
       //    fixture used to mint a fresh tile per paint, which left the
       //    cache empty and the projection refusing outright;
       //  · the knee is forced on, and the view's ratio is forced to 1 —
       //    a widget test reports 3, so `zoom · dpr` was 1.89 and the gate
       //    (`< 1`) never opened at all.
-      // Neither was enough, so something further along still refuses.
-      //
-      // ⚠️THE ASSERTION IS THE ONE THING THAT IS TRUE: both renders must
-      // take the SAME arm, or the comparison is between two rasterizers
-      // rather than two routes and agreeing would be luck. Pinning `flat`
-      // here would pin a wish.
       expect(
         rodeDraw,
-        isNotNull,
-        reason: 'nothing painted in the active slot at all',
+        disableBuffer ? ActiveSlotDraw.tiles : ActiveSlotDraw.flat,
+        reason: 'buffer ${disableBuffer ? 'off' : 'on'}: the slot has to take '
+            'the draw this reading exists to compare — it took $rodeDraw',
       );
       }
     });

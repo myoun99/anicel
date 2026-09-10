@@ -3,6 +3,7 @@ import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -412,5 +413,98 @@ void main() {
       );
       await tester.pumpAndSettle();
     });
+  });
+
+  group('THROUGH THE MOMENTS THE HOP WAS SEEN (F-67)', () {
+    // 🔬F-67 (유저 2026-09-10): 「툴을 바꾸거나 선을 그리기 시작하거나 화면을
+    // 팬으로 이동할때, 그 때만 … 일부 정해진 픽셀이 반픽셀 움직였다가
+    // 돌아오는」. Those are the #1100 moments, and #1100's mechanism is this
+    // file's subject: the raster cache replays a STABLE picture at an
+    // integral device offset while a live repaint lands wherever layout put
+    // the boundary, so a boundary off the grid hops exactly when painting
+    // starts and stops. The groups above measure the chain settled and on
+    // the frame a panel opens; none measures it through a tool change, a
+    // stroke or a pan — the three the report names.
+    //
+    // ⛔One frame after each change, like the group above, and on every
+    // frame while a gesture is held: a stroke's frames are the live ones.
+    for (final ratio in <double>[1.25, 1.35]) {
+      testWidgets('a tool change, a stroke and a pan keep it on the grid at '
+          '$ratio', (tester) async {
+        tester.view.devicePixelRatio = ratio;
+        tester.view.physicalSize = Size(1600 * ratio, 1000 * ratio);
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(shell());
+        await tester.pumpAndSettle();
+        void check(String moment) => expectOnGrid(
+          chainOrigins(tester, ratio).first.device,
+          at: '$moment, at $ratio',
+        );
+        check('settled');
+
+        for (final tool in <String>[
+          'tool-eraser-button',
+          'tool-fill-button',
+          'tool-select-button',
+          'tool-brush-button',
+        ]) {
+          await tester.tap(find.byKey(ValueKey<String>(tool)));
+          await tester.pump();
+          check('the frame $tool was pressed');
+          await tester.pumpAndSettle();
+          check('settled after $tool');
+        }
+
+        Offset canvasCentre() {
+          final boxes = [
+            for (final element in find
+                .byKey(const ValueKey<String>('canvas-content-boundary'))
+                .evaluate())
+              element.renderObject! as RenderBox,
+          ]..sort(
+              (a, b) => (b.size.width * b.size.height).compareTo(
+                a.size.width * a.size.height,
+              ),
+            );
+          return boxes.first.localToGlobal(
+            boxes.first.size.center(Offset.zero),
+          );
+        }
+
+        final pen = await tester.startGesture(
+          canvasCentre(),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        check('the frame the pen went down');
+        for (var step = 1; step <= 4; step += 1) {
+          await pen.moveBy(const Offset(6.3, 2.7));
+          await tester.pump();
+          check('stroke step $step');
+        }
+        await pen.up();
+        await tester.pump();
+        check('the frame the pen came up');
+        await tester.pumpAndSettle();
+        check('settled after the stroke');
+
+        final hand = await tester.startGesture(
+          canvasCentre(),
+          kind: PointerDeviceKind.mouse,
+          buttons: kMiddleMouseButton,
+        );
+        await tester.pump();
+        check('the frame a wheel-click pan started');
+        await hand.moveBy(const Offset(13.7, 5.3));
+        await tester.pump();
+        check('mid-pan');
+        await hand.up();
+        await tester.pump();
+        check('the frame the pan ended');
+        await tester.pumpAndSettle();
+        check('settled after the pan');
+      });
+    }
   });
 }
