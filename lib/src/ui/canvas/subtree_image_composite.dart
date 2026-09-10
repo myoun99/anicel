@@ -343,9 +343,16 @@ ui.Image applyEffectSteps({
       into.drawRect(rect, paint);
     }
     final stepPicture = stepRecorder.endRecording();
-    final next = stepPicture.toImageSync(pixelWidth, pixelHeight);
-    stepPicture.dispose();
-    shader?.dispose();
+    // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
+    // and the shader — this loop runs once per effect step, so a failure part
+    // way along a chain leaked every step it had already built.
+    final ui.Image next;
+    try {
+      next = stepPicture.toImageSync(pixelWidth, pixelHeight);
+    } finally {
+      stepPicture.dispose();
+      shader?.dispose();
+    }
     if (!identical(image, source)) {
       image.dispose();
     }
@@ -366,8 +373,12 @@ void _finishSubtreeRaster({
     debugSubtreeRasterCount += 1;
     return true;
   }());
-  final raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
-  picture.dispose();
+  final ui.Image raster;
+  try {
+    raster = picture.toImageSync(plan.pixelWidth, plan.pixelHeight);
+  } finally {
+    picture.dispose();
+  }
   // ⛔BOTH stay alive until the compose is done. A crossfade blits the raw
   // scope and the stepped one in the same structure, and disposing the raw
   // one here would have left the unfiltered pass reading freed pixels.

@@ -175,8 +175,18 @@ Future<BitmapSurface> rasterizeImageToSurface({
       ..isAntiAlias = true,
   );
   final picture = recorder.endRecording();
-  final raster = await picture.toImage(blockWidth, blockHeight);
-  picture.dispose();
+  // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an await
+  // that throws skips every statement after it — so a dispose written on the
+  // line below runs on the landing arm ONLY, and a raster that failed took
+  // the picture's native memory with it. The law: what the start took is
+  // given back on ALL THREE arms — landing, overtaking, refusal — and the
+  // place that gives it back has to be structural.
+  final ui.Image raster;
+  try {
+    raster = await picture.toImage(blockWidth, blockHeight);
+  } finally {
+    picture.dispose();
+  }
   try {
     final data = await raster.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,

@@ -342,10 +342,21 @@ class TimelineGridTileStore {
     final picture = recorder.endRecording();
     final bigWidth = (width * bakeScale).ceil();
     final bigHeight = (height * bakeScale).ceil();
-    final image = picture.toImageSync(bigWidth, bigHeight);
-    picture.dispose();
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
+    // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
+    // survive a failed bake; and `toByteData` is awaited, so the image used to
+    // survive a failed read. Both are given back by structure now.
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(bigWidth, bigHeight);
+    } finally {
+      picture.dispose();
+    }
+    final ByteData? data;
+    try {
+      data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    } finally {
+      image.dispose();
+    }
     if (data == null) {
       return null;
     }

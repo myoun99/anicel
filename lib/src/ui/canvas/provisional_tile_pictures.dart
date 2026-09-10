@@ -151,8 +151,16 @@ final Paint _tilePaint = Paint()
       skipped += 1;
       continue;
     }
-    final image = picture.toImageSync(tileSize, tileSize);
-    picture.dispose();
+    // ⚠️`toImageSync` THROWS — `static_raster.dart` says so where it wraps the
+    // same call. A dispose on the next line runs only when it did not, so the
+    // refusal arm kept the picture. The refusal above already disposes; this
+    // makes the two arms agree by structure instead of by remembering.
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(tileSize, tileSize);
+    } finally {
+      picture.dispose();
+    }
     images.putProvisional(tile, image);
     seeded += 1;
   }
