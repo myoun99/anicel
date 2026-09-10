@@ -48,6 +48,67 @@ void main() {
     ]),
   );
 
+  group('🚨one walk, two shapes', () {
+    // The list form is the visitor with a list on the end. Two transcriptions
+    // of this cascade is exactly what the no-copies rule forbids — and a
+    // behaviour test cannot see a second one, because two copies that agree
+    // today pass everything. What it CAN see is that the two forms answer
+    // the same, pixel for pixel, in the same order.
+    //
+    // ⚠️The visitor exists because the list allocates one object per covered
+    // pixel and copies the lot: one bake of the brush roster made 8,480,380
+    // of them (2026-09-10). It must never become a second implementation.
+    test('the list form is the visitor with a list on the end', () {
+      final cases = <(String, BrushDab)>[
+        ('round', dab()),
+        ('soft', dab(hardness: 0.2, size: 9)),
+        ('squashed and turned', dab(roundness: 0.35, angleDegrees: 37)),
+        ('sampled tip', dab(tipMask: halfMask, size: 10)),
+        ('sub-pixel centre', dab(x: 10.37, y: 9.61, size: 5.5)),
+        ('faint', dab(opacity: 0.05, flow: 0.05, size: 6)),
+      ];
+
+      for (final entry in cases) {
+        final visited = <BrushPixelCoverage>[];
+        forEachBrushPixelCoverage(
+          entry.$2,
+          (x, y, coverage) =>
+              visited.add(BrushPixelCoverage(x: x, y: y, coverage: coverage)),
+        );
+        final listed = brushPixelCoveragesForDab(entry.$2);
+
+        expect(
+          listed.length,
+          visited.length,
+          reason: '${entry.$1}: the two forms cover a different pixel count',
+        );
+        expect(listed, isNotEmpty, reason: '${entry.$1}: fixture covers nothing');
+        for (var index = 0; index < listed.length; index += 1) {
+          expect(
+            listed[index],
+            visited[index],
+            reason: '${entry.$1}: pixel $index differs between the two forms',
+          );
+        }
+      }
+    });
+
+    test('⛔a dab that covers nothing visits nothing', () {
+      // The list form answers `[]` here; the visitor must not call at all,
+      // or a consumer folding into a plane would fold a phantom pixel.
+      for (final empty in <BrushDab>[
+        dab(size: 0),
+        dab(opacity: 0),
+        dab(flow: 0),
+      ]) {
+        var calls = 0;
+        forEachBrushPixelCoverage(empty, (_, _, _) => calls += 1);
+        expect(calls, 0);
+        expect(brushPixelCoveragesForDab(empty), isEmpty);
+      }
+    });
+  });
+
   group('brushPixelCoveragesForDab', () {
     test('returns empty list for zero-size dab', () {
       expect(brushPixelCoveragesForDab(dab(size: 0)), isEmpty);

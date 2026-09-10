@@ -4,13 +4,33 @@ import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_tip_mask_sampling.dart';
 
-List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
+/// THE reference traversal: every pixel a dab actually covers, with the
+/// coverage it lands at, in scan order.
+///
+/// 🚨THIS IS THE ONE PLACE THE CASCADE IS WRITTEN. [brushPixelCoveragesForDab]
+/// is this walk with a list on the end, so a caller that wants the list and a
+/// caller that wants to consume pixels as they come are running the SAME
+/// arithmetic rather than two transcriptions of it.
+///
+/// ⚠️Why the visitor exists at all: the list form allocates one
+/// [BrushPixelCoverage] per covered pixel and then copies the whole thing for
+/// `List.unmodifiable`. Measured on the brush roster (2026-09-10), one bake of
+/// the 53 previews at a DPR-2 one-column cell made **8,480,380** of those
+/// objects, and the container alone was 127 ms of an 833 ms raster. A consumer
+/// that only wants to fold the pixels into a buffer never needed them.
+///
+/// ⛔The visitor is called once per covered pixel, so it must stay a plain
+/// function call — no closure allocation inside the loop, nothing captured
+/// that the loop could hoist.
+void forEachBrushPixelCoverage(
+  BrushDab dab,
+  void Function(int x, int y, double coverage) visit,
+) {
   final dirtyRegion = dirtyRegionForBrushDab(dab);
   if (dirtyRegion == null) {
-    return List<BrushPixelCoverage>.unmodifiable(const []);
+    return;
   }
 
-  final coverages = <BrushPixelCoverage>[];
   final tip = brushDabTipGeometry(dab);
   final tipMask = tip.tipMask;
   final isRound = tip.isRound;
@@ -82,9 +102,24 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
       if (coverage <= 0.0) {
         continue;
       }
-      coverages.add(BrushPixelCoverage(x: x, y: y, coverage: coverage));
+      visit(x, y, coverage);
     }
   }
+}
 
+/// [forEachBrushPixelCoverage] collected into a list.
+///
+/// ⚠️Kept because this is the shape the parity suites read — they compare
+/// dab rasters pixel by pixel and want a value they can index and count. A
+/// consumer that is going to fold the pixels into a buffer anyway should call
+/// the visitor: this form's objects and its `unmodifiable` copy are pure cost
+/// there, and at roster scale they are millions of them.
+List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
+  final coverages = <BrushPixelCoverage>[];
+  forEachBrushPixelCoverage(
+    dab,
+    (x, y, coverage) =>
+        coverages.add(BrushPixelCoverage(x: x, y: y, coverage: coverage)),
+  );
   return List<BrushPixelCoverage>.unmodifiable(coverages);
 }
