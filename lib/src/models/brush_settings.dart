@@ -1,5 +1,6 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
@@ -35,6 +36,7 @@ class BrushSettings {
     bool scatterBothAxes = true,
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
+    SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
     double dualDensity = 1.0,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
@@ -78,6 +80,7 @@ class BrushSettings {
          scatterBothAxes: scatterBothAxes,
          dualMask: dualMask,
          dualMaskScale: dualMaskScale,
+         dualCompositeMode: dualCompositeMode,
          dualDensity: dualDensity,
          textureMaskSource: textureMaskSource,
          textureInvert: textureInvert,
@@ -138,6 +141,7 @@ class BrushSettings {
   bool get scatterBothAxes => shape.scatterBothAxes;
   BrushTipMask? get dualMask => shape.dualMask;
   double get dualMaskScale => shape.dualMaskScale;
+  SeparableBlendMode get dualCompositeMode => shape.dualCompositeMode;
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
@@ -201,6 +205,7 @@ class BrushSettings {
     bool? scatterBothAxes,
     BrushTipMask? dualMask,
     double? dualMaskScale,
+    SeparableBlendMode? dualCompositeMode,
     double? dualDensity,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
@@ -251,6 +256,7 @@ class BrushSettings {
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
+      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
       dualDensity: dualDensity ?? this.dualDensity,
       textureMaskSource: textureMaskSource ?? this.textureMaskSource,
       textureInvert: textureInvert ?? this.textureInvert,

@@ -1,4 +1,6 @@
 import '../models/brush_dab.dart';
+import '../models/separable_blend_mode.dart';
+import 'brush_stroke_blend.dart';
 import '../models/brush_pixel_coverage.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
@@ -51,10 +53,27 @@ void forEachBrushPixelCoverage(
         offsetU: dab.dualOffsetU,
         offsetV: dab.dualOffsetV,
       );
-      // The same law the texture mask below has always had. At density 1.0
-      // this is the plain multiply the dual mask used to do unconditionally,
-      // so a brush that never asked for a density draws byte-identically.
-      result *= (1.0 - dab.dualDensity) + dab.dualDensity * dualSample;
+      // 🚨THE DUAL TIP HAS A MODE (v33) — see [BrushDab.dualCompositeMode].
+      //
+      // ⛔MULTIPLY KEEPS ITS OWN LINE, AND THAT IS NOT AN OPTIMISATION. The
+      // general form below is `lerp(coverage, B(dual, coverage), d)`, which
+      // for B = multiply is the SAME NUMBER and NOT THE SAME BYTES:
+      // `c * ((1-d) + d*s)` and `c*(1-d) + d*s*c` differ in the last bit of
+      // a double. Every brush that ever shipped multiplies, so the old
+      // expression stays exactly as written.
+      if (dab.dualCompositeMode == SeparableBlendMode.multiply) {
+        result *= (1.0 - dab.dualDensity) + dab.dualDensity * dualSample;
+      } else {
+        final combined = blendDualCoverage(
+          dab.dualCompositeMode,
+          dualSample,
+          result,
+        );
+        result = result * (1.0 - dab.dualDensity) + dab.dualDensity * combined;
+        if (result > 1.0) {
+          result = 1.0;
+        }
+      }
       if (result <= 0.0) {
         return 0.0;
       }

@@ -7,6 +7,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -385,13 +386,25 @@ BrushSettings _settingsFromVariant(
     //
     // ⚠️A SAMPLE OF ONE, and the reading is positional: `DualFlow` sits where
     // `BrushFlow` sits on the main tip, and `BrushFlow` is our `flow`.
-    // ⛔`DualBrushCompositeMode` (12 on that brush) is still unread, because
-    // our dual tip only ever multiplies. The density is the term that
-    // dominates; the mode is the next thing this brush wants, and it wants an
-    // engine field rather than a column read.
     dualDensity: dualMask == null
         ? 1.0
         : _percentRatio(variant['DualFlow'], fallback: 1.0),
+    // ✏️`DualBrushCompositeMode` READS NOW (v33). It was the next thing that
+    // brush wanted and it wanted an engine field; the field exists.
+    //
+    // ⛔It is the SAME 合成モード menu index the main tip's `CompositeMode`
+    // uses, so it goes through the same [_blendModeOf] — a second table
+    // would be a second chance to get 加算 wrong. Narrowed to the separable
+    // half afterwards: a dual tip combines two COVERAGES, and 通常/背景/消去
+    // answer a question about pixels and alpha that a mask pair does not
+    // ask. ウェット水彩 stores 12, which is 加算.
+    dualCompositeMode: dualMask == null
+        ? SeparableBlendMode.multiply
+        : _dualCompositeModeOf(
+            variant['DualBrushCompositeMode'],
+            brushName: brushName,
+            warnings: warnings,
+          ),
     textureMaskSource: textureMaskSource,
     textureInvert: textureInvert,
     textureBrightness: textureBrightness,
@@ -1013,4 +1026,37 @@ double? _doubleOf(Object? value) {
     return value.toDouble();
   }
   return null;
+}
+
+/// The blend a Clip Studio DUAL tip combines with — the same 合成モード menu
+/// index the main tip's `CompositeMode` uses, narrowed to the separable
+/// half.
+///
+/// ⛔It reads through [_blendModeOf] rather than carrying its own table. The
+/// menu is one menu; two transcriptions of it would be two chances to get
+/// 加算 (index 12) wrong, and 12 is one of the two values actually found in
+/// the user's files.
+///
+/// A mode with no separable form (通常/背景/消去) keeps the multiply and says
+/// so: combining two COVERAGES has no question about pixels or alpha for
+/// those to answer, and silently reinterpreting one would be inventing a
+/// rule nobody asked for.
+SeparableBlendMode _dualCompositeModeOf(
+  Object? value, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  if (_intOf(value) == null) {
+    return SeparableBlendMode.multiply;
+  }
+  final mode = _blendModeOf(value, brushName: brushName, warnings: warnings);
+  final separable = mode.separable;
+  if (separable != null) {
+    return separable;
+  }
+  warnings.add(
+    'Brush "$brushName": the dual tip\'s composite mode (${mode.label}) is '
+    'not one two tips can be combined with; imported as multiply.',
+  );
+  return SeparableBlendMode.multiply;
 }

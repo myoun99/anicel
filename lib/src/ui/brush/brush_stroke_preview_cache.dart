@@ -575,6 +575,7 @@ Uint8List rasterizeBrushStrokeSample(
         dualMask: settings.dualMask,
         dualMaskScale: settings.dualMaskScale,
         dualDensity: settings.dualDensity,
+        dualCompositeMode: settings.dualCompositeMode,
         textureMask: settings.textureMask,
         textureScale: settings.textureScale,
         textureDensity: settings.textureDensity,

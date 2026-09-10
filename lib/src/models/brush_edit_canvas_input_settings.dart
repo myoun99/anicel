@@ -1,5 +1,6 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
@@ -36,6 +37,7 @@ class BrushEditCanvasInputSettings {
     BrushTipMask? dualMask,
     double dualMaskScale = 1.0,
     double dualDensity = 1.0,
+    SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
     BrushTipMask? textureMaskSource,
     bool textureInvert = false,
     double textureBrightness = 0.0,
@@ -121,6 +123,7 @@ class BrushEditCanvasInputSettings {
         dualMask: dualMask,
         dualMaskScale: dualMaskScale,
         dualDensity: dualDensity,
+        dualCompositeMode: dualCompositeMode,
         textureMaskSource: textureMaskSource,
         textureInvert: textureInvert,
         textureBrightness: textureBrightness,
@@ -221,6 +224,9 @@ class BrushEditCanvasInputSettings {
 
   /// See [BrushShape.dualDensity].
   double get dualDensity => shape.dualDensity;
+
+  /// See [BrushShape.dualCompositeMode].
+  SeparableBlendMode get dualCompositeMode => shape.dualCompositeMode;
   /// The texture as PICKED — see [BrushShape.textureMaskSource].
   BrushTipMask? get textureMaskSource => shape.textureMaskSource;
   bool get textureInvert => shape.textureInvert;
@@ -275,6 +281,7 @@ class BrushEditCanvasInputSettings {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
+    SeparableBlendMode? dualCompositeMode,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -321,6 +328,7 @@ class BrushEditCanvasInputSettings {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
+      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
       textureMaskSource: textureMaskSource ?? this.textureMaskSource,
       textureInvert: textureInvert ?? this.textureInvert,
       textureBrightness: textureBrightness ?? this.textureBrightness,

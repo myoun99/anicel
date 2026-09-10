@@ -3,6 +3,7 @@ import 'brush_stamp_image.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
 import 'canvas_point.dart';
+import 'separable_blend_mode.dart';
 
 class BrushDab {
   BrushDab({
@@ -24,6 +25,7 @@ class BrushDab {
     this.dualMask,
     this.dualMaskScale = 1.0,
     this.dualDensity = 1.0,
+    this.dualCompositeMode = SeparableBlendMode.multiply,
     this.dualOffsetU = 0.0,
     this.dualOffsetV = 0.0,
     this.textureMask,
@@ -124,6 +126,26 @@ class BrushDab {
   /// same shape [textureDensity] has had all along. 1.0 is the plain
   /// multiply the dual mask used to do unconditionally.
   final double dualDensity;
+
+  /// How the dual mask COMBINES with the coverage under it.
+  ///
+  /// 🚨Both formats say a dual tip has one and ours had none. Clip Studio
+  /// writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and 12
+  /// found in the user's own files) and Photoshop writes `dualBrush.BlnM`
+  /// (eight four-char codes across 765 brushes). We multiplied and only
+  /// multiplied, so both were cut off at the same place.
+  ///
+  /// ⛔[SeparableBlendMode], not [BrushBlendMode]: this combines two
+  /// COVERAGES, and the porter-duff heads (`color`/`behind`/`erase`) answer
+  /// a question about pixels and alpha that a mask pair does not ask. The
+  /// importers already map their formats to [BrushBlendMode] and take
+  /// `.separable` from there, so nothing new decodes anything.
+  ///
+  /// ⚠️[SeparableBlendMode.multiply] is the default AND its own line in both
+  /// kernels — the general form is the same NUMBER and not the same BYTES,
+  /// and every brush that ever shipped multiplies.
+  final SeparableBlendMode dualCompositeMode;
+
   final double dualOffsetU;
   final double dualOffsetV;
 
@@ -170,6 +192,7 @@ class BrushDab {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
+    SeparableBlendMode? dualCompositeMode,
     double? dualOffsetU,
     double? dualOffsetV,
     BrushTipMask? textureMask,
@@ -198,6 +221,7 @@ class BrushDab {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
+      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
       dualOffsetU: dualOffsetU ?? this.dualOffsetU,
       dualOffsetV: dualOffsetV ?? this.dualOffsetV,
       textureMask: textureMask ?? this.textureMask,
@@ -233,6 +257,7 @@ class BrushDab {
     if (dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
     'dualDensity': dualDensity,
+    'dualCompositeMode': dualCompositeMode.name,
     'dualOffsetU': dualOffsetU,
     'dualOffsetV': dualOffsetV,
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
@@ -270,6 +295,11 @@ class BrushDab {
           : BrushTipMask.fromJson(json['dualMask'] as Map<String, dynamic>),
       dualMaskScale: (json['dualMaskScale'] as num?)?.toDouble() ?? 1.0,
       dualDensity: (json['dualDensity'] as num?)?.toDouble() ?? 1.0,
+      dualCompositeMode:
+          SeparableBlendMode.forName(
+            (json['dualCompositeMode'] as String?) ?? '',
+          ) ??
+          SeparableBlendMode.multiply,
       dualOffsetU: (json['dualOffsetU'] as num?)?.toDouble() ?? 0.0,
       dualOffsetV: (json['dualOffsetV'] as num?)?.toDouble() ?? 0.0,
       textureMask: json['textureMask'] == null
@@ -309,6 +339,7 @@ class BrushDab {
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
           other.dualDensity == dualDensity &&
+          other.dualCompositeMode == dualCompositeMode &&
           other.dualOffsetU == dualOffsetU &&
           other.dualOffsetV == dualOffsetV &&
           other.textureMask == textureMask &&
@@ -338,6 +369,7 @@ class BrushDab {
     dualMask,
     dualMaskScale,
     dualDensity,
+    dualCompositeMode,
     dualOffsetU,
     dualOffsetV,
     textureMask,

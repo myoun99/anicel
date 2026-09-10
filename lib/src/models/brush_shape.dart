@@ -1,6 +1,7 @@
 import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
+import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
@@ -52,6 +53,7 @@ class BrushShape {
     this.dualMask,
     this.dualMaskScale = 1.0,
     this.dualDensity = 1.0,
+    this.dualCompositeMode = SeparableBlendMode.multiply,
     this.textureMaskSource,
     this.textureInvert = false,
     this.textureBrightness = 0.0,
@@ -158,6 +160,11 @@ class BrushShape {
   /// exact knob all along. That asymmetry was the whole reason to add it —
   /// two masks doing the same job, one of them dimmable and one not.
   final double dualDensity;
+
+  /// How the dual mask COMBINES with the coverage under it — see
+  /// [BrushDab.dualCompositeMode]. Both formats carry one; ours multiplied
+  /// and only multiplied until v33.
+  final SeparableBlendMode dualCompositeMode;
 
   /// The paper texture AS PICKED, before the three levels below are applied.
   ///
@@ -359,6 +366,7 @@ class BrushShape {
       dualMask: slot == BrushMaskSlot.dual ? mask : dualMask,
       dualMaskScale: dualMaskScale,
       dualDensity: dualDensity,
+      dualCompositeMode: dualCompositeMode,
       textureMaskSource: slot == BrushMaskSlot.texture
           ? mask
           : textureMaskSource,
@@ -391,6 +399,7 @@ class BrushShape {
     BrushTipMask? dualMask,
     double? dualMaskScale,
     double? dualDensity,
+    SeparableBlendMode? dualCompositeMode,
     BrushTipMask? textureMaskSource,
     bool? textureInvert,
     double? textureBrightness,
@@ -427,6 +436,7 @@ class BrushShape {
       dualMask: dualMask ?? this.dualMask,
       dualMaskScale: dualMaskScale ?? this.dualMaskScale,
       dualDensity: dualDensity ?? this.dualDensity,
+      dualCompositeMode: dualCompositeMode ?? this.dualCompositeMode,
       textureMaskSource: textureMaskSource ?? this.textureMaskSource,
       textureInvert: textureInvert ?? this.textureInvert,
       textureBrightness: textureBrightness ?? this.textureBrightness,
@@ -468,6 +478,7 @@ class BrushShape {
           other.dualMask == dualMask &&
           other.dualMaskScale == dualMaskScale &&
           other.dualDensity == dualDensity &&
+          other.dualCompositeMode == dualCompositeMode &&
           other.textureMaskSource == textureMaskSource &&
           other.textureInvert == textureInvert &&
           other.textureBrightness == textureBrightness &&

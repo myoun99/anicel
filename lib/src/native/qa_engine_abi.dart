@@ -128,7 +128,7 @@ import 'dart:io';
 ///   unconditional multiply, all or nothing. Two masks doing the same job,
 ///   one of them dimmable and one not, is the whole reason. 1.0 is the old
 ///   behaviour, so every brush that never asks draws byte-identically.
-const int kQaEngineAbiVersion = 32;
+const int kQaEngineAbiVersion = 33;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

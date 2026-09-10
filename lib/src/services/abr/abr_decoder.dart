@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/brush_blend_mode.dart';
+import '../../models/separable_blend_mode.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -374,12 +375,18 @@ BrushPreset? _presetFromBrushDescriptor(
       _jitterOf(flowVariance, cap: 1.0),
     );
   }
-  // Dual brush: the nested second tip multiplies the primary coverage.
-  // Photoshop's per-blend-mode combine is approximated as multiply, and
-  // the dual tip's own spacing/scatter is approximated by the per-dab
+  // Dual brush: the nested second tip combines with the primary coverage.
+  // The dual tip's own spacing/scatter is still approximated by the per-dab
   // random tile phase.
+  //
+  // ✏️ITS BLEND MODE ARRIVES NOW (v33). `dualBrush.BlnM` was measured across
+  // the user's seven .abr packs — 765 brushes — and EIGHT codes are in
+  // actual use (Mltp·Drkn·Ovrl·CBrn·CDdg and more), all of which the table
+  // below already reads for the main brush. Until the engine had a field
+  // for it every one of them arrived as a plain multiply.
   BrushTipMask? dualMask;
   var dualMaskScale = 1.0;
+  var dualCompositeMode = SeparableBlendMode.multiply;
   final dualBrush = entry.childDescriptor('dualBrush');
   if (dualBrush != null && dualBrush['useDualBrush'] == true) {
     final dualTip = dualBrush.childDescriptor('Brsh');
@@ -398,6 +405,28 @@ BrushPreset? _presetFromBrushDescriptor(
         warnings.add(
           'Brush "${name ?? sampledKey ?? ''}": dual-brush tip bitmap '
           'missing; imported without the dual texture.',
+        );
+      }
+    }
+    // ⛔Read through the SAME table the main brush reads, then narrowed to
+    // the separable half — a dual tip combines two COVERAGES, and the
+    // porter-duff heads answer a question about pixels and alpha that a
+    // mask pair does not ask.
+    //
+    // 🚨SAYING NOTHING IS NOT SAYING SOMETHING UNREADABLE. A brush with no
+    // `BlnM` at all keeps the multiply in silence; only a file that NAMES a
+    // mode this app cannot combine two tips with is worth a line. The
+    // fixture caught the difference: `Fancy Chalk` states no dual blend and
+    // was being warned about.
+    final dualBlendValue = dualBrush['BlnM'];
+    if (dualBlendValue != null) {
+      final dualBlend = _blendModeOf(dualBlendValue).separable;
+      if (dualBlend != null) {
+        dualCompositeMode = dualBlend;
+      } else if (dualMask != null) {
+        warnings.add(
+          'Brush "${name ?? sampledKey ?? ''}": dual-brush blend mode is not '
+          'one this app can combine two tips with; imported as multiply.',
         );
       }
     }
@@ -499,6 +528,7 @@ BrushPreset? _presetFromBrushDescriptor(
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      dualCompositeMode: dualCompositeMode,
       textureMaskSource: textureMask,
       textureInvert: textureInvert,
       textureBrightness: textureBrightness,
@@ -584,6 +614,7 @@ BrushSettings _settingsForTip(
   bool scatterBothAxes = true,
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
+  SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
   BrushTipMask? textureMaskSource,
   bool textureInvert = false,
   double textureBrightness = 0.0,
@@ -617,6 +648,7 @@ BrushSettings _settingsForTip(
     scatterBothAxes: scatterBothAxes,
     dualMask: dualMask,
     dualMaskScale: dualMaskScale,
+    dualCompositeMode: dualCompositeMode,
     textureMaskSource: textureMaskSource,
     textureInvert: textureInvert,
     textureBrightness: textureBrightness,

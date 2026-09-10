@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
+import '../models/separable_blend_mode.dart';
 import '../models/dirty_region.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -161,34 +162,61 @@ void applySelectionMaskToStrokeAlpha({
 /// reach the blend kernel (they ride the ordinary stamp path).
 int strokeBlendModeNativeId(BrushBlendMode mode) {
   return switch (mode) {
+    // ⛔`behind` is the one id that is NOT separable — it is a porter-duff
+    // head with a place in the kernel's table, so it states its own number.
     BrushBlendMode.behind => 0,
-    BrushBlendMode.add => 1,
-    BrushBlendMode.darken => 2,
-    BrushBlendMode.multiply => 3,
-    BrushBlendMode.colorBurn => 4,
-    BrushBlendMode.lighten => 5,
-    BrushBlendMode.screen => 6,
-    BrushBlendMode.colorDodge => 7,
-    BrushBlendMode.overlay => 8,
-    BrushBlendMode.softLight => 9,
-    BrushBlendMode.hardLight => 10,
-    BrushBlendMode.difference => 11,
-    BrushBlendMode.exclusion => 12,
     BrushBlendMode.color || BrushBlendMode.erase => throw ArgumentError.value(
       mode,
       'mode',
       'color/erase land through the ordinary stamp kernels',
     ),
+    _ => separableBlendModeNativeId(mode.separable!),
   };
 }
 
-double _blendChannel(BrushBlendMode mode, double cs, double cd) {
+/// The same fixed ids, asked of the SEPARABLE vocabulary directly.
+///
+/// 🚨★★★ONE TABLE, TWO DOORS (v33). The dab kernel's DUAL MASK combines two
+/// coverages through the very same `qa_stroke_blend_channel` the stroke
+/// kernel reads, so it needs the very same ids — and a second switch
+/// spelling them out would be a copy the moment either one gained a mode.
+/// [strokeBlendModeNativeId] is now this plus the two porter-duff answers
+/// its own callers need.
+int separableBlendModeNativeId(SeparableBlendMode mode) {
+  return switch (mode) {
+    SeparableBlendMode.add => 1,
+    SeparableBlendMode.darken => 2,
+    SeparableBlendMode.multiply => 3,
+    SeparableBlendMode.colorBurn => 4,
+    SeparableBlendMode.lighten => 5,
+    SeparableBlendMode.screen => 6,
+    SeparableBlendMode.colorDodge => 7,
+    SeparableBlendMode.overlay => 8,
+    SeparableBlendMode.softLight => 9,
+    SeparableBlendMode.hardLight => 10,
+    SeparableBlendMode.difference => 11,
+    SeparableBlendMode.exclusion => 12,
+  };
+}
+
+/// The separable B(Cs, Cd) table, in doubles.
+///
+/// 🚨★★★PUBLIC SINCE v33 — the dab kernel's DUAL MASK combines two
+/// COVERAGES through this very table. A second transcription would be a
+/// copy of the only thing in the app that has to agree with
+/// `qa_stroke_blend_channel` byte for byte.
+///
+/// ⚠️It takes a [BrushBlendMode] because that is what its first caller
+/// speaks; a separable-only caller passes `mode.blendMode` — no, it passes
+/// the [BrushBlendMode] of the same name, which `SeparableBlendMode` and
+/// `BrushBlendMode` share by construction ([BrushBlendMode.separable]).
+double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
   switch (mode) {
-    case BrushBlendMode.darken:
+    case SeparableBlendMode.darken:
       return math.min(cs, cd);
-    case BrushBlendMode.multiply:
+    case SeparableBlendMode.multiply:
       return cs * cd;
-    case BrushBlendMode.colorBurn:
+    case SeparableBlendMode.colorBurn:
       if (cd >= 1) {
         return 1;
       }
@@ -196,11 +224,11 @@ double _blendChannel(BrushBlendMode mode, double cs, double cd) {
         return 0;
       }
       return 1 - math.min(1, (1 - cd) / cs);
-    case BrushBlendMode.lighten:
+    case SeparableBlendMode.lighten:
       return math.max(cs, cd);
-    case BrushBlendMode.screen:
+    case SeparableBlendMode.screen:
       return cs + cd - cs * cd;
-    case BrushBlendMode.colorDodge:
+    case SeparableBlendMode.colorDodge:
       if (cd <= 0) {
         return 0;
       }
@@ -208,9 +236,9 @@ double _blendChannel(BrushBlendMode mode, double cs, double cd) {
         return 1;
       }
       return math.min(1, cd / (1 - cs));
-    case BrushBlendMode.overlay:
-      return _blendChannel(BrushBlendMode.hardLight, cd, cs);
-    case BrushBlendMode.softLight:
+    case SeparableBlendMode.overlay:
+      return blendSeparableChannel(SeparableBlendMode.hardLight, cd, cs);
+    case SeparableBlendMode.softLight:
       if (cs <= 0.5) {
         return cd - (1 - 2 * cs) * cd * (1 - cd);
       }
@@ -218,20 +246,28 @@ double _blendChannel(BrushBlendMode mode, double cs, double cd) {
           ? ((16 * cd - 12) * cd + 4) * cd
           : math.sqrt(cd);
       return cd + (2 * cs - 1) * (d - cd);
-    case BrushBlendMode.hardLight:
+    case SeparableBlendMode.hardLight:
       // multiply(2cs, cd) below the pivot, screen(2cs-1, cd) above.
       return cs <= 0.5
           ? 2 * cs * cd
           : (2 * cs - 1) + cd - (2 * cs - 1) * cd;
-    case BrushBlendMode.difference:
+    case SeparableBlendMode.difference:
       return (cs - cd).abs();
-    case BrushBlendMode.exclusion:
+    case SeparableBlendMode.exclusion:
       return cs + cd - 2 * cs * cd;
-    case BrushBlendMode.color ||
-        BrushBlendMode.behind ||
-        BrushBlendMode.erase ||
-        BrushBlendMode.add:
-      throw ArgumentError.value(mode, 'mode', 'not a separable channel blend');
+    case SeparableBlendMode.add:
+      // ⛔ADD HAS NO B(Cs, Cd), and refusing is what keeps that visible.
+      // Skia's `plus` is a saturating add of PREMULTIPLIED colour, so the
+      // stroke kernel answers it before reaching this table and the dual
+      // mask answers it in [blendDualCoverage]. An arm here that returned
+      // "something reasonable" would be a third definition of 加算 that
+      // agrees with neither.
+      throw ArgumentError.value(
+        mode,
+        'mode',
+        'add is a premultiplied saturating add, not a channel blend — see '
+            'blendDualCoverage / the stroke kernel',
+      );
   }
 }
 
@@ -407,7 +443,7 @@ Uint8List blendStrokeRegionPixels({
     for (var c = 0; c < 3; c += 1) {
       final cs = src[o + c] / 255.0;
       final cd = dst[o + c] / 255.0;
-      final b = _blendChannel(mode, cs, cd);
+      final b = blendSeparableChannel(mode.separable!, cs, cd);
       result[o + c] = _clampByte(
         (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,
       );
@@ -415,4 +451,32 @@ Uint8List blendStrokeRegionPixels({
     result[o + 3] = _clampByte(ao);
   }
   return result;
+}
+
+/// How the DUAL mask combines with the coverage under it (v33).
+///
+/// [dual] is the SOURCE, [coverage] the destination — the dual tip is the
+/// second tip applied over the first. ⚠️Multiply is commutative so nothing
+/// that exists today can tell the order apart; the non-commutative modes
+/// are REASONED, not measured, and want a side-by-side against Clip Studio
+/// before anything is built on them.
+///
+/// ⛔ADD IS NOT IN THE B(Cs, Cd) TABLE. Skia's `plus` is a saturating add of
+/// PREMULTIPLIED colour, which is why the stroke kernel answers it before
+/// [blendSeparableChannel] is reached; on a single coverage that same
+/// operation is `min(1, cs + cd)`. Clip Studio's 合成モード index 12 is 加算,
+/// so this arm is one of the two modes actually found in the user's files —
+/// not a hypothetical.
+///
+/// 🚨The C mirror is `qa_dual_combine`, and the parity suite pins the pair.
+double blendDualCoverage(
+  SeparableBlendMode mode,
+  double dual,
+  double coverage,
+) {
+  if (mode == SeparableBlendMode.add) {
+    final sum = dual + coverage;
+    return sum > 1.0 ? 1.0 : sum;
+  }
+  return blendSeparableChannel(mode, dual, coverage);
 }

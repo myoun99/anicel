@@ -7,6 +7,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -120,6 +121,7 @@ BrushDab dab({
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
   double dualDensity = 1.0,
+  SeparableBlendMode dualCompositeMode = SeparableBlendMode.multiply,
   double dualOffsetU = 0.0,
   double dualOffsetV = 0.0,
   BrushTipMask? textureMask,
@@ -144,6 +146,7 @@ BrushDab dab({
     dualMask: dualMask,
     dualMaskScale: dualMaskScale,
     dualDensity: dualDensity,
+    dualCompositeMode: dualCompositeMode,
     dualOffsetU: dualOffsetU,
     dualOffsetV: dualOffsetV,
     textureMask: textureMask,
@@ -529,6 +532,48 @@ void main() {
         reason: 'the dual density blend must be one law in all three',
       );
     });
+
+    test('🚨every dual COMPOSITE MODE agrees across all three transcriptions',
+        () {
+      // v33. Ours multiplied and only multiplied while both source formats
+      // carried a mode — Clip Studio's `DualBrushCompositeMode` (the 合成
+      // モード index; 1 and 12 in the user's own files) and Photoshop's
+      // `dualBrush.BlnM` (eight codes across 765 brushes).
+      //
+      // 🚨THE WHOLE TABLE, one dab each, because the C switch and the two
+      // Dart transcriptions are three separate spellings of the same
+      // formulas and a mode nobody drives is a mode nobody has compared.
+      // `add` is here for a reason of its own: it is NOT in the B(Cs, Cd)
+      // table on either side — Skia's `plus` is a premultiplied saturating
+      // add — so it takes a branch of its own in all three, and it is one
+      // of the two modes actually found in a real file.
+      for (final mode in SeparableBlendMode.values) {
+        expectParity(
+          surface: blankSurface(),
+          sequence: strokeOf([
+            dab(
+              x: 41.3,
+              y: 39.7,
+              size: 20,
+              hardness: 0.45,
+              dualMask: _testTipMask,
+              dualMaskScale: 0.65,
+              // ⛔NEITHER 0 NOR 1: at density 0 the mode cannot show and at
+              // 1 the lerp collapses, so either would pass with the whole
+              // branch deleted.
+              dualDensity: 0.6,
+              dualCompositeMode: mode,
+              dualOffsetU: 0.23,
+              dualOffsetV: 0.61,
+              sequence: 0,
+            ),
+          ]),
+          reason: 'the dual composite mode ${mode.name} must be one law in '
+              'all three',
+        );
+      }
+    });
+
 
     test('dual-brush textured stroke across tip shapes', () {
       expectParity(

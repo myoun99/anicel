@@ -188,6 +188,52 @@ enum {
   QA_DAB_FLAG_AA_THRESHOLD = 32,
 };
 
+// Mode ids: a fixed FFI contract - the Dart side maps BrushBlendMode
+// through `strokeBlendModeNativeId` with EXACTLY these values. color and
+// erase never reach the stroke kernel (they ride the ordinary stamp path).
+//
+// 🚨TWO KERNELS READ THIS ONE TABLE. The stroke blend composites a whole
+// stroke against the cel; the dab kernel's DUAL MASK combines two coverages
+// (v33). They are the same separable vocabulary and the same ids, so the
+// enum and `qa_stroke_blend_channel` sit above both rather than being
+// written twice.
+enum {
+  QA_STROKE_BLEND_BEHIND = 0,
+  QA_STROKE_BLEND_ADD = 1,
+  QA_STROKE_BLEND_DARKEN = 2,
+  QA_STROKE_BLEND_MULTIPLY = 3,
+  QA_STROKE_BLEND_COLOR_BURN = 4,
+  QA_STROKE_BLEND_LIGHTEN = 5,
+  QA_STROKE_BLEND_SCREEN = 6,
+  QA_STROKE_BLEND_COLOR_DODGE = 7,
+  QA_STROKE_BLEND_OVERLAY = 8,
+  QA_STROKE_BLEND_SOFT_LIGHT = 9,
+  QA_STROKE_BLEND_HARD_LIGHT = 10,
+  QA_STROKE_BLEND_DIFFERENCE = 11,
+  QA_STROKE_BLEND_EXCLUSION = 12,
+};
+
+static double qa_stroke_blend_channel(int32_t mode, double cs, double cd);
+
+/* How the DUAL mask combines with the coverage under it (v33).
+   [dual] is the SOURCE, [coverage] the destination.
+
+   ⛔ADD IS NOT IN THE B(Cs, Cd) TABLE, in either language. Skia's `plus` is
+   a saturating add of PREMULTIPLIED colour, so the stroke kernel answers it
+   before the channel table is ever reached — and on a single coverage that
+   same operation is min(1, cs + cd). Routing it through the table would
+   fall out of the switch's default and silently compute EXCLUSION, which is
+   the kind of wrong that looks plausible. Clip Studio's index 12 is 加算, so
+   this is not a hypothetical arm: it is one of the two modes actually found
+   in the user's files. */
+static double qa_dual_combine(int32_t mode, double dual, double coverage) {
+  if (mode == QA_STROKE_BLEND_ADD) {
+    const double sum = dual + coverage;
+    return sum > 1.0 ? 1.0 : sum;
+  }
+  return qa_stroke_blend_channel(mode, dual, coverage);
+}
+
 // Field order/types MUST match the Dart QaDabSpecStruct exactly; the
 // loader cross-checks qa_dab_spec_sizeof() against Dart's sizeOf<>().
 // Layout: doubles, then an even number of int32s, then pointers - natural
@@ -226,7 +272,17 @@ typedef struct {
   int32_t tip_size;
   int32_t dual_size;
   int32_t tex_size;
-  int32_t reserved;
+  /* How the DUAL mask COMBINES with the coverage under it — one of the
+     QA_STROKE_BLEND_* ids, the same fixed FFI contract the stroke kernel
+     reads. v33.
+
+     ⛔It took the `reserved` slot on purpose: same size, same offset, so
+     `qa_dab_spec_sizeof` does not move and a stale binary fails on the ABI
+     number rather than on a layout the cross-check would have to catch.
+
+     🚨QA_STROKE_BLEND_MULTIPLY is the default AND its own line in the
+     kernel — see the dual block. */
+  int32_t dual_composite_mode;
   // Tip mask (alpha pre-divided by 255, row-major size*size doubles) plus
   // the unrotated-tip axis lattices (null when the tip is rotated).
   const double* tip_alpha;
@@ -493,9 +549,38 @@ QA_EXPORT int32_t qa_dab_blend_tile(
             s->dual_u_fraction, s->dual_u_one_minus, s->dual_v_texel0,
             s->dual_v_texel1, s->dual_v_fraction, s->dual_v_one_minus,
             x - s->region_left, v_index);
-        /* Same law as the texture blend below; density 1.0 is the plain
-           multiply this used to do unconditionally. */
-        coverage *= s->dual_one_minus_density + s->dual_density * dual_sample;
+        /* 🚨THE DUAL TIP HAS A MODE (v33). Both formats say so: Clip Studio
+           writes `DualBrushCompositeMode` (the 合成モード menu index — 1 and
+           12 seen in the wild) and Photoshop writes `dualBrush.BlnM` (eight
+           four-char codes across 765 brushes). Ours multiplied and only
+           multiplied, so both were cut off at the same place.
+
+           ⛔MULTIPLY KEEPS ITS OWN LINE, AND THAT IS NOT AN OPTIMISATION.
+           The general form below is `lerp(coverage, B(dual, coverage), d)`,
+           which for B = multiply is the SAME NUMBER and NOT THE SAME BYTES:
+           `coverage * ((1-d) + d*sample)` and
+           `coverage*(1-d) + d*sample*coverage` differ in the last bit of a
+           double. Every brush that ever shipped multiplies, so the old
+           expression stays exactly as it was written and the new modes take
+           the new road.
+
+           ⚠️SOURCE = THE DUAL SAMPLE, DESTINATION = THE COVERAGE UNDER IT.
+           Multiply is commutative so nothing that exists today can tell,
+           and the non-commutative modes are REASONED, not measured: the
+           dual tip is the second tip applied over the first, so it is the
+           source. Worth a side-by-side against Clip Studio before anyone
+           builds on the order. */
+        if (s->dual_composite_mode == QA_STROKE_BLEND_MULTIPLY) {
+          coverage *= s->dual_one_minus_density + s->dual_density * dual_sample;
+        } else {
+          const double combined = qa_dual_combine(
+              s->dual_composite_mode, dual_sample, coverage);
+          coverage = coverage * s->dual_one_minus_density +
+                     s->dual_density * combined;
+          if (coverage > 1.0) {
+            coverage = 1.0;
+          }
+        }
         if (coverage <= 0.0) {
           continue;
         }
@@ -1910,24 +1995,8 @@ QA_EXPORT void qa_stamp_blend_tiles(
 // Untouched pixels (stroke alpha 0) copy the destination verbatim, so a
 // span the stroke never inked reports unchanged.
 
-// Mode ids: a fixed FFI contract - the Dart side maps BrushBlendMode
-// through `strokeBlendModeNativeId` with EXACTLY these values. color and
-// erase never reach this kernel (they ride the ordinary stamp path).
-enum {
-  QA_STROKE_BLEND_BEHIND = 0,
-  QA_STROKE_BLEND_ADD = 1,
-  QA_STROKE_BLEND_DARKEN = 2,
-  QA_STROKE_BLEND_MULTIPLY = 3,
-  QA_STROKE_BLEND_COLOR_BURN = 4,
-  QA_STROKE_BLEND_LIGHTEN = 5,
-  QA_STROKE_BLEND_SCREEN = 6,
-  QA_STROKE_BLEND_COLOR_DODGE = 7,
-  QA_STROKE_BLEND_OVERLAY = 8,
-  QA_STROKE_BLEND_SOFT_LIGHT = 9,
-  QA_STROKE_BLEND_HARD_LIGHT = 10,
-  QA_STROKE_BLEND_DIFFERENCE = 11,
-  QA_STROKE_BLEND_EXCLUSION = 12,
-};
+// The mode ids and `qa_stroke_blend_channel`'s declaration moved up beside
+// the dab spec (v33): the dab kernel's dual mask reads the same table.
 
 static inline int32_t qa_stroke_clamp_byte(double value) {
   int64_t rounded = llround(value * 255.0);
@@ -4697,4 +4766,11 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 // v29: qa_process_footprint_bytes / qa_available_memory_bytes - what this
 // process is actually holding, and what the OS will still let it take.
 // v31: qa_dab_spec gains aa_contrast + QA_DAB_FLAG_AA_THRESHOLD (brush edge).
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 32; }
+// v32: qa_dab_spec gains dual_density + dual_one_minus_density.
+// v33: qa_dab_spec's `reserved` int32 becomes dual_composite_mode - how the
+// dual mask COMBINES with the coverage under it, through the same
+// QA_STROKE_BLEND_* ids and the same qa_stroke_blend_channel table the
+// stroke kernel reads. Multiply is the default and keeps its own line, so
+// every brush that ever shipped draws byte-identically. Same slot, same
+// size: sizeof does not move.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 33; }

@@ -615,6 +615,7 @@ class _InteractiveBrushEditCanvasViewState
       dualOffsetU: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
       dualOffsetV: dualMask == null ? 0.0 : _dualPhaseRandom.nextDouble(),
       dualDensity: settings.dualDensity,
+      dualCompositeMode: settings.dualCompositeMode,
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,

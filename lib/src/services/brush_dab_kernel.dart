@@ -7,6 +7,7 @@ import '../core/floor_math.dart';
 import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
+import '../models/separable_blend_mode.dart';
 import '../models/canvas_size.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
@@ -14,6 +15,7 @@ import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_tip_geometry.dart';
+import 'brush_stroke_blend.dart';
 import 'brush_tip_mask_sampling.dart';
 import 'native_tile_span_batch.dart';
 
@@ -96,6 +98,7 @@ class BrushDabPlan {
     required this.textureMask,
     required this.dualDensity,
     required this.dualOneMinusDensity,
+    required this.dualCompositeMode,
     required this.textureDensity,
     required this.textureOneMinusDensity,
     required this.tipULattice,
@@ -167,6 +170,9 @@ class BrushDabPlan {
   final BrushTipMask? textureMask;
   final double dualDensity;
   final double dualOneMinusDensity;
+
+  /// How the dual mask combines — see [BrushDab.dualCompositeMode].
+  final SeparableBlendMode dualCompositeMode;
   final double textureDensity;
   final double textureOneMinusDensity;
 
@@ -277,6 +283,7 @@ class BrushDabPlan {
       textureMask: textureMask,
       dualDensity: dualDensity,
       dualOneMinusDensity: 1.0 - dualDensity,
+      dualCompositeMode: dab.dualCompositeMode,
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
       tipULattice: unrotatedTip
@@ -372,6 +379,7 @@ class BrushDabPlan {
     radiusSqSkip: plan.radiusSqSkip,
     dualDensity: plan.dualDensity,
     dualOneMinusDensity: plan.dualOneMinusDensity,
+    dualCompositeMode: separableBlendModeNativeId(plan.dualCompositeMode),
     textureDensity: plan.textureDensity,
     textureOneMinusDensity: plan.textureOneMinusDensity,
     aaContrast: plan.aaContrast,
@@ -490,6 +498,7 @@ void blendDabTilesDart(
   final sourceB = plan.sourceB;
   final dualDensity = plan.dualDensity;
   final dualOneMinusDensity = plan.dualOneMinusDensity;
+  final dualCompositeMode = plan.dualCompositeMode;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
   final left = plan.left;
@@ -611,9 +620,23 @@ void blendDabTilesDart(
             vAxis: dualVLattice!,
             vIndex: vIndex,
           );
-          // Same law as the texture blend below; density 1.0 is the plain
-          // multiply this used to do unconditionally.
-          coverage *= dualOneMinusDensity + dualDensity * dualSample;
+          // 🚨THE DUAL TIP HAS A MODE (v33) — the reasoning is written once,
+          // in [BrushDab.dualCompositeMode] and beside the same branch in
+          // `brush_dab_coverage.dart`. ⛔Multiply keeps its own line because
+          // the general form is the same NUMBER and not the same BYTES.
+          if (dualCompositeMode == SeparableBlendMode.multiply) {
+            coverage *= dualOneMinusDensity + dualDensity * dualSample;
+          } else {
+            final combined = blendDualCoverage(
+              dualCompositeMode,
+              dualSample,
+              coverage,
+            );
+            coverage = coverage * dualOneMinusDensity + dualDensity * combined;
+            if (coverage > 1.0) {
+              coverage = 1.0;
+            }
+          }
           if (coverage <= 0.0) {
             continue;
           }

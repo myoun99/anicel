@@ -1806,6 +1806,7 @@ class QaNativeEngine {
     required double radiusSqSkip,
     required double dualDensity,
     required double dualOneMinusDensity,
+    required int dualCompositeMode,
     required double textureDensity,
     required double textureOneMinusDensity,
     required double aaContrast,
@@ -1907,7 +1908,7 @@ class QaNativeEngine {
     spec.tipSize = tipSize;
     spec.dualSize = dualSize;
     spec.texSize = texSize;
-    spec.reserved = 0;
+    spec.dualCompositeMode = dualCompositeMode;
     spec.tipAlpha = tipAlpha == null
         ? nullptr
         : _maskUploads.upload(tipAlpha).cast<Double>();
@@ -2186,8 +2187,12 @@ final class QaDabSpecStruct extends Struct {
   external int dualSize;
   @Int32()
   external int texSize;
+
+  /// How the DUAL mask combines with the coverage under it — a
+  /// `QA_STROKE_BLEND_*` id, the same contract `strokeBlendModeNativeId`
+  /// speaks. Took the `reserved` slot in v33, so the layout did not move.
   @Int32()
-  external int reserved;
+  external int dualCompositeMode;
   external Pointer<Double> tipAlpha;
   external Pointer<Int32> tipUTexel0;
   external Pointer<Double> tipUFraction;
