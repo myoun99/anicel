@@ -11,7 +11,6 @@
 default_platform(:ios)
 
 APP_IDENTIFIER = "com.myoun.anicel".freeze
-PROFILE_NAME = "match AppStore #{APP_IDENTIFIER}".freeze
 
 platform :ios do
   desc "Build a signed .ipa and ship it to TestFlight"
@@ -42,6 +41,15 @@ platform :ios do
       readonly: false,
     )
 
+    # The profile's NAME comes from what match just installed, for the same
+    # reason the team does below. A constant held only while nobody else
+    # owned the name: when match starts over — a new signing repository, as
+    # on 2026-09-10 — the old profile is still on Apple's side holding it
+    # (invalid once its certificate is revoked, but not gone), and sigh
+    # answers a taken name by appending a timestamp. The pinned settings
+    # would then name a profile that is not on the machine.
+    profile_name = ENV.fetch("sigh_#{APP_IDENTIFIER}_appstore_profile-name")
+
     # The team comes from the profile match just installed, not from a
     # secret: they have to agree, and only one of them is authoritative.
     # A stray newline in the secret is what made Xcode report "No profile
@@ -60,7 +68,7 @@ platform :ios do
       path: "Runner.xcodeproj",
       team_id: team_id,
       code_sign_identity: "Apple Distribution",
-      profile_name: PROFILE_NAME,
+      profile_name: profile_name,
       targets: ["Runner"],
     )
 
@@ -75,7 +83,7 @@ platform :ios do
       output_directory: "build",
       output_name: "Anicel.ipa",
       export_options: {
-        provisioningProfiles: { APP_IDENTIFIER => PROFILE_NAME },
+        provisioningProfiles: { APP_IDENTIFIER => profile_name },
       },
     )
 
