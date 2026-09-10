@@ -38,8 +38,8 @@ Future<PickedFile?> _openBrushFileDialog() async {
   return (name: file.name, bytes: bytes);
 }
 
-/// The brush preset library: the groups, the preset list, the active
-/// (highlighted) preset and every mutation on them — save/rename/reorder/
+/// The brush preset library: the groups, the preset list and every
+/// mutation on them — save/rename/reorder/
 /// delete for both presets and groups, plus ABR/SUT file import — with
 /// fire-and-forget persistence to the app-level preset file. Pure data
 /// controller; user messaging stays with the UI (mutations that want a
@@ -110,7 +110,6 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   List<BrushGroup> _groups = const <BrushGroup>[];
   List<BrushPreset> _presets = const <BrushPreset>[];
-  BrushPresetId? _activePresetId;
   bool _disposed = false;
 
   /// Library groups in display order (the root section is not one of them —
@@ -118,10 +117,6 @@ class BrushPresetLibrary extends ChangeNotifier {
   List<BrushGroup> get groups => _groups;
 
   List<BrushPreset> get presets => _presets;
-
-  /// The last-applied (or last-saved) preset, highlighted in the list.
-  /// Tweaking settings keeps the highlight; deleting the preset clears it.
-  BrushPresetId? get activePresetId => _activePresetId;
 
   @override
   void dispose() {
@@ -166,18 +161,15 @@ class BrushPresetLibrary extends ChangeNotifier {
     }
   }
 
-  void markActive(BrushPresetId? id) {
-    if (_activePresetId == id) {
-      return;
-    }
-    _activePresetId = id;
-    _notify();
-  }
-
-  /// Saves the given settings as a new preset and makes it active. It lands
-  /// in [groupId] — the caller passes the active preset's group, so saving a
+  /// Saves the given settings as a new preset and returns it. It lands in
+  /// [groupId] — the caller passes the held preset's group, so saving a
   /// variant of a brush keeps it next to the brush it came from.
-  void saveCurrent(BrushSettings settings, {BrushGroupId? groupId}) {
+  ///
+  /// ⛔Which preset is HELD is not the library's to say: that is the tool
+  /// state's `presetId` (H25-again), and the caller moves the hand onto the
+  /// preset this returns. The library kept an active id of its own that no
+  /// screen read — a third copy of one fact.
+  BrushPreset saveCurrent(BrushSettings settings, {BrushGroupId? groupId}) {
     final preset = BrushPreset(
       id: BrushPresetId('user-${DateTime.now().millisecondsSinceEpoch}'),
       name: _nextPresetName(),
@@ -185,9 +177,9 @@ class BrushPresetLibrary extends ChangeNotifier {
       settings: settings,
     );
     _presets = [..._presets, preset];
-    _activePresetId = preset.id;
     _notify();
     _persist();
+    return preset;
   }
 
   void rename(BrushPresetId id, String name) {
@@ -210,9 +202,6 @@ class BrushPresetLibrary extends ChangeNotifier {
       for (final preset in _presets)
         if (preset.id != id) preset,
     ];
-    if (_activePresetId == id) {
-      _activePresetId = null;
-    }
     _notify();
     _persist();
   }
@@ -259,9 +248,6 @@ class BrushPresetLibrary extends ChangeNotifier {
       for (final preset in _presets)
         if (preset.groupId != id) preset,
     ];
-    if (!_presets.any((preset) => preset.id == _activePresetId)) {
-      _activePresetId = null;
-    }
     _notify();
     _persist();
   }
@@ -285,7 +271,6 @@ class BrushPresetLibrary extends ChangeNotifier {
   void resetToDefaults() {
     _groups = List.of(defaultBrushGroups);
     _presets = List.of(defaultBrushPresets);
-    _activePresetId = null;
     _notify();
     _persist();
   }
@@ -443,9 +428,6 @@ class BrushPresetLibrary extends ChangeNotifier {
       if (landed.isNotEmpty) {
         port.write(landed);
       }
-    }
-    if (!_presets.any((preset) => preset.id == _activePresetId)) {
-      _activePresetId = null;
     }
     _notify();
     _persist();

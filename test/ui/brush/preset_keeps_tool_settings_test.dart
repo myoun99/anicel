@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
@@ -13,7 +15,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 ///
 /// T26 is 유저's 「선택툴 올가미인상태에서 **브러시툴로 바꾸면 초기화**되 …
 /// 다른 툴 다 무사한데 **브러시툴로만**」, and the round memo named
-/// `withPresetSettings` as the culprit: it rebuilt the state from the
+/// `withPreset` as the culprit: it rebuilt the state from the
 /// preset's shape and hand-listed eleven fields to carry back, so anything
 /// off that list would die.
 ///
@@ -41,17 +43,21 @@ void main() {
     cutStampBlendMode: BrushBlendMode.add,
   );
 
-  BrushSettings preset() => BrushSettings.fromShape(
-    const BrushShape(
-      size: 99,
-      spacing: 0.5,
-      blendMode: BrushBlendMode.multiply,
+  BrushPreset preset() => BrushPreset(
+    id: const BrushPresetId('under-test'),
+    name: 'under test',
+    settings: BrushSettings.fromShape(
+      const BrushShape(
+        size: 99,
+        spacing: 0.5,
+        blendMode: BrushBlendMode.multiply,
+      ),
     ),
   );
 
   test('applying a preset leaves every non-shape setting exactly as it was', () {
     final before = armed();
-    final after = before.withPresetSettings(preset(), tool: CanvasTool.brush);
+    final after = before.withPreset(preset(), tool: CanvasTool.brush);
 
     // The user's own case first: the lasso he had armed on the select tool.
     expect(
@@ -71,7 +77,7 @@ void main() {
   });
 
   test('and it really does apply the brush', () {
-    final after = armed().withPresetSettings(
+    final after = armed().withPreset(
       preset(),
       tool: CanvasTool.brush,
     );
@@ -88,7 +94,7 @@ void main() {
     // so the preset never reaches them, and that structural reason is why
     // they need no list of their own.
     final before = armed();
-    final after = before.withPresetSettings(preset(), tool: CanvasTool.brush);
+    final after = before.withPreset(preset(), tool: CanvasTool.brush);
     expect(after.color, before.color);
     expect(after.stabilizerStrength, before.stabilizerStrength);
   });
@@ -101,7 +107,7 @@ void main() {
       const BrushShape(blendMode: BrushBlendMode.screen),
     );
     expect(
-      before.withPresetSettings(preset(), tool: CanvasTool.brush).blendMode,
+      before.withPreset(preset(), tool: CanvasTool.brush).blendMode,
       BrushBlendMode.multiply,
       reason: 'the preset carries 乗算 and the brush wears it',
     );
@@ -113,18 +119,18 @@ void main() {
     // H25 (유저 2026-08-23) asks the opposite and was answered:
     // 「브러시 고르고 브러시크기 설정하면 다음에 같은 브러시 선택할때 해당
     // 브러시크기 남아있도록」. Later ruling wins; the older one is still
-    // quoted at `withPresetSettings`, because a reader who does not know it
+    // quoted at `withPreset`, because a reader who does not know it
     // existed would find this a bug.
     final before = armed();
 
     expect(
-      before.withPresetSettings(preset(), tool: CanvasTool.brush).size,
+      before.withPreset(preset(), tool: CanvasTool.brush).size,
       isNot(before.size),
       reason: 'the preset carries size 99 and the brush wears it',
     );
     expect(
       before
-          .withPresetSettings(
+          .withPreset(
             preset(),
             tool: CanvasTool.brush,
             handSet: (size: 33, opacity: null, blendMode: null),
@@ -136,7 +142,7 @@ void main() {
   });
 
   test('copyWith(shape:) lays a brush down and named arguments land on top', () {
-    // The ordering `withPresetSettings` depends on, asked directly: a caller
+    // The ordering `withPreset` depends on, asked directly: a caller
     // may say "this brush, but at my size".
     final state = BrushToolState.fromShape(const BrushShape(size: 12));
     final swapped = state.copyWith(

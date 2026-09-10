@@ -125,7 +125,7 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
         //
         // 🚨★★Third time this round a hand-written carry list went stale as
         // fields were added (`withMask` passed three and reset the shapes;
-        // `withPresetSettings` dropped them). The DIRECTION is what makes
+        // `withPreset` dropped them). The DIRECTION is what makes
         // this one safe: build from the LIVE state and pull back only what
         // the bank exists to remember — this paint tool's own brush and its
         // blend. A field added tomorrow is then shared by default, a mild
@@ -142,7 +142,12 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
         // ⛔The blend needed a line of its own until 2026-09-08. It does not
         // any more: it rides in the shape now (see [BrushBlendMode]), so
         // `shape: stored.shape` restores it the way it restores the size.
-        next = next.copyWith(shape: stored.shape, color: next.color);
+        //
+        // 🚨And the PRESET that brush came from travels with it (H25-again,
+        // H36). `copyWith(shape:)` alone kept the OUTGOING tool's preset id,
+        // so the eraser came back holding its own brush under the brush
+        // tool's name — see [BrushToolState.carryingBrushOf].
+        next = next.carryingBrushOf(stored);
       }
     }
     super.value = next;

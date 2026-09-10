@@ -187,26 +187,6 @@ void main() {
       expect(library.presets.map((p) => p.id.value), ['p1', 'loose']);
     });
 
-    test('deleting the active preset\'s group clears the highlight', () async {
-      final library = await seeded();
-      addTearDown(library.dispose);
-      library.markActive(const BrushPresetId('i1'));
-
-      library.deleteGroup(_ink);
-
-      expect(library.activePresetId, isNull);
-    });
-
-    test('deleting another group keeps the highlight', () async {
-      final library = await seeded();
-      addTearDown(library.dispose);
-      library.markActive(const BrushPresetId('i1'));
-
-      library.deleteGroup(_paint);
-
-      expect(library.activePresetId, const BrushPresetId('i1'));
-    });
-
     test('setGroupCollapsed folds one group only', () async {
       final library = await seeded();
       addTearDown(library.dispose);
@@ -244,13 +224,10 @@ void main() {
     test('resetToDefaults restores the built-ins', () async {
       final library = await seeded();
       addTearDown(library.dispose);
-      library.markActive(const BrushPresetId('i1'));
-
       library.resetToDefaults();
 
       expect(library.presets, defaultBrushPresets);
       expect(library.groups, defaultBrushGroups);
-      expect(library.activePresetId, isNull);
     });
   });
 
@@ -259,10 +236,18 @@ void main() {
       final library = await seeded();
       addTearDown(library.dispose);
 
-      library.saveCurrent(BrushSettings(size: 9), groupId: _paint);
+      final saved = library.saveCurrent(
+        BrushSettings(size: 9),
+        groupId: _paint,
+      );
 
       expect(library.presets.last.groupId, _paint);
-      expect(library.activePresetId, library.presets.last.id);
+      expect(
+        saved.id,
+        library.presets.last.id,
+        reason: 'the caller is handed the new preset — holding it is the '
+            'tool state, not the library (H25-again)',
+      );
     });
 
     test('falls back to root when the group is gone', () async {

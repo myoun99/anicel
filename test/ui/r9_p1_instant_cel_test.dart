@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -88,8 +90,12 @@ void main() {
         blendMode: BrushBlendMode.multiply,
       );
 
-      final applied = hand.withPresetSettings(
-        preset,
+      final applied = hand.withPreset(
+        BrushPreset(
+          id: const BrushPresetId('carries-a-colour'),
+          name: 'carries a colour',
+          settings: preset,
+        ),
         tool: CanvasTool.brush,
       );
 

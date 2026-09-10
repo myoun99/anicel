@@ -3,6 +3,8 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
+import '../../models/brush_preset.dart';
+import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
@@ -195,7 +197,7 @@ bool canvasToolRailTileIsRemembered(CanvasTool tool) =>
 ///
 /// ⛔THERE IS NO LONGER A "HAND SETTINGS PRESETS NEVER CARRY" LIST, which is
 /// what this used to describe. Size and opacity left it when H25 was
-/// answered ([withPresetSettings] applies them), and the blend left it in
+/// answered ([withPreset] applies them), and the blend left it in
 /// 2026-09-08 when 유저 retired the split outright: 「툴/손 설정 구분 없애고
 /// 모든 설정이 내보낼때 나르도록 … 그냥 위치만 지금처럼 나눈채로 두고」.
 /// What survives is the LAYOUT — size and opacity on the strip, the rest in
@@ -309,6 +311,7 @@ class BrushToolState {
     this.cutStampBlendMode = BrushBlendMode.color,
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
+    this.presetId,
   });
 
   /// Builds tool state from a loose [BrushShape] and the values that still
@@ -598,6 +601,23 @@ class BrushToolState {
   /// it); applying a preset returns to the brush, CSP-style.
   final CanvasTool tool;
 
+  /// The preset this state's brush came from — the one the library
+  /// highlights, and the brush what the hand sets is remembered under. Null
+  /// until a preset has been applied (a fresh tool before the library lands).
+  ///
+  /// 🚨H25-again (유저 2026-09-11): 「다시 2 고르면 100이아니라 6이되」. The id
+  /// used to live in a map BESIDE this state (`_activePresetByTool`), written
+  /// after the state was assigned — so the listener that remembers the hand's
+  /// size heard the NEW brush's values while the map still named the OLD
+  /// one, and filed them under the old brush. Every switch leaked one
+  /// brush's size into the brush before it.
+  ///
+  /// ⛔ONE FIELD, NOT A SECOND FACT BESIDE THE STATE: the values and the
+  /// brush they belong to arrive in one assignment, so no reader can see one
+  /// without the other. [withPreset] sets it, [carryingBrushOf] moves it with
+  /// the shape when a paint tool is restored, everything else carries it.
+  final BrushPresetId? presetId;
+
   /// The outline SELECT drags out, remembered separately from the one CUT
   /// drags (유저 확정: 도형은 동사별로 기억). "The shape vocabulary is
   /// shared" is not "the shape value is shared" — wanting the lasso for
@@ -768,7 +788,8 @@ class BrushToolState {
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
       BrushToolState.fromShape(settings.shape);
 
-  /// This state after a PRESET's [settings] are applied, on [tool].
+  /// This state after [preset] is applied, on [tool] — its shape, and the
+  /// preset itself as the brush the state now holds ([presetId]).
   ///
   /// This used to REBUILD the state from the preset's shape and then hand-list
   /// eleven fields to carry back across, so survival depended on someone
@@ -815,18 +836,36 @@ class BrushToolState {
   /// the only one a reader has to be able to justify. (The stabilizer and
   /// the remembered shape kinds were on the old list and no longer need to
   /// be — they are outside the shape, so they are already safe.)
-  BrushToolState withPresetSettings(
-    BrushSettings settings, {
+  BrushToolState withPreset(
+    BrushPreset preset, {
     required CanvasTool tool,
     BrushHandSettings? handSet,
-  }) => copyWith(
-    shape: settings.shape,
-    tool: tool,
-    size: handSet?.size,
-    opacity: handSet?.opacity,
-    blendMode: handSet?.blendMode,
-    color: color,
-  );
+  }) {
+    final applied = copyWith(
+      shape: preset.settings.shape,
+      tool: tool,
+      size: handSet?.size,
+      opacity: handSet?.opacity,
+      blendMode: handSet?.blendMode,
+      color: color,
+    );
+    // ONE assignment carries the values and the brush they belong to — see
+    // [presetId] for what two of them did.
+    return applied._rebuilt(shape: applied.shape, presetId: preset.id);
+  }
+
+  /// This state holding [stored]'s BRUSH — its shape and the preset it came
+  /// from, moved together — under this state's colour, which every tool
+  /// shares (R9 #2, the same exception [withPreset] makes).
+  ///
+  /// What `PaintToolStateNotifier` restores when a paint tool is taken up
+  /// again (R11-④). ⛔Not `copyWith(shape:)` alone: that keeps THIS state's
+  /// [presetId], so the eraser came back holding its own brush under the
+  /// brush tool's name — two facts about one brush, disagreeing.
+  BrushToolState carryingBrushOf(BrushToolState stored) {
+    final carried = copyWith(shape: stored.shape, color: color);
+    return carried._rebuilt(shape: carried.shape, presetId: stored.presetId);
+  }
 
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
@@ -863,7 +902,7 @@ class BrushToolState {
     ///
     /// ⚠️The individual arguments below WIN over it: a caller may lay a
     /// shape down and override one value on top, which is the order
-    /// `withPresetSettings` and the sliders both need.
+    /// `withPreset` and the sliders both need.
     BrushShape? shape,
     double? size,
     double? opacity,
@@ -970,6 +1009,7 @@ class BrushToolState {
       cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
       fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
+      presetId: presetId,
     );
   }
 
@@ -997,14 +1037,22 @@ class BrushToolState {
   /// it is not given, so an omission here is not a no-op — it is a silent
   /// reset. Picking a tip used to snap the three remembered outlines back
   /// to the rectangle and the fill's blend back to Color, which is the same
-  /// trap [withPresetSettings] carries a comment about.
+  /// trap [withPreset] carries a comment about.
   BrushToolState withMask(BrushMaskSlot slot, BrushTipMask? mask) {
     return _withShape(shape.withMask(slot, mask));
   }
 
   /// [shape] replaced, every hand setting carried through untouched.
-  BrushToolState _withShape(BrushShape next) => BrushToolState._raw(
-    shape: _clampShape(next),
+  BrushToolState _withShape(BrushShape next) =>
+      _rebuilt(shape: next, presetId: presetId);
+
+  /// [shape] and [presetId] as given, every other field exactly as it is —
+  /// the one list of the fields outside the shape besides [copyWith]'s.
+  BrushToolState _rebuilt({
+    required BrushShape shape,
+    required BrushPresetId? presetId,
+  }) => BrushToolState._raw(
+    shape: _clampShape(shape),
     tool: tool,
     selectShape: selectShape,
     cutShape: cutShape,
@@ -1014,6 +1062,7 @@ class BrushToolState {
     cutStampBlendMode: cutStampBlendMode,
     fillOpacity: fillOpacity,
     cutStampOpacity: cutStampOpacity,
+    presetId: presetId,
   );
 
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
@@ -1144,7 +1193,10 @@ class BrushToolState {
           other.fillBlendMode == fillBlendMode &&
           other.cutStampBlendMode == cutStampBlendMode &&
           other.fillOpacity == fillOpacity &&
-          other.cutStampOpacity == cutStampOpacity;
+          other.cutStampOpacity == cutStampOpacity &&
+          // H25-again: which brush a state holds is part of the state — two
+          // states wearing one shape under two names are not the same state.
+          other.presetId == presetId;
 
   @override
   int get hashCode => Object.hash(
@@ -1158,5 +1210,6 @@ class BrushToolState {
     cutStampBlendMode,
     fillOpacity,
     cutStampOpacity,
+    presetId,
   );
 }

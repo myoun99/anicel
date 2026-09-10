@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -14,7 +16,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 ///
 /// 🚨This REVERSES R26 #10 「브러시 다른거 선택한다고 사이즈/블렌딩모드가 바뀌지
 /// 않음」 for size, and that is why the old rule stays quoted at
-/// [BrushToolState.withPresetSettings]: it was a user decision, not an
+/// [BrushToolState.withPreset]: it was a user decision, not an
 /// oversight, and the next reader would otherwise find the new behaviour a bug.
 /// Later ruling wins.
 ///
@@ -27,12 +29,19 @@ void main() {
   BrushSettings settingsWithSize(double size) =>
       BrushSettings.fromShape(BrushToolState.defaults.shape.copyWith(size: size));
 
+  /// A preset carrying [settings] — what the library hands the state.
+  BrushPreset presetOf(BrushSettings settings) => BrushPreset(
+    id: const BrushPresetId('under-test'),
+    name: 'under test',
+    settings: settings,
+  );
+
   group('picking a brush', () {
     test('an UNTOUCHED brush brings its own size, not the hand\'s', () {
       final hand = BrushToolState.defaults.copyWith(size: 42);
 
-      final after = hand.withPresetSettings(
-        settingsWithSize(7),
+      final after = hand.withPreset(
+        presetOf(settingsWithSize(7)),
         tool: CanvasTool.brush,
       );
 
@@ -47,8 +56,8 @@ void main() {
     test('a brush the hand HAS set comes back at that size', () {
       final hand = BrushToolState.defaults.copyWith(size: 42);
 
-      final after = hand.withPresetSettings(
-        settingsWithSize(7),
+      final after = hand.withPreset(
+        presetOf(settingsWithSize(7)),
         tool: CanvasTool.brush,
         handSet: (size: 13, opacity: null, blendMode: null),
       );
@@ -61,9 +70,11 @@ void main() {
 
       expect(
         hand
-            .withPresetSettings(
-              BrushSettings.fromShape(
-                BrushToolState.defaults.shape.copyWith(opacity: 0.25),
+            .withPreset(
+              presetOf(
+                BrushSettings.fromShape(
+                  BrushToolState.defaults.shape.copyWith(opacity: 0.25),
+                ),
               ),
               tool: CanvasTool.brush,
             )
@@ -73,9 +84,11 @@ void main() {
       );
       expect(
         hand
-            .withPresetSettings(
-              BrushSettings.fromShape(
-                BrushToolState.defaults.shape.copyWith(opacity: 0.25),
+            .withPreset(
+              presetOf(
+                BrushSettings.fromShape(
+                  BrushToolState.defaults.shape.copyWith(opacity: 0.25),
+                ),
               ),
               tool: CanvasTool.brush,
               handSet: (size: null, opacity: 0.5, blendMode: null),
@@ -99,14 +112,14 @@ void main() {
       );
 
       expect(
-        hand.withPresetSettings(multiply, tool: CanvasTool.brush).blendMode,
+        hand.withPreset(presetOf(multiply), tool: CanvasTool.brush).blendMode,
         BrushBlendMode.multiply,
         reason: 'untouched: the brush\'s own',
       );
       expect(
         hand
-            .withPresetSettings(
-              multiply,
+            .withPreset(
+              presetOf(multiply),
               tool: CanvasTool.brush,
               handSet: (
                 size: null,
@@ -123,8 +136,8 @@ void main() {
     test('the COLOUR exception survives — it is the other decision', () {
       final hand = BrushToolState.defaults.copyWith(color: 0xFFFF0000);
 
-      final after = hand.withPresetSettings(
-        settingsWithSize(7),
+      final after = hand.withPreset(
+        presetOf(settingsWithSize(7)),
         tool: CanvasTool.brush,
       );
 

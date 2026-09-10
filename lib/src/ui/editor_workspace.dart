@@ -970,8 +970,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         widget.canvasSelectionCommands?.hasRegion ?? false;
     widget.session.clearCanvasSelection = () =>
         widget.canvasSelectionCommands?.deselect();
-    // H25: what the hand last set on each brush, from the last session.
-    _brushTool.addListener(_brushPresets.rememberBrushHandSettings);
+    // H25: what the hand last set on each brush, from the last session — and
+    // H36: a painting tool taken up holding no brush opens on one.
+    _brushTool.addListener(_brushPresets.followBrushTool);
     unawaited(
       _brushPresets._brushHandSettingsStore.load().then((saved) {
         if (!mounted || saved.isEmpty) {
@@ -1299,7 +1300,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
-    _brushTool.removeListener(_brushPresets.rememberBrushHandSettings);
+    _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
     // in memory, so writing them NOW is both safe and the last chance.
     if (_brushPresets._brushHandSettingsSave?.isActive ?? false) {

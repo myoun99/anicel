@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
@@ -27,6 +29,41 @@ void main() {
         ),
       );
       expect(find.text('library-content'), findsOneWidget);
+    });
+
+    testWidgets('🚨H36: a tool with sub-tools opens with exactly ONE of them '
+        'selected — the one in hand', (tester) async {
+      // 유저 2026-09-11: 「다른 툴도 확인해서 기본값 선택된 상태를 제대로
+      // 하도록 법 통일」. The brush and the eraser answer through the preset
+      // they hold (a_brush_and_its_preset_are_one_fact_test); every other
+      // tool answers through the state it is built from — measured here,
+      // for each, from a fresh state.
+      for (final tool in [
+        CanvasTool.select,
+        CanvasTool.cut,
+        CanvasTool.cutStamp,
+        CanvasTool.fill,
+        CanvasTool.fillShape,
+        CanvasTool.move,
+      ]) {
+        final fresh = BrushToolState.defaults.copyWith(tool: tool);
+        await tester.pumpWidget(
+          app(
+            ToolLibraryPanel(
+              key: ValueKey<CanvasTool>(tool),
+              tool: tool,
+              onToolChanged: (_) {},
+              onShapeKindChanged: (verb, kind) {},
+              shapeKind: fresh.activeShapeKind ?? CanvasShapeKind.rect,
+              brushLibrary: const SizedBox.shrink(),
+            ),
+          ),
+        );
+        final selected = tester
+            .widgetList<ListTile>(find.byType(ListTile))
+            .where((tile) => tile.selected);
+        expect(selected, hasLength(1), reason: '$tool');
+      }
     });
 
     testWidgets('the select tool lists its shapes and picks one on tap', (
@@ -553,8 +590,12 @@ void main() {
       final armed = BrushToolState.defaults
           .withShapeKind(CanvasShapeKind.lasso, forTool: CanvasTool.select)
           .withShapeKind(CanvasShapeKind.lasso, forTool: CanvasTool.cut);
-      final applied = armed.withPresetSettings(
-        BrushToolState.defaults.toBrushSettings(),
+      final applied = armed.withPreset(
+        BrushPreset(
+          id: const BrushPresetId('defaults'),
+          name: 'defaults',
+          settings: BrushToolState.defaults.toBrushSettings(),
+        ),
         tool: CanvasTool.brush,
       );
       expect(applied.selectShape, CanvasShapeKind.lasso);

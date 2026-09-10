@@ -41,7 +41,7 @@ const BrushGroupId _decorationGroup = BrushGroupId('builtin-decoration-group');
 /// settings a preset never carries", so an eraser brush could only ever be a
 /// tip SHAPE, which the roster already has. **That premise is false now.**
 /// `BrushShape.blendMode` is a preset field, `BrushShape.size` always was,
-/// `withPresetSettings` applies both, and the hand/preset split is GONE as
+/// `withPreset` applies both, and the hand/preset split is GONE as
 /// of 2026-09-08: 「손설정이든 정한거 싹 다 내보낼때 나르도록 … 지우개는
 /// 그냥 지우개 브러시 내보낼때 블렌드를 내보내면 되는거고」.
 ///
@@ -123,7 +123,7 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 ///
 /// ⛔SIZE IS NOT A HAND SETTING ANY MORE. This used to read "applying a
 /// preset deliberately keeps the current brush size (R26 #10)"; H25 asked
-/// the opposite and was answered, and `BrushToolState.withPresetSettings`
+/// the opposite and was answered, and `BrushToolState.withPreset`
 /// has applied the brush's own size ever since — a brush the hand has never
 /// touched wears the size baked into its own file. The comment simply
 /// outlived the code.

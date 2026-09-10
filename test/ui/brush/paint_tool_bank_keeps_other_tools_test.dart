@@ -21,7 +21,7 @@ import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 ///
 /// 🚨★★This is the THIRD time this round that a hand-written list of what
 /// to carry has gone stale as fields were added — `withMask` passed three
-/// and reset the shapes, `withPresetSettings` dropped them, and now this.
+/// and reset the shapes, `withPreset` dropped them, and now this.
 /// ⇒ The fix inverts the direction of the list: build from the LIVE state
 /// and pull back only what the bank exists to remember. A field added
 /// tomorrow is then shared by default, which is a mild wrong; under the old

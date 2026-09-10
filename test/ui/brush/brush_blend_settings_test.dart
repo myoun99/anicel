@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
@@ -89,7 +91,14 @@ void main() {
     // ...and picking a brush wears the brush's blend, not the hand's.
     final applied = BrushToolState(
       blendMode: BrushBlendMode.screen,
-    ).withPresetSettings(tuned.toBrushSettings(), tool: CanvasTool.brush);
+    ).withPreset(
+      BrushPreset(
+        id: const BrushPresetId('tuned'),
+        name: 'tuned',
+        settings: tuned.toBrushSettings(),
+      ),
+      tool: CanvasTool.brush,
+    );
     expect(applied.blendMode, BrushBlendMode.multiply);
     expect(applied.size, 42, reason: 'H25: a brush wears its own size too');
   });

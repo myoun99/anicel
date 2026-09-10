@@ -124,7 +124,7 @@ const List<String> appSettingsEntries = <String>[
 ///
 /// 🚨★★★**[containerRoot] IS NOT A CONVENIENCE — IT IS WHY A TEST CAN
 /// EXIST AT ALL.** [appSupportFilePath] deliberately does NOT redirect
-/// under `FLUTTER_TEST` (only the two stores that need a sandbox ask for
+/// under `FLUTTER_TEST` (only the stores that need a sandbox ask for
 /// the redirected form), so a test that called this with the real root
 /// would move the DEVELOPER'S OWN settings — the exact irreversible thing
 /// the user weighed before approving this. ⛔Production passes nothing.
@@ -163,9 +163,9 @@ int migrateSettingsIntoTheirRoom({String? containerRoot}) {
   return moved;
 }
 
-/// [appSettingsFilePath] with the test sandbox, for the two stores that
-/// need one (a test run must not read the developer's own recents or
-/// export defaults).
+/// [appSettingsFilePath] with the test sandbox, for the stores a test
+/// reaches through the production wiring — it must not read the developer's
+/// own recents, export defaults or brush hand settings.
 String testRedirectedAppSettingsPath(
   String fileName, {
   required String sandbox,
