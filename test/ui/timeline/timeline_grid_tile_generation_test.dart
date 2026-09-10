@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -14,6 +12,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨#29 프레임 블록 회색 깜빡임 — THE SUBSTRATE GENERATION.
@@ -40,9 +39,8 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {

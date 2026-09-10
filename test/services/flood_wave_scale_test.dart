@@ -6,6 +6,8 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 
+import '../helpers/native_engine_path.dart';
+
 /// NOT tagged `benchmark`: the tag skips the WHOLE file, and the
 /// assertions here (the flooded region's exact bounds, the mask length,
 /// the gap-close region's corner) are geometry the clock cannot move —
@@ -20,9 +22,8 @@ import 'package:anicel/src/services/canvas_flood_fill.dart';
 /// Assertions pin the RESULT (full-canvas bounds), not the clock.
 void main() {
   test('8K fully-composed flood wall time (prints; pool-scaled)', () {
-    final dllPath =
-        '${Directory.current.path}/build/native_standalone/Release/qa_engine.dll';
-    if (!File(dllPath).existsSync()) {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    if (dllPath == null) {
       markTestSkipped('qa_engine.dll not built');
       return;
     }
@@ -117,9 +118,8 @@ void main() {
   }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('8K GAP-CLOSE fill wall time (prints; R24-A2 measurement)', () {
-    final dllPath =
-        '${Directory.current.path}/build/native_standalone/Release/qa_engine.dll';
-    if (!File(dllPath).existsSync()) {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    if (dllPath == null) {
       markTestSkipped('qa_engine.dll not built');
       return;
     }

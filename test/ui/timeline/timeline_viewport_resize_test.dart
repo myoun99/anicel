@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -12,6 +10,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'timeline_cell_probe.dart';
 
 /// THE RESIZE LAW (device report 2026-08-17: open a project in a SMALL
@@ -35,9 +34,8 @@ void main() {
   // the file order shifted and this went red without its own code moving.)
   setUp(TimelineGridTileStore.instance.clear);
 
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final dllAvailable = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final dllAvailable = dllPath != null;
 
   const cellWidth = 24.0;
 

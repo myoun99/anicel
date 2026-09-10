@@ -1,5 +1,4 @@
 ﻿import 'dart:ffi';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,15 +6,16 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 
+import '../helpers/native_engine_path.dart';
+
 /// R20-E1: the C tile free-list allocator. Freed tile blocks must PARK on
 /// exact-size lists and be handed straight back — adoption (R19-Z) sends
 /// commit scratch out as finished tiles, so without recycling every
 /// full-canvas fill paid ~1024 fresh mallocs. Skips (loudly) when no
 /// locally built binary is found.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   setUp(() {
     QaNativeEngine.debugResetForTests();

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -7,13 +6,14 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 
+import '../helpers/native_engine_path.dart';
+
 /// R20-C1 close-gap fill: line-art gaps narrower than ~2× the gap radius
 /// stop leaks; the region still grows back to the REAL barriers. The C
 /// kernel must reproduce the Dart reference pipeline exactly.
 void main() {
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final dllAvailable = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final dllAvailable = dllPath != null;
 
   setUp(() {
     QaNativeEngine.debugResetForTests();

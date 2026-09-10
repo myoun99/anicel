@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueNotifier, listEquals;
@@ -17,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// The OPEN-STALENESS residency law (device report 2026-08-17: old-format
@@ -50,9 +50,8 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {

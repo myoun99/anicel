@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -17,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// UI-R18 O7 T2: the substrate tile store — engine-gated stand-down,
@@ -24,9 +24,8 @@ import 'timeline_frame_geometry_probe.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final dllPath =
-      '${Directory.current.path}\\build\\native_standalone\\Release\\qa_engine.dll';
-  final available = File(dllPath).existsSync();
+  final dllPath = nativeEngineLibraryPathOrNull();
+  final available = dllPath != null;
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {

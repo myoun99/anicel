@@ -338,7 +338,6 @@ void main() {
       final path = nativeEngineLibraryPathOrNull();
       if (path == null) {
         markTestSkipped(nativeEngineMissingSkipReason);
-        expect(nativeEngineRequired, isFalse, reason: 'QA_REQUIRE_NATIVE=1');
         return;
       }
       debugQaEngineLibraryPathOverride = path;

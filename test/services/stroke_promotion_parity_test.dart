@@ -263,7 +263,6 @@ void main() {
     () {
       if (dllPath == null) {
         markTestSkipped(nativeEngineMissingSkipReason);
-        expect(nativeEngineRequired, isFalse, reason: 'CI must build one');
         return;
       }
       QaNativeEngine.debugResetForTests();

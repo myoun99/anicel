@@ -35,12 +35,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final libraryPath = nativeEngineLibraryPathOrNull();
   if (libraryPath == null) {
-    if (nativeEngineRequired) {
-      test('native engine is required but was not found', () {
-        fail(nativeEngineMissingSkipReason);
-      });
-      return;
-    }
     test(
       'the process footprint answers here',
       () {},

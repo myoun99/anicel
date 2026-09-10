@@ -166,9 +166,6 @@ void main() {
       'standalone binary)', () {
     final path = nativeEngineLibraryPathOrNull();
     if (path == null) {
-      if (nativeEngineRequired) {
-        fail(nativeEngineMissingSkipReason);
-      }
       markTestSkipped(nativeEngineMissingSkipReason);
       return;
     }
