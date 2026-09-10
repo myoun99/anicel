@@ -148,6 +148,9 @@ void main() {
     int intervalEffectorRandomMinimum = 0,
     int rotationEffector = 0x03,
     int rotationRandomScale = 100,
+    int useSpray = 1,
+    int rotationEffectorInSpray = 0x03,
+    int rotationRandomInSpray = 100,
     double dualSize = 30.0,
     int syncDualBrushSize = 0,
     int compositeMode = 0,
@@ -179,7 +182,9 @@ void main() {
         TextureReverseDensity INTEGER, TextureBrightness INTEGER,
         TextureContrast INTEGER,
         BrushSizeUnit INTEGER, BrushRotationEffector INTEGER,
-        BrushRotationRandomScale INTEGER, UseDualBrush INTEGER,
+        BrushRotationRandomScale INTEGER,
+        BrushRotationEffectorInSpray INTEGER,
+        BrushRotationRandomInSpray INTEGER, UseDualBrush INTEGER,
         DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
         DualSize REAL, SyncDualBrushSize INTEGER,
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
@@ -209,14 +214,15 @@ void main() {
       'BrushSpraySize, BrushSprayDensity, TextureImage, TextureScale2, '
       'TextureDensity, TextureReverseDensity, TextureBrightness, '
       'TextureContrast, BrushSizeUnit, BrushRotationEffector, '
-      'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
+      'BrushRotationRandomScale, BrushRotationEffectorInSpray, '
+      'BrushRotationRandomInSpray, UseDualBrush, DualUsePatternImage, '
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
       'BrushIntervalEffector, CompositeMode, AntiAlias) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?)',
+      '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
+      '?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(
@@ -231,10 +237,13 @@ void main() {
           minimumPercent: flowEffectorMinimum,
           randomMinimumPercent: flowEffectorRandomMinimum,
         ),
+        useSpray,
         if (texturePng == null) null else patternArray(textureCatalogPath),
         brushSizeUnit,
         rotationEffector,
         rotationRandomScale,
+        rotationEffectorInSpray,
+        rotationRandomInSpray,
         if (dualPng == null) 0 else 1,
         if (dualPng == null) 0 else 1,
         if (dualPng == null) null else patternArray(dualCatalogPath),
@@ -458,6 +467,9 @@ void main() {
       flowEffectorRandomMinimum: 4,
       rotationEffector: 0xC3,
       rotationRandomScale: 45,
+      // The PLAIN rotation pair is what this asserts, and the plain pair is
+      // what a brush without spray uses — see the two spray tests below.
+      useSpray: 0,
     );
     final s = (await decodeSutBrushFile(
       filePath: path,
@@ -484,6 +496,51 @@ void main() {
       tipPng: await blackPng(4, 4),
       rotationEffector: 0x13, // pressure, no random
       rotationRandomScale: 100,
+      useSpray: 0,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.angleJitter, 0.0);
+  });
+
+  test('🚨a SPRAY brush spins by its own pair of rotation columns', () async {
+    // Measured on the user's real files (2026-09-10): the two brushes of
+    // twenty with `BrushUseSpray = 1` PARK the plain pair — effector 3, no
+    // random bit — and put the setting in `BrushRotationEffectorInSpray`,
+    // which carries the same 0x80. `Sampled Brush 4 3` reads 69 there, and
+    // reading only the plain pair imported it as a scatter brush whose
+    // stamps all face the same way.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      rotationEffector: 0x03, // parked: no random
+      rotationRandomScale: 100,
+      rotationEffectorInSpray: 0x81, // random
+      rotationRandomInSpray: 69,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.angleJitter, closeTo(0.69, 1e-9));
+    // The premise: this really is the spray path.
+    expect(s.scatterCount, 4);
+  });
+
+  test('⛔a spray brush with its IN-SPRAY pair parked does not borrow the '
+      'plain one', () async {
+    // ウェット水彩 is exactly this: spray on, in-spray randomness 0, and
+    // `BrushRotationRandomScale` sitting at its default 100. Falling back to
+    // the plain scale would spin a watercolour brush a full turn per dab.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      rotationEffector: 0xC3, // the random bit IS set on the plain pair
+      rotationRandomScale: 100,
+      rotationEffectorInSpray: 0x81,
+      rotationRandomInSpray: 0,
     );
     final s = (await decodeSutBrushFile(
       filePath: path,

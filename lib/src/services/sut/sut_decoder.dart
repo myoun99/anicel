@@ -279,10 +279,6 @@ BrushSettings _settingsFromVariant(
     _effectorRandomJitter(variant['BrushOpacityEffector']),
     _effectorRandomJitter(variant['BrushFlowEffector']),
   );
-  // `BrushRotationEffector` is a bare int rather than a blob, but carries the
-  // SAME input-source bits. `BrushRotationRandomScale` is a percentage of a
-  // full turn and sits at its default 100 on brushes that never randomise,
-  // so it only means anything once the random bit is actually set.
   // Thickness IS roundness here, so its random source squashes the tip per
   // dab — what stops a textured stamp brush from looking stamped.
   final roundnessJitter = _effectorRandomJitter(
@@ -293,11 +289,39 @@ BrushSettings _settingsFromVariant(
   final spacingJitter = _effectorRandomJitter(
     variant['BrushIntervalEffector'],
   );
-  final angleJitter = _usesRandom(_effectorFlags(variant['BrushRotationEffector']))
-      ? ((_doubleOf(variant['BrushRotationRandomScale']) ?? 0.0) / 100.0)
-            .clamp(0.0, 1.0)
-            .toDouble()
-      : 0.0;
+  // Spray mode scatters dabs around the stroke — and it is also the gate on
+  // WHICH pair of rotation columns describes the tip's spin, so it is read
+  // before either of them.
+  final sprays = _intOf(variant['BrushUseSpray']) == 1;
+  // 🚨A SPRAY BRUSH'S PARTICLES SPIN BY THEIR OWN PAIR OF COLUMNS. Measured
+  // on the user's real files (2026-09-10): the only two brushes of twenty
+  // with `BrushUseSpray = 1` — `Sampled Brush 4 3` and `ウェット水彩` — PARK
+  // the plain pair (`BrushRotationEffector = 3`, no random bit) and put the
+  // real setting in `BrushRotationEffectorInSpray = 129`, the same 0x80.
+  // Reading only the plain pair imported `Sampled Brush 4 3`'s 69% particle
+  // spin as ZERO, which is a scatter brush whose stamps all face one way.
+  //
+  // ⚠️THE GATE IS `BrushUseSpray`, not the presence of the in-spray columns:
+  // every non-spray brush in the sample parks them at 3 / 100, and a brush
+  // that really does spin its tip without spray says so in the plain pair
+  // (鉛筆R at 45%).
+  // ⛔What a brush that sets BOTH should do is NOT measured — no file in the
+  // sample has one — so the in-spray pair simply WINS where spray is on,
+  // which is the narrowest reading the evidence supports.
+  //
+  // ⚠️Both effectors are bare ints rather than blobs, and both carry the same
+  // input-source bits; both scales are percentages of a full turn.
+  final angleJitter = sprays
+      ? _randomScaleRatio(
+          variant,
+          effector: 'BrushRotationEffectorInSpray',
+          scale: 'BrushRotationRandomInSpray',
+        )
+      : _randomScaleRatio(
+          variant,
+          effector: 'BrushRotationEffector',
+          scale: 'BrushRotationRandomScale',
+        );
 
   // Ground-colour mixing (밑바탕 혼색). `BrushUseWaterColor` is the gate and
   // it matters: brushes that never enabled mixing still carry stored knob
@@ -312,11 +336,11 @@ BrushSettings _settingsFromVariant(
     fallback: 0.0,
   );
 
-  // Spray mode scatters dabs around the stroke; the spray size is a
-  // percentage of the brush size (its diameter), so the radius is half.
+  // The spray size is a percentage of the brush size (its diameter), so the
+  // radius is half.
   var scatterRadiusRatio = 0.0;
   var scatterCount = 1;
-  if (_intOf(variant['BrushUseSpray']) == 1) {
+  if (sprays) {
     final spraySize = _doubleOf(variant['BrushSpraySize']) ?? 0.0;
     scatterRadiusRatio = spraySize.isFinite
         ? (spraySize / 100.0 / 2.0).clamp(0.0, 10.0).toDouble()
@@ -597,6 +621,25 @@ int? _effectorFlags(Object? effector) {
 
 /// Whether the effector answers to the RANDOM input (0x80).
 bool _usesRandom(int? flags) => flags != null && (flags & 0x80) != 0;
+
+/// A percentage column read as a 0..1 amplitude, but ONLY when its effector
+/// says the random input is switched on.
+///
+/// 🚨THE GATE IS THE WHOLE POINT (「값이 있다 ≠ 켜져 있다」). Clip Studio parks
+/// these scales at their defaults — 100 is the usual one — on brushes that
+/// never randomise anything, so reading a scale without its effector turns
+/// every tip in the library. Two pairs are shaped this way (the plain
+/// rotation and the in-spray one), which is why the law is written once.
+double _randomScaleRatio(
+  Map<String, Object?> variant, {
+  required String effector,
+  required String scale,
+}) {
+  if (!_usesRandom(_effectorFlags(variant[effector]))) {
+    return 0.0;
+  }
+  return ((_doubleOf(variant[scale]) ?? 0.0) / 100.0).clamp(0.0, 1.0).toDouble();
+}
 
 /// Every input source's curve on one effector, keyed by source.
 ///
