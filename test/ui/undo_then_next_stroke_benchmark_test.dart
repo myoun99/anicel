@@ -34,6 +34,17 @@ import '../helpers/panel_finders.dart';
 /// 974. The fix is [AnicelBinding.applyFocusHighlightPolicy];
 /// `H30_POLICY=automatic` puts the framework default back to reproduce it.
 ///
+/// ⚠️**THE RAIL BUTTON ARM PAYS A BILL A REAL PEN DOES NOT.** Pressed with
+/// the pen, the rail's undo left the next stroke's first frame painting
+/// 1321 render objects — the whole tool rail, 347 of them inside its own
+/// boundary (`H30_PAINTED=1` names them: `tools-panel` and its twelve
+/// buttons). That is the pressed button's hover highlight fading out, and
+/// it lands on the pen-down only because a tap followed by a stroke
+/// teleports the test's stylus (one device, id 0). A pen that hovers to the
+/// canvas (`button-undo-hover`) or leaves the digitizer's range
+/// (`button-undo-lift`) paints 974 / 976 — the control's count,
+/// the lifted pen's 2 being the tool cursor ring coming back with it.
+///
 /// 🚨★★★**EVERY STROKE MUST BE A BRUSH STROKE, AND EVERY UNDO MUST UNDO
 /// ONE — ASSERTED, NOT HOPED.** The first version of this file started its
 /// strokes on a modular walk across the canvas's rect. In this workspace
@@ -115,12 +126,50 @@ void main() {
     final diagnose = Platform.environment['H30_DIAG'] == '1';
     // 🔬What the treatment arm does between its two strokes: `H30_ARM` =
     // keys-undo (Ctrl+Z, the user's report) | button-undo (the rail's undo,
-    // pressed with the pen) | key-only (a Shift press and no undo at all).
+    // pressed with the pen) | key-only (a Shift press and no undo at all) |
+    // button-undo-hover / button-undo-lift (the rail's undo, then the pen
+    // hovers to the canvas / leaves the digitizer's range).
     final arm = Platform.environment['H30_ARM'] ?? 'keys-undo';
     var tracing = false;
 
     var paintedObjects = 0;
-    debugOnProfilePaint = (_) => paintedObjects += 1;
+    // 🔬`H30_PAINTED=1`: WHERE the first frame painted — each painted render
+    // object is filed under the nearest ancestor wearing a string key, for
+    // the last round's measured stroke of each arm.
+    final listPainted = Platform.environment['H30_PAINTED'] == '1';
+    Map<String, int>? paintedBy;
+    Map<String, int>? lastPaintedBy;
+    String regionOf(RenderObject renderObject) {
+      final creator = renderObject.debugCreator;
+      if (creator is! DebugCreator) {
+        return '(no creator)';
+      }
+      final own = creator.element.widget.key;
+      if (own is ValueKey<String>) {
+        return own.value;
+      }
+      var region = '(no key)';
+      creator.element.visitAncestorElements((ancestor) {
+        final key = ancestor.widget.key;
+        if (key is ValueKey<String>) {
+          region = key.value;
+          return false;
+        }
+        return true;
+      });
+      return region;
+    }
+    var capturing = false;
+    Map<String, int>? controlBy;
+    Map<String, int>? treatmentBy;
+    debugOnProfilePaint = (renderObject) {
+      paintedObjects += 1;
+      final into = paintedBy;
+      if (into != null) {
+        final region = regionOf(renderObject);
+        into[region] = (into[region] ?? 0) + 1;
+      }
+    };
 
     // 🔬WHERE IN THE FRAME: a persistent callback registered after the
     // renderer's own fires once build → layout → paint is done; a transient
@@ -298,6 +347,7 @@ void main() {
           debugPrintScheduleBuildForStacks = false;
           paintedObjects = 0;
           debugProfilePaintsEnabled = true;
+          paintedBy = capturing ? <String, int>{} : null;
         }
         transientDoneAt = 0;
         SchedulerBinding.instance.scheduleFrameCallback(
@@ -312,6 +362,8 @@ void main() {
         if (move == 0) {
           debugProfilePaintsEnabled = false;
           painted = paintedObjects;
+          lastPaintedBy = paintedBy;
+          paintedBy = null;
           if (transientDoneAt > 0 && drawFrameDoneAt > 0) {
             transientPart = transientDoneAt - t0;
             drawPart = drawFrameDoneAt - transientDoneAt;
@@ -340,14 +392,35 @@ void main() {
       );
     }
 
+    /// Presses a rail button with the pen, the way `H30_ARM` says.
+    ///
+    /// ⚠️A tap followed by a stroke TELEPORTS the pen: taps and strokes share
+    /// one stylus device (id 0), and `MouseTracker` hover-tracks a stylus, so
+    /// the button's hover exit — and with it a repaint of the whole tool rail,
+    /// 347 render objects inside the rail's own boundary — lands on the
+    /// stroke's pen-down. A real pen leaves the button first: it HOVERS to
+    /// the canvas (`button-undo-hover`) or leaves the digitizer's range
+    /// (`button-undo-lift`, a pen that does not report hover), and the 50ms
+    /// highlight fade is over before it touches down.
+    Future<void> pressRailButton(String key) async {
+      final button = find.byKey(ValueKey<String>(key));
+      await tester.tap(button, kind: PointerDeviceKind.stylus);
+      if (arm == 'button-undo-hover') {
+        final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+        await pen.moveTo(strokeStart(strokeIndex));
+        await tester.pump(const Duration(milliseconds: 100));
+      } else if (arm == 'button-undo-lift') {
+        final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+        await pen.removePointer(location: tester.getCenter(button));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
     Future<void> pressUndo() async {
       final countBefore = session.historyManager.undoCount;
       final documentBefore = session.repository.currentProject;
-      if (arm == 'button-undo') {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('undo-button')),
-          kind: PointerDeviceKind.stylus,
-        );
+      if (arm.startsWith('button-')) {
+        await pressRailButton('undo-button');
       } else {
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
@@ -365,11 +438,8 @@ void main() {
     Future<void> pressRedo() async {
       final countBefore = session.historyManager.undoCount;
       final documentBefore = session.repository.currentProject;
-      if (arm == 'button-undo') {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('redo-button')),
-          kind: PointerDeviceKind.stylus,
-        );
+      if (arm.startsWith('button-')) {
+        await pressRailButton('redo-button');
       } else {
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -423,6 +493,7 @@ void main() {
 
     for (var round = 0; round < rounds; round += 1) {
       final last = round == rounds - 1;
+      capturing = listPainted && last;
 
       // ── CONTROL: draw, pen-up, draw again. Measure the SECOND one.
       await drawOneStroke();
@@ -432,6 +503,9 @@ void main() {
         tracing = true;
       }
       add(plain, await drawOneStroke());
+      if (capturing) {
+        controlBy = lastPaintedBy;
+      }
       tracing = false;
 
       // ── TREATMENT: draw, pen-up, `H30_ARM`, draw again. Same two
@@ -450,6 +524,9 @@ void main() {
         tracing = true;
       }
       add(undone, await drawOneStroke());
+      if (capturing) {
+        treatmentBy = lastPaintedBy;
+      }
       tracing = false;
 
       // ── UNDO+REDO, then draw: the canvas ends where the control leaves
@@ -462,6 +539,22 @@ void main() {
     }
 
     debugOnProfilePaint = null;
+    final control = controlBy;
+    final treatment = treatmentBy;
+    if (control != null && treatment != null) {
+      int more(String region) =>
+          (treatment[region] ?? 0) - (control[region] ?? 0);
+      final regions = {...control.keys, ...treatment.keys}.toList()
+        ..sort((a, b) => more(b).abs().compareTo(more(a).abs()));
+      for (final region in regions.where((r) => more(r) != 0).take(25)) {
+        // ignore: avoid_print
+        print(
+          '[H30-PAINTED] ${more(region) > 0 ? '+' : ''}${more(region)}  '
+          '$region (treatment ${treatment[region] ?? 0}, control '
+          '${control[region] ?? 0})',
+        );
+      }
+    }
     debugProfilePaintsEnabled = false;
     debugPrintScheduleBuildForStacks = false;
 
