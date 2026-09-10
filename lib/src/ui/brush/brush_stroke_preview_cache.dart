@@ -1,6 +1,7 @@
 import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io' show Platform;
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -47,9 +48,34 @@ class BrushStrokePreviewCache {
         retire: (sample) => sample.image.dispose(),
       );
 
-  /// Isolate fan-out cap: a fast scroll requests dozens of rows at once;
-  /// two workers keep the UI isolate free without a spawn storm.
-  static const int _maxConcurrentRasters = 2;
+  /// Isolate fan-out cap: a fast scroll — or simply opening a group —
+  /// requests dozens of rows at once.
+  ///
+  /// 🚨IT IS THE MACHINE'S NUMBER, NOT A CONSTANT (유저 2026-09-10: 「지금
+  /// 브러시 로드가 매우 느리다」). A flat two left the whole roster queued
+  /// behind two workers on a desktop with sixteen cores; measured on all 53
+  /// built-ins at a one-column cell, the wall clock was **674 ms at 2, 419 ms
+  /// at 4 and 346 ms at 8** — so the cap is where the curve flattens, and the
+  /// machine decides how close to it we get.
+  ///
+  /// ⛔AND IT GOES DOWN ON SMALL MACHINES, which is the point of subtracting
+  /// one: a two-core tablet now runs ONE worker beside the UI isolate instead
+  /// of two competing with it. The old comment said two workers "keep the UI
+  /// isolate free", and on the machines that need that most they did not.
+  ///
+  /// ⚠️Same formula as the .tvpp import pool (`tvpp_import_door.dart`), which
+  /// is the other place in the app that fans work out over isolates. Only the
+  /// ceiling differs, and it differs because it was measured HERE.
+  static final int _maxConcurrentRasters = kIsWeb
+      ? 1
+      : rasterWorkersFor(Platform.numberOfProcessors);
+
+  /// How many rasters a machine with [cores] processors may run at once.
+  ///
+  /// ⛔`cores - 1`, never `cores`: the UI isolate is one of the things
+  /// competing for them, and it is the one the user is looking at.
+  @visibleForTesting
+  static int rasterWorkersFor(int cores) => math.max(1, math.min(cores - 1, 4));
   int _activeRasters = 0;
   final Queue<void Function()> _rasterQueue = Queue<void Function()>();
 
@@ -81,42 +107,32 @@ class BrushStrokePreviewCache {
     int width,
     int height,
   ) async {
-    final Uint8List alpha;
+    final BakedBrushStroke baked;
     if (kIsWeb) {
-      // No isolates on web: rasterize inline (still cached forever).
-      alpha = rasterizeBrushStrokeSample(settings, width, height);
+      // No isolates on web: bake inline (still cached forever).
+      baked = bakeBrushStrokeSample(settings, width, height);
     } else {
       await _acquireRasterSlot();
       try {
-        alpha = await Isolate.run(
-          () => rasterizeBrushStrokeSample(settings, width, height),
+        // 🚨THE WHOLE BAKE GOES OVER, not just the stroke. `Isolate.run`
+        // hands its result back with `Isolate.exit`, which TRANSFERS the
+        // message instead of copying it — so widening the result from an
+        // alpha plane to the four-channel buffer costs nothing on the wire,
+        // while the expansion loop it replaces was running once per preset
+        // ON THE UI ISOLATE, in the same frames the panel was trying to
+        // paint. (The same fact is why the .tvpp import pool returns whole
+        // canvases — `tvpp_import_door.dart`.)
+        baked = await Isolate.run(
+          () => bakeBrushStrokeSample(settings, width, height),
         );
       } finally {
         _releaseRasterSlot();
       }
     }
 
-    // Premultiplied WHITE: rgb = alpha — correct standalone, and the
-    // srcIn tint at paint time only reads the alpha anyway.
-    final rgba = Uint8List(alpha.length * 4);
-    for (var index = 0; index < alpha.length; index += 1) {
-      final value = alpha[index];
-      final base = index * 4;
-      rgba[base] = value;
-      rgba[base + 1] = value;
-      rgba[base + 2] = value;
-      rgba[base + 3] = value;
-    }
     return BrushStrokeSample(
-      image: await uploadRawRgba(rgba, width: width, height: height),
-      // Measured HERE, off the bytes that are already in hand, because a
-      // `ui.Image` can only be read back asynchronously — asking the GPU
-      // for these pixels once per row is the cost this avoids.
-      nameGroundCoverage: brushStrokeNameGroundCoverage(
-        alpha,
-        width: width,
-        height: height,
-      ),
+      image: await uploadRawRgba(baked.rgba, width: width, height: height),
+      nameGroundCoverage: baked.nameGroundCoverage,
     );
   }
 
@@ -214,6 +230,50 @@ double brushStrokeNameGroundCoverage(
   }
   final count = (bottom - top) * (right - left);
   return count <= 0 ? 0.0 : total / (count * 255.0);
+}
+
+/// Everything one bake produces: the pixels as they will be uploaded, and
+/// the ink measured from the very same pass.
+///
+/// ⚠️They travel together because they are made together — see
+/// [BrushStrokeSample], which is this pair once the pixels are an image.
+typedef BakedBrushStroke = ({Uint8List rgba, double nameGroundCoverage});
+
+/// One preview bake, start to finish: raster the stroke, widen it to the
+/// pixel format the upload wants, and measure the ink under the name.
+///
+/// 🚨THIS IS THE ISOLATE'S WHOLE JOB. Everything here used to be split — the
+/// stroke over there, the widening and the measuring back on the UI isolate —
+/// and the split cost the UI a full-buffer loop per preset for nothing (the
+/// result is transferred, not copied; see `_rasterize`).
+BakedBrushStroke bakeBrushStrokeSample(
+  BrushSettings settings,
+  int width,
+  int height,
+) {
+  final alpha = rasterizeBrushStrokeSample(settings, width, height);
+  // Premultiplied WHITE: rgb = alpha — correct standalone, and the
+  // srcIn tint at paint time only reads the alpha anyway.
+  final rgba = Uint8List(alpha.length * 4);
+  for (var index = 0; index < alpha.length; index += 1) {
+    final value = alpha[index];
+    final base = index * 4;
+    rgba[base] = value;
+    rgba[base + 1] = value;
+    rgba[base + 2] = value;
+    rgba[base + 3] = value;
+  }
+  return (
+    rgba: rgba,
+    // Measured off the bytes that are already in hand, because a `ui.Image`
+    // can only be read back asynchronously — asking the GPU for these pixels
+    // once per row is the cost this avoids.
+    nameGroundCoverage: brushStrokeNameGroundCoverage(
+      alpha,
+      width: width,
+      height: height,
+    ),
+  );
 }
 
 /// The stroke-sample rasterizer (moved OUT of the widget so the isolate

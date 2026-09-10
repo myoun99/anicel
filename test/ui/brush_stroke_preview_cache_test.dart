@@ -122,6 +122,60 @@ void main() {
     expect(find.byType(RawImage), findsOneWidget);
   });
 
+  group('🚨the bake is ONE job, and it is the isolate\'s', () {
+    test('what comes back is the raster, widened — nothing is recomputed on '
+        'this side', () {
+      // The expansion and the ink measurement used to run HERE, once per
+      // preset, in the frames the panel was trying to paint. They moved into
+      // the isolate because `Isolate.run` TRANSFERS its result instead of
+      // copying it, so the wider buffer is free on the wire. This pins that
+      // the move changed the address of the work and nothing else.
+      final settings = BrushSettings(hardness: 0.8, flow: 0.9);
+      final alpha = rasterizeBrushStrokeSample(settings, 64, 20);
+
+      final baked = bakeBrushStrokeSample(settings, 64, 20);
+
+      expect(baked.rgba, hasLength(alpha.length * 4));
+      for (var index = 0; index < alpha.length; index += 1) {
+        final base = index * 4;
+        expect(
+          [
+            baked.rgba[base],
+            baked.rgba[base + 1],
+            baked.rgba[base + 2],
+            baked.rgba[base + 3],
+          ],
+          everyElement(alpha[index]),
+          reason: 'premultiplied WHITE: every channel is the coverage',
+        );
+      }
+      expect(
+        baked.nameGroundCoverage,
+        brushStrokeNameGroundCoverage(alpha, width: 64, height: 20),
+      );
+    });
+
+    test('🚨the fan-out leaves the UI isolate a core, and stops climbing '
+        'where the measurement did', () {
+      // 유저 2026-09-10: 「지금 브러시 로드가 매우 느리다」. A flat two queued
+      // the whole roster behind two workers on a 20-core desktop, and — worse
+      // — ran two beside the UI isolate on a two-core tablet.
+      expect(BrushStrokePreviewCache.rasterWorkersFor(1), 1);
+      expect(BrushStrokePreviewCache.rasterWorkersFor(2), 1);
+      expect(BrushStrokePreviewCache.rasterWorkersFor(4), 3);
+      // Measured on all 53 built-ins: 674 ms at 2, 419 ms at 4, 346 ms at 8.
+      // The ceiling is where the curve flattened, not where the cores ran out.
+      expect(BrushStrokePreviewCache.rasterWorkersFor(20), 4);
+      for (var cores = 2; cores <= 64; cores += 1) {
+        expect(
+          BrushStrokePreviewCache.rasterWorkersFor(cores),
+          lessThanOrEqualTo(cores - 1),
+          reason: '$cores cores must not all go to rasters',
+        );
+      }
+    });
+  });
+
   group('🚨the raster width is a LADDER, not the row width', () {
     test('a splitter drag across a whole panel asks for a handful of '
         'rasters, not one per pixel', () {
