@@ -185,29 +185,19 @@ class Camera {
   );
 
   /// Replaces the active cut's camera track (one undo step) — the property
-  /// lanes' per-property key edits route through here.
+  /// lanes' per-property key edits route through here. "Same name, same
+  /// value" is the coordinator's one camera write, the transform law across
+  /// the 겸용 group (F-84) — no longer a copy here that stopped at the cut.
   void updateActiveCutCameraTrack(
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  }) => _activeCut.onActiveCut((cutId) {
-    // "Same name, same value" INSIDE the camera's own track. A camera
-    // belongs to its cut, so this naming space has no second use site to
-    // reach — but two keys sharing a name on one lane still move together,
-    // which is the whole link at its smallest.
-    final before = _project.cutById(cutId)?.camera.track;
-    _project.cutCommandCoordinator.updateCutCamera(
+  }) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
-      camera: CutCamera.fromTrack(
-        before == null
-            ? track
-            : transformTrackWithNamedValues(
-                track,
-                transformNamedKeyChanges(before, track),
-              ),
-      ),
+      camera: CutCamera.fromTrack(track),
       description: description,
-    );
-  });
+    ),
+  );
 
   /// Whether the canvas is in camera manipulation mode.
   bool get isCameraLayerActive =>

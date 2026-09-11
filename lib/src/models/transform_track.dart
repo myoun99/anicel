@@ -320,15 +320,6 @@ TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
       _ => null,
     };
 
-/// [property]'s key NAME at [frameIndex] — null when the key is unnamed,
-/// and also when no key sits there (ask [transformLaneHasKeyAt] to tell
-/// those apart).
-String? transformLaneKeyName(
-  TransformTrack track,
-  TransformPropertyId property,
-  int frameIndex,
-) => transformLaneKeyAt(track, property, frameIndex)?.name;
-
 /// [property]'s key at [frameIndex], or null — a lane's key read without
 /// knowing its value type, so its NAME and its TYPE (the key window's two
 /// halves) come off the same read.
@@ -343,20 +334,6 @@ PropertyKey<Object?>? transformLaneKeyAt(
   TransformPropertyId.rotation => track.rotation.keyAt(frameIndex),
   TransformPropertyId.opacity => track.opacity.keyAt(frameIndex),
 };
-
-/// Whether [property]'s lane keys at [frameIndex] at all — a name needs a
-/// key to sit on.
-bool transformLaneHasKeyAt(
-  TransformTrack track,
-  TransformPropertyId property,
-  int frameIndex,
-) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.keyAt(frameIndex),
-  TransformPropertyId.position => track.position.keyAt(frameIndex),
-  TransformPropertyId.scale => track.scale.keyAt(frameIndex),
-  TransformPropertyId.rotation => track.rotation.keyAt(frameIndex),
-  TransformPropertyId.opacity => track.opacity.keyAt(frameIndex),
-} != null;
 
 /// Whether [name] is already used by [property]'s lane in [track] — the
 /// read a rename does before it commits.
@@ -389,71 +366,6 @@ bool transformLaneUsesName(
     excludeFrames: excludeFrames,
   ),
 } != null;
-
-/// [track] with [property]'s key at [frameIndex] renamed to [name] (null
-/// clears it). A no-op when no key sits there.
-TransformTrack transformTrackWithKeyName(
-  TransformTrack track,
-  TransformPropertyId property,
-  int frameIndex,
-  String? name,
-) => switch (property) {
-  TransformPropertyId.anchorPoint => track.copyWith(
-    anchorPoint: track.anchorPoint.withKeyName(frameIndex, name),
-  ),
-  TransformPropertyId.position => track.copyWith(
-    position: track.position.withKeyName(frameIndex, name),
-  ),
-  TransformPropertyId.scale => track.copyWith(
-    scale: track.scale.withKeyName(frameIndex, name),
-  ),
-  TransformPropertyId.rotation => track.copyWith(
-    rotation: track.rotation.withKeyName(frameIndex, name),
-  ),
-  TransformPropertyId.opacity => track.copyWith(
-    opacity: track.opacity.withKeyName(frameIndex, name),
-  ),
-};
-
-/// [track] with [property]'s key at [frameIndex] holding the value [name]
-/// ALREADY has in [source] — the rename's pull, per lane. Unchanged when
-/// the name is free there or no key sits at the frame.
-TransformTrack transformTrackAdoptingName(
-  TransformTrack track,
-  TransformTrack source,
-  TransformPropertyId property,
-  int frameIndex,
-  String name,
-) {
-  PropertyTrack<T> adopt<T>(PropertyTrack<T> lane, PropertyTrack<T> from) {
-    final key = lane.keyAt(frameIndex);
-    final value = from.valueForName(name);
-    if (key == null || value == null || key.value == value) {
-      return lane;
-    }
-    // The interpolation rides across explicitly: adopting a value must not
-    // restyle the segment leaving the key.
-    return lane.withKey(frameIndex, value, interpolation: key.interpolation);
-  }
-
-  return switch (property) {
-    TransformPropertyId.anchorPoint => track.copyWith(
-      anchorPoint: adopt(track.anchorPoint, source.anchorPoint),
-    ),
-    TransformPropertyId.position => track.copyWith(
-      position: adopt(track.position, source.position),
-    ),
-    TransformPropertyId.scale => track.copyWith(
-      scale: adopt(track.scale, source.scale),
-    ),
-    TransformPropertyId.rotation => track.copyWith(
-      rotation: adopt(track.rotation, source.rotation),
-    ),
-    TransformPropertyId.opacity => track.copyWith(
-      opacity: adopt(track.opacity, source.opacity),
-    ),
-  };
-}
 
 /// Samples an AE Opacity track as a 0..1 multiplier; 1 while the track is
 /// empty. Deliberately track-level and layer-agnostic — a layer's animated

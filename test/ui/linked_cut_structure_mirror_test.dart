@@ -5,8 +5,10 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 
 /// 겸용컷 STRUCTURE mirroring: layer existence is shared structure, so a
 /// row created in one use site appears in every sibling ("존재는 공유,
@@ -257,26 +259,27 @@ void main() {
       ]);
     }
 
-    bool nameKey(CutId cutId) {
+    // A single key is the one-frame span at the playhead: the lane RANGE
+    // verbs name it — the ones the key window calls.
+    void standOnKey(CutId cutId) {
       session.selectCut(cutId);
-      return session.effectsAndFx.setEffectKeyName(
-        layerId: counterpartIn(cutId, row).id,
-        effectId: effectId,
-        parameterId: radiusId,
+      session.standOnRow(
+        LaneRowAddress(
+          counterpartIn(cutId, row).id,
+          effectLaneId(effectId, radiusId),
+        ),
         frameIndex: 0,
-        name: 'A',
       );
     }
 
+    bool nameKey(CutId cutId) {
+      standOnKey(cutId);
+      return session.laneVerbs.setLaneKeyNamesForSelection('A');
+    }
+
     void joinKey(CutId cutId) {
-      session.selectCut(cutId);
-      session.effectsAndFx.linkEffectKeyName(
-        layerId: counterpartIn(cutId, row).id,
-        effectId: effectId,
-        parameterId: radiusId,
-        frameIndex: 0,
-        name: 'A',
-      );
+      standOnKey(cutId);
+      session.laneVerbs.linkLaneKeyNamesForSelection('A');
     }
 
     double radiusAt(CutId cutId) => counterpartIn(
@@ -336,14 +339,17 @@ void main() {
       );
     }
 
-    bool nameRotation(CutId cutId) {
+    void standOnRotation(CutId cutId) {
       session.selectCut(cutId);
-      return session.laneVerbs.setTransformKeyName(
-        layerId: counterpartIn(cutId, row).id,
-        property: TransformPropertyId.rotation,
+      session.standOnRow(
+        LaneRowAddress(counterpartIn(cutId, row).id, 'rotation'),
         frameIndex: 0,
-        name: 'A',
       );
+    }
+
+    bool nameRotation(CutId cutId) {
+      standOnRotation(cutId);
+      return session.laneVerbs.setLaneKeyNamesForSelection('A');
     }
 
     double rotationAt(CutId cutId) =>
@@ -361,13 +367,8 @@ void main() {
     );
     expect(rotationAt(pair.linked), 10, reason: 'a collision writes nothing');
 
-    session.selectCut(pair.linked);
-    session.laneVerbs.linkTransformKeyName(
-      layerId: counterpartIn(pair.linked, row).id,
-      property: TransformPropertyId.rotation,
-      frameIndex: 0,
-      name: 'A',
-    );
+    standOnRotation(pair.linked);
+    session.laneVerbs.linkLaneKeyNamesForSelection('A');
 
     expect(rotationAt(pair.linked), 45, reason: 'joining adopts the name');
     expect(rotationAt(pair.source), 45, reason: 'the holder is untouched');

@@ -2,6 +2,7 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 
 /// The 겸용 변경 plan: what linking [targetCutId] to [originCutId] will
@@ -9,7 +10,8 @@ import '../../models/project.dart';
 /// confirmation dialog shows (링크 목록, 교체 장수, 새로 나타나는 항목,
 /// 보존 팁, undo 명시), and the command's exact work order.
 ///
-/// Rules (user-confirmed): matching is by NAME; conflicts resolve
+/// Rules (user-confirmed): matching is by NAME — the SINGLETON kinds (one
+/// conte row, one camera row a cut) by KIND; conflicts resolve
 /// **원본 승리** exactly once at conversion; unique frames JOIN the
 /// shared bank both ways; layers present on one side only UNION into the
 /// other with empty timelines (완전 미러).
@@ -22,7 +24,8 @@ class ConvertToLinkedCutPlan {
     required this.joiningFrameCount,
   });
 
-  /// Name-matched (origin layer, target layer) pairs that will link.
+  /// Matched (origin layer, target layer) pairs that will link — by name,
+  /// or by kind for a singleton kind.
   final List<({LayerId originLayerId, LayerId targetLayerId})> layerPairs;
 
   /// Origin drawing layers with no name match in the target — the target
@@ -82,7 +85,8 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   // folder stripped, which an ADJUSTMENT row cannot survive (its position
   // is what it grades). The two rules used to be hand-written here and in
   // the create planner, and the copies had already drifted — this one had
-  // no folder clause. Layer pairing stays by NAME.
+  // no folder clause. Layer pairing stays by NAME — a singleton kind's by
+  // KIND, below.
   bool linksIntoLinkedCut(Layer layer) => layer.kind.joinsLinkedCutConvert;
   final originDrawing = [
     for (final layer in originCut.layers)
@@ -93,7 +97,15 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
       if (linksIntoLinkedCut(layer)) layer,
   ];
   final targetByName = <String, Layer>{
-    for (final layer in targetDrawing) layer.name: layer,
+    for (final layer in targetDrawing)
+      if (!layer.kind.isSingletonPerCut) layer.name: layer,
+  };
+  // A SINGLETON kind pairs by KIND (F-84): each cut holds one conte row and
+  // one camera row whatever they are called, and pairing them by name
+  // would union a SECOND one into each cut the moment the names differ.
+  final targetByKind = <LayerKind, Layer>{
+    for (final layer in targetDrawing)
+      if (layer.kind.isSingletonPerCut) layer.kind: layer,
   };
   final matchedTargetIds = <LayerId>{};
   final matchedOriginIds = <LayerId>{};
@@ -102,7 +114,9 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   var replaced = 0;
   var joining = 0;
   for (final origin in originDrawing) {
-    final target = targetByName[origin.name];
+    final target = origin.kind.isSingletonPerCut
+        ? targetByKind[origin.kind]
+        : targetByName[origin.name];
     // Pairs are SAME-KIND only: image and animation rows draw names from
     // the same A/B/C pool, and a cross-kind link group would hand a BG
     // picture to a drawing row (and make updateLayerKind's kind-mirror

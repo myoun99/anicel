@@ -1406,7 +1406,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    timeline: this,
     internals: this,
     activeCut: _activeCutEdits,
   );
@@ -1524,8 +1523,10 @@ class EditorSessionManager extends ChangeNotifier
   // when the RANGE form arrived: a single key is the one-frame span at the
   // playhead, so `setLaneKeyNamesForSelection` covers both and leaving the
   // narrow pair here would only invite a future fix to land on the copy
-  // nothing calls. The per-FAMILY verbs below (`setEffectKeyName`,
-  // `setTransformKeyName`) stay — the range walk builds on them.
+  // nothing calls. The per-FAMILY pairs (`setEffectKeyName`,
+  // `setTransformKeyName` and their links) followed on 2026-09-11 (F-84):
+  // only tests still called them, and the transform one could never have
+  // named a camera key.
 
   /// The layer's resolved transform pose at [frameIndex] (identity while
   /// the track is empty) — the lane value column and key-freeze source.

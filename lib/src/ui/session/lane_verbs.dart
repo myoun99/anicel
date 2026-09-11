@@ -69,95 +69,13 @@ class LaneVerbs {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
-  /// Names (or un-names, with null) one TRANSFORM lane KEY — the twin of
-  /// [_effectsAndFx.setEffectKeyName], under the same contract: true means [name] was
-  /// ALREADY taken in that lane's naming space and NOTHING was written, so
-  /// the caller can offer to join instead (see [linkTransformKeyName]).
-  ///
-  /// The naming space is (link group, property). A transform carries no
-  /// shared id the way an effect chain does — 겸용 siblings are different
-  /// [LayerId]s holding the same part — so the group stands in for the
-  /// effect id, and Rotation's "A" still cannot collide with Position's.
-  bool setTransformKeyName({
-    required LayerId layerId,
-    required TransformPropertyId property,
-    required int frameIndex,
-    required String? name,
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    final layer = _project.layerById(layerId);
-    if (cutId == null || layer == null) {
-      return false;
-    }
-    final track = layer.transformTrack;
-    if (!transformLaneHasKeyAt(track, property, frameIndex) ||
-        transformLaneKeyName(track, property, frameIndex) == name) {
-      return false;
-    }
-    if (name != null &&
-        _project.cutCommandCoordinator.transformTrackHoldingName(
-              cutId: cutId,
-              layerId: layerId,
-              property: property,
-              name: name,
-            ) !=
-            null) {
-      return true;
-    }
-    _internals.updateLayerTransformTrack(
-      layerId,
-      transformTrackWithKeyName(track, property, frameIndex, name),
-      description: name == null ? 'Unname key' : 'Name key',
-    );
-    return false;
-  }
-
-  /// Joins [name] on a transform lane, ADOPTING the value that name already
-  /// holds — the answer to the "합칠까요?" [setTransformKeyName] raises, and
-  /// the same pull [_effectsAndFx.linkEffectKeyName] does.
-  void linkTransformKeyName({
-    required LayerId layerId,
-    required TransformPropertyId property,
-    required int frameIndex,
-    required String name,
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    final layer = _project.layerById(layerId);
-    if (cutId == null || layer == null) {
-      return;
-    }
-    final holder = _project.cutCommandCoordinator.transformTrackHoldingName(
-      cutId: cutId,
-      layerId: layerId,
-      property: property,
-      name: name,
-    );
-    var next = layer.transformTrack;
-    if (holder != null) {
-      // Adopt BEFORE naming: the value arrives on a still-unnamed key, so
-      // the write that follows carries a rename and nothing else — which
-      // is what keeps the joining key from imposing its own number.
-      next = transformTrackAdoptingName(
-        next,
-        holder,
-        property,
-        frameIndex,
-        name,
-      );
-    }
-    _internals.updateLayerTransformTrack(
-      layerId,
-      transformTrackWithKeyName(next, property, frameIndex, name),
-      description: 'Name key',
-    );
-  }
-
   /// The transform track that ALREADY holds [name] in this lane's naming
   /// space, or null when the name is free there.
   ///
-  /// A LAYER row's space spans its 겸용 link group. A camera row's and a V
-  /// row's do not: a camera track belongs to its cut and a V track is held
-  /// once, so there is no second use site for a name to reach.
+  /// A LAYER row's space spans its 겸용 link group — the camera row's too,
+  /// since it keeps the transform law (F-84, 2026-09-11). A V row's does
+  /// not: a V track is held once, so there is no second use site for a name
+  /// to reach.
   /// [excludeFrames] are the keys a RANGE rename is about to name: they are
   /// the ones joining, so they must not be found as the holder.
   TransformTrack? _laneTransformHoldingName(
@@ -176,9 +94,7 @@ class LaneVerbs {
       return track;
     }
     final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null ||
-        layer.kind == LayerKind.camera ||
-        trackIdOfTransformLaneCarrier(layer.id) != null) {
+    if (cutId == null || trackIdOfTransformLaneCarrier(layer.id) != null) {
       return null;
     }
     return _project.cutCommandCoordinator.transformTrackHoldingName(

@@ -45,7 +45,9 @@ import 'link_mirror.dart'
         linkCounterpartIn,
         linkMirrorTargets,
         linkedCutSiblings,
-        mirroredOrderAfterMove;
+        mirroredOrderAfterMove,
+        namedTransformWrites,
+        transformTrackOfRow;
 import 'set_layer_attachment_command.dart';
 import 'set_layer_placement_command.dart';
 import 'delete_cut_command.dart';

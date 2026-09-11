@@ -1,5 +1,6 @@
 import '../editing/editing_session_state.dart';
 import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -18,9 +19,13 @@ import '../project_repository.dart';
 /// duplicate → 겸용 변경 composition instead.
 ///
 /// Per the confirmed design:
-/// - Only drawing (animation) layers and the FOLDER rows holding them
-///   link; SE/instruction/camera rows are fresh per-use fixtures
-///   ("카메라·SE·타임시트는 각자").
+/// - Every row whose kind links (`LayerKind.linksIntoLinkedCut`) is
+///   copied linked: the drawing rows and the FOLDER rows holding them, and
+///   — F-84, 유저 2026-09-11 — the conte row and the CAMERA row, which is
+///   how the linked cut has a camera at all. SE/instruction rows are fresh
+///   per-use fixtures. The camera's LANES arrive copied, not shared
+///   ("카메라·SE·타임시트는 각자" still holds for what they say): only a
+///   NAMED key carries a value across afterwards — the transform law.
 /// - Attach structure and folder membership mirror onto planned ids.
 /// - The registry gains one pair per linked row (extending existing
 ///   groups, so a second 겸용 joins the same bank) — folder rows included,
@@ -85,11 +90,16 @@ class CreateLinkedCutCommand implements Command {
       final newCut = Cut(
         id: newCutId,
         name: newName,
-        // Fresh SE/instruction/camera fixture rows around the linked
-        // drawing layers and their folders.
+        // A fresh direction row — the per-use fixture — around the linked
+        // rows.
         layers: withEnsuredSectionLayers(newCutId, linkedLayers),
         duration: source.duration,
         canvasSize: source.canvasSize,
+        // The camera row came across linked; its lanes come across COPIED.
+        // The immutable track is shared as the plain duplicate shares it: a
+        // pose-view round-trip would resynchronize independently keyed
+        // properties.
+        camera: CutCamera.fromTrack(source.camera.track),
       );
 
       _registryBefore = project.linkRegistry;

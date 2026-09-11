@@ -220,9 +220,11 @@ void _theCapabilityTable() {
   });
   column('linksIntoLinkedCut', (kind) => kind.linksIntoLinkedCut, {
     LayerKind.animation,
+    LayerKind.storyboard,
     LayerKind.image,
     LayerKind.text,
     LayerKind.folder,
+    LayerKind.camera,
     LayerKind.adjustment,
   });
   column('isSingletonPerCut', (kind) => kind.isSingletonPerCut, {

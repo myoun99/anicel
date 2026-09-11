@@ -6,6 +6,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -85,6 +86,48 @@ void main() {
       expect(plan.replacedFrameCount, 1, reason: 'name "1" conflicts');
       expect(plan.joiningFrameCount, 1, reason: 'name "2" joins');
       expect(plan.linksAnything, isTrue);
+    });
+
+    test('the SINGLETON kinds pair by KIND — one conte row and one camera '
+        'row a cut, whatever they are called (F-84)', () {
+      Layer row(String id, String name, LayerKind kind) => Layer(
+        id: LayerId(id),
+        name: name,
+        frames: const [],
+        timeline: const {},
+        kind: kind,
+      );
+      final origin = cut('origin', [
+        row('a-conte', 'B', LayerKind.storyboard),
+        row('a-cam', 'Camera', LayerKind.camera),
+      ]);
+      final target = cut('target', [
+        row('b-conte', 'Conte', LayerKind.storyboard),
+        row('b-cam', 'Cam', LayerKind.camera),
+      ]);
+
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]),
+        originCut: origin,
+        targetCut: target,
+      );
+
+      expect(plan.layerPairs, [
+        (
+          originLayerId: const LayerId('a-conte'),
+          targetLayerId: const LayerId('b-conte'),
+        ),
+        (
+          originLayerId: const LayerId('a-cam'),
+          targetLayerId: const LayerId('b-cam'),
+        ),
+      ]);
+      expect(
+        plan.originOnlyLayerIds,
+        isEmpty,
+        reason: 'by name, each cut would gain a second conte and camera row',
+      );
+      expect(plan.targetOnlyLayerIds, isEmpty);
     });
 
     test('two unrelated cuts with nothing in common still union their '

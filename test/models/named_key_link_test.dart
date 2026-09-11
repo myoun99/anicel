@@ -251,61 +251,6 @@ void main() {
         reason: 'Rotation A and Scale A are different names by construction',
       );
     });
-
-    test('joining ADOPTS the name\'s value and keeps the interpolation', () {
-      final joiner = lanes(
-        rotation: PropertyTrack<double>(
-          keys: {
-            3: const PropertyKey(10, interpolation: PropertyKeyInterpolation.hold),
-          },
-        ),
-      );
-
-      final result = transformTrackAdoptingName(
-        joiner,
-        lanes(rotation: track({0: (45, 'A')})),
-        TransformPropertyId.rotation,
-        3,
-        'A',
-      );
-
-      expect(result.rotation.keyAt(3)!.value, 45, reason: 'the name wins');
-      expect(
-        result.rotation.keyAt(3)!.interpolation,
-        PropertyKeyInterpolation.hold,
-        reason: 'adopting a value must not restyle the segment leaving it',
-      );
-    });
-
-    test('naming reads and writes go through one lane switch', () {
-      final subject = lanes(rotation: track({4: (10, null)}));
-
-      expect(transformLaneHasKeyAt(subject, TransformPropertyId.rotation, 4),
-          isTrue);
-      expect(transformLaneHasKeyAt(subject, TransformPropertyId.scale, 4),
-          isFalse);
-      expect(
-        transformLaneKeyName(subject, TransformPropertyId.rotation, 4),
-        isNull,
-      );
-
-      final named = transformTrackWithKeyName(
-        subject,
-        TransformPropertyId.rotation,
-        4,
-        'A',
-      );
-
-      expect(transformLaneKeyName(named, TransformPropertyId.rotation, 4), 'A');
-      expect(
-        transformLaneUsesName(named, TransformPropertyId.rotation, 'A'),
-        isTrue,
-      );
-      expect(
-        transformLaneUsesName(named, TransformPropertyId.scale, 'A'),
-        isFalse,
-      );
-    });
   });
 
   // Naming a RANGE: the covered keys collapse onto one value, because a

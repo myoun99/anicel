@@ -4,7 +4,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/property_track.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -31,13 +30,11 @@ class EffectsAndFx {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
     required SessionInternals internals,
     required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
        _internals = internals,
        _activeCut = activeCut;
 
@@ -46,7 +43,6 @@ class EffectsAndFx {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
   final SessionInternals _internals;
 
   /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
@@ -104,187 +100,6 @@ class EffectsAndFx {
       layer.id,
       effectsWithAdded(layer.effects, effect),
       description: 'Add ${kind.label}',
-    );
-  }
-
-  /// Names (or un-names, with null) one effect-parameter KEY.
-  ///
-  /// A name is a link: every key called this, in this same parameter, holds
-  /// one value — the frame-name rule said of keyframes (user 2026-07-30).
-  /// Because linked rows share effect ids, that naming space reaches the
-  /// 겸용 siblings whose chains otherwise only share their shape.
-  ///
-  /// Returns true when [name] is ALREADY taken in that space and NOTHING
-  /// was written, so the caller can offer to join instead (see
-  /// [linkEffectKeyName]) — the same report [FrameVerbs.renameSelectedFrame] makes
-  /// about a colliding frame name. False means the rename applied, or could
-  /// not.
-  ///
-  /// The collision is reported as a FACT rather than as the value behind
-  /// it: a transform lane's value is a point, not a number, and a link
-  /// whose two halves disagree about what they carry would be two links.
-  bool setEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String? name,
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return false;
-    }
-    final site = _effectKeySite(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-    );
-    if (site == null || site.key.name == name) {
-      return false;
-    }
-    if (name != null &&
-        _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
-              cutId: cutId,
-              layerId: layerId,
-              effectId: effectId,
-              parameterId: parameterId,
-              name: name,
-            ) !=
-            null) {
-      return true;
-    }
-    _writeEffectKeyName(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-      name: name,
-    );
-    return false;
-  }
-
-  /// Joins [name], ADOPTING the value that name already holds — the answer
-  /// to the "합칠까요?" [setEffectKeyName] raises.
-  ///
-  /// The key takes the number rather than imposing its own, exactly as
-  /// [FrameVerbs.linkSelectedFrame] takes the drawing that is already there (user
-  /// 2026-08-10). A name that turns out to be free just applies, so a stale
-  /// confirmation cannot blank the value.
-  void linkEffectKeyName({
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String name,
-  }) {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _writeEffectKeyName(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-      name: name,
-      adopted: _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
-        cutId: cutId,
-        layerId: layerId,
-        effectId: effectId,
-        parameterId: parameterId,
-        name: name,
-      ),
-    );
-  }
-
-  /// The one effect-parameter key a naming verb addresses, with what its
-  /// write needs — null when any link of that chain is missing.
-  ({
-    Layer layer,
-    LayerEffect effect,
-    int effectIndex,
-    EffectParameter parameter,
-    PropertyKey<double> key,
-  })?
-  _effectKeySite({
-    required CutId cutId,
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-  }) {
-    final layers = _project.cutById(cutId)?.layers ?? const <Layer>[];
-    final layerIndex = layers.indexWhere((row) => row.id == layerId);
-    if (layerIndex == -1) {
-      return null;
-    }
-    final layer = layers[layerIndex];
-    final effectIndex = layer.effects.indexWhere(
-      (effect) => effect.id == effectId,
-    );
-    if (effectIndex == -1) {
-      return null;
-    }
-    final effect = layer.effects[effectIndex];
-    final parameter = effect.parameters[parameterId];
-    final key = parameter?.track.keyAt(frameIndex);
-    if (parameter == null || key == null) {
-      return null;
-    }
-    return (
-      layer: layer,
-      effect: effect,
-      effectIndex: effectIndex,
-      parameter: parameter,
-      key: key,
-    );
-  }
-
-  /// Writes one key's [name] — and, when [adopted] is given, the value that
-  /// name brings with it — as ONE undo step. The key's interpolation is
-  /// carried across explicitly: adopting a value must not silently restyle
-  /// the segment leaving the key.
-  void _writeEffectKeyName({
-    required CutId cutId,
-    required LayerId layerId,
-    required EffectId effectId,
-    required String parameterId,
-    required int frameIndex,
-    required String? name,
-    double? adopted,
-  }) {
-    final site = _effectKeySite(
-      cutId: cutId,
-      layerId: layerId,
-      effectId: effectId,
-      parameterId: parameterId,
-      frameIndex: frameIndex,
-    );
-    if (site == null) {
-      return;
-    }
-    var track = site.parameter.track;
-    if (adopted != null && adopted != site.key.value) {
-      track = track.withKey(
-        frameIndex,
-        adopted,
-        interpolation: site.key.interpolation,
-      );
-    }
-    track = track.withKeyName(frameIndex, name);
-    final next = [...site.layer.effects]
-      ..[site.effectIndex] = site.effect.withParameter(
-        parameterId,
-        EffectParameter(value: site.parameter.value, track: track),
-      );
-    updateLayerEffects(
-      layerId,
-      next,
-      description: name == null ? 'Unname key' : 'Name key',
     );
   }
 

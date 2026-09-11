@@ -96,52 +96,23 @@ class _TrackCommands {
       return;
     }
 
-    // "Same name, same value": a named key MOVED by this write drags every
-    // other key of that name along — here and in the 겸용 siblings, whose
-    // transform lanes are otherwise entirely their own ("레인만 각자").
-    // This is the ONLY way a transform number crosses cuts.
-    final changes = transformNamedKeyChanges(
-      layer.transformTrack,
-      transformTrack,
-    );
+    // "Same name, same value" — the transform law, one for a layer's lanes
+    // and a cut's camera ([namedTransformWrites]).
     final commands = <Command>[
-      UpdateLayerTransformCommand(
-        repository: _coordinator.repository,
+      for (final write in namedTransformWrites(
+        _coordinator.repository.requireProject(),
         cutId: cutId,
         layerId: layerId,
-        transformTrack: transformTrackWithNamedValues(transformTrack, changes),
-        description: description,
-      ),
+        after: transformTrack,
+      ))
+        UpdateLayerTransformCommand(
+          repository: _coordinator.repository,
+          cutId: write.cutId,
+          layerId: write.layerId,
+          transformTrack: write.track,
+          description: description,
+        ),
     ];
-    if (!changes.isEmpty) {
-      final project = _coordinator.repository.requireProject();
-      for (final target in linkMirrorTargets(
-        project,
-        cutId: cutId,
-        layerId: layerId,
-      )) {
-        if (target.cutId == cutId && target.layerId == layerId) {
-          continue;
-        }
-        final sibling = requireLayerAnywhere(project, target.layerId);
-        final next = transformTrackWithNamedValues(
-          sibling.transformTrack,
-          changes,
-        );
-        if (next == sibling.transformTrack) {
-          continue;
-        }
-        commands.add(
-          UpdateLayerTransformCommand(
-            repository: _coordinator.repository,
-            cutId: target.cutId,
-            layerId: target.layerId,
-            transformTrack: next,
-            description: description,
-          ),
-        );
-      }
-    }
 
     _coordinator.historyManager.execute(
       commands.length == 1
@@ -152,8 +123,9 @@ class _TrackCommands {
 
   /// The transform track that ALREADY holds [name] in [property]'s lane,
   /// anywhere in this row's naming space — the row itself AND its 겸용
-  /// siblings. Null when the name is free, which is what tells a rename it
-  /// can simply apply.
+  /// siblings, a camera row's read off its cut ([transformTrackOfRow]). Null
+  /// when the name is free, which is what tells a rename it can simply
+  /// apply.
   ///
   /// The space is keyed by the LINK GROUP because a transform has no
   /// equivalent of the effect id that carries an FX naming space across
@@ -175,10 +147,11 @@ class _TrackCommands {
       layerId: layerId,
     )) {
       final isSource = target.cutId == cutId && target.layerId == layerId;
-      final track = requireLayerAnywhere(
+      final track = transformTrackOfRow(
         project,
-        target.layerId,
-      ).transformTrack;
+        cutId: target.cutId,
+        layerId: target.layerId,
+      );
       if (transformLaneUsesName(
         track,
         property,

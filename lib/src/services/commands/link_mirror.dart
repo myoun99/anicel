@@ -1,7 +1,9 @@
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/transform_track.dart';
 import '../project_lookup.dart';
 
 /// The (cut, layer) addresses a MIRRORED property edit must apply to:
@@ -27,6 +29,72 @@ List<({CutId cutId, LayerId layerId})> linkMirrorTargets(
     for (final member in group.members)
       (cutId: member.cutId, layerId: member.layerId),
   ];
+}
+
+/// The transform track ([cutId], [layerId]) keys: the row's own, except the
+/// CAMERA row's — the row is its cut's transform header (F-17), and its
+/// lanes live on [Cut.camera].
+TransformTrack transformTrackOfRow(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) {
+  final layer = requireLayerAnywhere(project, layerId);
+  return layer.kind == LayerKind.camera
+      ? requireCut(project, cutId).camera.track
+      : layer.transformTrack;
+}
+
+/// Every row a write of [after] over ([cutId], [layerId])'s transform track
+/// reaches, with the track each one ends up holding: the row itself, with
+/// every NAMED key the write moved set on its other keys of that name, and
+/// then each 겸용 sibling holding those names.
+///
+/// "Same name, same value": a transform's lanes are otherwise each use's
+/// own ("레인만 각자"), so a named key is the ONLY way a transform number
+/// crosses cuts. One law for a layer's transform and a cut's camera (유저
+/// 2026-09-11: 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」) —
+/// which is why every track here is read through [transformTrackOfRow].
+List<({CutId cutId, LayerId layerId, TransformTrack track})>
+namedTransformWrites(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  required TransformTrack after,
+}) {
+  final changes = transformNamedKeyChanges(
+    transformTrackOfRow(project, cutId: cutId, layerId: layerId),
+    after,
+  );
+  final writes = [
+    (
+      cutId: cutId,
+      layerId: layerId,
+      track: transformTrackWithNamedValues(after, changes),
+    ),
+  ];
+  if (changes.isEmpty) {
+    return writes;
+  }
+  for (final target in linkMirrorTargets(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+  )) {
+    if (target.cutId == cutId && target.layerId == layerId) {
+      continue;
+    }
+    final current = transformTrackOfRow(
+      project,
+      cutId: target.cutId,
+      layerId: target.layerId,
+    );
+    final next = transformTrackWithNamedValues(current, changes);
+    if (next != current) {
+      writes.add((cutId: target.cutId, layerId: target.layerId, track: next));
+    }
+  }
+  return writes;
 }
 
 /// The 겸용 (linked) sibling cuts of [cutId] — where NEW structure has to

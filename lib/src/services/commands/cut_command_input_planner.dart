@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
+import '../project_lookup.dart' show requireCut;
 import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
@@ -231,8 +232,9 @@ _mintLinkIds(
 }
 
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
-/// row of [sourceCut] (drawing layers and their folders), and registry
-/// group ids. FrameIds are NOT mapped — identity is the link.
+/// row of [sourceCut] (every kind that links — drawing rows, their folders,
+/// the conte row and the camera row), and registry group ids. FrameIds are
+/// NOT mapped — identity is the link.
 CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   required Project project,
   required Cut sourceCut,
@@ -424,10 +426,12 @@ class AddLayerCommandInputPlan {
 /// cut, its anchors resolved to that cut's own rows, plus the link group
 /// they join.
 ///
-/// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use
-/// SE/CAM fixtures already exist in every cut, and a storyboard row
-/// belongs to its own cut ([LayerKind.linksIntoLinkedCut] is the one
-/// predicate for that question).
+/// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use SE
+/// and direction fixtures already exist in every cut
+/// ([LayerKind.linksIntoLinkedCut] is the one predicate for that question).
+/// A SINGLETON kind — the conte row, the camera row — mirrors only into a
+/// sibling that has none: a cut holds one ([LayerKind.isSingletonPerCut]),
+/// so a sibling with its own keeps it and the new row stays this cut's.
 ///
 /// A sibling whose counterpart for an anchor is missing is DROPPED rather
 /// than guessed at (folder_mirror's rule): a row inheriting a folder that
@@ -464,6 +468,13 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 
   final mirrors = <AddLayerMirror>[];
   for (final sibling in siblings) {
+    if (layer.kind.isSingletonPerCut &&
+        requireCut(
+          project,
+          sibling,
+        ).layers.any((row) => row.kind == layer.kind)) {
+      continue;
+    }
     final folder = layer.folderId;
     final base = layer.attachedToLayerId;
     final mirroredFolder = folder == null ? null : counterpart(folder, sibling);

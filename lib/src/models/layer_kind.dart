@@ -70,7 +70,10 @@ enum LayerKind {
     hasLayerEffects: true,
     carriesInstructions: false,
     exportsCels: true,
-    linksIntoLinkedCut: false,
+    // 🗣️F-84 (유저 2026-09-11): 「확인말한거 그대로 맞아. 내가 원하던게 그거야」
+    // — the conte row links like any drawing row: the pictures are one, and
+    // each cut exposes them on its own. A cut holds ONE, so it pairs by kind.
+    linksIntoLinkedCut: true,
     isSingletonPerCut: true,
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
@@ -313,7 +316,11 @@ enum LayerKind {
     hasLayerEffects: false,
     carriesInstructions: false,
     exportsCels: false,
-    linksIntoLinkedCut: false,
+    // 🗣️F-84 (유저 2026-09-11): 「겸용컷 지금 카메라레이어가 없네」 and
+    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」 — the camera row
+    // links, and keeps the transform law across the group: its lanes are
+    // each cut's own, and only a NAMED key carries its value to the others.
+    linksIntoLinkedCut: true,
     isSingletonPerCut: true,
     isClipboardCopyable: false,
     isReadOnlyInCut: false,
@@ -539,9 +546,13 @@ enum LayerKind {
   /// row shares too (R6b) — see [mirrorsEffects] for what that has
   /// to mean for a row whose only content is FX.
   ///
-  /// The STORYBOARD row is the deliberate exception: a cut holds at most one,
-  /// and a conte panel belongs to its own cut. SE/instruction/camera rows are
-  /// per-use fixtures.
+  /// The STORYBOARD and CAMERA rows link too (F-84, 유저 2026-09-11). ⛔This
+  /// REVERSES the exception that kept them out ("a conte panel belongs to its
+  /// own cut", `6ca95e34`, which quoted no one). A cut holds ONE of each
+  /// ([isSingletonPerCut]), so they pair by KIND rather than by name; the
+  /// conte row shares its pictures, and the camera row keeps the transform
+  /// law — lanes each cut's own, a NAMED key one value across the group.
+  /// SE/instruction rows stay per-use fixtures.
   ///
   /// IMAGE rows are included (the shared BG is the classic 겸용 case; the
   /// linked copy shares the cel id and the covering normalization re-covers

@@ -132,14 +132,15 @@ void main() {
   });
 
   group('the adjustment shares across 겸용컷 (user: 액션란은 다 공유)', () {
-    test('the link predicate takes the ACTION rows, storyboard excepted', () {
+    test('the link predicate takes the ACTION rows, the conte row and the '
+        'camera row (F-84)', () {
       expect(LayerKind.adjustment.linksIntoLinkedCut, isTrue);
       expect(LayerKind.animation.linksIntoLinkedCut, isTrue);
       expect(LayerKind.folder.linksIntoLinkedCut, isTrue);
-      // A cut holds one conte strip and it belongs to that cut.
-      expect(LayerKind.storyboard.linksIntoLinkedCut, isFalse);
+      // One of each a cut, so they pair by kind (유저 2026-09-11).
+      expect(LayerKind.storyboard.linksIntoLinkedCut, isTrue);
+      expect(LayerKind.camera.linksIntoLinkedCut, isTrue);
       expect(LayerKind.se.linksIntoLinkedCut, isFalse);
-      expect(LayerKind.camera.linksIntoLinkedCut, isFalse);
     });
 
     test('but 겸용 변경 does NOT relocate it — position is its meaning', () {
