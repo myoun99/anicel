@@ -5,6 +5,7 @@ import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
+import '../models/brush_settings.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_preset_defaults.dart';
 import 'persistence/app_support_path.dart';
@@ -174,16 +175,6 @@ class BrushPresetFileService {
     },
   );
 
-  /// The three mask-valued settings, by json key.
-  // ⚠️'textureMaskSource', not 'textureMask': the file stores the texture AS
-  // PICKED, and the levelled bake beside it is derived — it has no id of its
-  // own and nothing in the library to resolve back to.
-  static const List<String> _maskKeys = [
-    'tipMask',
-    'dualMask',
-    'textureMaskSource',
-  ];
-
   /// Swaps each inline mask blob for its id on the way OUT.
   ///
   /// The swap lives here, at the file boundary, and nowhere else: settings
@@ -194,10 +185,10 @@ class BrushPresetFileService {
     final settings = Map<String, dynamic>.from(
       json['settings'] as Map<String, dynamic>,
     );
-    for (final key in _maskKeys) {
+    for (final key in brushSettingsMaskKeys) {
       final mask = settings.remove(key);
       if (mask is Map<String, dynamic>) {
-        settings['${key}Id'] = mask['id'];
+        settings[brushSettingsMaskIdKey(key)] = mask['id'];
       }
     }
     json['settings'] = settings;
@@ -218,8 +209,8 @@ class BrushPresetFileService {
     }
     final settingsJson = json['settings'] as Map<String, dynamic>;
     var settings = preset.settings;
-    for (final key in _maskKeys) {
-      final id = settingsJson['${key}Id'];
+    for (final key in brushSettingsMaskKeys) {
+      final id = settingsJson[brushSettingsMaskIdKey(key)];
       if (id is! String) {
         continue;
       }
@@ -227,11 +218,7 @@ class BrushPresetFileService {
       if (mask == null) {
         continue;
       }
-      settings = switch (key) {
-        'tipMask' => settings.copyWith(tipMask: mask),
-        'dualMask' => settings.copyWith(dualMask: mask),
-        _ => settings.copyWith(textureMaskSource: mask),
-      };
+      settings = brushSettingsWithMask(settings, key, mask);
     }
     return preset.copyWith(settings: settings);
   }
@@ -240,6 +227,45 @@ class BrushPresetFileService {
 /// Answers "what mask is behind this id?" for the preset loader — the tip
 /// library, in production.
 typedef BrushTipResolver = BrushTipMask? Function(String id);
+
+/// The three mask-valued settings, by json key.
+///
+/// ⚠️Shared by every writer that names tips by id — the preset file and the
+/// hand bank (`brush_hand_overlay.dart`) — so a fourth mask cannot be named
+/// by one and carried whole by the other.
+// ⚠️'textureMaskSource', not 'textureMask': the file stores the texture AS
+// PICKED, and the levelled bake beside it is derived — it has no id of its
+// own and nothing in the library to resolve back to.
+const List<String> brushSettingsMaskKeys = [
+  'tipMask',
+  'dualMask',
+  'textureMaskSource',
+];
+
+/// Where a writer that names tips keeps the id of the mask at json [key].
+String brushSettingsMaskIdKey(String key) => '${key}Id';
+
+/// The mask [settings] holds at json [key].
+BrushTipMask? brushSettingsMaskAt(BrushSettings settings, String key) =>
+    switch (key) {
+      'tipMask' => settings.tipMask,
+      'dualMask' => settings.dualMask,
+      _ => settings.textureMaskSource,
+    };
+
+/// [settings] holding [mask] at json [key].
+///
+/// ⚠️A null [mask] leaves the mask that is there — `copyWith` cannot clear
+/// one — so a caller that means "no tip" starts from settings read without.
+BrushSettings brushSettingsWithMask(
+  BrushSettings settings,
+  String key,
+  BrushTipMask? mask,
+) => switch (key) {
+  'tipMask' => settings.copyWith(tipMask: mask),
+  'dualMask' => settings.copyWith(dualMask: mask),
+  _ => settings.copyWith(textureMaskSource: mask),
+};
 
 /// Every distinct mask carried by [presets].
 ///

@@ -39,9 +39,9 @@ class BrushHandSettingsStore {
 
   static const int version = 1;
 
-  /// The saved values by preset id; empty when missing/corrupt/newer — a
-  /// brush with no entry reads the size baked into its own file, which is
-  /// the other half of the user's answer.
+  /// What the hand left on each brush, by key; empty when missing/corrupt/
+  /// newer — a brush with no entry reads what is baked into its own file,
+  /// which is the other half of the user's answer.
   Future<Map<String, BrushHandSettings>> load() async =>
       await loadVersionedSettings(
         filePath: filePath,

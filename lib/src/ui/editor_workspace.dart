@@ -1,5 +1,6 @@
 import 'widgets/app_icon_button.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -24,6 +25,7 @@ import '../models/project.dart'
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
+import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
@@ -977,25 +979,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // H25: what the hand last set on each brush, from the last session — and
     // H36: a painting tool taken up holding no brush opens on one.
     _brushTool.addListener(_brushPresets.followBrushTool);
-    unawaited(
-      _brushPresets._brushHandSettingsStore.load().then((saved) {
-        if (!mounted || saved.isEmpty) {
-          return;
-        }
-        _brushPresets._brushHandSettings.addAll(saved);
-      }),
-    );
+    final handSettingsRecalled = _brushPresets.recallHandSettings();
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       tipLibrary: _tipLibrary,
       handSettingsPort: _brushPresets._handSettingsPort,
     );
     // Tips first: presets reference them by id, so the library has to be
-    // able to answer before the presets that ask are read.
+    // able to answer before the presets that ask are read. And the bank
+    // before the opening brush is taken up, so that brush wears what the
+    // hand left on it (H25-again) — read alongside the libraries, not after
+    // them, so it adds no wait of its own.
     unawaited(
       _tipLibrary
           .load()
           .then((_) => _presetLibrary.load())
+          .then((_) => handSettingsRecalled)
           .then((_) => _brushPresets.selectOpeningPreset()),
     );
     // Warm the conte's embedded faces so the sheet opens with its type
@@ -1309,11 +1308,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // in memory, so writing them NOW is both safe and the last chance.
     if (_brushPresets._brushHandSettingsSave?.isActive ?? false) {
       _brushPresets._brushHandSettingsSave!.cancel();
-      unawaited(
-        _brushPresets._brushHandSettingsStore.save(
-          Map<String, BrushHandSettings>.of(_brushPresets._brushHandSettings),
-        ),
-      );
+      _brushPresets.saveHandSettings();
     }
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();

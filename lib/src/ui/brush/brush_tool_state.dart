@@ -11,7 +11,6 @@ import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
-import 'brush_hand_settings_store.dart' show BrushHandSettings;
 
 /// The strip's standing hand settings — the group whose members a tool
 /// either honours or has no use for (TP2). See [BrushToolState.supports].
@@ -827,10 +826,12 @@ class BrushToolState {
   ///   2026-09-08): it rides in `shape`, so a preset swap carries it and no
   ///   exception is needed here. See [BrushBlendMode].
   ///
-  /// [handSet] is what was last set ON THIS BRUSH (null for a brush nobody
-  /// has touched, which then reads what is baked into its own file — the
-  /// user's answer to Q-brush-param). Individual arguments win over `shape:`
-  /// in [copyWith], which is exactly the order this needs.
+  /// [held] is the brush as the hand last left it — [preset]'s own settings
+  /// with what the hand changed on it laid over them (`brushSettingsUnderHand`)
+  /// — or null for a brush nobody has touched, which then reads what is
+  /// baked into its own file (the user's answer to Q-brush-param). 🚨It is
+  /// the WHOLE brush (H25-again): the pressure curves, the flow and the tips
+  /// come back with it, not three values laid on top of the file.
   ///
   /// The list went from eleven entries to one, and the one that remains is
   /// the only one a reader has to be able to justify. (The stabilizer and
@@ -839,14 +840,11 @@ class BrushToolState {
   BrushToolState withPreset(
     BrushPreset preset, {
     required CanvasTool tool,
-    BrushHandSettings? handSet,
+    BrushSettings? held,
   }) {
     final applied = copyWith(
-      shape: preset.settings.shape,
+      shape: (held ?? preset.settings).shape,
       tool: tool,
-      size: handSet?.size,
-      opacity: handSet?.opacity,
-      blendMode: handSet?.blendMode,
       color: color,
     );
     // ONE assignment carries the values and the brush they belong to — see

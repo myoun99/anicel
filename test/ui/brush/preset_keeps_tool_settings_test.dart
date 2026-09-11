@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/services/brush_hand_overlay.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
 /// **A preset owns the SHAPE.** Everything outside the shape survives because
@@ -133,7 +134,7 @@ void main() {
           .withPreset(
             preset(),
             tool: CanvasTool.brush,
-            handSet: (size: 33, opacity: null, blendMode: null),
+            held: brushSettingsUnderHand(preset().settings, {'size': 33.0}),
           )
           .size,
       33,

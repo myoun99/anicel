@@ -613,7 +613,7 @@ void _exportRoundTripTests() {
     source.saveCurrent(BrushSettings(size: 7, hardness: 0.3));
     final saved = source.presets.single;
     // The bank is keyed by the id the library minted, so key onto it.
-    bank[saved.id.value] = (size: 40.0, opacity: 0.25, blendMode: null);
+    bank[saved.id.value] = {'size': 40.0, 'opacity': 0.25};
 
     final path = '${tempDirectory.path}/one.anibrush';
     final message = await source.exportPresets(
@@ -649,11 +649,11 @@ void _exportRoundTripTests() {
     expect(arrived.settings.size, 7);
     expect(arrived.settings.hardness, 0.3);
     expect(
-      landed[arrived.id.value]?.size,
+      landed[arrived.id.value]?['size'],
       40.0,
       reason: 'the hand settings followed the brush onto its NEW id',
     );
-    expect(landed[arrived.id.value]?.opacity, 0.25);
+    expect(landed[arrived.id.value]?['opacity'], 0.25);
   });
 
   test('⛔a hand entry naming a brush the file does not carry is DROPPED',
@@ -672,7 +672,9 @@ void _exportRoundTripTests() {
             settings: BrushSettings(size: 9),
           ),
         ],
-        handSettings: const {'ghost': (size: 99.0, opacity: null, blendMode: null)},
+        handSettings: const {
+          'ghost': {'size': 99.0},
+        },
       ),
     );
     final landed = <String, BrushHandSettings>{};

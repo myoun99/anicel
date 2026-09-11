@@ -193,47 +193,97 @@ class _WorkspaceBrushPresets {
       selectOpeningPreset();
       return;
     }
-    final key = _handKey(state.tool, presetId);
-    final next = (
-      size: state.size,
-      opacity: state.activeOpacity,
-      // The brush's OWN blend, not `activeBlendMode` — the latter answers
-      // 消去 for the eraser tool no matter what the brush says, and writing
-      // that back would make every eraser preset claim erase as an edit.
-      blendMode: state.blendMode,
-    );
-    if (_brushHandSettings[key] == next) {
+    // A brush the library cannot name has no file to lay the hand over.
+    final preset = _presetNamed(presetId);
+    if (preset == null) {
       return;
     }
-    _brushHandSettings[key] = next;
+    final key = _handKey(state.tool, presetId);
+    // The brush's OWN blend rides in its shape — not `activeBlendMode`,
+    // which answers 消去 for the eraser tool no matter what the brush says;
+    // writing that back would make every eraser preset claim erase as an
+    // edit.
+    final overlay = brushHandOverlay(
+      file: preset.settings,
+      hand: state.toBrushSettings(),
+      byName: (tip) => _state._tipLibrary.maskFor(tip.id) != null,
+    );
+    if (jsonEncode(_brushHandSettings[key] ?? const <String, Object?>{}) ==
+        jsonEncode(overlay)) {
+      return;
+    }
+    // A brush put back to its own file's values has nothing left to
+    // remember: the entry goes, and the file speaks for it again.
+    if (overlay.isEmpty) {
+      _brushHandSettings.remove(key);
+    } else {
+      _brushHandSettings[key] = overlay;
+    }
     // Debounced: this fires on every slider frame, and the file is the
     // cheapest thing in the app to write too often.
     _brushHandSettingsSave?.cancel();
-    _brushHandSettingsSave = Timer(const Duration(milliseconds: 400), () {
-      unawaited(
-        _brushHandSettingsStore.save(
-          Map<String, BrushHandSettings>.of(_brushHandSettings),
-        ),
-      );
-    });
+    _brushHandSettingsSave = Timer(
+      const Duration(milliseconds: 400),
+      saveHandSettings,
+    );
+  }
+
+  /// Writes the bank as it stands — where the debounce above, an import and
+  /// the workspace's dispose all end.
+  void saveHandSettings() => unawaited(
+    _brushHandSettingsStore.save(
+      Map<String, BrushHandSettings>.of(_brushHandSettings),
+    ),
+  );
+
+  /// Reads what the hand left on each brush in the last session.
+  ///
+  /// ⚠️What the hand set since the app opened WINS — `putIfAbsent`, not
+  /// `addAll`: a size set in the first second of a session is the newer
+  /// fact, and the bank on disk is older than it by definition.
+  Future<void> recallHandSettings() async {
+    final saved = await _brushHandSettingsStore.load();
+    if (!_state.mounted) {
+      return;
+    }
+    for (final entry in saved.entries) {
+      _brushHandSettings.putIfAbsent(entry.key, () => entry.value);
+    }
   }
 
   void _applyPreset(BrushPreset preset) {
     // Applying a preset KEEPS the active painting tool (R11-④: the eraser
     // owns its own preset choice); from a non-painting tool it arms the
     // brush. Which settings survive the swap is the state's own rule —
-    // see [BrushToolState.withPresetSettings].
+    // see [BrushToolState.withPreset].
     final current = _state._brushTool.value;
     final targetTool = canvasToolPaints(current.tool)
         ? current.tool
         : CanvasTool.brush;
+    final overlay = _brushHandSettings[_handKey(targetTool, preset.id)];
     _state._brushTool.value = current.withPreset(
       preset,
       tool: targetTool,
-      // H25: what the hand last set on THIS brush with THIS tool, or nothing —
-      // in which case the brush's own baked size wins.
-      handSet: _brushHandSettings[_handKey(targetTool, preset.id)],
+      // H25: the brush as the hand last left it with THIS tool, or nothing —
+      // in which case the brush's own file speaks.
+      held: overlay == null
+          ? null
+          : brushSettingsUnderHand(
+              preset.settings,
+              overlay,
+              resolveTip: _state._tipLibrary.maskFor,
+            ),
     );
+  }
+
+  /// The library's preset with [id], or null when it holds none.
+  BrushPreset? _presetNamed(BrushPresetId id) {
+    for (final preset in _state._presetLibrary.presets) {
+      if (preset.id == id) {
+        return preset;
+      }
+    }
+    return null;
   }
 
   /// Where the bank files what [tool] set on [preset].
@@ -291,15 +341,7 @@ class _WorkspaceBrushPresets {
   /// preset joins.
   BrushGroupId? _activePresetGroupId() {
     final activeId = _state._brushTool.value.presetId;
-    if (activeId == null) {
-      return null;
-    }
-    for (final preset in _state._presetLibrary.presets) {
-      if (preset.id == activeId) {
-        return preset.groupId;
-      }
-    }
-    return null;
+    return activeId == null ? null : _presetNamed(activeId)?.groupId;
   }
 
   /// Saves the brush in hand as a new preset beside the one it came from,
@@ -330,14 +372,14 @@ class _WorkspaceBrushPresets {
   /// ⚠️The bank lives HERE, beside the tool state that writes it, so the
   /// library borrows it rather than owning a second copy.
   BrushHandSettingsPort get _handSettingsPort => (
-    read: () => Map<String, BrushHandSettings>.of(_brushHandSettings),
+    read: () => brushHandSettingsToCarry(
+      _brushHandSettings,
+      fileOf: (key) => _presetNamed(BrushPresetId(key))?.settings,
+      resolveTip: _state._tipLibrary.maskFor,
+    ),
     write: (arrived) {
       _brushHandSettings.addAll(arrived);
-      unawaited(
-        _brushHandSettingsStore.save(
-          Map<String, BrushHandSettings>.of(_brushHandSettings),
-        ),
-      );
+      saveHandSettings();
     },
   );
 

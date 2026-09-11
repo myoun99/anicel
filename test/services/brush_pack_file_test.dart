@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -44,7 +46,15 @@ void main() {
 
       presets: [presetOf('a', groupId: group), presetOf('b')],
       handSettings: {
-        'a': (size: 44.0, opacity: 0.5, blendMode: BrushBlendMode.multiply),
+        // H25-again: whatever the hand set — a pressure curve, a flow — rides
+        // beside the three values the bank started with.
+        'a': {
+          'size': 44.0,
+          'opacity': 0.5,
+          'blendMode': BrushBlendMode.multiply.name,
+          'flow': 0.3,
+          'sizePressureCurve': BrushPressureCurve.linearFrom(0.6).toJson(),
+        },
       },
     );
 
@@ -54,9 +64,7 @@ void main() {
     // ⛔No groups in the format — the file's NAME carries the group, because
     // the merge names the arriving group after the source file whatever the
     // pack says. See the class comment.
-    expect(back.handSettings['a']?.size, 44.0);
-    expect(back.handSettings['a']?.opacity, 0.5);
-    expect(back.handSettings['a']?.blendMode, BrushBlendMode.multiply);
+    expect(back.handSettings['a'], pack.handSettings['a']);
   });
 
   test('🚨the masks travel INLINE — a file has no tip library to resolve '
@@ -84,6 +92,23 @@ void main() {
     expect(json.contains('handSettings'), isFalse);
     expect(json.contains('"groups"'), isFalse);
     expect(decodeBrushPack(json).handSettings, isEmpty);
+  });
+
+  test('a version-1 pack still reads — its three hand values are an '
+      'overlay already', () {
+    final v1 = jsonEncode({
+      'anicelBrushPack': 1,
+      'presets': [presetOf('a').toJson()],
+      'handSettings': {
+        'a': {'size': 44.0, 'opacity': 0.5, 'blendMode': 'multiply'},
+      },
+    });
+
+    expect(decodeBrushPack(v1).handSettings['a'], {
+      'size': 44.0,
+      'opacity': 0.5,
+      'blendMode': 'multiply',
+    });
   });
 
   group('what it refuses', () {

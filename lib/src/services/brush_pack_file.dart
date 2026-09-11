@@ -40,6 +40,9 @@ class BrushPack {
   /// Keyed by preset id. ⚠️Ids SURVIVE an import — the merge replaces on a
   /// collision rather than re-minting (two presets may never share an id) —
   /// so these keys are the same ids the receiving library will hold.
+  ///
+  /// Each is an overlay over its brush's settings (see [BrushHandSettings]),
+  /// its tips carried WHOLE for the reason the presets' are.
   final Map<String, BrushHandSettings> handSettings;
 }
 
@@ -59,7 +62,12 @@ class BrushPackFormatException implements Exception {
 /// by a newer Anicel may carry settings this build would silently drop, and
 /// a brush that arrives quietly wrong is worse than one that does not
 /// arrive. Older versions stay readable — nothing has been removed yet.
-const int brushPackVersion = 1;
+///
+/// 2: the hand settings became an overlay over the whole brush (H25-again).
+/// A 1 reader would keep the size, opacity and blend and drop the pressure
+/// curves and the tips in silence — the case this refusal is for. A 1 file's
+/// three values are an overlay already, so it still reads unchanged.
+const int brushPackVersion = 2;
 
 String encodeBrushPack(BrushPack pack) => jsonEncode({
   'anicelBrushPack': brushPackVersion,

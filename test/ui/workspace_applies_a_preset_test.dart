@@ -1,11 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -25,6 +32,18 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 /// another, so these drive the user's own sequences through the real panel,
 /// the real size bar and the real tool buttons.
 void main() {
+  // Every test starts with nothing remembered: the bank is one sandbox file
+  // per test process, and what one test's hand set would otherwise come back
+  // on the next test's brushes.
+  setUp(() {
+    final bank = File(
+      BrushHandSettingsStore.defaultBrushHandSettingsFilePath(),
+    );
+    if (bank.existsSync()) {
+      bank.deleteSync();
+    }
+  });
+
   /// The app with the built-in presets loaded, on temp files.
   ///
   /// [beforeTheLibraryLands] runs after the first frame and before the
@@ -113,6 +132,30 @@ void main() {
     await tester.tap(find.byKey(ValueKey<String>('tool-$tool-button')));
     await tester.pumpAndSettle();
   }
+
+  /// Opens the brush settings — their own rail slot, which ships closed.
+  Future<void> openBrushSettings(WidgetTester tester) async {
+    final group = EditorWorkspace.railGroupId(right: false, slot: 2);
+    await tester.tap(find.byKey(ValueKey<String>('rail-group-$group')));
+    await tester.pumpAndSettle();
+  }
+
+  BrushSettingsPanel settings(WidgetTester tester) =>
+      tester.widget<BrushSettingsPanel>(find.byType(BrushSettingsPanel));
+
+  /// An edit made the way the settings panel's own controls make one —
+  /// through the callback the workspace hands the panel.
+  Future<void> edit(
+    WidgetTester tester,
+    BrushToolState Function(BrushToolState state) change,
+  ) async {
+    final panel = settings(tester);
+    panel.onChanged(change(panel.state));
+    await tester.pumpAndSettle();
+  }
+
+  String curveOf(BrushToolState state) =>
+      jsonEncode(state.shape.sizePressureCurve?.toJson());
 
   testWidgets('tapping a preset makes it the active one', (tester) async {
     await pumpWithPresets(tester);
@@ -259,5 +302,81 @@ void main() {
           'never followed — the panel read one fact and the save wrote '
           'another',
     );
+  });
+
+  testWidgets('🚨H25-again: the pressure curve, the flow and the edge come '
+      'back with THEIR brush — 「필압이나 이런거」', (tester) async {
+    await pumpWithPresets(tester);
+    await openBrushSettings(tester);
+    final shown = onScreen(tester);
+    final one = shown[0];
+    final two = shown[1];
+    final curve = BrushPressureCurve.linearFrom(0.6);
+    await pick(tester, two);
+    final twoAsFiled = settings(tester).state;
+    await pick(tester, one);
+    expect(settings(tester).state.flow, isNot(0.3), reason: 'premise');
+    expect(
+      settings(tester).state.antiAlias,
+      isNot(BrushAntiAlias.none),
+      reason: 'premise',
+    );
+
+    await edit(
+      tester,
+      (state) => state.copyWith(
+        sizePressureCurve: curve,
+        flow: 0.3,
+        antiAlias: BrushAntiAlias.none,
+      ),
+    );
+    await pick(tester, two);
+
+    final other = settings(tester).state;
+    expect(
+      other.flow,
+      twoAsFiled.flow,
+      reason: 'one brush\'s edit is not the next brush\'s',
+    );
+    expect(other.antiAlias, twoAsFiled.antiAlias);
+    expect(curveOf(other), curveOf(twoAsFiled));
+
+    await pick(tester, one);
+    final back = settings(tester).state;
+    expect(back.flow, 0.3, reason: '「사이즈말고도 … 싹 다」');
+    expect(back.antiAlias, BrushAntiAlias.none);
+    expect(curveOf(back), jsonEncode(curve.toJson()));
+  });
+
+  testWidgets('🚨what the hand set survives closing the app — and the brush '
+      'the app opens on wears it from the first frame it is held', (
+    tester,
+  ) async {
+    await pumpWithPresets(tester);
+    await openBrushSettings(tester);
+    final opening = panel(tester).selectedPresetId;
+    expect(opening, isNotNull, reason: 'premise: a brush is in hand');
+    await edit(
+      tester,
+      (state) => state.copyWith(flow: 0.3, antiAlias: BrushAntiAlias.none),
+    );
+
+    // Closing the workspace writes the bank — real file IO, so it gets a
+    // real-time window to land in.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await pumpWithPresets(tester);
+    await openBrushSettings(tester);
+
+    expect(panel(tester).selectedPresetId, opening);
+    expect(
+      settings(tester).state.flow,
+      0.3,
+      reason: 'the bank lands before the opening brush is taken up, so that '
+          'brush wears what the hand left on it',
+    );
+    expect(settings(tester).state.antiAlias, BrushAntiAlias.none);
   });
 }

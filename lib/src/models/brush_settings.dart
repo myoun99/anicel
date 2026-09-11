@@ -275,7 +275,11 @@ class BrushSettings {
     );
   }
 
-  Map<String, dynamic> toJson() => {
+  /// [withMasks] false leaves the three tips out — for comparing two
+  /// brushes' settings without writing every tip's pixels out as base64,
+  /// which the hand bank does on every slider frame (H25-again). Every file
+  /// writer takes the default.
+  Map<String, dynamic> toJson({bool withMasks = true}) => {
     'color': color,
     'size': size,
     'opacity': opacity,
@@ -294,7 +298,7 @@ class BrushSettings {
     ..._curvesToJson(_nonPressureCurves),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
-    if (tipMask != null) 'tipMask': tipMask!.toJson(),
+    if (withMasks && tipMask != null) 'tipMask': tipMask!.toJson(),
     'rotationMode': rotationMode.toJson(),
     'sizeJitter': sizeJitter,
     'opacityJitter': opacityJitter,
@@ -310,10 +314,10 @@ class BrushSettings {
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
-    if (dualMask != null) 'dualMask': dualMask!.toJson(),
+    if (withMasks && dualMask != null) 'dualMask': dualMask!.toJson(),
     'dualMaskScale': dualMaskScale,
     'dualDensity': dualDensity,
-    if (textureMaskSource != null)
+    if (withMasks && textureMaskSource != null)
       'textureMaskSource': textureMaskSource!.toJson(),
     if (textureInvert) 'textureInvert': true,
     if (textureBrightness != 0.0) 'textureBrightness': textureBrightness,

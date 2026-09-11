@@ -1,69 +1,55 @@
-import 'brush_blend_mode.dart';
-
-/// What was last set on one brush, by hand, since the brush was loaded.
+/// What the hand changed on one brush: the keys of that brush's settings
+/// JSON that it left at other values than the brush's own file holds.
 ///
 /// 🚨H25 (유저 2026-08-23): 「클튜보면 브러시크기가 브러시마다 다르게
 /// 설정가능하던데, 그거 따라가도록. 브러시 고르고 브러시크기 설정하면 다음에
 /// 같은 브러시 선택할때 해당 브러시크기 남아있도록. 불투명도도 마찬가지」.
+/// The BLEND joined on 2026-09-08 by the same request — 「블렌드모드도 어차피
+/// 브러시/툴마다 다르게 저장되도록. 사이즈나 불투명도처럼 그렇게 되도록」 —
+/// and 🚨H25-again (2026-09-11) made it every setting: 「사이즈말고도
+/// 불투명도나 필압이나 이런거 … 싹 다 확인하고 법 하나로 통일」.
 ///
-/// The BLEND joined them on 2026-09-08, by the same request and for the same
-/// reason: 「블렌드모드도 어차피 브러시/툴마다 다르게 저장되도록. 사이즈나
-/// 불투명도처럼 그렇게 되도록」. Every field here is a brush parameter that
-/// the panel can change — this record is not a different KIND of value (that
-/// split is gone), it is the app remembering an unsaved edit between
-/// sessions instead of rewriting the brush file under you.
+/// ⇒ It is no longer a list of fields. A list is what let the pressure
+/// curves, the flow and the tips go back to the file on every re-pick while
+/// size, opacity and blend came back: each setting had to be added by hand,
+/// and only three ever were. An overlay over `BrushSettings.toJson` has no
+/// list to forget — `services/brush_hand_overlay.dart` writes and reads it.
+/// It is still the app remembering an unsaved edit between sessions instead
+/// of rewriting the brush file under you.
 ///
-/// ⚠️Every entry is nullable and every reader treats null as "this brush was
-/// never touched, use what its own file says". Adding a field therefore needs
-/// no version bump: an older file simply has none of it.
+/// ⚠️A key the file has and the overlay does not is a setting nobody
+/// touched, and it keeps following the file (Q-brush-param: a brush the hand
+/// has never set reads what is baked into its own file). A key mapped to
+/// NULL is one the hand removed — a pressure curve switched off, a tip
+/// cleared.
+///
+/// ⚠️The three keys the bank held before (`size`, `opacity`, `blendMode`)
+/// are spelled exactly as `BrushSettings.toJson` spells them, so every bank
+/// and every brush file written before this reads as an overlay already.
 ///
 /// ⚠️IT LIVES IN `models/` because two layers need it: the store that keeps
 /// it between sessions (`ui/brush`) and the brush-pack codec that writes it
 /// into a shared file (`services/`), which cannot import `ui/`.
-typedef BrushHandSettings = ({
-  double? size,
-  double? opacity,
-  BrushBlendMode? blendMode,
-});
+typedef BrushHandSettings = Map<String, Object?>;
 
-/// The JSON both homes use — the app's own bank and an exported brush file.
+/// A whole BANK — `{key: overlay}` — which is the shape BOTH homes store:
+/// the app's own file and an exported brush file.
 ///
-/// ⚠️ONE SPELLING, because the two files hold the same three values and a
-/// second spelling would drift the moment a fourth arrives.
-Map<String, dynamic> brushHandSettingsToJson(BrushHandSettings value) => {
-  if (value.size != null) 'size': value.size,
-  if (value.opacity != null) 'opacity': value.opacity,
-  if (value.blendMode != null) 'blendMode': value.blendMode!.name,
-};
-
-/// The inverse. An unreadable field degrades to "never touched" rather than
-/// failing the whole bank — one brush loses a remembered blend, everything
-/// else still loads.
-BrushHandSettings brushHandSettingsFromJson(Map<String, dynamic> json) => (
-  size: (json['size'] as num?)?.toDouble(),
-  opacity: (json['opacity'] as num?)?.toDouble(),
-  blendMode: BrushBlendMode.named(json['blendMode'] as String?),
-);
-
-/// A whole BANK — `{preset id: settings}` — which is the shape BOTH homes
-/// store: the app's own file and an exported brush file.
-///
-/// ⚠️The wrapper is shared too, not just the per-entry pair. It was written
-/// twice for one day and the clone scan named the pair; there is nothing to
-/// reconcile between them, because the map is the same map.
+/// ⚠️The wrapper is shared, not written per home. It was written twice for
+/// one day and the clone scan named the pair; there is nothing to reconcile
+/// between them, because the map is the same map.
 Map<String, dynamic> brushHandSettingsBankToJson(
   Map<String, BrushHandSettings> bank,
-) => {
-  for (final entry in bank.entries)
-    entry.key: brushHandSettingsToJson(entry.value),
-};
+) => {for (final entry in bank.entries) entry.key: entry.value};
 
 /// The inverse. ⚠️An entry that is not a map is SKIPPED rather than failing
-/// the bank — one brush loses a remembered size, the rest still load.
+/// the bank — one brush loses what the hand set on it, the rest still load.
+/// A value its setting cannot read degrades the same way, later, where the
+/// overlay is laid over the file (`brushSettingsUnderHand`).
 Map<String, BrushHandSettings> brushHandSettingsBankFromJson(
   Map<String, dynamic>? json,
 ) => {
   for (final entry in (json ?? const <String, dynamic>{}).entries)
     if (entry.value is Map<String, dynamic>)
-      entry.key: brushHandSettingsFromJson(entry.value as Map<String, dynamic>),
+      entry.key: Map<String, Object?>.of(entry.value as Map<String, dynamic>),
 };
