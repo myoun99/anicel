@@ -213,15 +213,24 @@ void main() {
     }
     final viewer = decoder.openDocument(movies.first)!;
     final preview = decoder.openDocument(movies.second)!;
-    final wanted = Uint8List.fromList(decoder.frameOf(preview, 1)!);
+    final wanted = Uint8List.fromList(decoder.frameOf(viewer, 1)!);
 
-    // The viewer is disposed while the placement window is still scrubbing.
-    decoder.closeDocument(viewer);
+    // ⚠️The one closed is the SECOND, and the one that must go on reading is
+    // the first: closing 「whichever document came first」 would be right for
+    // half the pairs in the app and wrong for the other half, and a test
+    // that disposes the first document cannot tell those apart.
+    decoder.closeDocument(preview);
 
     expect(
-      decoder.frameOf(preview, 1),
+      decoder.frameOf(viewer, 1),
       orderedEquals(wanted),
       reason: 'somebody else\'s dispose is not an event this document has',
+    );
+    expect(
+      decoder.frameOf(preview, 0),
+      isNull,
+      reason: 'and the closed one IS closed — a handle nothing holds any '
+          'more reads nothing',
     );
   }, skip: skip);
 
