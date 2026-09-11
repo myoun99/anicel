@@ -15,8 +15,7 @@ import 'ui_scale.dart';
 /// or it sizes against a grid the compositor is not using.
 ///
 /// For "how big is a logical pixel on this HARDWARE" — a question the UI
-/// scale does not change — read the `FlutterView` directly, as the
-/// small-form-factor test in `app_input_settings.dart` does. ⛔Not
+/// scale does not change — read the `FlutterView` directly. ⛔Not
 /// [rawViewRatioOf]: that reads the AMBIENT MediaQuery, which the scope
 /// below rewrites, so it answers the hardware question only ABOVE the
 /// scope. It stays that way on purpose — it is the scope's own input, and

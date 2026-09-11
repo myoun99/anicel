@@ -60,9 +60,12 @@ class AppInputSettings {
   /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
   /// #4 retired the separate control/draw MODE: drawing is simply the
   /// ONE-FINGER slot's [CanvasTouchDragAction.draw] (the old mode setting
-  /// overlapped it — "손으로 그린다는 게 1핑거 드래그잖아"). Touch-only
-  /// form factors force the one-finger slot to draw at the policy level
-  /// ([AppInput.touchDragActionFor]).
+  /// overlapped it — "손으로 그린다는 게 1핑거 드래그잖아").
+  ///
+  /// ⛔NO DEVICE OVERRIDES THE SLOT. Phones once had it forced to draw by a
+  /// screen-size probe, and #1173 took that out: the stored slot is the whole
+  /// answer on every platform ([AppInput.touchDragActionFor]), so a phone
+  /// user who wants a drawing finger sets one here.
   final CanvasTouchDragAction touchDragOneFinger;
   final CanvasTouchDragAction touchDragTwoFingers;
   final CanvasTouchDragAction touchDragThreeFingers;
