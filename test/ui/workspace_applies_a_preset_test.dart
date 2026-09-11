@@ -85,13 +85,18 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump();
-      final loaded =
-          find.byType(BrushPresetPanel).evaluate().isNotEmpty &&
-          tester
-              .widget<BrushPresetPanel>(find.byType(BrushPresetPanel).first)
-              .presets
-              .isNotEmpty;
-      if (loaded) {
+      // Loaded = the presets are listed AND a brush is in hand: the opening
+      // brush is taken up only once the hand-settings bank has landed too
+      // (H25-again), and that is one more file read after the libraries'.
+      final panels = find.byType(BrushPresetPanel).evaluate();
+      final shown = panels.isEmpty
+          ? null
+          : tester.widget<BrushPresetPanel>(
+              find.byType(BrushPresetPanel).first,
+            );
+      if (shown != null &&
+          shown.presets.isNotEmpty &&
+          shown.selectedPresetId != null) {
         break;
       }
     }
@@ -361,11 +366,29 @@ void main() {
       (state) => state.copyWith(flow: 0.3, antiAlias: BrushAntiAlias.none),
     );
 
-    // Closing the workspace writes the bank — real file IO, so it gets a
-    // real-time window to land in.
+    // Closing the workspace writes the bank. That is real file IO started on
+    // the fake clock, so it lands the way the loads do — a real-time window
+    // for each step and a pump for each continuation — until it is on disk.
     await tester.pumpWidget(const SizedBox());
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    final bank = File(BrushHandSettingsStore.defaultBrushHandSettingsFilePath());
+    bool written() {
+      try {
+        return bank.existsSync() && bank.readAsStringSync().contains('"flow"');
+      } on FileSystemException {
+        return false;
+      }
+    }
+
+    for (var tries = 0; tries < 40 && !written(); tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    expect(
+      written(),
+      isTrue,
+      reason: 'premise: closing the workspace wrote what the hand set',
     );
     await pumpWithPresets(tester);
     await openBrushSettings(tester);
