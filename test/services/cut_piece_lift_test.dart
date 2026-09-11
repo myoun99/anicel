@@ -288,6 +288,18 @@ void main() {
       expect((piece!.originLeft, piece.originTop), (0, 0));
     });
 
+    test('and on its far edges — a movie frame has no bytes past them',
+        () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      await buildCutPieceFromPicture(
+        region: rect(left: 15, top: 7, right: 25, bottom: 13),
+        picture: (width: 20, height: 10),
+        readRgba: picture(asked),
+        pieceId: 'viewer-cut-1',
+      );
+      expect(asked, [(left: 15, top: 7, width: 5, height: 3)]);
+    });
+
     test('a lasso takes only what it encloses', () async {
       final asked = <({int left, int top, int width, int height})>[];
       final piece = (await buildCutPieceFromPicture(
