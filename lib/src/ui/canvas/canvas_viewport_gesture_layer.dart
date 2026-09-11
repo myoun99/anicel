@@ -44,6 +44,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.strokeActive = false,
     this.touchLocked = false,
     this.rotationEnabled = true,
+    this.oneFingerAction,
     this.onInvokeAction,
     this.onBrushSizeDragStart,
     this.onBrushSizeDragUpdate,
@@ -91,6 +92,14 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// pan/zoom keep working — for hosts whose content cannot rotate (the
   /// timesheet).
   final bool rotationEnabled;
+
+  /// What ONE finger does here when this host answers the slot itself —
+  /// null follows the user's slot ([AppInput.touchDragActionFor]). Two and
+  /// three fingers keep the user's slots.
+  ///
+  /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
+  /// 존재안하니 한손가락 핑거시 팬」 — the media viewer passes navigate.
+  final CanvasTouchDragAction? oneFingerAction;
 
   final Widget child;
 
@@ -423,10 +432,15 @@ class _CanvasViewportGestureLayerState
   /// finger JOINS (the `_controlTouchDown` branch above already allows it
   /// while unlocked). The lock-then-modify rule itself is untouched.
   double _lockDistanceFor(int fingers) {
-    return AppInput.touchDragActionFor(fingers) == CanvasTouchDragAction.flip
+    return _actionFor(fingers) == CanvasTouchDragAction.flip
         ? flipStepExtent
         : _touchSlop;
   }
+
+  /// The slot a group of [fingers] answers to HERE — the user's, or this
+  /// host's own for one finger ([CanvasViewportGestureLayer.oneFingerAction]).
+  CanvasTouchDragAction _actionFor(int fingers) =>
+      AppInput.touchDragActionFor(fingers, oneFinger: widget.oneFingerAction);
 
   void _lockGroup({required Offset firstMovedDelta}) {
     _groupLocked = true;
@@ -456,7 +470,7 @@ class _CanvasViewportGestureLayerState
     // mid-touch) through the real observer.
     _groupAction = CanvasTouchContacts.appWideCount > _groupPointers.length
         ? CanvasTouchDragAction.none
-        : AppInput.touchDragActionFor(_groupPointers.length);
+        : _actionFor(_groupPointers.length);
     switch (_groupAction) {
       case CanvasTouchDragAction.flip:
         final horizontal = firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();

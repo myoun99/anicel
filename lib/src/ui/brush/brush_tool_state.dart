@@ -82,6 +82,12 @@ bool canvasToolStamps(CanvasTool tool) => tool == CanvasTool.cutStamp;
 bool canvasToolUsesCutPiece(CanvasTool tool) =>
     canvasToolCuts(tool) || canvasToolStamps(tool);
 
+/// The outline the cut tool drags while it is ARMED, and null otherwise —
+/// all a surface that can only CUT needs of the tool (I-14: the media
+/// viewer, which has nothing to draw on).
+CanvasShapeKind? armedCutShape(BrushToolState state) =>
+    canvasToolCuts(state.tool) ? state.cutShape : null;
+
 /// Whether [tool] paints strokes through the interactive canvas (the
 /// non-painting tools mount a tool overlay instead).
 bool canvasToolPaints(CanvasTool tool) =>

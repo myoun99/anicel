@@ -22,6 +22,7 @@ class FakeVideoBackend implements VideoDecodeBackend {
     this.fpsDenominator = 1,
     this.width = 64,
     this.height = 36,
+    this.paint,
   });
 
   final int frameCount;
@@ -29,6 +30,10 @@ class FakeVideoBackend implements VideoDecodeBackend {
   final int fpsDenominator;
   final int width;
   final int height;
+
+  /// The bytes frame `index` carries — straight RGBA at [width]×[height].
+  /// Null paints every frame opaque white.
+  final Uint8List Function(int index)? paint;
 
   /// Frames that will NOT come back — the buffer running dry, which is the
   /// state the viewer's law is about.
@@ -68,6 +73,10 @@ class FakeVideoBackend implements VideoDecodeBackend {
     asked.add(index);
     if (held.contains(index)) {
       return null;
+    }
+    final painted = paint;
+    if (painted != null) {
+      return painted(index);
     }
     // Straight RGBA, opaque — the viewer only needs it to decode.
     return Uint8List.fromList(

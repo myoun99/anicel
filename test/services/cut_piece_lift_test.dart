@@ -231,4 +231,113 @@ void main() {
     expect(identical(first.image.rgba, second.image.rgba), isFalse);
     expect(first.image.rgba, second.image.rgba);
   });
+
+  group('from a picture that is not a cel (I-14 — the media viewer)', () {
+    /// A picture whose every pixel names its own place — red is x, green is
+    /// y — recording every box it is read for in [asked].
+    Future<Uint8List> Function(({int left, int top, int width, int height}))
+    picture(
+      List<({int left, int top, int width, int height})> asked, {
+      bool Function(int x, int y)? transparentAt,
+    }) => (box) async {
+      asked.add(box);
+      final rgba = Uint8List(box.width * box.height * 4);
+      for (var y = 0; y < box.height; y += 1) {
+        for (var x = 0; x < box.width; x += 1) {
+          final offset = (y * box.width + x) * 4;
+          final clear =
+              transparentAt?.call(box.left + x, box.top + y) ?? false;
+          rgba[offset] = box.left + x;
+          rgba[offset + 1] = box.top + y;
+          rgba[offset + 2] = 9;
+          rgba[offset + 3] = clear ? 0 : 255;
+        }
+      }
+      return rgba;
+    };
+
+    test('the piece is the box at the picture\'s own pixels, where it was', () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      final piece = (await buildCutPieceFromPicture(
+        region: rect(left: 3, top: 2, right: 7, bottom: 5),
+        pictureWidth: 20,
+        pictureHeight: 10,
+        readRgba: picture(asked),
+        pieceId: 'viewer-cut-1',
+      ))!;
+      // The box a cel's cut would take ([cutPieceBox]): the coverage, one
+      // pixel wider for the edge the pixel centres decide.
+      expect(asked, [(left: 3, top: 2, width: 5, height: 4)]);
+      expect((piece.originLeft, piece.originTop), (3, 2));
+      expect((piece.image.width, piece.image.height), (5, 4));
+      // Its first pixel is the picture's (3,2) — the SOURCE, byte for byte.
+      expect(piece.image.rgba.sublist(0, 4), [3, 2, 9, 255]);
+      // The pixel whose centre the outline leaves out is empty.
+      expect(piece.image.rgba.sublist(4 * 4, 4 * 4 + 4), [0, 0, 0, 0]);
+    });
+
+    test('it is clipped to the picture — nothing past the edge is asked '
+        'for', () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      final piece = await buildCutPieceFromPicture(
+        region: rect(left: -5, top: -3, right: 4, bottom: 3),
+        pictureWidth: 20,
+        pictureHeight: 10,
+        readRgba: picture(asked),
+        pieceId: 'viewer-cut-1',
+      );
+      expect(asked, [(left: 0, top: 0, width: 5, height: 4)]);
+      expect((piece!.originLeft, piece.originTop), (0, 0));
+    });
+
+    test('a lasso takes only what it encloses', () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      final piece = (await buildCutPieceFromPicture(
+        region: CanvasSelectionRegion.shape(
+          CanvasSelectionShape([
+            CanvasPoint(x: 2, y: 2),
+            CanvasPoint(x: 10, y: 2),
+            CanvasPoint(x: 2, y: 8),
+          ]),
+        ),
+        pictureWidth: 20,
+        pictureHeight: 10,
+        readRgba: picture(asked),
+        pieceId: 'viewer-cut-1',
+      ))!;
+      int alphaAt(int x, int y) =>
+          piece.image.rgba[((y - piece.originTop) * piece.image.width +
+                      (x - piece.originLeft)) *
+                  4 +
+              3];
+      expect(alphaAt(3, 3), 255, reason: 'inside the triangle');
+      expect(alphaAt(9, 7), 0, reason: 'in the box, outside the triangle');
+    });
+
+    test('nothing under the outline is no piece — the slot keeps what it '
+        'holds', () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      final piece = await buildCutPieceFromPicture(
+        region: rect(left: 3, top: 2, right: 7, bottom: 5),
+        pictureWidth: 20,
+        pictureHeight: 10,
+        readRgba: picture(asked, transparentAt: (x, y) => true),
+        pieceId: 'viewer-cut-1',
+      );
+      expect(piece, isNull);
+    });
+
+    test('an outline off the picture reads nothing at all', () async {
+      final asked = <({int left, int top, int width, int height})>[];
+      final piece = await buildCutPieceFromPicture(
+        region: rect(left: 30, top: 20, right: 40, bottom: 30),
+        pictureWidth: 20,
+        pictureHeight: 10,
+        readRgba: picture(asked),
+        pieceId: 'viewer-cut-1',
+      );
+      expect(piece, isNull);
+      expect(asked, isEmpty);
+    });
+  });
 }

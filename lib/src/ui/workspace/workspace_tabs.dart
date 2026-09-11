@@ -76,6 +76,10 @@ class _WorkspaceTabs {
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),
+          // I-14: the cut tool reaches the viewer, and a cut there lands in
+          // the piece the canvas's cuts fill.
+          brushTool: _state._brushTool,
+          cutPieceSlot: _state._cutPieceSlot,
           // 유저 확정 ⑱: the promote button calls the SAME import every
           // other entrance calls, and takes the SAME copy-or-reference
           // default the import window opens on — a viewer-only policy

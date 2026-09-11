@@ -178,7 +178,12 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           // a stamp's bytes and a mask's alphas uploaded for the kernels.
           // They were byte-budgeted and reported to nobody, so they read
           // as engine overhead — 2026-09-10.
-          (QaNativeEngine.instance?.nativeUploadBytes ?? 0),
+          (QaNativeEngine.instance?.nativeUploadBytes ?? 0) +
+          // The cut tool's HELD piece is the stamp's tip (유저: 「잘라내기 할
+          // 때마다 가지고 있는 찍기 팁 교체야」), so it rides this row —
+          // pushed by the workspace, whose State owns the slot. 🆕I-14: a cut
+          // from the media viewer holds its source at full size.
+          session.renderCaches.cutPieceBytes,
     ),
     // 🚨THE CANVAS'S OWN PICTURES, which a phone keeps as GPU textures:
     // every decoded tile, alive as long as its tile is — the picture on

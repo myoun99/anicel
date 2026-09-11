@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../straight_rgba_image.dart';
@@ -152,6 +153,30 @@ final class VideoViewerDocument implements ViewerDocument {
       height: _info.height,
       targetWidth: width,
       targetHeight: height,
+    );
+  }
+
+  /// The frame already arrives at the movie's own size, as bytes — the box
+  /// is copied straight out of it, and no picture is made at all.
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex, {
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) async {
+    final rgba = await _backend.frame(_token, pageIndex);
+    if (rgba == null) {
+      throw StateError('frame $pageIndex could not be read');
+    }
+    return cropStraightRgba(
+      rgba,
+      sourceWidth: _info.width,
+      left: left,
+      top: top,
+      width: width,
+      height: height,
     );
   }
 

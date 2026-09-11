@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
@@ -129,6 +130,47 @@ class _PdfrxDocumentHandle implements ViewerDocument {
       return await rendered.createImage();
     } finally {
       rendered.dispose();
+    }
+  }
+
+  /// A PDF renders a BOX natively: the page raster is virtual, and only
+  /// the box's pixels are made.
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex, {
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) async {
+    final page = _document.pages[pageIndex];
+    final rendered = await page.render(
+      x: left,
+      y: top,
+      width: width,
+      height: height,
+      fullWidth: page.width,
+      fullHeight: page.height,
+    );
+    if (rendered == null) {
+      throw StateError('PDF page render was cancelled.');
+    }
+    final ui.Image image;
+    try {
+      image = await rendered.createImage();
+    } finally {
+      rendered.dispose();
+    }
+    try {
+      return await cropImageRgba(
+        image,
+        left: 0,
+        top: 0,
+        width: width,
+        height: height,
+      );
+    } finally {
+      image.dispose();
     }
   }
 

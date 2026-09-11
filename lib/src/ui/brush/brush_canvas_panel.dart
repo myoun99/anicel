@@ -186,6 +186,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
+    this.onCutContent,
+    this.oneFingerAction,
     this.onStrokeInputActiveChanged,
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
@@ -615,6 +617,26 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Where a finished cut lands. Null in hosts that do not offer the tool
   /// (the cut variants are then inert rather than crashing).
   final CutPieceSlot? cutPieceSlot;
+
+  /// A finished cut outline, for a host whose content is not a cel
+  /// ([contentOverride]): the host lifts the piece from what it SHOWS. Null
+  /// = the cut reads the active cel into [cutPieceSlot].
+  ///
+  /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
+  /// the media viewer answers it, at the page's own size.
+  final ValueChanged<CanvasSelectionShape>? onCutContent;
+
+  /// What one finger does in THIS panel when the host answers the slot
+  /// itself ([CanvasViewportGestureLayer.oneFingerAction]) — and the
+  /// selection layer asks the tool door with the same answer
+  /// ([AppInput.toolAcceptsPointer]), so a finger that pans here cannot also
+  /// drag a cut. Null = the user's slot.
+  ///
+  /// ⚠️Those two read it and nothing else: the selection layer is the one
+  /// tool layer a content host runs (the viewer lets the CUT through and no
+  /// other tool). A host that lets another tool through asks that tool's
+  /// layer the same way.
+  final CanvasTouchDragAction? oneFingerAction;
 
   /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
   /// stroke end/cancel — the session holds prerender warming while a
@@ -1337,8 +1359,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   CanvasTool.move,
               onShapeCommitted:
                   _selectionSeat.recordSelectionChange,
+              // I-14: a host whose content is not a cel cuts from what it
+              // shows.
               onCutShape:
+                  widget.onCutContent ??
                   _cutPieceFromShape,
+              oneFingerAction:
+                  widget.oneFingerAction,
               onFillShape:
                   _fillDrawnShape,
               // CANVAS space,

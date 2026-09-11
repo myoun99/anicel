@@ -815,6 +815,7 @@ enum AppStrings {
   String get mediaViewerEmpty => _s('mediaViewerEmpty');
   String get mediaViewerOpenFile => _s('mediaViewerOpenFile');
   String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
+  String get mediaViewerCutTooLarge => _s('mediaViewerCutTooLarge');
   String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
   String get mediaViewerNoVideoDecoder => _s('mediaViewerNoVideoDecoder');
@@ -1687,6 +1688,8 @@ enum AppStrings {
         'or open one with the folder button above.',
     'mediaViewerOpenFile': 'Open File…',
     'mediaViewerLoadFailed': 'Could not read this file.',
+    'mediaViewerCutTooLarge':
+        'Too large to cut at full size within the memory allowance.',
     'mediaViewerCannotDisplay': 'This media kind has no viewer yet.',
     'mediaViewerNoPdfRenderer':
         'No PDF renderer in this build — PDF pages cannot be shown.',
@@ -2671,6 +2674,7 @@ enum AppStrings {
         '上のボタンからファイルを開いてください。',
     'mediaViewerOpenFile': 'ファイルを開く…',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
+    'mediaViewerCutTooLarge': 'メモリ許容量に収まらないため、原寸で切り取れません。',
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
     'mediaViewerNoVideoDecoder': 'このビルドには動画デコーダーがありません — 動画を表示できません。',
@@ -3674,6 +3678,7 @@ enum AppStrings {
         '위 버튼으로 파일을 여세요.',
     'mediaViewerOpenFile': '파일 열기…',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
+    'mediaViewerCutTooLarge': '메모리 허용치 안에 들어가지 않아 원본 크기로 잘라낼 수 없습니다.',
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
     'mediaViewerNoVideoDecoder': '이 빌드에는 비디오 디코더가 없습니다 — 동영상을 표시할 수 없습니다.',
@@ -4698,6 +4703,8 @@ enum AppStrings {
         'médias, ou ouvrez-en un avec le bouton ci-dessus.',
     'mediaViewerOpenFile': 'Ouvrir un fichier…',
     'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
+    'mediaViewerCutTooLarge':
+        'Trop grand pour être découpé en taille réelle dans la mémoire autorisée.',
     'mediaViewerCannotDisplay':
         'Ce type de média ne peut pas encore être affiché.',
     'mediaViewerNoPdfRenderer':
@@ -5673,6 +5680,7 @@ enum AppStrings {
     'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体池中的文件，或用上方按钮打开文件。',
     'mediaViewerOpenFile': '打开文件…',
     'mediaViewerLoadFailed': '无法读取此文件。',
+    'mediaViewerCutTooLarge': '超出内存允许量，无法按原尺寸裁切。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
     'mediaViewerNoVideoDecoder': '此版本没有视频解码器 — 无法显示影片。',

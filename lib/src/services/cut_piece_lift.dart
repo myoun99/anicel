@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/brush_stamp_image.dart';
@@ -32,24 +33,17 @@ CutPiece? buildCutPiece({
   required String pieceId,
 }) {
   final canvasSize = surface.canvasSize;
-  // Coverage, not the tight fold: the piece's box has to hold every pixel
-  // a step could have added, and the mask zeroes what a 삭제 removed.
-  final bounds = region.coverageBounds;
-  final left = math.max(canvasSize.pasteboardLeft, bounds.left.floor());
-  final top = math.max(canvasSize.pasteboardTop, bounds.top.floor());
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    bounds.right.ceil() + 1,
+  final box = cutPieceBox(
+    region,
+    clipLeft: canvasSize.pasteboardLeft,
+    clipTop: canvasSize.pasteboardTop,
+    clipRightExclusive: canvasSize.pasteboardRightExclusive,
+    clipBottomExclusive: canvasSize.pasteboardBottomExclusive,
   );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    bounds.bottom.ceil() + 1,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  if (box == null) {
     return null;
   }
-  final width = rightExclusive - left;
-  final height = bottomExclusive - top;
+  final (:left, :top, :width, :height) = box;
 
   final mask = region.maskFor(
     left: left,
@@ -88,5 +82,106 @@ CutPiece? buildCutPiece({
     ),
     originLeft: left,
     originTop: top,
+  );
+}
+
+/// The pixel box a cut over [region] reads: the outline's coverage, inside
+/// the half-open clip — null when the two do not meet.
+///
+/// Coverage, not the tight fold: the piece's box has to hold every pixel
+/// a step could have added, and the mask zeroes what a 삭제 removed.
+({int left, int top, int width, int height})? cutPieceBox(
+  CanvasSelectionRegion region, {
+  required int clipLeft,
+  required int clipTop,
+  required int clipRightExclusive,
+  required int clipBottomExclusive,
+}) {
+  final bounds = region.coverageBounds;
+  final left = math.max(clipLeft, bounds.left.floor());
+  final top = math.max(clipTop, bounds.top.floor());
+  final rightExclusive = math.min(clipRightExclusive, bounds.right.ceil() + 1);
+  final bottomExclusive = math.min(
+    clipBottomExclusive,
+    bounds.bottom.ceil() + 1,
+  );
+  if (rightExclusive <= left || bottomExclusive <= top) {
+    return null;
+  }
+  return (
+    left: left,
+    top: top,
+    width: rightExclusive - left,
+    height: bottomExclusive - top,
+  );
+}
+
+/// The CUT verb over a picture that is not a cel — a page in the media
+/// viewer (I-14, 유저 2026-09-11: 「뷰어패널의 잘라내기툴 사용 가능하도록.
+/// 원본크기로 잘라냄. 그걸 캔버스에 배치하는용도」).
+///
+/// [region] is in the picture's own pixels, and [readRgba] hands back the
+/// straight RGBA of the box [cutPieceBox] chose, at that size — so the piece
+/// holds the SOURCE's pixels, whatever zoom the drag was made at. The laws
+/// are [buildCutPiece]'s: a hard mask, and no blank piece for an empty drag
+/// (the slot outlives frames, cuts and projects).
+///
+/// The origin is the box's place on the PICTURE, which is what paste at
+/// origin reads: a reference the canvas's size lands where it was.
+Future<CutPiece?> buildCutPieceFromPicture({
+  required CanvasSelectionRegion region,
+  required int pictureWidth,
+  required int pictureHeight,
+  required Future<Uint8List> Function(
+    ({int left, int top, int width, int height}) box,
+  )
+  readRgba,
+  required String pieceId,
+}) async {
+  final box = cutPieceBox(
+    region,
+    clipLeft: 0,
+    clipTop: 0,
+    clipRightExclusive: pictureWidth,
+    clipBottomExclusive: pictureHeight,
+  );
+  if (box == null) {
+    return null;
+  }
+  final mask = region.maskFor(
+    left: box.left,
+    top: box.top,
+    width: box.width,
+    height: box.height,
+  );
+  final rgba = await readRgba(box);
+  if (rgba.length != mask.length * 4) {
+    throw StateError(
+      'a ${box.width}x${box.height} read came back ${rgba.length} bytes',
+    );
+  }
+  var liftedAnything = false;
+  for (var pixel = 0; pixel < mask.length; pixel += 1) {
+    final offset = pixel * 4;
+    // Outside the outline, or nothing there: a zero pixel, as the cel's
+    // gather leaves where it takes nothing.
+    if (mask[pixel] == 0 || rgba[offset + 3] == 0) {
+      rgba.fillRange(offset, offset + 4, 0);
+    } else {
+      liftedAnything = true;
+    }
+  }
+  if (!liftedAnything) {
+    return null;
+  }
+  return CutPiece(
+    image: BrushStampImage(
+      id: pieceId,
+      width: box.width,
+      height: box.height,
+      rgba: rgba,
+    ),
+    originLeft: box.left,
+    originTop: box.top,
   );
 }

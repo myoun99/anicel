@@ -8,7 +8,11 @@ import '../../services/memory_allowance.dart';
 import 'viewer_render_tier.dart';
 
 /// Bytes one page costs at the tier's ceiling: [viewerMaxRenderPixels] at
-/// 4 bytes each — 64MB. Nothing the viewer holds is ever bigger.
+/// 4 bytes each — 64MB. No PAGE the viewer holds is ever bigger.
+///
+/// ⚠️A CUT's read can be (I-14): it reads its box at the page's own size,
+/// which is the point of it, so it is billed to [ViewerRasterBudget] at that
+/// size instead — the pages make room, and what cannot fit is refused.
 const int viewerPageBytesAtCap =
     viewerMaxRenderPixels * BitmapTile.bytesPerPixel;
 

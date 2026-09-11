@@ -385,6 +385,7 @@ void main() {
     'mediaViewerEmpty': (s) => s.mediaViewerEmpty,
     'mediaViewerOpenFile': (s) => s.mediaViewerOpenFile,
     'mediaViewerLoadFailed': (s) => s.mediaViewerLoadFailed,
+    'mediaViewerCutTooLarge': (s) => s.mediaViewerCutTooLarge,
     'mediaViewerCannotDisplay': (s) => s.mediaViewerCannotDisplay,
     'mediaViewerNoPdfRenderer': (s) => s.mediaViewerNoPdfRenderer,
     'mediaViewerNoVideoDecoder': (s) => s.mediaViewerNoVideoDecoder,

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'viewer_document.dart';
@@ -118,6 +119,25 @@ final class ImageViewerDocument implements ViewerDocument {
       codec.dispose();
     }
   }
+
+  /// ⚠️A codec decodes WHOLE images, so a box costs the page at its own
+  /// size — the full decode this document otherwise never makes (see the
+  /// header). The viewer bills that before it asks.
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex, {
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) => readRegionByRenderingPage(
+    this,
+    pageIndex,
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
 
   @override
   Future<void> dispose() async => _descriptor.dispose();

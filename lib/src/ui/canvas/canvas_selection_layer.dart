@@ -82,6 +82,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.composeCommittedRegionPictures,
     this.transformOptions = TransformToolOptions.defaults,
     this.floatOverlay,
+    this.oneFingerAction,
   });
 
   /// Where the FLOAT's pixels go (TS1): the composite that draws the active
@@ -94,6 +95,11 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// itself here, from the same description — the mount point differs, the
   /// drawing does not.
   final SelectionFloatOverlay? floatOverlay;
+
+  /// The host's own one-finger answer — a finger drives this layer only
+  /// where that answer is draw ([AppInput.toolAcceptsPointer]). Null = the
+  /// user's slot.
+  final CanvasTouchDragAction? oneFingerAction;
 
   /// Offers the host the picture the screen is showing over the landing
   /// rect, so the tiles the commit just created can draw THEMSELVES on the
@@ -2553,7 +2559,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // Below the second-touch branch above deliberately: that one is about a
     // drag already in progress, which a rejected pointer can never have
     // started.
-    if (!AppInput.toolAcceptsPointer(event.kind)) {
+    if (!AppInput.toolAcceptsPointer(
+      event.kind,
+      oneFinger: widget.oneFingerAction,
+    )) {
       return;
     }
     if (event.buttons != kPrimaryButton &&

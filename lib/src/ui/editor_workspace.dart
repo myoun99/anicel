@@ -722,6 +722,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// project it was taken from. Only quitting loses it.
   final CutPieceSlot _cutPieceSlot = CutPieceSlot();
 
+  /// The census cannot reach a widget State; the session can be reached —
+  /// the same push the storyboard's thumbnails make.
+  void _reportCutPieceBytes() =>
+      widget.session.renderCaches.cutPieceBytes = _cutPieceSlot.pieceBytes;
+
   // ── the brush presets and tips: their own object ────────────────────
   //
   // A collaborator (workspace/workspace_brush_presets.dart, a part of this library). The
@@ -1015,6 +1020,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             : WorkspaceLayoutStore());
     unawaited(_layoutPersistence.restoreLayout());
     _cutPieceSlot.addListener(_brushPresets.armStampOnFreshCut);
+    _cutPieceSlot.addListener(_reportCutPieceBytes);
     _layout.addListener(_layoutPersistence.scheduleLayoutSave);
     // Sizes no longer come through the model's own notifier, but they are
     // still persisted — the save has to hear them separately or a resized
@@ -1315,6 +1321,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _presetLibrary.dispose();
     _tipLibrary.dispose();
     _cutPieceSlot.removeListener(_brushPresets.armStampOnFreshCut);
+    _cutPieceSlot.removeListener(_reportCutPieceBytes);
+    widget.session.renderCaches.cutPieceBytes = 0;
     // An injected tool notifier belongs to the shell; only a local
     // fallback is ours to dispose.
     if (widget.brushTool == null) {

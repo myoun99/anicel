@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -102,6 +103,22 @@ class AudioViewerDocument implements ViewerDocument {
       picture.dispose();
     }
   }
+
+  @override
+  Future<Uint8List> readRegionRgba(
+    int pageIndex, {
+    required int left,
+    required int top,
+    required int width,
+    required int height,
+  }) => readRegionByRenderingPage(
+    this,
+    pageIndex,
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
 
   @override
   Future<void> dispose() async {}

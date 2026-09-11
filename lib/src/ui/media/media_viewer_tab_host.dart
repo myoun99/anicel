@@ -6,7 +6,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
+import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
@@ -16,6 +19,10 @@ import '../../services/media/media_byte_source.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/straight_rgba_image.dart';
+import '../../services/canvas_selection_region.dart';
+import '../../services/canvas_selection_shape.dart';
+import '../../services/cut_piece_lift.dart';
+import '../../services/cut_piece_slot.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
@@ -23,6 +30,7 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
+import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
@@ -39,7 +47,9 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../repaint_props.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
@@ -140,6 +150,9 @@ class MediaViewerSlot {
 /// current zoom tier (§6-m — a 100-page conte must never pre-render for
 /// viewing). No PDF renderer is a stated condition on screen, never a
 /// blank page — and images never route through the PDF engine.
+///
+/// 🗣️I-14 (유저 2026-09-11): one finger PANS here, and the cut tool CUTS
+/// here — at the page's own size, into the piece the canvas stamps.
 class MediaViewerTabHost extends StatefulWidget {
   const MediaViewerTabHost({
     super.key,
@@ -159,6 +172,8 @@ class MediaViewerTabHost extends StatefulWidget {
     this.framedFor,
     this.filePicker,
     this.sound,
+    this.brushTool,
+    this.cutPieceSlot,
   });
 
   /// WHICH viewer this is — the panel's tab id, and the prefix every
@@ -240,6 +255,22 @@ class MediaViewerTabHost extends StatefulWidget {
   /// green. That is not 「no test was needed」, it is 「the bench cannot
   /// see it」 — and this is the door that lets it.
   final ViewerSound? sound;
+
+  /// The workspace's tool, read for ONE thing: whether the cut tool is
+  /// armed, and with which outline ([armedCutShape]) — sliced, so a brush's
+  /// size or colour never rebuilds this panel.
+  ///
+  /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널의 잘라내기툴 사용 가능하도록」 —
+  /// and the viewer has no drawing (「뷰어패널은 기본적으로 드로잉모드
+  /// 존재안하니」), so the cut is the one tool with anything to do here.
+  final ValueListenable<BrushToolState>? brushTool;
+
+  /// Where a cut from this viewer lands — the cut tool's one held piece,
+  /// the slot the canvas's cuts fill too. Null offers no cut.
+  ///
+  /// ⛔Not handed to the panel below: a mounted canvas panel installs its
+  /// paste-at-origin into the slot, and the viewer has no cel to paste on.
+  final CutPieceSlot? cutPieceSlot;
 
   @override
   State<MediaViewerTabHost> createState() => _MediaViewerTabHostState();
@@ -323,6 +354,16 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
   );
 
+  /// What a cut's read holds while it is out (I-14): billed to [_budget]
+  /// beside the page cache, and reported to the census with it.
+  int _cutReadBytes = 0;
+
+  /// The cut in flight — the next waits its turn rather than racing it for
+  /// the budget.
+  Future<void> _cuts = Future<void>.value();
+
+  int _cutSequence = 0;
+
   /// Drops cached pages, farthest from the one on screen first, until the
   /// cache fits [ViewerRasterBudget.byteBudget].
   ///
@@ -353,12 +394,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     return page >= _page ? page - _page : _pageCount + (_page - page);
   }
 
-  void _evictToBudget({required int keeping}) {
+  int _evictToBudget({required int keeping}) {
     var total = 0;
     for (final page in _pageCache.values) {
       total += ViewerRasterBudget.costOf(page.image);
     }
-    while (total > _budget.byteBudget && _pageCache.length > 1) {
+    // A cut's read is billed beside the pages (I-14), so they make room.
+    while (total + _cutReadBytes > _budget.byteBudget &&
+        _pageCache.length > 1) {
       // Two or more entries and at most one of them is [keeping], so a
       // candidate always exists and it is always in the map. Asserted with
       // `!` rather than guarded: a guard here would answer an impossible
@@ -377,7 +420,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // see [RenderCaches.viewerRasterBytesByViewer]. Every path
     // that changes the cache ends here or in [_disposeContent].
     widget.session.renderCaches.viewerRasterBytesByViewer[widget.viewerId] =
-        total;
+        total + _cutReadBytes;
+    return total;
   }
 
   /// The OS said memory is tight. The session already stood its own caches
@@ -1163,6 +1207,110 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     );
   }
 
+  // --- Cutting (I-14: the cut tool, at the page's own size) -------------
+
+  /// The tool the viewer's panel runs: the CUT while the cut tool is armed,
+  /// and otherwise the inert default the viewer has always run — nothing
+  /// else has anything here to act on. One instance per outline, so a
+  /// rebuild hands the panel the SAME state.
+  static BrushToolState _toolStateFor(BrushToolState workspaceTool) {
+    final shape = armedCutShape(workspaceTool);
+    return shape == null
+        ? BrushToolState.defaults
+        : _cutTools.putIfAbsent(
+            shape,
+            () => BrushToolState.defaults.copyWith(
+              tool: CanvasTool.cut,
+              cutShape: shape,
+            ),
+          );
+  }
+
+  static final Map<CanvasShapeKind, BrushToolState> _cutTools = {};
+
+  /// A finished cut outline over the page on screen: read its box at the
+  /// page's OWN size and hold it as the cut tool's piece.
+  ///
+  /// 🗣️유저 2026-09-11: 「원본크기로 잘라냄」 — 「34%의 크기가 스탬프
+  /// 크기값이 100%이 되는게 아니라, 제대로 100% 해상도만큼」. The outline
+  /// arrives in document units whatever the zoom, and the read is in those
+  /// same units, so the piece is the source's own pixels and the stamp's
+  /// 100% is that size.
+  void _cutFromPage(CanvasSelectionShape shape) {
+    _cuts = _cuts.then((_) => _cut(shape));
+  }
+
+  Future<void> _cut(CanvasSelectionShape shape) async {
+    final slot = widget.cutPieceSlot;
+    final document = _document;
+    final pageCount = _pageCount;
+    if (!mounted || slot == null || document == null || pageCount == 0) {
+      return;
+    }
+    final pageIndex = _page.clamp(0, pageCount - 1);
+    final pixels = viewerPagePixels(document.pageSize(pageIndex));
+    // 📨THE BUDGET THE PAGES LIVE UNDER (the import-export session,
+    // 2026-09-11: 「뷰어 예산 … 을 따르면 됩니다」). The read is billed as the
+    // page at its own size — the most any document's read holds, since an
+    // image decodes whole — and the cached pages make room for it. What
+    // cannot fit even then is REFUSED, never read smaller: a shrunken piece
+    // is exactly what the user ruled out.
+    final bytes = estimatedImageBytes(pixels.width, pixels.height);
+    var held = 0;
+    setState(() {
+      _cutReadBytes = bytes;
+      held = _evictToBudget(keeping: pageIndex);
+    });
+    if (held + bytes > _budget.byteBudget) {
+      _endCutRead();
+      cursorNotices.show(
+        AppText.strings.mediaViewerCutTooLarge,
+        duration: const Duration(seconds: 2),
+      );
+      return;
+    }
+    final generation = _generation;
+    final CutPiece? piece;
+    try {
+      piece = await buildCutPieceFromPicture(
+        region: CanvasSelectionRegion.shape(shape),
+        pictureWidth: pixels.width,
+        pictureHeight: pixels.height,
+        readRgba: (box) => document.readRegionRgba(
+          pageIndex,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+        ),
+        pieceId: '${widget.viewerId}-cut-${_cutSequence += 1}',
+      );
+    } on Object {
+      if (mounted && generation == _generation) {
+        cursorNotices.show(AppText.strings.mediaViewerLoadFailed);
+      }
+      return;
+    } finally {
+      if (mounted) {
+        _endCutRead();
+      }
+    }
+    // The document it was cut from is gone, or the panel is: what is on
+    // screen now is not what was cut.
+    if (!mounted || generation != _generation || piece == null) {
+      return;
+    }
+    slot.hold(piece);
+  }
+
+  /// The read is back, or never went out: stop billing it.
+  void _endCutRead() {
+    setState(() {
+      _cutReadBytes = 0;
+      _evictToBudget(keeping: _page);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
@@ -1229,7 +1377,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
-    final panel = BrushCanvasPanel(
+    BrushCanvasPanel panelWith(BrushToolState toolState) => BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -1245,6 +1393,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // Read-only host: a brush-tip cursor over undrawable content is a
       // false affordance.
       toolCursorsEnabled: false,
+      // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
+      // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
+      // and so a finger drives no tool here: the cut takes a pen or a mouse.
+      oneFingerAction: CanvasTouchDragAction.navigate,
+      brushToolState: toolState,
+      onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       // Reframe ONCE per loaded document: the workspace-owned viewport
       // survives asset switches, and a deep zoom/pan from a large scan
       // would otherwise leave a small next document entirely off-screen
@@ -1380,6 +1534,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         ],
       ),
     );
+    final brushTool = widget.brushTool;
+    final panel = brushTool == null
+        ? panelWith(BrushToolState.defaults)
+        : SlicedValueListenableBuilder<BrushToolState, CanvasShapeKind?>(
+            valueListenable: brushTool,
+            slice: armedCutShape,
+            builder: (context, tool) => panelWith(_toolStateFor(tool)),
+          );
 
     final surface = ColoredBox(
       key: ValueKey<String>(_key('panel')),

@@ -73,8 +73,31 @@ import '../../tool/refactor/clone_scan.dart';
 /// Both spelled the same "one raw add and one palette index per pixel" loop.
 /// The C pass feeds the builder RUNS now and a run is filled in bulk, so
 /// neither loop exists any more — the ceiling follows the count down.
+/// 88 → 89 (2026-09-11, I-14 — the media viewer's cut). The new pair is
+/// named:
+///
+///     76 tokens
+///       lib/src/services/import/raster_cel_import.dart
+///         rasterizeImageToSurface
+///       lib/src/services/media/viewer_document.dart  cropImageRgba
+///
+/// They ARE one algorithm — draw an image into a recorded picture the
+/// target's size, rasterize it and read it back as straight RGBA, giving
+/// the picture and the raster back on every arm — so the reading confirms
+/// the candidate.
+///
+/// ⛔It is not merged, because it is the SECOND. The import's is the middle
+/// of a function that places, clips and slices into tiles; the cut's is the
+/// whole of one that copies a box 1:1. A shared helper would take the
+/// paint's filter and the canvas's translation as arguments for a shape
+/// seen twice. ⛔Nor is the cut read another way to keep the count: reading
+/// the WHOLE image back and slicing rows would hold the page twice at its
+/// own size, which on the tablets this app is written for is the worse
+/// trade.
+/// 🔜**The third picture-to-straight-RGBA read merges all three**, and this
+/// comes back down.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

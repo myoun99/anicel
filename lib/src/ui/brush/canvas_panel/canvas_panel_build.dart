@@ -239,6 +239,7 @@ class _PanelBuild {
       viewport: _state._viewportState._viewport,
       onViewportChanged: _state._viewportState.setViewport,
       rotationEnabled: _state.widget.allowViewRotation,
+      oneFingerAction: _state.widget.oneFingerAction,
       flipHud: hud,
       // PEN-7b: the control-mode touch slots — flip
       // dispatches shell actions, brush size drives the

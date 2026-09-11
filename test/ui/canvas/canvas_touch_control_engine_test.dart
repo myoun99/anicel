@@ -21,7 +21,11 @@ void main() {
       List<(double, bool)> sizeDrags,
     })
   >
-  pumpEngine(WidgetTester tester, {CanvasViewport? viewport}) async {
+  pumpEngine(
+    WidgetTester tester, {
+    CanvasViewport? viewport,
+    CanvasTouchDragAction? oneFingerAction,
+  }) async {
     // Opt INTO an engine-driven one-finger slot (the corpus baseline
     // pins draw = the engine stands down): keep any custom settings a
     // test already applied.
@@ -45,6 +49,7 @@ void main() {
             onBrushSizeDragUpdate: (delta, {required snap}) =>
                 sizeDrags.add((delta, snap)),
             onBrushSizeDragEnd: () {},
+            oneFingerAction: oneFingerAction,
             child: const SizedBox.expand(),
           ),
         ),
@@ -224,6 +229,57 @@ void main() {
 
     expect(probes.actions, isEmpty, reason: 'no flip on a navigate slot');
     expect(probes.viewports, isNotEmpty, reason: 'one-finger pan');
+  });
+
+  testWidgets('🗣️I-14: a host that answers the one-finger slot ITSELF pans '
+      'on one finger, whatever the user set — flip or draw', (tester) async {
+    for (final slot in const [
+      CanvasTouchDragAction.flip,
+      CanvasTouchDragAction.draw,
+    ]) {
+      final probes = await pumpEngine(
+        tester,
+        oneFingerAction: CanvasTouchDragAction.navigate,
+      );
+      // AFTER the pump: the harness opts a draw slot back out.
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: slot,
+      );
+      final finger = await tester.startGesture(
+        const Offset(200, 200),
+        kind: PointerDeviceKind.touch,
+      );
+      await finger.moveBy(const Offset(30, 0));
+      await finger.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await finger.up();
+      await tester.pump();
+
+      expect(probes.actions, isEmpty, reason: 'no flip under $slot');
+      expect(
+        probes.viewports,
+        isNotEmpty,
+        reason: 'one finger pans under $slot',
+      );
+    }
+  });
+
+  test('🗣️I-14: and the tool door reads the SAME answer — a host that '
+      'navigates one finger lends no finger to a tool', () {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+    const navigate = CanvasTouchDragAction.navigate;
+    expect(AppInput.toolAcceptsPointer(PointerDeviceKind.touch), isTrue);
+    expect(
+      AppInput.toolAcceptsPointer(PointerDeviceKind.touch, oneFinger: navigate),
+      isFalse,
+    );
+    expect(
+      AppInput.toolAcceptsPointer(PointerDeviceKind.stylus, oneFinger: navigate),
+      isTrue,
+      reason: 'a pen still drives the tool',
+    );
   });
 
   testWidgets('a DRAW one-finger slot stands the engine down — no flip, '

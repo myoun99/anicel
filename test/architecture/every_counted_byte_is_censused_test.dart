@@ -203,6 +203,10 @@ const _notCensused = <String, String>{
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the canvas buffer and the viewers are',
+  'lib/src/services/cut_piece_slot.dart → pieceBytes':
+      'via:cutPieceBytes — the slot lives in the workspace State the '
+      'session does not own, so the workspace pushes it onto RenderCaches, '
+      'the way the storyboard thumbnails are',
   'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
       'via:canvasBufferBytes — the view that owns the bake reports it '
       'together with its display buffer: both are the view holding a '

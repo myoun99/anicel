@@ -507,7 +507,8 @@ abstract final class AppInput {
       ValueNotifier<AppInputSettings>(const AppInputSettings());
 
   /// The drag action assigned to a finger-count slot (3+ fingers share
-  /// the three-finger slot) — **the stored setting, and nothing else**.
+  /// the three-finger slot) — **the stored setting**, unless a host answers
+  /// the one-finger slot itself (`oneFinger`, below).
   ///
   /// ⛔**THE APP DOES NOT ASK WHAT DEVICE IT IS ON** (유저 확정 2026-08-22):
   /// 「아이폰이면 강제 터치그리기같은거 없애. **기종 묻지말고 그냥 핑거
@@ -525,10 +526,21 @@ abstract final class AppInput {
   ///
   /// ⇒ the mode is the whole answer, everywhere. A phone user who wants a
   /// drawing finger sets a drawing finger.
-  static CanvasTouchDragAction touchDragActionFor(int fingerCount) {
+  ///
+  /// [oneFinger] is a HOST's own answer for the one-finger slot — null is
+  /// the user's. ⚠️Not a device question, which the paragraph above
+  /// retired: it is a panel with nothing to draw on. 🗣️I-14 (유저
+  /// 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드 존재안하니 한손가락
+  /// 핑거시 팬」 — the media viewer says navigate, and every question below
+  /// that reads the slot takes the same answer, so a finger there pans AND
+  /// drives no tool.
+  static CanvasTouchDragAction touchDragActionFor(
+    int fingerCount, {
+    CanvasTouchDragAction? oneFinger,
+  }) {
     final value = settings.value;
     if (fingerCount <= 1) {
-      return value.touchDragOneFinger;
+      return oneFinger ?? value.touchDragOneFinger;
     }
     if (fingerCount == 2) {
       return value.touchDragTwoFingers;
@@ -538,8 +550,13 @@ abstract final class AppInput {
 
   /// Whether a single finger DRAWS on canvas (PEN-12 #4 — the retired
   /// control/draw mode's replacement question).
-  static bool get touchDraws =>
-      touchDragActionFor(1) == CanvasTouchDragAction.draw;
+  static bool get touchDraws => touchDrawsFor(null);
+
+  /// [touchDraws] under a host's own one-finger answer — see
+  /// [touchDragActionFor]. Null asks the user's slot.
+  static bool touchDrawsFor(CanvasTouchDragAction? oneFinger) =>
+      touchDragActionFor(1, oneFinger: oneFinger) ==
+      CanvasTouchDragAction.draw;
 
   /// Whether a pointer of [kind] may DRIVE A CANVAS TOOL at all (TS9).
   ///
@@ -558,8 +575,14 @@ abstract final class AppInput {
   /// ⚠️Callers must DECLINE quietly (return from the handler) rather than
   /// swallowing the pointer: the panel's gesture layer is an ancestor and
   /// owns the touch, and it can only win if the event still reaches it.
-  static bool toolAcceptsPointer(PointerDeviceKind kind) =>
-      kind != PointerDeviceKind.touch || touchDraws;
+  ///
+  /// [oneFinger] is the host's own one-finger answer ([touchDragActionFor]):
+  /// the door asks the SAME slot the host's gesture layer navigates by, so
+  /// the two can never both take one finger.
+  static bool toolAcceptsPointer(
+    PointerDeviceKind kind, {
+    CanvasTouchDragAction? oneFinger,
+  }) => kind != PointerDeviceKind.touch || touchDrawsFor(oneFinger);
 
   /// Whether Flutter will tell us when this pointer LEAVES.
   ///

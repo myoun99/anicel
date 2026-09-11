@@ -26,6 +26,12 @@ class CutPieceSlot extends ChangeNotifier {
   bool get isEmpty => _piece == null;
   bool get isNotEmpty => _piece != null;
 
+  /// What the held piece costs resident — its straight RGBA. A cut from the
+  /// media viewer holds its source at full size (I-14), so this can be the
+  /// largest single picture the app keeps; the workspace reports it to the
+  /// memory census.
+  int get pieceBytes => _piece?.image.rgba.lengthInBytes ?? 0;
+
   /// Fills the slot, replacing whatever was held.
   ///
   /// Replacing is the whole of "cut again" (유저: "잘라내기 할 때마다 가지고
