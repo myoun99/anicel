@@ -17,6 +17,19 @@ default_platform(:ios)
 
 APP_IDENTIFIER = "com.myoun.anicel".freeze
 
+# 🚨THE WEBSITE'S ADDRESS IS WRITTEN HERE AND NOWHERE ELSE. docs/ is the
+# site, published by GitLab from the mirror (.gitlab-ci.yml), and this is
+# where it answers. App Store Connect used to keep a hand-typed copy of the
+# privacy policy's address, and that copy went on naming GitHub Pages after
+# the suspension took them down (2026-09-01). The beta lane writes it from
+# here now, so moving the site is an edit to this line and nothing else.
+#
+# ⚠️The address GitLab gave the project under its unique domain, the default
+# for a new project (Deploy › Pages). Turning the unique domain off moves the
+# site to myoun-group.gitlab.io/anicel, and this line has to follow.
+SITE_URL = "https://anicel-f577e6.gitlab.io/".freeze
+PRIVACY_PAGE = "privacy.html".freeze
+
 # .strip on every single-line secret: a value pasted with a trailing newline
 # reaches CI intact, and the failure it causes names something else entirely.
 def asc_key
@@ -98,10 +111,71 @@ def import_developer_id
   end
 end
 
+require "net/http"
+
+# The site as served has to be docs/ as committed, every file byte for byte.
+# Testers read the privacy policy there, and a site the mirror stopped
+# feeding would show them an old promise beside a new build. A pages job
+# that failed, a push that never reached the mirror, a site switched back to
+# members-only — each reads here as a page that is not this commit's.
+def ensure_site_is_docs
+  docs = File.expand_path("../../docs")
+  pages = Dir.glob("**/*", base: docs).select do |path|
+    File.file?(File.join(docs, path))
+  end
+  unless pages.include?(PRIVACY_PAGE)
+    UI.user_error!("docs/#{PRIVACY_PAGE} is gone; App Store Connect names it")
+  end
+  pages.each do |path|
+    url = URI.join(SITE_URL, path)
+    response = Net::HTTP.get_response(url)
+    next if response.is_a?(Net::HTTPOK) &&
+            response.body.b == File.binread(File.join(docs, path))
+
+    UI.user_error!(
+      "#{url} does not serve docs/#{path} as committed " \
+      "(HTTP #{response.code}). The site publishes from the GitLab mirror " \
+      "(.gitlab-ci.yml): if docs/ changed minutes ago its job may still be " \
+      "running; otherwise check that this commit reached the mirror's " \
+      "master and that its pages job passed.",
+    )
+  end
+end
+
+# Test Information in App Store Connect, one entry per language it is kept
+# in, names the privacy policy; each entry is pointed at the page above. The
+# rest of it — the description, the feedback address, the reviewer's
+# contact — is the Account Holder's to type, and is left alone.
+def point_tester_privacy_policy
+  url = URI.join(SITE_URL, PRIVACY_PAGE).to_s
+  app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+  UI.user_error!("App Store Connect has no app #{APP_IDENTIFIER}") unless app
+  localizations = app.get_beta_app_localizations
+  if localizations.empty?
+    UI.important("Test Information is empty: no privacy policy to point")
+  end
+  localizations.each do |localization|
+    next if localization.privacy_policy_url == url
+
+    Spaceship::ConnectAPI.patch_beta_app_localizations(
+      localization_id: localization.id,
+      attributes: { privacyPolicyUrl: url },
+    )
+    UI.message("Test Information (#{localization.locale}) now names #{url}")
+  end
+end
+
 platform :ios do
   desc "Build a signed .ipa and ship it to TestFlight"
   lane :beta do
     key = asc_key
+
+    # What a tester is shown about privacy, settled before anything is signed
+    # or built: the site serving docs/ as committed, and App Store Connect
+    # naming its privacy page. A build that would send testers to a stale
+    # policy stops here.
+    ensure_site_is_docs
+    point_tester_privacy_policy
 
     # A CI keychain starts empty, and its password has to be one fastlane
     # knows — the default login keychain's is not.
