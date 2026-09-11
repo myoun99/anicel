@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart' show AppColors;
 import 'media_asset_drag_data.dart';
+import 'media_drop_verdict.dart';
 
 /// A full-bleed place ENTRANCE: the surface a media-browser row can be
 /// dropped on, wherever that surface is (a timeline layer row, the stage,
-/// the layer area).
+/// the layer area, an SE block).
 ///
 /// It reports and stops there. Every entrance the place system has fills
 /// the import window's answers rather than deciding for the user (§7), so
@@ -25,12 +26,20 @@ class MediaAssetDropTarget extends StatelessWidget {
   const MediaAssetDropTarget({
     super.key,
     required this.onDrop,
+    this.accepts,
     this.onHover,
     this.onLeave,
     this.framed = true,
   });
 
   final void Function(MediaAssetDragData data, Offset globalPosition) onDrop;
+
+  /// Whether the file standing at [globalPosition] can land here — the
+  /// answer the drag's chip wears ([MediaDropVerdictScope]: 「불가능 = 칩의
+  /// 금지 표시」). Null is yes, for every file. An entrance that says no
+  /// does nothing with the drop: impossible means nothing happens.
+  final bool Function(MediaAssetDragData data, Offset globalPosition)?
+  accepts;
 
   /// Where a matching drag stands while it is over this entrance — the same
   /// offset [onDrop] gets, with the same anchor caveat — for a host whose
@@ -46,16 +55,27 @@ class MediaAssetDropTarget extends StatelessWidget {
   /// none.
   final bool framed;
 
+  bool _yes(MediaAssetDragData data, Offset globalPosition) =>
+      accepts?.call(data, globalPosition) ?? true;
+
   @override
   Widget build(BuildContext context) {
-    final hover = onHover;
-    final leave = onLeave;
+    final verdict = MediaDropVerdictScope.maybeOf(context);
     return DragTarget<MediaAssetDragData>(
-      onMove: hover == null
-          ? null
-          : (details) => hover(details.data, details.offset),
-      onLeave: leave == null ? null : (_) => leave(),
-      onAcceptWithDetails: (details) => onDrop(details.data, details.offset),
+      onMove: (details) {
+        verdict?.value = _yes(details.data, details.offset);
+        onHover?.call(details.data, details.offset);
+      },
+      onLeave: (_) {
+        verdict?.value = null;
+        onLeave?.call();
+      },
+      onAcceptWithDetails: (details) {
+        verdict?.value = null;
+        if (_yes(details.data, details.offset)) {
+          onDrop(details.data, details.offset);
+        }
+      },
       // Lit only while a matching drag is in flight, and an empty SizedBox
       // absorbs no hit test — so the surface underneath (a brush stroke, a
       // cell tap, a range pan, a rail row's grip) keeps every pointer the

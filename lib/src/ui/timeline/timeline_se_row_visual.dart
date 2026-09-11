@@ -10,7 +10,8 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
-import '../media/media_asset_drag_data.dart';
+import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
+import '../media/media_asset_drop_target.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
@@ -342,21 +343,16 @@ List<Widget> timelineRowSeAssetDropTargets({
           startIndex: block.startIndex,
           endIndexExclusive: block.endIndexExclusive,
         ),
-        child: DragTarget<MediaAssetDragData>(
+        // The shared entrance, lit by its own frame (「블록이 외곽선으로
+        // 켜진다」) — and a SOUND only: an SE row holds sounds, so a picture
+        // let go on a block is a no. The chip says so, and nothing links.
+        child: MediaAssetDropTarget(
           key: ValueKey<String>(
             '$keyPrefix-se-asset-drop-${layer.id}-${block.startIndex}',
           ),
-          onAcceptWithDetails: (details) =>
-              onAssetDropped(block.startIndex, details.data.path),
-          builder: (context, candidates, _) => candidates.isEmpty
-              ? const SizedBox.expand()
-              : DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.all(Radius.circular(4)),
-                    border: Border.all(color: AppColors.accent, width: 2),
-                    color: AppColors.accent.withValues(alpha: 0.12),
-                  ),
-                ),
+          accepts: (data, _) =>
+              mediaAssetKindForPath(data.path) == MediaAssetKind.audio,
+          onDrop: (data, _) => onAssetDropped(block.startIndex, data.path),
         ),
       ),
     );

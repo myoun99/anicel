@@ -73,6 +73,7 @@ class TimelinePanel extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
+    this.acceptsMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
@@ -241,6 +242,10 @@ class TimelinePanel extends StatefulWidget {
   /// A media-browser row dropped on a drawing layer; null refuses the drag.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// Whether a file at a frame of a row can land there; null is yes.
+  final bool Function(LayerId layerId, int frameIndex, String path)?
+  acceptsMediaAssetOnLayer;
 
   /// A media-browser row let go on the layer area, at a gap between rows;
   /// null refuses the drag.
@@ -540,6 +545,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onShowSecondsChanged: widget.onShowSecondsChanged,
       audioLane: widget.audioLane,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
+      acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],

@@ -249,6 +249,7 @@ class TimelineRowDragHooks {
     this.onSelectEnd,
     this.onPlacementHover,
     this.onPlacementLeave,
+    this.acceptsPlacement,
   });
 
   final ValueListenable<LayerRowDragState?> drag;
@@ -335,6 +336,11 @@ class TimelineRowDragHooks {
 
   /// That file left the layer area, or was let go on it.
   final VoidCallback? onPlacementLeave;
+
+  /// Whether that file can land at that gap — the drop's own answer, which
+  /// the drag's chip wears (「불가능 = 칩의 금지 표시」). Null is yes.
+  final bool Function(List<Layer> displayLayers, int slot, String path)?
+  acceptsPlacement;
 }
 
 /// The caret's thickness and colour, shared by every rail that draws one.

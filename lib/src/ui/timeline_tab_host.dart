@@ -781,6 +781,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // move and made the slide feel heavy (R5-⑧); the session drag
             // API stays for callers that need the cross-panel mirror.
             onDropMediaAssetOnLayer: widget.onPlaceMediaAsset,
+            // The same question the drop's door asks, asked while the file
+            // only hovers — so the chip wears the answer before the release.
+            acceptsMediaAssetOnLayer: (layerId, frameIndex, path) =>
+                _session.dropSpotFor(layerId, frameIndex, path) != null,
             onDropMediaAssetBetweenLayers:
                 widget.onPlaceMediaAssetBetweenLayers,
             audioLane: TimelineAudioLaneCallbacks(
@@ -949,6 +953,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // moved row does (「레이어 영역(가로선) → 새 레이어」).
               onPlacementHover: _session.layerRowDragVerbs.showPlacementCaret,
               onPlacementLeave: _session.layerRowDragVerbs.clearPlacementCaret,
+              acceptsPlacement: (displayLayers, slot, path) =>
+                  _session.layerSlotSpotFor(displayLayers, slot, path) != null,
               // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
               // selection moves it — the cells' grammar, transposed.
               //

@@ -72,6 +72,7 @@ class TimelineGridHooks {
     this.onShowSecondsChanged,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
+    this.acceptsMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
@@ -211,6 +212,11 @@ class TimelineGridHooks {
   /// this cut and this layer already answered.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// Whether a file at a frame of a row can land there — the session's
+  /// answer the drag's chip wears (「불가능 = 칩의 금지 표시」). Null is yes.
+  final bool Function(LayerId layerId, int frameIndex, String path)?
+  acceptsMediaAssetOnLayer;
 
   /// A media-browser row let go on the LAYER AREA, at the gap [slot] of
   /// [displayLayers]: a new layer there (「레이어 영역(가로선) → 새

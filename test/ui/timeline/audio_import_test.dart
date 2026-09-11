@@ -412,32 +412,36 @@ void main() {
           Track(
             id: const TrackId('cell-track'),
             name: 'Video',
+            // A TRACK's SE row, as SE rows are: whether a sound can land on
+            // a cell is the session's answer, and the session answers for
+            // the track's rows.
+            seLayers: [
+              Layer(
+                id: _seLayerId,
+                name: 'S1',
+                kind: LayerKind.se,
+                frames: [
+                  Frame(
+                    id: const FrameId('cell-f1'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+                timeline: {
+                  2: const TimelineExposure.drawing(
+                    FrameId('cell-f1'),
+                    length: 4,
+                  ),
+                },
+              ),
+            ],
             cuts: [
               Cut(
                 id: const CutId('cell-cut'),
                 name: 'Cell Cut',
                 duration: 12,
                 canvasSize: const CanvasSize(width: 640, height: 360),
-                layers: [
-                  Layer(
-                    id: _seLayerId,
-                    name: 'S1',
-                    kind: LayerKind.se,
-                    frames: [
-                      Frame(
-                        id: const FrameId('cell-f1'),
-                        duration: 1,
-                        strokes: const [],
-                      ),
-                    ],
-                    timeline: {
-                      2: const TimelineExposure.drawing(
-                        FrameId('cell-f1'),
-                        length: 4,
-                      ),
-                    },
-                  ),
-                ],
+                layers: const [],
               ),
             ],
           ),

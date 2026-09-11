@@ -64,6 +64,7 @@ import 'import/import_dialog.dart';
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
+import 'media/media_drop_verdict.dart';
 import 'media/media_pool_panel.dart';
 import 'media/media_relink_flow.dart';
 import 'media/media_viewer_tab_host.dart';
@@ -479,6 +480,11 @@ class EditorWorkspace extends StatefulWidget {
 
 class _EditorWorkspaceState extends State<EditorWorkspace>
     with WidgetsBindingObserver {
+  /// What the place entrance under a dragged pool file says of it — the
+  /// chip's ban (「불가능 = 칩의 금지 표시」). One per workspace, because one
+  /// drag is in flight at a time.
+  final ValueNotifier<bool?> _mediaDropVerdict = ValueNotifier<bool?>(null);
+
   /// The OS says memory is tight: the session stands its caches down —
   /// hot cels halve and cool, playback re-runs its budget. The workspace
   /// hosts the observer because its lifetime IS the session being on
@@ -1310,6 +1316,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _mediaDropVerdict.dispose();
     widget.session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
@@ -1716,7 +1723,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             child: child!,
           );
         },
-        child: _buildWorkspace(context),
+        // Every place entrance and the pool are in here: the chip's answer
+        // travels between them.
+        child: MediaDropVerdictScope(
+          verdict: _mediaDropVerdict,
+          child: _buildWorkspace(context),
+        ),
       ),
     );
   }

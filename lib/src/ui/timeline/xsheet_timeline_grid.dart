@@ -652,6 +652,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   widget.hooks.rowDragHooks?.onPlacementHover,
                               onLeave:
                                   widget.hooks.rowDragHooks?.onPlacementLeave,
+                              accepts:
+                                  widget.hooks.rowDragHooks?.acceptsPlacement,
                               onDrop: onDrop,
                             ),
                           ),

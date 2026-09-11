@@ -12,9 +12,12 @@ import '../dialogs/folder_pick_flow.dart';
 
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
+import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
+import 'media_asset_kind_icon.dart';
+import 'media_drop_verdict.dart';
 import '../input/control_press_claim.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
@@ -480,12 +483,7 @@ class MediaPoolPanel extends StatelessWidget {
       child: Row(
         children: [
           if (exists) Icon(
-                  switch (asset.kind) {
-                    MediaAssetKind.audio => Icons.music_note_outlined,
-                    MediaAssetKind.image => Icons.image_outlined,
-                    MediaAssetKind.video => Icons.movie_outlined,
-                    MediaAssetKind.pdf => Icons.picture_as_pdf_outlined,
-                  },
+                  mediaAssetKindIcon(asset.kind),
                   size: 16,
                   color: colorScheme.onSurfaceVariant,
                 ) else Tooltip(
@@ -641,20 +639,12 @@ class MediaPoolPanel extends StatelessWidget {
       // to a row's width off. It also reads better: a small chip that
       // follows the finger rather than one hanging off to the left.
       dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: Material(
-        elevation: 4,
-        shape: AppShapes.container(AppShapes.wellRadius),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.music_note_outlined, size: 14),
-              const SizedBox(width: 4),
-              Text(asset.name, style: const TextStyle(fontSize: 12)),
-            ],
-          ),
-        ),
+      // The chip is built in the drag overlay, which the verdict's scope
+      // does not reach — so the row hands it the channel from here.
+      feedback: MediaAssetDragChip(
+        kind: asset.kind,
+        name: asset.name,
+        verdict: MediaDropVerdictScope.maybeOf(context),
       ),
       childWhenDragging: Opacity(opacity: 0.4, child: row),
       child: row,

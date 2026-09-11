@@ -71,6 +71,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
+    this.acceptsMediaAssetOnLayer,
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
@@ -178,6 +179,10 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// this cut and this layer already answered.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// Whether a file at a frame of a row can land there; null is yes.
+  final bool Function(LayerId layerId, int frameIndex, String path)?
+  acceptsMediaAssetOnLayer;
 
   /// The shared frames/seconds display toggle (block duration labels,
   /// R26 #7).
@@ -462,6 +467,7 @@ class _TimelineFrameRowsScrollBodyState
       showSeconds: widget.showSeconds,
       audioLane: widget.audioLane,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
+      acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,

@@ -159,6 +159,7 @@ class _XSheetGridColumns {
       showSeconds: _state.widget.hooks.showSeconds,
       audioLane: _state.widget.hooks.audioLane,
       onDropMediaAssetOnLayer: _state.widget.hooks.onDropMediaAssetOnLayer,
+      acceptsMediaAssetOnLayer: _state.widget.hooks.acceptsMediaAssetOnLayer,
       seClipMarkerTooltip: _state.widget.hooks.seClipMarkerTooltip,
       seSpillsIn: _state.widget.hooks.seSpillInLayerIds.contains(layer.id),
       layer: layer,

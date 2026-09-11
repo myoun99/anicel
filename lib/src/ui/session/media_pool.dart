@@ -421,7 +421,10 @@ class MediaPool {
     required String path,
   }) {
     final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.se) {
+    // An SE row holds sounds: a picture's path is no clip to link.
+    if (layer == null ||
+        layer.kind != LayerKind.se ||
+        mediaAssetKindForPath(path) != MediaAssetKind.audio) {
       return;
     }
     FrameId? frameId;

@@ -641,6 +641,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       projectFrameRate: widget.hooks.projectFrameRate,
       audioLane: widget.hooks.audioLane,
       onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
+      acceptsMediaAssetOnLayer: widget.hooks.acceptsMediaAssetOnLayer,
       showSeconds: widget.hooks.showSeconds,
       commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,

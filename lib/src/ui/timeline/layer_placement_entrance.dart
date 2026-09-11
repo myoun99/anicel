@@ -25,6 +25,7 @@ class LayerPlacementEntrance extends StatelessWidget {
     required this.onDrop,
     this.onHover,
     this.onLeave,
+    this.accepts,
   });
 
   /// The axis the rows run along: down the rail, across the sheet.
@@ -43,9 +44,20 @@ class LayerPlacementEntrance extends StatelessWidget {
   onHover;
   final VoidCallback? onLeave;
 
+  /// Whether that file can land at that gap — the chip's answer; null is
+  /// yes.
+  final bool Function(List<Layer> displayLayers, int slot, String path)?
+  accepts;
+
   @override
   Widget build(BuildContext context) => MediaAssetDropTarget(
     framed: false,
+    accepts: accepts == null
+        ? null
+        : (data, globalPosition) {
+            final gap = _gapAt(context, globalPosition);
+            return accepts!(gap.layers, gap.slot, data.path);
+          },
     onHover: (data, globalPosition) {
       final gap = _gapAt(context, globalPosition);
       onHover?.call(gap.layers, gap.slot, data.path);

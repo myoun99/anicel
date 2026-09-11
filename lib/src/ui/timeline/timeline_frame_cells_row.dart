@@ -57,6 +57,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.audioPeaksFor,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.onDropMediaAssetOnLayer,
+    this.acceptsMediaAssetOnLayer,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
     this.audioLane,
@@ -173,6 +174,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// that cannot take one (sound has its own block-level target).
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// Whether the file at a frame of THIS row can land there — the
+  /// session's answer, which the drag's chip wears (「불가능 = 칩의 금지
+  /// 표시」). Null is yes.
+  final bool Function(LayerId layerId, int frameIndex, String path)?
+  acceptsMediaAssetOnLayer;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off (the
   /// clipping-notice toggle, threaded as the string itself).
@@ -628,6 +635,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           geometry: geometry,
           axis: axis,
           onDrop: onDrop,
+          acceptsDrop: acceptsMediaAssetOnLayer,
         ),
       ),
     ]);
@@ -667,6 +675,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             axis: axis,
             spanStartIndex: gap.startIndex,
             onDrop: onDrop,
+            acceptsDrop: acceptsMediaAssetOnLayer,
           ),
         ),
     ]);
@@ -687,6 +696,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
     required this.axis,
     required this.onDrop,
     this.spanStartIndex,
+    this.acceptsDrop,
   });
 
   final Key dropKey;
@@ -694,6 +704,10 @@ class _LayerAssetDropTarget extends StatelessWidget {
   final TimelineFrameGeometryHandle geometry;
   final Axis axis;
   final void Function(LayerId layerId, int frameIndex, String path) onDrop;
+
+  /// Whether the file at a frame can land there; null is yes.
+  final bool Function(LayerId layerId, int frameIndex, String path)?
+  acceptsDrop;
 
   /// The frame this target's span starts at — the row's first visible frame
   /// when null (a drawing row's whole-row target), a gap's first frame for an
@@ -718,8 +732,16 @@ class _LayerAssetDropTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accepts = acceptsDrop;
     return MediaAssetDropTarget(
       key: dropKey,
+      accepts: accepts == null
+          ? null
+          : (data, globalPosition) => accepts(
+              layerId,
+              _frameIndexAt(context, globalPosition),
+              data.path,
+            ),
       onDrop: (data, globalPosition) =>
           onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
     );

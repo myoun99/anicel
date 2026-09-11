@@ -497,6 +497,8 @@ class _LayerGridRailRows {
                           _state.widget.hooks.rowDragHooks?.onPlacementHover,
                       onLeave:
                           _state.widget.hooks.rowDragHooks?.onPlacementLeave,
+                      accepts:
+                          _state.widget.hooks.rowDragHooks?.acceptsPlacement,
                       onDrop: onDrop,
                     ),
                   ),
