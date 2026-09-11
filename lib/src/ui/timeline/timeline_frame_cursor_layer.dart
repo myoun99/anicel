@@ -153,8 +153,7 @@ class TimelineCursorLayer extends StatelessWidget {
   Widget _overlay() {
     final frame = frameCursor.value;
     final window = _visibleWindow();
-    final cursorVisible =
-        frame >= window.startIndex && frame < window.endIndexExclusive;
+    final cursorVisible = frameWindowContains(window, frame);
     final standingLaneIndex = _standingLaneIndex();
     final children = <Widget>[
       ?_playhead(frame, cursorVisible: cursorVisible),

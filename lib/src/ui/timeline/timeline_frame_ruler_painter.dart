@@ -32,8 +32,26 @@ String timelineRulerSecondsLabel({
   required int framesPerSecond,
 }) {
   final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
-  return frameIndex % safeFps == 0 ? '${frameIndex ~/ safeFps}' : '';
+  return frameIndex % safeFps == 0
+      ? timelineRulerSecondOf(frameIndex: frameIndex, framesPerSecond: safeFps)
+      : '';
 }
+
+/// The second [frameIndex] lies in, counted from 0 like the marks — what
+/// the playhead writes on the seconds line wherever it stands (I-16); the
+/// marks print it only where a second begins.
+String timelineRulerSecondOf({
+  required int frameIndex,
+  required int framesPerSecond,
+}) {
+  final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+  return '${frameIndex ~/ safeFps}';
+}
+
+/// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, on the
+/// full-strength text colour — one answer for the ruler and the rail.
+TextStyle timelineRulerPlayheadInk(ColorScheme colorScheme) =>
+    TextStyle(fontWeight: FontWeight.w700, color: colorScheme.onSurface);
 
 /// The resolved per-header model — THE probe surface for ruler tests
 /// (labels, states and colors live here, not in widget trees), the ruler
@@ -78,9 +96,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final metrics = scale.metrics;
     final colorScheme = scale.colorScheme;
-    final labelEveryFrames = metrics.frameLabelEveryFrames;
     final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
 
@@ -88,7 +104,10 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = scale.visibleWindow();
 
-    // PASS 1 — paper. Painting every background BEFORE any label is what
+    // PASS 1 — paper, and on it the SAME grid the cells use (R26 #40):
+    // base cadence lines, 6f stronger, second boundaries strongest
+    // ([TimelineRulerScale.paintCellPaper] — the rail's and the playhead
+    // writing's too). Painting every cell's paper BEFORE any label is what
     // keeps a narrow cell's label alive: the old single pass let the next
     // cell's fill erase the half that overflowed (R26 #39, "텍스트 절반이
     // 사라짐"). The cached-range strip is NOT here — it moved to
@@ -99,98 +118,24 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = scale.modelAt(frameIndex);
-      canvas.drawRect(
-        scale.cellRectFor(frameIndex),
-        fillPaint..color = model.background,
-      );
-    }
-
-    // PASS 2 — the SAME grid the cells use (R26 #40): base cadence lines,
-    // 6f stronger, second boundaries strongest.
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      final ink = timelineFrameBoundaryLineInk(
-        frameIndex: frameIndex,
-        frameCellExtent: metrics.frameCellWidth,
-        framesPerSecond: scale.framesPerSecond,
-        colorScheme: colorScheme,
-      );
-      if (ink == null) {
-        continue;
-      }
-      final rect = scale.cellRectFor(frameIndex);
-      // The LAW's snap (it was this ruler's own +0.5 first — D8 promoted
-      // it so the overlay lands on the same pixel).
-      //
-      // D43 (유저, 2026-08-21): and the LAW's over-ground treatment too.
-      // The ink and the position were already shared; the COMPOSITE was
-      // not — the ruler laid its line over the header paper source-over
-      // while a block's interior seam multiplied, so one grid read
-      // lighter here and darker there. PASS 1 has just filled this
-      // header, so the ground is known exactly rather than assumed.
-      canvas.drawLine(
-        Offset(rect.left + timelineGridLineSnap, rect.top),
-        Offset(rect.left + timelineGridLineSnap, rect.bottom),
-        linePaint
-          ..color = timelineGridLineInkOnGround(
-            ink,
-            scale.modelAt(frameIndex).background,
-          )
-          ..strokeWidth = ink.strokeWidth,
+      scale.paintCellPaper(
+        canvas,
+        frameIndex,
+        fill: fillPaint,
+        line: linePaint,
       );
     }
     linePaint.strokeWidth = 1;
 
-    // PASS 3 — labels last, so nothing can paint over them.
+    // PASS 2 — labels last, so nothing can paint over them.
     for (
       var frameIndex = window.startIndex;
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = scale.modelAt(frameIndex);
-      final rect = scale.cellRectFor(frameIndex);
-      // Bottom line: in-cell centered when every cell labels itself, the
-      // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
-      if (model.label.isNotEmpty) {
-        // Labels keep one ink whatever the playhead range (UI-R18 #9),
-        // and SHRINK rather than vanish at deep zoom-outs (R26 #38).
-        final style = labelEveryFrames == 1
-            ? TextStyle(
-                fontSize: timelineFittedGlyphFontSize(
-                  11,
-                  metrics.frameCellWidth,
-                  crossExtent: scale.crossExtent,
-                ),
-                color: colorScheme.onSurface,
-              )
-            : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
-        final painter = timelineGlyphPainter(model.label, style);
-        if (labelEveryFrames == 1) {
-          painter.paint(
-            canvas,
-            Offset(
-              rect.center.dx - painter.width / 2,
-              rect.bottom - painter.height - 1,
-            ),
-          );
-        } else {
-          painter.paint(
-            canvas,
-            Offset(rect.left + 2, rect.bottom - painter.height - 1),
-          );
-        }
+      for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
+        glyph.paint(canvas);
       }
-
-      // Top line: the second index on fps boundaries (UI-R10 #27).
-      paintSecondsCorner(canvas, rect, (
-        text: model.secondsLabel,
-        fontSize: 9,
-        color: colorScheme.onSurfaceVariant,
-      ));
     }
 
     // The strip's structural BASELINE (the ruler/body divider) — full
@@ -213,6 +158,60 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       Offset(size.width, 0.5),
       linePaint..color = colorScheme.outlineVariant,
     );
+  }
+
+  /// Where the ruler writes at [frameIndex] — the frame number on the
+  /// bottom line and the second on the top corner (UI-R10 #27). With
+  /// [current] it is the playhead's own pair there (I-16): the number
+  /// whatever the cadence says, the second whatever the boundary says, both
+  /// in [timelineRulerPlayheadInk].
+  static List<TimelineGlyphPlacement> glyphsAt(
+    TimelineRulerScale scale,
+    int frameIndex, {
+    required bool current,
+  }) {
+    final writing = scale.writingAt(frameIndex, current: current);
+    final rect = scale.cellRectFor(frameIndex);
+    final colorScheme = scale.colorScheme;
+    final everyFrame = scale.metrics.frameLabelEveryFrames == 1;
+    final glyphs = <TimelineGlyphPlacement>[];
+    if (writing.number.isNotEmpty) {
+      // Labels keep one ink whatever the playhead range (UI-R18 #9), and
+      // SHRINK rather than vanish at deep zoom-outs (R26 #38).
+      final style = everyFrame
+          ? TextStyle(
+              fontSize: timelineFittedGlyphFontSize(
+                11,
+                scale.metrics.frameCellWidth,
+                crossExtent: scale.crossExtent,
+              ),
+              color: colorScheme.onSurface,
+            )
+          : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
+      final painter = timelineGlyphPainter(
+        writing.number,
+        scale.inkOf(style, current: current),
+      );
+      // Bottom line: in-cell centered when every cell labels itself, the
+      // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
+      glyphs.add((
+        painter: painter,
+        offset: Offset(
+          everyFrame ? rect.center.dx - painter.width / 2 : rect.left + 2,
+          rect.bottom - painter.height - 1,
+        ),
+      ));
+    }
+    // Top line: the second index on fps boundaries (UI-R10 #27).
+    final second = secondsCornerGlyph(rect, (
+      text: writing.second,
+      fontSize: 9,
+      color: scale.secondsInk(current: current),
+    ));
+    if (second != null) {
+      glyphs.add(second);
+    }
+    return glyphs;
   }
 
   // Labels come from the shared laid-out-TextPainter cache (UI-R16):
@@ -330,6 +329,85 @@ final class TimelineRulerScale {
         along: along + metrics.frameCellWidth,
         across: crossExtent,
       ),
+    );
+  }
+
+  /// What a strip writes at [frameIndex] — its number and its second — or,
+  /// [current], the playhead's pair there (I-16): the number whatever the
+  /// cadence says, the second whatever the boundary says. WHERE each goes
+  /// and how big is the strip's own ([TimelineFrameRulerPainter.glyphsAt],
+  /// `XSheetFrameRailPainter.glyphsAt`); what is written is this.
+  ({String number, String second}) writingAt(
+    int frameIndex, {
+    required bool current,
+  }) {
+    if (!current) {
+      final model = modelAt(frameIndex);
+      return (number: model.label, second: model.secondsLabel);
+    }
+    return (
+      number: frameNumberLabel(frameIndex),
+      second: timelineRulerSecondOf(
+        frameIndex: frameIndex,
+        framesPerSecond: framesPerSecond,
+      ),
+    );
+  }
+
+  /// [base] as a strip writes it — or, [current], in the playhead's ink.
+  TextStyle inkOf(TextStyle base, {required bool current}) =>
+      current ? base.merge(timelineRulerPlayheadInk(colorScheme)) : base;
+
+  /// The second's ink: the marks' surface variant, the pair's full ink.
+  Color secondsInk({required bool current}) => current
+      ? timelineRulerPlayheadInk(colorScheme).color!
+      : colorScheme.onSurfaceVariant;
+
+  /// The paper under one cell: its ground, and on it THE boundary line —
+  /// the grid law's ink composited onto that ground — turned by [axis]: down
+  /// the ruler's cell edge, across the rail's row edge. Both strips lay their
+  /// paper here, and so does the playhead's writing when it uncovers a cell
+  /// (I-16); [fill] and [line] are the caller's, reused across its cells.
+  ///
+  /// D8 (2026-08-18): the rail used to stroke a faint RECT around every row
+  /// — no cadence, no 6f/second strengthening, half a pixel off the ruler's
+  /// snap: one of the "미묘하게 다른 가이드선". The snap is the LAW's (it was
+  /// this ruler's own +0.5 first — D8 promoted it so the overlay lands on
+  /// the same pixel).
+  ///
+  /// D43 (유저, 2026-08-21): and the LAW's over-ground treatment too. The ink
+  /// and the position were already shared; the COMPOSITE was not — the ruler
+  /// laid its line over the header paper source-over while a block's
+  /// interior seam multiplied, so one grid read lighter here and darker
+  /// there; the rail was the half still missing it until round 8's grid
+  /// unification. The fill has just laid this cell's paper, so the ground is
+  /// known exactly rather than assumed.
+  void paintCellPaper(
+    Canvas canvas,
+    int frameIndex, {
+    required Paint fill,
+    required Paint line,
+  }) {
+    final model = modelAt(frameIndex);
+    final rect = cellRectFor(frameIndex);
+    canvas.drawRect(rect, fill..color = model.background);
+    final ink = timelineFrameBoundaryLineInk(
+      frameIndex: frameIndex,
+      frameCellExtent: metrics.frameCellWidth,
+      framesPerSecond: framesPerSecond,
+      colorScheme: colorScheme,
+    );
+    if (ink == null) {
+      return;
+    }
+    final edge =
+        (axis == Axis.horizontal ? rect.left : rect.top) + timelineGridLineSnap;
+    canvas.drawLine(
+      offsetAlong(axis, along: edge, across: 0),
+      offsetAlong(axis, along: edge, across: crossExtent),
+      line
+        ..color = timelineGridLineInkOnGround(ink, model.background)
+        ..strokeWidth = ink.strokeWidth,
     );
   }
 

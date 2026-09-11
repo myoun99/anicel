@@ -1085,6 +1085,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             // overlay now.
                                                             currentFrameIndex:
                                                                 -1,
+                                                            playhead: widget
+                                                                .hooks
+                                                                .frameCursor,
                                                             playbackFrameCount:
                                                                 widget
                                                                     .hooks

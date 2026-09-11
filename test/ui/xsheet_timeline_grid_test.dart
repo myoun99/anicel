@@ -290,6 +290,8 @@ void main() {
     // The current row reads by TINT, painted by the rail's cursor overlay
     // (the numbers themselves are cursor-independent now).
     expect(xsheetRailTintedFrame(tester), 3);
+    // I-16: and the playhead writes its own pair on that same row.
+    expect(xsheetRailWrittenFrame(tester), 3);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (

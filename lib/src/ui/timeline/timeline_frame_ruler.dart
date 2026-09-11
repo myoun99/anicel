@@ -30,6 +30,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.drawnFrameCount,
     this.noriShiroLabel = '',
     this.axis = Axis.horizontal,
+    this.playhead,
   });
 
   final int frameStartIndex;
@@ -62,6 +63,10 @@ class TimelineFrameRuler extends StatelessWidget {
   /// The word spelled across the handle. Empty keeps the line alone.
   final String noriShiroLabel;
 
+  /// The playhead the ruler writes its own pair at (I-16), handed to the
+  /// header row; null mounts no writing.
+  final ValueListenable<int?>? playhead;
+
   /// The frame axis direction — horizontal for the timeline ruler, vertical
   /// for the X-sheet's frame-number rail.
   final Axis axis;
@@ -84,6 +89,7 @@ class TimelineFrameRuler extends StatelessWidget {
           showSeconds: showSeconds,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          playhead: playhead,
         ),
         // The のりしろ boundary UNDER the red line: it marks how much is
         // DRAWN, which is a length, while the red line marks where the cut

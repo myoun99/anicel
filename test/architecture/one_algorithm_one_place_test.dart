@@ -96,8 +96,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// trade.
 /// 🔜**The third picture-to-straight-RGBA read merges all three**, and this
 /// comes back down.
+/// 89 → 90 (2026-09-11, I-16 — the playhead's pair on the ruler). The new
+/// pair is named:
+///
+///     47 tokens
+///       lib/src/ui/timeline/timeline_frame_ruler_painter.dart
+///         TimelineFrameRulerPainter.glyphsAt
+///       lib/src/ui/timeline/xsheet_timeline_grid.dart
+///         XSheetFrameRailPainter.glyphsAt
+///
+/// The reading split it. WHAT the two strips write — their own writing or
+/// the playhead's pair, and in whose ink — was one algorithm spelled twice,
+/// and it moved onto the scale they share ([TimelineRulerScale.writingAt],
+/// `inkOf`, `secondsInk`). What the scan still finds is WHERE each lays a
+/// glyph out: the ruler's two lines, the rail's centred number (R10 R6) —
+/// the shape that is left once the law is shared.
+/// ⛔It is not merged: two layouts, deliberately different, and a layout
+/// spec for two would take the number's style, place and order as
+/// arguments for a shape seen twice. 🔜A third strip merges them.
 void main() {
-  const ceiling = 89;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -114,10 +114,7 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     if (frame == null) {
       return null;
     }
-    final window = _visibleWindow();
-    return frame >= window.startIndex && frame < window.endIndexExclusive
-        ? frame
-        : null;
+    return frameWindowContains(_visibleWindow(), frame) ? frame : null;
   }
 
   @override

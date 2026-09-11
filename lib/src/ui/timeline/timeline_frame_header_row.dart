@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
 import 'timeline_frame_ruler_painter.dart';
+import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_grid_metrics.dart';
 
 /// The frame ruler's header strip (UI-R10 #27, CSP/OpenToonz style): TWO
@@ -32,6 +34,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     this.showSeconds = false,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.playhead,
   });
 
   /// PRO-TIMELINE scrolling (UI-R15→R16): with these set the painter
@@ -59,35 +62,52 @@ class TimelineFrameHeaderRow extends StatelessWidget {
   /// instead of counting absolute frames.
   final bool showSeconds;
 
+  /// The playhead the strip writes its own pair at (I-16), on a layer of
+  /// its own above the strip — a null VALUE writes none; a strip without
+  /// one (null) never mounts the writing.
+  final ValueListenable<int?>? playhead;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final width =
         leadingFrameSpacerWidth +
-        (frameEndIndexExclusive - frameStartIndex) * metrics.frameCellWidth +
+        frameRangeVisibleWidth(
+          startFrameIndex: frameStartIndex,
+          endFrameIndexExclusive: frameEndIndexExclusive,
+          frameCellWidth: metrics.frameCellWidth,
+        ) +
         trailingFrameSpacerWidth;
+    final scale = TimelineRulerScale(
+      axis: Axis.horizontal,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+      currentFrameIndex: currentFrameIndex,
+      playbackFrameCount: playbackFrameCount,
+      leadingFrameSpacer: leadingFrameSpacerWidth,
+      crossExtent: metrics.layerRowHeight,
+      metrics: metrics,
+      colorScheme: colorScheme,
+      framesPerSecond: framesPerSecond,
+      showSeconds: showSeconds,
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+    );
     return SizedBox(
       width: width,
       height: metrics.layerRowHeight,
-      child: CustomPaint(
-        key: const ValueKey<String>('timeline-frame-ruler-paint'),
-        size: Size(width, metrics.layerRowHeight),
-        painter: TimelineFrameRulerPainter(
-          scale: TimelineRulerScale(
-            axis: Axis.horizontal,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            currentFrameIndex: currentFrameIndex,
-            playbackFrameCount: playbackFrameCount,
-            leadingFrameSpacer: leadingFrameSpacerWidth,
-            crossExtent: metrics.layerRowHeight,
-            metrics: metrics,
-            colorScheme: colorScheme,
-            framesPerSecond: framesPerSecond,
-            showSeconds: showSeconds,
-            windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
-          ),
+      child: timelineRulerStripWithWriting(
+        strip: CustomPaint(
+          key: const ValueKey<String>('timeline-frame-ruler-paint'),
+          size: Size(width, metrics.layerRowHeight),
+          painter: TimelineFrameRulerPainter(scale: scale),
+        ),
+        writingKey: const ValueKey<String>('timeline-ruler-playhead-writing'),
+        playhead: playhead,
+        writing: (held) => TimelineRulerPlayheadWritingPainter(
+          scale: scale,
+          playhead: held,
+          layout: TimelineFrameRulerPainter.glyphsAt,
         ),
       ),
     );

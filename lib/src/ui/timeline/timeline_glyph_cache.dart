@@ -72,6 +72,18 @@ void paintTimelineGlyphOnGround(
   ).paint(canvas, offset);
 }
 
+/// A laid-out glyph and where it lands: a strip's writing as VALUES, so
+/// what one piece would overlap can be asked before anything is painted
+/// (I-16: the playhead's pair covers what it touches).
+typedef TimelineGlyphPlacement = ({TextPainter painter, Offset offset});
+
+extension TimelineGlyphPlacementPaint on TimelineGlyphPlacement {
+  /// The box the glyph covers.
+  Rect get rect => offset & painter.size;
+
+  void paint(Canvas canvas) => painter.paint(canvas, offset);
+}
+
 /// The seconds index on a boundary cell's LEADING CORNER (UI-R10 #27):
 /// two pixels in from the corner, bold, on the surface-variant ink.
 ///
@@ -82,20 +94,22 @@ void paintTimelineGlyphOnGround(
 ///
 /// ⚠️THE SIZE IS THE RAIL'S OWN, not shared: the vertical rail narrowed to
 /// 28px (R10 R6) and prints a point smaller than the horizontal ruler.
-void paintSecondsCorner(
-  Canvas canvas,
+TimelineGlyphPlacement? secondsCornerGlyph(
   Rect rect,
   ({String text, double fontSize, Color color}) seconds,
 ) {
   if (seconds.text.isEmpty) {
-    return;
+    return null;
   }
-  timelineGlyphPainter(
-    seconds.text,
-    TextStyle(
-      fontSize: seconds.fontSize,
-      fontWeight: FontWeight.w700,
-      color: seconds.color,
+  return (
+    painter: timelineGlyphPainter(
+      seconds.text,
+      TextStyle(
+        fontSize: seconds.fontSize,
+        fontWeight: FontWeight.w700,
+        color: seconds.color,
+      ),
     ),
-  ).paint(canvas, Offset(rect.left + 2, rect.top + 1));
+    offset: Offset(rect.left + 2, rect.top + 1),
+  );
 }

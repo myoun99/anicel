@@ -2199,6 +2199,7 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 frameStartIndex: 0,
                 frameEndIndexExclusive: widget.renderedFrames,
                 currentFrameIndex: -1,
+                playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,

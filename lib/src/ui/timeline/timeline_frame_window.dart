@@ -106,3 +106,12 @@ int timelineFrameWindowBucketOf({
     ),
   );
 }
+
+/// Whether [frame] lies in [window] — what every playhead-driven layer asks
+/// before it marks a frame: the body's cursor, the ruler's tint and the
+/// playhead's writing (I-16). One answer, so the three cannot mark
+/// different frames.
+bool frameWindowContains(
+  ({int startIndex, int endIndexExclusive}) window,
+  int frame,
+) => frame >= window.startIndex && frame < window.endIndexExclusive;

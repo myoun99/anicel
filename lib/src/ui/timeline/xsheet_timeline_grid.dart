@@ -19,7 +19,9 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
+import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
@@ -751,6 +753,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             // The tint lives in the
                             // overlay now.
                             currentFrameIndex: -1,
+                            playhead: widget.hooks.frameCursor,
                             playbackFrameCount: widget.hooks.playbackFrameCount,
                             leadingFrameSpacerHeight: 0,
                             trailingFrameSpacerHeight: 0,
@@ -1173,6 +1176,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
     this.showSeconds = false,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.playhead,
   });
 
   final int frameStartIndex;
@@ -1191,44 +1195,60 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
+  /// The playhead the rail writes its own pair at (I-16) — a null VALUE
+  /// writes none; a rail without one (null) never mounts the writing.
+  final ValueListenable<int?>? playhead;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final height =
         leadingFrameSpacerHeight +
-        (frameEndIndexExclusive - frameStartIndex) * metrics.frameCellWidth +
+        frameRangeVisibleWidth(
+          startFrameIndex: frameStartIndex,
+          endFrameIndexExclusive: frameEndIndexExclusive,
+          frameCellWidth: metrics.frameCellWidth,
+        ) +
         trailingFrameSpacerHeight;
     // PAINTERIZED (UI-R14 #1, the ruler's UI-R13 #1 treatment — 통일화):
     // the whole rail is one CustomPaint; per-frame row widgets are gone.
     // Tests probe [TimelineRulerScale.modelAt]/`cellRectFor` through the
     // 'xsheet-frame-rail-paint' key; selection stays on the rail's
     // viewport-level scrub listener.
+    final scale = TimelineRulerScale(
+      axis: Axis.vertical,
+      frameStartIndex: frameStartIndex,
+      frameEndIndexExclusive: frameEndIndexExclusive,
+      currentFrameIndex: currentFrameIndex,
+      playbackFrameCount: playbackFrameCount,
+      leadingFrameSpacer: leadingFrameSpacerHeight,
+      crossExtent: metrics.layerControlsWidth,
+      metrics: metrics,
+      colorScheme: colorScheme,
+      framesPerSecond: framesPerSecond,
+      showSeconds: showSeconds,
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      // The RAIL grays its past-playback tail where the ruler does
+      // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
+      pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
+    );
     return SizedBox(
       key: const ValueKey<String>('xsheet-frame-number-rail'),
       width: metrics.layerControlsWidth,
       height: height,
-      child: CustomPaint(
-        key: const ValueKey<String>('xsheet-frame-rail-paint'),
-        size: Size(metrics.layerControlsWidth, height),
-        painter: XSheetFrameRailPainter(
-          scale: TimelineRulerScale(
-            axis: Axis.vertical,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            currentFrameIndex: currentFrameIndex,
-            playbackFrameCount: playbackFrameCount,
-            leadingFrameSpacer: leadingFrameSpacerHeight,
-            crossExtent: metrics.layerControlsWidth,
-            metrics: metrics,
-            colorScheme: colorScheme,
-            framesPerSecond: framesPerSecond,
-            showSeconds: showSeconds,
-            windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
-            // The RAIL grays its past-playback tail where the ruler does
-            // not (UI-R18 #9) — see [TimelineRulerScale.pastPlaybackWash].
-            pastPlaybackWash: AppColors.washUp.withValues(alpha: 0.72),
-          ),
+      child: timelineRulerStripWithWriting(
+        strip: CustomPaint(
+          key: const ValueKey<String>('xsheet-frame-rail-paint'),
+          size: Size(metrics.layerControlsWidth, height),
+          painter: XSheetFrameRailPainter(scale: scale),
+        ),
+        writingKey: const ValueKey<String>('xsheet-rail-playhead-writing'),
+        playhead: playhead,
+        writing: (held) => TimelineRulerPlayheadWritingPainter(
+          scale: scale,
+          playhead: held,
+          layout: XSheetFrameRailPainter.glyphsAt,
         ),
       ),
     );
@@ -1250,16 +1270,16 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final metrics = scale.metrics;
     final colorScheme = scale.colorScheme;
     final fillPaint = Paint();
     final linePaint = Paint()..strokeWidth = 1;
     // D8 (2026-08-18): the rail used to stroke a faint RECT around every
     // row — no cadence, no 6f/second strengthening, half a pixel off the
-    // ruler's snap: one of the "미묘하게 다른 가이드선". It consults THE
-    // boundary-line law now, exactly like the horizontal ruler's PASS 2
-    // (the transposed same thing); the structural right edge still paints
-    // once below.
+    // ruler's snap: one of the "미묘하게 다른 가이드선". It lays its paper
+    // through THE boundary-line law now, the very call the horizontal ruler
+    // lays its own with ([TimelineRulerScale.paintCellPaper] — once "the
+    // transposed same thing", now the same code); the structural right
+    // edge still paints once below.
     final boundaryPaint = Paint();
 
     // Self-windowing (UI-R15): only the rows under the live viewport
@@ -1270,77 +1290,14 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       frameIndex < window.endIndexExclusive;
       frameIndex += 1
     ) {
-      final model = scale.modelAt(frameIndex);
-      final rect = scale.cellRectFor(frameIndex);
-      canvas.drawRect(rect, fillPaint..color = model.background);
-      final ink = timelineFrameBoundaryLineInk(
-        frameIndex: frameIndex,
-        frameCellExtent: metrics.frameCellWidth,
-        framesPerSecond: scale.framesPerSecond,
-        colorScheme: colorScheme,
+      scale.paintCellPaper(
+        canvas,
+        frameIndex,
+        fill: fillPaint,
+        line: boundaryPaint,
       );
-      if (ink != null) {
-        final position = rect.top + timelineGridLineSnap;
-        canvas.drawLine(
-          Offset(rect.left, position),
-          Offset(rect.right, position),
-          boundaryPaint
-            // D43 (유저, 2026-08-21): and the LAW's over-ground treatment
-            // too — the half the rail was still missing while the ruler and
-            // the beat-lines overlay both had it (round 8's grid
-            // unification). The fill above has just laid this row's paper,
-            // so the ground is known exactly rather than assumed, and the
-            // sheet's grid stops reading lighter than the timeline's.
-            ..color = timelineGridLineInkOnGround(ink, model.background)
-            ..strokeWidth = ink.strokeWidth,
-        );
-      }
-
-      // Seconds on the row's leading CORNER (UI-R10 #27): the 1-based
-      // second prints bold on its boundary row.
-      //
-      // R10 R6: the rail narrowed 72 → 28 with the frame-number rail now
-      // derived from the ruler's height, and a centred 14pt three-digit
-      // number filled the whole 28px — straight through a seconds glyph
-      // that sat beside it. Both numbers converge on the SHARED ruler's
-      // answers instead of the sheet growing an exception: the corner
-      // placement (`rect.left + 2, rect.top + 1` there) and the 11pt base.
-      // ⚠️A point smaller than the horizontal ruler: the rail narrowed to
-      // 28px (R10 R6). The CORNER is the shared answer, the size is not.
-      paintSecondsCorner(canvas, rect, (
-        text: model.secondsLabel,
-        fontSize: 8,
-        color: colorScheme.onSurfaceVariant,
-      ));
-
-      if (model.label.isNotEmpty) {
-        // R9 #4: the number SHRINKS to fit its row before it thins out —
-        // the horizontal ruler's rule, through the same helper. The 14 was
-        // hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
-        // slot.
-        final number = timelineGlyphPainter(
-          model.label,
-          TextStyle(
-            // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the
-            // sheet's own number, affordable only while the rail was 72
-            // wide.
-            fontSize: timelineFittedGlyphFontSize(
-              11,
-              metrics.frameCellWidth,
-              crossExtent: scale.crossExtent,
-            ),
-            color: model.outsidePlaybackRange
-                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-                : colorScheme.onSurface,
-          ),
-        );
-        number.paint(
-          canvas,
-          Offset(
-            rect.center.dx - number.width / 2,
-            rect.center.dy - number.height / 2,
-          ),
-        );
+      for (final glyph in glyphsAt(scale, frameIndex, current: false)) {
+        glyph.paint(canvas);
       }
 
       // The cached-range strip moved to [TimelineRulerCursorOverlay] (in
@@ -1355,6 +1312,70 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       Offset(size.width - 0.5, size.height),
       linePaint..color = colorScheme.outlineVariant,
     );
+  }
+
+  /// Where the rail writes at [frameIndex] — the second on the row's
+  /// leading corner and the number centred — and with [current] the
+  /// playhead's own pair there (I-16), in [timelineRulerPlayheadInk] as the
+  /// ruler writes it.
+  static List<TimelineGlyphPlacement> glyphsAt(
+    TimelineRulerScale scale,
+    int frameIndex, {
+    required bool current,
+  }) {
+    final writing = scale.writingAt(frameIndex, current: current);
+    final rect = scale.cellRectFor(frameIndex);
+    final colorScheme = scale.colorScheme;
+    final glyphs = <TimelineGlyphPlacement>[];
+    // Seconds on the row's leading CORNER (UI-R10 #27): the second (counted
+    // from 0, [timelineRulerSecondsLabel]) prints bold on its boundary row.
+    //
+    // R10 R6: the rail narrowed 72 → 28 with the frame-number rail now
+    // derived from the ruler's height, and a centred 14pt three-digit
+    // number filled the whole 28px — straight through a seconds glyph
+    // that sat beside it. Both numbers converge on the SHARED ruler's
+    // answers instead of the sheet growing an exception: the corner
+    // placement ([secondsCornerGlyph]) and the 11pt base.
+    // ⚠️A point smaller than the horizontal ruler: the rail narrowed to
+    // 28px (R10 R6). The CORNER is the shared answer, the size is not.
+    final second = secondsCornerGlyph(rect, (
+      text: writing.second,
+      fontSize: 8,
+      color: scale.secondsInk(current: current),
+    ));
+    if (second != null) {
+      glyphs.add(second);
+    }
+    if (writing.number.isNotEmpty) {
+      // R9 #4: the number SHRINKS to fit its row before it thins out — the
+      // horizontal ruler's rule, through the same helper. The 14 was
+      // hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
+      // slot.
+      final style = TextStyle(
+        // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the sheet's
+        // own number, affordable only while the rail was 72 wide.
+        fontSize: timelineFittedGlyphFontSize(
+          11,
+          scale.metrics.frameCellWidth,
+          crossExtent: scale.crossExtent,
+        ),
+        color: scale.modelAt(frameIndex).outsidePlaybackRange
+            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+            : colorScheme.onSurface,
+      );
+      final painter = timelineGlyphPainter(
+        writing.number,
+        scale.inkOf(style, current: current),
+      );
+      glyphs.add((
+        painter: painter,
+        offset: Offset(
+          rect.center.dx - painter.width / 2,
+          rect.center.dy - painter.height / 2,
+        ),
+      ));
+    }
+    return glyphs;
   }
 
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat

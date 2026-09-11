@@ -10,6 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
 import 'storyboard_cut_block_probe.dart';
 
 /// W4 perf pass: the storyboard playhead rides its own listenable (the
@@ -79,6 +80,46 @@ void main() {
     expect(tester.getTopLeft(overlay).dx - overlayXBefore, 5 * pixelsPerFrame);
     // ...and the row was NOT rebuilt (the panel build never ran again).
     expect(identical(cutBlocksPainter(tester), painterBefore), isTrue);
+  });
+
+  testWidgets('🗣️I-16: the storyboard ruler writes the playhead pair '
+      'where the playhead is, and none without one', (tester) async {
+    final playhead = ValueNotifier<int?>(3);
+    addTearDown(playhead.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: project,
+            activeCutId: const CutId('cut-a'),
+            playheadFrame: playhead,
+            pixelsPerFrame: 8,
+          ),
+        ),
+      ),
+    );
+
+    int? written() =>
+        (tester
+                    .widget<CustomPaint>(
+                      find.byKey(
+                        const ValueKey<String>(
+                          'timeline-ruler-playhead-writing',
+                        ),
+                      ),
+                    )
+                    .painter!
+                as TimelineRulerPlayheadWritingPainter)
+            .writtenFrame();
+
+    expect(written(), 3);
+    playhead.value = 15;
+    await tester.pump();
+    expect(written(), 15);
+    playhead.value = null;
+    await tester.pump();
+    expect(written(), isNull);
   });
 
   testWidgets('a null playhead value hides the overlay without a panel '

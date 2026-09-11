@@ -1537,6 +1537,8 @@ void main() {
     // tint is painted by the ruler's cursor OVERLAY: the static strip is
     // cursor-independent now, so a seek never re-records its labels.
     expect(timelineRulerTintedFrame(tester), 9);
+    // I-16: and the playhead writes its own pair on that same header.
+    expect(timelineRulerWrittenFrame(tester), 9);
   });
 
   testWidgets('dragging frame ruler scrub area scrubs changed frames', (
@@ -1914,6 +1916,7 @@ void main() {
     // Selection reads by the TINT alone — there is no selected-border path
     // anywhere. The tint rides the ruler's cursor overlay.
     expect(timelineRulerTintedFrame(tester), 3);
+    expect(timelineRulerWrittenFrame(tester), 3);
   });
 
   testWidgets('named drawing start displays name and mark has priority', (

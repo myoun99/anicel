@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
@@ -118,6 +119,23 @@ int? timelineRulerTintedFrame(WidgetTester tester) =>
 /// The frame the X-SHEET rail marks as current.
 int? xsheetRailTintedFrame(WidgetTester tester) =>
     _overlayPainter(tester, 'xsheet-rail-cursor-overlay').tintedFrame();
+
+TimelineRulerPlayheadWritingPainter _writingPainter(
+  WidgetTester tester,
+  String keyValue,
+) =>
+    tester
+            .widget<CustomPaint>(find.byKey(ValueKey<String>(keyValue)))
+            .painter!
+        as TimelineRulerPlayheadWritingPainter;
+
+/// The frame the TIMELINE ruler writes the playhead's pair at (I-16).
+int? timelineRulerWrittenFrame(WidgetTester tester) =>
+    _writingPainter(tester, 'timeline-ruler-playhead-writing').writtenFrame();
+
+/// The frame the X-SHEET rail writes the playhead's pair at (I-16).
+int? xsheetRailWrittenFrame(WidgetTester tester) =>
+    _writingPainter(tester, 'xsheet-rail-playhead-writing').writtenFrame();
 
 /// The cached RUNS the timeline ruler's overlay would draw.
 List<({int startIndex, int endIndexExclusive})> timelineRulerCachedRuns(
