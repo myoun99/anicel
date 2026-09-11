@@ -156,6 +156,17 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: HomePage()));
     }
     await tester.pumpAndSettle();
+    // 🔬H40: `H30_OPEN_SETTINGS=1` opens the brush settings before measuring.
+    // Its rail slot ships CLOSED, so without this the settings panel — which
+    // a pick rebuilds with the new brush's values — is not even mounted, and
+    // its share of the pick never shows up in the numbers.
+    if (Platform.environment['H30_OPEN_SETTINGS'] == '1') {
+      final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
+      await tester.tap(
+        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
+      );
+      await tester.pumpAndSettle();
+    }
 
     // The default project has no cel at the playhead — author one.
     final addButton = find.byKey(const ValueKey<String>('new-frame-button'));
