@@ -104,26 +104,39 @@ class _CelWork {
   /// finding out later. What is not acceptable is refusing to save at all:
   /// everything still in RAM would go too, and the file the user is trying
   /// to write is the only place it could land.
+  ///
+  /// 🚨★★★**GONE IS NOT BUSY** (F-72, 2026-09-11). A file that is THERE but
+  /// refuses a read right now — a cloud provider in the middle of a sync, a
+  /// scanner, the Files app's "content unavailable" — was answered like a
+  /// deleted one: the cel was left out, and a full save then renamed the
+  /// short archive over the ONLY copy of it. It is retried the way the
+  /// rename is, and still refused it stops the save: the old file stands
+  /// with the cel in it, and the session still holds everything drawn since.
   AnicelCelBlob? resolveBlob() {
     if (hotEntry != null) {
       return AnicelCelBlob.encode(hotEntry!);
     }
-    final AnicelCelBlob blob;
-    final RandomAccessFile raf;
-    try {
-      raf = File(refPath!).openSync();
-    } on FileSystemException {
-      return null;
+    final file = File(refPath!);
+    for (var attempt = 0; ; attempt += 1) {
+      try {
+        final raf = file.openSync();
+        try {
+          raf.setPositionSync(refOffset);
+          final blob = AnicelCelBlob(raf.readSync(refLength));
+          return blob.key == key ? blob : AnicelCelBlob.reKeyed(blob, key);
+        } finally {
+          raf.closeSync();
+        }
+      } on FileSystemException {
+        if (!file.existsSync()) {
+          return null;
+        }
+        if (attempt >= 3) {
+          rethrow;
+        }
+        sleep(const Duration(milliseconds: 80));
+      }
     }
-    try {
-      raf.setPositionSync(refOffset);
-      blob = AnicelCelBlob(raf.readSync(refLength));
-    } on FileSystemException {
-      return null;
-    } finally {
-      raf.closeSync();
-    }
-    return blob.key == key ? blob : AnicelCelBlob.reKeyed(blob, key);
   }
 }
 
@@ -416,12 +429,23 @@ class AnicelFileService {
     /// since been deleted — see [_CelSaveWork.resolveBlob]. The answer was
     /// already here; nothing new has to be plumbed out of the isolate.
     ///
+    /// 🚨An APPEND writes only what changed. Every clean cel stays where it
+    /// already is — verified in this very file before a byte went down —
+    /// and comes back with no new ref because it needs none: that is
+    /// [carried]. Counted as「not carried forward」, they told the person on
+    /// every save after the first that N pictures were lost while the file
+    /// held them all (F-72, iPad + Drive, 2026-09-11: two pictures, one
+    /// drawn on —「1장 저장 못 했다」).
+    ///
     /// ⛔Named and returned rather than logged, because the person needs to
     /// be told. A save that quietly wrote fewer cels than it was given is
     /// the shape this repo refuses for media, and a cel is the picture.
-    Set<BrushFrameKey> lost(Map<BrushFrameKey, AnicelCelFileRef> adopted) => {
+    Set<BrushFrameKey> lost(
+      Map<BrushFrameKey, AnicelCelFileRef> adopted, {
+      Set<BrushFrameKey> carried = const {},
+    }) => {
       for (final key in allKeys)
-        if (!adopted.containsKey(key)) key,
+        if (!adopted.containsKey(key) && !carried.contains(key)) key,
     };
 
     if (sound) {
@@ -439,7 +463,13 @@ class AnicelFileService {
       );
       if (adopted != null) {
         adoptEach(adopted);
-        return lost(adopted);
+        return lost(
+          adopted,
+          carried: {
+            for (final key in allKeys)
+              if (!dirty.contains(key)) key,
+          },
+        );
       }
       // Torn tail or garbage over threshold → compaction below.
     }

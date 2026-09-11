@@ -1608,31 +1608,8 @@ Future<bool> saveProjectShowingProgress(
             onProgress: report,
           ),
     );
-    // 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**
-    //
-    // 유저 2026-08-30, on an iPad: delete the project file in the Files
-    // app while the project is open, draw, press Save. A save turns every
-    // cel into a ref into that file and drops its cold blob, so once the
-    // file is gone those cels' bytes are nowhere — the save now writes
-    // everything it can still reach rather than coming apart, and this is
-    // where the person is told what it could not carry.
-    //
-    // ⛔Through [showAppNotice] because F-10 says every refusal does, and
-    // HERE because this function is the one gate every save entrance goes
-    // through — the menu, the shortcut, and the unsaved-work prompt.
-    final lost = session.projectDoor.celsLostToAMissingFile;
-    if (lost.isNotEmpty && context.mounted) {
-      unawaited(
-        showAppNotice(
-          context,
-          title: AppText.strings.commonNotice,
-          message: AppText.strings.saveCelsLostTemplate.replaceAll(
-            '{count}',
-            '${lost.length}',
-          ),
-          windowKey: const ValueKey<String>('save-cels-lost-notice'),
-        ),
-      );
+    if (context.mounted) {
+      _tellWhatTheSaveCouldNotCarry(context, session);
     }
     return true;
   } on Object catch (error) {
@@ -1641,6 +1618,41 @@ Future<bool> saveProjectShowingProgress(
     }
     return false;
   }
+}
+
+/// 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**
+///
+/// 유저 2026-08-30, on an iPad: delete the project file in the Files
+/// app while the project is open, draw, press Save. A save turns every
+/// cel into a ref into that file and drops its cold blob, so once the
+/// file is gone those cels' bytes are nowhere — the save now writes
+/// everything it can still reach rather than coming apart, and this is
+/// where the person is told what it could not carry.
+///
+/// ⛔Through [showAppNotice] because F-10 says every refusal does, and from
+/// BOTH ends a save can finish at: [saveProjectShowingProgress] — the menu,
+/// the shortcut, the unsaved-work prompt — and a Save As the picker PLACED,
+/// which returns without passing through it (F-72, 2026-09-11: that end
+/// never asked, so a copy one cel short said nothing).
+void _tellWhatTheSaveCouldNotCarry(
+  BuildContext context,
+  EditorSessionManager session,
+) {
+  final lost = session.projectDoor.celsLostToAMissingFile;
+  if (lost.isEmpty) {
+    return;
+  }
+  unawaited(
+    showAppNotice(
+      context,
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.saveCelsLostTemplate.replaceAll(
+        '{count}',
+        '${lost.length}',
+      ),
+      windowKey: const ValueKey<String>('save-cels-lost-notice'),
+    ),
+  );
 }
 
 /// Writes the whole live session to [stagingPath] and answers what media it
@@ -1765,6 +1777,9 @@ Future<void> promptSaveProjectAs(
         windowKey: const ValueKey<String>('save-placed-dialog'),
         task: (report) async => report(1),
       );
+    }
+    if (context.mounted) {
+      _tellWhatTheSaveCouldNotCarry(context, session);
     }
     return;
   }

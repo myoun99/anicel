@@ -4,6 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -165,6 +171,68 @@ void main() {
     // teardown rather than on anything it asserts. ⛔`pumpAndSettle` alone
     // does not reach it: the linger is a bare timer and schedules no frame,
     // so nothing is "settling" for it to wait on.
+    await tester.pump(appProgressDoneLinger * 2);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('🚨a Save As the picker PLACED says what the staged copy could '
+      'not carry (F-72)', (tester) async {
+    FolderPicker.debugFileExporter =
+        ({required String sourcePath, String? suggestedName}) async =>
+            FolderGrant.granted(
+              path: '${placedFolder.path}/scene.anicel',
+              kind: GrantKind.file,
+            );
+    const lostKey = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
+    );
+    const notice = ValueKey<String>('save-cels-lost-notice');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => promptSaveProjectAs(
+                context,
+                session,
+                writeArchive: (path, report) async {
+                  File(path).writeAsBytesSync(const [7, 7, 7, 7]);
+                  // What the real writer reports when a cel's only copy
+                  // was in a file that has gone.
+                  session.projectDoor.celsLostToAMissingFile = {lostKey};
+                  report(1);
+                  return const <String, String>{};
+                },
+              ),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    for (var frame = 0; frame < 400; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (find.byKey(notice).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+
+    expect(
+      session.projectFile.path,
+      '${placedFolder.path}/scene.anicel',
+      reason: 'fixture: the picker placed it and the session adopted it',
+    );
+    expect(
+      find.byKey(notice),
+      findsOneWidget,
+      reason: 'the placed end of a Save As tells, like every other end',
+    );
     await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
   });

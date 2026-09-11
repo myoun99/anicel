@@ -9,6 +9,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
@@ -207,6 +208,52 @@ void main() {
           .values
           .map((ref) => ref.filePath.replaceAll('\\', '/')),
       isNot(contains(placed)),
+    );
+  });
+
+  test('🚨a Save As copy answers for ITSELF what it could not carry — '
+      'neither silent when it is one short, nor repeating what an earlier '
+      'save said (F-72)', () async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    drawOnCurrentFrame(s);
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
+    final drawnKey = s.brushFrameKeyForCut(
+      s.requireActiveCut,
+      selection.layerId,
+      selection.frameId,
+    );
+    final base = folder.path.replaceAll('\\', '/');
+    final original = '$base/original.anicel';
+    await s.projectDoor.saveProjectToFile(
+      original,
+      asked: SaveAsked.byAPerson,
+    );
+
+    // What an earlier, lossy save would have left behind.
+    s.projectDoor.celsLostToAMissingFile = {drawnKey};
+    await s.projectDoor.writeArchiveCopy(
+      '$base/copy.anicel',
+      asked: SaveAsked.byAPerson,
+    );
+    expect(
+      s.projectDoor.celsLostToAMissingFile,
+      isEmpty,
+      reason: 'the copy carried everything, and the answer is its own',
+    );
+
+    // The file the drawn cel now lives in goes away: the next copy cannot
+    // carry it.
+    OpenProjectFile.instance.release();
+    File(original).deleteSync();
+    await s.projectDoor.writeArchiveCopy(
+      '$base/copy2.anicel',
+      asked: SaveAsked.byAPerson,
+    );
+    expect(
+      s.projectDoor.celsLostToAMissingFile,
+      {drawnKey},
+      reason: 'a copy one cel short says so',
     );
   });
 }

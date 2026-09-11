@@ -206,4 +206,107 @@ void main() {
       reason: 'f2 was in RAM, so it was written',
     );
   });
+
+  test('🚨a second save that APPENDS carries every clean cel in place — and '
+      'says it lost nothing (F-72)', () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/appending.anicel';
+    final store = BrushFrameStore();
+    for (final (frame, value) in [('f1', 3), ('f2', 5), ('f3', 7), ('f4', 11)]) {
+      store.storeBakedSurface(key('p', frame), inked(value));
+    }
+    final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    final firstLength = File(path).lengthSync();
+
+    // Drawn on f2 only: the other three stay clean refs into this file.
+    store.storeBakedSurface(key('p', 'f2'), inked(9));
+    final lost = await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    expect(
+      File(path).lengthSync(),
+      greaterThan(firstLength),
+      reason:
+          'fixture: the second save APPENDED — the old f2 stays behind as '
+          'dead bytes — rather than rewriting the file',
+    );
+    expect(
+      lost,
+      isEmpty,
+      reason:
+          '⛔the clean cels were carried where they already were. Reporting '
+          'them lost told the person, on every save after the first, that '
+          'pictures had gone while the file held every one of them',
+    );
+    expect(
+      {for (final entry in parseAnicelZipLayoutFile(path).entries) entry.name},
+      containsAll([
+        for (final frame in ['f1', 'f2', 'f3', 'f4'])
+          anicelCelEntryName(key('p', frame)),
+      ]),
+    );
+  });
+
+  test(
+    '🚨a file that is THERE but will not read right now stops the save — '
+    'nothing is written one cel short (F-72)',
+    () async {
+      const service = AnicelFileService();
+      final path = '${directory.path}/busy.anicel';
+      final store = BrushFrameStore();
+      store.storeBakedSurface(key('p', 'f1'), inked(3));
+      store.storeBakedSurface(key('p', 'f2'), inked(5));
+      final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+      await service.save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      );
+      final before = File(path).readAsBytesSync();
+      store.storeBakedSurface(key('p', 'f2'), inked(9));
+
+      // Another handle locks the whole file: it is there, and every read of
+      // it is refused — what a provider in the middle of a sync looks like
+      // to anybody reading it.
+      // Saved AS a new name while the file f1 lives in is busy. Renaming
+      // onto a locked file is refused on its own, so the target is a new
+      // file — what stops this save can only be the read.
+      final copy = '${directory.path}/busy-copy.anicel';
+      final lock = File(path).openSync(mode: FileMode.append);
+      lock.lockSync(FileLock.exclusive);
+      try {
+        await expectLater(
+          service.save(
+            project: project,
+            brushFrameStore: store,
+            filePath: copy,
+          ),
+          throwsA(isA<FileSystemException>()),
+        );
+      } finally {
+        lock.unlockSync();
+        lock.closeSync();
+      }
+
+      expect(
+        File(copy).existsSync(),
+        isFalse,
+        reason: 'no copy one cel short was written',
+      );
+      expect(
+        File(path).readAsBytesSync(),
+        before,
+        reason: 'and the file f1 lives in stands',
+      );
+    },
+    skip: Platform.isWindows ? false : 'only Windows refuses a locked read',
+  );
 }

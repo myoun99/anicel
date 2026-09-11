@@ -241,6 +241,10 @@ class ProjectFileDoor {
   /// MOVED by a document picker, so anything the session learned from it
   /// would name a path that stops existing moments later.
   ///
+  /// It does REPORT what it could not carry, in [celsLostToAMissingFile] —
+  /// the one thing the person must hear either way (F-72: a copy one cel
+  /// short said nothing, and the previous save's answer stood in for it).
+  ///
   /// 🚨 Exists because of the 22-byte placeholder this replaces (실측
   /// iPhone+Drive, 08-26): a provider that refuses in-place writes made
   /// the post-placement save fail, and what the picker had placed was the
@@ -262,7 +266,7 @@ class ProjectFileDoor {
       staging: _staging,
     );
     final conforms = _file.conformsToStore();
-    await _anicelFileService.save(
+    celsLostToAMissingFile = await _anicelFileService.save(
       project: _project.repository.requireProject(),
       brushFrameStore: _renderCaches.brushFrameStore,
       auxCelStores: _auxCelStores,
@@ -326,7 +330,10 @@ class ProjectFileDoor {
   /// A replace that also fails rethrows the file-system refusal: the
   /// notice names the real problem, and Q-drive-resave owns what the app
   /// should offer instead.
-  Future<void> _saveViaCoordinatedReplace(
+  ///
+  /// Answers what the staging save could not carry, as the direct save
+  /// does — this path used to drop the answer (F-72).
+  Future<Set<BrushFrameKey>> _saveViaCoordinatedReplace(
     String filePath, {
     required Map<String, MediaByteSource> mediaToStore,
     required ProjectConforms conforms,
@@ -337,7 +344,7 @@ class ProjectFileDoor {
     final staging =
         '${stagingDirectory.path.replaceAll('\\', '/')}'
         '/replace.tmp-${DateTime.now().microsecondsSinceEpoch}';
-    await _anicelFileService.save(
+    final lost = await _anicelFileService.save(
       project: _project.repository.requireProject(),
       brushFrameStore: _renderCaches.brushFrameStore,
       auxCelStores: _auxCelStores,
@@ -378,6 +385,7 @@ class ProjectFileDoor {
         store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
       }
     }
+    return lost;
   }
 
   Future<void> _writeProjectToFile(
@@ -435,7 +443,7 @@ class ProjectFileDoor {
       if (!FolderPicker.grantsAreScoped) {
         rethrow;
       }
-      await _saveViaCoordinatedReplace(
+      celsLostToAMissingFile = await _saveViaCoordinatedReplace(
         filePath,
         mediaToStore: mediaToStore,
         conforms: conforms,
