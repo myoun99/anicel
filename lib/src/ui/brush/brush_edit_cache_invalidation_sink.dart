@@ -42,7 +42,22 @@ class BrushEditCacheInvalidationSink implements CacheInvalidationSink {
     // The standalone hosts draw through the same painter as the editor, so
     // their tiles need the same truthful first frame (F-68 root fix).
     notePredecessorsFromInvalidation(invalidation);
-    _record(brushFrames, invalidation);
+    // 🚨★★★WHICH CHANGE, NEVER WHAT IT WENT BETWEEN. The transition is two
+    // whole surfaces, and this log keeps 4,096 records for the life of the
+    // host: since the F-68 fix put the pair on the record, every stroke's
+    // before-and-after picture — and through their tiles, the tile
+    // pictures — stayed alive in the conte, envelope, media and timesheet
+    // tabs (found by following a parked undo entry's tile back to this
+    // list, 2026-09-11). Equality never compared it (see the class), and no
+    // reader reads it.
+    _record(
+      brushFrames,
+      BrushFrameCacheInvalidation(
+        frameKey: invalidation.frameKey,
+        dirtyTiles: invalidation.dirtyTiles,
+        wholeFrame: invalidation.wholeFrame,
+      ),
+    );
   }
 
   @override
