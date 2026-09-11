@@ -1,6 +1,5 @@
 import 'package:flutter/scheduler.dart';
 
-import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/frame_id.dart';
@@ -124,8 +123,8 @@ class ShownCels {
 
   /// Starts up to [budget] of the queue — through the engine's synchronous
   /// upload where it has one, so no tile is left IN FLIGHT there: a tile
-  /// the asynchronous decoder is holding is the one thing [drawNow] cannot
-  /// fill.
+  /// the asynchronous decoder is holding can only be waited for, even on an
+  /// engine that could have made its picture on the spot.
   ///
   /// ⛔UNFILED, both ways. These pictures are for a surface nobody shows
   /// yet, and filing them under the cel's scope would offer them to the
@@ -171,31 +170,14 @@ class ShownCels {
       ..ensureVisualUpdate();
   }
 
-  /// Makes [cels] drawable before the next frame where the engine can
-  /// upload synchronously (Impeller) — false where it cannot (Skia), or
-  /// where a tile is already with the asynchronous decoder and can only be
-  /// waited for.
-  bool drawNow(Iterable<CelSurface> cels) {
-    if (!syncImageUploadSupported) {
-      return false;
-    }
-    final all = cels.toList();
-    for (final placed in _painted(all)) {
-      if (_cache.displayImageFor(placed.tile) == null) {
-        _cache.adoptSyncUpload(
-          placed,
-          staleScope: BitmapTileImageCache.unfiled,
-        );
-      }
-    }
-    return drawable(all);
-  }
-
   /// Calls [then] once [cels] are drawable, and returns what stops the
   /// wait.
   ///
-  /// Every decode they still need starts AT ONCE: somebody is waiting on
-  /// these, which is the one case the per-frame ration is not for.
+  /// Every picture they still need is started AT ONCE: somebody is waiting
+  /// on these, which is the one case the per-frame ration is not for. Where
+  /// the engine uploads synchronously (Impeller) that makes them drawable
+  /// before this returns, and [then] runs at once — the on-the-spot answer
+  /// is this same call, not a second path beside it.
   VoidCallback whenDrawable(Iterable<CelSurface> cels, VoidCallback then) {
     final waitingOn = cels.toList();
     warm(waitingOn);

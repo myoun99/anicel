@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/shown_cels.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
@@ -37,8 +39,14 @@ import '../../helpers/native_engine_path.dart';
 /// keyed on the object — so the step used to land on tiles with no picture
 /// at all. Measured on a 225-tile cel: 204 of them blank on the first frame
 /// (Settings ▸ Show Unpainted Tiles paints each one magenta), filling in
-/// over several. The control below keeps that measurement honest: if it
-/// ever reads zero, the three cases above it prove nothing.
+/// over several. The control at the bottom keeps that measurement honest:
+/// if it ever reads zero, the cases above it prove nothing.
+///
+/// ⚠️TWO CANVASES, because they register differently. The ink view paints
+/// the cel's own tiles; the DRAWING canvas hands its painter to the layer
+/// stack and paints the active row THROUGH its colour keys, so the tiles on
+/// screen are other objects than the cel's. A walk on the first alone left
+/// the second's registration untested — a mutant deleting it survived.
 ///
 /// The cel is 64 tiles because the composed stand-in covers sixteen a paint
 /// — on a smaller cel it hides the defect this exists to catch.
@@ -46,38 +54,12 @@ void main() {
   testWidgets('🚨OUTRUN, where the engine cannot upload on the spot (Skia): '
       'an undo into a parked entry WAITS for its pictures, and no frame on '
       'the way is blank', (tester) async {
-    final walk = await _Walk.draw(tester);
+    await _outrun(tester, await _Walk.draw(tester));
+  });
 
-    walk.press();
-    expect(walk.history.undoCount, 5);
-    await tester.pump();
-    await walk.expectWhole(showing: 4, why: 'the first frame of undo 5');
-    walk.press();
-    expect(walk.history.undoCount, 4, reason: 'resident: lands at the press');
-    // ...and straight on into the parked ones, faster than any warm-up.
-    for (final k in [3, 2, 1]) {
-      walk.press();
-      // ⛔Mutation: land at once → the next frame is mostly magenta.
-      expect(walk.history.undoCount, k + 1, reason: 'undo $k waits');
-      var frames = 0;
-      while (walk.history.undoCount == k + 1) {
-        expect(frames, lessThan(80), reason: 'undo $k never landed');
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        frames += 1;
-        if (walk.history.undoCount == k + 1) {
-          // Still the picture from before the press — whole.
-          await walk.expectWhole(
-            showing: k,
-            why: 'waiting on undo $k, frame $frames',
-          );
-        }
-      }
-    }
-    await tester.pump();
-    await walk.expectWhole(showing: 0, why: 'the first frame of undo 1');
+  testWidgets('🚨the same on the DRAWING canvas, painting the row through a '
+      'colour key', (tester) async {
+    await _outrun(tester, await _Walk.draw(tester, drawingCanvas: true));
   });
 
   testWidgets('at a human pace the next undo is ready BEFORE the press: it '
@@ -102,7 +84,8 @@ void main() {
 
     for (final k in [5, 4, 3, 2, 1]) {
       walk.press();
-      // ⛔Mutation: skip the on-the-spot upload → the parked ones wait.
+      // ⛔Mutation: pictures started a ration at a time → the parked ones
+      // wait a frame, and the press has not landed here.
       expect(walk.history.undoCount, k, reason: 'undo $k landed at the press');
     }
     await tester.pump();
@@ -122,6 +105,40 @@ void main() {
     final seen = await walk.look(showing: 2);
     expect(seen.magenta, greaterThan(20000));
   });
+}
+
+/// Undoes 5 and 4 (in RAM), then straight on into 3, 2 and 1 (parked),
+/// faster than any warm-up could go — and looks at every frame on the way.
+Future<void> _outrun(WidgetTester tester, _Walk walk) async {
+  walk.press();
+  expect(walk.history.undoCount, 5);
+  await tester.pump();
+  await walk.expectWhole(showing: 4, why: 'the first frame of undo 5');
+  walk.press();
+  expect(walk.history.undoCount, 4, reason: 'resident: lands at the press');
+  for (final k in [3, 2, 1]) {
+    walk.press();
+    // ⛔Mutation: land at once → the next frame is mostly magenta.
+    expect(walk.history.undoCount, k + 1, reason: 'undo $k waits');
+    var frames = 0;
+    while (walk.history.undoCount == k + 1) {
+      expect(frames, lessThan(80), reason: 'undo $k never landed');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+      frames += 1;
+      if (walk.history.undoCount == k + 1) {
+        // Still the picture from before the press — whole.
+        await walk.expectWhole(
+          showing: k,
+          why: 'waiting on undo $k, frame $frames',
+        );
+      }
+    }
+  }
+  await tester.pump();
+  await walk.expectWhole(showing: 0, why: 'the first frame of undo 1');
 }
 
 /// Six whole-cel strokes in six colours on a 1024² cel (64 tiles), under an
@@ -144,13 +161,27 @@ class _Walk {
     0xFFFF8000,
   ];
 
+  /// What the drawing canvas's row is painted through: the white specks
+  /// every stroke leaves go, so every tile it paints is a keyed copy.
+  static final _deleteWhite = ResolvedLayerEffect(
+    kind: EffectKind.deleteColor,
+    values: const [255, 255, 255, 0, 100],
+  );
+
   final WidgetTester tester;
   final BrushFrameEditingCoordinator coordinator;
   final HistoryManager history;
   final List<BrushStrokeHistoryCommand> strokes = [];
   late final HistoryPictures pictures = HistoryPictures(history: history);
 
-  static Future<_Walk> draw(WidgetTester tester) async {
+  /// [drawingCanvas]: the panel in the drawing editor's shape — it hands
+  /// the active row's painter to the layer stack (here, the underlay paints
+  /// it) and draws the row through a colour key. Otherwise the ink view
+  /// paints the cel's own tiles.
+  static Future<_Walk> draw(
+    WidgetTester tester, {
+    bool drawingCanvas = false,
+  }) async {
     debugQaEngineLibraryPathOverride = nativeEngineLibraryPathOrNull();
     addTearDown(() => debugQaEngineLibraryPathOverride = null);
     MeasurementMode.showUnpaintedTiles.value = true;
@@ -192,6 +223,21 @@ class _Walk {
                 options: const FloodFillOptions(expandPx: 0, antiAlias: false),
               ),
               transformOptions: transformOptions,
+              activeStrokeOverlayModel: drawingCanvas
+                  ? ActiveStrokeOverlayModel()
+                  : null,
+              activeSourceEffects: drawingCanvas ? [_deleteWhite] : const [],
+              viewportUnderlayBuilder: drawingCanvas
+                  ? (context, viewport, painter, float) => painter == null
+                        ? const SizedBox.shrink()
+                        : CustomPaint(
+                            painter: painter,
+                            size: Size(
+                              _size.width.toDouble(),
+                              _size.height.toDouble(),
+                            ),
+                          )
+                  : null,
             ),
           ),
         ),
@@ -208,21 +254,7 @@ class _Walk {
     for (final colour in _colours) {
       final stroke = BrushStrokeHistoryCommand(
         coordinator: coordinator,
-        strokeData: BrushStrokeCommitData(
-          sourceDabs: [
-            BrushDab(
-              center: CanvasPoint(x: 512, y: 512),
-              color: colour,
-              size: 1020,
-              opacity: 1,
-              flow: 1,
-              hardness: 1,
-              tipShape: BrushTipShape.square,
-              pressure: 1,
-              sequence: 0,
-            ),
-          ],
-        ),
+        strokeData: BrushStrokeCommitData(sourceDabs: _strokeOf(colour)),
         cacheInvalidationSink: sink,
       );
       history.execute(stroke);
@@ -238,6 +270,31 @@ class _Walk {
     );
     return walk;
   }
+
+  /// Colour k over the whole cel, and a white speck in every tile.
+  static List<BrushDab> _strokeOf(int colour) => [
+    _dab(512, 512, colour, 1020, 0),
+    for (var i = 0; i < 64; i += 1)
+      _dab(64.0 + 128 * (i % 8), 64.0 + 128 * (i ~/ 8), 0xFFFFFFFF, 8, i + 1),
+  ];
+
+  static BrushDab _dab(
+    double x,
+    double y,
+    int colour,
+    double size,
+    int sequence,
+  ) => BrushDab(
+    center: CanvasPoint(x: x, y: y),
+    color: colour,
+    size: size,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.square,
+    pressure: 1,
+    sequence: sequence,
+  );
 
   void press() => pictures.step(undo: true, apply: history.undo);
 

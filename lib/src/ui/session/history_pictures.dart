@@ -64,10 +64,13 @@ class HistoryPictures {
         waitFor.add((key, cel.next));
       }
     }
-    if (waitFor.isEmpty || _shown.drawNow(waitFor)) {
+    if (waitFor.isEmpty) {
       _land(apply);
       return;
     }
+    // Where the engine uploads on the spot (Impeller) the wait ends before
+    // it begins: [ShownCels.whenDrawable] makes the pictures and lands the
+    // step inside this call. There is no second path for that engine.
     _wait(undo, waitFor, apply);
   }
 
