@@ -156,7 +156,11 @@ void main() {
   /// failure, put THAT in.
   ///
   /// ★WHEN YOU TRANSLATE SOMETHING, LOWER THIS NUMBER. That is the ratchet.
-  const untranslatedElsewhere = 85;
+  ///
+  /// 86 (I-15, 2026-09-11): the English row of the held 「이동」 shortcut
+  /// (`canvas-pan-hold`), the registry contract above; its other four
+  /// languages are keyed by id.
+  const untranslatedElsewhere = 86;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
