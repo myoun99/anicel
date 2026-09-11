@@ -44,6 +44,9 @@ import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/media_asset.dart' show mediaAssetKindForPath;
+import '../services/import/import_layer_spot.dart';
+import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/onion_skin_settings.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
@@ -1931,6 +1934,9 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     timeline: this,
     layerIds: layerIds,
+    layerIndexAboveActive: () =>
+        activeCutControllers.layerController.insertionIndexAboveActiveLayer(),
+    acceptsPlacedFrames: acceptsPlacedFrames,
   );
 
   late final ProjectImportDoors importDoors = ProjectImportDoors(
@@ -2248,6 +2254,29 @@ class EditorSessionManager extends ChangeNotifier
         layer.kind.holdsDrawings &&
         layer.kind != LayerKind.se;
   }
+
+  /// Whether a file dropped on [layerId]'s frame area may land there as new
+  /// frames: a row a dragged block may land on — that law, asked rather
+  /// than restated — minus the two whose cells are not the row's own
+  /// pixels, an image layer and a reference layer (유저 2026-09-11:
+  /// 「이미지 · 참조 레이어의 프레임 영역 → 받지 않는다」).
+  bool acceptsPlacedFrames(LayerId layerId) {
+    final layer = layerById(layerId);
+    return layer != null &&
+        blockMoveEligible(layerId) &&
+        layer.kind != LayerKind.image &&
+        layer.mediaReference == null;
+  }
+
+  /// Where a file let go on [layerId]'s frame area, at [frameIndex], lands
+  /// — or null when it lands nowhere. Frames are pixels, so only a file
+  /// with pixels to bake lands on them ([importBakeAllowed] asks exactly
+  /// that), and only on a row that takes frames ([acceptsPlacedFrames]).
+  RowFramesSpot? frameDropSpot(LayerId layerId, int frameIndex, String path) =>
+      acceptsPlacedFrames(layerId) &&
+          importBakeAllowed(kind: mediaAssetKindForPath(path), placing: true)
+      ? RowFramesSpot(layerId: layerId, frameIndex: frameIndex)
+      : null;
 
   // ── the shove: its own object, in its own file ────────────────────────
   //

@@ -1,5 +1,6 @@
 import '../../models/media_asset.dart';
 import '../../services/project_lookup.dart' show mediaKindCarriedByDefault;
+import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart' show ImportDestination;
 import '../text/app_strings.dart';
 
@@ -164,14 +165,22 @@ bool importModeAllowed({
 bool importBakeAllowed({required MediaAssetKind? kind, required bool placing}) =>
     placing && (kind == MediaAssetKind.image || kind == MediaAssetKind.pdf);
 
-/// Whether the file's own answers leave the bake question one answer: an
+/// Whether the bake question has one answer: frames dropped on a row are
+/// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
 /// expanded PSD IS its pixels — 「one of them baked means all of them are」
 /// (the user's rule).
 bool importBakeLocked({
   required bool isPsd,
   required bool placing,
   required PsdPlaceMode psd,
-}) => isPsd && placing && psd == PsdPlaceMode.expand;
+  ImportLayerSpot? spot,
+}) =>
+    spot is RowFramesSpot ||
+    (isPsd && placing && psd == PsdPlaceMode.expand);
+
+/// Whether the PSD question has one answer: a row's frames take the merged
+/// picture — expanding makes layers, and a row takes frames.
+bool importPsdLocked(ImportLayerSpot? spot) => spot is RowFramesSpot;
 
 /// Whether the fit has one answer: a NEW cut is made at the file's own size,
 /// so 1:1 is the only fit that means anything there (user 2026-09-11:
@@ -192,11 +201,18 @@ ImportFileSettings resolvedImportSettings(
   required MediaAssetKind? kind,
   required bool isPsd,
   required bool placing,
+  ImportLayerSpot? spot,
 }) {
+  final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
   final bake =
       importBakeAllowed(kind: kind, placing: placing) &&
       (settings.bake ||
-          importBakeLocked(isPsd: isPsd, placing: placing, psd: settings.psd));
+          importBakeLocked(
+            isPsd: isPsd,
+            placing: placing,
+            psd: psd,
+            spot: spot,
+          ));
   final mode = importModeAllowed(
     mode: settings.mode,
     trimmed: settings.isTrimmed,
@@ -207,7 +223,7 @@ ImportFileSettings resolvedImportSettings(
   final fit = importFitLocked(settings, placing: placing)
       ? MediaFitMode.none
       : settings.fit;
-  return settings.copyWith(mode: mode, bake: bake, fit: fit);
+  return settings.copyWith(mode: mode, bake: bake, fit: fit, psd: psd);
 }
 
 /// The words the file table's cells show — the app's strings, so the window

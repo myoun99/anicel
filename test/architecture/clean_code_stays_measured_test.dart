@@ -25,7 +25,16 @@ void main() {
   /// sat 16px off its rows — and its parameters are that line's four slots
   /// and the widths they share. `importModeAllowed` left the list, down to
   /// the two questions it still answers.
-  const wideSignatures = 380;
+  ///
+  /// ⚠️380 → 381 the same day, the drop round's stage 2a:
+  /// `resolvedImportSettings` (five) took where a drop put the file, because
+  /// what a file can give depends on it — a row's frames lock the bake on
+  /// and the PSD to merge — and "what this file means" is that function's
+  /// one job. Its inputs are four facts from three places: the file's kind
+  /// and whether it is a PSD, whether anything is placed, and the drop. The
+  /// two landing verbs that grew with it went back under by reading the drop
+  /// off the arrival, where "where does this land" already lived.
+  const wideSignatures = 381;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

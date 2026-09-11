@@ -9,11 +9,18 @@
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/drawing_block_move.dart' show planDrawingRangeMove;
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/media_asset.dart';
+import '../../models/timeline_coverage.dart' show drawingBlocks;
+import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
+import '../../services/command.dart' show CompositeCommand;
 import '../../services/commands/import_media_command.dart';
+import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/editing/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize, importedCut;
+import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/project_lookup.dart' show projectLayerIdValues;
 import 'layer_id_mint.dart';
@@ -35,6 +42,7 @@ class ImportArrival {
     required this.source,
     required this.displayName,
     required this.projectFps,
+    this.spot,
   });
 
   /// The cut the layers join, or null when this import brings its own.
@@ -52,6 +60,15 @@ class ImportArrival {
   final String source;
   final String displayName;
   final int projectFps;
+
+  /// Where in [targetCut] a DROP put this import — null for every entrance
+  /// that is not a drop. The gate has already checked it: frames bound for
+  /// a row that takes none never get this far.
+  final ImportLayerSpot? spot;
+
+  /// The one line the undo stack shows for this import, whichever way it
+  /// lands.
+  String get undoDescription => 'Import $displayName';
 
   /// The cut this import lands in — the target's own id, or a fresh one.
   ///
@@ -88,6 +105,7 @@ class ImportArrival {
     source: source,
     displayName: displayName,
     projectFps: projectFps,
+    spot: spot,
   ).._cutId = _cutId;
 }
 
@@ -100,17 +118,27 @@ class ImportLanding {
     required FrameIds frameIds,
     required TimelineAccess timeline,
     required LayerIdMint layerIds,
+    required int Function() layerIndexAboveActive,
+    required bool Function(LayerId layerId) acceptsPlacedFrames,
   }) : _project = project,
        _selection = selection,
        _frameIds = frameIds,
        _timeline = timeline,
-       _layerIds = layerIds;
+       _layerIds = layerIds,
+       _layerIndexAboveActive = layerIndexAboveActive,
+       _acceptsPlacedFrames = acceptsPlacedFrames;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
   final LayerIdMint _layerIds;
+
+  /// Add Layer's own slot above the active row — asked, not re-derived.
+  final int Function() _layerIndexAboveActive;
+
+  /// Which rows take dropped frames — the session's one answer.
+  final bool Function(LayerId layerId) _acceptsPlacedFrames;
 
   int _importCutSequence = 0;
 
@@ -120,12 +148,22 @@ class ImportLanding {
   ImportArrival? arriveAt(
     ImportDestination destination, {
     required String path,
+    ImportLayerSpot? spot,
   }) {
     final targetCut = destination == ImportDestination.activeCutLayer
         ? _project.activeCutOrNull
         : null;
     if (destination == ImportDestination.activeCutLayer && targetCut == null) {
       return null;
+    }
+    // A drop on a row's frames is the gate's to refuse too: a row that is
+    // not in this cut, or takes no frames, turns it away before any read.
+    if (spot is RowFramesSpot) {
+      final inCut =
+          targetCut?.layers.any((layer) => layer.id == spot.layerId) ?? false;
+      if (!inCut || !_acceptsPlacedFrames(spot.layerId)) {
+        return null;
+      }
     }
     final source = normalizedMediaPath(path);
     return ImportArrival(
@@ -138,6 +176,7 @@ class ImportLanding {
       source: source,
       displayName: mediaAssetDefaultName(source),
       projectFps: _project.repository.requireProject().fps,
+      spot: spot,
     );
   }
 
@@ -178,20 +217,33 @@ class ImportLanding {
   }
 
   /// Lands imported [layers] where [arrival] says: as rows in the cut
-  /// that is already there, or as a NEW cut built from the default.
+  /// that is already there, or as a NEW cut built from the default — and,
+  /// when a drop chose the spot ([ImportArrival.spot]), directly above the
+  /// active row or INTO the row it was dropped on.
   ///
   /// ⛔THREE IMPORTERS, ONE LANDING. Image, PSD and PDF each wrote both
   /// arms out with their own ImportMediaCommand, so a field the command
   /// grew reached one importer's new cut and not another's — and the two
   /// arms have to agree about the description the undo stack shows, which
   /// is the only thing the user sees of either.
-  void land(
+  ///
+  /// Answers false only when frames bound for a row could not be planned
+  /// onto it.
+  bool land(
     List<Layer> layers, {
     required ImportArrival arrival,
     required int duration,
     List<MediaAsset> assets = const [],
   }) {
-    final description = 'Import ${arrival.displayName}';
+    final description = arrival.undoDescription;
+    if (arrival.spot case final RowFramesSpot rowSpot) {
+      return _landIntoRow(
+        layers.single,
+        spot: rowSpot,
+        arrival: arrival,
+        assets: assets,
+      );
+    }
     if (arrival.targetCut != null) {
       _project.historyManager.execute(
         ImportMediaCommand(
@@ -199,11 +251,14 @@ class ImportLanding {
           editingSession: _timeline.editingSession,
           targetCutId: arrival.cutId,
           newLayers: layers,
+          layerInsertionIndex: arrival.spot is AboveActiveLayerSpot
+              ? _layerIndexAboveActive()
+              : null,
           assetAdditions: assets,
           description: description,
         ),
       );
-      return;
+      return true;
     }
     final cut = importedCut(
       defaultCut: createDefaultCut(
@@ -225,5 +280,62 @@ class ImportLanding {
         description: description,
       ),
     );
+    return true;
+  }
+
+  /// A drop on a picture row's frame area: [planned]'s cels land on that
+  /// row from the dropped cell on (유저 2026-09-11: 「그 칸부터 새 프레임,
+  /// 항상 굽기」).
+  ///
+  /// ⛔NOT A SECOND RULE for what is in the way. The blocks there move
+  /// exactly as they move for a block dragged in from another row, because
+  /// this IS that plan, with [planned] as the row the frames came from —
+  /// the user's words when it was drawn: 「새로 만든 규칙이 아니라 … 지금
+  /// 쓰는 계산 그대로다」. The row's rewrite and the pool's registration
+  /// are ONE undo step.
+  bool _landIntoRow(
+    Layer planned, {
+    required RowFramesSpot spot,
+    required ImportArrival arrival,
+    required List<MediaAsset> assets,
+  }) {
+    // The gate already turned away a row that takes no frames.
+    final row = _project.layerById(spot.layerId);
+    final blocks = drawingBlocks(planned.timeline);
+    if (row == null || blocks.isEmpty) {
+      return false;
+    }
+    final cutFrameCount = _project.activeCutFrameCount;
+    final landed = planDrawingRangeMove(
+      source: planned,
+      target: row,
+      rangeStartIndex: blocks.first.startIndex,
+      rangeEndIndexExclusive: blocks.last.endIndexExclusive,
+      frameDelta: spot.frameIndex - blocks.first.startIndex,
+      cutFrameCount: cutFrameCount,
+    )?.targetAfter;
+    if (landed == null) {
+      return false;
+    }
+    _project.historyManager.execute(
+      CompositeCommand(
+        description: arrival.undoDescription,
+        commands: [
+          UpdateLayerTimelineCommand(
+            repository: _project.repository,
+            before: row,
+            after: rederiveRunBehaviors(landed, cutFrameCount: cutFrameCount),
+          ),
+          if (assets.isNotEmpty)
+            ImportMediaCommand(
+              repository: _project.repository,
+              editingSession: _timeline.editingSession,
+              assetAdditions: assets,
+              description: arrival.undoDescription,
+            ),
+        ],
+      ),
+    );
+    return true;
   }
 }

@@ -13,6 +13,7 @@ import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/psd_expand_import.dart';
@@ -52,7 +53,8 @@ class ProjectImportDoors {
   /// [Layer.mediaReference]; rasterize bakes and stamps nothing. Both
   /// REGISTER the asset (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut is
   /// made at the file's own size. One undo step; the baked cels display
-  /// through the ordinary store paths. Returns false when nothing imported.
+  /// through the ordinary store paths. Returns false when nothing imported
+  /// — including when the row a drop aimed at ([spot]) takes no frames.
   Future<bool> importImageFile({
     required String path,
     required ImportDestination destination,
@@ -62,10 +64,11 @@ class ProjectImportDoors {
     int? lengthFrames,
     int inFrame = 0,
     int? outFrame,
+    ImportLayerSpot? spot,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
-    final gate = _landing.arriveAt(destination, path: path);
+    final gate = _landing.arriveAt(destination, path: path, spot: spot);
     if (gate == null) {
       return false;
     }
@@ -118,7 +121,9 @@ class ProjectImportDoors {
     final Layer layer;
     final List<PlannedCelBake> bakes;
     final List<MediaAsset> assets;
-    if (decoded.length == 1) {
+    // A drop on a row's frames takes every picture as frames: a still is
+    // ONE cell there (「한 장이면 한 칸」), not a hold over the cut.
+    if (decoded.length == 1 && spot is! RowFramesSpot) {
       final plan = planStillImageLayer(
         sourceFile: source,
         displayName: arrival.displayName,
@@ -160,12 +165,21 @@ class ProjectImportDoors {
       assets = plan.assets;
     }
 
-    _landing.land(
+    final landed = _landing.land(
       [layer],
       arrival: arrival,
       duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
       assets: assets,
     );
+    if (!landed) {
+      for (final frame in decoded) {
+        frame.image.dispose();
+      }
+      return false;
+    }
+    // Frames dropped on a row are that row's cels, so their pixels are
+    // keyed under it rather than under the layer that was only planned.
+    final rowId = spot is RowFramesSpot ? spot.layerId : null;
     // 🔑 AFTER the registration. The bytes were read to decode them, so the
     // hash costs no I/O. A RASTERIZING import used to skip it because it
     // registered nothing; it registers now (유저 2026-09-11: 「구워도 풀에
@@ -191,7 +205,7 @@ class ProjectImportDoors {
             _renderCaches.brushFrameStore,
             _internals.brushFrameKeyForCut(
               bakedCut,
-              bake.layerId,
+              rowId ?? bake.layerId,
               bake.frameId,
             ),
             surface,
@@ -204,7 +218,9 @@ class ProjectImportDoors {
       }
     }
 
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: layer.id);
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: rowId ?? layer.id,
+    );
     _changes.notifyChanged();
     return true;
   }
@@ -232,10 +248,11 @@ class ProjectImportDoors {
     required bool copyIntoProject,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
+    ImportLayerSpot? spot,
   }) async {
     // Same order as the image path: the destination gate runs before any
     // read, so a refused import never has pixels to leak.
-    final gate = _landing.arriveAt(destination, path: path);
+    final gate = _landing.arriveAt(destination, path: path, spot: spot);
     if (gate == null) {
       return null;
     }
@@ -329,10 +346,11 @@ class ProjectImportDoors {
     int? outFrame,
     void Function(int done, int total)? onRenderProgress,
     void Function(int pageIndex)? onPageRenderFailed,
+    ImportLayerSpot? spot,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
-    final gate = _landing.arriveAt(destination, path: path);
+    final gate = _landing.arriveAt(destination, path: path, spot: spot);
     if (gate == null) {
       return false;
     }
@@ -374,7 +392,8 @@ class ProjectImportDoors {
       final Layer layer;
       final List<PlannedCelBake> bakes;
       final List<MediaAsset> assets;
-      if (spanCount == 1) {
+      // A row's frames take one cell per page, a single page too.
+      if (spanCount == 1 && spot is! RowFramesSpot) {
         // A one-page span is a still: an image-kind layer holding over the
         // cut, exactly like a placed PNG.
         final plan = planStillImageLayer(
@@ -417,12 +436,16 @@ class ProjectImportDoors {
         assets = plan.assets;
       }
 
-      _landing.land(
+      final landed = _landing.land(
         [layer],
         arrival: arrival,
         duration: spanCount > 1 ? _sequenceLength(layer) : arrival.projectFps,
         assets: assets,
       );
+      if (!landed) {
+        return false;
+      }
+      final rowId = spot is RowFramesSpot ? spot.layerId : null;
       // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
       // page precisely so a hundred-page conte never lands in memory at
       // once; reading it whole to hash it would undo the one thing this
@@ -467,7 +490,7 @@ class ProjectImportDoors {
                 _renderCaches.brushFrameStore,
                 _internals.brushFrameKeyForCut(
                   bakedCut,
-                  bake.layerId,
+                  rowId ?? bake.layerId,
                   bake.frameId,
                 ),
                 surface,
@@ -483,7 +506,9 @@ class ProjectImportDoors {
         }
       }
 
-      _changes.refreshAfterCutCommand(preferredActiveLayerId: layer.id);
+      _changes.refreshAfterCutCommand(
+        preferredActiveLayerId: rowId ?? layer.id,
+      );
       _changes.notifyChanged();
       return true;
     } finally {

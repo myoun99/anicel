@@ -8,6 +8,7 @@ import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/media_asset.dart';
+import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
@@ -40,6 +41,7 @@ class ImportDialog extends StatefulWidget {
     this.initialPaths = const [],
     this.poolOnly = false,
     this.placeOnly = false,
+    this.spot,
     this.filePicker,
     this.directoryPicker,
   });
@@ -60,6 +62,13 @@ class ImportDialog extends StatefulWidget {
   /// the columns, the preview, the range — is the import window's, because
   /// placing an asset asks the same questions as bringing one in.
   final bool placeOnly;
+
+  /// Where a DROP put the file ([ImportLayerSpot]). The drop answered it,
+  /// so the Into column shows that answer locked instead of asking (유저
+  /// 2026-09-11: 「드래그앤드롭으로 넣을곳 지정했으면 그거 따라서
+  /// 고정해두고 비활성화된상태로」). Null for every entrance that is not a
+  /// drop.
+  final ImportLayerSpot? spot;
 
   /// Injectable pickers (tests).
   final Future<List<String>> Function()? filePicker;
@@ -123,6 +132,7 @@ class _ImportDialogState extends State<ImportDialog> {
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing,
+      spot: widget.spot,
     );
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -603,6 +613,7 @@ class _ImportDialogState extends State<ImportDialog> {
           }
         },
         onPageRenderFailed: failedPages.add,
+        spot: widget.spot,
       );
     }
     return widget.session.importDoors.importImageFile(
@@ -613,6 +624,7 @@ class _ImportDialogState extends State<ImportDialog> {
       copyIntoProject: carry,
       inFrame: settings.inFrame,
       outFrame: settings.outFrame,
+      spot: widget.spot,
     );
   }
 
@@ -667,6 +679,7 @@ class _ImportDialogState extends State<ImportDialog> {
       destination: settings.into,
       copyIntoProject: settings.mode == ImportFileMode.keepInside,
       fit: settings.fit,
+      spot: widget.spot,
     );
     if (expanded == null) {
       warnings.add(AppText.strings.imPsdNoLayers(mediaAssetDefaultName(path)));
@@ -1033,6 +1046,7 @@ class _ImportDialogState extends State<ImportDialog> {
           isPsd: importPathIsPsd(path),
           placing: placing,
           psd: _settingsFor(path).psd,
+          spot: widget.spot,
         ),
     onPick: (paths, value) => _setSettings(
       paths,
@@ -1040,21 +1054,42 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
-  ImportColumn<Object?> _intoColumn() => ImportColumn<Object?>(
-    id: 'into',
-    label: AppText.strings.imInto,
-    values: ImportDestination.values,
-    labelOf: (value) => importIntoLabel(value! as ImportDestination),
-    valueOf: (path) => _settingsFor(path).into,
-    appliesTo: _placeable,
-    enabledFor: (path, value) =>
-        value != ImportDestination.activeCutLayer ||
-        widget.session.activeCutOrNull != null,
-    onPick: (paths, value) => _setSettings(
-      paths,
-      (settings) => settings.copyWith(into: value! as ImportDestination),
-    ),
-  );
+  ImportColumn<Object?> _intoColumn() {
+    final spot = widget.spot;
+    return ImportColumn<Object?>(
+      id: 'into',
+      label: AppText.strings.imInto,
+      // A drop's answer is the ONE value, so the cell shows it and opens
+      // nothing — the shape every locked answer in this table has.
+      values: spot == null ? ImportDestination.values : [spot],
+      labelOf: (value) => switch (value) {
+        final ImportDestination into => importIntoLabel(into),
+        final ImportLayerSpot dropped => _spotLabel(dropped),
+        _ => '',
+      },
+      valueOf: (path) => spot ?? _settingsFor(path).into,
+      appliesTo: _placeable,
+      enabledFor: (path, value) =>
+          value != ImportDestination.activeCutLayer ||
+          widget.session.activeCutOrNull != null,
+      onPick: (paths, value) {
+        if (value is ImportDestination) {
+          _setSettings(paths, (settings) => settings.copyWith(into: value));
+        }
+      },
+    );
+  }
+
+  /// A drop's answer in words: 「새 레이어」 for the canvas, the row and the
+  /// cell for a row's frames (「A 원화 · 9번 칸」, the mockup's words).
+  String _spotLabel(ImportLayerSpot spot) => switch (spot) {
+    AboveActiveLayerSpot() => AppText.strings.imIntoNewLayer,
+    RowFramesSpot(:final layerId, :final frameIndex) =>
+      AppText.strings.imIntoRowCell(
+        widget.session.layerById(layerId)?.name ?? '',
+        frameIndex + 1,
+      ),
+  };
 
   ImportColumn<Object?> _fitColumn(bool placing) => ImportColumn<Object?>(
     id: 'fit',
@@ -1079,7 +1114,8 @@ class _ImportDialogState extends State<ImportDialog> {
     labelOf: (value) => importPsdLabel(value! as PsdPlaceMode),
     valueOf: (path) => _settingsFor(path).psd,
     appliesTo: (path) => placing && importPathIsPsd(path),
-    enabledFor: (path, value) => true,
+    enabledFor: (path, value) =>
+        value == PsdPlaceMode.merge || !importPsdLocked(widget.spot),
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => settings.copyWith(psd: value! as PsdPlaceMode),

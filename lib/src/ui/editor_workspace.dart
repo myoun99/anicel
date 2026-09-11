@@ -61,6 +61,7 @@ import 'shortcuts/editor_action_registry.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
+import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
 import 'media/media_pool_panel.dart';
@@ -1666,11 +1667,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   ///
   /// [poolOnly] is the media pool's ＋: it starts on the pool because
   /// registering for later is what that panel is for, and the other
-  /// destinations stay on offer because it is the same window.
+  /// destinations stay on offer because it is the same window. [spot] is
+  /// where a drop put the file — the window shows it locked.
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,
     bool placeOnly = false,
+    ImportLayerSpot? spot,
   }) {
     unawaited(
       showDialog<void>(
@@ -1680,6 +1683,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
           initialPaths: initialPaths,
           poolOnly: poolOnly,
           placeOnly: placeOnly,
+          spot: spot,
         ),
       ),
     );

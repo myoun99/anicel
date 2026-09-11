@@ -13,6 +13,10 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/import/import_layer_spot.dart';
+import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -573,6 +577,77 @@ void main() {
         tester.getRect(entrance),
         tester.getRect(find.byType(EditorCanvasArea)),
         reason: 'the whole drawing surface, not a corner of it',
+      );
+    });
+
+    testWidgets('🚨a drop decides where it lands (유저 2026-09-11: 「떨어뜨린 '
+        '자리가 곧 답」): the canvas opens the window on a new layer above '
+        'the active one, a drawing row on its own frames — and a sound on a '
+        'drawing row opens nothing', (tester) async {
+      await _pumpHome(tester);
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+
+      // A drag in flight never reaches a target as pointer events (the
+      // shared target's own note), so the landing is handed over the way
+      // the framework hands it: through the target's accept.
+      void drop(Finder target, String path, Offset at) {
+        final accept = tester
+            .widget<DragTarget<MediaAssetDragData>>(
+              find
+                  .descendant(
+                    of: target,
+                    matching: find.byType(DragTarget<MediaAssetDragData>),
+                  )
+                  .first,
+            )
+            .onAcceptWithDetails!;
+        accept(
+          DragTargetDetails<MediaAssetDragData>(
+            data: MediaAssetDragData(path: path, name: path),
+            offset: at,
+          ),
+        );
+      }
+
+      ImportLayerSpot? openSpot() =>
+          tester.widget<ImportDialog>(find.byType(ImportDialog)).spot;
+
+      Future<void> close() async {
+        Navigator.of(tester.element(find.byType(ImportDialog))).pop();
+        await tester.pumpAndSettle();
+      }
+
+      final canvas = find.byKey(const ValueKey<String>('canvas-asset-drop'));
+      drop(canvas, 'bg.png', tester.getCenter(canvas));
+      await tester.pump();
+      expect(openSpot(), const AboveActiveLayerSpot());
+      await close();
+
+      final row = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      final rowTarget = find.byKey(
+        ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
+      );
+      // Near the row's LEFT edge: a whole-row target is wider than the
+      // screen, so its centre is off it.
+      final nearStart = tester.getTopLeft(rowTarget) + const Offset(2, 2);
+      drop(rowTarget, 'bg.png', nearStart);
+      await tester.pump();
+      expect(
+        openSpot(),
+        isA<RowFramesSpot>().having((spot) => spot.layerId, 'row', row.id),
+      );
+      await close();
+
+      drop(rowTarget, 'door.wav', nearStart);
+      await tester.pump();
+      expect(
+        find.byType(ImportDialog),
+        findsNothing,
+        reason: '「그림 행 → 받지 않는다」 — nothing opens',
       );
     });
 

@@ -1043,6 +1043,9 @@ enum AppStrings {
   String get imFitContain => _s('imFitContain');
   String get imFitStretch => _s('imFitStretch');
   String get imIntoNewLayer => _s('imIntoNewLayer');
+  String imIntoRowCell(String row, int frame) => _s('imIntoRowCellTemplate')
+      .replaceAll('{row}', row)
+      .replaceAll('{frame}', '$frame');
   String get imIntoNewCut => _s('imIntoNewCut');
   String get imPsdMerge => _s('imPsdMerge');
   String get imPsdExpand => _s('imPsdExpand');
@@ -1935,6 +1938,7 @@ enum AppStrings {
     'imFitContain': 'Keep aspect',
     'imFitStretch': 'Stretch',
     'imIntoNewLayer': 'New layer',
+    'imIntoRowCellTemplate': '{row} · frame {frame}',
     'imIntoNewCut': 'New cut',
     'imPsdMerge': 'Merge',
     'imPsdExpand': 'Expand',
@@ -2961,6 +2965,7 @@ enum AppStrings {
     'imFitContain': 'アスペクト維持',
     'imFitStretch': '引き伸ばし',
     'imIntoNewLayer': '新規レイヤー',
+    'imIntoRowCellTemplate': '{row} · {frame}コマ目',
     'imIntoNewCut': '新規カット',
     'imPsdMerge': '統合',
     'imPsdExpand': '展開',
@@ -4007,6 +4012,7 @@ enum AppStrings {
     'imFitContain': '비율 유지',
     'imFitStretch': '늘이기',
     'imIntoNewLayer': '새 레이어',
+    'imIntoRowCellTemplate': '{row} · {frame}번 칸',
     'imIntoNewCut': '새 컷',
     'imPsdMerge': '합치기',
     'imPsdExpand': '펼치기',
@@ -5089,6 +5095,7 @@ enum AppStrings {
     'imFitContain': 'Proportions',
     'imFitStretch': 'Étirer',
     'imIntoNewLayer': 'Nouveau calque',
+    'imIntoRowCellTemplate': '{row} · image {frame}',
     'imIntoNewCut': 'Nouveau plan',
     'imPsdMerge': 'Fusionner',
     'imPsdExpand': 'Développer',
@@ -6093,6 +6100,7 @@ enum AppStrings {
     'imFitContain': '保持比例',
     'imFitStretch': '拉伸',
     'imIntoNewLayer': '新图层',
+    'imIntoRowCellTemplate': '{row} · 第{frame}格',
     'imIntoNewCut': '新镜头',
     'imPsdMerge': '合并',
     'imPsdExpand': '展开',

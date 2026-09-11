@@ -169,7 +169,7 @@ class LayerController {
         repository: _repository,
         cutId: cutId,
         layer: layer,
-        insertionIndex: insertionIndex ?? _insertionIndexAboveActiveLayer(),
+        insertionIndex: insertionIndex ?? insertionIndexAboveActiveLayer(),
         mirrors: plan.mirrors,
         linkGroupId: plan.linkGroupId,
       ),
@@ -424,7 +424,9 @@ class LayerController {
     return layers.any((layer) => layer.id == layerId);
   }
 
-  int _insertionIndexAboveActiveLayer() {
+  /// The cut-list slot directly above the active layer — where Add Layer
+  /// puts a new row, and where a file dropped on the canvas lands.
+  int insertionIndexAboveActiveLayer() {
     // Insertion is into the CUT's layer list; a track-SE active layer is
     // not in it and appends like no-selection does.
     final cutLayers = _findCutOrNull()?.layers ?? const <Layer>[];

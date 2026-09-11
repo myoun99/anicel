@@ -261,6 +261,9 @@ class _WorkspaceTabs {
                   onDrop: (data, _) => _state._openImportWindow(
                     initialPaths: [data.path],
                     placeOnly: true,
+                    // 「놓으면 활성 레이어 바로 위를 기본값으로 채운 배치
+                    // 창이 열린다」 — the drop's answer, shown locked.
+                    spot: const AboveActiveLayerSpot(),
                   ),
                 ),
               ),
@@ -733,15 +736,25 @@ class _WorkspaceTabs {
               // the window opens on top of that with the file already
               // listed. Nothing imports until the window says so.
               onPlaceMediaAsset: (layerId, frameIndex, path) {
+                final session = _state.widget.session;
+                // A drop that lands nowhere does nothing and opens nothing.
+                final spot = session.frameDropSpot(layerId, frameIndex, path);
+                if (spot == null) {
+                  return;
+                }
                 // 🚨T4 — a drop LANDS somewhere, and landing is standing, so
                 // it goes through the verb like every other door (F-13). The
                 // two calls it replaces were `selectLayer` + `selectFrameIndex`
                 // — the verb's own body, minus the law.
-                _state.widget.session.standOnRow(
+                session.standOnRow(
                   LayerRowAddress(layerId),
                   frameIndex: frameIndex,
                 );
-                _state._openImportWindow(initialPaths: [path], placeOnly: true);
+                _state._openImportWindow(
+                  initialPaths: [path],
+                  placeOnly: true,
+                  spot: spot,
+                );
               },
               orientation: _state._timelineOrientation.value,
               onOrientationChanged: (orientation) {

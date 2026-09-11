@@ -3,6 +3,8 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
 import 'package:anicel/src/ui/import/import_file_settings.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/services/import/import_layer_spot.dart';
 
 /// The per-file rules. The window used to hold ONE answer for a whole batch
 /// and lie about three files at once; these are the lies, pinned as rules.
@@ -139,6 +141,36 @@ void main() {
   });
 
   group('psd', () {
+    test('frames dropped on a row lock BAKE on and the PSD to merge — a '
+        'row\'s cells are its pixels, and a row takes pictures, not a stack',
+        () {
+      const spot = RowFramesSpot(layerId: LayerId('a'), frameIndex: 0);
+      final resolved = resolvedImportSettings(
+        const ImportFileSettings(
+          mode: ImportFileMode.reference,
+          psd: PsdPlaceMode.expand,
+        ),
+        kind: MediaAssetKind.image,
+        isPsd: true,
+        placing: true,
+        spot: spot,
+      );
+      expect(resolved.bake, isTrue);
+      expect(resolved.psd, PsdPlaceMode.merge);
+      expect(
+        importBakeLocked(
+          isPsd: false,
+          placing: true,
+          psd: PsdPlaceMode.merge,
+          spot: spot,
+        ),
+        isTrue,
+      );
+      expect(importPsdLocked(spot), isTrue);
+      expect(importPsdLocked(null), isFalse);
+      expect(importPsdLocked(const AboveActiveLayerSpot()), isFalse);
+    });
+
     test('expanding locks BAKE on — the stack is its pixels — and leaves the '
         'carry answer alone: the file still registers', () {
       final resolved = resolve(

@@ -21,6 +21,7 @@ class ImportMediaCommand implements Command {
     this.newCuts = const [],
     this.targetCutId,
     this.newLayers = const [],
+    this.layerInsertionIndex,
     this.assetAdditions = const [],
     String? description,
   }) : _description = description ?? 'Import media';
@@ -33,9 +34,14 @@ class ImportMediaCommand implements Command {
   final List<Cut> newCuts;
 
   /// Where [newLayers] insert (required when they exist); they land on
-  /// TOP of the stack (list end).
+  /// TOP of the stack (list end) unless [layerInsertionIndex] names a slot.
   final CutId? targetCutId;
   final List<Layer> newLayers;
+
+  /// The cut-list slot the first of [newLayers] takes, the rest following
+  /// it in order — a canvas drop's "directly above the active layer". Null
+  /// is the top.
+  final int? layerInsertionIndex;
 
   /// Pool registrations riding the same undo (reference-mode sources).
   final List<MediaAsset> assetAdditions;
@@ -78,8 +84,13 @@ class ImportMediaCommand implements Command {
       if (cutId == null) {
         throw StateError('Importing layers needs a target cut id.');
       }
-      for (final layer in newLayers) {
-        repository.insertLayer(cutId: cutId, layer: layer);
+      final at = layerInsertionIndex;
+      for (var index = 0; index < newLayers.length; index += 1) {
+        repository.insertLayer(
+          cutId: cutId,
+          layer: newLayers[index],
+          index: at == null ? null : at + index,
+        );
       }
     }
     _hasExecuted = true;
