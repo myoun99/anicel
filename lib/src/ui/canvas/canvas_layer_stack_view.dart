@@ -1001,6 +1001,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // raster cache, so none of this can happen on iPad or Android) and
       // both only at fractional display scaling; neither can occur at 100%
       // or 200%.
+      //   ⛔(R13) That framing covers the raster-cache half ONLY, and the
+      //   device contradicted it as a whole: the F-67 hop happened at 100%
+      //   scaling and on the iPad too. The sampling tie R13 names below
+      //   hops between ANY two paths that resolve it differently — cached
+      //   vs live, buffer vs walk — and it is closed at the render snap,
+      //   not here. Read the two symptoms as the layout-chain half only.
       //  (1) A JUMP. A hard edge of the drawing, or the paper border
       //      against the panel, hops 1px for an instant at zoom >= 100% —
       //      pen-down/up, active-layer switch, a tool button, wheel-click
@@ -1035,8 +1041,24 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       //    paper and ONE image blit, replayed for next to nothing. The
       //    playback pictures keep the cache — they change every tick and a
       //    hold is the case where caching is a win, not a hop.
+      //
+      //  · R13 (2026-09-11, the same day) — the hint is GONE again, and this
+      //    time the mechanism is measured rather than argued. The device
+      //    confirmed a prediction zoom by zoom: the hop lives exactly at the
+      //    scales z = p/q with p odd and q even (105·110·115·125·130·135·
+      //    150·175·250%) and at none of the others (100·120·140·160·180·
+      //    200·300·400%). Above 1:1 the display samples at `none`, device
+      //    pixel i reads texel `floor((i + 0.5 - t) / s)`, and a WHOLE-pixel
+      //    render translation t puts one column in every q exactly on a
+      //    texel boundary — a tie that float rounding decides, differently
+      //    on the engine's cached and live paths. The fix is the snap's
+      //    phase (`samplingPhaseFor` in `viewport_canvas_transform.dart`):
+      //    the translation lands on whole + phase pixels, every sample stays
+      //    off the boundary, and cached and live read the same texel. With
+      //    no tie left there is nothing for this hint to hide, so the
+      //    picture is cacheable like every other and R11's reasoning about
+      //    the layout chain stands as it was.
       child: CustomPaint(
-        willChange: true,
         painter: _LayerStackPainter(
           nodes: nodes,
           activeSurfacePainter: widget.activeSurfacePainter,

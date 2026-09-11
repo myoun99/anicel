@@ -102,10 +102,21 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///    said cannot hop. And `the_canvas_raster_holds_still_through_a_stroke`
 ///    measures the boundary's own raster byte-identical through a stroke
 ///    at 110%. So the flip is between the engine's cached raster and its
-///    live one, for a reason the snap does not name. This file now pins
-///    the hint PRESENT on the two DRAWING pictures (the ones that flip
-///    still↔live under the hand) and ABSENT on the two playback pictures
-///    (which change every tick; a hold is the cache's win).
+///    live one, for a reason the snap does not name. For a few hours this
+///    file pinned the hint PRESENT on the two drawing pictures.
+///  · R13 (2026-09-11, the same day) — the reason has a name now, and the
+///    hint is gone again on every picture. The device confirmed the
+///    prediction zoom by zoom: the hop lives exactly at z = p/q with p odd
+///    and q even (105·110·115·125·130·135·150·175·250%) and nowhere else —
+///    a nearest-sampling TIE: with a whole-pixel translation, one device
+///    column in every q samples the artwork exactly on a texel boundary,
+///    and float rounding on the cached path and on the live path picks
+///    different texels there. `samplingPhaseFor` (the render snap's
+///    phase) keeps every sample off the boundary, so the two paths read
+///    the same texel and there is nothing left for the hint to hide. This
+///    file pins ABSENT on all four again; the reason each was ever
+///    present is above, and the pin that owns the cause is
+///    `the_snap_keeps_every_sample_off_the_texel_boundary_test.dart`.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('project');
@@ -139,8 +150,8 @@ void main() {
   );
 
   testWidgets(
-    'the editing stack picture refuses the raster cache — willChange pinned '
-    'PRESENT (R12 put it back)',
+    'the editing stack picture no longer refuses the raster cache — '
+    'willChange pinned ABSENT (R13: the tie is closed at the snap)',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -175,14 +186,15 @@ void main() {
 
       expect(
         stackPaint.willChange,
-        isTrue,
-        reason: 'R12 put the hint back on the drawing pictures: the hop '
-            'returned with the chain ON the grid at 100% scaling (F-67 '
-            'hands-on, 2026-09-11), so the cached and the live render of '
-            'this display list differ for a reason the snap does not name, '
-            'and refusing the cache is the one switch that removes the '
-            'flip by construction. If you are taking it out again, the '
-            'device A/B is the only oracle — read the history at the top.',
+        isFalse,
+        reason: 'R13: the cached and the live render of this picture read '
+            'the same texel now — the render snap keeps every sample off '
+            'the texel boundary (the_snap_keeps_every_sample_off_the_texel_'
+            'boundary_test.dart) — so there is nothing for the hint to hide '
+            'and the picture is cacheable like every other. If a hop is '
+            'reported again, read the history at the top before reaching '
+            'for the hint: check the zoom against the p-odd/q-even set '
+            'first, and the pinned grid line on the inspector card second.',
       );
     },
   );
