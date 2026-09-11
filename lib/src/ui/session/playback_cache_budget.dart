@@ -43,12 +43,19 @@ class PlaybackCacheBudget {
   final RenderCaches _renderCaches;
   final PlaybackRun _run;
 
-  late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
-      PlaybackCacheBudgetEnforcer(
+  PlaybackCacheBudgetEnforcer? _enforcer;
+
+  PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
+      _enforcer ??= PlaybackCacheBudgetEnforcer(
         layerImages: _renderCaches.layerFrameImageCache,
         composites: _renderCaches.cutFrameCompositeCache,
-        maxBytes: _debugMaxBytes ?? playbackCacheBudgetBytes,
+        maxBytes:
+            _debugMaxBytes ?? _allowedMaxBytes ?? playbackCacheBudgetBytes,
       );
+
+  /// What the memory tab's allowance gives playback
+  /// ([CacheBudgets.playback]), kept until the enforcer is built.
+  int? _allowedMaxBytes;
 
   /// The budget a TEST hands the enforcer, in place of the 600 MB the
   /// product uses — nothing a unit test can fill. Set before the first
@@ -78,6 +85,12 @@ class PlaybackCacheBudget {
   /// The playback caches' combined cap in force (diagnostics/tests) — it
   /// is [playbackCacheBudgetBytes] until the OS warns.
   int get playbackCacheByteBudget => _playbackCacheBudgetEnforcer.maxBytes;
+
+  /// ⚠️A test's [debugSetPlaybackCacheBudgetBytes] still wins.
+  set playbackCacheByteBudget(int bytes) {
+    _allowedMaxBytes = bytes;
+    _enforcer?.maxBytes = _debugMaxBytes ?? bytes;
+  }
 
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),

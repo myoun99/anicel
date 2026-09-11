@@ -25,13 +25,23 @@ import 'package:ffi/ffi.dart';
 /// An entry now lives exactly as long as somebody can still hand the same
 /// list back; the budget caps what the live ones may keep.
 final class NativeUploadCache<L extends TypedData> {
-  NativeUploadCache({required this.entryCap, required this.byteBudget});
+  NativeUploadCache({required this.entryCap, required int byteBudget})
+    : _byteBudget = byteBudget;
 
   /// Entries resident at most (the newest is never evicted).
   final int entryCap;
 
-  /// Bytes resident at most, the newest entry excepted.
-  final int byteBudget;
+  /// Bytes resident at most, the newest entry excepted. Lowered, it evicts
+  /// at once — the memory tab's allowance moves it
+  /// ([CacheBudgets.nativeUploads]).
+  int get byteBudget => _byteBudget;
+
+  set byteBudget(int value) {
+    _byteBudget = value;
+    _evictBeyondLimits();
+  }
+
+  int _byteBudget;
 
   final Expando<_Upload> _bySource = Expando<_Upload>('nativeUploads');
   final LinkedHashSet<_Upload> _recency = LinkedHashSet<_Upload>.identity();
@@ -67,11 +77,17 @@ final class NativeUploadCache<L extends TypedData> {
     _sourceGone.attach(data, entry, detach: entry);
     _recency.add(entry);
     _bytes += length;
+    _evictBeyondLimits();
+    return pointer;
+  }
+
+  /// Frees from the least recently used end until both limits hold — the
+  /// newest entry always survives.
+  void _evictBeyondLimits() {
     while (_recency.length > 1 &&
-        (_recency.length > entryCap || _bytes > byteBudget)) {
+        (_recency.length > entryCap || _bytes > _byteBudget)) {
       _free(_recency.first);
     }
-    return pointer;
   }
 
   /// Frees [entry]'s copy ONCE: the budget evicted it, or its source was

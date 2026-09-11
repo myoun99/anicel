@@ -8,6 +8,9 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/dialogs/memory_settings_section.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 
 /// Preferences ▸ Memory (유저 2026-08-28): 「이 앱이 쓰는 메모리의 총합.
 /// 그리고 추가적으로 거기서 어떤항목이 얼만큼 차지하는지도 보여주고」.
@@ -157,5 +160,61 @@ void main() {
       session,
     ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
     expect(row.bytes, 12345);
+  });
+  group('three tiers (유저 2026-09-11)', () {
+    tearDown(() => AppMemory.settings.value = const AppMemorySettings());
+
+    testWidgets('the device, the allowance and the use are on screen from '
+        'the first frame, each with its legend mark', (tester) async {
+      final session = newSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MemorySettingsSection(session: session)),
+        ),
+      );
+      for (final key in [
+        'memory-tier-bar',
+        'memory-tier-allowance',
+        'memory-allowance-slider',
+        'memory-live-bar',
+        'memory-legend-allowance',
+        'memory-legend-tracked',
+        'memory-legend-untracked',
+      ]) {
+        expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+      }
+      expect(find.text(AppText.strings.memoryDeviceTotal), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 600));
+    });
+
+    testWidgets('the automatic button puts a chosen allowance back, and '
+        'is inert when there is nothing to put back', (tester) async {
+      final session = newSession();
+      addTearDown(session.dispose);
+      AppMemory.settings.value = AppMemorySettings(
+        allowanceBytes: session.deviceCacheBudgets.total ~/ 2,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MemorySettingsSection(session: session)),
+        ),
+      );
+      AppIconButton automatic() => tester.widget<AppIconButton>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is AppIconButton &&
+              widget.keyValue == 'memory-allowance-automatic',
+        ),
+      );
+      expect(automatic().onPressed, isNotNull, reason: 'fixture: chosen');
+
+      automatic().onPressed!();
+      await tester.pump();
+
+      expect(AppMemory.settings.value.allowanceBytes, isNull);
+      expect(automatic().onPressed, isNull, reason: 'nothing to put back');
+      await tester.pump(const Duration(milliseconds: 600));
+    });
   });
 }

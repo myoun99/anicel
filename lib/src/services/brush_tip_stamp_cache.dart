@@ -29,7 +29,11 @@ import 'brush_dab_tip_geometry.dart';
 /// direct-analytic path): size 1/4 px steps up to 64 px then ~1.1%
 /// log steps; hardness/roundness 1/128 steps; angle 1° steps.
 class BrushTipStampCache {
-  BrushTipStampCache({this.byteBudget = 128 * 1024 * 1024});
+  BrushTipStampCache({this.byteBudget = defaultByteBudget});
+
+  /// What a cache holds at the automatic allowance — the memory tab
+  /// scales it ([CacheBudgets.brushTips]).
+  static const int defaultByteBudget = 128 * 1024 * 1024;
 
   static final BrushTipStampCache instance = BrushTipStampCache();
 

@@ -234,8 +234,14 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// 96MB ≈ 384 tiles at 256px: a full-screen scribble keeps its whole
   /// visible neighbourhood, an 8K canvas-covering stroke degrades to
   /// "re-blend the part you left behind" instead of holding 512MB.
-  @visibleForTesting
-  static int residentResultByteBudget = 96 * 1024 * 1024;
+  ///
+  /// The memory tab's allowance scales it ([CacheBudgets.liveStroke]) —
+  /// a production knob now, no longer one for tests alone.
+  static int residentResultByteBudget = defaultResidentResultByteBudget;
+
+  /// [residentResultByteBudget] at the automatic allowance — the memory
+  /// tab scales it ([CacheBudgets.liveStroke]).
+  static const int defaultResidentResultByteBudget = 96 * 1024 * 1024;
 
   // The linear key grid spans the PASTEBOARD (strokes reach one canvas
   // size past every edge), offset so keys stay non-negative.

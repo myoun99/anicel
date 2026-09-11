@@ -20,6 +20,7 @@ import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/app_memory_settings_store.dart';
 import '../services/persistence/recent_projects.dart';
 import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
@@ -262,6 +263,7 @@ class _HomePageState extends State<HomePage> {
       accentSettingsStore: _unlessTesting(AppAccentSettingsStore.new),
       inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
       saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),
+      memorySettingsStore: _unlessTesting(AppMemorySettingsStore.new),
       audioSyncSettingsStore: _unlessTesting(AudioSyncSettingsStore.new),
       // R28 #9: the pasteboard color, on the accents' app-state idiom.
       workspaceColorsStore: _unlessTesting(AppWorkspaceColorsStore.new),

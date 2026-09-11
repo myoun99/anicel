@@ -16,6 +16,8 @@ import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/app_memory_settings_store.dart';
+import '../services/persistence/app_memory_settings.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
@@ -73,6 +75,10 @@ import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
+import 'session/cache_budgets.dart';
+import '../services/memory_allowance.dart';
+import '../services/brush_tip_stamp_cache.dart';
+import '../services/brush_live_stroke_rasterizer.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
@@ -167,6 +173,7 @@ class EditorSessionManager extends ChangeNotifier
     AppAccentSettingsStore? accentSettingsStore,
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
+    AppMemorySettingsStore? memorySettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppWorkspaceColorsStore? workspaceColorsStore,
     AppUiScaleStore? uiScaleStore,
@@ -179,18 +186,13 @@ class EditorSessionManager extends ChangeNotifier
          workspaceColorsStore: workspaceColorsStore,
          inputSettingsStore: inputSettingsStore,
          saveSettingsStore: saveSettingsStore,
+         memorySettingsStore: memorySettingsStore,
          audioSyncSettingsStore: audioSyncSettingsStore,
          uiScaleStore: uiScaleStore,
        ),
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.restore();
-    // 유저 확정 (2026-09-07): the undo byte budget scales to the MACHINE,
-    // exactly as the cel store's does one object over. Unknown RAM (no
-    // engine: tests, host runs) keeps the old fixed value, byte-for-byte.
-    historyManager = HistoryManager()
-      ..byteBudget = deviceScaledUndoByteBudget(
-        physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-      );
+    historyManager = HistoryManager();
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -221,6 +223,10 @@ class EditorSessionManager extends ChangeNotifier
     // (edit/undo/redo/paste/duplicate/link) — one history listener, the
     // sweep re-renders whatever went stale (R5).
     historyManager.addListener(textCelBakes.scheduleTextCelBakeSweep);
+    // Every cache's budget, from this device's laws and the allowance a
+    // person chose — set now, and again whenever the allowance moves.
+    _applyCacheBudgets(enforce: false);
+    AppMemory.settings.addListener(_applyCacheBudgets);
   }
 
   @override
@@ -263,6 +269,43 @@ class EditorSessionManager extends ChangeNotifier
 
   void setSaveSettings(AppSaveSettings settings) =>
       appSettings.setSaveSettings(settings);
+
+  void setMemorySettings(AppMemorySettings settings) =>
+      appSettings.setMemorySettings(settings);
+
+  /// Every cache's budget at the automatic allowance, on this device's
+  /// laws — what the memory tab's slider scales.
+  late final CacheBudgets deviceCacheBudgets = CacheBudgets.forDevice(
+    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+  );
+
+  /// Sets every cache's budget from the device's laws and the allowance a
+  /// person chose (the memory tab). A new allowance is a new normal, so it
+  /// also lifts what a memory warning had halved.
+  ///
+  /// 유저 확정: the cel store's hot budget scales to the MACHINE — RAM/4
+  /// clamped — instead of assuming a desktop (2026-08-16), and the undo
+  /// byte budget the same way, RAM/8 (2026-09-07). Unknown RAM (no engine:
+  /// tests, host runs) keeps the old fixed values, byte for byte. Both used
+  /// to be set where each was built; this is now the one place every
+  /// budget is set.
+  void _applyCacheBudgets({bool enforce = true}) {
+    final allowance = AppMemory.settings.value.allowanceBytes;
+    final by = allowance == null
+        ? 1.0
+        : deviceCacheBudgets.factorFor(allowance);
+    final budgets = deviceCacheBudgets.scaledBy(by);
+    MemoryAllowance.factor.value = by;
+    renderCaches.applyCacheBudgets(budgets);
+    historyManager.byteBudget = budgets.undo;
+    playbackRig.playbackCache.playbackCacheByteBudget = budgets.playback;
+    QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
+    BrushTipStampCache.instance.byteBudget = budgets.brushTips;
+    BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
+    if (enforce) {
+      playbackRig.playbackCache.enforcePlaybackCacheBudget();
+    }
+  }
 
   // --- Workspace colors: the PROJECT half (R28 #9) --------------------------
   //
@@ -315,6 +358,11 @@ class EditorSessionManager extends ChangeNotifier
   /// lossless by construction — cels encode to cold, dirty ones stay.
   void respondToMemoryPressure() {
     renderCaches.brushFrameStore.respondToMemoryPressure();
+    // ⚠️And the three sheet-ink stores — cel stores like the drawings',
+    // and until 2026-09-11 they never heard the warning.
+    renderCaches.conteInkRowStore.respondToMemoryPressure();
+    renderCaches.conteInkPageStore.respondToMemoryPressure();
+    renderCaches.envelopeInkStore.respondToMemoryPressure();
     // ⚠️And the undo stack, which was holding the larger share: a MOVE
     // retains a pre AND a post full-canvas surface per confirm.
     historyManager.respondToMemoryPressure();
@@ -1066,6 +1114,7 @@ class EditorSessionManager extends ChangeNotifier
   /// A new entry belongs at the END unless it has one of those reasons —
   /// and then the reason is written here.
   List<void Function()> get _teardown => [
+    () => AppMemory.settings.removeListener(_applyCacheBudgets),
     textCelBakes.dispose,
     layerStack.dispose,
     currentRowListenable.dispose,

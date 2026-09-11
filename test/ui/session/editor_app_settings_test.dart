@@ -9,6 +9,8 @@ import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
@@ -39,6 +41,7 @@ void main() {
     AppWorkspaceColors.settings.value = const AppWorkspaceColors();
     AppInput.settings.value = const AppInputSettings();
     AppSave.settings.value = const AppSaveSettings();
+    AppMemory.settings.value = const AppMemorySettings();
   }
 
   setUp(resetAppWideDefaults);
@@ -48,7 +51,16 @@ void main() {
       'injected store', () async {
     final directory = await Directory.systemTemp.createTemp('qa-app-settings');
     addTearDown(() => directory.delete(recursive: true));
-    const names = ['lang', 'accent', 'colors', 'input', 'save', 'av', 'uiscale'];
+    const names = [
+      'lang',
+      'accent',
+      'colors',
+      'input',
+      'save',
+      'memory',
+      'av',
+      'uiscale',
+    ];
     String path(String name) => '${directory.path}/$name.json';
 
     EditorSessionManager openSession() => EditorSessionManager(
@@ -58,6 +70,7 @@ void main() {
       workspaceColorsStore: AppWorkspaceColorsStore(filePath: path('colors')),
       inputSettingsStore: AppInputSettingsStore(filePath: path('input')),
       saveSettingsStore: AppSaveSettingsStore(filePath: path('save')),
+      memorySettingsStore: AppMemorySettingsStore(filePath: path('memory')),
       audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
       uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
     );
@@ -78,6 +91,9 @@ void main() {
     );
     first.setSaveSettings(
       const AppSaveSettings(periodicSnapshotMinutes: 7),
+    );
+    first.setMemorySettings(
+      const AppMemorySettings(allowanceBytes: 3 << 30),
     );
     appSettingsOf(first).setAudioSyncSettings(
       const AudioSyncSettings(offset: 42, micGainDb: 3),
@@ -118,6 +134,7 @@ void main() {
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
+          AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
@@ -128,6 +145,7 @@ void main() {
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
+    expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
   });

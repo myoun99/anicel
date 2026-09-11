@@ -81,6 +81,9 @@ class PlaybackCacheBudgetEnforcer {
 
   int get maxBytes => _budget.bytes;
 
+  /// A new normal — the memory tab's allowance ([CacheBudgets.playback]).
+  set maxBytes(int value) => _budget.bytes = value;
+
   /// The OS said memory is tight: halve the combined budget, floored at
   /// [playbackCacheBudgetUnderPressureBytes]. Answers whether it moved.
   ///

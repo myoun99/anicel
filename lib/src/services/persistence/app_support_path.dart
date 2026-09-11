@@ -100,6 +100,7 @@ const List<String> appSettingsEntries = <String>[
   'export_settings.json',
   'input_settings.json',
   'language_settings.json',
+  'memory_settings.json',
   'recent_projects.json',
   'save_settings.json',
   'shortcut_overrides.json',

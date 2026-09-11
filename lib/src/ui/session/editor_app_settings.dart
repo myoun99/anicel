@@ -9,6 +9,8 @@ import '../../services/persistence/app_input_settings_store.dart';
 import '../../services/persistence/app_language_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/app_save_settings_store.dart';
+import '../../services/persistence/app_memory_settings_store.dart';
+import '../../services/persistence/app_memory_settings.dart';
 import '../../services/persistence/app_ui_scale_store.dart';
 import '../../services/persistence/app_workspace_colors_store.dart';
 import '../../services/persistence/audio_sync_settings_store.dart';
@@ -43,6 +45,7 @@ class EditorAppSettings {
     AppWorkspaceColorsStore? workspaceColorsStore,
     AppInputSettingsStore? inputSettingsStore,
     AppSaveSettingsStore? saveSettingsStore,
+    AppMemorySettingsStore? memorySettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppUiScaleStore? uiScaleStore,
   }) : _languageSettingsStore = languageSettingsStore,
@@ -50,6 +53,7 @@ class EditorAppSettings {
        _workspaceColorsStore = workspaceColorsStore,
        _inputSettingsStore = inputSettingsStore,
        _saveSettingsStore = saveSettingsStore,
+       _memorySettingsStore = memorySettingsStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
        _uiScaleStore = uiScaleStore;
 
@@ -63,6 +67,7 @@ class EditorAppSettings {
     unawaited(_restoreWorkspaceColors());
     unawaited(_restoreInputSettings());
     unawaited(_restoreSaveSettings());
+    unawaited(_restoreMemorySettings());
     unawaited(_restoreAudioSyncSettings());
   }
 
@@ -216,6 +221,21 @@ class EditorAppSettings {
 
   void setSaveSettings(AppSaveSettings settings) =>
       _publish(AppSave.settings, settings, _saveSettingsStore?.save);
+
+  // --- Memory settings (the memory tab's allowance) ------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppMemorySettingsStore? _memorySettingsStore;
+
+  Future<void> _restoreMemorySettings() async {
+    final restored = await _memorySettingsStore?.load();
+    if (restored != null) {
+      AppMemory.settings.value = restored;
+    }
+  }
+
+  void setMemorySettings(AppMemorySettings settings) =>
+      _publish(AppMemory.settings, settings, _memorySettingsStore?.save);
 
   // --- A/V offset (audio program 2D) ----------------------------------------
 

@@ -141,4 +141,27 @@ void main() {
     expect(cache.residentBytes, 8);
     expect(again.asTypedList(4), a, reason: 'and reads its own bytes');
   });
+
+  test('lowering the byte budget evicts at once, from the least recently '
+      'used end — the newest still survives', () {
+    final cache = NativeUploadCache<Uint8List>(
+      entryCap: 8,
+      byteBudget: 1 << 20,
+    );
+    final a = bytes(4, 1);
+    final b = bytes(4, 2);
+    final c = bytes(4, 3);
+    cache
+      ..upload(a)
+      ..upload(b)
+      ..upload(c);
+    expect(cache.residentBytes, 12);
+
+    cache.byteBudget = 8;
+    expect(cache.residentBytes, 8, reason: 'a, the oldest, went');
+
+    cache.byteBudget = 0;
+    expect(cache.entryCount, 1, reason: 'the newest always survives');
+    expect([a, b, c], hasLength(3));
+  });
 }

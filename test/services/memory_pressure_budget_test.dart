@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/memory_pressure_budget.dart';
+import 'package:anicel/src/services/memory_allowance.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/media/viewer_raster_budget.dart';
@@ -120,6 +121,21 @@ void main() {
         isFalse,
         reason: 'the page being LOOKED AT survives every warning',
       );
+    });
+    test('the viewer follows the allowance — an open one too', () {
+      addTearDown(() => MemoryAllowance.factor.value = 1);
+      final budget = ViewerRasterBudget(physicalMemoryBytes: null);
+      expect(budget.byteBudget, viewerPageBytesAtCap * 4);
+      MemoryAllowance.factor.value = 0.5;
+      expect(budget.byteBudget, viewerPageBytesAtCap * 2);
+      MemoryAllowance.factor.value = 0.1;
+      expect(
+        budget.byteBudget,
+        viewerPageBytesAtCap,
+        reason: 'never under the page being looked at',
+      );
+      MemoryAllowance.factor.value = 1;
+      expect(budget.byteBudget, viewerPageBytesAtCap * 4);
     });
 
     test('the undo stack drops in one step', () {

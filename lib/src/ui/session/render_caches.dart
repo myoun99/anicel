@@ -23,13 +23,13 @@ import 'dart:async';
 import 'dart:io';
 
 import '../../models/brush_frame_cache_invalidation.dart';
-import '../../native/qa_native_engine.dart' show QaNativeEngine;
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/editor_cache_invalidation_hub.dart';
 import '../canvas/tile_predecessors.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'session_roles.dart';
+import 'cache_budgets.dart';
 
 /// The session's cel stores, the playback render caches over them, and
 /// the invalidation path that keeps the two honest.
@@ -60,12 +60,6 @@ class RenderCaches {
   /// The link resolver reads the CURRENT project's registry on every
   /// resolve (L1) — link edits need no event plumbing to reach the store.
   late final BrushFrameStore brushFrameStore = BrushFrameStore()
-    // 유저 확정 (2026-08-16): the hot budget scales to the MACHINE —
-    // RAM/4 clamped — instead of assuming a desktop. Unknown RAM (no
-    // engine: tests, host) keeps the old 1536MB, byte-for-byte.
-    ..hotCelByteBudget = deviceScaledHotCelBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    )
     ..setLinkResolver(
       (key) =>
           _project.repository.currentProject?.linkRegistry.canonicalCelKey(
@@ -87,6 +81,21 @@ class RenderCaches {
   /// ⛔Without this the panel that answers「어떤항목이 얼만큼」 was silent
   /// about a cache that can hold a quarter of a gigabyte per viewer — the
   /// gap would land in `untrackedBytes` and read as engine overhead.
+  /// Sets the cel stores' hot budgets from [budgets]: the drawings' own,
+  /// and the three sheet-ink stores' ONE share, split evenly
+  /// ([CacheBudgets.sheetInk]). The session calls it; a store no session
+  /// set keeps the desktop-class default, as an unknown device does.
+  void applyCacheBudgets(CacheBudgets budgets) {
+    brushFrameStore.hotCelByteBudget = budgets.drawings;
+    for (final store in [
+      conteInkRowStore,
+      conteInkPageStore,
+      envelopeInkStore,
+    ]) {
+      store.hotCelByteBudget = budgets.sheetInk ~/ 3;
+    }
+  }
+
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
   /// What the editing canvas's display buffer holds — one canvas-resolution

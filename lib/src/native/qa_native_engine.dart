@@ -1214,6 +1214,16 @@ class QaNativeEngine {
   int get nativeUploadBytes =>
       stampUploads.residentBytes + _maskUploads.residentBytes;
 
+  /// What the two upload caches may hold between them, split evenly — the
+  /// memory tab's allowance sets it ([CacheBudgets.nativeUploads]).
+  int get nativeUploadByteBudget =>
+      stampUploads.byteBudget + _maskUploads.byteBudget;
+
+  set nativeUploadByteBudget(int bytes) {
+    stampUploads.byteBudget = bytes ~/ 2;
+    _maskUploads.byteBudget = bytes ~/ 2;
+  }
+
   /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
   /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
   /// newest entry always survives even when it alone exceeds the budget.

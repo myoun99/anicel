@@ -4,6 +4,7 @@ import '../../models/bitmap_tile.dart' show BitmapTile;
 import '../../models/rgba_image_bytes.dart';
 import '../../services/brush_frame_store.dart' show deviceScaledHotCelBudget;
 import '../../services/memory_pressure_budget.dart';
+import '../../services/memory_allowance.dart';
 import 'viewer_render_tier.dart';
 
 /// Bytes one page costs at the tier's ceiling: [viewerMaxRenderPixels] at
@@ -54,23 +55,41 @@ class ViewerRasterBudget {
   static int? debugPageBytesOverride;
 
   ViewerRasterBudget({required int? physicalMemoryBytes})
-    : _budget = MemoryPressureBudget.halving(
-        normal: debugPageBytesOverride == null
-            ? viewerRasterBytesFor(physicalMemoryBytes: physicalMemoryBytes)
-            : debugPageBytesOverride! * 4,
-        // One page, so whatever else pressure takes, the page being
-        // LOOKED AT survives. Cutting past the visible page does not save
-        // memory, it just re-renders it — the same reason the undo stack
-        // always keeps its newest entry.
-        //
-        // ⚠️On a device already at the floor the budget IS one page, so
-        // pressure correctly does nothing: there is nothing left to give.
-        floor: debugPageBytesOverride ?? viewerPageBytesAtCap,
-      );
+    : _automatic = debugPageBytesOverride == null
+          ? viewerRasterBytesFor(physicalMemoryBytes: physicalMemoryBytes)
+          : debugPageBytesOverride! * 4,
+      // One page, so whatever else pressure takes, the page being
+      // LOOKED AT survives. Cutting past the visible page does not save
+      // memory, it just re-renders it — the same reason the undo stack
+      // always keeps its newest entry.
+      //
+      // ⚠️On a device already at the floor the budget IS one page, so
+      // pressure correctly does nothing: there is nothing left to give.
+      _floor = debugPageBytesOverride ?? viewerPageBytesAtCap {
+    _normal = _allowedNormal();
+    _budget = MemoryPressureBudget.halving(normal: _normal, floor: _floor);
+  }
 
-  final MemoryPressureBudget _budget;
+  /// This device's budget at the automatic allowance.
+  final int _automatic;
+  final int _floor;
+  late int _normal;
+  late final MemoryPressureBudget _budget;
 
-  int get byteBudget => _budget.bytes;
+  /// What the memory tab's allowance gives a viewer now.
+  int _allowedNormal() => MemoryAllowance.scaled(_automatic, floor: _floor);
+
+  /// 🗣️It FOLLOWS the allowance (유저 2026-09-11): a new allowance is a new
+  /// normal, asked on every read — so an open viewer follows too, and a
+  /// memory warning's halving holds until the allowance next moves.
+  int get byteBudget {
+    final normal = _allowedNormal();
+    if (normal != _normal) {
+      _normal = normal;
+      _budget.bytes = normal;
+    }
+    return _budget.bytes;
+  }
 
   bool respondToMemoryPressure() => _budget.respondToMemoryPressure();
 

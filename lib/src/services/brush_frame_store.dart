@@ -242,13 +242,17 @@ class BrushFrameStore {
 
   set hotCelByteBudget(int value) => _hotBudget.bytes = value;
 
+  /// The least a memory warning leaves the hot tier — and the least the
+  /// memory tab's allowance may scale it to ([CacheBudgets.floors]).
+  static const int hotCelFloorBytes = 256 * 1024 * 1024;
+
   /// Halving, floored at 256MB so the working set never thrashes. The
   /// lowers-only guard lives in [MemoryPressureBudget] — it was written
   /// out longhand here, again in `HistoryManager`, and would have been a
   /// third time in the viewer.
   final MemoryPressureBudget _hotBudget = MemoryPressureBudget.halving(
     normal: 1536 * 1024 * 1024,
-    floor: 256 * 1024 * 1024,
+    floor: hotCelFloorBytes,
   );
 
   /// The OS said memory is tight (`didHaveMemoryPressure`): halve the

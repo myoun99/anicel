@@ -63,6 +63,7 @@ class MemoryCensus {
     required this.footprintBytes,
     required this.items,
     this.availableBytes,
+    this.deviceBytes,
   });
 
   /// What the OS says this PROCESS is holding — the SAME number that OS's
@@ -92,6 +93,10 @@ class MemoryCensus {
   /// says. Null where it will not — the number refuses to guess, and the
   /// device's free RAM is a different question.
   final int? availableBytes;
+
+  /// The device's RAM, or null where the platform will not say — the
+  /// memory tab's widest tier.
+  final int? deviceBytes;
 
   /// The enumerable holdings, largest first.
   final List<MemoryCensusItem> items;
@@ -241,6 +246,7 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
         QaNativeEngine.instance?.processFootprintBytes ??
         ProcessInfo.currentRss,
     availableBytes: QaNativeEngine.instance?.availableMemoryBytes,
+    deviceBytes: QaNativeEngine.instance?.physicalMemoryBytes,
     items: items,
   );
 }

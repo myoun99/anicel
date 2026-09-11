@@ -507,6 +507,9 @@ enum AppStrings {
   String get memoryUntracked => _s('memoryUntracked');
   String get memoryAvailable => _s('memoryAvailable');
   String get memoryPinned => _s('memoryPinned');
+  String get memoryDeviceTotal => _s('memoryDeviceTotal');
+  String get memoryAllowance => _s('memoryAllowance');
+  String get memoryAllowanceAutomatic => _s('memoryAllowanceAutomatic');
   String get memoryItemDrawings => _s('memoryItemDrawings');
   String get memoryItemSheetInk => _s('memoryItemSheetInk');
   String get memoryItemUndo => _s('memoryItemUndo');
@@ -1567,6 +1570,9 @@ enum AppStrings {
     'memoryUntracked': 'Engine, fonts and framework',
     'memoryAvailable': 'Still available',
     'memoryPinned': 'held for playback',
+    'memoryDeviceTotal': 'Device memory',
+    'memoryAllowance': 'App allowance',
+    'memoryAllowanceAutomatic': 'Back to the automatic allowance',
     'memoryItemDrawings': 'Drawings',
     'memoryItemSheetInk': 'Sheet handwriting',
     'memoryItemUndo': 'Undo history',
@@ -2516,6 +2522,9 @@ enum AppStrings {
     'memoryUntracked': 'エンジン・フォント・フレームワーク',
     'memoryAvailable': 'まだ使える分',
     'memoryPinned': '再生のため保持中',
+    'memoryDeviceTotal': 'デバイスのメモリ',
+    'memoryAllowance': 'アプリの割り当て',
+    'memoryAllowanceAutomatic': '自動の割り当てに戻す',
     'memoryItemDrawings': '作画',
     'memoryItemSheetInk': '用紙の手書き',
     'memoryItemUndo': '取り消し履歴',
@@ -3517,6 +3526,9 @@ enum AppStrings {
     'memoryUntracked': '엔진·폰트·프레임워크',
     'memoryAvailable': '아직 쓸 수 있는 양',
     'memoryPinned': '재생용으로 붙잡힘',
+    'memoryDeviceTotal': '기기 메모리',
+    'memoryAllowance': '앱 허용치',
+    'memoryAllowanceAutomatic': '자동 허용치로 되돌리기',
     'memoryItemDrawings': '그림',
     'memoryItemSheetInk': '용지 손글씨',
     'memoryItemUndo': '실행취소 기록',
@@ -4533,6 +4545,9 @@ enum AppStrings {
     'memoryUntracked': 'Moteur, polices et framework',
     'memoryAvailable': 'Encore disponible',
     'memoryPinned': 'retenu pour la lecture',
+    'memoryDeviceTotal': "Mémoire de l'appareil",
+    'memoryAllowance': "Allocation de l'app",
+    'memoryAllowanceAutomatic': "Revenir à l'allocation automatique",
     'memoryItemDrawings': 'Dessins',
     'memoryItemSheetInk': 'Écriture sur feuille',
     'memoryItemUndo': "Historique d'annulation",
@@ -5517,6 +5532,9 @@ enum AppStrings {
     'memoryUntracked': '引擎、字体与框架',
     'memoryAvailable': '尚可使用',
     'memoryPinned': '播放占用中',
+    'memoryDeviceTotal': '设备内存',
+    'memoryAllowance': '应用配额',
+    'memoryAllowanceAutomatic': '恢复自动配额',
     'memoryItemDrawings': '画稿',
     'memoryItemSheetInk': '纸面手写',
     'memoryItemUndo': '撤销记录',
