@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -6,7 +7,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/text_on_ground.dart';
+import '../widgets/ground_ink_writing.dart';
 import 'brush_stroke_preview_cache.dart';
 
 /// The raster width LADDER, in logical pixels.
@@ -56,12 +58,21 @@ int brushStrokePreviewRasterWidth(
 /// never a re-raster, which is what un-jams the brush list's scroll. The
 /// image bakes alpha only; the theme color tints it at paint time.
 class BrushStrokePreview extends StatefulWidget {
-  const BrushStrokePreview({super.key, required this.settings, this.name});
+  const BrushStrokePreview({
+    super.key,
+    required this.settings,
+    this.name,
+    this.nameGround,
+  });
 
   final BrushSettings settings;
 
   /// Drawn ON the sample when set — see [_nameOverlay].
   final String? name;
+
+  /// The colour the row puts behind the sample: what the name is written on
+  /// where no stroke passes. Null = the panel's own surface.
+  final Color? nameGround;
 
   @override
   State<BrushStrokePreview> createState() => _BrushStrokePreviewState();
@@ -127,31 +138,73 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         }));
   }
 
-  /// The name, written over the sample — BLACK and dead centre.
+  /// The runs [_nameOverlay] writes over, kept until the sample, the row's
+  /// ground or the stroke's ink changes. The panel rebuilds every row on a
+  /// pick, and the law over a few hundred columns per row is work a rebuild
+  /// with nothing new under the name must not repeat.
+  List<GroundInkRun>? _inkRuns;
+  Object? _inkRunsFor;
+
+  List<GroundInkRun> _inkRunsOver(
+    Uint8List? columns,
+    Color rowGround,
+    Color strokeInk,
+  ) {
+    final key = (columns, rowGround, strokeInk);
+    final kept = _inkRuns;
+    if (kept != null && _inkRunsFor == key) {
+      return kept;
+    }
+    final runs = columns == null || columns.isEmpty
+        ? [(end: 1.0, ink: textOnColor(rowGround))]
+        : groundInkRunsForColumns(
+            columns.length,
+            (column) => textOnColor(
+              Color.lerp(rowGround, strokeInk, columns[column] / 255)!,
+            ),
+          );
+    _inkRuns = runs;
+    _inkRunsFor = key;
+    return runs;
+  }
+
+  /// The name, written over the sample dead centre — in the SAME writing
+  /// the shared slider uses, its ink following what lies under it column by
+  /// column.
   ///
-  /// 🚨H38 (유저 2026-09-11): 「브러시 버튼도 지금 뒤 색에 따라 흰색이나
-  /// 검정색인데, 하나로 통일하고싶거든? 그냥 검정색통일. 공용슬라이더랑
-  /// 똑같이 검정색 통일하고 텍스트 위치도 중앙아래가 아니라 완전중앙으로
-  /// 해보자」. ↩️What it replaces was the user's own twice over, and stays
-  /// written so neither comes back as a "fix": 09-08 put the name 「중앙
-  /// 살짝아래」 over the stroke, and 09-10 had it pick black or white from
-  /// what the stroke put behind it (`textOnColor` over a measured band). A
-  /// fixed ink has nothing to measure, so the band went with it.
+  /// 🚨H38 again (유저 2026-09-11): 「브러시 스트로크 프리뷰쪽 이름도 제대로
+  /// 안보이는데 … 전엔 텍스트 전체를 바꿨잖아. 그게아니라 슬라이더 공용
+  /// 텍스트ui 그대로 재사용」. ↩️The history, so none of it comes back as a
+  /// "fix": 09-08 put the name 「중앙 살짝아래」 over the stroke; 09-10 had it
+  /// pick ONE ink for the whole name from the mean ink under it — the part
+  /// this reverses; H38 (the morning of 09-11) fixed it black and dead
+  /// centre, and black vanished on the bare row. The centre stands:
+  /// 「중앙아래가 아니라 완전중앙」.
+  ///
+  /// ⚠️`textOnColor` needs the COMPOSITED ground: the row's colour with that
+  /// column's share of stroke ink laid over it ([BrushStrokeSample.nameColumns]).
   ///
   /// 🚨THE NAME STILL RIDES THE STROKE (유저 2026-09-08: 「스트로크랑 겹치든
   /// 말든」). ⛔The 78%-alpha plate that once kept the two apart stays gone.
-  Widget _nameOverlay(String name) => Center(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        name,
-        maxLines: 1,
-        textAlign: TextAlign.center,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 11, color: AppColors.inkOnPaint),
+  Widget _nameOverlay(String name, Color strokeInk, Uint8List? columns) {
+    final rowGround =
+        widget.nameGround ?? Theme.of(context).colorScheme.surface;
+    return GroundInkWriting(
+      runs: _inkRunsOver(columns, rowGround, strokeInk),
+      builder: (context, ink) => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            name,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11).merge(ink),
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +250,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           return SizedBox(
             width: width.toDouble(),
             height: height.toDouble(),
-            child: name == null ? null : _nameOverlay(name),
+            child: name == null ? null : _nameOverlay(name, strokeInk, null),
           );
         }
         // ⛔NOT `ColorFiltered`, which is the same tint at a wildly
@@ -230,7 +283,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           fit: StackFit.expand,
           children: [
             picture,
-            _nameOverlay(name),
+            _nameOverlay(name, strokeInk, sample.nameColumns),
           ],
         );
       },

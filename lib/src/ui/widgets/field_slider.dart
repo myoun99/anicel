@@ -8,9 +8,11 @@ import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import 'app_icon_button.dart';
 import 'axis_bar_gesture.dart';
+import 'ground_ink_writing.dart';
 import 'superellipse_clip.dart';
 import '../repaint_props.dart';
 
@@ -247,22 +249,35 @@ class FieldSlider extends StatefulWidget {
 }
 
 class _FieldSliderState extends State<FieldSlider> {
-  /// The ink on a bar — [AppColors.inkOnPaint], on the fill and on the empty
-  /// track alike.
+  /// The ink over each stretch of the bar: the text-on-ground law
+  /// ([textOnColor]) over the fill and over the empty track, changing part
+  /// way through a word where the fill ends.
   ///
-  /// 🚨유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 **공용 색바뀌는 텍스트ui
-  /// 쓰는게아니라 흰색 고정**으로 해도 문제없을거같음. 흰색고정으로 하고」 —
-  /// and 2026-09-11 (H38) the fixed colour turned black: 「그냥 검정색으로
-  /// 통일해보자. 흰색 좀 보기힘들어」, the ink the brush cell's name wears too.
+  /// 🚨H38 again (유저 2026-09-11): 「공용 슬라이더 텍스트말인데, 검정색으로
+  /// 하니 뒤가 비어있으면 안보인다. 그러니까 그냥 저번에 한대로 뒤 색에 따라
+  /// 하양/검정 바꾸는거 있잖아. 그거대로 하자」. ↩️The history, so neither
+  /// fixed ink comes back as a "fix": 09-08 laid the law on the bar (a
+  /// `ShaderMask` over the fill's edge); 09-10 fixed it white — 「공용
+  /// 색바뀌는 텍스트ui 쓰는게아니라 흰색 고정」; the morning of 09-11 (H38)
+  /// fixed it black — 「그냥 검정색으로 통일해보자. 흰색 좀 보기힘들어」; and
+  /// black vanished over the empty track. The law is back through
+  /// [GroundInkWriting], which a brush row's name shares, without the mask's
+  /// offscreen layer.
   ///
-  /// ⛔`textOnColor` does NOT run here any more, and the hard-stopped
-  /// gradient that swapped ink halfway through a word went with it — one
-  /// colour needs no mask. The ground law itself STANDS (the timeline's
-  /// thirty-one call sites still read it); this surface stopped asking it.
-  /// It also settles the open question the accent-fill round left behind
-  /// (「채움 위에서 라벨의 흐린 위계가 평평해진다 … 보기 나쁘면 알파로
-  /// 되살릴 수 있다」): label and value are one ink now, by decision.
-  static const Color _ink = AppColors.inkOnPaint;
+  /// Label and value stay ONE ink per ground: 09-10 flattened their dim and
+  /// bright pair by decision, and that is not what was reversed.
+  List<GroundInkRun> _inkRuns(double t, Color accent) {
+    final near = math.min(_originFraction, t);
+    final far = math.max(_originFraction, t);
+    // A stood-up bar's writing is the row turned a quarter clockwise, so its
+    // x runs DOWN the bar while the fill grows UP it.
+    return groundInkRunsForFill(
+      near: _vertical ? 1 - far : near,
+      far: _vertical ? 1 - near : far,
+      onFill: textOnColor(accent),
+      onTrack: textOnColor(AppColors.surface),
+    );
+  }
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
@@ -537,9 +552,8 @@ class _FieldSliderState extends State<FieldSlider> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final labelStyle = textTheme.labelSmall?.copyWith(color: _ink);
+    final labelStyle = textTheme.labelSmall;
     final valueStyle = textTheme.labelSmall?.copyWith(
-      color: _ink,
       fontFeatures: const [FontFeature.tabularFigures()],
       // ⛔NO LETTER SPACING ON THE NUMBER. `labelSmall` carries 0.5 and
       // Flutter lays it after the LAST glyph too, so a centred `50` sits
@@ -558,31 +572,36 @@ class _FieldSliderState extends State<FieldSlider> {
         ? _textFor(_valueFor(gestureT))
         : widget.restingText ?? _textFor(widget.value);
 
-    final Widget writing;
-    if (widget.label == null) {
-      writing = Center(
-        child: Text(
-          valueText,
-          maxLines: 1,
-          overflow: TextOverflow.clip,
-          style: valueStyle,
-        ),
-      );
-    } else {
-      writing = Row(
+    final accent = dragging
+        ? AppColors.accent
+        : (widget.restingAccent ?? AppColors.accent);
+    Widget writingIn(TextStyle ink) {
+      final value = valueStyle?.merge(ink) ?? ink;
+      if (widget.label == null) {
+        return Center(
+          child: Text(
+            valueText,
+            maxLines: 1,
+            overflow: TextOverflow.clip,
+            style: value,
+          ),
+        );
+      }
+      return Row(
         children: [
           Expanded(
             child: Text(
               widget.label!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: labelStyle,
+              style: labelStyle?.merge(ink) ?? ink,
             ),
           ),
-          Text(valueText, maxLines: 1, style: valueStyle),
+          Text(valueText, maxLines: 1, style: value),
         ],
       );
     }
+
     // 🚨A STOOD-UP BAR IS THE ROW, TURNED — 세로쓰기 세로표기 (유저
     // 2026-09-10: 「x시트의 불투명도바는 **세로쓰기 세로표기**로 바꾸자」).
     // That is the reading 유저 named on 2026-08-24 for the SE blocks —
@@ -598,9 +617,15 @@ class _FieldSliderState extends State<FieldSlider> {
     // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
     // gesture, while a turned recognizer would never see an on-screen
     // vertical drag at all (see [FieldSlider.axis]).
-    final Widget inner = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: writing,
+    // The ink follows the ground under it — see [_inkRuns]. The writing's
+    // box is the whole track, padding and all, so the runs' fractions are the
+    // painter's.
+    final Widget inner = GroundInkWriting(
+      runs: _inkRuns(t, accent),
+      builder: (context, ink) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: writingIn(ink),
+      ),
     );
 
     Widget bar = LayoutBuilder(
@@ -621,9 +646,7 @@ class _FieldSliderState extends State<FieldSlider> {
                 axis: widget.axis,
                 t: t,
                 originT: _originFraction,
-                accent: dragging
-                    ? AppColors.accent
-                    : (widget.restingAccent ?? AppColors.accent),
+                accent: accent,
               ),
               child: SizedBox(
                 width: _vertical ? widget.height : null,

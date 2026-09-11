@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
 void main() {
   const sliderKey = ValueKey<String>('field-slider-under-test');
@@ -351,29 +353,112 @@ void main() {
       );
     });
 
-    testWidgets('🚨the ink is ONE fixed colour, black — no ground law, no '
-        'mask', (tester) async {
-      // 유저 2026-09-10: 「그냥 슬라이더 위 텍스트는 공용 색바뀌는 텍스트ui
-      // 쓰는게아니라 흰색 고정으로 해도 문제없을거같음」 — and 2026-09-11
-      // (H38): 「그냥 검정색으로 통일해보자. 흰색 좀 보기힘들어」.
+    testWidgets('🚨H38 again: the ink follows the ground — the fill\'s ink '
+        'over the fill, the track\'s over the empty track', (tester) async {
+      // 유저 2026-09-11: 「공용 슬라이더 텍스트말인데, 검정색으로 하니 뒤가
+      // 비어있으면 안보인다. 그러니까 그냥 저번에 한대로 뒤 색에 따라
+      // 하양/검정 바꾸는거 있잖아. 그거대로 하자」.
       final value = ValueNotifier<double>(0.5);
       addTearDown(value.dispose);
       await tester.pumpWidget(harness(value: value));
 
+      final writing = tester.widget<GroundInkWriting>(
+        find.descendant(
+          of: find.byKey(sliderKey),
+          matching: find.byType(GroundInkWriting),
+        ),
+      );
+      expect(writing.runs, [
+        (end: 0.5, ink: textOnColor(AppColors.accent)),
+        (end: 1.0, ink: textOnColor(AppColors.surface)),
+      ]);
+      expect(
+        {for (final run in writing.runs) run.ink},
+        hasLength(2),
+        reason: 'premise: the fill and the track really take different inks',
+      );
       for (final text in tester.widgetList<Text>(valueTextOf(sliderKey))) {
         expect(
-          text.style?.color,
-          AppColors.inkOnPaint,
-          reason: 'label and value alike, over the fill and over the track',
+          text.style?.foreground?.shader,
+          isNotNull,
+          reason: 'label and value alike ride the one writing',
         );
       }
+    });
+
+    testWidgets('🚨an EMPTY bar writes with the track\'s ink — 「뒤가 '
+        '비어있으면 안보인다」', (tester) async {
+      final value = ValueNotifier<double>(0);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(harness(value: value));
+
+      for (final text in tester.widgetList<Text>(valueTextOf(sliderKey))) {
+        expect(text.style?.color, textOnColor(AppColors.surface));
+      }
+      expect(
+        textOnColor(AppColors.surface),
+        isNot(const Color(0xFF000000)),
+        reason: 'the black H38 fixed was the ink that vanished here',
+      );
+    });
+
+    testWidgets('⛔no ShaderMask — the ink is the text\'s own paint, never an '
+        'offscreen layer per bar', (tester) async {
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(harness(value: value));
+
       expect(
         find.descendant(
           of: find.byKey(sliderKey),
           matching: find.byType(ShaderMask),
         ),
         findsNothing,
-        reason: 'one colour needs no gradient to swap it at the fill edge',
+      );
+    });
+
+    testWidgets('a STOOD-UP bar\'s writing runs DOWN the bar while its fill '
+        'grows UP it — the fill\'s ink lands at the writing\'s far end', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                height: trackWidth,
+                child: FieldSlider(
+                  key: sliderKey,
+                  axis: Axis.vertical,
+                  value: 0.25,
+                  min: 0,
+                  max: 1,
+                  height: 18,
+                  displayScale: 100,
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        tester
+            .widget<GroundInkWriting>(
+              find.descendant(
+                of: find.byKey(sliderKey),
+                matching: find.byType(GroundInkWriting),
+              ),
+            )
+            .runs,
+        [
+          (end: 0.75, ink: textOnColor(AppColors.surface)),
+          (end: 1.0, ink: textOnColor(AppColors.accent)),
+        ],
+        reason: 'the bottom quarter is filled, and the turned writing ends '
+            'at the bottom',
       );
     });
   });

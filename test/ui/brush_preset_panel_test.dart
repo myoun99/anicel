@@ -1456,4 +1456,25 @@ void main() {
       reason: '「중앙아래가 아니라 완전중앙」',
     );
   });
+
+  testWidgets('the row names the ground under its name — the highlight when '
+      'selected, the panel\'s surface when not (H38 again)', (tester) async {
+    // The name's ink is read off the COMPOSITED ground (`textOnColor`), so
+    // a row that did not say what it paints would have its name picked for
+    // the wrong colour.
+    await _pumpPanel(
+      tester,
+      presets: [_calligraphy(), _marker()],
+      selectedPresetId: _marker().id,
+    );
+    final scheme = Theme.of(
+      tester.element(find.byType(BrushPresetPanel)),
+    ).colorScheme;
+    BrushStrokePreview previewOf(BrushPreset preset) => tester
+        .widgetList<BrushStrokePreview>(find.byType(BrushStrokePreview))
+        .singleWhere((preview) => preview.settings == preset.settings);
+
+    expect(previewOf(_marker()).nameGround, scheme.surfaceContainerHigh);
+    expect(previewOf(_calligraphy()).nameGround, scheme.surface);
+  });
 }

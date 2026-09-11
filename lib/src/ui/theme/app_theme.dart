@@ -156,17 +156,6 @@ abstract final class AppColors {
   /// colour (116 sites) and it was the least legible one.
   static const Color textDim = Color(0xFF9DA2A6);
 
-  /// INK — a label written ON a painted surface: a shared slider's bar, the
-  /// stroke sample a brush cell shows.
-  ///
-  /// 🚨ONE INK, BLACK (유저 2026-09-11, H38): 「공통 슬라이더 지금 흰색으로
-  /// 통일했는데, 그냥 검정색으로 통일해보자. 흰색 좀 보기힘들어 … 브러시
-  /// 버튼도 지금 뒤 색에 따라 흰색이나 검정색인데, 하나로 통일하고싶거든?
-  /// 그냥 검정색통일」. The slider had been fixed white the day before and the
-  /// brush cell picked black or white by what its stroke put behind it — two
-  /// rules for one kind of label.
-  static const Color inkOnPaint = Color(0xFF000000);
-
   /// Muted red for destructive/warning marks (cut-end boundary).
   static const Color danger = Color(0xFFC95C5C);
 

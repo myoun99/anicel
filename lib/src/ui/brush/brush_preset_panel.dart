@@ -1378,15 +1378,19 @@ class _BrushPresetRow extends StatelessWidget {
       );
     }
     // 🚨THE NAME MOVED INTO THE PREVIEW: it rides the stroke (유저
-    // 2026-09-08). Its ink was picked from what the stroke put behind it
-    // until H38 fixed it black and dead centre (2026-09-11) — see
-    // `BrushStrokePreview._nameOverlay`, which owns the placement, the ink
-    // and the ⛔rejected 78%-alpha plate.
+    // 2026-09-08), dead centre (H38), in the shared slider's writing (H38
+    // again) — see `BrushStrokePreview._nameOverlay`, which owns the
+    // placement, the ink and the ⛔rejected 78%-alpha plate.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: BrushStrokePreview(
         settings: preset.settings,
         name: showName ? preset.name : null,
+        // The row paints nothing of its own when it is not selected, so the
+        // panel's surface IS the ground under the sample.
+        nameGround: selected
+            ? colorScheme.surfaceContainerHigh
+            : colorScheme.surface,
       ),
     );
   }
