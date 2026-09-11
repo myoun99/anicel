@@ -135,4 +135,20 @@ class RowSelection {
     };
     return ids.contains(movingId) ? ids : const <LayerId>{};
   }
+
+  /// The rows a press on [pressedId] acts on: the whole selection when the
+  /// pressed row is in it, that row alone when it is not.
+  ///
+  /// 🚨THE DEFAULT FOR EVERY SELECTION-BOUND ACTION (유저 2026-09-11, the
+  /// reference button's rasterize: 「선택상태 안의 레이어를 래스터라이즈버튼
+  /// 누르면 선택한것들 래스터라이즈하고, 밖의 레이어를 래스터라이즈버튼누르면
+  /// 그 밖에있는것만 래스터라이즈. 앞으로 비슷한 상황에서 선택관련해서
+  /// 동작할거있으면 이걸 기본으로」). It is the answer the row drag already
+  /// gives ([rowSelectionCarriedBy]), so it asks that rather than restating
+  /// it. ⚠️What a press does to the selection ITSELF is not part of the
+  /// rule — the user did not say — so nothing here touches [rowSelection].
+  Set<LayerId> rowsActedOnBy(LayerId pressedId) {
+    final carried = rowSelectionCarriedBy(pressedId);
+    return carried.isEmpty ? {pressedId} : carried;
+  }
 }

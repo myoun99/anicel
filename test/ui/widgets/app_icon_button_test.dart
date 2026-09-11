@@ -93,6 +93,46 @@ void main() {
       expect(find.byIcon(Icons.check), findsNothing);
     });
 
+    testWidgets('an OUTLINED button draws its edge — the hairline at rest, '
+        'the accent while ON — and a plain one draws none', (tester) async {
+      BorderSide edgeOf(String key) {
+        final box = tester.widget<DecoratedBox>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: faceLayer,
+          ),
+        );
+        final shape = (box.decoration as ShapeDecoration).shape;
+        return (shape as OutlinedBorder).side;
+      }
+
+      await pump(
+        tester,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (key, outlined, selected) in const [
+              ('rest', true, false),
+              ('lit', true, true),
+              ('plain', false, true),
+            ])
+              AppIconButton(
+                keyValue: key,
+                tooltip: key,
+                icon: const Icon(Icons.insert_drive_file_outlined),
+                onPressed: () {},
+                isSelected: selected,
+                outlined: outlined,
+              ),
+          ],
+        ),
+      );
+
+      expect(edgeOf('rest').color, AppColors.hairlineStrong);
+      expect(edgeOf('lit').color, AppColors.accent);
+      expect(edgeOf('plain'), BorderSide.none);
+    });
+
     testWidgets('a DISABLED button is onSurface at 0.38 — selected or not, '
         'as M3 paints it', (tester) async {
       await pump(

@@ -193,6 +193,7 @@ class AppIconButton extends StatelessWidget {
     required this.onPressed,
     this.isSelected = false,
     this.size = AppIconButtonSize.bar,
+    this.outlined = false,
   });
 
   /// Stable widget key (the tests' handle). It lands on the
@@ -211,6 +212,14 @@ class AppIconButton extends StatelessWidget {
 
   /// The box: a named token, or an [AppIconButtonBox] the parent promised.
   final AppIconButtonMetrics size;
+
+  /// Draws the box's EDGE — the hairline at rest, the accent while ON — for
+  /// a button that stands among glyphs that only SAY something: the
+  /// reference row's file button sits beside the name, where the linked
+  /// row's chain is a plain badge, and the edge is what tells the two apart
+  /// (the mockup the user approved on 2026-09-11 draws it so). Still the one
+  /// button (「앱에 버튼은 한 종류」): the same face, its shape's side drawn.
+  final bool outlined;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +293,16 @@ class AppIconButton extends StatelessWidget {
         // Its own height, not the theme's default box: a bar button and a
         // strip button are different sizes, and the app's corner is a RATIO
         // of the short axis, so each has to ask for its own.
-        shape: AppShapes.control(size.height),
+        shape: AppShapes.control(
+          size.height,
+          side: outlined
+              ? BorderSide(
+                  color: isSelected
+                      ? AppColors.accent
+                      : AppColors.hairlineStrong,
+                )
+              : BorderSide.none,
+        ),
         icon: icon,
       ),
     );

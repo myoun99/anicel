@@ -245,16 +245,35 @@ class EditingCanvas {
       _changes.notifyChanged();
       return;
     }
-    final reference = layer?.mediaReference;
-    final cutId = _timeline.editingSession.activeCutId;
-    if (layer == null || reference == null || cutId == null) {
+    if (layer == null || layer.mediaReference == null) {
       return;
     }
-    _project.cutCommandCoordinator.rasterizeLayerReference(
-      cutId: cutId,
-      layerId: layer.id,
+    rasterizeLayerReferences([layer.id]);
+  }
+
+  /// Rasterizes every REFERENCE row among [layerIds] as ONE undo step.
+  ///
+  /// The reference button's popover hands over the rows its press acts on
+  /// (`RowSelection.rowsActedOnBy`: 「선택 안에서 누르면 선택 전체, 밖에서
+  /// 누르면 그것만」), and one gesture undoes as one — through the history's
+  /// `runAsOneStep`, as the row verbs do. A row that points at no file lands
+  /// nothing, and the active row stays where it is.
+  void rasterizeLayerReferences(Iterable<LayerId> layerIds) {
+    final cutId = _timeline.editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Rasterize layers', () {
+      for (final layerId in layerIds) {
+        _project.cutCommandCoordinator.rasterizeLayerReference(
+          cutId: cutId,
+          layerId: layerId,
+        );
+      }
+    });
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: _selection.activeLayer?.id,
     );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: layer.id);
     _changes.notifyChanged();
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
@@ -1547,4 +1549,67 @@ String layerMarkLabel(LayerMark mark) {
   return correction == null
       ? layerProcessLabel(stage)
       : '${layerProcessLabel(stage)} ${layerReviseLabel(correction)}';
+}
+
+/// A REFERENCE row's button: the file glyph that opens the row's reference
+/// popover (유저 2026-09-11, 미디어 배치 라운드 3~5 — 「아이콘만(이름은
+/// 툴팁)」, and the press opens a popover instead of baking at once).
+///
+/// Lit ACCENT while its popover is open — the button that owns the window
+/// says so, by colour only — and it wears the box's edge, as the approved
+/// mockup draws it: beside the name it has to read as a button, not as a
+/// badge like the linked row's chain. The FILE shape, not the chain: the
+/// chain already means "linked layer" on this same label.
+class LayerReferenceButton extends StatefulWidget {
+  const LayerReferenceButton({
+    super.key,
+    required this.keyValue,
+    required this.onOpen,
+  });
+
+  /// The full widget key string ('timeline-layer-reference-a').
+  final String keyValue;
+
+  /// Opens the popover under THIS button's context. The button stays lit
+  /// until the future completes — until the popover has closed.
+  final Future<void> Function(BuildContext anchorContext) onOpen;
+
+  /// The box's side: a notch under the rail row, so the edge reads as the
+  /// button's own and not as the row's.
+  static const double side = 18;
+
+  @override
+  State<LayerReferenceButton> createState() => _LayerReferenceButtonState();
+}
+
+class _LayerReferenceButtonState extends State<LayerReferenceButton> {
+  bool _isOpen = false;
+
+  void _openPopover() {
+    setState(() => _isOpen = true);
+    unawaited(
+      widget.onOpen(context).whenComplete(() {
+        if (mounted) {
+          setState(() => _isOpen = false);
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppIconButton(
+      keyValue: widget.keyValue,
+      tooltip: AppText.strings.tlLayerReference,
+      size: const AppIconButtonBox(
+        width: LayerReferenceButton.side,
+        height: LayerReferenceButton.side,
+        iconSize: 12,
+      ),
+      icon: const Icon(Icons.insert_drive_file_outlined),
+      isSelected: _isOpen,
+      outlined: true,
+      onPressed: _openPopover,
+    );
+  }
 }

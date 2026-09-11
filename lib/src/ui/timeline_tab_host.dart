@@ -8,6 +8,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
+import 'timeline/layer_reference_popover.dart';
 import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
@@ -814,6 +815,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 layerId: layerId,
               ),
             ),
+            onOpenLayerReference: (anchorContext, layerId) =>
+                showLayerReferencePopover(
+                  anchorContext,
+                  session: _session,
+                  layerId: layerId,
+                ),
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _toggleLayerVisibility,

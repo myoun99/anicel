@@ -135,6 +135,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onOpenLayerMixer,
+    this.onOpenLayerReference,
     this.isLayerSoloed = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
@@ -213,6 +214,19 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the BUTTON's context so the popup lands on the speaker.
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
+
+  /// A REFERENCE row's file button, which opens the row's reference popover
+  /// anchored under itself; null hides it. It takes the BUTTON's context so
+  /// the popover lands on the button, which stays lit until the future
+  /// completes.
+  ///
+  /// 🚨THE SLOT EXISTS ONLY ON A REFERENCE ROW — the user's own exception to
+  /// 「없다가 생기는 UI 금지」 (2026-09-11: 「참조인게 특수한 상황인거니까
+  /// 없다가 생기는 ui 허용. 굽혀진 레이어, 참조가 아닌 레이어는 자리 없애고,
+  /// 참조인 레이어만 자리 만들어서 버튼두도록」). ⛔Do not "fix" it into a
+  /// reserved slot.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerReference;
 
   /// Whether this SE row is soloed (AUDIO-PRO R1) — the speaker tints
   /// accent while soloing narrows monitoring to the soloed rows.
@@ -626,6 +640,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
               ],
             ),
           ),
+          ?_referenceButton(),
           alongBox(axis, layerLaneToggleSlotWidth, child: _foldTwirl()),
         ],
       ),
@@ -654,6 +669,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
           color: colorScheme.primary,
         ),
       ),
+    );
+  }
+
+  /// The reference button (유저 2026-09-11) at the name area's far end,
+  /// right before the fold slot (「레이어 이름 영역의 오른쪽정렬. 최종적으로
+  /// 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데, 그거 왼쪽」) — so it
+  /// stands at one x on every reference row, whatever the row is called.
+  Widget? _referenceButton() {
+    final onOpen = onOpenLayerReference;
+    if (layer.mediaReference == null || onOpen == null) {
+      return null;
+    }
+    return LayerReferenceButton(
+      keyValue: '$keyPrefix-layer-reference-${layer.id}',
+      onOpen: (anchorContext) => onOpen(anchorContext, layer.id),
     );
   }
 

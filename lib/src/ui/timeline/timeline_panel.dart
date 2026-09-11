@@ -77,6 +77,7 @@ class TimelinePanel extends StatefulWidget {
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
+    this.onOpenLayerReference,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -258,6 +259,11 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? isLayerSoloed;
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
+
+  /// A reference row's file button, both orientations (미디어 배치 라운드
+  /// 3). Null hides the button.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerReference;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -548,6 +554,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
+      onOpenLayerReference: widget.onOpenLayerReference,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,
       onToggleLayerFillReference: widget.onToggleLayerFillReference,

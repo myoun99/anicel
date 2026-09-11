@@ -17,6 +17,7 @@ import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
 import 'media_asset_kind_icon.dart';
+import 'media_asset_pool_state.dart';
 import 'media_drop_verdict.dart';
 import '../input/control_press_claim.dart';
 
@@ -203,11 +204,7 @@ class MediaPoolPanel extends StatelessWidget {
     // that is the one difference that decides what happens when the
     // original moves. It leads because it is the row's subject, not a
     // detail of it.
-    parts.add(
-      asset.carried
-          ? AppText.strings.mediaCarriedState
-          : AppText.strings.mediaReferencedState,
-    );
+    parts.add(mediaAssetPoolState(asset));
     final bytes = storedBytes[asset.path] ?? asset.identity?.lengthBytes;
     // 🚨The CONFORM, asked for by name (유저 2026-08-30: 「가시화정책에 따라
     // 미디어풀 패널에서 해당파일의 컨폼파일 크기 표시할것」). It is several

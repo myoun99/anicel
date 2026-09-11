@@ -76,6 +76,7 @@ class TimelineGridHooks {
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
+    this.onOpenLayerReference,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -231,6 +232,11 @@ class TimelineGridHooks {
 
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
+
+  /// A reference row's file button: the popover that bakes it (미디어 배치
+  /// 라운드 3). Null hides the button.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerReference;
 
   /// Which way a row's attach ARROW points in its sheet slot (R10 R3), or
   /// null off an attach group. A RESOLVER, not a list: the answer depends

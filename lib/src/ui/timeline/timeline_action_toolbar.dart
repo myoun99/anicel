@@ -452,7 +452,7 @@ class TimelineActionToolbar extends StatelessWidget {
       // goes for the same reason — the drag makes those too.
       PanelFlyoutItem(
         keyValue: 'timeline-rasterize-layer-button',
-        label: AppText.strings.menuLabel('layer-rasterize', 'Rasterize layer'),
+        label: AppText.strings.layerRasterizeLabel,
         icon: Icons.texture_outlined,
         enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
         onSelected: session.editingCanvas.rasterizeActiveLayer,

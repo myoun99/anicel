@@ -64,6 +64,11 @@ enum AppStrings {
   String menuLabel(String id, String fallback) =>
       _values['menuAction.$id'] ?? fallback;
 
+  /// The rasterize verb's ONE name: the timeline menu's entry and the
+  /// reference popover's button say the same word for the same verb.
+  String get layerRasterizeLabel =>
+      menuLabel('layer-rasterize', 'Rasterize layer');
+
   /// 색 라벨의 공정·수정 이름과 축약어(I-4).
   ///
   /// 🚨★★★Same contract as [menuLabel]: the ENGLISH wording lives at the call
@@ -584,6 +589,12 @@ enum AppStrings {
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
   String get tlLinkedLayerTooltip => _s('tlLinkedLayerTooltip');
+
+  /// The reference row's file button — its tooltip, the button being an
+  /// icon only — and its popover's first line when the press acts on
+  /// several rows (미디어 배치 라운드 3).
+  String get tlLayerReference => _s('tlLayerReference');
+  String get tlSelectedLayers => _s('tlSelectedLayers');
   String get tlAudioLane => _s('tlAudioLane');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -961,7 +972,12 @@ enum AppStrings {
   String get exTarget => _s('exTarget');
   String get exLayer => _s('exLayer');
   String exCelCount(int count) =>
-      _s('exCelCount').replaceFirst('{n}', '$count');
+      (count == 1 ? exCelCountOne : _s('exCelCount'))
+          .replaceFirst('{n}', '$count');
+
+  /// [exCelCount]'s singular: one picture is the reference popover's
+  /// commonest count, and 「1 cels」 is what it would have said.
+  String get exCelCountOne => _s('exCelCountOne');
   String get exProject => _s('exProject');
   String get exCut => _s('exCut');
   String get exWhite => _s('exWhite');
@@ -1884,6 +1900,7 @@ enum AppStrings {
     'exTarget': 'Target',
     'exLayer': 'Layer',
     'exCelCount': '{n} cels',
+    'exCelCountOne': '{n} cel',
     'exProject': 'Project',
     'exCut': 'Cut',
     'exWhite': 'White',
@@ -2165,6 +2182,8 @@ enum AppStrings {
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
     'tlLinkedLayerTooltip': 'Linked layer — pictures are shared',
+    'tlLayerReference': 'Reference',
+    'tlSelectedLayers': 'Selected layers',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Name Tag',
     'tlTransformGroup': 'Transform',
@@ -2912,6 +2931,7 @@ enum AppStrings {
     'exTarget': '対象',
     'exLayer': 'レイヤー',
     'exCelCount': '{n}枚',
+    'exCelCountOne': '{n}枚',
     'exProject': 'プロジェクト',
     'exCut': 'カット',
     'exWhite': '白',
@@ -3220,6 +3240,8 @@ enum AppStrings {
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
     'tlLinkedLayerTooltip': 'リンクレイヤー — 絵を共有しています',
+    'tlLayerReference': '参照',
+    'tlSelectedLayers': '選択したレイヤー',
     'tlAudioLane': '音声',
     'tlNameTagGroup': 'ネームタグ',
     'tlTransformGroup': 'トランスフォーム',
@@ -3960,6 +3982,7 @@ enum AppStrings {
     'exTarget': '대상',
     'exLayer': '레이어',
     'exCelCount': '{n}장',
+    'exCelCountOne': '{n}장',
     'exProject': '프로젝트',
     'exCut': '컷',
     'exWhite': '흰색',
@@ -4263,6 +4286,8 @@ enum AppStrings {
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
     'tlLinkedLayerTooltip': '링크 레이어 — 그림을 공유합니다',
+    'tlLayerReference': '참조',
+    'tlSelectedLayers': '선택한 레이어',
     'tlAudioLane': '오디오',
     'tlNameTagGroup': '네임태그',
     'tlTransformGroup': '트랜스폼',
@@ -5040,6 +5065,7 @@ enum AppStrings {
     'exTarget': 'Cible',
     'exLayer': 'Calque',
     'exCelCount': '{n} cellulos',
+    'exCelCountOne': '{n} cellulo',
     'exProject': 'Projet',
     'exCut': 'Plan',
     'exWhite': 'Blanc',
@@ -5337,6 +5363,8 @@ enum AppStrings {
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
     'tlLinkedLayerTooltip': 'Calque lié — les images sont partagées',
+    'tlLayerReference': 'Référence',
+    'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Cartouche',
     'tlTransformGroup': 'Transformation',
@@ -6050,6 +6078,7 @@ enum AppStrings {
     'exTarget': '对象',
     'exLayer': '图层',
     'exCelCount': '{n}张',
+    'exCelCountOne': '{n}张',
     'exProject': '项目',
     'exCut': '镜头',
     'exWhite': '白色',
@@ -6312,6 +6341,8 @@ enum AppStrings {
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
     'tlLinkedLayerTooltip': '链接图层 — 画面是共享的',
+    'tlLayerReference': '引用',
+    'tlSelectedLayers': '所选图层',
     'tlAudioLane': '音频',
     'tlNameTagGroup': '名牌',
     'tlTransformGroup': '变换',

@@ -307,6 +307,7 @@ class _WorkspaceCollapsedRows {
       onToggleLanes: (_) {},
       onToggleLayerFillReference: (_) {},
       onOpenLayerMixer: (_, _) {},
+      onOpenLayerReference: (_, _) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
   }
