@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../services/straight_rgba_image.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/cut_piece.dart';
+import '../canvas/paper_background.dart' show paintAlphaCheckerboard;
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
@@ -230,11 +231,7 @@ class CutPiecePreview extends StatelessWidget {
       piece: piece,
       builder: (context, image) => CustomPaint(
         key: const ValueKey<String>('cut-piece-preview'),
-        painter: _CutPiecePreviewPainter(
-          piece: piece,
-          image: image,
-          checkerColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-        ),
+        painter: _CutPiecePreviewPainter(piece: piece, image: image),
         size: Size.infinite,
       ),
     );
@@ -242,38 +239,25 @@ class CutPiecePreview extends StatelessWidget {
 }
 
 class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
-  const _CutPiecePreviewPainter({
-    required this.piece,
-    required this.image,
-    required this.checkerColor,
-  });
+  const _CutPiecePreviewPainter({required this.piece, required this.image});
 
   final CutPiece piece;
   final ui.Image? image;
-  final Color checkerColor;
-
-  static const double _checkerCell = 6;
 
   @override
   void paint(Canvas canvas, Size size) {
     final bounds = Offset.zero & size;
-    final paint = Paint()..color = checkerColor;
-    for (var y = 0.0; y < size.height; y += _checkerCell) {
-      for (var x = 0.0; x < size.width; x += _checkerCell) {
-        if (((x ~/ _checkerCell) + (y ~/ _checkerCell)).isEven) {
-          continue;
-        }
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, _checkerCell, _checkerCell).intersect(bounds),
-          paint,
-        );
-      }
-    }
+    // The app's ONE transparency checker. This painter drew its own — 6px
+    // cells in the panel's colours, the same algorithm a second time. The
+    // rule for open alpha is the checker that already exists (유저
+    // 2026-09-09: 「투명이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」;
+    // 2026-09-11, for the import preview: 「그대로 공용화해서 재사용하도록」).
+    paintAlphaCheckerboard(canvas, bounds);
     paintCutPiece(canvas, bounds, piece, image);
   }
 
   @override
-  Object get props => (ByIdentity(piece), ByIdentity(image), checkerColor);
+  Object get props => (ByIdentity(piece), ByIdentity(image));
 }
 
 /// 🚨★★★F-33 — the stamp's ghost, told where it lands in CANVAS space.

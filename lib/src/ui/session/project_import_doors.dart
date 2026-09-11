@@ -9,6 +9,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui show ImageByteFormat;
 
+import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
@@ -47,11 +48,11 @@ class ProjectImportDoors {
   final MediaFingerprintLedger _fingerprints;
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
-  /// import window's core verb. Reference mode (default) copies into
-  /// `.assets/Media/`, registers the asset and stamps
-  /// [Layer.mediaReference]; rasterize absorbs the pixels with no
-  /// registration (§3). One undo step; the baked cels display through
-  /// the ordinary store paths. Returns false when nothing imported.
+  /// import window's core verb. Reference mode (default) stamps
+  /// [Layer.mediaReference]; rasterize bakes and stamps nothing. Both
+  /// REGISTER the asset (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut is
+  /// made at the file's own size. One undo step; the baked cels display
+  /// through the ordinary store paths. Returns false when nothing imported.
   Future<bool> importImageFile({
     required String path,
     required ImportDestination destination,
@@ -64,8 +65,8 @@ class ProjectImportDoors {
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
-    final arrival = _landing.arriveAt(destination, path: path);
-    if (arrival == null) {
+    final gate = _landing.arriveAt(destination, path: path);
+    if (gate == null) {
       return false;
     }
     final Uint8List bytes;
@@ -98,6 +99,14 @@ class ProjectImportDoors {
         allFrames[index].image.dispose();
       }
     }
+    // A NEW cut is made at the file's own size, which its locked 1:1 fit
+    // fills exactly.
+    final first = decoded.first.image;
+    final arrival = gate.targetCut == null
+        ? gate.withCanvasSize(
+            CanvasSize(width: first.width, height: first.height),
+          )
+        : gate;
     final source = arrival.source;
     // The file where the user keeps it, either way: carrying is a fact
     // about the SAVE now, not about a copy made at import time.
@@ -157,15 +166,11 @@ class ProjectImportDoors {
       duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
       assets: assets,
     );
-    // 🔑 AFTER the registration, and only when there IS one. The bytes were
-    // read to decode them so the hash costs no I/O — but it is not free of
-    // CPU, and a RASTERIZING import registers no asset at all (§3: absorbed
-    // pixels register nothing), so hashing there would be a full pass over
-    // a large file on the UI isolate for a value the next save discards.
-    //
-    // Worth taking where it does register: a REFERENCED image is the asset
-    // that can go missing and have to be found again, and `A1.png` repeats
-    // in every cut folder on a real drive.
+    // 🔑 AFTER the registration. The bytes were read to decode them, so the
+    // hash costs no I/O. A RASTERIZING import used to skip it because it
+    // registered nothing; it registers now (유저 2026-09-11: 「구워도 풀에
+    // 남음」), and a registered file is one that can go missing and have to
+    // be found again — `A1.png` repeats in every cut folder on a real drive.
     if (assets.isNotEmpty) {
       _fingerprints.rememberMediaFingerprint(source, bytes);
     }
@@ -211,8 +216,11 @@ class ProjectImportDoors {
   /// Always baked. "One of them baked means all of them are" is the rule
   /// the user set: a half-linked stack would take original updates on some
   /// rows and not others, and a reorder in Photoshop would break the match
-  /// for the rest. So nothing registers and nothing keeps a reference —
-  /// the merged reading ([importImageFile]) is the one that stays live.
+  /// for the rest. So nothing keeps a reference — the merged reading
+  /// ([importImageFile]) is the one that stays live. The FILE still
+  /// registers, carried or linked as the window said: a baked file is the
+  /// pool's to offer again (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut
+  /// is made at the document's size.
   ///
   /// Returns the warnings (colour conversions, blends we have no
   /// equivalent for, adjustment layers left behind), or null when the
@@ -221,13 +229,14 @@ class ProjectImportDoors {
   Future<List<String>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
+    required bool copyIntoProject,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
   }) async {
     // Same order as the image path: the destination gate runs before any
     // read, so a refused import never has pixels to leak.
-    final arrival = _landing.arriveAt(destination, path: path);
-    if (arrival == null) {
+    final gate = _landing.arriveAt(destination, path: path);
+    if (gate == null) {
       return null;
     }
     final Uint8List bytes;
@@ -236,19 +245,20 @@ class ProjectImportDoors {
     } on Object {
       return null;
     }
-    final cutId = arrival.cutId;
-    final duration = arrival.stillDuration(lengthFrames: lengthFrames);
+    final cutId = gate.cutId;
+    final duration = gate.stillDuration(lengthFrames: lengthFrames);
 
     final PsdExpansion? expansion;
     try {
       expansion = await readPsdExpansion(
         bytes: bytes,
-        displayName: arrival.displayName,
+        displayName: gate.displayName,
         cutId: cutId,
         duration: duration,
-        canvas: arrival.canvasSize,
+        canvas: gate.canvasSize,
+        canvasFromDocument: gate.targetCut == null,
         fit: fit,
-        mint: arrival.mint,
+        mint: gate.mint,
       );
     } on Object {
       return null;
@@ -256,8 +266,25 @@ class ProjectImportDoors {
     if (expansion == null || expansion.layers.isEmpty) {
       return null;
     }
+    final arrival = gate.targetCut == null
+        ? gate.withCanvasSize(expansion.canvas)
+        : gate;
 
-    _landing.land(expansion.layers, arrival: arrival, duration: duration);
+    _landing.land(
+      expansion.layers,
+      arrival: arrival,
+      duration: duration,
+      assets: [
+        importedMediaAsset(
+          path: arrival.source,
+          kind: MediaAssetKind.image,
+          fit: fit,
+          identity: readMediaIdentity(arrival.source),
+          carried: copyIntoProject,
+        ),
+      ],
+    );
+    _fingerprints.rememberMediaFingerprint(arrival.source, bytes);
 
     // Pixels after the structure, like every other import: the cel keys
     // resolve their owner through the cut that now exists.
@@ -305,8 +332,8 @@ class ProjectImportDoors {
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
-    final arrival = _landing.arriveAt(destination, path: path);
-    if (arrival == null) {
+    final gate = _landing.arriveAt(destination, path: path);
+    if (gate == null) {
       return false;
     }
     final document = await PdfRenderService.open(path);
@@ -329,6 +356,17 @@ class ProjectImportDoors {
           ? pageCount - 1
           : (outFrame < firstPage ? firstPage : outFrame);
       final spanCount = lastPage - firstPage + 1;
+      // A NEW cut is made at the span's first page, at the size the
+      // renderer calls 1:1 — the size the window's locked 1:1 fit draws.
+      final firstSize = document.pageSize(firstPage);
+      final arrival = gate.targetCut == null
+          ? gate.withCanvasSize(
+              CanvasSize(
+                width: _pagePixels(firstSize.width),
+                height: _pagePixels(firstSize.height),
+              ),
+            )
+          : gate;
       final source = arrival.source;
       final identity = readMediaIdentity(source);
       final cutId = arrival.cutId;
@@ -409,15 +447,15 @@ class ProjectImportDoors {
           try {
             final pageSize = document.pageSize(pageIndex);
             final placement = placementRectFor(
-              sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
-              sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
+              sourceWidth: _pagePixels(pageSize.width),
+              sourceHeight: _pagePixels(pageSize.height),
               canvas: bakedCut.canvasSize,
               fit: bake.fit,
             );
             final image = await document.renderPage(
               pageIndex,
-              width: placement.width.round().clamp(1, 1 << 13).toInt(),
-              height: placement.height.round().clamp(1, 1 << 13).toInt(),
+              width: _pagePixels(placement.width),
+              height: _pagePixels(placement.height),
             );
             try {
               final surface = await rasterizeImageToSurface(
@@ -452,6 +490,9 @@ class ProjectImportDoors {
       await document.dispose();
     }
   }
+
+  /// A page extent as whole pixels the renderer accepts.
+  int _pagePixels(double extent) => extent.round().clamp(1, 1 << 13).toInt();
 
   int _sequenceLength(Layer layer) {
     var end = 1;

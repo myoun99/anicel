@@ -10,6 +10,7 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../timeline/layer_label_controls.dart' show layerMarkChipText;
 import '../widgets/app_window.dart';
+import '../widgets/compact_switch.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
@@ -843,11 +844,10 @@ class ExportToggleRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         children: [
-          SizedBox(
-            height: 24,
-            child: FittedBox(
-              child: Switch(key: widgetKey, value: value, onChanged: onChanged),
-            ),
+          CompactSwitch(
+            switchKey: widgetKey,
+            value: value,
+            onChanged: onChanged,
           ),
           const SizedBox(width: 6),
           Expanded(child: Text(label, style: theme.textTheme.labelSmall)),

@@ -21,7 +21,15 @@ void main() {
     placing: placing,
   );
 
-  group('what a kind refuses', () {
+  group('the file column is the POOL\'s question', () {
+    test('two answers — carry or link. Baking is the layer\'s question now '
+        '(유저 2026-09-11, 라운드 5: the one column was split in two)', () {
+      expect(ImportFileMode.values, [
+        ImportFileMode.reference,
+        ImportFileMode.keepInside,
+      ]);
+    });
+
     test('a movie STARTS as a reference — that is a default, not a wall', () {
       expect(
         defaultImportMode(MediaAssetKind.video),
@@ -42,84 +50,72 @@ void main() {
       );
       expect(resolved.mode, ImportFileMode.keepInside);
     });
-
-    test('a sound cannot be rasterized — it falls back to carried', () {
-      final resolved = resolve(
-        defaults.copyWith(mode: ImportFileMode.rasterize),
-        kind: MediaAssetKind.audio,
-      );
-      expect(resolved.mode, ImportFileMode.keepInside);
-    });
-
-    test('a movie cannot be rasterized either (no decoder yet)', () {
-      expect(
-        importModeAllowed(
-          kind: MediaAssetKind.video,
-          mode: ImportFileMode.rasterize,
-          psdExpanding: false,
-          placing: true,
-          trimmed: false,
-        ),
-        isFalse,
-      );
-    });
-
-    test('a PDF can be rasterized: its pages are pictures', () {
-      final resolved = resolve(
-        defaults.copyWith(mode: ImportFileMode.rasterize),
-        kind: MediaAssetKind.pdf,
-      );
-      expect(resolved.mode, ImportFileMode.rasterize);
-    });
   });
 
-  group('the pool', () {
-    test('registering places nothing, so nothing can be absorbed', () {
-      final resolved = resolve(
-        defaults.copyWith(mode: ImportFileMode.rasterize),
-        placing: false,
-      );
-      expect(resolved.mode, ImportFileMode.keepInside);
+  group('bake — the layer\'s question', () {
+    test('asked only where something is PLACED, and only of pictures', () {
       expect(
-        importModeAllowed(
-          kind: MediaAssetKind.image,
-          mode: ImportFileMode.rasterize,
-          psdExpanding: false,
-          placing: false,
-          trimmed: false,
-        ),
+        importBakeAllowed(kind: MediaAssetKind.image, placing: true),
+        isTrue,
+      );
+      expect(importBakeAllowed(kind: MediaAssetKind.pdf, placing: true), isTrue);
+      expect(
+        importBakeAllowed(kind: MediaAssetKind.image, placing: false),
         isFalse,
+        reason: 'the pool registers; nothing is placed there to bake',
+      );
+      expect(
+        importBakeAllowed(kind: MediaAssetKind.audio, placing: true),
+        isFalse,
+        reason: 'a sound has no pixels',
+      );
+      expect(
+        importBakeAllowed(kind: MediaAssetKind.video, placing: true),
+        isFalse,
+        reason: 'a movie bakes with video placement, not in this window yet',
       );
     });
 
-    test('reference and keep are both on offer there', () {
-      for (final mode in [
-        ImportFileMode.reference,
-        ImportFileMode.keepInside,
-      ]) {
-        expect(
-          importModeAllowed(
-            kind: MediaAssetKind.image,
-            mode: mode,
-            psdExpanding: false,
-            placing: false,
-            trimmed: false,
-          ),
-          isTrue,
-        );
-      }
+    test('🚨a bake the file cannot give does not stick — and it does not '
+        'touch the carry answer: one question never answers the other', () {
+      final sound = resolve(
+        defaults.copyWith(bake: true, mode: ImportFileMode.reference),
+        kind: MediaAssetKind.audio,
+      );
+      expect(sound.bake, isFalse);
+      expect(sound.mode, ImportFileMode.reference);
+
+      final registering = resolve(defaults.copyWith(bake: true), placing: false);
+      expect(registering.bake, isFalse);
+    });
+
+    test('a picture keeps the bake it was given, and its carry answer', () {
+      final baked = resolve(
+        defaults.copyWith(bake: true, mode: ImportFileMode.reference),
+      );
+      expect(baked.bake, isTrue);
+      expect(baked.mode, ImportFileMode.reference);
+    });
+
+    test('bake starts off: a placed file is a reference until someone asks '
+        'for its pixels', () {
+      expect(defaults.bake, isFalse);
     });
   });
 
   group('trimming', () {
     test('a trimmed source cannot be a reference — a pointer has no '
-        'in and out', () {
+        'in and out (until trimmed references are lifted)', () {
       final trimmed = defaults.copyWith(
         mode: ImportFileMode.reference,
         inFrame: 12,
       );
       expect(trimmed.isTrimmed, isTrue);
       expect(resolve(trimmed).mode, ImportFileMode.keepInside);
+      expect(
+        importModeAllowed(mode: ImportFileMode.reference, trimmed: true),
+        isFalse,
+      );
     });
 
     test('an untouched range leaves reference alone', () {
@@ -131,42 +127,59 @@ void main() {
     test('an out point alone counts as a trim', () {
       expect(defaults.copyWith(outFrame: 40).isTrimmed, isTrue);
     });
+
+    test('carrying is never refused', () {
+      for (final trimmed in [false, true]) {
+        expect(
+          importModeAllowed(mode: ImportFileMode.keepInside, trimmed: trimmed),
+          isTrue,
+        );
+      }
+    });
   });
 
   group('psd', () {
-    test('expanding locks the file question: the stack is baked', () {
+    test('expanding locks BAKE on — the stack is its pixels — and leaves the '
+        'carry answer alone: the file still registers', () {
       final resolved = resolve(
         defaults.copyWith(
           psd: PsdPlaceMode.expand,
-          mode: ImportFileMode.keepInside,
-        ),
-        isPsd: true,
-      );
-      expect(resolved.mode, ImportFileMode.rasterize);
-    });
-
-    test('merging leaves the file question open', () {
-      final resolved = resolve(
-        defaults.copyWith(
-          psd: PsdPlaceMode.merge,
           mode: ImportFileMode.reference,
         ),
         isPsd: true,
       );
+      expect(resolved.bake, isTrue);
       expect(resolved.mode, ImportFileMode.reference);
+      expect(
+        importBakeLocked(isPsd: true, placing: true, psd: PsdPlaceMode.expand),
+        isTrue,
+      );
+    });
+
+    test('merging leaves bake open', () {
+      final resolved = resolve(
+        defaults.copyWith(psd: PsdPlaceMode.merge),
+        isPsd: true,
+      );
+      expect(resolved.bake, isFalse);
+      expect(
+        importBakeLocked(isPsd: true, placing: true, psd: PsdPlaceMode.merge),
+        isFalse,
+      );
     });
 
     test('a PSD registered into the pool is just a file — expand does not '
         'apply', () {
       final resolved = resolve(
-        defaults.copyWith(
-          psd: PsdPlaceMode.expand,
-          mode: ImportFileMode.keepInside,
-        ),
+        defaults.copyWith(psd: PsdPlaceMode.expand),
         isPsd: true,
         placing: false,
       );
-      expect(resolved.mode, ImportFileMode.keepInside);
+      expect(resolved.bake, isFalse);
+      expect(
+        importBakeLocked(isPsd: true, placing: false, psd: PsdPlaceMode.expand),
+        isFalse,
+      );
     });
 
     test('both Photoshop extensions are recognised', () {
@@ -177,8 +190,43 @@ void main() {
     });
   });
 
+  group('a NEW cut is made at the file\'s own size — its fit is 1:1, locked '
+      '(유저 2026-09-11: 「1:1로 고정시켜서 노출시키도록. 비활성화된상태로」)', () {
+    test('whatever fit was pressed, a new cut resolves to 1:1', () {
+      for (final fit in MediaFitMode.values) {
+        final resolved = resolve(
+          defaults.copyWith(into: ImportDestination.newCut, fit: fit),
+        );
+        expect(resolved.fit, MediaFitMode.none, reason: '$fit');
+      }
+      expect(
+        importFitLocked(
+          defaults.copyWith(into: ImportDestination.newCut),
+          placing: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a new layer keeps the fit it was given', () {
+      final resolved = resolve(defaults.copyWith(fit: MediaFitMode.stretch));
+      expect(resolved.fit, MediaFitMode.stretch);
+      expect(importFitLocked(defaults, placing: true), isFalse);
+    });
+
+    test('the pool places nothing, so it locks nothing', () {
+      expect(
+        importFitLocked(
+          defaults.copyWith(into: ImportDestination.newCut),
+          placing: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('labels', () {
-    test('every mode, fit and destination has a cell word', () {
+    test('every answer has a word', () {
       for (final mode in ImportFileMode.values) {
         expect(importModeLabel(mode), isNotEmpty);
       }
@@ -187,6 +235,18 @@ void main() {
       }
       for (final into in ImportDestination.values) {
         expect(importIntoLabel(into), isNotEmpty);
+      }
+      for (final psd in PsdPlaceMode.values) {
+        expect(importPsdLabel(psd), isNotEmpty);
+      }
+      expect(importBakeLabel(true), isNot(importBakeLabel(false)));
+    });
+
+    test('⛔the fit never says the word the file column says for carrying — '
+        '「Keep」 meant contain in one column and carry in the next', () {
+      final carry = importModeLabel(ImportFileMode.keepInside);
+      for (final fit in MediaFitMode.values) {
+        expect(importFitLabel(fit), isNot(carry), reason: '$fit');
       }
     });
   });

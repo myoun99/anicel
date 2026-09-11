@@ -85,8 +85,13 @@ class ImageLayerImportPlan {
 
 /// Builds one IMAGE layer for [sourceFile]: born covering [duration]
 /// (the write normalization keeps it at the cut length afterwards).
-/// Reference mode registers the asset and stamps [Layer.mediaReference];
-/// rasterize mode registers nothing (§3: pixels absorbed = no entry).
+/// Reference mode stamps [Layer.mediaReference]; rasterize mode bakes and
+/// stamps nothing. Both REGISTER the asset.
+///
+/// ↩️Rasterize registered nothing until 2026-09-11 (§3: 「pixels absorbed =
+/// no entry」). The user decided the material of every placement is a pool
+/// entry — 「구워도 풀에 남음」: a baked file is still the pool's to offer
+/// again.
 ImageLayerImportPlan planStillImageLayer({
   required String sourceFile,
   required String displayName,
@@ -124,23 +129,50 @@ ImageLayerImportPlan planStillImageLayer({
         fit: fit,
       ),
     ],
-    assets: rasterize
-        ? const []
-        : [
-            MediaAsset(
-              path: sourceFile,
-              name: mediaAssetDefaultName(sourceFile),
-              kind: assetKind,
-              fitMode: fit,
-              sourcePath: sourcePath,
-              sourceStamp: sourceStamp,
-              identity: identity,
-              carried: carried,
-              pageCount: pageCount,
-            ),
-          ],
+    assets: [
+      importedMediaAsset(
+        path: sourceFile,
+        kind: assetKind,
+        fit: fit,
+        sourcePath: sourcePath,
+        sourceStamp: sourceStamp,
+        identity: identity,
+        carried: carried,
+        pageCount: pageCount,
+      ),
+    ],
   );
 }
+
+/// The pool entry an import registers for [path].
+///
+/// ⛔ONE spelling of it. The still and the sequence planners each built this
+/// record by hand, and the expanded PSD — which registers now too — would
+/// have been the third.
+MediaAsset importedMediaAsset({
+  required String path,
+  required MediaAssetKind kind,
+  required MediaFitMode fit,
+  String? sourcePath,
+  String? sourceStamp,
+  MediaIdentity? identity,
+  bool carried = false,
+  double? sourceFps,
+  int? frameCount,
+  int? pageCount,
+}) => MediaAsset(
+  path: path,
+  name: mediaAssetDefaultName(path),
+  kind: kind,
+  fitMode: fit,
+  sourcePath: sourcePath,
+  sourceStamp: sourceStamp,
+  identity: identity,
+  carried: carried,
+  sourceFps: sourceFps,
+  frameCount: frameCount,
+  pageCount: pageCount,
+);
 
 /// A planned SEQUENCE layer: N source frames as cels + exposure, with
 /// consecutive DUPLICATE frames folded into held exposure (굽기 노출
@@ -240,14 +272,14 @@ SequenceLayerImportPlan planSequenceLayer({
   return SequenceLayerImportPlan(
     layer: layer,
     bakes: bakes,
-    assets: rasterize || referencePath == null
+    // Baked or not, the file registers (유저 2026-09-11: 「구워도 풀에 남음」).
+    assets: referencePath == null
         ? const []
         : [
-            MediaAsset(
+            importedMediaAsset(
               path: referencePath,
-              name: mediaAssetDefaultName(referencePath),
               kind: assetKind,
-              fitMode: fit,
+              fit: fit,
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
               identity: identity,

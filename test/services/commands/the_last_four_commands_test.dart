@@ -288,39 +288,39 @@ void main() {
       ),
     );
 
-    test('the reference is dropped, and the pool entry goes with it when '
-        'nobody else holds it', () {
+    test('🚨the reference is dropped and the pool entry STAYS — a baked '
+        'file is still the pool\'s to offer again (유저 2026-09-11: 「구워도 '
+        '풀에 남음」; it used to go when nobody else held it)', () {
       final repository = open();
       final command = RasterizeLayerReferenceCommand(
         repository: repository,
         cutId: const CutId('c'),
         layerId: const LayerId('l'),
-        assetStillReferenced: false,
       );
 
       command.execute();
       expect(rowOf(repository, 'l').mediaReference, isNull);
-      expect(repository.requireProject().mediaAssets, isEmpty);
+      expect(repository.requireProject().mediaAssets, hasLength(1));
 
       command.undo();
       expect(rowOf(repository, 'l').mediaReference?.assetPath, '/still.png');
       expect(repository.requireProject().mediaAssets, hasLength(1));
     });
 
-    test('🚨the pool entry STAYS when others still reference it — the '
-        'caller answers that, and rasterizing one layer must not unlink '
-        'another', () {
-      final repository = open();
-
-      RasterizeLayerReferenceCommand(
+    test('a layer that references nothing is left alone, and so is its '
+        'undo', () {
+      final repository = open(withAsset: false);
+      final command = RasterizeLayerReferenceCommand(
         repository: repository,
         cutId: const CutId('c'),
         layerId: const LayerId('l'),
-        assetStillReferenced: true,
-      ).execute();
-
-      expect(rowOf(repository, 'l').mediaReference, isNull);
-      expect(repository.requireProject().mediaAssets, hasLength(1));
+      )..execute();
+      command.undo();
+      expect(
+        rowOf(repository, 'l').mediaReference?.assetPath,
+        '/still.png',
+        reason: 'the first execute found a reference; undo puts it back',
+      );
     });
 
     test('undo before execute is refused', () {
@@ -329,7 +329,6 @@ void main() {
           repository: open(),
           cutId: const CutId('c'),
           layerId: const LayerId('l'),
-          assetStillReferenced: false,
         ).undo,
         throwsStateError,
       );

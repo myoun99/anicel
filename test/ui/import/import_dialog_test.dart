@@ -58,8 +58,9 @@ void main() {
 
   Future<String> writePng(String name) => writePngFilled(name, 0xAA);
 
-  /// Answers one question for one FILE: press its cell in [column] and pick
-  /// [option] from the popup that column opens.
+  /// Answers one question for one FILE: press its cell in [column] (the
+  /// column's id) and pick [option] (the answer's key) from the popup that
+  /// column opens.
   ///
   /// This is the window's shape now — the settings that were chips over a
   /// whole batch are cells on the row they belong to — so the tests drive
@@ -70,9 +71,16 @@ void main() {
     required String path,
     required String option,
   }) async {
-    await tester.tap(find.byKey(ValueKey<String>('import-cell-$column-$path')));
+    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+    // The table scrolls sideways when its columns outgrow the window (the
+    // test font's glyphs are wide), so the cell is brought into view first.
+    await tester.ensureVisible(cell);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(ValueKey<String>('import-option-$option')));
+    await tester.tap(cell);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey<String>('import-option-$column-$option')),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -174,7 +182,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Layer'),
+      find.text(AppText.strings.imIntoNewLayer),
       findsOneWidget,
       reason: 'the row is already answered: into the cut you are in',
     );
@@ -307,9 +315,9 @@ void main() {
         reason: 'the pool is on offer from here too — one window',
       );
       expect(
-        find.byKey(const ValueKey<String>('import-column-File')),
+        find.byKey(const ValueKey<String>('import-column-file')),
         findsOneWidget,
-        reason: 'and whether a file is absorbed is that file\'s own answer',
+        reason: 'and how a new file is kept is that file\'s own answer',
       );
     });
   });
@@ -389,7 +397,7 @@ void main() {
           findsWidgets,
           reason: '$os starts on Keep inside',
         );
-        expect(find.text('Ref'), findsNothing);
+        expect(find.text('Link'), findsNothing);
       }
     });
 
@@ -410,11 +418,11 @@ void main() {
         ),
       );
       await tester.pump();
-      await pickCell(tester, column: 'File', path: path, option: 'Ref');
+      await pickCell(tester, column: 'file', path: path, option: 'reference');
       expect(
-        find.text('Ref'),
+        find.text('Link'),
         findsOneWidget,
-        reason: 'the row says which of the three it is on',
+        reason: 'the row says which of the two it is on',
       );
 
       await runImport(tester, s);
@@ -506,7 +514,7 @@ void main() {
       reason: 'PDF left the unplaceable set in R4',
     );
 
-    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
       if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
@@ -545,7 +553,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 100; tries += 1) {
       final status = tester.widgetList<Text>(
@@ -611,7 +619,11 @@ void main() {
     final text = tester.widget<Text>(note).data!;
     expect(text, contains('120 MB'), reason: 'the number being decided');
     expect(text, contains('마스터'), reason: 'and what the answer acts on');
-    expect(text, contains('Reference'), reason: 'the way out is named');
+    expect(
+      text,
+      contains(AppText.strings.imModeReference),
+      reason: 'the way out is named',
+    );
   });
 
   testWidgets('choosing Reference takes the warning away', (tester) async {
@@ -634,7 +646,7 @@ void main() {
       findsOneWidget,
     );
 
-    await pickCell(tester, column: 'File', path: path, option: 'Ref');
+    await pickCell(tester, column: 'file', path: path, option: 'reference');
 
     expect(
       find.byKey(const ValueKey<String>('import-large-carry-note')),
@@ -762,16 +774,18 @@ void main() {
       final b = await tester.runAsync(() => writePng('b.png'));
       await pump(tester, [a!, b!]);
 
-      expect(cellText(tester, 'File', a), 'Keep');
+      expect(cellText(tester, 'file', a), 'Keep');
       await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-File')),
+        find.byKey(const ValueKey<String>('import-column-file')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey<String>('import-option-Ref')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-option-file-reference')),
+      );
       await tester.pumpAndSettle();
 
-      expect(cellText(tester, 'File', a), 'Ref');
-      expect(cellText(tester, 'File', b), 'Ref');
+      expect(cellText(tester, 'file', a), 'Link');
+      expect(cellText(tester, 'file', b), 'Link');
     });
 
     testWidgets('a cell speaks for the SELECTION when its row is in one', (
@@ -794,12 +808,12 @@ void main() {
 
       await selectRow('a.png');
       await selectRow('b.png');
-      await pickCell(tester, column: 'File', path: a, option: 'Ref');
+      await pickCell(tester, column: 'file', path: a, option: 'reference');
 
-      expect(cellText(tester, 'File', a), 'Ref');
-      expect(cellText(tester, 'File', b), 'Ref');
+      expect(cellText(tester, 'file', a), 'Link');
+      expect(cellText(tester, 'file', b), 'Link');
       expect(
-        cellText(tester, 'File', c),
+        cellText(tester, 'file', c),
         'Keep',
         reason: 'the row nobody selected keeps its own answer',
       );
@@ -813,16 +827,16 @@ void main() {
       await pump(tester, [png!, movie!]);
 
       expect(
-        cellText(tester, 'File', movie),
-        'Ref',
+        cellText(tester, 'file', movie),
+        'Link',
         reason: 'three gigabytes should not land in a project by accident',
       );
-      expect(cellText(tester, 'File', png), 'Keep');
+      expect(cellText(tester, 'file', png), 'Keep');
 
-      await pickCell(tester, column: 'File', path: movie, option: 'Keep');
+      await pickCell(tester, column: 'file', path: movie, option: 'keepInside');
 
       expect(
-        cellText(tester, 'File', movie),
+        cellText(tester, 'file', movie),
         'Keep',
         reason: 'the kind decides the DEFAULT, and the user decides this',
       );
@@ -874,7 +888,8 @@ void main() {
       );
     });
 
-    testWidgets('an answer the KIND refuses still does not stick', (
+    testWidgets('an answer the KIND refuses still does not stick — a sound '
+        'has no pixels to bake, so its bake cell stays a dash', (
       tester,
     ) async {
       final png = await tester.runAsync(() => writePng('a.png'));
@@ -886,48 +901,59 @@ void main() {
       await pump(tester, [png!, wav!]);
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-File')),
+        find.byKey(const ValueKey<String>('import-column-bake')),
       );
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey<String>('import-option-Raster')),
+        find.byKey(const ValueKey<String>('import-option-bake-true')),
       );
       await tester.pumpAndSettle();
 
-      expect(cellText(tester, 'File', png), 'Raster');
+      expect(cellText(tester, 'bake', png), AppText.strings.commonOn);
       expect(
-        cellText(tester, 'File', wav),
+        cellText(tester, 'bake', wav),
+        '—',
+        reason: 'the header asked, and a sound has no pixels to bake',
+      );
+      expect(
+        cellText(tester, 'file', wav),
         'Keep',
-        reason: 'the header asked, and a sound has no pixels to absorb',
+        reason: 'and the pool\'s question was never touched by the layer\'s',
       );
     });
 
-    testWidgets('expanding a PSD locks its File answer to the pixels', (
+    testWidgets('expanding a PSD locks its BAKE on — one of them baked means '
+        'all of them are — and leaves how the file is kept alone', (
       tester,
     ) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
 
-      expect(cellText(tester, 'PSD', psd), 'Merge');
-      expect(cellText(tester, 'File', psd), 'Keep');
+      expect(cellText(tester, 'psd', psd), 'Merge');
+      expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
+      expect(cellText(tester, 'file', psd), 'Keep');
 
-      await pickCell(tester, column: 'PSD', path: psd, option: 'Expand');
+      await pickCell(tester, column: 'psd', path: psd, option: 'expand');
 
-      expect(
-        cellText(tester, 'File', psd),
-        'Raster',
-        reason: 'one of them baked means all of them are',
-      );
+      expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
+      expect(cellText(tester, 'file', psd), 'Keep');
     });
 
-    testWidgets('the pool asks nothing about placement', (tester) async {
+    testWidgets('🚨the pool asks nothing about placement — the questions a '
+        'placement asks are not there at all (유저 2026-09-11: 「플레이스가 '
+        '풀이면 넣을곳 맞춤 PSD 열 삭제」)', (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       await pump(tester, [png!], poolOnly: true);
 
-      expect(cellText(tester, 'Into', png), '—');
-      expect(cellText(tester, 'Fit', png), '—');
+      for (final id in ['bake', 'into', 'fit', 'psd']) {
+        expect(
+          find.byKey(ValueKey<String>('import-column-$id')),
+          findsNothing,
+          reason: id,
+        );
+      }
       expect(
-        cellText(tester, 'File', png),
+        cellText(tester, 'file', png),
         'Keep',
         reason: 'what the project holds is still a question here',
       );
@@ -1024,7 +1050,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await pickCell(tester, column: 'Into', path: pdfPath, option: 'New cut');
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     // Pages three and four of five: IN and OUT are one-based on screen.
     await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
@@ -1177,7 +1203,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      find.text('Layer'),
+      find.text(AppText.strings.imIntoNewLayer),
       findsOneWidget,
       reason: 'the placement branch is the one under test',
     );
@@ -1289,12 +1315,12 @@ void main() {
       await runImport(tester, [good!, bad!]);
 
       expect(
-        find.text('breaks.png'),
+        find.byKey(ValueKey<String>('import-name-$bad')),
         findsOneWidget,
         reason: 'the failure is still on the list to retry',
       );
       expect(
-        find.text('lands.png'),
+        find.byKey(ValueKey<String>('import-name-$good')),
         findsNothing,
         reason: 'it already landed — importing it again would duplicate it',
       );

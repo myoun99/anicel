@@ -1,6 +1,7 @@
 import '../../models/media_asset.dart';
 import '../../services/project_lookup.dart' show mediaKindCarriedByDefault;
 import '../../services/import/media_import_planner.dart' show ImportDestination;
+import '../text/app_strings.dart';
 
 /// What one FILE in the import window is set to.
 ///
@@ -18,17 +19,23 @@ import '../../services/import/media_import_planner.dart' show ImportDestination;
 /// Everything here is pure so the rules can be tested without a window: the
 /// table renders these answers, it does not compute them.
 
-/// How a file comes into the project. One axis, three answers, because
-/// they are the same question — what does the project end up holding?
+/// How a file is KEPT — the pool's question: a pointer to where the file
+/// lives, or its bytes inside the project file.
+///
+/// ↩️It had a third answer, `rasterize`, from 2026-08-14 (`0154b50e`: 「they
+/// were always one — what does the project end up holding」). The user split
+/// the two again on 2026-09-11 (미디어 배치 라운드 5: 「플레이스에 따라서
+/// 제대로 나누도록」). Once every placement's material is a pool entry,
+/// baking stopped answering 「what does the project hold」 and started
+/// answering 「what does the LAYER become」 — and a pooled file dropped on a
+/// frame area answers both at once, which one cell cannot say. Baking is
+/// [ImportFileSettings.bake] now.
 enum ImportFileMode {
   /// A pointer to where the file lives. Dies if the original moves.
   reference,
 
   /// The bytes travel inside the `.anicel`.
   keepInside,
-
-  /// Not a file at all: the pixels become cels and nothing registers.
-  rasterize,
 }
 
 /// A Photoshop document arrives one of two ways.
@@ -44,6 +51,7 @@ enum PsdPlaceMode {
 class ImportFileSettings {
   const ImportFileSettings({
     this.mode = ImportFileMode.keepInside,
+    this.bake = false,
     this.into = ImportDestination.activeCutLayer,
     this.fit = MediaFitMode.contain,
     this.psd = PsdPlaceMode.merge,
@@ -52,6 +60,13 @@ class ImportFileSettings {
   });
 
   final ImportFileMode mode;
+
+  /// Whether the placed layer is BAKED into cels instead of drawing from the
+  /// file — the layer's question, asked only where something is placed.
+  ///
+  /// Baking still registers the file: the material of every placement is a
+  /// pool entry (user 2026-09-11: 「구워도 풀에 남음」).
+  final bool bake;
 
   /// Where a PLACED file lands. Ignored when the window is registering
   /// into the pool.
@@ -70,6 +85,7 @@ class ImportFileSettings {
 
   ImportFileSettings copyWith({
     ImportFileMode? mode,
+    bool? bake,
     ImportDestination? into,
     MediaFitMode? fit,
     PsdPlaceMode? psd,
@@ -78,6 +94,7 @@ class ImportFileSettings {
     bool clearOut = false,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
+    bake: bake ?? this.bake,
     into: into ?? this.into,
     fit: fit ?? this.fit,
     psd: psd ?? this.psd,
@@ -89,6 +106,7 @@ class ImportFileSettings {
   bool operator ==(Object other) =>
       other is ImportFileSettings &&
       other.mode == mode &&
+      other.bake == bake &&
       other.into == into &&
       other.fit == fit &&
       other.psd == psd &&
@@ -96,7 +114,8 @@ class ImportFileSettings {
       other.outFrame == outFrame;
 
   @override
-  int get hashCode => Object.hash(mode, into, fit, psd, inFrame, outFrame);
+  int get hashCode =>
+      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame);
 }
 
 /// What a file of this [kind] answers before anyone has answered for it.
@@ -121,107 +140,103 @@ bool importPathIsPsd(String path) {
   return extension == 'psd' || extension == 'psb';
 }
 
-/// Whether [mode] is offered for [kind]. A cell the file's own nature
-/// refuses is shown OFF rather than hidden: the question was asked, and
-/// the answer is that this file cannot.
+/// Whether [mode] may be answered. Every kind may be carried — the kind
+/// still decides what a file answers by DEFAULT, and a person who wants a
+/// three-second take inside the project file gets to say so, with the size
+/// warning naming the cost before it lands.
+///
+/// ⏳A trim keeps only part of the source and a pointer is refused for it.
+/// The user decided on 2026-09-11 to lift this (「구간 잘라도 참조 그대로:
+/// 푼다 … 빈틈없이」) — it goes when every reader of a layer's reference
+/// honours its start frame, not before.
 bool importModeAllowed({
-  required MediaAssetKind? kind,
   required ImportFileMode mode,
-  required bool psdExpanding,
-  required bool placing,
   required bool trimmed,
-}) {
-  switch (mode) {
-    case ImportFileMode.rasterize:
-      // Nothing is placed into the pool, so nothing can be absorbed there.
-      if (!placing) {
-        return false;
-      }
-      // Sound has no pixels; a movie has no decoder yet.
-      return kind == MediaAssetKind.image || kind == MediaAssetKind.pdf;
-    case ImportFileMode.keepInside:
-      // An expanded PSD IS its pixels — there is no file left to keep.
-      if (psdExpanding) {
-        return false;
-      }
-      // Every kind may be carried now. The kind still decides what a file
-      // answers by DEFAULT — a movie starts as a reference — but a person
-      // who wants a three-second take inside the project file gets to say
-      // so, with the size warning naming the cost before it lands.
-      return true;
-    case ImportFileMode.reference:
-      if (psdExpanding) {
-        return false;
-      }
-      // A trim keeps only part of the source, and a pointer cannot say
-      // "part". What is trimmed has to be carried.
-      return !trimmed;
-  }
-}
+}) => switch (mode) {
+  ImportFileMode.keepInside => true,
+  ImportFileMode.reference => !trimmed,
+};
+
+/// Whether the BAKE question is asked of a file of [kind] at all: only where
+/// something is placed, and only of pictures. Sound has no pixels, and a
+/// movie is not baked by this window until video placement brings its
+/// decode-to-cels.
+bool importBakeAllowed({required MediaAssetKind? kind, required bool placing}) =>
+    placing && (kind == MediaAssetKind.image || kind == MediaAssetKind.pdf);
+
+/// Whether the file's own answers leave the bake question one answer: an
+/// expanded PSD IS its pixels — 「one of them baked means all of them are」
+/// (the user's rule).
+bool importBakeLocked({
+  required bool isPsd,
+  required bool placing,
+  required PsdPlaceMode psd,
+}) => isPsd && placing && psd == PsdPlaceMode.expand;
+
+/// Whether the fit has one answer: a NEW cut is made at the file's own size,
+/// so 1:1 is the only fit that means anything there (user 2026-09-11:
+/// 「넣을곳이 새 컷이면 맞춤 1:1외의 항목이 불필요해보임. 그러니 1:1로
+/// 고정시켜서 노출시키도록. 비활성화된상태로」).
+bool importFitLocked(ImportFileSettings settings, {required bool placing}) =>
+    placing && settings.into == ImportDestination.newCut;
 
 /// [settings] with every answer this file can actually give.
 ///
 /// The window never has to remember which combinations are impossible: it
 /// stores what the user pressed and asks here what that MEANS for this
-/// file. A movie set to Keep inside comes back Reference, and the row says
-/// Reference — the same answer the save would have reached anyway, arrived
-/// at before the user is surprised by it.
+/// file. A trimmed file set to Link comes back Keep, and the row says
+/// Keep — the same answer the save would have reached anyway, arrived at
+/// before the user is surprised by it.
 ImportFileSettings resolvedImportSettings(
   ImportFileSettings settings, {
   required MediaAssetKind? kind,
   required bool isPsd,
   required bool placing,
 }) {
-  final expanding = isPsd && placing && settings.psd == PsdPlaceMode.expand;
-  if (expanding) {
-    // Expanding bakes the whole stack: "one of them baked means all of
-    // them are" (the user's rule), so the file question has one answer.
-    return settings.copyWith(mode: ImportFileMode.rasterize);
-  }
-  final trimmed = settings.isTrimmed;
-  if (importModeAllowed(
-    kind: kind,
+  final bake =
+      importBakeAllowed(kind: kind, placing: placing) &&
+      (settings.bake ||
+          importBakeLocked(isPsd: isPsd, placing: placing, psd: settings.psd));
+  final mode = importModeAllowed(
     mode: settings.mode,
-    psdExpanding: false,
-    placing: placing,
-    trimmed: trimmed,
-  )) {
-    return settings;
-  }
-  // The fallback order is the least surprising one left: a file that
-  // cannot be absorbed is carried, and one that cannot be carried is
-  // pointed at.
-  for (final fallback in const [
-    ImportFileMode.keepInside,
-    ImportFileMode.reference,
-  ]) {
-    if (importModeAllowed(
-      kind: kind,
-      mode: fallback,
-      psdExpanding: false,
-      placing: placing,
-      trimmed: trimmed,
-    )) {
-      return settings.copyWith(mode: fallback);
-    }
-  }
-  return settings.copyWith(mode: ImportFileMode.reference);
+    trimmed: settings.isTrimmed,
+  )
+      ? settings.mode
+      // Carrying is never refused, so a refused pointer lands there.
+      : ImportFileMode.keepInside;
+  final fit = importFitLocked(settings, placing: placing)
+      ? MediaFitMode.none
+      : settings.fit;
+  return settings.copyWith(mode: mode, bake: bake, fit: fit);
 }
 
-/// The short word the row's cell shows.
+/// The words the file table's cells show — the app's strings, so the window
+/// speaks the language it is opened in.
 String importModeLabel(ImportFileMode mode) => switch (mode) {
-  ImportFileMode.reference => 'Ref',
-  ImportFileMode.keepInside => 'Keep',
-  ImportFileMode.rasterize => 'Raster',
+  ImportFileMode.reference => AppText.strings.imModeReference,
+  ImportFileMode.keepInside => AppText.strings.imModeKeep,
 };
 
+/// ⛔ONE spelling of the fit, for the file table and the cut-folder column
+/// alike. The column used to write its own ('Keep aspect') while the table
+/// wrote 'Keep' — the very word the file column used for carrying.
 String importFitLabel(MediaFitMode fit) => switch (fit) {
-  MediaFitMode.stretch => 'Stretch',
-  MediaFitMode.contain => 'Keep',
+  MediaFitMode.stretch => AppText.strings.imFitStretch,
+  MediaFitMode.contain => AppText.strings.imFitContain,
   MediaFitMode.none => '1:1',
 };
 
+/// 「새 레이어」 · 「새 컷」 — the pair the user named (2026-09-11: 「넣을곳 뉴
+/// 컷에 맞춰서 레이어도 뉴 레이어가 맞을듯」).
 String importIntoLabel(ImportDestination into) => switch (into) {
-  ImportDestination.activeCutLayer => 'Layer',
-  ImportDestination.newCut => 'New cut',
+  ImportDestination.activeCutLayer => AppText.strings.imIntoNewLayer,
+  ImportDestination.newCut => AppText.strings.imIntoNewCut,
 };
+
+String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
+  PsdPlaceMode.merge => AppText.strings.imPsdMerge,
+  PsdPlaceMode.expand => AppText.strings.imPsdExpand,
+};
+
+String importBakeLabel(bool bake) =>
+    bake ? AppText.strings.commonOn : AppText.strings.commonOff;

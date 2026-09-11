@@ -36,7 +36,7 @@ import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/paper_background.dart' show AlphaCheckerboardPainter;
+import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_sheet_builder.dart';
 import '../envelope/cut_envelope_builder.dart';
@@ -453,15 +453,10 @@ class ExportDialogState extends State<ExportDialog> {
         // checker the canvas's alpha preview paints (유저 2026-09-09: 「투명
         // 이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」). It sits under
         // the picture's own box, so it shows exactly where the file is open.
-        return Center(
-          child: AspectRatio(
-            aspectRatio: image.width / image.height,
-            child: CustomPaint(
-              key: const ValueKey<String>('export-preview-checker'),
-              painter: const AlphaCheckerboardPainter(),
-              child: picture,
-            ),
-          ),
+        return CheckeredPicture(
+          image: image,
+          checkerKey: const ValueKey<String>('export-preview-checker'),
+          imageKey: const ValueKey<String>('export-preview-image'),
         );
       },
     ),

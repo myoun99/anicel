@@ -111,6 +111,12 @@ void main() {
     final cut = track.cuts.last;
     expect(s.activeCutId, cut.id, reason: 'the import selects its cut');
     expect(cut.duration, 12);
+    expect(
+      (cut.canvasSize.width, cut.canvasSize.height),
+      (8, 8),
+      reason: 'a NEW cut is made at the file\'s own size (유저 2026-09-11: '
+          '「새 컷 캔버스크기: 추천대로」) — its locked 1:1 fills it',
+    );
     final layer = cut.layers.firstWhere(
       (layer) => layer.kind == LayerKind.image,
     );
@@ -144,8 +150,9 @@ void main() {
   });
 
   testWidgets('importImageFile into the ACTIVE cut with rasterize: layer '
-      'added with NO reference and NO registration (§3: absorbed pixels '
-      'register nothing)', (tester) async {
+      'added with NO reference, and the file still REGISTERS (유저 '
+      '2026-09-11: 「구워도 풀에 남음」 — §3 「absorbed pixels register '
+      'nothing」 is reversed)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final layersBefore = s.requireActiveCut.layers.length;
@@ -173,13 +180,13 @@ void main() {
       cut.duration,
       reason: 'the covering normalization holds it to the cut length',
     );
-    expect(s.mediaPool.mediaAssets, isEmpty);
+    expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.image);
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
 
   testWidgets('rasterizeActiveLayer nulls the reference, keeps the pixels '
-      'and unregisters the orphaned asset; undo restores both', (
+      'and KEEPS the asset in the pool; undo restores the reference', (
     tester,
   ) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -205,7 +212,11 @@ void main() {
     );
     expect(after.mediaReference, isNull);
     expect(after.kind, LayerKind.image, reason: 'kind never changes');
-    expect(s.mediaPool.mediaAssets, isEmpty, reason: 'orphaned asset unregisters');
+    expect(
+      s.mediaPool.mediaAssets,
+      hasLength(1),
+      reason: 'a baked file stays the pool\'s to offer again (유저 2026-09-11)',
+    );
     expect(
       s.layerStack.celHasContentForLayer(after, 0),
       isTrue,
@@ -387,9 +398,12 @@ void main() {
     expect(asset.pageCount, 3);
     expect(asset.frameCount, isNull, reason: 'pageCount is the pdf slot');
 
-    // §6-m pre-conversion: the render request is the CONTAIN placement of
-    // an A4 page on the default canvas, not the page's 72dpi point size.
+    // A NEW cut is made at its page's own size (유저 2026-09-11: 「새 컷
+    // 캔버스크기: 추천대로」), so the page lands on it exactly: the render
+    // request is the placement of the page on its cut's canvas.
     final canvas = cut.canvasSize;
+    expect(canvas.width, 595);
+    expect(canvas.height, 842);
     final scale = (canvas.width / 595) < (canvas.height / 842)
         ? canvas.width / 595
         : canvas.height / 842;
@@ -405,7 +419,9 @@ void main() {
   });
 
   testWidgets('importPdfFile: a ONE-page PDF lands as an image-kind still, '
-      'and rasterize mode registers nothing', (tester) async {
+      'and rasterize mode bakes it and still registers the file', (
+    tester,
+  ) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     addTearDown(PdfRenderService.debugResetForTests);
@@ -429,7 +445,11 @@ void main() {
       (layer) => layer.kind == LayerKind.image,
     );
     expect(layer.mediaReference, isNull, reason: 'rasterize = no reference');
-    expect(s.mediaPool.mediaAssets, isEmpty, reason: 'absorbed pixels register nothing');
+    expect(
+      s.mediaPool.mediaAssets.single.kind,
+      MediaAssetKind.pdf,
+      reason: 'baked files register too (유저 2026-09-11: 「구워도 풀에 남음」)',
+    );
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });

@@ -58,7 +58,8 @@ class ImportArrival {
   /// ⚠️Minted on FIRST READ, which is after the decode in every door. A
   /// door that refuses its file (unreadable, undecodable, no pages) must
   /// not have spent a cut number on it.
-  late final CutId cutId = targetCut?.id ?? mint.nextCutId();
+  CutId get cutId => _cutId ??= targetCut?.id ?? mint.nextCutId();
+  CutId? _cutId;
 
   /// How long a STILL holds: the cut it joins keeps its own length, and a
   /// new cut takes what the import window asked for, or a project second.
@@ -69,6 +70,25 @@ class ImportArrival {
     }
     return cut.duration < 1 ? 1 : cut.duration;
   }
+
+  /// This arrival on a canvas of [size] — the destination gate has already
+  /// run; only the canvas a NEW cut is made at changes.
+  ///
+  /// A new cut is made at its file's own size, so the 1:1 fit the window
+  /// locks for it fills it exactly (유저 2026-09-11: 「새 컷 캔버스크기:
+  /// 추천대로」). The size is only known once the file has been read, which
+  /// is why this exists instead of the gate answering it.
+  ///
+  /// An id already minted travels with the copy, so one import spends one
+  /// cut number whichever of the two is read.
+  ImportArrival withCanvasSize(CanvasSize size) => ImportArrival(
+    targetCut: targetCut,
+    canvasSize: size,
+    mint: mint,
+    source: source,
+    displayName: displayName,
+    projectFps: projectFps,
+  ).._cutId = _cutId;
 }
 
 /// The gate every media-file import passes, the id mint it passes it

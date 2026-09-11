@@ -46,7 +46,39 @@ void main() {
       [0, 2, 3],
       reason: 'the bake list is compressed — the index must survive it',
     );
-    expect(plan.assets, isEmpty, reason: 'rasterize registers nothing');
+    expect(plan.assets, isEmpty, reason: 'no file was named to register');
+  });
+
+  test('🚨rasterize REGISTERS its file too — the material of every placement '
+      'is a pool entry (유저 2026-09-11: 「구워도 풀에 남음」)', () {
+    final sequence = planSequenceLayer(
+      sourceFiles: const ['a.gif', 'a.gif'],
+      frameFingerprints: const ['A', 'B'],
+      displayName: 'a.gif',
+      cutId: const CutId('cut-1'),
+      fit: MediaFitMode.contain,
+      rasterize: true,
+      mint: mint(),
+      referencePath: 'C:/media/a.gif',
+    );
+    expect(
+      sequence.layer.mediaReference,
+      isNull,
+      reason: 'baked: nothing points at the file',
+    );
+    expect(sequence.assets.single.path, 'C:/media/a.gif');
+
+    final still = planStillImageLayer(
+      sourceFile: 'C:/media/b.png',
+      displayName: 'b.png',
+      cutId: const CutId('cut-1'),
+      duration: 24,
+      fit: MediaFitMode.contain,
+      rasterize: true,
+      mint: mint(),
+    );
+    expect(still.layer.mediaReference, isNull);
+    expect(still.assets.single.path, 'C:/media/b.png');
   });
 
   test('a sequence in REFERENCE mode registers one asset with the frame '

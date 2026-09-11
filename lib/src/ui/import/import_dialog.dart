@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -104,13 +105,17 @@ class _ImportDialogState extends State<ImportDialog> {
   /// Rows a cell press speaks for. Empty means "the row you pressed".
   final Set<String> _selected = {};
 
-  /// How wide the list is; the splitter moves it and the window remembers
-  /// it for as long as it is open.
-  double _tableWidth = 420;
+  /// How wide the list is once the splitter has moved it — null until then,
+  /// which means 「wide enough for its columns and a readable name」.
+  ///
+  /// It was a fixed 420px, and the fixed columns took 368 of it: the name
+  /// got 20px and did not show at all (유저 2026-09-11: 「이름은
+  /// 표시도안되고. 제대로 효율좋게 하자」).
+  double? _tableWidth;
 
   ImportFileSettings _settingsFor(String path) {
     final kind = mediaAssetKindForPath(path);
-    return resolvedImportSettings(
+    final resolved = resolvedImportSettings(
       // Untouched rows answer with their KIND's default — a movie starts
       // as a reference. Seeding here rather than in the constructor keeps
       // "what this kind does by default" one fact in one place.
@@ -119,6 +124,29 @@ class _ImportDialogState extends State<ImportDialog> {
       isPsd: importPathIsPsd(path),
       placing: _placing,
     );
+    // A file the pool already holds has answered the pool's question: the
+    // window does not ask it again, and no answer pressed here stands in
+    // for the pool's (유저 2026-09-11, 미디어 배치 라운드: 「풀에서
+    // 가져올때는 가 로 하자」 — 다시 묻지 않는다).
+    final pooled = _poolEntryFor(path);
+    return pooled == null
+        ? resolved
+        : resolved.copyWith(
+            mode: pooled.carried
+                ? ImportFileMode.keepInside
+                : ImportFileMode.reference,
+          );
+  }
+
+  /// The pool's entry for [path], or null for a file the pool has not seen.
+  MediaAsset? _poolEntryFor(String path) {
+    final key = normalizedMediaPath(path);
+    for (final asset in widget.session.mediaPool.mediaAssets) {
+      if (asset.path == key) {
+        return asset;
+      }
+    }
+    return null;
   }
 
   void _setSettings(
@@ -287,7 +315,7 @@ class _ImportDialogState extends State<ImportDialog> {
       if (!directory.existsSync()) {
         _parsed = null;
         _folderEntries = null;
-        _status = 'That folder is gone.';
+        _status = AppText.strings.imFolderGone;
         return;
       }
       try {
@@ -302,7 +330,7 @@ class _ImportDialogState extends State<ImportDialog> {
       } on FileSystemException catch (error) {
         _parsed = null;
         _folderEntries = null;
-        _status = 'Could not read the folder: ${error.message}';
+        _status = AppText.strings.imFolderUnreadable(error.message);
         return;
       }
     }
@@ -391,7 +419,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     setState(() {
       _running = true;
-      _status = 'Importing…';
+      _status = AppText.strings.imStatusImporting;
     });
     // Before anything registers: the session has to be holding the tokens
     // by the time a save writes them down, and this is the only moment
@@ -415,7 +443,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // fixing a problem must never duplicate what already landed.
       _files.removeWhere(tally.done.contains);
       _status = tally.warnings.isEmpty
-          ? 'Nothing imported.'
+          ? AppText.strings.imStatusNothing
           : tally.warnings.take(3).join(' · ');
     });
   }
@@ -459,7 +487,7 @@ class _ImportDialogState extends State<ImportDialog> {
       copyIntoProject: _copyIntoProject,
     );
     if (folderWarnings == null) {
-      tally.warnings.add('Could not read that folder.');
+      tally.warnings.add(AppText.strings.imCutFolderUnreadable);
       return;
     }
     tally.imported += 1;
@@ -486,8 +514,7 @@ class _ImportDialogState extends State<ImportDialog> {
       }
       if (_unplaceableKinds.contains(kind)) {
         tally.warnings.add(
-          '${mediaAssetDefaultName(path)}: ${kind!.jsonValue} placement '
-          'is not available yet.',
+          AppText.strings.imNotPlaceable(mediaAssetDefaultName(path)),
         );
         continue;
       }
@@ -496,7 +523,9 @@ class _ImportDialogState extends State<ImportDialog> {
       // doors go through. A cloud file arrives here as a placeholder
       // and would otherwise fail as if it were corrupt.
       if (await _readableForImport(path) == null) {
-        tally.warnings.add('${mediaAssetDefaultName(path)}: 파일을 읽지 못했습니다.');
+        tally.warnings.add(
+          AppText.strings.imUnreadable(mediaAssetDefaultName(path)),
+        );
         continue;
       }
       if (!mounted) {
@@ -521,15 +550,16 @@ class _ImportDialogState extends State<ImportDialog> {
       ok = await _placeThrough(path, kind, tally, failedPages);
     } on Object {
       tally.warnings.add(
-        '${mediaAssetDefaultName(path)} could not be opened — '
-        'corrupt or password-locked.',
+        AppText.strings.imCorrupt(mediaAssetDefaultName(path)),
       );
       return;
     }
     if (failedPages.isNotEmpty) {
       tally.warnings.add(
-        '${mediaAssetDefaultName(path)}: ${failedPages.length} '
-        'page(s) failed to render — their cels stay empty.',
+        AppText.strings.imPagesFailed(
+          mediaAssetDefaultName(path),
+          failedPages.length,
+        ),
       );
     }
     if (ok) {
@@ -550,7 +580,7 @@ class _ImportDialogState extends State<ImportDialog> {
   ) {
     final settings = _settingsFor(path);
     final carry = settings.mode == ImportFileMode.keepInside;
-    final bake = settings.mode == ImportFileMode.rasterize;
+    final bake = settings.bake;
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
@@ -567,7 +597,9 @@ class _ImportDialogState extends State<ImportDialog> {
         // it is instead of looking hung.
         onRenderProgress: (rendered, total) {
           if (mounted) {
-            setState(() => _status = 'Rendering PDF page $rendered/$total…');
+            setState(
+              () => _status = AppText.strings.imRenderingPdf(rendered, total),
+            );
           }
         },
         onPageRenderFailed: failedPages.add,
@@ -593,13 +625,13 @@ class _ImportDialogState extends State<ImportDialog> {
     ImportFileSettings settings,
   ) {
     if (kind == MediaAssetKind.pdf && PdfRenderService.availability != true) {
-      return '${mediaAssetDefaultName(path)}: no PDF renderer in this build.';
+      return AppText.strings.imNoPdfRenderer(mediaAssetDefaultName(path));
     }
     if (settings.into == ImportDestination.activeCutLayer &&
         widget.session.activeCutOrNull == null) {
-      return 'No active cut — pick "New cut" or leave the gap.';
+      return AppText.strings.imNoActiveCut;
     }
-    return 'Could not import ${mediaAssetDefaultName(path)}.';
+    return AppText.strings.imCouldNotImport(mediaAssetDefaultName(path));
   }
 
   /// Registers [paths] in as few undo steps as their answers allow: one
@@ -633,13 +665,11 @@ class _ImportDialogState extends State<ImportDialog> {
     final expanded = await session.importDoors.importPsdExpanded(
       path: path,
       destination: settings.into,
+      copyIntoProject: settings.mode == ImportFileMode.keepInside,
       fit: settings.fit,
     );
     if (expanded == null) {
-      warnings.add(
-        '${mediaAssetDefaultName(path)}: no layers to expand — import it '
-        'merged instead.',
-      );
+      warnings.add(AppText.strings.imPsdNoLayers(mediaAssetDefaultName(path)));
       return false;
     }
     warnings.addAll(expanded);
@@ -654,8 +684,8 @@ class _ImportDialogState extends State<ImportDialog> {
       // about one file, and the strip below already owns the word "Place"
       // for the question it asks.
       title: widget.placeOnly && _files.isNotEmpty
-          ? 'Place — ${mediaAssetDefaultName(_files.first)}'
-          : 'Import',
+          ? AppText.strings.imPlaceTitle(mediaAssetDefaultName(_files.first))
+          : AppText.strings.imImport,
       titleIcon: Icons.download_outlined,
       width: 760,
       height: 520,
@@ -739,9 +769,13 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The one batch-wide answer, and the only one that changes what the
   /// other questions mean — so it sits above them rather than among them.
   ///
-  /// Opened from the media pool it is pinned to the pool: registering
-  /// for later is what that panel is for, and a disabled chip says the
-  /// other door exists rather than hiding it.
+  /// A pill the window's source cannot use stays on screen, disabled, so
+  /// the other door is seen rather than hidden. Opened from the media
+  /// pool's ＋ it is pinned to the pool — registering for later is what that
+  /// panel is for. Opened on files the pool already holds (a pool row's
+  /// 「배치…」, a drag from the pool) it is pinned to the timeline (유저
+  /// 2026-09-11: 「미디어풀에 있던걸 타임라인 등 드래그앤드롭할때는
+  /// 플레이스의 풀을 비활성화」).
   Widget _placeStrip(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -750,7 +784,7 @@ class _ImportDialogState extends State<ImportDialog> {
           SizedBox(
             width: 46,
             child: Text(
-              'Place',
+              AppText.strings.imPlaceLabel,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -763,9 +797,12 @@ class _ImportDialogState extends State<ImportDialog> {
                   keyValue: 'import-place-pool',
                   label: AppText.strings.imPool,
                   selected: !_placing,
-                  onTap: _running
+                  onTap: _running || widget.placeOnly
                       ? null
                       : () => setState(() => _destination = null),
+                  tooltip: widget.placeOnly
+                      ? AppText.strings.imAlreadyPooledTooltip
+                      : null,
                 ),
                 ExportPillItem(
                   keyValue: 'import-place-timeline',
@@ -777,7 +814,7 @@ class _ImportDialogState extends State<ImportDialog> {
                           () => _destination = ImportDestination.activeCutLayer,
                         ),
                   tooltip: widget.poolOnly
-                      ? 'The media pool registers; place from the timeline.'
+                      ? AppText.strings.imPoolOnlyTooltip
                       : null,
                 ),
               ],
@@ -793,7 +830,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The split is draggable because the two halves are wanted in different
   /// amounts by different work: eight option columns want the room when a
   /// batch is being set up, and the picture wants it when one file is being
-  /// looked at.
+  /// looked at. Until it is dragged the list takes what its columns and a
+  /// readable name need; where the window cannot give it that, the list
+  /// scrolls sideways at that width instead of squeezing the name.
   Widget _twoZones(BuildContext context) {
     final previewPath = _selected.isNotEmpty
         ? _selected.last
@@ -801,17 +840,42 @@ class _ImportDialogState extends State<ImportDialog> {
     final settings = previewPath == null
         ? const ImportFileSettings()
         : _settingsFor(previewPath);
+    final rows = [for (final path in _files) _tableRow(path)];
+    final columns = _tableColumns();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxTable = constraints.maxWidth - 200;
-        final tableWidth = _tableWidth.clamp(
-          240.0,
-          maxTable < 240 ? 240.0 : maxTable,
+        final minTable = ImportFileTable.minimumWidth(
+          context,
+          rows: rows,
+          columns: columns,
         );
+        // The picture keeps 200 while the table can spare it, and never
+        // less than its own transport needs. Past that the TABLE yields: it
+        // is laid out narrower than its minimum and scrolls sideways inside
+        // rather than pushing this row over the window's edge.
+        final roomForTable = math.max(
+          0.0,
+          constraints.maxWidth -
+              DockEdgeSplitter.thickness -
+              ImportPreview.minimumWidth,
+        );
+        final maxTable = math.min(
+          math.max(minTable, constraints.maxWidth - 200),
+          roomForTable,
+        );
+        final narrowest = math.min(minTable, maxTable);
+        final tableWidth =
+            (_tableWidth ??
+                    ImportFileTable.preferredWidth(
+                      context,
+                      rows: rows,
+                      columns: columns,
+                    ))
+                .clamp(narrowest, maxTable);
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: tableWidth, child: _fileTable(context)),
+            SizedBox(width: tableWidth, child: _fileTable(rows, columns)),
             DockEdgeSplitter(
               axis: Axis.horizontal,
               tooltip: AppText.strings.commonResize,
@@ -851,102 +915,176 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// One row per file, one column per question (§3 of the round).
-  Widget _fileTable(BuildContext context) {
-    final placing = _placing;
-    return ImportFileTable(
-      key: const ValueKey<String>('import-file-table'),
-      enabled: !_running,
-      selected: _selected,
-      onRowTap: (path) => setState(() {
-        if (!_selected.remove(path)) {
-          _selected.add(path);
-        }
-      }),
-      rows: [
-        for (final path in _files)
-          ImportFileRow(
-            path: path,
-            name: mediaAssetDefaultName(path),
-            modified: _modifiedOf(path),
-            size: byteSizeLabel(_sizeOf(path)),
-          ),
-      ],
-      columns: [
-        ImportColumn<Object?>(
-          label: AppText.strings.imFile,
-          width: 62,
-          values: ImportFileMode.values,
-          labelOf: (value) => importModeLabel(value! as ImportFileMode),
-          valueOf: (path) => _settingsFor(path).mode,
-          appliesTo: (path) => true,
-          enabledFor: (path, value) => importModeAllowed(
-            kind: mediaAssetKindForPath(path),
-            mode: value! as ImportFileMode,
-            psdExpanding:
-                importPathIsPsd(path) &&
-                placing &&
-                _settingsFor(path).psd == PsdPlaceMode.expand,
-            placing: placing,
-            trimmed: _settingsFor(path).isTrimmed,
-          ),
-          onPick: (paths, value) => _setSettings(
-            paths,
-            (settings) => settings.copyWith(mode: value! as ImportFileMode),
-          ),
-        ),
-        ImportColumn<Object?>(
-          label: AppText.strings.imInto,
-          width: 68,
-          values: ImportDestination.values,
-          labelOf: (value) => importIntoLabel(value! as ImportDestination),
-          valueOf: (path) => _settingsFor(path).into,
-          // A pool registration is not a placement, and a movie has no
-          // placement to plan yet.
-          appliesTo: (path) =>
-              placing &&
-              !_unplaceableKinds.contains(mediaAssetKindForPath(path)) &&
-              mediaAssetKindForPath(path) != MediaAssetKind.audio,
-          enabledFor: (path, value) =>
-              value != ImportDestination.activeCutLayer ||
-              widget.session.activeCutOrNull != null,
-          onPick: (paths, value) => _setSettings(
-            paths,
-            (settings) => settings.copyWith(into: value! as ImportDestination),
-          ),
-        ),
-        ImportColumn<Object?>(
-          label: AppText.strings.imFit,
-          width: 62,
-          values: MediaFitMode.values,
-          labelOf: (value) => importFitLabel(value! as MediaFitMode),
-          valueOf: (path) => _settingsFor(path).fit,
-          appliesTo: (path) =>
-              placing && mediaAssetKindForPath(path) != MediaAssetKind.audio,
-          enabledFor: (path, value) => true,
-          onPick: (paths, value) => _setSettings(
-            paths,
-            (settings) => settings.copyWith(fit: value! as MediaFitMode),
-          ),
-        ),
-        ImportColumn<Object?>(
-          label: 'PSD',
-          width: 66,
-          values: PsdPlaceMode.values,
-          labelOf: (value) => (value! as PsdPlaceMode) == PsdPlaceMode.merge
-              ? 'Merge'
-              : 'Expand',
-          valueOf: (path) => _settingsFor(path).psd,
-          appliesTo: (path) => placing && importPathIsPsd(path),
-          enabledFor: (path, value) => true,
-          onPick: (paths, value) => _setSettings(
-            paths,
-            (settings) => settings.copyWith(psd: value! as PsdPlaceMode),
-          ),
-        ),
-      ],
+  /// A row names its file WITHOUT the extension, which it shows on its own:
+  /// the name is what gets cut short when room runs out, the extension never
+  /// is.
+  ImportFileRow _tableRow(String path) {
+    final name = mediaAssetDefaultName(path);
+    final dot = name.lastIndexOf('.');
+    return ImportFileRow(
+      path: path,
+      name: dot > 0 ? name.substring(0, dot) : name,
+      extension: dot > 0 ? name.substring(dot) : '',
+      modified: _modifiedOf(path),
+      size: byteSizeLabel(_sizeOf(path)),
     );
   }
+
+  /// One row per file, one column per question (§3 of the round).
+  Widget _fileTable(
+    List<ImportFileRow> rows,
+    List<ImportColumn<Object?>> columns,
+  ) => ImportFileTable(
+    key: const ValueKey<String>('import-file-table'),
+    enabled: !_running,
+    selected: _selected,
+    onRowTap: (path) => setState(() {
+      if (!_selected.remove(path)) {
+        _selected.add(path);
+      }
+    }),
+    rows: rows,
+    columns: columns,
+  );
+
+  /// The columns this window asks.
+  ///
+  /// 🚨ONE LAW: a column stands only when some row of THIS window has to
+  /// answer it (유저 2026-09-11, 미디어 배치 라운드 5: 「즉 필요없는것들
+  /// 안보이게 삭제해도됨」). Place, where the window was opened from and the
+  /// kinds in it decide that. A column coming and going with Place is the
+  /// user's own exception to the no-disappearing-UI rule, and it holds in
+  /// this window only (「이런건 예외야. 필요한 것만 보이게하려고」).
+  ///
+  /// ⚠️A value the CONTEXT answered — a new cut's 1:1, an expanded PSD's
+  /// bake, a pooled file's carry in a mixed batch — is not a reason to drop
+  /// its column: the column stays and the value shows locked (「1:1로
+  /// 고정시켜서 노출시키도록. 비활성화된상태로」). Only a question this
+  /// placement does not ask goes.
+  List<ImportColumn<Object?>> _tableColumns() {
+    final placing = _placing;
+    bool any(bool Function(String path) test) => _files.any(test);
+    return [
+      // The pool's question, asked only of a file the pool has not answered
+      // (「플레이스가 타임라인일땐 그냥 품기/참조인 그 열 자체를 삭제」 for
+      // pooled files, 「프로젝트의 임포트 버튼 … 품기/참조열 존재하도록」
+      // for new ones).
+      if (any((path) => _poolEntryFor(path) == null)) _fileColumn(),
+      // The layer's question, wherever something is placed (「플레이스가
+      // 타임라인이면 굽기열 만들기」).
+      if (any(
+        (path) => importBakeAllowed(
+          kind: mediaAssetKindForPath(path),
+          placing: placing,
+        ),
+      ))
+        _bakeColumn(placing),
+      if (placing && any(_placeable)) _intoColumn(),
+      if (placing && any(_placeable)) _fitColumn(placing),
+      // 「PSD가 아닌파일은 PSD열 삭제」.
+      if (placing && any(importPathIsPsd)) _psdColumn(placing),
+    ];
+  }
+
+  /// Whether this window places [path] at all: a sound is registered here,
+  /// and a movie waits for its decoder.
+  bool _placeable(String path) {
+    final kind = mediaAssetKindForPath(path);
+    return kind != MediaAssetKind.audio && !_unplaceableKinds.contains(kind);
+  }
+
+  ImportColumn<Object?> _fileColumn() => ImportColumn<Object?>(
+    id: 'file',
+    label: AppText.strings.imFile,
+    values: ImportFileMode.values,
+    labelOf: (value) => importModeLabel(value! as ImportFileMode),
+    valueOf: (path) => _settingsFor(path).mode,
+    appliesTo: (path) => true,
+    enabledFor: (path, value) {
+      // A pooled file in a mixed batch shows the pool's answer, locked.
+      if (_poolEntryFor(path) != null) {
+        return value == _settingsFor(path).mode;
+      }
+      return importModeAllowed(
+        mode: value! as ImportFileMode,
+        trimmed: _settingsFor(path).isTrimmed,
+      );
+    },
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(mode: value! as ImportFileMode),
+    ),
+  );
+
+  ImportColumn<Object?> _bakeColumn(bool placing) => ImportColumn<Object?>(
+    id: 'bake',
+    label: AppText.strings.imBake,
+    style: ImportColumnStyle.toggle,
+    values: const [false, true],
+    labelOf: (value) => importBakeLabel(value == true),
+    valueOf: (path) => _settingsFor(path).bake,
+    appliesTo: (path) => importBakeAllowed(
+      kind: mediaAssetKindForPath(path),
+      placing: placing,
+    ),
+    enabledFor: (path, value) =>
+        value == true ||
+        !importBakeLocked(
+          isPsd: importPathIsPsd(path),
+          placing: placing,
+          psd: _settingsFor(path).psd,
+        ),
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(bake: value == true),
+    ),
+  );
+
+  ImportColumn<Object?> _intoColumn() => ImportColumn<Object?>(
+    id: 'into',
+    label: AppText.strings.imInto,
+    values: ImportDestination.values,
+    labelOf: (value) => importIntoLabel(value! as ImportDestination),
+    valueOf: (path) => _settingsFor(path).into,
+    appliesTo: _placeable,
+    enabledFor: (path, value) =>
+        value != ImportDestination.activeCutLayer ||
+        widget.session.activeCutOrNull != null,
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(into: value! as ImportDestination),
+    ),
+  );
+
+  ImportColumn<Object?> _fitColumn(bool placing) => ImportColumn<Object?>(
+    id: 'fit',
+    label: AppText.strings.imFit,
+    values: MediaFitMode.values,
+    labelOf: (value) => importFitLabel(value! as MediaFitMode),
+    valueOf: (path) => _settingsFor(path).fit,
+    appliesTo: _placeable,
+    enabledFor: (path, value) =>
+        value == MediaFitMode.none ||
+        !importFitLocked(_settingsFor(path), placing: placing),
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(fit: value! as MediaFitMode),
+    ),
+  );
+
+  ImportColumn<Object?> _psdColumn(bool placing) => ImportColumn<Object?>(
+    id: 'psd',
+    label: 'PSD',
+    values: PsdPlaceMode.values,
+    labelOf: (value) => importPsdLabel(value! as PsdPlaceMode),
+    valueOf: (path) => _settingsFor(path).psd,
+    appliesTo: (path) => placing && importPathIsPsd(path),
+    enabledFor: (path, value) => true,
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(psd: value! as PsdPlaceMode),
+    ),
+  );
 
   /// Files this window cannot place — a movie, until there is a decoder.
   ///
@@ -997,10 +1135,10 @@ class _ImportDialogState extends State<ImportDialog> {
     final label = _folder != null
         ? _folder!
         : _files.isEmpty
-        ? 'No source selected'
+        ? AppText.strings.imNoSource
         : _files.length == 1
         ? _files.single
-        : '${_files.length} files';
+        : AppText.strings.imFileCount(_files.length);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
@@ -1157,7 +1295,9 @@ class _ImportDialogState extends State<ImportDialog> {
           // Every kind can be carried now, so a big MOVIE warns too — which
           // is the point: the ceiling that used to refuse it silently is
           // gone, and this sentence is what took its place.
-          if (_settingsFor(path).mode == ImportFileMode.keepInside &&
+          // A file the pool already holds costs nothing new here.
+          if (_poolEntryFor(path) == null &&
+              _settingsFor(path).mode == ImportFileMode.keepInside &&
               _sizeOf(path) >= largeCarriedAssetBytes)
             path,
       ];
@@ -1188,13 +1328,13 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final path in large.take(3))
         '${mediaAssetDefaultName(path)} (${byteSizeLabel(_sizeOf(path))})',
     ].join(', ');
-    final more = large.length > 3 ? ' and ${large.length - 3} more' : '';
+    final more = large.length > 3
+        ? AppText.strings.imAndMore(large.length - 3)
+        : '';
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        '${byteSizeLabel(total)} goes inside the project file — $named$more. '
-        'Carrying compresses each file as it comes in, so the project grows '
-        'by less than that. Reference leaves the originals where they are.',
+        AppText.strings.imLargeCarry(byteSizeLabel(total), named, more),
         key: const ValueKey<String>('import-large-carry-note'),
         style: Theme.of(context).textTheme.labelSmall!.copyWith(
           color: Theme.of(context).colorScheme.error,
@@ -1227,7 +1367,9 @@ class _ImportDialogState extends State<ImportDialog> {
             values: const [false, true],
             selected: _copyIntoProject,
             keyOf: (copy) => copy ? 'copy' : 'reference',
-            labelOf: (copy) => copy ? 'Keep inside' : 'Reference',
+            labelOf: (copy) => importModeLabel(
+              copy ? ImportFileMode.keepInside : ImportFileMode.reference,
+            ),
             onSelect: (copy) => setState(() => _copyIntoProject = copy),
           ),
           // ⛔Not a new caption — this line already existed and already
@@ -1241,10 +1383,8 @@ class _ImportDialogState extends State<ImportDialog> {
           // after carrying is smaller than the file that was imported.
           Text(
             _copyIntoProject
-                ? 'The project file holds these, compressed; the originals '
-                      'are left alone.'
-                : 'The files stay where they are and the project points '
-                      'at them.',
+                ? AppText.strings.imKeepExplain
+                : AppText.strings.imReferenceExplain,
             style: Theme.of(context).textTheme.labelSmall!.copyWith(
               color: Theme.of(context).colorScheme.outline,
             ),
@@ -1254,8 +1394,7 @@ class _ImportDialogState extends State<ImportDialog> {
           // §6-z22: a cut folder's cels are what you draw on next, so
           // the folder import always bakes — no toggle to mislead.
           Text(
-            'Cut folders always bake their cels; scans and movies '
-            'stay references.',
+            AppText.strings.imCutFolderBakes,
             style: Theme.of(context).textTheme.labelSmall!.copyWith(
               color: Theme.of(context).colorScheme.outline,
             ),
@@ -1267,11 +1406,7 @@ class _ImportDialogState extends State<ImportDialog> {
             values: MediaFitMode.values,
             selected: _fit,
             keyOf: (fit) => fit.jsonValue,
-            labelOf: (fit) => switch (fit) {
-              MediaFitMode.stretch => 'Stretch',
-              MediaFitMode.contain => 'Keep aspect',
-              MediaFitMode.none => '1:1',
-            },
+            labelOf: importFitLabel,
             onSelect: (fit) => setState(() => _fit = fit),
           ),
           const SizedBox(height: 10),
@@ -1302,9 +1437,9 @@ class _ImportDialogState extends State<ImportDialog> {
             selected: _parseConfig.revisionPolicy,
             keyOf: (policy) => policy.jsonValue,
             labelOf: (policy) => switch (policy) {
-              CelRevisionPolicy.latestOnly => 'Latest',
-              CelRevisionPolicy.all => 'All',
-              CelRevisionPolicy.originalOnly => 'Originals',
+              CelRevisionPolicy.latestOnly => AppText.strings.imRevLatest,
+              CelRevisionPolicy.all => AppText.strings.imRevAll,
+              CelRevisionPolicy.originalOnly => AppText.strings.imRevOriginals,
             },
             onSelect: (policy) => setState(() {
               _parseConfig = _parseConfig.copyWith(revisionPolicy: policy);

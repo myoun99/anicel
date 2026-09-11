@@ -40,12 +40,17 @@ class PsdExpansion {
     required this.layers,
     required this.cels,
     required this.warnings,
+    required this.canvas,
   });
 
   /// Bottom-first, folder rows above their members.
   final List<Layer> layers;
   final List<PsdExpandedCel> cels;
   final List<String> warnings;
+
+  /// The canvas the stack was laid out on — the document's own size when
+  /// the stack makes a NEW cut ([readPsdExpansion]'s `canvasFromDocument`).
+  final CanvasSize canvas;
 }
 
 /// Expands [bytes] into layers and cel surfaces, or null when the document
@@ -59,6 +64,7 @@ Future<PsdExpansion?> readPsdExpansion({
   required CanvasSize canvas,
   required MediaFitMode fit,
   required ImportIdMint mint,
+  bool canvasFromDocument = false,
 }) async {
   // Off the UI isolate: a layout PSD is routinely a hundred megabytes, and
   // its layer section is the expensive half.
@@ -66,12 +72,17 @@ Future<PsdExpansion?> readPsdExpansion({
   if (document.layers.isEmpty) {
     return null;
   }
+  // A NEW cut is made at the document's own size, which is only known once
+  // the header has been read — here.
+  final laidOn = canvasFromDocument
+      ? CanvasSize(width: document.width, height: document.height)
+      : canvas;
   final plan = planPsdExpansion(
     document: document,
     displayName: displayName,
     cutId: cutId,
     duration: duration,
-    canvas: canvas,
+    canvas: laidOn,
     fit: fit,
     mint: mint,
   );
@@ -98,7 +109,7 @@ Future<PsdExpansion?> readPsdExpansion({
           // stack that lines up in Photoshop.
           surface: await rasterizeImageToSurface(
             image: image,
-            canvas: canvas,
+            canvas: laidOn,
             fit: fit,
             placement: placement.rect,
           ),
@@ -115,5 +126,6 @@ Future<PsdExpansion?> readPsdExpansion({
     layers: plan.layers,
     cels: cels,
     warnings: plan.warnings,
+    canvas: laidOn,
   );
 }

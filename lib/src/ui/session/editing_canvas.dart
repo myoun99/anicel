@@ -230,9 +230,9 @@ class EditingCanvas {
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
   /// Reference layers null [Layer.mediaReference] (the pixels are already
-  /// the cels) and drop the asset registration when nothing else uses it
-  /// (§6-t); TEXT layers become plain animation rows — the parameters go,
-  /// the baked pixels stay, the brush unlocks (§6-s).
+  /// the cels) and their asset stays in the pool (유저 2026-09-11: 「구워도
+  /// 풀에 남음」); TEXT layers become plain animation rows — the parameters
+  /// go, the baked pixels stay, the brush unlocks (§6-s).
   bool get canRasterizeActiveLayer =>
       _selection.activeLayer?.mediaReference != null ||
       _selection.activeLayer?.kind == LayerKind.text;
@@ -250,26 +250,9 @@ class EditingCanvas {
     if (layer == null || reference == null || cutId == null) {
       return;
     }
-    // The asset survives when ANY OTHER layer still references its path
-    // (audio clips count through the ordinary reference check) — only
-    // the last referrer's rasterize unregisters (§6-t).
-    var othersReference = false;
-    outer:
-    for (final track in _project.repository.requireProject().tracks) {
-      for (final cut in track.cuts) {
-        for (final other in cut.layers) {
-          if (other.id != layer.id &&
-              other.mediaReference?.assetPath == reference.assetPath) {
-            othersReference = true;
-            break outer;
-          }
-        }
-      }
-    }
     _project.cutCommandCoordinator.rasterizeLayerReference(
       cutId: cutId,
       layerId: layer.id,
-      assetStillReferenced: othersReference,
     );
     _changes.refreshAfterCutCommand(preferredActiveLayerId: layer.id);
     _changes.notifyChanged();

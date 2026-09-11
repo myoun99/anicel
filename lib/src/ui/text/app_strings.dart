@@ -1026,6 +1026,74 @@ enum AppStrings {
       _s('imAndMore').replaceFirst('{n}', '$count');
   String get imRegisterInstead => _s('imRegisterInstead');
 
+  /// The placement strip and the window's title when it places one file, and
+  /// the words for a pill that cannot be used from where the window opened.
+  String get imPlaceLabel => _s('imPlaceLabel');
+  String imPlaceTitle(String name) =>
+      _s('imPlaceTitleTemplate').replaceAll('{name}', name);
+  String get imPoolOnlyTooltip => _s('imPoolOnlyTooltip');
+  String get imAlreadyPooledTooltip => _s('imAlreadyPooledTooltip');
+
+  /// The file table's answers. The file column is the POOL's question
+  /// (carry or link) and bake is the LAYER's (user 2026-09-11, round 5).
+  String get imModeKeep => _s('imModeKeep');
+  String get imModeReference => _s('imModeReference');
+  String get imBake => _s('imBake');
+  String get commonOn => _s('commonOn');
+  String get commonOff => _s('commonOff');
+  String get imFitContain => _s('imFitContain');
+  String get imFitStretch => _s('imFitStretch');
+  String get imIntoNewLayer => _s('imIntoNewLayer');
+  String get imIntoNewCut => _s('imIntoNewCut');
+  String get imPsdMerge => _s('imPsdMerge');
+  String get imPsdExpand => _s('imPsdExpand');
+
+  /// What the window says about its source and its run.
+  String get imNoSource => _s('imNoSource');
+  String imFileCount(int count) =>
+      _s('imFileCountTemplate').replaceAll('{n}', '$count');
+  String get imStatusImporting => _s('imStatusImporting');
+  String get imStatusNothing => _s('imStatusNothing');
+  String get imFolderGone => _s('imFolderGone');
+  String imFolderUnreadable(String reason) =>
+      _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
+  String get imCutFolderUnreadable => _s('imCutFolderUnreadable');
+  String get imNoActiveCut => _s('imNoActiveCut');
+  String imNotPlaceable(String name) =>
+      _s('imNotPlaceableTemplate').replaceAll('{name}', name);
+  String imUnreadable(String name) =>
+      _s('imUnreadableTemplate').replaceAll('{name}', name);
+  String imCorrupt(String name) =>
+      _s('imCorruptTemplate').replaceAll('{name}', name);
+  String imPagesFailed(String name, int count) => _s(
+    'imPagesFailedTemplate',
+  ).replaceAll('{name}', name).replaceAll('{n}', '$count');
+  String imNoPdfRenderer(String name) =>
+      _s('imNoPdfRendererTemplate').replaceAll('{name}', name);
+  String imCouldNotImport(String name) =>
+      _s('imCouldNotImportTemplate').replaceAll('{name}', name);
+  String imPsdNoLayers(String name) =>
+      _s('imPsdNoLayersTemplate').replaceAll('{name}', name);
+  String imRenderingPdf(int done, int total) => _s(
+    'imRenderingPdfTemplate',
+  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
+
+  /// The size warning — a WARNING, so it may be a sentence. '{files}' is the
+  /// named files and '{more}' the [imAndMore] tail.
+  String imLargeCarry(String total, String files, String more) =>
+      _s('imLargeCarryTemplate')
+          .replaceAll('{total}', total)
+          .replaceAll('{files}', files)
+          .replaceAll('{more}', more);
+
+  /// The cut-folder column's words.
+  String get imKeepExplain => _s('imKeepExplain');
+  String get imReferenceExplain => _s('imReferenceExplain');
+  String get imCutFolderBakes => _s('imCutFolderBakes');
+  String get imRevLatest => _s('imRevLatest');
+  String get imRevAll => _s('imRevAll');
+  String get imRevOriginals => _s('imRevOriginals');
+
   /// The media pool's states and its rename prompt.
   String get mpFileMissing => _s('mpFileMissing');
   String get mpLinkedOnSeRows => _s('mpLinkedOnSeRows');
@@ -1857,6 +1925,51 @@ enum AppStrings {
     'imAndMore': ' and {n} more',
     'imRegisterInstead': 'placement not available yet — register instead.',
     'imPickToSee': 'Pick files or a cut folder to see the interpretation.',
+    'imPlaceLabel': 'Place',
+    'imPlaceTitleTemplate': 'Place — {name}',
+    'imPoolOnlyTooltip': 'The media pool registers; place from the timeline.',
+    'imAlreadyPooledTooltip': 'Already in the media pool.',
+    'imModeKeep': 'Keep',
+    'imModeReference': 'Link',
+    'imBake': 'Rasterize',
+    'commonOn': 'On',
+    'commonOff': 'Off',
+    'imFitContain': 'Keep aspect',
+    'imFitStretch': 'Stretch',
+    'imIntoNewLayer': 'New layer',
+    'imIntoNewCut': 'New cut',
+    'imPsdMerge': 'Merge',
+    'imPsdExpand': 'Expand',
+    'imNoSource': 'No source selected',
+    'imFileCountTemplate': '{n} files',
+    'imStatusImporting': 'Importing…',
+    'imStatusNothing': 'Nothing imported.',
+    'imFolderGone': 'That folder is gone.',
+    'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
+    'imCutFolderUnreadable': 'Could not read that folder.',
+    'imNoActiveCut': 'No active cut — choose New cut.',
+    'imNotPlaceableTemplate': '{name}: placement is not available yet.',
+    'imUnreadableTemplate': '{name}: could not read the file.',
+    'imCorruptTemplate':
+        '{name} could not be opened — corrupt or password-locked.',
+    'imPagesFailedTemplate':
+        '{name}: {n} page(s) failed to render — their cels stay empty.',
+    'imNoPdfRendererTemplate': '{name}: no PDF renderer in this build.',
+    'imCouldNotImportTemplate': 'Could not import {name}.',
+    'imPsdNoLayersTemplate':
+        '{name}: no layers to expand — import it merged instead.',
+    'imRenderingPdfTemplate': 'Rendering PDF page {done}/{total}…',
+    'imLargeCarryTemplate':
+        '{total} goes inside the project file — {files}{more}. Keeping compresses each file as it comes in, so the project grows by less than that. Linking leaves the originals where they are.',
+    'imKeepExplain':
+        'The project file holds these, compressed; the originals are left alone.',
+    'imReferenceExplain':
+        'The files stay where they are and the project points at them.',
+    'imCutFolderBakes':
+        'Cut folders always bake their cels; scans and movies stay linked.',
+    'imRevLatest': 'Latest',
+    'imRevAll': 'All',
+    'imRevOriginals': 'Originals',
     'mpFileMissing': 'File missing — relink it',
     'mpLinkedOnSeRows': 'Linked on SE rows',
     'mpNameEmpty': 'Media name cannot be empty.',
@@ -2839,6 +2952,49 @@ enum AppStrings {
     'imAndMore': ' ほか{n}件',
     'imRegisterInstead': '配置はまだ未対応です — 登録だけ行います。',
     'imPickToSee': 'ファイルかカットフォルダを選ぶと解釈が出ます。',
+    'imPlaceLabel': '配置',
+    'imPlaceTitleTemplate': '配置 — {name}',
+    'imPoolOnlyTooltip': 'メディアプールは登録だけです。配置はタイムラインから行います。',
+    'imAlreadyPooledTooltip': 'すでにメディアプールにあります。',
+    'imModeKeep': '埋め込み',
+    'imModeReference': 'リンク',
+    'imBake': 'ラスタライズ',
+    'commonOn': 'オン',
+    'commonOff': 'オフ',
+    'imFitContain': 'アスペクト維持',
+    'imFitStretch': '引き伸ばし',
+    'imIntoNewLayer': '新規レイヤー',
+    'imIntoNewCut': '新規カット',
+    'imPsdMerge': '統合',
+    'imPsdExpand': '展開',
+    'imNoSource': 'ソースが選ばれていません',
+    'imFileCountTemplate': '{n}個のファイル',
+    'imStatusImporting': 'インポート中…',
+    'imStatusNothing': '何もインポートされませんでした。',
+    'imFolderGone': 'そのフォルダーは見つかりません。',
+    'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
+    'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
+    'imNoActiveCut': 'アクティブなカットがありません — 新規カットを選んでください。',
+    'imNotPlaceableTemplate': '{name}: 配置はまだ未対応です。',
+    'imUnreadableTemplate': '{name}: ファイルを読めませんでした。',
+    'imCorruptTemplate':
+        '{name} を開けませんでした — 破損しているか、パスワードで保護されています。',
+    'imPagesFailedTemplate':
+        '{name}: {n}ページを描画できませんでした — そのセルは空のままです。',
+    'imNoPdfRendererTemplate': '{name}: このビルドには PDF レンダラーがありません。',
+    'imCouldNotImportTemplate': '{name} をインポートできませんでした。',
+    'imPsdNoLayersTemplate':
+        '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
+    'imRenderingPdfTemplate': 'PDF ページを描画中 {done}/{total}…',
+    'imLargeCarryTemplate':
+        '{total} がプロジェクトファイルに入ります — {files}{more}。埋め込むときにファイルごとに圧縮するので、プロジェクトの増加はそれより小さくなります。リンクは元のファイルをその場所に残します。',
+    'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
+    'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
+    'imCutFolderBakes':
+        'カットフォルダーのセルは常にラスタライズされます。スキャンと動画はリンクのままです。',
+    'imRevLatest': '最新',
+    'imRevAll': 'すべて',
+    'imRevOriginals': '元の版',
     'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
     'mpLinkedOnSeRows': 'SE行にリンク済み',
     'mpNameEmpty': 'メディア名を入力してください。',
@@ -3843,6 +3999,45 @@ enum AppStrings {
     'imAndMore': ' 외 {n}개',
     'imRegisterInstead': '아직 배치할 수 없습니다 — 등록만 합니다.',
     'imPickToSee': '파일이나 컷 폴더를 고르면 해석이 나옵니다.',
+    'imPlaceLabel': '배치',
+    'imPlaceTitleTemplate': '배치 — {name}',
+    'imPoolOnlyTooltip': '미디어 풀은 등록만 합니다. 배치는 타임라인에서 합니다.',
+    'imAlreadyPooledTooltip': '이미 미디어 풀에 있습니다.',
+    'imModeKeep': '품기',
+    'imModeReference': '참조',
+    'imBake': '굽기',
+    'commonOn': '켬',
+    'commonOff': '끔',
+    'imFitContain': '비율 유지',
+    'imFitStretch': '늘이기',
+    'imIntoNewLayer': '새 레이어',
+    'imIntoNewCut': '새 컷',
+    'imPsdMerge': '합치기',
+    'imPsdExpand': '펼치기',
+    'imNoSource': '고른 소스가 없습니다',
+    'imFileCountTemplate': '파일 {n}개',
+    'imStatusImporting': '임포트하는 중…',
+    'imStatusNothing': '임포트된 것이 없습니다.',
+    'imFolderGone': '그 폴더가 없어졌습니다.',
+    'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
+    'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
+    'imNoActiveCut': '활성 컷이 없습니다 — 새 컷을 고르세요.',
+    'imNotPlaceableTemplate': '{name}: 아직 배치할 수 없습니다.',
+    'imUnreadableTemplate': '{name}: 파일을 읽지 못했습니다.',
+    'imCorruptTemplate': '{name}: 열 수 없습니다 — 손상됐거나 암호로 잠겨 있습니다.',
+    'imPagesFailedTemplate': '{name}: {n}쪽을 그리지 못했습니다 — 그 셀은 비어 있습니다.',
+    'imNoPdfRendererTemplate': '{name}: 이 빌드에는 PDF 렌더러가 없습니다.',
+    'imCouldNotImportTemplate': '{name}: 임포트하지 못했습니다.',
+    'imPsdNoLayersTemplate': '{name}: 펼칠 레이어가 없습니다 — 합치기로 가져오세요.',
+    'imRenderingPdfTemplate': 'PDF 쪽을 그리는 중 {done}/{total}…',
+    'imLargeCarryTemplate':
+        '{total} 가 프로젝트 파일 안에 들어갑니다 — {files}{more}. 품을 때 파일마다 압축하므로 프로젝트는 그보다 덜 커집니다. 참조는 원본을 그 자리에 둡니다.',
+    'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
+    'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
+    'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
+    'imRevLatest': '최신',
+    'imRevAll': '전부',
+    'imRevOriginals': '원본',
     'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
     'mpLinkedOnSeRows': 'SE 행에 연결됨',
     'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
@@ -4886,6 +5081,52 @@ enum AppStrings {
     'imPickToSee':
         'Choisissez des fichiers ou un dossier de plan pour voir '
         'l\'interprétation.',
+    'imPlaceLabel': 'Placer',
+    'imPlaceTitleTemplate': 'Placer — {name}',
+    'imPoolOnlyTooltip':
+        'Le pool de médias enregistre ; placez depuis la timeline.',
+    'imAlreadyPooledTooltip': 'Déjà dans le pool de médias.',
+    'imModeKeep': 'Intégrer',
+    'imModeReference': 'Lier',
+    'imBake': 'Pixelliser',
+    'commonOn': 'Oui',
+    'commonOff': 'Non',
+    'imFitContain': 'Proportions',
+    'imFitStretch': 'Étirer',
+    'imIntoNewLayer': 'Nouveau calque',
+    'imIntoNewCut': 'Nouveau plan',
+    'imPsdMerge': 'Fusionner',
+    'imPsdExpand': 'Développer',
+    'imNoSource': 'Aucune source',
+    'imFileCountTemplate': '{n} fichiers',
+    'imStatusImporting': 'Importation…',
+    'imStatusNothing': 'Rien n’a été importé.',
+    'imFolderGone': 'Ce dossier n’existe plus.',
+    'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
+    'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
+    'imNoActiveCut': 'Aucun plan actif — choisissez Nouveau plan.',
+    'imNotPlaceableTemplate': '{name} : placement pas encore disponible.',
+    'imUnreadableTemplate': '{name} : impossible de lire le fichier.',
+    'imCorruptTemplate':
+        '{name} n’a pas pu être ouvert — fichier corrompu ou protégé par mot de passe.',
+    'imPagesFailedTemplate':
+        '{name} : {n} page(s) non rendue(s) — elles restent vides.',
+    'imNoPdfRendererTemplate': '{name} : pas de moteur PDF dans cette version.',
+    'imCouldNotImportTemplate': 'Impossible d’importer {name}.',
+    'imPsdNoLayersTemplate':
+        '{name} : aucun calque à développer — importez-le fusionné.',
+    'imRenderingPdfTemplate': 'Rendu de la page PDF {done}/{total}…',
+    'imLargeCarryTemplate':
+        '{total} entrent dans le fichier du projet — {files}{more}. L’intégration compresse chaque fichier à l’arrivée : le projet grossit donc de moins. Lier laisse les originaux où ils sont.',
+    'imKeepExplain':
+        'Le fichier du projet les contient, compressés ; les originaux restent intacts.',
+    'imReferenceExplain':
+        'Les fichiers restent où ils sont et le projet pointe vers eux.',
+    'imCutFolderBakes':
+        'Les dossiers de plan pixellisent toujours leurs images ; scans et vidéos restent liés.',
+    'imRevLatest': 'Dernière',
+    'imRevAll': 'Toutes',
+    'imRevOriginals': 'Originaux',
     'mpFileMissing': 'Fichier introuvable — reliez-le',
     'mpLinkedOnSeRows': 'Lié aux lignes SE',
     'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
@@ -5846,6 +6087,45 @@ enum AppStrings {
     'imAndMore': ' 等{n}个',
     'imRegisterInstead': '暂不支持放置 — 仅登记。',
     'imPickToSee': '选择文件或镜头文件夹即可查看解析。',
+    'imPlaceLabel': '放置',
+    'imPlaceTitleTemplate': '放置 — {name}',
+    'imPoolOnlyTooltip': '媒体池只登记；请从时间轴放置。',
+    'imAlreadyPooledTooltip': '已在媒体池中。',
+    'imModeKeep': '内嵌',
+    'imModeReference': '链接',
+    'imBake': '栅格化',
+    'commonOn': '开',
+    'commonOff': '关',
+    'imFitContain': '保持比例',
+    'imFitStretch': '拉伸',
+    'imIntoNewLayer': '新图层',
+    'imIntoNewCut': '新镜头',
+    'imPsdMerge': '合并',
+    'imPsdExpand': '展开',
+    'imNoSource': '未选择来源',
+    'imFileCountTemplate': '{n} 个文件',
+    'imStatusImporting': '正在导入…',
+    'imStatusNothing': '没有导入任何内容。',
+    'imFolderGone': '该文件夹已不存在。',
+    'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
+    'imCutFolderUnreadable': '无法读取该文件夹。',
+    'imNoActiveCut': '没有活动镜头 — 请选择新镜头。',
+    'imNotPlaceableTemplate': '{name}：暂不支持放置。',
+    'imUnreadableTemplate': '{name}：无法读取文件。',
+    'imCorruptTemplate': '无法打开 {name} — 文件已损坏或受密码保护。',
+    'imPagesFailedTemplate': '{name}：{n} 页渲染失败 — 这些页保持空白。',
+    'imNoPdfRendererTemplate': '{name}：此版本没有 PDF 渲染器。',
+    'imCouldNotImportTemplate': '无法导入 {name}。',
+    'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
+    'imRenderingPdfTemplate': '正在渲染 PDF 页面 {done}/{total}…',
+    'imLargeCarryTemplate':
+        '{total} 将放入项目文件 — {files}{more}。内嵌时会逐个压缩，所以项目增加的大小会更小。链接会让原文件留在原处。',
+    'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
+    'imReferenceExplain': '文件保留在原处，项目指向它们。',
+    'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',
+    'imRevLatest': '最新',
+    'imRevAll': '全部',
+    'imRevOriginals': '原件',
     'mpFileMissing': '文件缺失 — 请重新链接',
     'mpLinkedOnSeRows': '已链接到 SE 行',
     'mpNameEmpty': '媒体名称不能为空。',

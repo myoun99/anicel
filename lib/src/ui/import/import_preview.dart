@@ -12,8 +12,8 @@ import '../../services/media/video_decode_worker.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/checkered_picture.dart';
 import '../widgets/transport_bar.dart';
-import '../repaint_props.dart';
 
 /// The import window's right-hand zone: the selected file, and the bar that
 /// walks through it.
@@ -47,6 +47,13 @@ class ImportPreview extends StatefulWidget {
   /// control that lies, so the ends are shown only where they bite: a
   /// multi-frame source being PLACED.
   final bool rangeEditable;
+
+  /// The narrowest this zone lays out: the transport's own minimum inside
+  /// the inset around it. The window gives the file table the rest.
+  static double get minimumWidth =>
+      2 * _transportInset + TransportBar.minimumWidth();
+
+  static const double _transportInset = 8;
 
   @override
   State<ImportPreview> createState() => _ImportPreviewState();
@@ -314,13 +321,24 @@ class _ImportPreviewState extends State<ImportPreview> {
         Expanded(child: _stage(source.picture)),
         const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+          padding: const EdgeInsets.fromLTRB(
+            ImportPreview._transportInset,
+            7,
+            ImportPreview._transportInset,
+            8,
+          ),
           child: _transport(source.frameCount),
         ),
       ],
     );
   }
 
+  /// The picture in its 16:9 well, over the app's ONE transparency checker —
+  /// the export preview's own shape, shared (유저 2026-09-11: 「임포트의
+  /// 미리보기에서 배경이 투명한파일은 출력창의 미리보기에서 쓰는 …
+  /// 격자무늬 그대로 공용화해서 재사용하도록」). It used to draw the file
+  /// straight onto the dark well, where open alpha and a dark picture look
+  /// the same.
   Widget _stage(ui.Image? picture) => ColoredBox(
     color: AppColors.backdrop,
     child: Padding(
@@ -330,12 +348,9 @@ class _ImportPreviewState extends State<ImportPreview> {
           aspectRatio: 16 / 9,
           child: picture == null
               ? const SizedBox.shrink()
-              : FittedBox(
-                  child: SizedBox(
-                    width: picture.width.toDouble(),
-                    height: picture.height.toDouble(),
-                    child: CustomPaint(painter: _FramePainter(picture)),
-                  ),
+              : CheckeredPicture(
+                  image: picture,
+                  checkerKey: const ValueKey<String>('import-preview-checker'),
                 ),
         ),
       ),
@@ -364,18 +379,4 @@ class _ImportPreviewState extends State<ImportPreview> {
           widget.onRangeChanged(start, end >= frameCount - 1 ? null : end),
     );
   }
-}
-
-class _FramePainter extends CustomPainter with RepaintOnProps {
-  const _FramePainter(this.image);
-
-  final ui.Image image;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawImage(image, Offset.zero, Paint());
-  }
-
-  @override
-  Object get props => (image,);
 }

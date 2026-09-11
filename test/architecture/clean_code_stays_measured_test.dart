@@ -11,7 +11,21 @@ import '../../tool/refactor/clean_code_scan.dart';
 /// ceiling so the ratchet keeps its bite. ⛔Not a reason to split for
 /// the score — the cognitive-complexity round said why.
 void main() {
-  const wideSignatures = 378;
+  /// ⚠️378 → 380 on 2026-09-11, the offenders named as the rule above asks.
+  ///
+  /// The placement round added three and one left. `importedMediaAsset`
+  /// (ten) is the pool record's ONE spelling — the still, the sequence and
+  /// now the expanded PSD each built it by hand — and its parameters are
+  /// the record's own fields, which the record's constructor (excluded
+  /// here) takes as well. `ProjectImportDoors.importPsdExpanded` (five)
+  /// gained `copyIntoProject` because an expanded PSD registers in the pool
+  /// now, the parameter its image and PDF siblings already take.
+  /// `_ImportFileTableState._tableLine` (five) is the ONE line shape the
+  /// header and every row are laid out through — the fix for a header that
+  /// sat 16px off its rows — and its parameters are that line's four slots
+  /// and the widths they share. `importModeAllowed` left the list, down to
+  /// the two questions it still answers.
+  const wideSignatures = 380;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

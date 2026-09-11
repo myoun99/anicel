@@ -95,10 +95,17 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
       );
     });
 
     expect(warnings, isNotNull);
+    expect(
+      s.mediaPool.mediaAssets.single.name,
+      'BG_a12.psd',
+      reason: 'the stack is baked, and its FILE still registers (유저 '
+          '2026-09-11: 「구워도 풀에 남음」)',
+    );
     final after = s.activeCutOrNull!;
     final added = after.layers.where(
       (layer) => !cut.layers.any((before) => before.id == layer.id),
@@ -129,6 +136,11 @@ void main() {
     final undone = s.activeCutOrNull!;
     expect(undone.layers.length, layersBefore);
     expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'the registration rides the same undo',
+    );
+    expect(
       undone.layers.any((layer) => layer.name == 'BG_a12.psd'),
       isFalse,
     );
@@ -155,6 +167,7 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
       );
     });
 
@@ -173,12 +186,18 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: path,
         destination: ImportDestination.newCut,
+        copyIntoProject: false,
       );
     });
 
     final cuts = s.repository.requireProject().tracks.first.cuts;
     expect(cuts.length, cutsBefore + 1);
     final cut = cuts.firstWhere((c) => c.name == 'BG_a12.psd');
+    expect(
+      (cut.canvasSize.width, cut.canvasSize.height),
+      (8, 8),
+      reason: 'a NEW cut is made at the document\'s own size',
+    );
     expect(
       cut.layers.where((layer) => layer.kind == LayerKind.folder).length,
       2,

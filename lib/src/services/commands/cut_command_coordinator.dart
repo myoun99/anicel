@@ -623,12 +623,11 @@ class CutCommandCoordinator {
   }
 
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
-  /// already its cels — and unregisters the asset when this was its last
-  /// referrer. One undo step; no-op on non-reference layers.
+  /// already its cels. The asset stays in the pool (유저 2026-09-11: 「구워도
+  /// 풀에 남음」). One undo step; no-op on non-reference layers.
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
-    bool assetStillReferenced = false,
   }) {
     final layer = requireLayer(
       repository.requireProject(),
@@ -643,7 +642,6 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         layerId: layerId,
-        assetStillReferenced: assetStillReferenced,
       ),
     );
   }

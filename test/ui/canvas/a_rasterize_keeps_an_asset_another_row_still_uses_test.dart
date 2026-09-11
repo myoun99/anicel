@@ -57,8 +57,10 @@ void main() {
     return file.path;
   }
 
-  testWidgets('the asset survives while ANOTHER layer still references its '
-      'path, and goes with the last referrer', (tester) async {
+  testWidgets('the asset survives every rasterize — while ANOTHER layer '
+      'still references its path, and after the last one too (유저 '
+      '2026-09-11: 「구워도 풀에 남음」; it used to go with the last '
+      'referrer)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     await tester.runAsync(() async {
@@ -104,8 +106,8 @@ void main() {
     s.editingCanvas.rasterizeActiveLayer();
     expect(
       s.mediaPool.mediaAssets,
-      isEmpty,
-      reason: 'the LAST referrer takes the registration with it',
+      hasLength(1),
+      reason: 'a baked file is still the pool\'s to offer again',
     );
     await tester.pumpAndSettle();
   });

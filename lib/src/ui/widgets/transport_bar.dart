@@ -57,6 +57,14 @@ class TransportBar extends StatelessWidget {
   /// window has been dragged down to a tablet's width.
   final bool compact;
 
+  /// The narrowest the bar lays out with its range shown: the IN and OUT
+  /// readouts keep their width at either end, and only the buttons between
+  /// them scale down.
+  static double minimumWidth({bool compact = false}) =>
+      2 * _readoutWidth(compact);
+
+  static double _readoutWidth(bool compact) => compact ? 64 : 84;
+
   /// Whether IN and OUT are on offer at all.
   ///
   /// A range that cannot act on anything is a control that lies, and there
@@ -91,7 +99,7 @@ class TransportBar extends StatelessWidget {
           children: [
             if (showRange)
               SizedBox(
-                width: compact ? 64 : 84,
+                width: _readoutWidth(compact),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
@@ -174,7 +182,7 @@ class TransportBar extends StatelessWidget {
             ),
             if (showRange)
               SizedBox(
-                width: compact ? 64 : 84,
+                width: _readoutWidth(compact),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerRight,

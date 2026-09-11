@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
+import '../widgets/compact_switch.dart';
 import '../input/control_press_claim.dart';
 
 /// The import window's file list: one row per file, one COLUMN per question.
@@ -17,21 +20,34 @@ import '../input/control_press_claim.dart';
 /// A column's header is a button too: it applies one answer to every row,
 /// because setting twenty files one at a time is not a feature.
 
+/// How a column's cells are drawn.
+enum ImportColumnStyle {
+  /// A chip that opens the column's answers.
+  choice,
+
+  /// An on/off switch: the column's answers are `false` and `true`.
+  toggle,
+}
+
 /// One question, asked of every row.
 class ImportColumn<T> {
   const ImportColumn({
+    required this.id,
     required this.label,
-    required this.width,
     required this.values,
     required this.labelOf,
     required this.valueOf,
     required this.appliesTo,
     required this.enabledFor,
     required this.onPick,
+    this.style = ImportColumnStyle.choice,
   });
 
+  /// What the keys are built from — the same in every language, which the
+  /// [label] is not.
+  final String id;
   final String label;
-  final double width;
+  final ImportColumnStyle style;
 
   /// Every answer, in the order the popup lists them.
   final List<T> values;
@@ -44,8 +60,12 @@ class ImportColumn<T> {
   /// a dash rather than a value nobody chose.
   final bool Function(String path) appliesTo;
 
-  /// False for an answer this file cannot give. Shown, and dim: the row
-  /// says what is impossible instead of hiding that it was ever asked.
+  /// False for an answer this file cannot give. Shown, and dim, in the
+  /// popup: the row says what is impossible instead of hiding that it was
+  /// ever asked. A row left with ONE answer shows it LOCKED — the context
+  /// answered the question (a new cut's 1:1, an expanded PSD's bake), and
+  /// the answer stays on screen, disabled (유저 2026-09-11: 「1:1로
+  /// 고정시켜서 노출시키도록. 비활성화된상태로」).
   final bool Function(String path, T value) enabledFor;
 
   final void Function(Iterable<String> paths, T value) onPick;
@@ -55,12 +75,17 @@ class ImportFileRow {
   const ImportFileRow({
     required this.path,
     required this.name,
+    required this.extension,
     required this.modified,
     required this.size,
   });
 
   final String path;
+
+  /// The name WITHOUT its extension, which [extension] carries: the name is
+  /// what gets cut short when room runs out, the extension never is.
   final String name;
+  final String extension;
 
   /// Already formatted — the table does not know about dates or bytes.
   final String modified;
@@ -83,13 +108,139 @@ class ImportFileTable extends StatefulWidget {
   final ValueChanged<String> onRowTap;
   final bool enabled;
 
+  /// Below this much room a name is no longer READ, and the name is the
+  /// row's subject. The fixed columns used to take whatever they were given
+  /// and leave the name 20px (유저 2026-09-11: 「이름은 표시도안되고」).
+  static const double nameMinWidth = 120;
+
+  /// What a name is given when nothing asks the table to be narrower.
+  static const double namePreferredWidth = 200;
+
+  /// The scrollbar's lane. It is reserved beside the HEADER too: it used to
+  /// stand beside the rows only, so every fixed column of a row sat 16px
+  /// left of the header naming it (유저 2026-09-11: 「열끼리 길이 어긋났거든?
+  /// 크기랑 실제 크기 쪽이랑 규격이 달라」).
+  static const double laneWidth = 16;
+
+  static const double _sidePadding = 8;
+
+  /// The narrowest this table may be laid out: every column at its measured
+  /// width and the name still readable.
+  static double minimumWidth(
+    BuildContext context, {
+    required List<ImportFileRow> rows,
+    required List<ImportColumn<Object?>> columns,
+  }) => _ImportTableMetrics.of(
+    context,
+    rows: rows,
+    columns: columns,
+  ).tableWidthFor(nameMinWidth);
+
+  /// The width that gives the name [namePreferredWidth].
+  static double preferredWidth(
+    BuildContext context, {
+    required List<ImportFileRow> rows,
+    required List<ImportColumn<Object?>> columns,
+  }) => _ImportTableMetrics.of(
+    context,
+    rows: rows,
+    columns: columns,
+  ).tableWidthFor(namePreferredWidth);
+
   @override
   State<ImportFileTable> createState() => _ImportFileTableState();
 }
 
-class _ImportFileTableState extends State<ImportFileTable> {
-  static const double _rowHeight = 22;
+/// Every width and height the table is laid out with, MEASURED from the
+/// words it shows in the language it shows them. The columns used to be
+/// fixed pixel widths sized for English words; the header and the cells
+/// asked those numbers separately, and the name got what was left.
+class _ImportTableMetrics {
+  _ImportTableMetrics._({
+    required this.modifiedWidth,
+    required this.sizeWidth,
+    required this.columnWidths,
+    required this.rowHeight,
+  });
 
+  factory _ImportTableMetrics.of(
+    BuildContext context, {
+    required List<ImportFileRow> rows,
+    required List<ImportColumn<Object?>> columns,
+  }) {
+    final style =
+        Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final measured = <String, Size>{};
+    Size measure(String text) => measured.putIfAbsent(text, () {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final size = painter.size;
+      painter.dispose();
+      return size;
+    });
+    double widest(Iterable<String> texts) =>
+        texts.fold(0, (width, text) => math.max(width, measure(text).width));
+
+    final chipHeight = measure('Ag').height + 2 * chipPadV + 2 * chipBorder;
+    return _ImportTableMetrics._(
+      modifiedWidth:
+          widest([AppText.strings.imModified, for (final row in rows) row.modified]) +
+          gap,
+      sizeWidth:
+          widest([AppText.strings.imSize, for (final row in rows) row.size]) +
+          gap,
+      columnWidths: [
+        for (final column in columns)
+          math.max(
+                measure(column.label).width,
+                column.style == ImportColumnStyle.toggle
+                    ? switchWidth +
+                          switchGap +
+                          widest(column.values.map(column.labelOf))
+                    : widest(column.values.map(column.labelOf)) +
+                          2 * chipPadH +
+                          2 * chipBorder,
+              ) +
+              gap,
+      ],
+      // The row is the chip plus its own padding, so the chip is never
+      // cut: the row used to be a fixed 22px and its bordered chips lost
+      // their bottom edge.
+      rowHeight: math.max(chipHeight, switchHeight) + 2 * rowPadV,
+    );
+  }
+
+  static const double chipPadH = 6;
+  static const double chipPadV = 2;
+  static const double chipBorder = 1;
+  static const double rowPadV = 3;
+  static const double gap = 10;
+  static const double switchWidth = 34;
+  static const double switchHeight = 20;
+  static const double switchGap = 4;
+
+  final double modifiedWidth;
+  final double sizeWidth;
+  final List<double> columnWidths;
+  final double rowHeight;
+
+  double get _fixedWidth =>
+      modifiedWidth + sizeWidth + columnWidths.fold(0.0, (sum, w) => sum + w);
+
+  double tableWidthFor(double nameWidth) =>
+      2 * ImportFileTable._sidePadding +
+      nameWidth +
+      _fixedWidth +
+      ImportFileTable.laneWidth;
+}
+
+class _ImportFileTableState extends State<ImportFileTable> {
   final ScrollController _scroll = ScrollController();
 
   @override
@@ -122,12 +273,55 @@ class _ImportFileTableState extends State<ImportFileTable> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final metrics = _ImportTableMetrics.of(
+      context,
+      rows: widget.rows,
+      columns: widget.columns,
+    );
+    final minimum = metrics.tableWidthFor(ImportFileTable.nameMinWidth);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final table = _table(theme, metrics);
+        // Below the width that keeps every column and a readable name, the
+        // table scrolls sideways at that width instead of overflowing — the
+        // media pool's rule for its own rows (R10-①), in the same shape. A
+        // long translation or a large text scale is what brings it here.
+        if (!constraints.hasBoundedWidth || constraints.maxWidth >= minimum) {
+          return table;
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: minimum,
+            height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
+            child: table,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _table(ThemeData theme, _ImportTableMetrics metrics) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 5),
-          child: _headerCells(theme),
+        // The header stands in the SAME box as the rows — beside the lane —
+        // so its cells are laid out over exactly the width theirs are.
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  ImportFileTable._sidePadding,
+                  6,
+                  ImportFileTable._sidePadding,
+                  5,
+                ),
+                child: _headerCells(theme, metrics),
+              ),
+            ),
+            const SizedBox(width: ImportFileTable.laneWidth),
+          ],
         ),
         const Divider(height: 1),
         Expanded(
@@ -135,8 +329,11 @@ class _ImportFileTableState extends State<ImportFileTable> {
             builder: (context, constraints) => Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _rowList(theme)),
-                SizedBox(width: 16, child: _scrollbar(constraints)),
+                Expanded(child: _rowList(theme, metrics)),
+                SizedBox(
+                  width: ImportFileTable.laneWidth,
+                  child: _scrollbar(constraints, metrics),
+                ),
               ],
             ),
           ),
@@ -147,11 +344,14 @@ class _ImportFileTableState extends State<ImportFileTable> {
 
   /// One line of the table — the header and every row alike.
   ///
-  /// 🚨THE ALIGNMENT LAW LIVES HERE. The header and the row each used to
-  /// spell the same four cells with the same widths and the same
-  /// `for (column in columns)` tail; two copies of a column layout are two
-  /// chances for the header to stop sitting over the values it names.
-  Widget _tableLine({
+  /// 🚨THE ALIGNMENT LAW LIVES HERE, and in the box it is laid out in. The
+  /// header and the row each used to spell the same cells with the same
+  /// widths; two copies of a column layout are two chances for the header to
+  /// stop sitting over the values it names. One line was not enough on its
+  /// own: the header's line was laid out 16px wider than the rows', because
+  /// only the rows stood beside the scrollbar lane.
+  Widget _tableLine(
+    _ImportTableMetrics metrics, {
     required Widget name,
     required Widget modified,
     required Widget size,
@@ -159,27 +359,39 @@ class _ImportFileTableState extends State<ImportFileTable> {
   }) => Row(
     children: [
       Expanded(child: name),
-      SizedBox(width: _modifiedWidth, child: modified),
-      SizedBox(width: _sizeWidth, child: size),
-      for (final column in widget.columns)
-        SizedBox(width: column.width, child: cell(column)),
+      SizedBox(
+        width: metrics.modifiedWidth,
+        child: Padding(
+          padding: const EdgeInsets.only(left: _ImportTableMetrics.gap),
+          child: modified,
+        ),
+      ),
+      SizedBox(width: metrics.sizeWidth, child: size),
+      for (var index = 0; index < widget.columns.length; index += 1)
+        SizedBox(
+          width: metrics.columnWidths[index],
+          child: cell(widget.columns[index]),
+        ),
     ],
   );
-
-  static const double _modifiedWidth = 58;
-  static const double _sizeWidth = 52;
 
   TextStyle? _dimStyle(ThemeData theme) =>
       theme.textTheme.labelSmall?.copyWith(color: AppColors.textDim);
 
-  Widget _headerCells(ThemeData theme) {
+  Widget _headerCells(ThemeData theme, _ImportTableMetrics metrics) {
     final dim = _dimStyle(theme);
     return _tableLine(
-      name: Text(AppText.strings.commonNameField, style: dim),
-      modified: Text(AppText.strings.imModified, style: dim),
+      metrics,
+      name: Text(
+        AppText.strings.commonNameField,
+        style: dim,
+        overflow: TextOverflow.ellipsis,
+      ),
+      modified: Text(AppText.strings.imModified, style: dim, maxLines: 1),
       size: Text(
         AppText.strings.imSize,
         style: dim,
+        maxLines: 1,
         textAlign: TextAlign.right,
       ),
       cell: (column) => _HeaderButton(
@@ -190,36 +402,62 @@ class _ImportFileTableState extends State<ImportFileTable> {
     );
   }
 
-  Widget _rowList(ThemeData theme) => ListView.builder(
-    controller: _scroll,
-    padding: EdgeInsets.zero,
-    itemCount: widget.rows.length,
-    itemExtent: _rowHeight,
-    itemBuilder: (context, index) => _fileRow(theme, widget.rows[index]),
-  );
+  Widget _rowList(ThemeData theme, _ImportTableMetrics metrics) =>
+      ListView.builder(
+        controller: _scroll,
+        padding: EdgeInsets.zero,
+        itemCount: widget.rows.length,
+        itemExtent: metrics.rowHeight,
+        itemBuilder: (context, index) =>
+            _fileRow(theme, metrics, widget.rows[index]),
+      );
 
-  Widget _fileRow(ThemeData theme, ImportFileRow row) {
+  Widget _fileRow(
+    ThemeData theme,
+    _ImportTableMetrics metrics,
+    ImportFileRow row,
+  ) {
     final dim = _dimStyle(theme);
     final isSelected = widget.selected.contains(row.path);
     final tap = widget.enabled ? () => widget.onRowTap(row.path) : null;
     return ControlPressClaim(
       onPressed: tap,
       child: InkWell(
-        key: ValueKey<String>('import-row-${row.name}'),
+        key: ValueKey<String>('import-row-${row.name}${row.extension}'),
         onTap: silentPress(tap),
         child: Container(
           color: isSelected ? AppColors.accent.withValues(alpha: 0.14) : null,
-          padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+          padding: const EdgeInsets.fromLTRB(
+            ImportFileTable._sidePadding,
+            _ImportTableMetrics.rowPadV,
+            ImportFileTable._sidePadding,
+            _ImportTableMetrics.rowPadV,
+          ),
           child: _tableLine(
-            name: Text(
-              row.name,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: isSelected ? AppColors.accent : null,
-              ),
+            metrics,
+            name: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    row.name,
+                    key: ValueKey<String>('import-name-${row.path}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: isSelected ? AppColors.accent : null,
+                    ),
+                  ),
+                ),
+                Text(row.extension, maxLines: 1, style: dim),
+              ],
             ),
-            modified: Text(row.modified, style: dim),
-            size: Text(row.size, style: dim, textAlign: TextAlign.right),
+            modified: Text(row.modified, style: dim, maxLines: 1),
+            size: Text(
+              row.size,
+              style: dim,
+              maxLines: 1,
+              textAlign: TextAlign.right,
+            ),
             cell: (column) => _OptionCell(
               column: column,
               path: row.path,
@@ -232,18 +470,22 @@ class _ImportFileTableState extends State<ImportFileTable> {
     );
   }
 
-  Widget _scrollbar(BoxConstraints constraints) => AppScrollbar(
-    axis: Axis.vertical,
-    offset: _scroll.hasClients ? _scroll.offset : 0,
-    viewportExtent: constraints.maxHeight,
-    contentExtent: widget.rows.length * _rowHeight,
-    onOffsetChanged: (offset) {
-      if (_scroll.hasClients) {
-        _scroll.jumpTo(offset);
-      }
-    },
-  );
+  Widget _scrollbar(BoxConstraints constraints, _ImportTableMetrics metrics) =>
+      AppScrollbar(
+        axis: Axis.vertical,
+        offset: _scroll.hasClients ? _scroll.offset : 0,
+        viewportExtent: constraints.maxHeight,
+        contentExtent: widget.rows.length * metrics.rowHeight,
+        onOffsetChanged: (offset) {
+          if (_scroll.hasClients) {
+            _scroll.jumpTo(offset);
+          }
+        },
+      );
 }
+
+/// The key a column's answer goes by: the enum's name, or the value itself.
+String _optionKey(Object? value) => value is Enum ? value.name : '$value';
 
 class _HeaderButton extends StatelessWidget {
   const _HeaderButton({
@@ -259,39 +501,28 @@ class _HeaderButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // A header speaks for every row, so an answer only some of them can give
+    // is still offered — the ones that cannot will resolve it away, and the
+    // cells will say so.
+    final open = enabled
+        ? () => _openColumnPopup(
+            context,
+            column: column,
+            targets: paths,
+            enabledFor: (value) => true,
+            current: null,
+          )
+        : null;
     return ControlPressClaim(
-      onPressed: enabled
-          ? () => _openColumnPopup(
-              context,
-              column: column,
-              targets: paths,
-              // A header speaks for every row, so an answer only some of
-              // them can give is still offered — the ones that cannot will
-              // resolve it away, and the cells will say so.
-              enabledFor: (value) => true,
-              current: null,
-            )
-          : null,
+      onPressed: open,
       child: InkWell(
-        key: ValueKey<String>('import-column-${column.label}'),
-        onTap: silentPress(
-          enabled
-              ? () => _openColumnPopup(
-                  context,
-                  column: column,
-                  targets: paths,
-                  // A header speaks for every row, so an answer only some of
-                  // them can give is still offered — the ones that cannot will
-                  // resolve it away, and the cells will say so.
-                  enabledFor: (value) => true,
-                  current: null,
-                )
-              : null,
-        ),
+        key: ValueKey<String>('import-column-${column.id}'),
+        onTap: silentPress(open),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 1),
           child: Text(
             column.label,
+            maxLines: 1,
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall?.copyWith(
               color: enabled ? AppColors.textDim : theme.disabledColor,
@@ -319,20 +550,21 @@ class _OptionCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final key = ValueKey<String>('import-cell-${column.id}-$path');
     if (!column.appliesTo(path)) {
       // Keyed like any other cell: "this question does not apply here" is a
       // state of the cell, not the absence of one.
       return Text(
         '—',
-        key: ValueKey<String>('import-cell-${column.label}-$path'),
+        key: key,
         textAlign: TextAlign.center,
         style: theme.textTheme.labelSmall?.copyWith(color: theme.disabledColor),
       );
     }
     final value = column.valueOf(path);
-    // A value the file was FORCED to (an expanded PSD is baked) is shown,
-    // and shown quiet: it is the answer, and it is not one the user can
-    // change here.
+    // A value the file was FORCED to (an expanded PSD is baked, a new cut is
+    // 1:1) is shown, and shown quiet: it is the answer, and it is not one
+    // the user can change here.
     //
     // 🪦The example used to be「a movie is never carried」. That ceiling
     // died 2026-08-14 — a movie's carry chip is a CHOICE now, starting on
@@ -342,50 +574,66 @@ class _OptionCell extends StatelessWidget {
             .where((option) => column.enabledFor(path, option))
             .length <=
         1;
+    final press = !enabled || locked
+        ? null
+        : column.style == ImportColumnStyle.toggle
+        ? () => column.onPick(targets, value != true)
+        : () => _openColumnPopup(
+            context,
+            column: column,
+            targets: targets,
+            enabledFor: (option) => column.enabledFor(path, option),
+            current: value,
+          );
+    final wordStyle = theme.textTheme.labelSmall?.copyWith(
+      color: locked ? theme.disabledColor : null,
+    );
     return Center(
       child: ControlPressClaim(
-        onPressed: enabled && !locked
-            ? () => _openColumnPopup(
-                context,
-                column: column,
-                targets: targets,
-                enabledFor: (option) => column.enabledFor(path, option),
-                current: value,
-              )
-            : null,
+        onPressed: press,
         child: InkWell(
-          key: ValueKey<String>('import-cell-${column.label}-$path'),
+          key: key,
           // The app's own corner, not a circular one: a cell is a well cut
           // into the row, and every well in this app wears the same shape.
           customBorder: AppShapes.container(AppShapes.wellRadius),
-          onTap: silentPress(
-            enabled && !locked
-                ? () => _openColumnPopup(
-                    context,
-                    column: column,
-                    targets: targets,
-                    enabledFor: (option) => column.enabledFor(path, option),
-                    current: value,
-                  )
-                : null,
-          ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: ShapeDecoration(
-              shape: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(
-                  color: locked ? theme.dividerColor : AppColors.hairlineStrong,
+          onTap: silentPress(press),
+          child: column.style == ImportColumnStyle.toggle
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CompactSwitch(
+                      value: value == true,
+                      // The claim above fires the toggle; the switch keeps
+                      // only its looks (enabled, or disabled when locked).
+                      onChanged: locked || !enabled ? null : (_) {},
+                      width: _ImportTableMetrics.switchWidth,
+                      height: _ImportTableMetrics.switchHeight,
+                    ),
+                    const SizedBox(width: _ImportTableMetrics.switchGap),
+                    Text(column.labelOf(value), style: wordStyle),
+                  ],
+                )
+              : Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _ImportTableMetrics.chipPadH,
+                    vertical: _ImportTableMetrics.chipPadV,
+                  ),
+                  decoration: ShapeDecoration(
+                    shape: AppShapes.container(
+                      AppShapes.wellRadius,
+                      side: BorderSide(
+                        color: locked
+                            ? theme.dividerColor
+                            : AppColors.hairlineStrong,
+                      ),
+                    ),
+                  ),
+                  child: Text(
+                    column.labelOf(value),
+                    maxLines: 1,
+                    style: wordStyle,
+                  ),
                 ),
-              ),
-            ),
-            child: Text(
-              column.labelOf(value),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: locked ? theme.disabledColor : null,
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -401,38 +649,58 @@ void _openColumnPopup(
   required Object? current,
 }) {
   final rows = column.values;
-  unawaited(showAnchoredPopup<void>(
-    context,
-    label: column.label,
-    width: 132,
-    height: 8.0 + rows.length * 24,
-    builder: (context, close) => Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final value in rows)
-          _PopupRow(
-            label: column.labelOf(value),
-            selected: value == current,
-            enabled: enabledFor(value),
-            onTap: () {
-              column.onPick(targets, value);
-              close();
-            },
-          ),
-      ],
+  final style = Theme.of(context).textTheme.labelSmall;
+  var widest = 0.0;
+  for (final value in rows) {
+    final painter = TextPainter(
+      text: TextSpan(text: column.labelOf(value), style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    widest = math.max(widest, painter.width);
+    painter.dispose();
+  }
+  unawaited(
+    showAnchoredPopup<void>(
+      context,
+      label: column.label,
+      width: math.max(132, widest + 2 * _PopupRow.padH + 8),
+      height: 8.0 + rows.length * _PopupRow.height,
+      builder: (context, close) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final value in rows)
+            _PopupRow(
+              keyValue: 'import-option-${column.id}-${_optionKey(value)}',
+              label: column.labelOf(value),
+              selected: value == current,
+              enabled: enabledFor(value),
+              onTap: () {
+                column.onPick(targets, value);
+                close();
+              },
+            ),
+        ],
+      ),
     ),
-  ));
+  );
 }
 
 class _PopupRow extends StatelessWidget {
   const _PopupRow({
+    required this.keyValue,
     required this.label,
     required this.selected,
     required this.enabled,
     required this.onTap,
   });
 
+  static const double height = 24;
+  static const double padH = 8;
+
+  final String keyValue;
   final String label;
   final bool selected;
   final bool enabled;
@@ -441,18 +709,20 @@ class _PopupRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tap = enabled ? onTap : null;
     return ControlPressClaim(
-      onPressed: enabled ? onTap : null,
+      onPressed: tap,
       child: InkWell(
-        key: ValueKey<String>('import-option-$label'),
-        onTap: silentPress(enabled ? onTap : null),
+        key: ValueKey<String>(keyValue),
+        onTap: silentPress(tap),
         child: Container(
-          height: 24,
+          height: height,
           alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: padH),
           color: selected ? AppColors.accent.withValues(alpha: 0.18) : null,
           child: Text(
             label,
+            maxLines: 1,
             style: theme.textTheme.labelSmall?.copyWith(
               color: !enabled
                   ? theme.disabledColor
