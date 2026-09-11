@@ -172,7 +172,10 @@ class MovieCelHydrator {
       final surface = await rasterizeImageToSurface(
         image: image,
         canvas: canvas,
-        fit: _fitOf(_project.repository.requireProject().mediaAssets, path),
+        fit: mediaFitModeFor(
+          _project.repository.requireProject().mediaAssets,
+          path,
+        ),
       );
       _decoded[at] = WeakReference(surface);
       return surface;
@@ -189,15 +192,6 @@ class MovieCelHydrator {
         : (reader: reader, token: opened.token, info: opened.info);
   }
 
-  /// The fit the file was placed with — the pool entry records it.
-  static MediaFitMode _fitOf(List<MediaAsset> pool, String path) {
-    for (final asset in pool) {
-      if (asset.path == path) {
-        return asset.fitMode;
-      }
-    }
-    return MediaFitMode.contain;
-  }
 
   /// Closes every movie this opened, each by the reader that opened it.
   Future<void> dispose() async {

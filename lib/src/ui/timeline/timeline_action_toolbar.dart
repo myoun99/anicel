@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
@@ -16,6 +18,7 @@ import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
+import 'rasterize_reference_rows.dart';
 import 'timeline_section_policy.dart';
 import 'toolbar_panel_context.dart';
 import '../../services/cel_pixel_overwrite.dart';
@@ -455,7 +458,10 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.layerRasterizeLabel,
         icon: Icons.texture_outlined,
         enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
-        onSelected: session.editingCanvas.rasterizeActiveLayer,
+        // A movie reference is decoded frame by frame behind the wait
+        // window ([rasterizeActiveRow]); every other row is the session's
+        // own verb, unchanged.
+        onSelected: () => unawaited(rasterizeActiveRow(context, session)),
       ),
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
       // the SE row's Name Tag lane group, so the entry would only lead

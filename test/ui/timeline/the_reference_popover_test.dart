@@ -12,12 +12,17 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 
+import '../../helpers/fake_video_backend.dart';
+import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
 
 void main() {
@@ -102,6 +107,47 @@ void main() {
   String buttonLabel(WidgetTester tester) => tester
       .widget<Text>(find.descendant(of: rasterize, matching: find.byType(Text)))
       .data!;
+
+  /// A session with a [frameCount]-frame take placed as a reference from
+  /// [inFrame] — its block is what is left of the file — and the playback
+  /// warmer held, so the only decoding is the bake's own.
+  Future<(EditorSessionManager, LayerId)> movieSession(
+    WidgetTester tester, {
+    int frameCount = 24,
+    int inFrame = 4,
+  }) async {
+    debugVideoDecodeBackend = FakeVideoBackend(frameCount: frameCount);
+    addTearDown(() => debugVideoDecodeBackend = null);
+    final s = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      audioConformStore: soundConformStore(),
+    );
+    addTearDown(s.dispose);
+    await tester.runAsync(() async {
+      final path = '${tempDir.path}${Platform.pathSeparator}take.mov';
+      await File(path).writeAsBytes(const [0, 0, 0, 24]);
+      await s.importDoors.importVideoFile(
+        path: path,
+        settings: ImportFileSettings(
+          mode: ImportFileMode.reference,
+          sound: false,
+          inFrame: inFrame,
+        ),
+      );
+    });
+    return (s, s.requireActiveCut.layers.firstWhere(isMovieReference).id);
+  }
+
+  /// The decode runs in `runAsync`; its answers land on the pumps after —
+  /// which carry the clock too, so the window's own timers run out.
+  Future<void> settle(WidgetTester tester, bool Function() done) async {
+    for (var tries = 0; tries < 300 && !done(); tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
 
   testWidgets('one row: its file beside its POOL state, and the one cel it '
       'bakes (「bg_street.png · 참조」 · 「래스터라이즈 · 1장」)', (tester) async {
@@ -193,6 +239,47 @@ void main() {
           'what a press does to the selection itself is not the rule\'s to '
           'say (the user did not), so the bake leaves it alone',
     );
+  });
+
+  testWidgets('a MOVIE row counts what the bake would LEAVE — a cel per '
+      'position of its block, not the one held cel it shows them with', (
+    tester,
+  ) async {
+    final (s, movie) = await movieSession(tester);
+    await openOn(tester, s, movie);
+
+    expect(current(s, movie).frames, hasLength(1), reason: 'the premise');
+    expect(buttonLabel(tester), 'Rasterize layer · 20 cels');
+  });
+
+  testWidgets('pressing it puts the decode behind the WAIT WINDOW, and the '
+      'row comes back as cels', (tester) async {
+    final (s, movie) = await movieSession(
+      tester,
+      frameCount: 6,
+      inFrame: 0,
+    );
+    await openOn(tester, s, movie);
+
+    final waitWindow = find.byKey(
+      const ValueKey<String>('movie-rasterize-progress'),
+    );
+    await tester.tap(rasterize);
+    await tester.pump();
+    expect(
+      waitWindow,
+      findsOneWidget,
+      reason: 'the one window heavy work waits behind',
+    );
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, movie).mediaReference == null,
+    );
+    expect(current(s, movie).frames, hasLength(6));
+    await tester.pumpAndSettle();
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',

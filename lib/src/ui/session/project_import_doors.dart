@@ -6,6 +6,7 @@
 // layer, land it, then bake its pixels — and the first of those is now
 // [ImportLanding] rather than a copy each.
 
+import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui' as ui show Image, ImageByteFormat;
 
@@ -13,10 +14,17 @@ import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../models/media_reference.dart';
+import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/timeline_coverage.dart';
+import '../../models/timeline_exposure.dart';
+import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
@@ -211,7 +219,7 @@ class ProjectImportDoors {
         cutId,
         layer,
         bakes,
-        spot: spot,
+        rowId: _rowOf(spot),
         pictureOf: (bake, _) async =>
             (image: decoded[bake.sourceFrameIndex].image, owned: false),
       );
@@ -461,7 +469,7 @@ class ProjectImportDoors {
         cutId,
         layer,
         bakes,
-        spot: spot,
+        rowId: _rowOf(spot),
         onProgress: onRenderProgress,
         // The bake counts within the SPAN; the document counts from its
         // first page.
@@ -522,18 +530,7 @@ class ProjectImportDoors {
     }
     try {
       final info = opened.info;
-      final project = _project.repository.requireProject();
-      final clock = MovieClock(
-        projectRate: _frameRate(),
-        audioSpeed: (
-          numerator: project.audioSpeedNumerator,
-          denominator: project.audioSpeedDenominator,
-        ),
-        movieRate: (
-          numerator: info.fpsNumerator,
-          denominator: info.fpsDenominator,
-        ),
-      );
+      final clock = _movieClock(info);
       final kept = KeptSpan(
         length: clock.projectFramesCovering(info.frameCount),
         inFrame: settings.inFrame,
@@ -628,28 +625,12 @@ class ProjectImportDoors {
         arrival.cutId,
         layer,
         bakes,
-        spot: spot,
+        rowId: _rowOf(spot),
         onProgress: onRenderProgress,
         // One frame the reader refuses leaves its cel empty and is
         // reported — never an abort into a half-baked import.
         onFailed: (bake) => onFrameRenderFailed?.call(bake.sourceFrameIndex),
-        pictureOf: (bake, _) async {
-          final rgba = await videoDecodeBackend.frame(
-            opened.token,
-            bake.sourceFrameIndex,
-          );
-          if (rgba == null) {
-            throw StateError(
-              'Movie frame ${bake.sourceFrameIndex} did not decode.',
-            );
-          }
-          final image = await decodeStraightRgbaImage(
-            rgba: rgba,
-            width: info.width,
-            height: info.height,
-          );
-          return (image: image, owned: true);
-        },
+        pictureOf: (bake, _) => _moviePicture(opened.token, info, bake),
       );
       return true;
     } finally {
@@ -657,11 +638,185 @@ class ProjectImportDoors {
     }
   }
 
+  /// RASTERIZE a movie kept as a reference (§6-f; the video spec the user
+  /// approved on 2026-09-11): every position of its block becomes a cel —
+  /// one per movie frame the sound's clock shows there, consecutive
+  /// duplicates folded into held exposure (「중복 접기」, the fold the
+  /// placement window's bake uses) — the reference is let go of, and the
+  /// pool entry stays (「구워도 풀에 남음」).
+  ///
+  /// ⚠️HERE rather than beside [RasterizeLayerReferenceCommand], because
+  /// this is where a movie's pixels come in: the reader, the sound's clock,
+  /// the duplicate fold and the bake tail are all this file's already, and
+  /// a second set of them is what this file exists to prevent. A reference
+  /// to anything else stays that command's — a still's one cel IS its
+  /// pixels, with nothing to decode.
+  Future<bool> rasterizeMovieReference({
+    required CutId cutId,
+    required LayerId layerId,
+    void Function(int rendered, int total)? onRenderProgress,
+    void Function(int movieFrame)? onFrameRenderFailed,
+  }) async {
+    final cut = _project.cutById(cutId);
+    if (cut == null) {
+      return false;
+    }
+    final rows = cut.layers.where((candidate) => candidate.id == layerId);
+    if (rows.isEmpty) {
+      return false;
+    }
+    final layer = rows.first;
+    final reference = layer.mediaReference;
+    if (reference == null || !isMovieReference(layer)) {
+      return false;
+    }
+    final blocks = drawingBlocks(layer.timeline);
+    if (blocks.length != 1) {
+      // A movie reference is ONE block by construction — every reshaping
+      // verb stands its row down until this verb has run.
+      return false;
+    }
+    final opened = await videoDecodeBackend.open(reference.assetPath);
+    if (opened == null) {
+      return false;
+    }
+    try {
+      await _bakeMovieRowIntoCels(
+        cutId: cutId,
+        layer: layer,
+        reference: reference,
+        block: blocks.single,
+        opened: opened,
+        onRenderProgress: onRenderProgress,
+        onFrameRenderFailed: onFrameRenderFailed,
+      );
+      return true;
+    } finally {
+      await videoDecodeBackend.close(opened.token);
+    }
+  }
+
+  /// The sound's clock for a movie the decoder has answered about: the
+  /// project's rate, the audio speed's accumulated pull and the file's own
+  /// rate — ONE answer for the door that places a movie and the verb that
+  /// rasterizes one, which have to agree or a bake would land on different
+  /// frames than the reference showed.
+  MovieClock _movieClock(QaVideoInfo info) {
+    final project = _project.repository.requireProject();
+    return MovieClock(
+      projectRate: _frameRate(),
+      audioSpeed: (
+        numerator: project.audioSpeedNumerator,
+        denominator: project.audioSpeedDenominator,
+      ),
+      movieRate: (
+        numerator: info.fpsNumerator,
+        denominator: info.fpsDenominator,
+      ),
+    );
+  }
+
+  /// The bake [rasterizeMovieReference] runs once it holds the row, its one
+  /// block and the open movie: the positions become cels on the sound's
+  /// clock, the structure lands as ONE undo step, and the pixels follow it
+  /// through the tail every picture door bakes through.
+  Future<void> _bakeMovieRowIntoCels({
+    required CutId cutId,
+    required Layer layer,
+    required MediaReference reference,
+    required TimelineDrawingBlock block,
+    required ({int token, QaVideoInfo info}) opened,
+    void Function(int rendered, int total)? onRenderProgress,
+    void Function(int movieFrame)? onFrameRenderFailed,
+  }) async {
+    final info = opened.info;
+    final clock = _movieClock(info);
+    final movieFrames = [
+      for (var position = 0; position < block.length; position += 1)
+        clock.movieFrameAt(position + reference.frameOffset),
+    ];
+    final plan = planSequenceLayer(
+      sourceFiles: List<String>.filled(
+        movieFrames.length,
+        reference.assetPath,
+      ),
+      frameFingerprints: movieFrames,
+      sourceFrameIndices: movieFrames,
+      displayName: layer.name,
+      cutId: cutId,
+      // The fit the file was PLACED with, so the cels land exactly where
+      // the reference's pictures stood ([mediaFitModeFor]).
+      fit: mediaFitModeFor(_pool.mediaAssets, reference.assetPath),
+      rasterize: true,
+      mint: _landing.idMint(),
+      assetKind: MediaAssetKind.video,
+      sourceFps: info.fps,
+    );
+    // ⛔`plan.assets` is dropped: the pool entry is already there, and it
+    // stays there — baking does not unregister a file.
+    final rasterized = layer.copyWith(
+      frames: plan.layer.frames,
+      timeline: SplayTreeMap<int, TimelineExposure>.of({
+        for (final entry in plan.layer.timeline.entries)
+          entry.key + block.startIndex: entry.value,
+      }),
+      mediaReference: null,
+    );
+    // ONE undo step for the structure — the cels, their exposure and the
+    // reference let go of — through the edit funnel every timeline change
+    // uses. The pixels follow it, as a landed import's do.
+    _project.historyManager.execute(
+      UpdateLayerTimelineCommand(
+        repository: _project.repository,
+        before: layer,
+        after: rasterized,
+      ),
+    );
+    await _bakeLandedCels(
+      cutId,
+      rasterized,
+      plan.bakes,
+      // The planned layer was only a shape to fold by: the cels are THIS
+      // row's, under its own id.
+      rowId: layer.id,
+      onProgress: onRenderProgress,
+      // One frame the reader refuses leaves its cel empty and is reported
+      // — never an abort into a half-rasterized row.
+      onFailed: (bake) => onFrameRenderFailed?.call(bake.sourceFrameIndex),
+      pictureOf: (bake, _) => _moviePicture(opened.token, info, bake),
+    );
+  }
+
+  /// One movie frame as a picture — the same read for the door that PLACES
+  /// a movie baked and the verb that RASTERIZES one placed as a reference.
+  Future<({ui.Image image, bool owned})> _moviePicture(
+    int token,
+    QaVideoInfo info,
+    PlannedCelBake bake,
+  ) async {
+    final rgba = await videoDecodeBackend.frame(token, bake.sourceFrameIndex);
+    if (rgba == null) {
+      throw StateError('Movie frame ${bake.sourceFrameIndex} did not decode.');
+    }
+    final image = await decodeStraightRgbaImage(
+      rgba: rgba,
+      width: info.width,
+      height: info.height,
+    );
+    return (image: image, owned: true);
+  }
+
+  /// The row a [spot] names, when it names one — frames let go of on a
+  /// row are that row's cels.
+  LayerId? _rowOf(ImportLayerSpot? spot) =>
+      spot is RowFramesSpot ? spot.layerId : null;
+
   /// Bakes a landed import's cels and hands the session the row to stand
   /// on — the TAIL every picture door shares (a still or a GIF, a PDF's
-  /// pages, a movie's frames). Frames dropped on a row ([spot]) are that
-  /// row's cels, so their pixels are keyed under it rather than under the
-  /// [layer] that was only planned. A picture for each bake comes from
+  /// pages, a movie's frames). Cels that belong to a row ALREADY on the
+  /// sheet ([rowId] — frames dropped on it, or a movie rasterized where it
+  /// stands) are keyed under that row rather than under the [layer] that
+  /// was only planned. A picture for each bake comes from
   /// [pictureOf], given the cut's canvas; it is rasterized there with the
   /// bake's fit and donated through the ordinary cel path. [onProgress]
   /// counts every bake, made or not.
@@ -671,14 +826,14 @@ class ProjectImportDoors {
   /// a half-baked import is one the window would retry as a duplicate.
   /// Without it the throw is the caller's.
   ///
-  /// ⛔ONE TAIL, THREE DOORS. The still/GIF door and the PDF door each wrote
-  /// it out — the cut, the loop, the row to stand on — and the movie door
-  /// was the third.
+  /// ⛔ONE TAIL, FOUR DOORS. The still/GIF door and the PDF door each wrote
+  /// it out — the cut, the loop, the row to stand on — the movie door was
+  /// the third, and rasterizing a movie in place is the fourth.
   Future<void> _bakeLandedCels(
     CutId cutId,
     Layer layer,
     List<PlannedCelBake> bakes, {
-    required ImportLayerSpot? spot,
+    required LayerId? rowId,
     required Future<({ui.Image image, bool owned})> Function(
       PlannedCelBake bake,
       CanvasSize canvas,
@@ -687,7 +842,6 @@ class ProjectImportDoors {
     void Function(int done, int total)? onProgress,
     void Function(PlannedCelBake bake)? onFailed,
   }) async {
-    final rowId = spot is RowFramesSpot ? spot.layerId : null;
     // Pixels bake AFTER the structure exists: the keys resolve the owner
     // track through the inserted cut.
     final cut = _project.cutById(cutId);

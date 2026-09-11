@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -7,6 +9,7 @@ import '../input/control_press_claim.dart';
 import '../media/media_asset_pool_state.dart';
 import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
+import 'rasterize_reference_rows.dart';
 
 /// The reference button's popover (유저 2026-09-11, 미디어 배치 라운드 3~6):
 /// the button does not bake — it opens this, and the bake is the one button
@@ -73,16 +76,18 @@ class _LayerReferencePopover extends StatelessWidget {
         if (targets.isEmpty) {
           return const SizedBox.shrink();
         }
-        return _body(targets);
+        return _body(context, targets);
       },
     );
   }
 
-  Widget _body(List<Layer> targets) {
+  Widget _body(BuildContext context, List<Layer> targets) {
     final strings = AppText.strings;
+    // What the bake would LEAVE: a still's cels are already its own, a
+    // movie's are one per position of its block ([rasterizeCelCount]).
     final cels = targets.fold<int>(
       0,
-      (sum, layer) => sum + layer.frames.length,
+      (sum, layer) => sum + rasterizeCelCount(layer),
     );
     // ⛔No `Material` of its own — the anchored popup carries the window.
     return Padding(
@@ -106,9 +111,9 @@ class _LayerReferencePopover extends StatelessWidget {
                 '${strings.exCelCount(cels)}',
             onPressed: () {
               close();
-              session.editingCanvas.rasterizeLayerReferences([
-                for (final layer in targets) layer.id,
-              ]);
+              // A movie is decoded frame by frame behind the wait window;
+              // rows whose pixels are already cels land at once.
+              unawaited(rasterizeReferenceRows(context, session, targets));
             },
           ),
         ],
