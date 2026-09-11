@@ -53,3 +53,16 @@ Map<String, BrushHandSettings> brushHandSettingsBankFromJson(
     if (entry.value is Map<String, dynamic>)
       entry.key: Map<String, Object?>.of(entry.value as Map<String, dynamic>),
 };
+
+/// The bank once an older one — the file the last session left — arrives
+/// under [live]: every brush [saved] remembers, except where [live] already
+/// holds something.
+///
+/// ⚠️WHAT THE HAND SET SINCE THE APP OPENED WINS. A size set in the first
+/// second of a session is the newer fact, and the bank on disk is older than
+/// it by definition; a late load that wrote over it would put the file's
+/// value back under the hand (H25-again).
+Map<String, BrushHandSettings> brushHandSettingsRecalled({
+  required Map<String, BrushHandSettings> live,
+  required Map<String, BrushHandSettings> saved,
+}) => {...saved, ...live};

@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_hand_settings.dart'
+    show brushHandSettingsRecalled;
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -197,6 +199,24 @@ void main() {
       await store.save(bank);
 
       expect(await store.load(), bank);
+    });
+
+    test('⚠️a bank that lands late gives way to what the hand set since the '
+        'app opened', () {
+      final recalled = brushHandSettingsRecalled(
+        live: {
+          'sketch': {'size': 5.0},
+        },
+        saved: {
+          'sketch': {'size': 13.0},
+          'ink': {'flow': 0.3},
+        },
+      );
+
+      expect(recalled, {
+        'sketch': {'size': 5.0},
+        'ink': {'flow': 0.3},
+      }, reason: 'the newer fact wins; the older one fills only what is new');
     });
 
     test('🚨a bank written before H25-again reads as an overlay — its three '

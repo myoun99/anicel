@@ -25,6 +25,7 @@ import '../models/project.dart'
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
+import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';

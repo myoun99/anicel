@@ -236,19 +236,21 @@ class _WorkspaceBrushPresets {
     ),
   );
 
-  /// Reads what the hand left on each brush in the last session.
-  ///
-  /// ⚠️What the hand set since the app opened WINS — `putIfAbsent`, not
-  /// `addAll`: a size set in the first second of a session is the newer
-  /// fact, and the bank on disk is older than it by definition.
+  /// Reads what the hand left on each brush in the last session — giving
+  /// way to anything the hand has set since the app opened
+  /// ([brushHandSettingsRecalled]).
   Future<void> recallHandSettings() async {
     final saved = await _brushHandSettingsStore.load();
     if (!_state.mounted) {
       return;
     }
-    for (final entry in saved.entries) {
-      _brushHandSettings.putIfAbsent(entry.key, () => entry.value);
-    }
+    final recalled = brushHandSettingsRecalled(
+      live: _brushHandSettings,
+      saved: saved,
+    );
+    _brushHandSettings
+      ..clear()
+      ..addAll(recalled);
   }
 
   void _applyPreset(BrushPreset preset) {
