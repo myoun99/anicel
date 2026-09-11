@@ -154,6 +154,38 @@ void main() {
     expect(store.movieCelBytes, cost);
   });
 
+  test('a picture is counted per TILE it holds — the one measure the hot '
+      'drawings are counted by too', () {
+    BitmapSurface twoTiles(int seed) => BitmapSurface(
+      canvasSize: const CanvasSize(width: 16, height: 8),
+      tileSize: 8,
+      tiles: {
+        for (var x = 0; x < 2; x += 1)
+          TileCoord(x: x, y: 0): BitmapTile(
+            size: 8,
+            pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, seed),
+          ),
+      },
+    );
+    final store = BrushFrameStore()..installMovieCel(key(0), picture(1));
+    final oneTile = store.movieCelBytes;
+
+    store.installMovieCel(key(1), twoTiles(2));
+    expect(store.movieCelBytes, 3 * oneTile);
+
+    store.storeBakedSurface(
+      const BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('ink'),
+        frameId: FrameId('drawn'),
+      ),
+      twoTiles(3),
+    );
+    expect(store.hotBakedBytes, 2 * oneTile);
+  });
+
   test('a picture drawn from is used: it outlives one that was not', () {
     final store = BrushFrameStore()..installMovieCel(key(0), picture(1));
     store

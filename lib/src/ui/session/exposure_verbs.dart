@@ -66,15 +66,16 @@ class ExposureVerbs {
 
   /// Whether an X can blank [layer]'s exposure at all.
   ///
-  /// ⛔ONE PREDICATE FOR THE BAND AND THE PLAYHEAD. SYNCED attach rows have
-  /// no timing of their own (the base owns it); free attach rows cut
-  /// exposures like any drawing layer (UI-R21 #3). SINGLE-CEL (image) rows
-  /// hold one covering block by definition — an X-here would be reverted
-  /// by the covering normalization.
-  static bool _blankable(Layer layer) =>
-      layer.kind.holdsDrawings &&
-      !layer.kind.holdsSingleCel &&
-      !isSyncedAttachedLayer(layer);
+  /// ⛔ONE PREDICATE FOR THE BAND AND THE PLAYHEAD — and the X-here is one
+  /// of the reshaping verbs the retime law answers for
+  /// ([ChangeSink.standsDownFromRetime]), so the rows that stand down are
+  /// asked there, not listed again here: SYNCED attach rows (the base owns
+  /// the timing), SINGLE-CEL image rows (the covering normalization would
+  /// revert the X) and a MOVIE kept as a reference (a gap would restart the
+  /// movie). Free attach rows cut exposures like any drawing layer
+  /// (UI-R21 #3).
+  bool _blankable(Layer layer) =>
+      layer.kind.holdsDrawings && !_changes.standsDownFromRetime(layer.id);
 
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;

@@ -58,6 +58,10 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
   final live = beginRoles.selection.frameRangeSelection.value;
   if (!isDrawingBlock ||
       live == null ||
+      // A row that reshapes never — a movie kept as a reference — is left
+      // out of the selection's retime, so a grip on it trims its own block
+      // alone rather than retiming every other row and not it.
+      roles.changes.standsDownFromRetime(grip.layerId) ||
       !live.coversLayer(grip.layerId) ||
       !live.contains(grip.blockStartIndex)) {
     return null;

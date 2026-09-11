@@ -31,7 +31,8 @@ class _TimelineExposureEdge {
 
   /// The largest applicable portion of [delta] for an edge shift:
   /// shrinking stops at length 1, and start-edge growth stops when the
-  /// pushed chain would cross frame 0. Growth toward the open end is
+  /// pushed chain would cross frame 0 — or, for a MOVIE kept as a
+  /// reference, at the file's first frame. Growth toward the open end is
   /// unlimited.
   int clampExposureEdgeDelta({
     required Layer layer,
@@ -58,11 +59,15 @@ class _TimelineExposureEdge {
           return delta > length - 1 ? length - 1 : delta;
         }
         // Grow backward: limited by the room the preceding glued/pushed
-        // chain has before frame 0.
-        final maxGrow = _controller._startEdgeGrowRoom(
+        // chain has before frame 0 — and a movie's head by the frames of
+        // the file before its in point ([_referenceAfterEdge]).
+        final room = _controller._startEdgeGrowRoom(
           layer.timeline,
           blockStartIndex: blockStartIndex,
         );
+        final maxGrow = isMovieReference(layer)
+            ? math.min(room, layer.mediaReference!.frameOffset)
+            : room;
         return delta < -maxGrow ? -maxGrow : delta;
     }
   }
@@ -95,9 +100,32 @@ class _TimelineExposureEdge {
     );
     // Live preview keeps the ghosts following the dragged run (UI-R8).
     return rederiveRunBehaviors(
-      layer.copyWith(timeline: nextTimeline),
+      layer.copyWith(
+        timeline: nextTimeline,
+        mediaReference: _referenceAfterEdge(layer, edge, clampedDelta),
+      ),
       cutFrameCount: _controller._cutFrameCount(),
     );
+  }
+
+  /// A MOVIE kept as a reference counts its positions from its block's
+  /// start plus [MediaReference.frameOffset] — so a HEAD trim moves the
+  /// file's in point by exactly what the start moved, and every frame left
+  /// shows what it showed (the video spec the user approved, 2026-09-11: a
+  /// reference block trims at both ends, and its head trim moves the in
+  /// point). A tail trim, and every other row, keep theirs.
+  static MediaReference? _referenceAfterEdge(
+    Layer layer,
+    TimelineBlockEdge edge,
+    int delta,
+  ) {
+    final reference = layer.mediaReference;
+    if (reference == null ||
+        edge != TimelineBlockEdge.start ||
+        !isMovieReference(layer)) {
+      return reference;
+    }
+    return reference.copyWith(frameOffset: reference.frameOffset + delta);
   }
 
   void shiftExposureEdge({

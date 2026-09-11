@@ -9,6 +9,8 @@ import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/media_reference.dart';
+import '../models/movie_cel.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;

@@ -47,6 +47,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/media_asset.dart'
     show MediaAssetKind, mediaAssetKindForPath, normalizedMediaPath;
+import '../models/movie_cel.dart' show isMovieReference;
 import '../services/import/import_layer_spot.dart';
 import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
@@ -1160,6 +1161,8 @@ class EditorSessionManager extends ChangeNotifier
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
     ),
+    // The guard in [_hydrateShownMovieCels] is the belt and this the braces
+    // — the same pair as the lane range above.
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
@@ -2270,8 +2273,10 @@ class EditorSessionManager extends ChangeNotifier
   @override
   bool blockMoveEligible(LayerId layerId) {
     // FREE attach rows move blocks like any drawing layer (UI-R21 #3) —
-    // only the SYNCED ones stand down, which the shared law knows.
-    if (standsDownFromRetime(layerId) || isTrackSeLayerId(layerId)) {
+    // only the SYNCED ones stand down, which the shared law knows. Its
+    // MOVING half only: a movie kept as a reference moves whole
+    // ([standsDownFromRetime] says why it reshapes never).
+    if (_timingIsNotItsOwn(layerId) || isTrackSeLayerId(layerId)) {
       return false;
     }
     final layer = layerById(layerId);
@@ -2595,9 +2600,28 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// Both are ID-gated: the synced-block UI stopped marking mirror entries
   /// ghost, so the non-ghost block scans downstream no longer exclude them.
+  ///
+  /// A MOVIE kept as a reference stands down too, for its own reason: its
+  /// positions count from its block's start, so a split, a gap or a squeeze
+  /// would restart or skip the movie — its timing goes per-frame only once
+  /// it is rasterized (the video spec the user approved, 2026-09-11). It is
+  /// the one row whose timing IS its own to MOVE — whole, and trimmed at
+  /// either end — so [blockMoveEligible] asks [_timingIsNotItsOwn], not
+  /// this.
   @override
   bool standsDownFromRetime(LayerId layerId) =>
-      folders.isSyncedAttachedLayerId(layerId) || rowSpans.isSingleCelLayerId(layerId);
+      _timingIsNotItsOwn(layerId) || _playsAMovie(layerId);
+
+  /// The rows whose timing is somebody else's: a synced attach row follows
+  /// its base, and an image row's one block is pinned.
+  bool _timingIsNotItsOwn(LayerId layerId) =>
+      folders.isSyncedAttachedLayerId(layerId) ||
+      rowSpans.isSingleCelLayerId(layerId);
+
+  bool _playsAMovie(LayerId layerId) {
+    final layer = layerById(layerId);
+    return layer != null && isMovieReference(layer);
+  }
 
   /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
   /// 버튼 그냥 하나로. 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고,
