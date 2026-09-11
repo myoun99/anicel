@@ -14,6 +14,16 @@ import 'package:ffi/ffi.dart';
 /// Entry-count AND byte-budgeted (R19-8K): a full-canvas fill stamp at
 /// 8000² is 256MB — four of those resident was a 1GB RSS bomb. The
 /// newest entry always survives even when it alone exceeds the budget.
+///
+/// 🚨THE SOURCE IS HELD WEAKLY, and its copy goes when it does
+/// (2026-09-11, C-ipad-crash). The keys were a `LinkedHashMap.identity()`,
+/// and a map holds its keys: every buffer ever uploaded stayed alive in
+/// Dart until the LRU pushed it out, next to its native copy — twice the
+/// bytes, the Dart half counted by nobody. A transform uploads one-shot
+/// buffers (the lifted pixels, the resampled result), so a whole-picture
+/// transform left the budget's worth resident TWICE after it had landed.
+/// An entry now lives exactly as long as somebody can still hand the same
+/// list back; the budget caps what the live ones may keep.
 final class NativeUploadCache<L extends TypedData> {
   NativeUploadCache({required this.entryCap, required this.byteBudget});
 
@@ -23,21 +33,27 @@ final class NativeUploadCache<L extends TypedData> {
   /// Bytes resident at most, the newest entry excepted.
   final int byteBudget;
 
-  final LinkedHashMap<Object, Pointer<Uint8>> _uploads =
-      LinkedHashMap.identity();
-  final Map<Object, int> _sizes = HashMap.identity();
+  final Expando<_Upload> _bySource = Expando<_Upload>('nativeUploads');
+  final LinkedHashSet<_Upload> _recency = LinkedHashSet<_Upload>.identity();
+  late final Finalizer<_Upload> _sourceGone = Finalizer<_Upload>(_free);
   int _bytes = 0;
 
-  int get entryCount => _uploads.length;
+  int get entryCount => _recency.length;
 
   int get residentBytes => _bytes;
 
   /// The native copy of [data], uploaded once.
+  ///
+  /// ⚠️Valid while [data] is reachable — use it in the same synchronous
+  /// stretch that holds the list. A finalizer runs from the event loop, so
+  /// it can never free a copy in the middle of a kernel call.
   Pointer<Uint8> upload(L data) {
-    final cached = _uploads.remove(data);
-    if (cached != null) {
-      _uploads[data] = cached;
-      return cached;
+    final cached = _bySource[data];
+    if (cached != null && cached.resident) {
+      _recency
+        ..remove(cached)
+        ..add(cached);
+      return cached.pointer;
     }
     final length = data.lengthInBytes;
     // malloc, not calloc: the copy below overwrites every byte — the
@@ -46,15 +62,38 @@ final class NativeUploadCache<L extends TypedData> {
     pointer
         .asTypedList(length)
         .setAll(0, data.buffer.asUint8List(data.offsetInBytes, length));
-    _uploads[data] = pointer;
-    _sizes[data] = length;
+    final entry = _Upload(pointer, length);
+    _bySource[data] = entry;
+    _sourceGone.attach(data, entry, detach: entry);
+    _recency.add(entry);
     _bytes += length;
-    while (_uploads.length > 1 &&
-        (_uploads.length > entryCap || _bytes > byteBudget)) {
-      final oldest = _uploads.keys.first;
-      malloc.free(_uploads.remove(oldest)!);
-      _bytes -= _sizes.remove(oldest)!;
+    while (_recency.length > 1 &&
+        (_recency.length > entryCap || _bytes > byteBudget)) {
+      _free(_recency.first);
     }
     return pointer;
   }
+
+  /// Frees [entry]'s copy ONCE: the budget evicted it, or its source was
+  /// collected — whichever comes first, and the other finds it gone.
+  void _free(_Upload entry) {
+    if (!entry.resident) {
+      return;
+    }
+    entry.resident = false;
+    _recency.remove(entry);
+    _sourceGone.detach(entry);
+    malloc.free(entry.pointer);
+    _bytes -= entry.length;
+  }
+}
+
+/// One native copy. It holds nothing of its source: the source's
+/// liveness is the finalizer's to watch.
+final class _Upload {
+  _Upload(this.pointer, this.length);
+
+  final Pointer<Uint8> pointer;
+  final int length;
+  bool resident = true;
 }

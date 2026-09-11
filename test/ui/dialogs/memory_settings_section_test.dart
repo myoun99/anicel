@@ -74,6 +74,8 @@ void main() {
       'viewerPages',
       'imageCache',
       'storyboardThumbnails',
+      'tileImages',
+      'engineBuffers',
     });
   });
 

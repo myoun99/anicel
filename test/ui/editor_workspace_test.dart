@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:ffi' show AllocatorAlloc, Uint8;
+import 'package:ffi/ffi.dart' show calloc;
+import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -1028,6 +1031,11 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     session.renderCaches.brushFrameStore.hotCelByteBudget = 1024 * 1024 * 1024;
+    // A scratch of the drawing engine's kind, grown, so the warning has
+    // something of the engine's to give back.
+    final scratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+    addTearDown(scratch.release);
+    scratch.ensure(1024);
 
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
@@ -1044,6 +1052,11 @@ void main() {
       reason:
           'addObserver + didHaveMemoryPressure + the session forward '
           'must all hold for the halving to land',
+    );
+    expect(
+      scratch.length,
+      0,
+      reason: "and the drawing engine's buffers heard it too",
     );
   });
 }

@@ -110,7 +110,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   // the raster thread and intermittently flashed the tile as a black square
   // for one frame.
   static final Finalizer<ui.Image> _imageFinalizer = Finalizer<ui.Image>(
-    DeferredImageDisposer.instance.retire,
+    _release,
   );
 
   /// Latest decoded tile per (scope, coordinate), held strongly so its image
@@ -138,6 +138,35 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// stay pinned.
   static const int retainedScopeLimit = 8;
 
+  /// The scope that files NOTHING — for a painter whose tiles all know
+  /// their predecessor, so the coordinate fallback is never read for them
+  /// and filing them could only pin them.
+  ///
+  /// 🚨C-ipad-crash (2026-09-11): the selection float filed under a bucket
+  /// of its own that nothing read back. Every decode re-inserted it as the
+  /// most recent, so it was never evicted either: it kept the last float
+  /// tile at every coordinate any float had ever covered — pixels AND GPU
+  /// image — for the rest of the run.
+  static final Object unfiled = Object();
+
+  /// Bytes of every tile image alive right now — truths and stand-ins,
+  /// every cache's — for the memory census.
+  ///
+  /// 🚨C-ipad-crash (2026-09-11): on a phone these are GPU textures, and
+  /// the census had no row for them, so the whole share read as engine
+  /// overhead. Taken in [_hold] and let go in [_release], the only two
+  /// places either happens.
+  static int get liveImageBytes => _liveImageBytes;
+  static int _liveImageBytes = 0;
+
+  static void _hold(ui.Image image) =>
+      _liveImageBytes += image.width * image.height * 4;
+
+  static void _release(ui.Image image) {
+    _liveImageBytes -= image.width * image.height * 4;
+    DeferredImageDisposer.instance.retire(image);
+  }
+
   /// SYNTHESIZED stand-ins: the picture a tile shows while its own decode
   /// is still in flight, made from pictures already on the GPU rather than
   /// borrowed from a previous generation at the same coordinate.
@@ -159,7 +188,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// Detached explicitly when the real decode replaces a stand-in, so the
   /// image is retired exactly once.
   static final Finalizer<ui.Image> _provisionalFinalizer = Finalizer<ui.Image>(
-    DeferredImageDisposer.instance.retire,
+    _release,
   );
 
   /// The decoded image for [tile], or `null` while the decode is pending.
@@ -209,6 +238,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     _provisional[tile] = image;
     _provisionalFinalizer.attach(tile, image, detach: tile);
+    _hold(image);
   }
 
   /// Retires [tile]'s stand-in, if it has one. Called the moment its real
@@ -222,7 +252,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     // Detach first: without it the finalizer retires the same image a
     // second time when the tile is eventually collected.
     _provisionalFinalizer.detach(tile);
-    DeferredImageDisposer.instance.retire(provisional);
+    _release(provisional);
   }
 
   /// The most recently decoded image at [coord] within [scope] (possibly for
@@ -291,16 +321,12 @@ class BitmapTileImageCache extends ChangeNotifier {
       _decodeAsk[tile] = null;
       _images[tile] = image;
       _imageFinalizer.attach(tile, image);
+      _hold(image);
       // Truth has landed; the stand-in has nothing left to stand in for,
       // and neither has the predecessor it would have been composed from.
       _dropProvisional(tile);
       TilePredecessors.instance.drop(tile);
-      final scoped = _latestDecodedByScope.remove(staleScope);
-      // Re-insert: this scope becomes the most recently used.
-      (_latestDecodedByScope[staleScope] =
-              scoped ?? <TileCoord, BitmapTile>{})[placed.coord] =
-          tile;
-      _evictScopesBeyondBudget();
+      _file(staleScope, placed.coord, tile);
       _scheduleNotify();
     } on Object catch (error, stack) {
       _decodeAsk[tile] = _TileDecodeAsk.refused;
@@ -373,16 +399,13 @@ class BitmapTileImageCache extends ChangeNotifier {
     _decodeAsk[tile] = null;
     _images[tile] = image;
     _imageFinalizer.attach(tile, image);
+    _hold(image);
     // An adopted picture IS the truth (the overlay decoded exactly these
     // bytes), so it retires a stand-in just as a decode would — and the
     // predecessor with it.
     _dropProvisional(tile);
     TilePredecessors.instance.drop(tile);
-    final scoped = _latestDecodedByScope.remove(staleScope);
-    (_latestDecodedByScope[staleScope] =
-            scoped ?? <TileCoord, BitmapTile>{})[placed.coord] =
-        tile;
-    _evictScopesBeyondBudget();
+    _file(staleScope, placed.coord, tile);
   }
 
   /// Uploads [tile]'s own bytes synchronously and adopts the result as
@@ -432,6 +455,19 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     adoptDecoded(placed, image, staleScope: staleScope);
     return _images[tile];
+  }
+
+  /// Files [tile] as [scope]'s latest at [coord], making [scope] the most
+  /// recently used — unless [scope] is [unfiled].
+  void _file(Object? scope, TileCoord coord, BitmapTile tile) {
+    if (identical(scope, unfiled)) {
+      return;
+    }
+    final scoped = _latestDecodedByScope.remove(scope);
+    (_latestDecodedByScope[scope] =
+            scoped ?? <TileCoord, BitmapTile>{})[coord] =
+        tile;
+    _evictScopesBeyondBudget();
   }
 
   void _evictScopesBeyondBudget() {

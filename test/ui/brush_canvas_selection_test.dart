@@ -21,6 +21,7 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -3945,5 +3946,81 @@ void main() {
         reason: '${delta.ghost} pixels of ink the picture never had',
       );
     });
+  });
+
+  testWidgets('🚨a transform past the pasteboard wall builds only what can '
+      'land — the preview buffer IS the wall, and everything inside the '
+      'wall lands (C-ipad-crash)', (tester) async {
+    // Scaled five times about its centre, a 60×40 picture spans
+    // (-120,-80)..(180,120) and the pasteboard is (-60,-40)..(120,80).
+    // Before the wall the resample built all 300×200 and the landing threw
+    // two thirds of it away — at a phone's canvas size, hundreds of MB per
+    // transform, and more for every larger scale.
+    const canvasSize = CanvasSize(width: 60, height: 40);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      canvasSize: canvasSize,
+      sourceDabs: [
+        for (var y = 2.0; y < 40; y += 3)
+          for (var x = 2.0; x < 60; x += 3) dab(x, y),
+      ],
+    );
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 60, bottom: 40),
+      ),
+    );
+    await tester.pump();
+
+    debugLastResampledFloat = null;
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 0,
+      scale: 5,
+    );
+    await tester.pump();
+
+    final previewed = debugLastResampledFloat;
+    expect(previewed, isNotNull, reason: 'fixture: the preview resampled');
+    final stamp = previewed!.stamp!;
+    expect(
+      (
+        left: (previewed.center.x - stamp.width / 2).round(),
+        top: (previewed.center.y - stamp.height / 2).round(),
+        width: stamp.width,
+        height: stamp.height,
+      ),
+      (
+        left: canvasSize.pasteboardLeft,
+        top: canvasSize.pasteboardTop,
+        width: canvasSize.pasteboardRightExclusive - canvasSize.pasteboardLeft,
+        height: canvasSize.pasteboardBottomExclusive - canvasSize.pasteboardTop,
+      ),
+      reason:
+          'the whole picture is on screen, so the preview is the buffer '
+          'Enter lands — and it stops at the wall',
+    );
+
+    env.commands.commitTransform();
+    await tester.pump();
+
+    final right = canvasSize.pasteboardRightExclusive - 1;
+    final bottom = canvasSize.pasteboardBottomExclusive - 1;
+    for (final (x, y) in [
+      (canvasSize.pasteboardLeft, canvasSize.pasteboardTop),
+      (right, canvasSize.pasteboardTop),
+      (canvasSize.pasteboardLeft, bottom),
+      (right, bottom),
+    ]) {
+      expect(
+        (inkAt(env.coordinator, x, y) >> 24) & 0xff,
+        0xff,
+        reason: 'the corner ($x,$y) of the wall is inside the picture',
+      );
+    }
   });
 }

@@ -126,11 +126,11 @@ void main() {
       final scratch = NativeCommitScratch(engine, surfaceWithTile(a, 0x10));
       scratch.bufferFor(a);
       scratch.bufferFor(b);
-      final cachedWhileStaged = engine.debugTilePoolCachedBytes();
+      final cachedWhileStaged = engine.tilePoolParkedBytes;
       final tile = scratch.finish(a);
       scratch.releaseUnfinished();
       expect(
-        engine.debugTilePoolCachedBytes(),
+        engine.tilePoolParkedBytes,
         cachedWhileStaged + byteLength,
         reason: 'one buffer (b) went back; a was adopted by the tile',
       );

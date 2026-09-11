@@ -234,16 +234,9 @@ const _imageHolders = <String, String>{
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
       'block only carries them into a paint',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
-      'NOT COUNTED YET — the GPU texture of every decoded tile, alive as '
-      'long as the tile OBJECT (a Finalizer frees it), so whatever keeps an '
-      'old tile alive (undo history, the eight retained scopes) keeps its '
-      'texture too. Closes with a live-texture counter and a census row: '
-      'C-ipad-crash, 2026-09-11, where the share nobody counted reached '
-      '1.1GB on an iPhone',
+      'counted:liveImageBytes',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _provisional':
-      'NOT COUNTED YET, with _images — the stand-in a tile shows while its '
-      'own decode is in flight, retired exactly once when the real image '
-      'lands',
+      'counted:liveImageBytes',
   'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
       'counted:heldBytes',
   'lib/src/ui/envelope/envelope_image_cache.dart → _images':

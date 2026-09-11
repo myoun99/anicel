@@ -518,6 +518,8 @@ enum AppStrings {
   String get memoryItemImageCache => _s('memoryItemImageCache');
   String get memoryItemStoryboardThumbnails =>
       _s('memoryItemStoryboardThumbnails');
+  String get memoryItemTileImages => _s('memoryItemTileImages');
+  String get memoryItemEngineBuffers => _s('memoryItemEngineBuffers');
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaDiagnostics => _s('containerAreaDiagnostics');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
@@ -1575,6 +1577,8 @@ enum AppStrings {
     'memoryItemViewerPages': 'Viewer pages',
     'memoryItemImageCache': 'Image cache',
     'memoryItemStoryboardThumbnails': 'Storyboard thumbnails',
+    'memoryItemTileImages': 'Canvas tile images',
+    'memoryItemEngineBuffers': 'Drawing engine buffers',
     'containerAreaSettings': 'Settings',
     'containerAreaDiagnostics': 'Diagnostics log',
     'containerAreaSessionScratch': 'Session scratch',
@@ -2522,6 +2526,8 @@ enum AppStrings {
     'memoryItemViewerPages': 'ビューアのページ',
     'memoryItemImageCache': '画像キャッシュ',
     'memoryItemStoryboardThumbnails': '絵コンテのサムネイル',
+    'memoryItemTileImages': 'キャンバスのタイル画像',
+    'memoryItemEngineBuffers': '描画エンジンのバッファ',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
     'containerAreaSessionScratch': 'セッション作業領域',
@@ -3521,6 +3527,8 @@ enum AppStrings {
     'memoryItemViewerPages': '뷰어 페이지',
     'memoryItemImageCache': '이미지 캐시',
     'memoryItemStoryboardThumbnails': '콘티 썸네일',
+    'memoryItemTileImages': '캔버스 타일 이미지',
+    'memoryItemEngineBuffers': '그리기 엔진 버퍼',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
     'containerAreaSessionScratch': '세션 작업 공간',
@@ -4535,6 +4543,8 @@ enum AppStrings {
     'memoryItemViewerPages': 'Pages de la visionneuse',
     'memoryItemImageCache': "Cache d'images",
     'memoryItemStoryboardThumbnails': 'Vignettes du storyboard',
+    'memoryItemTileImages': 'Images des tuiles du canevas',
+    'memoryItemEngineBuffers': 'Tampons du moteur de dessin',
     'containerAreaSettings': 'Réglages',
     'containerAreaDiagnostics': 'Journal de diagnostic',
     'containerAreaSessionScratch': 'Espace de session',
@@ -5517,6 +5527,8 @@ enum AppStrings {
     'memoryItemViewerPages': '查看器页面',
     'memoryItemImageCache': '图像缓存',
     'memoryItemStoryboardThumbnails': '分镜缩略图',
+    'memoryItemTileImages': '画布图块图像',
+    'memoryItemEngineBuffers': '绘图引擎缓冲区',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
     'containerAreaSessionScratch': '会话暂存区',

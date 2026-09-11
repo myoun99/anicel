@@ -12,6 +12,7 @@ import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
+import '../native/qa_native_engine.dart';
 import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
@@ -484,6 +485,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // The storyboard's thumbnails live in THIS State, not the session, so
     // the warning reaches them here.
     _storyboardThumbnails.respondToMemoryPressure();
+    // The drawing engine is the process's, not the session's: its parked
+    // tile blocks and scratch buffers hear the warning here too.
+    QaNativeEngine.respondToMemoryPressure();
   }
 
   /// 🚨★★★**COMING BACK IS WHEN THE FILE MAY HAVE GONE.**

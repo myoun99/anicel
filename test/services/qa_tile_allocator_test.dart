@@ -46,7 +46,7 @@ void main() {
 
     // A distinctive size so no other machinery races this bucket.
     const size = 77_776;
-    final before = engine.debugTilePoolCachedBytes();
+    final before = engine.tilePoolParkedBytes;
 
     final first = engine.tileAlloc(size);
     final view = first.asTypedList(size);
@@ -57,7 +57,7 @@ void main() {
 
     engine.tileFree(first);
     expect(
-      engine.debugTilePoolCachedBytes(),
+      engine.tilePoolParkedBytes,
       before + size,
       reason: 'the freed block must PARK, not free()',
     );
@@ -68,8 +68,29 @@ void main() {
       first.address,
       reason: 'exact-size reuse must hand the parked block back (LIFO)',
     );
-    expect(engine.debugTilePoolCachedBytes(), before);
+    expect(engine.tilePoolParkedBytes, before);
     engine.tileFree(second);
+  });
+
+  test('a memory warning hands every parked block back', () {
+    requireEngine();
+    if (!available) return;
+    final engine = QaNativeEngine.instance!;
+    const size = 77_780;
+    engine.tileFree(engine.tileAlloc(size));
+    expect(
+      engine.tilePoolParkedBytes,
+      greaterThanOrEqualTo(size),
+      reason: 'fixture: one block parked',
+    );
+
+    QaNativeEngine.respondToMemoryPressure();
+
+    expect(
+      engine.tilePoolParkedBytes,
+      0,
+      reason: "a parked block is resident and nobody's picture",
+    );
   });
 
   test('different sizes park independently', () {

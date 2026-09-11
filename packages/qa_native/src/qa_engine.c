@@ -3125,7 +3125,7 @@ QA_EXPORT int64_t qa_tile_pool_cached_bytes(void) {
   return bytes;
 }
 
-// Releases every parked block (diagnostics / tests).
+// Releases every parked block: on a memory warning, and in tests.
 QA_EXPORT void qa_tile_pool_trim(void) {
   QA_TILE_LOCK();
   for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {

@@ -3,8 +3,10 @@ import 'dart:io' show ProcessInfo;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
+import '../../native/native_scratch.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
 import '../editor_session_manager.dart';
 import '../widgets/static_raster.dart';
 
@@ -172,6 +174,25 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           // They were byte-budgeted and reported to nobody, so they read
           // as engine overhead — 2026-09-10.
           (QaNativeEngine.instance?.nativeUploadBytes ?? 0),
+    ),
+    // 🚨THE CANVAS'S OWN PICTURES, which a phone keeps as GPU textures:
+    // every decoded tile, alive as long as its tile is — the picture on
+    // screen and, through the tiles it keeps, the undo history's. The
+    // share had no row and read as engine overhead (C-ipad-crash,
+    // 2026-09-11).
+    MemoryCensusItem(
+      id: 'tileImages',
+      bytes: BitmapTileImageCache.liveImageBytes,
+    ),
+    // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
+    // blocks parked for reuse (up to 512MB) and grow-only scratch sized by
+    // the largest call so far. Both resident, both read as engine overhead
+    // until C-ipad-crash (2026-09-11).
+    MemoryCensusItem(
+      id: 'engineBuffers',
+      bytes:
+          (QaNativeEngine.instance?.tilePoolParkedBytes ?? 0) +
+          NativeScratch.liveBytes,
     ),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
     // is allowed 100 MiB and 1000 entries by default and nothing in this

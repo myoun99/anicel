@@ -299,6 +299,8 @@ void main() {
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
     'memoryItemImageCache': (s) => s.memoryItemImageCache,
     'memoryItemStoryboardThumbnails': (s) => s.memoryItemStoryboardThumbnails,
+    'memoryItemTileImages': (s) => s.memoryItemTileImages,
+    'memoryItemEngineBuffers': (s) => s.memoryItemEngineBuffers,
     'containerAreaSettings': (s) => s.containerAreaSettings,
     'containerAreaDiagnostics': (s) => s.containerAreaDiagnostics,
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,

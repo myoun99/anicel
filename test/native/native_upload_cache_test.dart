@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/native/native_upload_cache.dart';
 
+import '../helpers/collect_garbage.dart';
+
 /// The identity-keyed LRU that hands kernels a native copy of a Dart
 /// buffer: a hit is the same pointer, a miss copies once, and the two
 /// limits (entries, bytes) evict from the OLDEST end — never the entry
@@ -91,5 +93,52 @@ void main() {
     expect(cache.entryCount, 1, reason: 'the budget evicted the small one');
     expect(cache.residentBytes, 64);
     expect(cache.upload(huge), pointer, reason: 'and kept the huge one');
+  });
+
+  test('🚨the cache does not keep a source alive, and a source nobody '
+      'holds takes its native copy with it (C-ipad-crash)', () async {
+    final cache = NativeUploadCache<Uint8List>(
+      entryCap: 4,
+      byteBudget: 1 << 20,
+    );
+    WeakReference<Uint8List> uploadAndLetGo() {
+      final oneShot = bytes(64, 1);
+      cache.upload(oneShot);
+      return WeakReference(oneShot);
+    }
+
+    final gone = uploadAndLetGo();
+    final kept = bytes(32, 2);
+    final keptPointer = cache.upload(kept);
+    expect(cache.residentBytes, 96, reason: 'fixture: both copies resident');
+
+    await collectGarbage();
+
+    expect(gone.target, isNull, reason: 'the cache must not pin its source');
+    expect(cache.residentBytes, 32, reason: 'the dead source took its copy');
+    expect(cache.entryCount, 1);
+    expect(cache.upload(kept), keptPointer, reason: 'a live one still hits');
+  });
+
+  test('a source the budget evicted uploads again when it comes back — '
+      'a fresh copy, never the freed one', () {
+    final cache = NativeUploadCache<Uint8List>(
+      entryCap: 2,
+      byteBudget: 1 << 20,
+    );
+    final a = bytes(4, 1);
+    final b = bytes(4, 2);
+    final c = bytes(4, 3);
+
+    cache.upload(a);
+    cache.upload(b);
+    cache.upload(c);
+    expect(cache.entryCount, 2, reason: 'fixture: the cap evicted a');
+
+    final again = cache.upload(a);
+
+    expect(cache.entryCount, 2, reason: 'a is a miss: it evicts b');
+    expect(cache.residentBytes, 8);
+    expect(again.asTypedList(4), a, reason: 'and reads its own bytes');
   });
 }

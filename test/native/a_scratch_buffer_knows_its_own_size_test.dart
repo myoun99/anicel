@@ -128,4 +128,26 @@ void main() {
     expect(same, held);
     expect(scratch.length, 16);
   });
+
+  test('🚨every scratch is on the books in BYTES — wider elements say so '
+      '— and a memory warning gives them all back (C-ipad-crash)', () {
+    final bytes = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+    final ints = NativeScratch<Int32>(
+      (n) => calloc<Int32>(n),
+      bytesPerElement: sizeOf<Int32>(),
+    );
+    addTearDown(bytes.release);
+    addTearDown(ints.release);
+    final before = NativeScratch.liveBytes;
+
+    bytes.ensure(100);
+    ints.ensure(10);
+    expect(NativeScratch.liveBytes - before, 100 + 40);
+
+    NativeScratch.releaseAll();
+
+    expect(bytes.pointer, nullptr);
+    expect(ints.length, 0);
+    expect(NativeScratch.liveBytes, 0);
+  });
 }

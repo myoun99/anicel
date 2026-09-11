@@ -16,10 +16,43 @@ import 'package:ffi/ffi.dart';
 /// ⚠️[allocate] is written per field because `calloc<T>()` needs the size
 /// at compile time — a generic allocation is not something FFI can do.
 class NativeScratch<T extends NativeType> {
-  NativeScratch(this.allocate);
+  NativeScratch(this.allocate, {this.bytesPerElement = 1}) {
+    _all.add(this);
+  }
 
   /// Allocates [count] elements. Always `(n) => calloc<Something>(n)`.
   final Pointer<T> Function(int count) allocate;
+
+  /// Bytes one element takes — `sizeOf<T>()`, written per field for the
+  /// reason [allocate] is. ⚠️A scratch of wider elements says so, or the
+  /// census reads it short.
+  final int bytesPerElement;
+
+  /// Every scratch there is. They live as long as the engine that owns
+  /// them, which is the process, so keeping them here costs nothing.
+  static final List<NativeScratch<NativeType>> _all = [];
+
+  /// Bytes every scratch holds right now, for the memory census.
+  ///
+  /// 🚨C-ipad-crash (2026-09-11): grow-only buffers sized by the largest
+  /// call so far — a pasteboard-wide transform leaves its whole output in
+  /// one — and counted by nobody.
+  static int get liveBytes {
+    var bytes = 0;
+    for (final scratch in _all) {
+      bytes += scratch._length * scratch.bytesPerElement;
+    }
+    return bytes;
+  }
+
+  /// Releases every scratch; each regrows on its next call. Safe at any
+  /// moment Dart runs, because no engine call suspends — the engine has no
+  /// `await`, so no scratch pointer is ever held across one.
+  static void releaseAll() {
+    for (final scratch in _all) {
+      scratch.release();
+    }
+  }
 
   Pointer<T> _pointer = nullptr;
   int _length = 0;

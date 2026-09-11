@@ -37,6 +37,7 @@ import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
 import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
+import 'bitmap_tile_image_cache.dart';
 import 'provisional_tile_pictures.dart';
 import 'tile_predecessors.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -1901,6 +1902,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (pending == null) {
       return null;
     }
+    // 🚨Nothing is resampled past the pasteboard wall, because nothing
+    // lands past it (C-ipad-crash, 2026-09-11). The landing clips at the
+    // wall (`bitmap_surface_brush_commit`), but the resample covered the
+    // WHOLE transformed box: a picture scaled past the stage built,
+    // uploaded and decoded pixels the commit then threw away — 1.9× of a
+    // pasteboard-wide lift was a 13338×9428 buffer, 503MB, and every
+    // larger scale a larger one. A preview's window is cut to it as well.
+    final window = _withinPasteboard(visible);
     final mesh = _meshPoints;
     if (mesh != null) {
       return transformStampDabMesh(
@@ -1909,7 +1918,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         rows: _meshOffsetRows,
         points: mesh,
         mode: widget._resampleMode,
-        visible: visible,
+        visible: window,
       );
     }
     final quad = _warpCorners;
@@ -1918,7 +1927,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         pending,
         quad,
         mode: widget._resampleMode,
-        visible: visible,
+        visible: window,
       );
     }
     final affine = _transform;
@@ -1927,10 +1936,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         pending,
         affine,
         mode: widget._resampleMode,
-        visible: visible,
+        visible: window,
       );
     }
     return null;
+  }
+
+  /// [visible] cut down to the pasteboard, or the whole pasteboard when
+  /// the caller wants everything.
+  SelectionVisibleRect _withinPasteboard(SelectionVisibleRect? visible) {
+    final wall = widget.canvasSize.pasteboardRegion;
+    final left = wall.left.toDouble();
+    final top = wall.top.toDouble();
+    final right = wall.rightExclusive.toDouble();
+    final bottom = wall.bottomExclusive.toDouble();
+    if (visible == null) {
+      return (left: left, top: top, right: right, bottom: bottom);
+    }
+    return (
+      left: math.max(visible.left, left),
+      top: math.max(visible.top, top),
+      right: math.min(visible.right, right),
+      bottom: math.min(visible.bottom, bottom),
+    );
   }
 
   @override
@@ -2267,21 +2295,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return true;
   }
 
-  /// The bucket the float's decoded tiles are filed under — ONE for every
-  /// float this app ever lifts.
-  ///
-  /// Filed, never read back: every float tile knows its predecessor
-  /// ([_buildFloatSurface]), and a tile that does never falls to the
-  /// cache's coordinate fallback. It is still not the null bucket, which
-  /// every painter that names no lineage shares — opening a second
-  /// transform once drew the FIRST one's artwork at the first one's place
-  /// and size out of exactly that sharing (measured: 36 pixels of ink where
-  /// this float's own surface is empty). And one bucket rather than one
-  /// per generation: the cache retains eight and evicts the least recent,
-  /// so a session of transforms would push out the `(layerId, frameId)`
-  /// buckets the brush depends on.
-  static final Object _floatLineage = Object();
-
   /// Hands the base the picture of what this session just landed, so the
   /// tiles the commit created can draw THEMSELVES on the frame they land.
   ///
@@ -2443,9 +2456,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           surface: floatSurface,
           viewport: widget.viewport,
           showTransparentBackground: false,
-          // The float's own bucket, never the null one — see
-          // [_floatLineage] for the ghost that sharing drew.
-          staleScope: _floatLineage,
+          // Filed NOWHERE. Never the null bucket, which every painter that
+          // names no lineage shares: opening a second transform once drew
+          // the FIRST one's artwork at the first one's place and size out
+          // of exactly that sharing (measured: 36 pixels of ink where this
+          // float's own surface is empty). Not one bucket per float either
+          // — the cache keeps eight, so a session of transforms would push
+          // out the `(layerId, frameId)` buckets the brush depends on. And
+          // no bucket of its own: every float tile knows its predecessor
+          // ([_buildFloatSurface]) and never falls to the coordinate
+          // fallback, so the one bucket it had was never read — only
+          // pinned (C-ipad-crash, see [BitmapTileImageCache.unfiled]).
+          staleScope: BitmapTileImageCache.unfiled,
         ),
         surfaceOffset: _floatDrawCanvasOffset,
       );

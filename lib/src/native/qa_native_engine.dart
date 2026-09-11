@@ -41,6 +41,7 @@ class QaNativeEngine {
     this._tileFree,
     this._tileFreePointer,
     this._tilePoolCachedBytes,
+    this._tilePoolTrim,
     this._physicalMemoryBytes,
     this._processFootprintBytes,
     this._availableMemoryBytes,
@@ -60,9 +61,11 @@ class QaNativeEngine {
   /// compose was the fill's largest remaining serial slice).
   final _composeItems = NativeScratch<QaComposeTileItemStruct>(
     (n) => calloc<QaComposeTileItemStruct>(n),
+    bytesPerElement: sizeOf<QaComposeTileItemStruct>(),
   );
   final _composeBlends = NativeScratch<QaComposeBlendStruct>(
     (n) => calloc<QaComposeBlendStruct>(n),
+    bytesPerElement: sizeOf<QaComposeBlendStruct>(),
   );
 
   void fillComposeBatch({
@@ -157,6 +160,7 @@ class QaNativeEngine {
   final void Function(Pointer<Void> pixels) _tileFree;
   final Pointer<NativeFinalizerFunction> _tileFreePointer;
   final int Function() _tilePoolCachedBytes;
+  final void Function() _tilePoolTrim;
 
   /// Allocates tile pixel bytes from the C free-list allocator (R20-E1).
   /// Freed/finalized tile blocks park in exact-size C-side lists, so a
@@ -180,8 +184,18 @@ class QaNativeEngine {
   /// when the engine is loaded (GC threads call qa_tile_free directly).
   late final NativeFinalizer tileFinalizer = NativeFinalizer(_tileFreePointer);
 
-  /// Bytes currently parked in the C free lists (tests/diagnostics).
-  int debugTilePoolCachedBytes() => _tilePoolCachedBytes();
+  /// Bytes of tile blocks parked in the C free lists for reuse — resident,
+  /// and nobody's picture. The memory census reads it.
+  int get tilePoolParkedBytes => _tilePoolCachedBytes();
+
+  /// The OS says memory is tight: give back what only makes the NEXT call
+  /// cheaper — the tile blocks parked for reuse, and every scratch buffer
+  /// (each regrows on its next call). Static, and never the call that
+  /// loads the engine: a warning before any drawing has nothing to give.
+  static void respondToMemoryPressure() {
+    _instance?._tilePoolTrim();
+    NativeScratch.releaseAll();
+  }
 
   final int Function() _physicalMemoryBytes;
 
@@ -240,7 +254,10 @@ class QaNativeEngine {
 
   // Grow-only work buffers for the close-gap fill (R20-C1).
   final _gapFillable = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  final _gapDist = NativeScratch<Uint16>((n) => calloc<Uint16>(n));
+  final _gapDist = NativeScratch<Uint16>(
+    (n) => calloc<Uint16>(n),
+    bytesPerElement: sizeOf<Uint16>(),
+  );
   Pointer<Int32> _gapStack = nullptr;
   static const int _gapStackCapacity = 4 * 1024 * 1024;
 
@@ -931,6 +948,10 @@ class QaNativeEngine {
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_tile_pool_cached_bytes',
           );
+      final tilePoolTrim = library
+          .lookupFunction<Void Function(), void Function()>(
+            'qa_tile_pool_trim',
+          );
       final physicalMemoryBytes = library
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_physical_memory_bytes',
@@ -1155,6 +1176,7 @@ class QaNativeEngine {
         tileFree,
         tileFreePointer,
         tilePoolCachedBytes,
+        tilePoolTrim,
         physicalMemoryBytes,
         processFootprintBytes,
         availableMemoryBytes,
@@ -1239,8 +1261,14 @@ class QaNativeEngine {
   final _floodRgb = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   final _floodComposed = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   final _floodFilled = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  final _floodStack = NativeScratch<Int32>((n) => calloc<Int32>(n));
-  final _floodCandidates = NativeScratch<Int32>((n) => calloc<Int32>(n));
+  final _floodStack = NativeScratch<Int32>(
+    (n) => calloc<Int32>(n),
+    bytesPerElement: sizeOf<Int32>(),
+  );
+  final _floodCandidates = NativeScratch<Int32>(
+    (n) => calloc<Int32>(n),
+    bytesPerElement: sizeOf<Int32>(),
+  );
   Pointer<Int32> _floodStackSize = nullptr;
   Pointer<Int32> _floodBounds = nullptr;
 
@@ -1569,6 +1597,7 @@ class QaNativeEngine {
   /// the C worker pool.
   final _tileSpans = NativeScratch<QaTileSpanStruct>(
     (n) => calloc<QaTileSpanStruct>(n),
+    bytesPerElement: sizeOf<QaTileSpanStruct>(),
   );
   final _batchChanged = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
@@ -1780,7 +1809,10 @@ class QaNativeEngine {
   final _celIncoming = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   final _celMask = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
   final _celRunValues = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
-  final _celRunLengths = NativeScratch<Int32>((n) => calloc<Int32>(n));
+  final _celRunLengths = NativeScratch<Int32>(
+    (n) => calloc<Int32>(n),
+    bytesPerElement: sizeOf<Int32>(),
+  );
 
   /// Stages the per-PASS constants of a cel pixel pass — see
   /// [CelPixelStage].
