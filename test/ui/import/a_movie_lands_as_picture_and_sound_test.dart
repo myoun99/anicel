@@ -98,7 +98,7 @@ void main() {
   });
 
   testWidgets('kept as a reference: ONE cel over its span, pointing at the '
-      'file from the IN point — nothing decoded until it is shown', (
+      'file from the IN point — with no pixels of its own', (
     tester,
   ) async {
     final fake = FakeVideoBackend(frameCount: 24);
@@ -114,7 +114,18 @@ void main() {
     expect(layer.timeline[0]!.length, 6, reason: 'IN 4 through OUT 9');
     expect(layer.mediaReference?.assetPath, normalizedMediaPath(moviePath));
     expect(layer.mediaReference?.frameOffset, 4);
-    expect(fake.asked, isEmpty);
+    expect(
+      s.brushSurfaceForLayerFrame(layer, layer.frames.single),
+      isNull,
+      reason:
+          'a reference keeps no pixels — its pictures are decoded where '
+          'they are shown',
+    );
+    expect(
+      fake.asked.every((frame) => frame >= 4 && frame <= 9),
+      isTrue,
+      reason: 'whatever is shown or warmed lies inside IN 4 … OUT 9',
+    );
     await tester.pumpAndSettle();
   });
 

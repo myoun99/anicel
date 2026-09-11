@@ -530,6 +530,7 @@ enum AppStrings {
   String get memoryItemImageCache => _s('memoryItemImageCache');
   String get memoryItemStoryboardThumbnails =>
       _s('memoryItemStoryboardThumbnails');
+  String get memoryItemMoviePictures => _s('memoryItemMoviePictures');
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEngineBuffers => _s('memoryItemEngineBuffers');
   String get containerAreaSettings => _s('containerAreaSettings');
@@ -1678,6 +1679,7 @@ enum AppStrings {
     'memoryItemViewerPages': 'Viewer pages',
     'memoryItemImageCache': 'Image cache',
     'memoryItemStoryboardThumbnails': 'Storyboard thumbnails',
+    'memoryItemMoviePictures': 'Reference movies',
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEngineBuffers': 'Drawing engine buffers',
     'containerAreaSettings': 'Settings',
@@ -2684,6 +2686,7 @@ enum AppStrings {
     'memoryItemViewerPages': 'ビューアのページ',
     'memoryItemImageCache': '画像キャッシュ',
     'memoryItemStoryboardThumbnails': '絵コンテのサムネイル',
+    'memoryItemMoviePictures': '参照動画',
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEngineBuffers': '描画エンジンのバッファ',
     'containerAreaSettings': '設定',
@@ -3740,6 +3743,7 @@ enum AppStrings {
     'memoryItemViewerPages': '뷰어 페이지',
     'memoryItemImageCache': '이미지 캐시',
     'memoryItemStoryboardThumbnails': '콘티 썸네일',
+    'memoryItemMoviePictures': '참조 동영상',
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEngineBuffers': '그리기 엔진 버퍼',
     'containerAreaSettings': '설정',
@@ -4807,6 +4811,7 @@ enum AppStrings {
     'memoryItemViewerPages': 'Pages de la visionneuse',
     'memoryItemImageCache': "Cache d'images",
     'memoryItemStoryboardThumbnails': 'Vignettes du storyboard',
+    'memoryItemMoviePictures': 'Vidéos de référence',
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEngineBuffers': 'Tampons du moteur de dessin',
     'containerAreaSettings': 'Réglages',
@@ -5849,6 +5854,7 @@ enum AppStrings {
     'memoryItemViewerPages': '查看器页面',
     'memoryItemImageCache': '图像缓存',
     'memoryItemStoryboardThumbnails': '分镜缩略图',
+    'memoryItemMoviePictures': '引用视频',
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEngineBuffers': '绘图引擎缓冲区',
     'containerAreaSettings': '设置',

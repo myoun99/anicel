@@ -10,6 +10,7 @@ import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
+import '../models/movie_cel.dart';
 import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_paint.dart';
@@ -865,11 +866,25 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
 /// cells and marks in empty space show nothing). Shared by the composite
 /// plan and the composite cache signature so both always agree on what a
 /// frame shows.
+///
+/// A MOVIE kept as a reference answers with the MOVIE CEL of the position
+/// ([movieCelFrameId]): its one held cel shows a different picture at every
+/// frame of the block. Here, in the visit the composite plan, its signature,
+/// the editing stack and export all read — so no route can show a movie
+/// another way.
 Frame? resolveExposedFrameAt(Layer layer, int frameIndex) {
-  final frameId = exposedFrameIdAt(layer.timeline, frameIndex);
-  if (frameId == null) {
+  final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+  if (block == null) {
     return null;
   }
-
-  return layer.frameById(frameId);
+  final frame = layer.frameById(block.frameId);
+  if (frame == null || !isMovieReference(layer)) {
+    return frame;
+  }
+  return frame.copyWith(
+    id: movieCelFrameId(
+      frame.id,
+      frameIndex - block.startIndex + layer.mediaReference!.frameOffset,
+    ),
+  );
 }

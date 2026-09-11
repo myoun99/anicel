@@ -27,6 +27,7 @@ import '../playback/playback_cache_budget.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
+import 'movie_cel_hydrator.dart';
 import 'playback_cache_budget.dart';
 import 'project_settings.dart';
 import 'render_caches.dart';
@@ -45,6 +46,7 @@ class PlaybackRig implements PlaybackRun {
     required ProjectSettings settings,
     required EditorVoiceRecording voiceRecording,
     required AudioConformStore audioConformStore,
+    required MovieCelHydrator movieCels,
     required void Function(PlaybackPosition lastPosition) onStopped,
     required void Function(int globalFrame) onStoppedInGap,
     required void Function(
@@ -62,6 +64,7 @@ class PlaybackRig implements PlaybackRun {
        _settings = settings,
        _voiceRecording = voiceRecording,
        _audioConformStore = audioConformStore,
+       _movieCels = movieCels,
        _onStopped = onStopped,
        _onStoppedInGap = onStoppedInGap,
        _onPlaylistWarmRequested = onPlaylistWarmRequested;
@@ -75,6 +78,7 @@ class PlaybackRig implements PlaybackRun {
   final ProjectSettings _settings;
   final EditorVoiceRecording _voiceRecording;
   final AudioConformStore _audioConformStore;
+  final MovieCelHydrator _movieCels;
   final void Function(PlaybackPosition lastPosition) _onStopped;
   final void Function(int globalFrame) _onStoppedInGap;
   final void Function(
@@ -119,6 +123,8 @@ class PlaybackRig implements PlaybackRun {
             ? Duration.zero
             : const Duration(milliseconds: 1200),
         afterFrameCached: playbackCache.enforcePlaybackCacheBudget,
+        // A movie kept as a reference decodes before its frame composes.
+        beforeCompose: _movieCels.hydrate,
       );
 
   /// Playback preview quality (Premiere/AE monitor resolution analogue).

@@ -8,6 +8,7 @@ import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/cut_id.dart';
+import '../models/movie_cel.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -122,8 +123,16 @@ class BrushFrameStore {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
-  BrushFrameDrawingState? frameOrNull(BrushFrameKey key) =>
-      _frames[_canonicalize(key)];
+  /// A MOVIE cel exists before anything decodes it — its held cel is on the
+  /// timeline, and a movie always has a picture — so its state is made on
+  /// first ask ([installMovieCel] moves it on).
+  BrushFrameDrawingState? frameOrNull(BrushFrameKey key) {
+    final canonical = _canonicalize(key);
+    return _frames[canonical] ??
+        (movieCelOf(canonical.frameId) == null
+            ? null
+            : getOrCreateFrame(canonical));
+  }
 
   BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
       _displayCaches[_canonicalize(key)];
@@ -139,6 +148,98 @@ class BrushFrameStore {
   void _putDisplayCache(BrushFrameKey key, BrushFrameDisplayCache cache) {
     _displayCaches[key] = cache;
   }
+
+  // --- Movie cels -------------------------------------------------------
+  //
+  // A movie kept as a reference is decoded when it is shown (08-31 「굽지
+  // 않고 재생할 때 디코드」). Its pictures live HERE, beside the tiers and
+  // never in them: they are not the project's — nothing saves them, nothing
+  // marks them edited, no display cache is banked for them — and a picture
+  // let go of is decoded again.
+
+  /// Decoded movie pictures by cel key, least recently used first.
+  /// Positions that show one movie frame hold the SAME surface.
+  ///
+  /// 🚨BOUNDED IN BYTES, BY THE HOT TIER'S OWN BUDGET — the law the viewer's
+  /// rasters were brought under (「a count is not a bound」): one
+  /// full-canvas picture is megabytes, so no number of them is a limit on
+  /// anything. They take only the room the DRAWINGS leave, and they give way
+  /// first: a decode is the cheapest thing here to redo, while a drawing
+  /// that cools pays an encode — so a movie never pushes a drawing out.
+  final Map<BrushFrameKey, BitmapSurface> _movieCels = {};
+
+  /// How many keys hold each distinct picture: a picture two positions
+  /// share is paid for once.
+  final Map<BitmapSurface, int> _movieCelHolders = Map.identity();
+
+  int _movieCelBytes = 0;
+
+  /// What the decoded movie pictures hold right now.
+  int get movieCelBytes => _movieCelBytes;
+
+  /// Whether [key]'s movie picture is decoded, at [canvasSize].
+  bool hasMovieCel(BrushFrameKey key, CanvasSize canvasSize) =>
+      _movieCels[_canonicalize(key)]?.canvasSize == canvasSize;
+
+  /// Installs [surface] as [key]'s movie picture. The cel's revision moves,
+  /// so every cache keyed on it — the composite, the layer image, the
+  /// canvas — lets go of what it made without the picture, and the pixel
+  /// signal wakes the surfaces that draw. The same picture again moves
+  /// nothing.
+  void installMovieCel(BrushFrameKey key, BitmapSurface surface) {
+    key = _canonicalize(key);
+    if (identical(_movieCels[key], surface)) {
+      return;
+    }
+    _releaseMovieCel(key);
+    _movieCels[key] = surface;
+    final holders = _movieCelHolders[surface] ?? 0;
+    if (holders == 0) {
+      _movieCelBytes += _residentBytes(surface);
+    }
+    _movieCelHolders[surface] = holders + 1;
+    _fitMovieCels();
+    _displayCaches.remove(key);
+    final state = getOrCreateFrame(key);
+    _frames[key] = state.copyWith(sourceRevision: state.sourceRevision + 1);
+    celPixelRevision.value += 1;
+  }
+
+  /// Lets the least recently used movie pictures go until they and the hot
+  /// drawings fit the hot budget together — always keeping the newest, the
+  /// one about to be drawn. A picture let go of keeps its revision: nothing
+  /// drawn with it is wrong, and the next ask decodes it again.
+  void _fitMovieCels() {
+    while (_hotBytes + _movieCelBytes > hotCelByteBudget &&
+        _movieCels.length > 1) {
+      _releaseMovieCel(_movieCels.keys.first);
+    }
+  }
+
+  void _releaseMovieCel(BrushFrameKey key) {
+    final surface = _movieCels.remove(key);
+    if (surface == null) {
+      return;
+    }
+    final holders = _movieCelHolders[surface]! - 1;
+    if (holders > 0) {
+      _movieCelHolders[surface] = holders;
+      return;
+    }
+    _movieCelHolders.remove(surface);
+    _movieCelBytes -= _residentBytes(surface);
+  }
+
+  void _dropMovieCels() {
+    _movieCels.clear();
+    _movieCelHolders.clear();
+    _movieCelBytes = 0;
+  }
+
+  /// What [surface] holds in RAM — ONE measure for the hot drawings and the
+  /// movie pictures, because the two are paid from one budget.
+  static int _residentBytes(BitmapSurface surface) =>
+      surface.tiles.length * surface.tileBytes;
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.
@@ -260,6 +361,9 @@ class BrushFrameStore {
   /// Lowering the budget loses nothing: over-budget cels encode to the
   /// cold tier, and dirty cels never leave RAM by design.
   void respondToMemoryPressure() {
+    // Decoded movie pictures are the cheapest thing here to give back: a
+    // frame shown again is decoded again.
+    _dropMovieCels();
     _hotBudget.respondToMemoryPressure();
     // Cool even when the budget did not move: a warning arriving while
     // the hot tier is already over an ALREADY-low budget is exactly when
@@ -486,11 +590,13 @@ class BrushFrameStore {
     if (previous != null) {
       _hotBytes -= previous;
     }
-    final estimate = surface.tiles.length * surface.tileBytes;
+    final estimate = _residentBytes(surface);
     _bakedSurfaces.remove(key);
     _bakedSurfaces[key] = surface;
     _hotByteEstimates[key] = estimate;
     _hotBytes += estimate;
+    // A drawing that grew takes its room back from the movie pictures.
+    _fitMovieCels();
   }
 
   void _removeBaked(BrushFrameKey key) {
@@ -556,6 +662,7 @@ class BrushFrameStore {
   }
 
   void _clearAllTiers() {
+    _dropMovieCels();
     // 🚨★★★**THE FILE REFS GO, SO THE FILE GOES.** A handle nobody can read
     // through still keeps the OS from letting the file be deleted or moved.
     // Holding it past this point is not protection, it is a lock on a file
@@ -723,6 +830,12 @@ class BrushFrameStore {
   /// is not existence.
   bool celHasRenderableContent(BrushFrameKey key) {
     key = _canonicalize(key);
+    // A MOVIE cel has a picture before it is decoded. Answering "empty"
+    // would let the display cache bank a blank stand-in as VALID — and a
+    // valid cache is exactly what stops anyone looking again.
+    if (movieCelOf(key.frameId) != null) {
+      return true;
+    }
     final baked = _bakedSurfaces[key];
     if (baked != null) {
       // 🚨A CLEARED CEL STILL HAS A SURFACE. 픽셀 비우기 writes alpha 0 across
@@ -759,6 +872,12 @@ class BrushFrameStore {
     final cached = validPreviewSurfaceOrNull(key);
     if (cached != null && cached.canvasSize == canvasSize) {
       return cached;
+    }
+    final movie = _movieCels.remove(key);
+    if (movie != null) {
+      // Read is use: it goes back in as the newest.
+      _movieCels[key] = movie;
+      return movie.canvasSize == canvasSize ? movie : null;
     }
     final hot = _bakedSurfaces[key];
     if (hot != null) {
@@ -1142,6 +1261,11 @@ class BrushFrameStore {
       sourceRevision: state.sourceRevision,
       dirty: false,
     );
+    // A movie cel's picture already lives in the movie tier; banking a copy
+    // per position would hold a whole take here with nothing to let it go.
+    if (movieCelOf(key.frameId) != null) {
+      return cache;
+    }
     _putDisplayCache(key, cache);
     _frames[key] = state.copyWith(inactivePreviewDirty: false);
     return cache;

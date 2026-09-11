@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -106,6 +107,7 @@ import 'session/audio_clips.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
 import 'session/project_audio.dart';
+import 'session/movie_cel_hydrator.dart';
 import 'session/playback_rig.dart';
 import 'session/render_caches.dart';
 import 'session/frame_range_move_drag.dart';
@@ -211,6 +213,11 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig.playback.globalFrameIndexListenable.addListener(
       followPlaybackCut,
     );
+    // The canvas shows a reference movie's picture at the frame it stands
+    // on — asked on every seek and every change, a no-op once the store has
+    // it.
+    editingFrameCursor.addListener(_hydrateShownMovieCels);
+    addListener(_hydrateShownMovieCels);
     // The lane span's cut-window view follows the span itself; the other
     // half of its input (which cut is open) republishes on cut switch.
     laneRangeSelection.addListener(_publishCutLocalLaneRange);
@@ -402,6 +409,15 @@ class EditorSessionManager extends ChangeNotifier
   // row and the voice recorder, and a rig that reached back out for those
   // could not be built: `Standing` and `RangeSelections` reach IN here
   // for the warmer.
+  /// Decodes a reference movie's pictures where they are shown — the playback
+  /// warmer before each frame, the canvas at the frame it stands on.
+  late final MovieCelHydrator movieCels = MovieCelHydrator(
+    project: this,
+    internals: this,
+    renderCaches: renderCaches,
+    frameRate: () => projectSettings.projectFrameRate,
+  );
+
   late final PlaybackRig playbackRig = PlaybackRig(
     project: this,
     selection: this,
@@ -411,6 +427,7 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     settings: projectSettings,
     audioConformStore: audioConformStore,
+    movieCels: movieCels,
     voiceRecording: voiceRecording,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
@@ -1117,8 +1134,9 @@ class EditorSessionManager extends ChangeNotifier
   /// list). Three constraints run through it:
   ///   - every `removeListener` comes before the thing it was listening to
   ///     is released: the lane range before [cutLocalLaneRangeSelection],
-  ///     the playback cursor before [playbackRig], the three history
-  ///     listeners before [historyManager] at the very end;
+  ///     the playback cursor before [playbackRig], the shown-movie decode
+  ///     before [editingFrameCursor], the three history listeners before
+  ///     [historyManager] at the very end;
   ///   - [LayerStack.dispose] removes ITS OWN listeners from [renderCaches]
   ///     and [brushInputActive], so it runs before either of them;
   ///   - [historyManager] goes last, after every listener it carries.
@@ -1142,6 +1160,7 @@ class EditorSessionManager extends ChangeNotifier
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
     ),
+    () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
     () => historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep),
@@ -1166,6 +1185,7 @@ class EditorSessionManager extends ChangeNotifier
     onionSkinLayerIds.dispose,
     trackFrameRangeSelection.dispose,
     historyPictures.dispose,
+    () => unawaited(movieCels.dispose()),
     historyManager.dispose,
   ];
 
@@ -2380,6 +2400,18 @@ class EditorSessionManager extends ChangeNotifier
   /// two axes to be on.
   final ValueNotifier<TimelineLaneSelection?> cutLocalLaneRangeSelection =
       ValueNotifier<TimelineLaneSelection?>(null);
+
+  void _hydrateShownMovieCels() {
+    // A notify can arrive mid-teardown; the stores it would fill are going.
+    if (disposed) {
+      return;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    unawaited(movieCels.hydrate(cut, editingFrameCursor.value));
+  }
 
   void _publishCutLocalLaneRange() {
     if (disposed) {

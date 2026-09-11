@@ -240,6 +240,14 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       id: 'storyboardThumbnails',
       bytes: session.renderCaches.storyboardThumbnailBytes,
     ),
+    // A movie kept as a reference, decoded where it is shown. Its pictures
+    // live in the cel store and are paid from the drawings' hot budget —
+    // but they are not the user's artwork, so not that row: a take warmed
+    // for playback would read as drawings grown by hundreds of megabytes.
+    MemoryCensusItem(
+      id: 'moviePictures',
+      bytes: session.renderCaches.brushFrameStore.movieCelBytes,
+    ),
   ]..sort((a, b) => b.bytes.compareTo(a.bytes));
 
   return MemoryCensus(

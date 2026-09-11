@@ -160,6 +160,57 @@ void main() {
     });
   });
 
+  testWidgets('what a frame reads from OUTSIDE the cel store is filled '
+      'before it composes — the hook answers first, and every frame it '
+      'answered for is warmed after (a reference movie\'s decode)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final f = fixture();
+      final filled = <int>[];
+      final scheduler = PlaybackPrerenderScheduler(
+        composites: f.composites,
+        resolveCut: (_) => cut(),
+        idleDelay: Duration.zero,
+        beforeCompose: (asked, frameIndex) async {
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            f.composites.validCompositeOrNull(
+              cut: asked,
+              frameIndex: frameIndex,
+              quality: PlaybackQuality.quarter,
+            ),
+            isNull,
+            reason: 'nothing is composed before the hook has answered',
+          );
+          filled.add(frameIndex);
+        },
+      );
+
+      scheduler.requestWarmCut(
+        cutId: const CutId('cut'),
+        quality: PlaybackQuality.quarter,
+        aroundFrameIndex: 0,
+      );
+      await scheduler.idle;
+
+      expect(filled, isNotEmpty);
+      for (final frame in filled) {
+        expect(
+          f.composites.validCompositeOrNull(
+            cut: cut(),
+            frameIndex: frame,
+            quality: PlaybackQuality.quarter,
+          ),
+          isNotNull,
+          reason: 'frame $frame was answered for, so it was warmed',
+        );
+      }
+      scheduler.dispose();
+      f.composites.dispose();
+    });
+  });
+
   testWidgets('warms every frame of the cut', (tester) async {
     await tester.runAsync(() async {
       final f = fixture();

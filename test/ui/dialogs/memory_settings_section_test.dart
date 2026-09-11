@@ -77,6 +77,7 @@ void main() {
       'viewerPages',
       'imageCache',
       'storyboardThumbnails',
+      'moviePictures',
       'tileImages',
       'engineBuffers',
     });

@@ -48,6 +48,7 @@ class PlaybackPrerenderScheduler {
     required this.composites,
     required this.resolveCut,
     this.afterFrameCached,
+    this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
   });
 
@@ -56,6 +57,12 @@ class PlaybackPrerenderScheduler {
 
   /// Called after each composited frame (budget enforcement hook).
   final void Function()? afterFrameCached;
+
+  /// Fills what a frame's composite reads from OUTSIDE the cel store before
+  /// the frame is composed — a movie kept as a reference is decoded here, so
+  /// a warmed frame holds its picture and the green bar means what it says
+  /// (「초록 바는 지금 그림에 쓰는 그 캐시와 예산이다」).
+  final Future<void> Function(Cut cut, int frameIndex)? beforeCompose;
 
   final Duration idleDelay;
 
@@ -298,6 +305,10 @@ class PlaybackPrerenderScheduler {
         // the queue.
         final ui.Image? image;
         try {
+          await beforeCompose?.call(cut, frameIndex);
+          if (_isStale(generation)) {
+            return;
+          }
           image = await composites.prepareCompositeInterruptible(
             cut: cut,
             frameIndex: frameIndex,

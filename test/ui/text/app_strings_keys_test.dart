@@ -301,6 +301,7 @@ void main() {
     'memoryItemViewerPages': (s) => s.memoryItemViewerPages,
     'memoryItemImageCache': (s) => s.memoryItemImageCache,
     'memoryItemStoryboardThumbnails': (s) => s.memoryItemStoryboardThumbnails,
+    'memoryItemMoviePictures': (s) => s.memoryItemMoviePictures,
     'memoryItemTileImages': (s) => s.memoryItemTileImages,
     'memoryItemEngineBuffers': (s) => s.memoryItemEngineBuffers,
     'containerAreaSettings': (s) => s.containerAreaSettings,
