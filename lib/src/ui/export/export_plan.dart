@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../models/kept_span.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_cel_naming.dart';
@@ -99,18 +100,23 @@ List<ExportFrameTask> buildExportFramePlan({
   final plan = <ExportFrameTask>[];
   for (final cut in cuts) {
     final duration = math.max(1, cut.duration);
-    var start = 0;
-    var end = duration - 1;
-    if (range == ExportRange.frameRange) {
-      start = (rangeStartFrame ?? 0).clamp(0, duration - 1);
-      end = (rangeEndFrame ?? duration - 1).clamp(0, duration - 1);
-    }
+    final kept = range == ExportRange.frameRange
+        ? KeptSpan(
+            length: duration,
+            inFrame: rangeStartFrame,
+            outFrame: rangeEndFrame,
+          )
+        : KeptSpan(length: duration);
     if (includeGaps && range == ExportRange.allCuts) {
       for (var gap = -cut.leadingGapFrames; gap < 0; gap += 1) {
         plan.add(ExportFrameTask(cut: cut, frameIndex: gap));
       }
     }
-    for (var frameIndex = start; frameIndex <= end; frameIndex += 1) {
+    for (
+      var frameIndex = kept.first;
+      frameIndex <= kept.last;
+      frameIndex += 1
+    ) {
       plan.add(ExportFrameTask(cut: cut, frameIndex: frameIndex));
     }
   }

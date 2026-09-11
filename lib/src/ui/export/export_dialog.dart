@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/argb_channels.dart';
+import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
@@ -692,9 +693,12 @@ class ExportDialogState extends State<ExportDialog> {
     if (axis.isEmpty) {
       return axis;
     }
-    final lo = (inFrame ?? 0).clamp(0, axis.length - 1);
-    final hi = (outFrame ?? axis.length - 1).clamp(lo, axis.length - 1);
-    return axis.sublist(lo, hi + 1);
+    final kept = KeptSpan(
+      length: axis.length,
+      inFrame: inFrame,
+      outFrame: outFrame,
+    );
+    return axis.sublist(kept.first, kept.last + 1);
   }
 
   ExportProjectOverrides get _overrides =>
@@ -1547,10 +1551,13 @@ class ExportDialogState extends State<ExportDialog> {
         if (inOut == null) {
           return 'Invalid in/out · F${position + 1} · $cutName';
         }
-        final lo = (inOut.$1 ?? 0) + 1;
-        final hi = (inOut.$2 ?? axis.length - 1) + 1;
-        return 'in $lo – out $hi (${hi - lo + 1}f) · '
-            'F${position + 1} · $cutName';
+        final kept = KeptSpan(
+          length: axis.length,
+          inFrame: inOut.$1,
+          outFrame: inOut.$2,
+        );
+        return 'in ${kept.first + 1} – out ${kept.last + 1} '
+            '(${kept.count}f) · F${position + 1} · $cutName';
       case ExportTab.image:
         return 'F${_currentImageFrame() + 1} / '
             '${math.max(1, _activeCut.duration)} · ${_activeCut.name}';

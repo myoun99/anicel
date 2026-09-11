@@ -9,6 +9,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui show ImageByteFormat;
 
+import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
@@ -102,15 +103,14 @@ class ProjectImportDoors {
     // IN/OUT on a multi-frame source: only the chosen span becomes cels.
     // The frames outside it are disposed HERE rather than left to the
     // finally block, which only knows about the ones that were kept.
-    final start = inFrame < 0
-        ? 0
-        : (inFrame > allFrames.length - 1 ? allFrames.length - 1 : inFrame);
-    final last = outFrame == null || outFrame > allFrames.length - 1
-        ? allFrames.length - 1
-        : (outFrame < start ? start : outFrame);
-    final decoded = allFrames.sublist(start, last + 1);
+    final kept = KeptSpan(
+      length: allFrames.length,
+      inFrame: inFrame,
+      outFrame: outFrame,
+    );
+    final decoded = allFrames.sublist(kept.first, kept.last + 1);
     for (var index = 0; index < allFrames.length; index += 1) {
-      if (index < start || index > last) {
+      if (index < kept.first || index > kept.last) {
         allFrames[index].image.dispose();
       }
     }
@@ -379,13 +379,13 @@ class ProjectImportDoors {
       // someone is drawing this week, not for all of it. The span decides
       // how many cels there are; [pageCount] keeps describing the FILE,
       // because that is what the asset records about it.
-      final firstPage = inFrame < 0
-          ? 0
-          : (inFrame > pageCount - 1 ? pageCount - 1 : inFrame);
-      final lastPage = outFrame == null || outFrame > pageCount - 1
-          ? pageCount - 1
-          : (outFrame < firstPage ? firstPage : outFrame);
-      final spanCount = lastPage - firstPage + 1;
+      final kept = KeptSpan(
+        length: pageCount,
+        inFrame: inFrame,
+        outFrame: outFrame,
+      );
+      final firstPage = kept.first;
+      final spanCount = kept.count;
       // A NEW cut is made at the span's first page, at the size the
       // renderer calls 1:1 — the size the window's locked 1:1 fit draws.
       final firstSize = document.pageSize(firstPage);
@@ -549,18 +549,19 @@ class ProjectImportDoors {
       return false;
     }
     final source = _pool.importAudioFile(path);
-    final conform = await _conforms.ensureFor(source);
-    final peaks = conform != null && conform.isUsable ? conform.peaks : null;
+    final peaks = await _conforms.ensurePeaksFor(source);
     if (peaks == null) {
       return false;
     }
-    final total = peaks.durationFrames(_frameRate());
-    final first = inFrame.clamp(0, total - 1);
-    final last = (outFrame ?? total - 1).clamp(first, total - 1);
+    final kept = KeptSpan(
+      length: peaks.durationFrames(_frameRate()),
+      inFrame: inFrame,
+      outFrame: outFrame,
+    );
     final landed = _landing.landSound(
       arrival: gate,
-      offsetFrames: first,
-      lengthFrames: last - first + 1,
+      offsetFrames: kept.first,
+      lengthFrames: kept.count,
       assets: [
         importedMediaAsset(
           path: source,

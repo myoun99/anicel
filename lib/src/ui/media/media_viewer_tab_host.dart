@@ -753,21 +753,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         // its waveform, and the conform that draws one is the same conform
         // playback already builds — so this asks for it rather than making
         // anything.
-        final store = widget.session.audioConformStore;
-        await store.ensureFor(request.path);
-        final peaks = store.peaksFor(request.path);
+        final peaks = await widget.session.audioConformStore.ensurePeaksFor(
+          request.path,
+        );
         return peaks == null
             ? null
-            : AudioViewerDocument(peaks: peaks, color: _waveformInk);
+            : AudioViewerDocument(
+                peaks: peaks,
+                color: AudioViewerDocument.ink,
+              );
     }
   }
-
-  /// The waveform's ink.
-  ///
-  /// ⚠️A PALETTE constant, not `colorScheme.primary`: the page is a raster
-  /// and the accent is live, so an accent-coloured band would be wrong the
-  /// moment the accent changed. See [AudioViewerDocument.color].
-  static const Color _waveformInk = AppColors.textDim;
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 

@@ -909,6 +909,8 @@ class _ImportDialogState extends State<ImportDialog> {
                 // bytes, and there is no trimmer yet — so the ends only
                 // appear where they already act: on what gets placed.
                 rangeEditable: _placing,
+                soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+                frameRate: widget.session.projectSettings.projectFrameRate,
                 onRangeChanged: (start, end) {
                   if (previewPath == null) {
                     return;

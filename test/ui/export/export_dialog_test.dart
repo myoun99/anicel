@@ -627,6 +627,29 @@ void main() {
       expect(transport.data, contains('F2 · Cut'));
     });
 
+    testWidgets('an OUT typed past the axis reads as the axis end — the '
+        'label says the span the export runs', (tester) async {
+      await pumpDialog(tester, exportSession());
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-start-field')),
+        '1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-range-end-field')),
+        '9',
+      );
+      await tester.pump();
+
+      final transport = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-transport-line')),
+      );
+      expect(transport.data, 'in 1 – out 2 (2f) · F1 · Cut');
+      final headline = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-plan-headline')),
+      );
+      expect(headline.data, contains('2 frames'));
+    });
+
     testWidgets('the timesheet tab scrubs cut/page (EX6)', (tester) async {
       await pumpDialog(tester, exportSession());
       await switchTab(tester, 'timesheet');

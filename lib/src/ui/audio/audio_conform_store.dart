@@ -363,6 +363,16 @@ class AudioConformStore extends ChangeNotifier {
     }
   }
 
+  /// Awaits the peaks of [sourcePath] — its length and its picture:
+  /// [ensureFor], then the waveform when the conform is usable; null when
+  /// it never will be. The one wait for everything that shows or measures
+  /// a sound before it plays: the media viewer's page, the import window's
+  /// preview, and a sound's placement.
+  Future<AudioPeaks?> ensurePeaksFor(String sourcePath) async {
+    final result = await ensureFor(sourcePath);
+    return result != null && result.isUsable ? result.peaks : null;
+  }
+
   Future<void> _ensure(String sourcePath) async {
     ConformResult result;
     try {

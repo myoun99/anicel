@@ -22,6 +22,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/placed_sound_conform.dart';
 
@@ -159,6 +160,53 @@ void main() {
     final start = s.activeCutGlobalStartFrame;
 
     expect(await place(tester, s, inFrame: 2, outFrame: 5), isTrue);
+
+    final s1 = s.activeTrack.seLayers.first;
+    expect(s1.timeline[start]?.length, 4);
+    expect(s1.audioClips.single.offsetFrames, 2);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('in the WINDOW the sound runs over its own frames, and '
+      'shortening its IN/OUT there shortens the block (「거기서 가져올 구간을 '
+      '줄이면 블록도 그만큼 줄어든다」)', (tester) async {
+    final path = await tester.runAsync(() => writeSound('door.wav', 1));
+    final s = session();
+    final start = s.activeCutGlobalStartFrame;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    TransportBar bar() =>
+        tester.widget<TransportBar>(find.byType(TransportBar));
+    for (var tries = 0; tries < 60 && bar().frameCount == 1; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    final peaks = await tester.runAsync(
+      () => s.audioConformStore.ensurePeaksFor(path),
+    );
+    expect(
+      bar().frameCount,
+      peaks!.durationFrames(s.projectSettings.projectFrameRate),
+    );
+    expect(bar().showRange, isTrue);
+
+    bar().onRangeChanged(2, 5);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 60; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+      if (s.activeTrack.seLayers.first.timeline[start] != null) {
+        break;
+      }
+    }
 
     final s1 = s.activeTrack.seLayers.first;
     expect(s1.timeline[start]?.length, 4);

@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
 import 'package:anicel/src/ui/import/import_preview.dart';
@@ -59,6 +60,8 @@ void main() {
               outFrame: null,
               rangeEditable: false,
               onRangeChanged: (start, end) {},
+              soundPeaks: (_) async => null,
+              frameRate: ProjectFrameRate.fps24,
             ),
           ),
         ),

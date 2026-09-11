@@ -3,6 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../models/kept_span.dart';
+import '../../models/project_frame_rate.dart';
+import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/straight_rgba_image.dart';
@@ -11,6 +14,8 @@ import '../../native/qa_video_decoder.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../audio/waveform_painter.dart';
+import '../media/audio_viewer_document.dart' show AudioViewerDocument;
 import '../theme/app_theme.dart';
 import '../widgets/checkered_picture.dart';
 import '../widgets/transport_bar.dart';
@@ -26,6 +31,10 @@ import '../widgets/transport_bar.dart';
 /// A still mounts the same bar with one frame. The bar is the shared one
 /// (`widgets/transport_bar.dart`), which is why a video will need nothing
 /// here beyond a frame supplier the day there is a decoder.
+///
+/// A sound is its waveform, run over the frames it lasts, with the span
+/// IN/OUT keep washed on it (the mockup's window for a sound — 유저
+/// 2026-09-11: 「거기서 가져올 구간을 줄이면 블록도 그만큼 줄어든다」).
 class ImportPreview extends StatefulWidget {
   const ImportPreview({
     super.key,
@@ -34,6 +43,8 @@ class ImportPreview extends StatefulWidget {
     required this.outFrame,
     required this.onRangeChanged,
     required this.rangeEditable,
+    required this.soundPeaks,
+    required this.frameRate,
   });
 
   /// The file being looked at, or null when nothing is selected.
@@ -48,6 +59,14 @@ class ImportPreview extends StatefulWidget {
   /// multi-frame source being PLACED.
   final bool rangeEditable;
 
+  /// A sound's peaks once its conform has them
+  /// (`AudioConformStore.ensurePeaksFor`); null when it never will.
+  final Future<AudioPeaks?> Function(String path) soundPeaks;
+
+  /// The project's rate: a sound runs over the frames IN/OUT and the block
+  /// it becomes are counted in.
+  final ProjectFrameRate frameRate;
+
   /// The narrowest this zone lays out: the transport's own minimum inside
   /// the inset around it. The window gives the file table the rest.
   static double get minimumWidth =>
@@ -58,6 +77,10 @@ class ImportPreview extends StatefulWidget {
   @override
   State<ImportPreview> createState() => _ImportPreviewState();
 }
+
+/// What the well shows: the frames the transport runs over, and the
+/// picture under the playhead — or a sound's waveform.
+typedef _Shown = ({int frameCount, ui.Image? picture, AudioPeaks? sound});
 
 class _ImportPreviewState extends State<ImportPreview> {
   /// The decoded frames of [ImportPreview.path]. A GIF has many, a still
@@ -84,6 +107,8 @@ class _ImportPreviewState extends State<ImportPreview> {
   ui.Image? _videoFrame;
   int _videoFrameShown = -1;
 
+  /// A sound, once its conform has answered.
+  AudioPeaks? _sound;
 
   @override
   void initState() {
@@ -117,6 +142,7 @@ class _ImportPreviewState extends State<ImportPreview> {
     _videoFrame?.dispose();
     _videoFrame = null;
     _videoFrameShown = -1;
+    _sound = null;
     final video = _video;
     _video = null;
     if (video != null) {
@@ -243,8 +269,16 @@ class _ImportPreviewState extends State<ImportPreview> {
       setState(() {});
       return;
     }
-    if (mediaAssetKindForPath(path) == MediaAssetKind.video) {
+    final kind = mediaAssetKindForPath(path);
+    if (kind == MediaAssetKind.video) {
       await _loadVideo(path);
+      return;
+    }
+    if (kind == MediaAssetKind.audio) {
+      final sound = await widget.soundPeaks(path);
+      if (mounted && _loadedPath == path) {
+        setState(() => _sound = sound);
+      }
       return;
     }
     if (path.toLowerCase().endsWith('.pdf')) {
@@ -289,26 +323,41 @@ class _ImportPreviewState extends State<ImportPreview> {
 
   /// What the well is showing right now: how many frames the transport
   /// runs over, and the picture under the playhead (null = nothing decoded
-  /// yet).
+  /// yet) — or a sound's waveform.
   ///
-  /// 🚨THE THREE SOURCES ARE ASKED ONCE. The count and the picture each
-  /// used to walk the same video-then-PDF-then-stills ladder in its own
-  /// nested conditional, so a source added to one and not the other would
-  /// scrub a video's length over a still's picture.
-  ({int frameCount, ui.Image? picture}) _shownSource() {
+  /// 🚨THE SOURCES ARE ASKED ONCE. The count and the picture each used to
+  /// walk the same video-then-PDF-then-stills ladder in its own nested
+  /// conditional, so a source added to one and not the other would scrub a
+  /// video's length over a still's picture. A sound is the fourth rung:
+  /// without it a sound fell to the still decode and ran over ONE frame,
+  /// so the window had no range to shorten it with.
+  _Shown _shownSource() {
     final video = _video;
     if (video != null) {
-      return (frameCount: video.info.frameCount, picture: _videoFrame);
+      return (
+        frameCount: video.info.frameCount,
+        picture: _videoFrame,
+        sound: null,
+      );
+    }
+    final sound = _sound;
+    if (sound != null) {
+      return (
+        frameCount: sound.durationFrames(widget.frameRate),
+        picture: null,
+        sound: sound,
+      );
     }
     if (_pdfPages > 0) {
-      return (frameCount: _pdfPages, picture: _pdfPage);
+      return (frameCount: _pdfPages, picture: _pdfPage, sound: null);
     }
     if (_frames.isEmpty) {
-      return (frameCount: 1, picture: null);
+      return (frameCount: 1, picture: null, sound: null);
     }
     return (
       frameCount: _frames.length,
       picture: _frames[_position.clamp(0, _frames.length - 1)],
+      sound: null,
     );
   }
 
@@ -318,7 +367,7 @@ class _ImportPreviewState extends State<ImportPreview> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _stage(source.picture)),
+        Expanded(child: _stage(source)),
         const Divider(height: 1),
         Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -338,34 +387,94 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// 미리보기에서 배경이 투명한파일은 출력창의 미리보기에서 쓰는 …
   /// 격자무늬 그대로 공용화해서 재사용하도록」). It used to draw the file
   /// straight onto the dark well, where open alpha and a dark picture look
-  /// the same.
-  Widget _stage(ui.Image? picture) => ColoredBox(
+  /// the same. A sound has no open alpha to show: its waveform stands on
+  /// the well itself.
+  Widget _stage(_Shown source) => ColoredBox(
     color: AppColors.backdrop,
     child: Padding(
       padding: const EdgeInsets.all(8),
       child: Center(
-        child: AspectRatio(
-          aspectRatio: 16 / 9,
-          child: picture == null
-              ? const SizedBox.shrink()
-              : CheckeredPicture(
-                  image: picture,
-                  checkerKey: const ValueKey<String>('import-preview-checker'),
-                ),
-        ),
+        child: AspectRatio(aspectRatio: 16 / 9, child: _shown(source)),
       ),
     ),
   );
 
+  Widget _shown(_Shown source) {
+    final sound = source.sound;
+    if (sound != null) {
+      return _waveform(sound, source.frameCount);
+    }
+    final picture = source.picture;
+    return picture == null
+        ? const SizedBox.shrink()
+        : CheckeredPicture(
+            image: picture,
+            checkerKey: const ValueKey<String>('import-preview-checker'),
+          );
+  }
+
+  /// A sound's picture — the viewer's painter in the viewer's ink
+  /// ([AudioViewerDocument.ink]) — over the frames the transport counts,
+  /// with the span IN/OUT keep washed as the transport's range is.
+  Widget _waveform(AudioPeaks sound, int frameCount) => LayoutBuilder(
+    builder: (context, constraints) {
+      final perFrame = constraints.maxWidth / frameCount;
+      final kept = _kept(frameCount);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomPaint(
+            key: const ValueKey<String>('import-preview-waveform'),
+            painter: WaveformPainter(
+              peaks: sound,
+              frameRate: widget.frameRate,
+              pixelsPerFrame: perFrame,
+              color: AudioViewerDocument.ink,
+            ),
+          ),
+          // Always there, clear while IN/OUT do not bite — nothing pops in.
+          Positioned(
+            left: kept.first * perFrame,
+            width: kept.count * perFrame,
+            top: 0,
+            bottom: 0,
+            child: DecoratedBox(
+              key: const ValueKey<String>('import-preview-kept-span'),
+              decoration: _rangeShown(frameCount)
+                  ? BoxDecoration(
+                      color: TransportBar.rangeWash,
+                      border: Border.symmetric(
+                        vertical: BorderSide(color: AppColors.accent, width: 2),
+                      ),
+                    )
+                  : const BoxDecoration(),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  /// What IN/OUT keep of [frameCount] frames — the transport's ends and the
+  /// waveform's wash read this one answer.
+  KeptSpan _kept(int frameCount) => KeptSpan(
+    length: frameCount,
+    inFrame: widget.inFrame,
+    outFrame: widget.outFrame,
+  );
+
+  /// IN/OUT bite only on a multi-frame source being placed.
+  bool _rangeShown(int frameCount) => widget.rangeEditable && frameCount > 1;
+
   Widget _transport(int frameCount) {
-    final out = widget.outFrame ?? frameCount - 1;
+    final kept = _kept(frameCount);
     return TransportBar(
       frameCount: frameCount,
       currentFrame: _position.clamp(0, frameCount - 1),
-      inFrame: widget.inFrame.clamp(0, frameCount - 1),
-      outFrame: out.clamp(0, frameCount - 1),
+      inFrame: kept.first,
+      outFrame: kept.last,
       playing: false,
-      showRange: widget.rangeEditable && frameCount > 1,
+      showRange: _rangeShown(frameCount),
       onSeek: (frame) {
         setState(() => _position = frame);
         if (_pdfPages > 0) {

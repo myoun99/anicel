@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -32,6 +33,8 @@ void main() {
               outFrame: null,
               rangeEditable: rangeEditable,
               onRangeChanged: (_, _) {},
+              soundPeaks: (_) async => null,
+              frameRate: ProjectFrameRate.fps24,
             ),
           ),
         ),

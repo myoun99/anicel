@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/kept_span.dart';
 import '../text/full_width_numerals.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
@@ -265,12 +266,15 @@ class _ExportScrubPainter extends CustomPainter with RepaintOnProps {
       return;
     }
 
-    final start = inMark ?? 0;
-    final end = outMark ?? axis.length - 1;
-    if (end >= start && (inMark != null || outMark != null)) {
+    if (inMark != null || outMark != null) {
+      final kept = KeptSpan(
+        length: axis.length,
+        inFrame: inMark,
+        outFrame: outMark,
+      );
       canvas.drawLine(
-        Offset(_x(size, start), centerY),
-        Offset(_x(size, end), centerY),
+        Offset(_x(size, kept.first), centerY),
+        Offset(_x(size, kept.last), centerY),
         Paint()
           ..color = accent.withValues(alpha: 0.35)
           ..strokeWidth = 5

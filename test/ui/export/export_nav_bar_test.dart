@@ -163,4 +163,42 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('the marked span is the span the export keeps — an OUT past '
+      'the axis marks up to its end', (tester) async {
+    Future<(Size, RenderObject)> marked(int inMark, int outMark) async {
+      await pumpBar(
+        tester,
+        axis: const ExportNavAxis(length: 3),
+        position: 0,
+        onChanged: (_) {},
+        inMark: inMark,
+        outMark: outMark,
+      );
+      final bar = find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_ExportScrubPainter',
+      );
+      return (tester.getSize(bar), tester.renderObject(bar));
+    }
+
+    var (size, bar) = await marked(0, 1);
+    var y = size.height * 0.62;
+    expect(
+      bar,
+      paints
+        ..line()
+        ..line(p1: Offset(0, y), p2: Offset(size.width / 2, y)),
+    );
+
+    (size, bar) = await marked(1, 9);
+    y = size.height * 0.62;
+    expect(
+      bar,
+      paints
+        ..line()
+        ..line(p1: Offset(size.width / 2, y), p2: Offset(size.width, y)),
+    );
+  });
 }

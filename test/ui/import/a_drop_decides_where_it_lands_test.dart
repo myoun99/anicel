@@ -199,6 +199,87 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  /// A three-frame GIF, one pixel a frame, black · white · black — no two
+  /// neighbours alike, because the import folds a repeated frame into a
+  /// hold and three equal frames would land as ONE cel.
+  Future<String> writeGif(String name) async {
+    // [lzw] is the pixel's LZW code: 0x44 for palette 0, 0x4C for 1.
+    List<int> frame(int lzw) => [
+      0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00, // graphic control
+      0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, // image
+      0x02, 0x02, lzw, 0x01, 0x00, // its one pixel
+    ];
+    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+    await file.writeAsBytes([
+      ...'GIF89a'.codeUnits,
+      0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, // 1×1, two colours
+      0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
+      ...frame(0x44), ...frame(0x4C), ...frame(0x44),
+      0x3B,
+    ]);
+    return file.path;
+  }
+
+  testWidgets('a GIF\'s IN/OUT lands only the frames it keeps — a cell '
+      'each, from the drop cell', (tester) async {
+    final s = session();
+    final row = seedBlock(s, drawingRow(s), 0, 1);
+
+    final landed = await tester.runAsync(() async {
+      final path = await writeGif('walk.gif');
+      return s.importDoors.importImageFile(
+        path: path,
+        destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
+        inFrame: 1,
+        outFrame: 2,
+        spot: RowFramesSpot(layerId: row.id, frameIndex: 3),
+      );
+    });
+
+    expect(landed, isTrue);
+    final after = s.layerById(row.id)!;
+    expect(after.timeline[3]?.length, 1);
+    expect(after.timeline[4]?.length, 1);
+    expect(after.timeline[5], isNull, reason: 'its first frame is outside');
+    expect(after.frames, hasLength(3), reason: 'the held cel and the two');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a PDF\'s IN/OUT lands only the pages it keeps — and renders '
+      'only those', (tester) async {
+    final pdf = FakePdfDocument(pageSizes: List.filled(4, const ui.Size(8, 8)));
+    addTearDown(PdfRenderService.debugResetForTests);
+    PdfRenderService.debugOpenerOverride = (path) async => pdf;
+    final s = session();
+    final row = seedBlock(s, drawingRow(s), 0, 1);
+
+    final landed = await tester.runAsync(() async {
+      final path = '${tempDir.path}${Platform.pathSeparator}conte.pdf';
+      await File(path).writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return s.importDoors.importPdfFile(
+        path: path,
+        destination: ImportDestination.activeCutLayer,
+        copyIntoProject: false,
+        inFrame: 1,
+        outFrame: 2,
+        spot: RowFramesSpot(layerId: row.id, frameIndex: 2),
+      );
+    });
+
+    expect(landed, isTrue);
+    final after = s.layerById(row.id)!;
+    expect(after.timeline[2]?.length, 1);
+    expect(after.timeline[3]?.length, 1);
+    expect(after.timeline[4], isNull);
+    expect(
+      pdf.renderRequests.map((request) => request.$1).toSet(),
+      {1, 2},
+      reason: 'the second and third pages — the span, from its first page',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('an image row and a reference row take nothing on their '
       'frames — and a drop aimed at one lands nothing and registers '
       'nothing', (tester) async {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../audio/waveform_painter.dart';
+import '../theme/app_theme.dart';
 
 /// A sound file, as the media viewer sees it: ONE page, and the page is
 /// the waveform.
@@ -47,6 +48,14 @@ class AudioViewerDocument implements ViewerDocument {
   static const double _naturalHeight = 256;
 
   final AudioPeaks peaks;
+
+  /// A sound's ink wherever its picture is drawn — the viewer's page and the
+  /// import window's preview show one sound one way.
+  ///
+  /// ⚠️A PALETTE constant, not `colorScheme.primary`: the viewer's page is a
+  /// raster and the accent is live, so an accent-coloured band would be
+  /// wrong the moment the accent changed. See [color].
+  static const Color ink = AppColors.textDim;
 
   /// The band's ink, decided by the caller.
   ///

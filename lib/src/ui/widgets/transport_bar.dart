@@ -65,6 +65,11 @@ class TransportBar extends StatelessWidget {
 
   static double _readoutWidth(bool compact) => compact ? 64 : 84;
 
+  /// The wash over the span IN/OUT keep — the track's, and wherever the
+  /// same span is marked over the source itself (the import preview's
+  /// waveform).
+  static Color get rangeWash => AppColors.accent.withValues(alpha: 0.18);
+
   /// Whether IN and OUT are on offer at all.
   ///
   /// A range that cannot act on anything is a control that lies, and there
@@ -405,7 +410,7 @@ class _TrackPainter extends CustomPainter with RepaintOnProps {
     final endX = rangeEnd * size.width;
     canvas.drawRect(
       Rect.fromLTRB(startX, 0, endX, size.height),
-      Paint()..color = AppColors.accent.withValues(alpha: 0.18),
+      Paint()..color = TransportBar.rangeWash,
     );
     final handle = Paint()..color = AppColors.accent;
     canvas.drawRect(Rect.fromLTWH(startX - 1, -2, 3, size.height + 4), handle);
