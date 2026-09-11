@@ -110,12 +110,10 @@ class FakePdfDocument implements ViewerDocument {
 
   @override
   Future<Uint8List> readRegionRgba(
-    int pageIndex, {
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) async {
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) async {
+    final (:left, :top, :width, :height) = box;
     regionReads.add((pageIndex, left, top, width, height));
     final gate = regionGate;
     if (gate != null) {

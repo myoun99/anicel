@@ -260,8 +260,7 @@ void main() {
       final asked = <({int left, int top, int width, int height})>[];
       final piece = (await buildCutPieceFromPicture(
         region: rect(left: 3, top: 2, right: 7, bottom: 5),
-        pictureWidth: 20,
-        pictureHeight: 10,
+        picture: (width: 20, height: 10),
         readRgba: picture(asked),
         pieceId: 'viewer-cut-1',
       ))!;
@@ -281,8 +280,7 @@ void main() {
       final asked = <({int left, int top, int width, int height})>[];
       final piece = await buildCutPieceFromPicture(
         region: rect(left: -5, top: -3, right: 4, bottom: 3),
-        pictureWidth: 20,
-        pictureHeight: 10,
+        picture: (width: 20, height: 10),
         readRgba: picture(asked),
         pieceId: 'viewer-cut-1',
       );
@@ -300,8 +298,7 @@ void main() {
             CanvasPoint(x: 2, y: 8),
           ]),
         ),
-        pictureWidth: 20,
-        pictureHeight: 10,
+        picture: (width: 20, height: 10),
         readRgba: picture(asked),
         pieceId: 'viewer-cut-1',
       ))!;
@@ -319,8 +316,7 @@ void main() {
       final asked = <({int left, int top, int width, int height})>[];
       final piece = await buildCutPieceFromPicture(
         region: rect(left: 3, top: 2, right: 7, bottom: 5),
-        pictureWidth: 20,
-        pictureHeight: 10,
+        picture: (width: 20, height: 10),
         readRgba: picture(asked, transparentAt: (x, y) => true),
         pieceId: 'viewer-cut-1',
       );
@@ -331,8 +327,7 @@ void main() {
       final asked = <({int left, int top, int width, int height})>[];
       final piece = await buildCutPieceFromPicture(
         region: rect(left: 30, top: 20, right: 40, bottom: 30),
-        pictureWidth: 20,
-        pictureHeight: 10,
+        picture: (width: 20, height: 10),
         readRgba: picture(asked),
         pieceId: 'viewer-cut-1',
       );

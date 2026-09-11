@@ -160,24 +160,14 @@ final class VideoViewerDocument implements ViewerDocument {
   /// is copied straight out of it, and no picture is made at all.
   @override
   Future<Uint8List> readRegionRgba(
-    int pageIndex, {
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) async {
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) async {
     final rgba = await _backend.frame(_token, pageIndex);
     if (rgba == null) {
       throw StateError('frame $pageIndex could not be read');
     }
-    return cropStraightRgba(
-      rgba,
-      sourceWidth: _info.width,
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-    );
+    return cropStraightRgba(rgba, sourceWidth: _info.width, box: box);
   }
 
   /// ⛔Closes only if THIS document is the one loaded. A bare close would

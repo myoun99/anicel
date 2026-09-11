@@ -107,12 +107,9 @@ abstract class ViewerDocument {
   /// 되는게 아니라, 제대로 100% 해상도만큼」. So this is the one read that is
   /// NOT at the size on screen — see the ⛔ above for why it may exist.
   Future<Uint8List> readRegionRgba(
-    int pageIndex, {
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  });
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  );
 
   /// Releases whatever the document holds — a native handle, an encoded
   /// buffer, a decoder.
@@ -138,12 +135,9 @@ typedef ViewerDocumentOpener = Future<ViewerDocument> Function(String path);
 /// page's full size.
 Future<Uint8List> readRegionByRenderingPage(
   ViewerDocument document,
-  int pageIndex, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) async {
+  int pageIndex,
+  ({int left, int top, int width, int height}) box,
+) async {
   final pixels = viewerPagePixels(document.pageSize(pageIndex));
   final page = await document.renderPage(
     pageIndex,
@@ -151,13 +145,7 @@ Future<Uint8List> readRegionByRenderingPage(
     height: pixels.height,
   );
   try {
-    return await cropImageRgba(
-      page,
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-    );
+    return await cropImageRgba(page, box);
   } finally {
     page.dispose();
   }
@@ -166,12 +154,10 @@ Future<Uint8List> readRegionByRenderingPage(
 /// The straight RGBA of a box of [image], byte for byte: drawn unfiltered
 /// onto a picture the box's size, so nothing is resampled.
 Future<Uint8List> cropImageRgba(
-  ui.Image image, {
-  required int left,
-  required int top,
-  required int width,
-  required int height,
-}) async {
+  ui.Image image,
+  ({int left, int top, int width, int height}) box,
+) async {
+  final (:left, :top, :width, :height) = box;
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImageRect(
     image,
@@ -187,14 +173,14 @@ Future<Uint8List> cropImageRgba(
       ..filterQuality = ui.FilterQuality.none,
   );
   final picture = recorder.endRecording();
-  final ui.Image box;
+  final ui.Image cropped;
   try {
-    box = await picture.toImage(width, height);
+    cropped = await picture.toImage(width, height);
   } finally {
     picture.dispose();
   }
   try {
-    final data = await box.toByteData(
+    final data = await cropped.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,
     );
     if (data == null) {
@@ -202,7 +188,7 @@ Future<Uint8List> cropImageRgba(
     }
     return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
   } finally {
-    box.dispose();
+    cropped.dispose();
   }
 }
 
@@ -211,11 +197,9 @@ Future<Uint8List> cropImageRgba(
 Uint8List cropStraightRgba(
   Uint8List rgba, {
   required int sourceWidth,
-  required int left,
-  required int top,
-  required int width,
-  required int height,
+  required ({int left, int top, int width, int height}) box,
 }) {
+  final (:left, :top, :width, :height) = box;
   final out = Uint8List(width * height * 4);
   final rowBytes = width * 4;
   for (var row = 0; row < height; row += 1) {

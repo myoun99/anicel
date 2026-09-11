@@ -137,18 +137,15 @@ class _PdfrxDocumentHandle implements ViewerDocument {
   /// the box's pixels are made.
   @override
   Future<Uint8List> readRegionRgba(
-    int pageIndex, {
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) async {
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) async {
     final page = _document.pages[pageIndex];
     final rendered = await page.render(
-      x: left,
-      y: top,
-      width: width,
-      height: height,
+      x: box.left,
+      y: box.top,
+      width: box.width,
+      height: box.height,
       fullWidth: page.width,
       fullHeight: page.height,
     );
@@ -164,10 +161,7 @@ class _PdfrxDocumentHandle implements ViewerDocument {
     try {
       return await cropImageRgba(
         image,
-        left: 0,
-        top: 0,
-        width: width,
-        height: height,
+        (left: 0, top: 0, width: box.width, height: box.height),
       );
     } finally {
       image.dispose();

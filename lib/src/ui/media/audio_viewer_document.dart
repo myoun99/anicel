@@ -106,19 +106,9 @@ class AudioViewerDocument implements ViewerDocument {
 
   @override
   Future<Uint8List> readRegionRgba(
-    int pageIndex, {
-    required int left,
-    required int top,
-    required int width,
-    required int height,
-  }) => readRegionByRenderingPage(
-    this,
-    pageIndex,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
+    int pageIndex,
+    ({int left, int top, int width, int height}) box,
+  ) => readRegionByRenderingPage(this, pageIndex, box);
 
   @override
   Future<void> dispose() async {}

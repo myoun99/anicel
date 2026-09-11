@@ -1274,15 +1274,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     try {
       piece = await buildCutPieceFromPicture(
         region: CanvasSelectionRegion.shape(shape),
-        pictureWidth: pixels.width,
-        pictureHeight: pixels.height,
-        readRgba: (box) => document.readRegionRgba(
-          pageIndex,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height,
-        ),
+        picture: pixels,
+        readRgba: (box) => document.readRegionRgba(pageIndex, box),
         pieceId: '${widget.viewerId}-cut-${_cutSequence += 1}',
       );
     } on Object {

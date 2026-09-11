@@ -35,10 +35,12 @@ CutPiece? buildCutPiece({
   final canvasSize = surface.canvasSize;
   final box = cutPieceBox(
     region,
-    clipLeft: canvasSize.pasteboardLeft,
-    clipTop: canvasSize.pasteboardTop,
-    clipRightExclusive: canvasSize.pasteboardRightExclusive,
-    clipBottomExclusive: canvasSize.pasteboardBottomExclusive,
+    clip: (
+      left: canvasSize.pasteboardLeft,
+      top: canvasSize.pasteboardTop,
+      rightExclusive: canvasSize.pasteboardRightExclusive,
+      bottomExclusive: canvasSize.pasteboardBottomExclusive,
+    ),
   );
   if (box == null) {
     return null;
@@ -92,17 +94,17 @@ CutPiece? buildCutPiece({
 /// a step could have added, and the mask zeroes what a 삭제 removed.
 ({int left, int top, int width, int height})? cutPieceBox(
   CanvasSelectionRegion region, {
-  required int clipLeft,
-  required int clipTop,
-  required int clipRightExclusive,
-  required int clipBottomExclusive,
+  required ({int left, int top, int rightExclusive, int bottomExclusive}) clip,
 }) {
   final bounds = region.coverageBounds;
-  final left = math.max(clipLeft, bounds.left.floor());
-  final top = math.max(clipTop, bounds.top.floor());
-  final rightExclusive = math.min(clipRightExclusive, bounds.right.ceil() + 1);
+  final left = math.max(clip.left, bounds.left.floor());
+  final top = math.max(clip.top, bounds.top.floor());
+  final rightExclusive = math.min(
+    clip.rightExclusive,
+    bounds.right.ceil() + 1,
+  );
   final bottomExclusive = math.min(
-    clipBottomExclusive,
+    clip.bottomExclusive,
     bounds.bottom.ceil() + 1,
   );
   if (rightExclusive <= left || bottomExclusive <= top) {
@@ -130,8 +132,7 @@ CutPiece? buildCutPiece({
 /// origin reads: a reference the canvas's size lands where it was.
 Future<CutPiece?> buildCutPieceFromPicture({
   required CanvasSelectionRegion region,
-  required int pictureWidth,
-  required int pictureHeight,
+  required ({int width, int height}) picture,
   required Future<Uint8List> Function(
     ({int left, int top, int width, int height}) box,
   )
@@ -140,10 +141,12 @@ Future<CutPiece?> buildCutPieceFromPicture({
 }) async {
   final box = cutPieceBox(
     region,
-    clipLeft: 0,
-    clipTop: 0,
-    clipRightExclusive: pictureWidth,
-    clipBottomExclusive: pictureHeight,
+    clip: (
+      left: 0,
+      top: 0,
+      rightExclusive: picture.width,
+      bottomExclusive: picture.height,
+    ),
   );
   if (box == null) {
     return null;

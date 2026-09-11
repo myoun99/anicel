@@ -61,10 +61,7 @@ void main() {
       try {
         return await document.readRegionRgba(
           0,
-          left: 3,
-          top: 2,
-          width: 5,
-          height: 4,
+          (left: 3, top: 2, width: 5, height: 4),
         );
       } finally {
         await document.dispose();
@@ -84,10 +81,7 @@ void main() {
     final document = (await VideoViewerDocument.open('reference.mp4'))!;
     final read = await document.readRegionRgba(
       3,
-      left: 3,
-      top: 2,
-      width: 5,
-      height: 4,
+      (left: 3, top: 2, width: 5, height: 4),
     );
     await document.dispose();
     expect(read, box(3, 2, 5, 4));
