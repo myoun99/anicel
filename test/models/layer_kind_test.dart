@@ -266,9 +266,11 @@ void _theCapabilityTable() {
   });
   column('joinsLinkedCutConvert', (kind) => kind.joinsLinkedCutConvert, {
     LayerKind.animation,
+    LayerKind.storyboard,
     LayerKind.image,
     LayerKind.text,
     LayerKind.folder,
+    LayerKind.camera,
   });
   column('mirrorsEffects', (kind) => kind.mirrorsEffects, {
     LayerKind.adjustment,
