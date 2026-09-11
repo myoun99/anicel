@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
@@ -12,6 +13,18 @@ import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 void main() {
   setUp(CanvasTouchContacts.reset);
   tearDown(CanvasTouchContacts.reset);
+  // The wheel pans only when it is mapped to (I-15): mapped here, so the
+  // middle drags below are the pan whose lift these tests watch.
+  setUp(() {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      canvasWheelClick: const CanvasPointerMapping(
+        action: CanvasPointerAction.pan,
+      ),
+    );
+  });
+  tearDown(() {
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  });
 
   Future<CanvasViewport Function()> pumpLayer(WidgetTester tester) async {
     var viewport = CanvasViewport();
@@ -32,7 +45,7 @@ void main() {
     return () => viewport;
   }
 
-  /// A middle-button drag: the default pan mapping.
+  /// A middle-button drag, mapped to the pan above.
   Future<double> panThenLift(
     WidgetTester tester, {
     required bool cancel,

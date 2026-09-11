@@ -38,8 +38,11 @@ class AppInputSettings {
     this.canvasRightClick = const CanvasPointerMapping(
       action: CanvasPointerAction.eyedropper,
     ),
+    // 🗣️I-15 (유저 2026-09-11): 「기본값을 휠클릭이 아니라 스페이스바로 이동」,
+    // then 「휠클릭은 왜 남아있는거지? 잔재 삭제해주고」 — the pan's default is
+    // the held Space; the wheel click pans only when mapped to.
     this.canvasWheelClick = const CanvasPointerMapping(
-      action: CanvasPointerAction.pan,
+      action: CanvasPointerAction.none,
     ),
     this.canvasPenTail = const CanvasPointerMapping(
       action: CanvasPointerAction.eraser,
@@ -320,7 +323,7 @@ class AppInputSettings {
     ),
     canvasWheelClick: CanvasPointerMapping.fromJson(
       json['canvasWheelClick'],
-      fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
+      fallback: const CanvasPointerMapping(action: CanvasPointerAction.none),
     ),
     canvasPenTail: CanvasPointerMapping.fromJson(
       json['canvasPenTail'],

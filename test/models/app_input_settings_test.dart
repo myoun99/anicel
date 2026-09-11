@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -49,6 +50,53 @@ void main() {
     expect(await store.load(), isNull);
     await store.save(settings);
     expect(await store.load(), settings);
+  });
+
+  // 🗣️I-15 follow-up (유저 2026-09-11): 「휠클릭은 왜 남아있는거지? 잔재
+  // 삭제해주고」 — the wheel's old default PAN leaves the files that kept it.
+  group("the wheel click's old default pan", () {
+    late Directory dir;
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('wheel-remnant');
+    });
+    tearDown(() => dir.delete(recursive: true));
+
+    AppInputSettingsStore store() =>
+        AppInputSettingsStore(filePath: '${dir.path}/input_settings.json');
+
+    Future<AppInputSettings?> loadVersionOne(CanvasPointerAction wheel) {
+      File(store().filePath).writeAsStringSync(
+        jsonEncode({
+          'version': 1,
+          ...AppInputSettings(
+            canvasWheelClick: CanvasPointerMapping(action: wheel),
+          ).toJson(),
+        }),
+      );
+      return store().load();
+    }
+
+    test('leaves a version-1 file: it is the default sitting there', () async {
+      final loaded = await loadVersionOne(CanvasPointerAction.pan);
+      expect(loaded!.canvasWheelClick.action, CanvasPointerAction.none);
+    });
+
+    test('keeps any other wheel mapping a version-1 file holds', () async {
+      final loaded = await loadVersionOne(CanvasPointerAction.undo);
+      expect(loaded!.canvasWheelClick.action, CanvasPointerAction.undo);
+    });
+
+    test('from version 2 a file keeps what is mapped, the pan too', () async {
+      await store().save(
+        const AppInputSettings(
+          canvasWheelClick: CanvasPointerMapping(
+            action: CanvasPointerAction.pan,
+          ),
+        ),
+      );
+      final loaded = await store().load();
+      expect(loaded!.canvasWheelClick.action, CanvasPointerAction.pan);
+    });
   });
 
   test('PEN-15: stored snap lists matching a LEGACY default upgrade to the '

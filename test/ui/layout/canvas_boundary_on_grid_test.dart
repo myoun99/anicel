@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/scaled_test_binding.dart';
@@ -489,17 +490,20 @@ void main() {
         await tester.pumpAndSettle();
         check('settled after the stroke');
 
+        // The pan is the held Space (I-15) — the wheel click pans only when
+        // it is mapped to.
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
         final hand = await tester.startGesture(
           canvasCentre(),
           kind: PointerDeviceKind.mouse,
-          buttons: kMiddleMouseButton,
         );
         await tester.pump();
-        check('the frame a wheel-click pan started');
+        check('the frame a held-Space pan started');
         await hand.moveBy(const Offset(13.7, 5.3));
         await tester.pump();
         check('mid-pan');
         await hand.up();
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
         await tester.pump();
         check('the frame the pan ended');
         await tester.pumpAndSettle();

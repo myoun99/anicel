@@ -1540,9 +1540,11 @@ void main() {
       expect(viewports.last.zoom, closeTo(opened, 1e-9));
     });
 
-    testWidgets('middle mouse drag pans without an editable frame', (
+    testWidgets('🗣️I-15: the held pan drags the view without an editable '
+        'frame — and the wheel click, unmapped by default, drags nothing', (
       tester,
     ) async {
+      addTearDown(() => CanvasPanHold.held.value = false);
       final viewports = <CanvasViewport>[];
       await tester.pumpWidget(
         blankPanel(
@@ -1551,15 +1553,22 @@ void main() {
       );
       await tester.pump();
 
-      final gesture = await tester.createGesture(
-        kind: PointerDeviceKind.mouse,
-        buttons: kMiddleMouseButton,
-      );
-      await gesture.down(viewportPoint(tester, const Offset(30, 30)));
-      await gesture.moveTo(viewportPoint(tester, const Offset(42, 51)));
-      await gesture.up();
-      await tester.pump();
+      Future<void> dragWith(int buttons) async {
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: buttons,
+        );
+        await gesture.down(viewportPoint(tester, const Offset(30, 30)));
+        await gesture.moveTo(viewportPoint(tester, const Offset(42, 51)));
+        await gesture.up();
+        await tester.pump();
+      }
 
+      await dragWith(kMiddleMouseButton);
+      expect(viewports, isEmpty, reason: '「잔재 삭제」: the wheel pans nothing');
+
+      CanvasPanHold.held.value = true;
+      await dragWith(kPrimaryButton);
       expect(viewports, isNotEmpty);
       expect(viewports.last.panX, 12);
       expect(viewports.last.panY, 21);

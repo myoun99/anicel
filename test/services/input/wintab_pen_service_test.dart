@@ -32,15 +32,20 @@ void main() {
     );
   });
 
-  test('the canvas pointer mappings default right=eyedropper/wheel=pan '
-      'and round-trip (PEN-7a)', () {
+  test('the canvas pointer mappings default right=eyedropper/wheel=none '
+      'and round-trip (PEN-7a; I-15 moved the pan to Space)', () {
     const defaults = AppInputSettings();
     expect(defaults.canvasRightClick.action, CanvasPointerAction.eyedropper);
     expect(
       defaults.canvasRightClick.release,
       CanvasPointerRelease.returnToTool,
     );
-    expect(defaults.canvasWheelClick.action, CanvasPointerAction.pan);
+    // 🗣️I-15: 「휠클릭은 왜 남아있는거지? 잔재 삭제해주고」.
+    expect(defaults.canvasWheelClick.action, CanvasPointerAction.none);
+    expect(
+      AppInputSettings.fromJson(const {}).canvasWheelClick.action,
+      CanvasPointerAction.none,
+    );
     // Old settings files (no field) get the defaults.
     expect(
       AppInputSettings.fromJson(const {}).canvasRightClick.action,

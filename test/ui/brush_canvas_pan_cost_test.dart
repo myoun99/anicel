@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -20,6 +21,20 @@ import 'brush_canvas_test_helpers.dart';
 ///
 /// 유저, R4 후속: 렉이라면 무조건 고치고 싶다.
 void main() {
+  // What a PAN costs, whichever door it comes through: the wheel pans only
+  // when it is mapped to (I-15 — the default is the held 「이동」 key), so it
+  // is mapped here.
+  setUp(() {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      canvasWheelClick: const CanvasPointerMapping(
+        action: CanvasPointerAction.pan,
+      ),
+    );
+  });
+  tearDown(() {
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  });
+
   /// The panel, with both observation seams open:
   ///
   ///  * `panelBuilds` counts the panel's own `build` runs — the underlay
@@ -79,7 +94,7 @@ void main() {
     return (clip.child! as SizedBox).child;
   }
 
-  /// A middle-button drag across the canvas — the default pan mapping.
+  /// A middle-button drag across the canvas, mapped to the pan above.
   Future<TestGesture> startPan(WidgetTester tester) async {
     final gesture = await tester.startGesture(
       canvasGlobalOffset(tester, const Offset(60, 60)),

@@ -233,7 +233,7 @@ void main() {
   });
 
   testWidgets('🗣️I-15: while the 「이동」 key is held a PRIMARY mouse drag '
-      'is the very pan a wheel click starts — and never otherwise', (
+      'is the very pan a mapped wheel click starts — and never otherwise', (
     tester,
   ) async {
     addTearDown(() => CanvasPanHold.held.value = false);
@@ -262,8 +262,18 @@ void main() {
     }
 
     expect(await drag(kPrimaryButton), isNull, reason: 'the tool has it');
+    expect(
+      await drag(kMiddleMouseButton),
+      isNull,
+      reason: '「잔재 삭제」: unmapped by default, the wheel pans nothing',
+    );
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      canvasWheelClick: const CanvasPointerMapping(
+        action: CanvasPointerAction.pan,
+      ),
+    );
     final wheel = await drag(kMiddleMouseButton);
-    expect(wheel, isNotNull);
+    expect(wheel, isNotNull, reason: 'mapped to the pan, it pans');
 
     CanvasPanHold.held.value = true;
     expect(await drag(kPrimaryButton), wheel, reason: 'the very same pan');
