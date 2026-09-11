@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 class _Callbacks {
   int importRequests = 0;
@@ -114,7 +115,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('media-asset-linked-$foot')),
+      find.byKey(const ValueKey<String>('media-asset-in-use-$foot')),
       findsOneWidget,
     );
     // The existing, unlinked asset carries neither badge.
@@ -125,7 +126,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>(r'media-asset-linked-C:\snd\clap.wav')),
+      find.byKey(const ValueKey<String>(r'media-asset-in-use-C:\snd\clap.wav')),
       findsNothing,
     );
   });
@@ -257,7 +258,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(callbacks.removed, [foot]);
-    expect(find.textContaining('Still linked'), findsOneWidget);
+    expect(find.textContaining(AppText.strings.mediaStillInUse), findsOneWidget);
   });
 
   // The other half of importing by reference: the row where a user who

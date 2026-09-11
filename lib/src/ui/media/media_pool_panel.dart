@@ -310,7 +310,7 @@ class MediaPoolPanel extends StatelessWidget {
       showAppNotice(
         context,
         title: AppText.strings.commonNotice,
-        message: AppText.strings.mediaStillLinked,
+        message: AppText.strings.mediaStillInUse,
       ),
     );
   }
@@ -537,9 +537,9 @@ class MediaPoolPanel extends StatelessWidget {
           ),
           if (referenced)
             Tooltip(
-              message: AppText.strings.mpLinkedOnSeRows,
+              message: AppText.strings.mpInUseOnTimeline,
               child: Icon(
-                key: ValueKey<String>('media-asset-linked-${asset.path}'),
+                key: ValueKey<String>('media-asset-in-use-${asset.path}'),
                 Icons.link,
                 size: 14,
                 color: colorScheme.onSurfaceVariant,
