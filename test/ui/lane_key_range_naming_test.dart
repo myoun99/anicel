@@ -373,4 +373,31 @@ void main() {
     expect(blur().keyAt(4)!.name, 'A');
     expect(blur().keyAt(4)!.value, 3, reason: 'joining adopts');
   });
+
+  test('joining a taken name adopts its TYPE as well as its value — the '
+      'window imposes nothing it was not asked for', () {
+    keyRotation({0: 10, 4: 20});
+    selectRotationRange(0, 1);
+    laneVerbs.setLaneKeyNamesForSelection(
+      'A',
+      interpolation: PropertyKeyInterpolation.hold,
+    );
+
+    selectRotationRange(4, 5);
+    expect(laneVerbs.setLaneKeyNamesForSelection('A'), isTrue);
+    laneVerbs.linkLaneKeyNamesForSelection('A');
+
+    final joined = rotation().keyAt(4)!;
+    expect(joined.value, 10, reason: 'joining adopts the value');
+    expect(
+      joined.interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: 'and the type that value comes with (유저 2026-09-12)',
+    );
+    expect(
+      rotation().keyAt(0)!.interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: 'the holder was not restyled by the joiner',
+    );
+  });
 }

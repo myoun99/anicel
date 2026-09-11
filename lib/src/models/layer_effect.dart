@@ -599,12 +599,17 @@ class NamedEffectKeyChange {
     required this.parameterId,
     required this.name,
     required this.value,
+    required this.interpolation,
   });
 
   final EffectId effectId;
   final String parameterId;
   final String name;
   final double value;
+
+  /// The type of the segment leaving the key — carried with the value
+  /// (F-84 실기, 유저 2026-09-12: 「싹다링크해야하는데」).
+  final PropertyKeyInterpolation interpolation;
 }
 
 /// The named keys whose VALUE differs between [before] and [after] — the
@@ -628,18 +633,19 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
       if (oldTrack == null) {
         continue;
       }
-      // What counts as "moved" is the LANE's predicate ([movedNamedValues]),
+      // What counts as "moved" is the LANE's predicate ([movedNamedKeys]),
       // not this loop's: an effect parameter and a transform lane are the
       // same kind of thing to the link, and deciding it twice is how the
       // two would drift.
       for (final moved
-          in movedNamedValues(oldTrack, entry.value.track).entries) {
+          in movedNamedKeys(oldTrack, entry.value.track).entries) {
         changes.add(
           NamedEffectKeyChange(
             effectId: effect.id,
             parameterId: entry.key,
             name: moved.key,
-            value: moved.value,
+            value: moved.value.value,
+            interpolation: moved.value.interpolation,
           ),
         );
       }
@@ -648,14 +654,14 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
   return changes;
 }
 
-/// The value [name] ALREADY holds in [effects], inside one effect's one
+/// The key [name] ALREADY holds in [effects], inside one effect's one
 /// parameter — null when the name is free there.
 ///
 /// This is the rename's pull: a key joining an existing name takes that
 /// name's number rather than imposing its own. Callers ask it across the
 /// whole naming space (this row AND its 겸용 siblings, which share effect
 /// ids), so a free name here can still be taken next door.
-double? namedEffectKeyValue(
+PropertyKey<double>? namedEffectKey(
   List<LayerEffect> effects, {
   required EffectId effectId,
   required String parameterId,
@@ -664,7 +670,7 @@ double? namedEffectKeyValue(
 }) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameters[parameterId]?.track.valueForName(
+      return effect.parameters[parameterId]?.track.keyForName(
         name,
         excludeFrames: excludeFrames,
       );
@@ -674,7 +680,7 @@ double? namedEffectKeyValue(
 }
 
 /// [effects] with every key carrying a change's name — in that change's own
-/// parameter — set to its value. The other half of the link.
+/// parameter — set to its value AND type. The other half of the link.
 List<LayerEffect> effectsWithNamedValues(
   List<LayerEffect> effects,
   List<NamedEffectKeyChange> changes,
@@ -693,7 +699,10 @@ List<LayerEffect> effectsWithNamedValues(
     if (parameter == null) {
       continue;
     }
-    final track = parameter.track.withNamedValue(change.name, change.value);
+    final track = parameter.track.withNamedKey(change.name, (
+      value: change.value,
+      interpolation: change.interpolation,
+    ));
     if (track == parameter.track) {
       continue;
     }

@@ -25,16 +25,64 @@ void main() {
   );
 
   group('PropertyTrack', () {
-    test('withNamedValue moves every key of that name', () {
+    test('withNamedKey moves every key of that name — number AND type', () {
       final result = track({
         0: (1, 'A'),
         5: (2, null),
         10: (3, 'A'),
-      }).withNamedValue('A', 9);
+      }).withNamedKey('A', (
+        value: 9,
+        interpolation: PropertyKeyInterpolation.hold,
+      ));
 
       expect(result.keyAt(0)!.value, 9);
+      expect(result.keyAt(0)!.interpolation, PropertyKeyInterpolation.hold);
       expect(result.keyAt(10)!.value, 9);
+      expect(result.keyAt(10)!.interpolation, PropertyKeyInterpolation.hold);
       expect(result.keyAt(5)!.value, 2, reason: 'unnamed keys are untouched');
+      expect(
+        result.keyAt(5)!.interpolation,
+        PropertyKeyInterpolation.linear,
+        reason: 'and so is their type',
+      );
+    });
+
+    test('a value edit keeps the key TYPE, the way it keeps the name — the '
+        'canvas write that turned a hold linear (유저 2026-09-12)', () {
+      final held = track({
+        4: (1, 'A'),
+      }).withKeysInterpolated(frames: {4}, interpolation: PropertyKeyInterpolation.hold)!;
+
+      final moved = held.withKey(4, 9);
+
+      expect(moved.keyAt(4)!.value, 9);
+      expect(moved.keyAt(4)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(moved.keyAt(4)!.name, 'A');
+    });
+
+    test('a TYPE-only change is a change the link carries', () {
+      final before = track({4: (1, 'A')});
+      final after = before.withKeysInterpolated(
+        frames: {4},
+        interpolation: PropertyKeyInterpolation.hold,
+      )!;
+
+      expect(movedNamedKeys(before, after), {
+        'A': (value: 1, interpolation: PropertyKeyInterpolation.hold),
+      });
+    });
+
+    test('a key that ARRIVES named carries NOTHING — not even its type', () {
+      final before = track({4: (1, null)});
+      final after = track({
+        4: (1, 'A'),
+      }).withKeysInterpolated(frames: {4}, interpolation: PropertyKeyInterpolation.hold)!;
+
+      expect(
+        movedNamedKeys(before, after),
+        isEmpty,
+        reason: 'joining ADOPTS what the name holds; it never imposes',
+      );
     });
 
     test('a name SURVIVES a value edit — it is identity, not content', () {
@@ -98,27 +146,27 @@ void main() {
       expect(namedEffectKeyChanges(before, after), isEmpty);
     });
 
-    test('valueForName reads what a name already holds', () {
+    test('keyForName reads the KEY a name already holds', () {
       final subject = track({0: (1, null), 4: (6, 'A')});
 
-      expect(subject.valueForName('A'), 6);
-      expect(subject.valueForName('B'), isNull);
+      expect(subject.keyForName('A')!.value, 6);
+      expect(subject.keyForName('B'), isNull);
     });
 
-    test('namedEffectKeyValue reads it through the chain, per parameter', () {
+    test('namedEffectKey reads it through the chain, per parameter', () {
       final effects = [blur('e1', track({4: (6, 'A')}))];
 
       expect(
-        namedEffectKeyValue(
+        namedEffectKey(
           effects,
           effectId: const EffectId('e1'),
           parameterId: radiusId,
           name: 'A',
-        ),
+        )!.value,
         6,
       );
       expect(
-        namedEffectKeyValue(
+        namedEffectKey(
           effects,
           effectId: const EffectId('e2'),
           parameterId: radiusId,
@@ -147,11 +195,17 @@ void main() {
           parameterId: radiusId,
           name: 'A',
           value: 9,
+          interpolation: PropertyKeyInterpolation.hold,
         ),
       ]);
 
       final radius = result.single.parameters[radiusId]!.track;
       expect(radius.keyAt(0)!.value, 9);
+      expect(
+        radius.keyAt(0)!.interpolation,
+        PropertyKeyInterpolation.hold,
+        reason: 'the type travels with the number (유저 2026-09-12)',
+      );
       expect(radius.keyAt(4)!.value, 2, reason: 'a different name is a '
           'different link');
       expect(radius.keyAt(8)!.value, 3);
@@ -166,6 +220,7 @@ void main() {
           parameterId: radiusId,
           name: 'A',
           value: 9,
+          interpolation: PropertyKeyInterpolation.linear,
         ),
       ]);
 
@@ -185,6 +240,7 @@ void main() {
           parameterId: radiusId,
           name: 'A',
           value: 9,
+          interpolation: PropertyKeyInterpolation.linear,
         ),
       ]);
 
@@ -194,7 +250,7 @@ void main() {
   });
 
   // The transform lanes ride the SAME predicate as effect parameters
-  // ([movedNamedValues]) — a transform simply has no effect id to carry its
+  // ([movedNamedKeys]) — a transform simply has no effect id to carry its
   // naming space across cuts, so the link group stands in for one.
   group('transform lanes', () {
     TransformTrack lanes({
@@ -214,7 +270,9 @@ void main() {
         lanes(rotation: track({0: (45, 'A')})),
       );
 
-      expect(changes.rotation, {'A': 45.0});
+      expect(changes.rotation, {
+        'A': (value: 45.0, interpolation: PropertyKeyInterpolation.linear),
+      });
       expect(changes.position, isEmpty);
     });
 
@@ -228,20 +286,37 @@ void main() {
     });
 
     test('applying a change moves every key of that name in the lane', () {
-      final result = transformTrackWithNamedValues(
+      final result = transformTrackWithNamedKeys(
         lanes(rotation: track({0: (10, 'A'), 5: (20, null), 9: (30, 'A')})),
-        const TransformNamedChanges(rotation: {'A': 45}),
+        const TransformNamedChanges(
+          rotation: {
+            'A': (value: 45, interpolation: PropertyKeyInterpolation.hold),
+          },
+        ),
       );
 
       expect(result.rotation.keyAt(0)!.value, 45);
+      expect(
+        result.rotation.keyAt(0)!.interpolation,
+        PropertyKeyInterpolation.hold,
+        reason: 'the type is part of the link (유저 2026-09-12)',
+      );
       expect(result.rotation.keyAt(9)!.value, 45);
       expect(result.rotation.keyAt(5)!.value, 20, reason: 'unnamed is free');
+      expect(
+        result.rotation.keyAt(5)!.interpolation,
+        PropertyKeyInterpolation.linear,
+      );
     });
 
     test('the same name in another LANE is another link', () {
-      final result = transformTrackWithNamedValues(
+      final result = transformTrackWithNamedKeys(
         lanes(rotation: track({0: (10, 'A')}), scale: track({0: (2, 'A')})),
-        const TransformNamedChanges(rotation: {'A': 45}),
+        const TransformNamedChanges(
+          rotation: {
+            'A': (value: 45, interpolation: PropertyKeyInterpolation.linear),
+          },
+        ),
       );
 
       expect(result.rotation.keyAt(0)!.value, 45);
@@ -279,16 +354,26 @@ void main() {
       expect(result.keyAt(5)!.value, 2);
     });
 
-    test('an ADOPTED value outranks both — joining takes what is there', () {
+    test('an ADOPTED key outranks both — joining takes what is there, type '
+        'included', () {
       final result = track({0: (1, null), 5: (2, null)}).withRangeNamed(
         frames: {0, 5},
         name: 'A',
-        adopted: 9,
+        adopted: const PropertyKey(
+          9,
+          interpolation: PropertyKeyInterpolation.hold,
+        ),
         preferredFrame: 5,
       );
 
       expect(result!.keyAt(0)!.value, 9);
       expect(result.keyAt(5)!.value, 9);
+      expect(
+        result.keyAt(5)!.interpolation,
+        PropertyKeyInterpolation.hold,
+        reason: "the name's TYPE comes with its number (유저 2026-09-12: "
+            '「싹다링크해야하는데」)',
+      );
     });
 
     test('un-naming touches no values', () {
@@ -315,7 +400,7 @@ void main() {
       expect(result.keys, hasLength(1));
     });
 
-    test('interpolation survives the collapse', () {
+    test('the collapse lands ONE type as well as one value', () {
       final subject = PropertyTrack<double>(
         keys: {
           0: const PropertyKey(1),
@@ -328,16 +413,25 @@ void main() {
 
       final result = subject.withRangeNamed(frames: {0, 5}, name: 'A');
 
-      expect(result!.keyAt(5)!.interpolation, PropertyKeyInterpolation.hold);
-      expect(result.keyAt(5)!.value, 1, reason: 'value collapsed all the same');
+      expect(result!.keyAt(5)!.value, 1, reason: 'the earliest key speaks');
+      expect(
+        result.keyAt(5)!.interpolation,
+        PropertyKeyInterpolation.linear,
+        reason:
+            "⛔REVERSES 'interpolation survives the collapse' (mine, no user "
+            'behind it). 유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 '
+            '링크안되는건가? 싹다링크해야하는데」 — the keys a name gathers '
+            'hold one value AND one type',
+      );
+      expect(result.keyAt(0)!.interpolation, PropertyKeyInterpolation.linear);
     });
 
-    test('valueForName can EXCLUDE the keys that are joining', () {
+    test('keyForName can EXCLUDE the keys that are joining', () {
       final subject = track({0: (1, 'A'), 5: (2, null)});
 
-      expect(subject.valueForName('A'), 1);
+      expect(subject.keyForName('A')!.value, 1);
       expect(
-        subject.valueForName('A', excludeFrames: {0}),
+        subject.keyForName('A', excludeFrames: {0}),
         isNull,
         reason: 'a key doing the joining must not answer for the name',
       );

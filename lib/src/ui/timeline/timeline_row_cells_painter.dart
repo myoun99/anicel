@@ -836,14 +836,9 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   Color foregroundInkFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
-    // Camera key-summary markers read like the lane key diamonds (UI-R24
-    // #9): the frame-block WHITE body — selection speaks through the accent
-    // outline layers, not the glyph. Dimmed outside the playback range.
-    if (_cameraSummaryRow && model.exposureState.isCovered) {
-      return timelineDrawingStartColor.withValues(
-        alpha: model.dimmed ? 0.55 : 1,
-      );
-    }
+    // 🪦The camera summary's own ink went with the glyph it tinted: since
+    // B4 that row prints no text at all — its keys are the shared lane key
+    // markers, drawn as span overlays — so nothing asked this any more.
     return model.ghost
         ? colorScheme.onSurface.withValues(alpha: 0.85)
         : timelineCellUsesDrawingInk(model.exposureState)
@@ -868,8 +863,11 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   TextStyle glyphStyleFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
-    return baseTextStyle.copyWith(
-      color: foregroundInkFor(model),
+    // The block's word, printed the one way ([timelineBlockWordStyle] —
+    // the lane key's name goes through the same function).
+    return timelineBlockWordStyle(
+      baseTextStyle,
+      ink: foregroundInkFor(model),
       // R26 #38/#4: names and marks SHRINK with the cell instead of
       // blanking out below ~14px — "절대 안 사라지도록". #15 adds the
       // vertical half: a squeezed row shrinks them the same way.
@@ -878,32 +876,10 @@ class TimelineRowCellsPainter extends CustomPainter
         frameCellExtent,
         crossExtent: crossAxisExtent,
       ),
-      fontWeight:
+      bold:
           !model.ghost &&
-              !isEmptyX &&
-              model.exposureState != TimelineCellExposureState.held
-          ? FontWeight.bold
-          : baseTextStyle.fontWeight,
-      // 🚨F-48 ② (유저 2026-08-28): 「점·프레임 이름이 칸 중앙보다 미묘하게
-      // 아래」. The centring below is exact — `rect.center - glyph.size/2`,
-      // snapped to physical pixels — so the drift is not in the geometry.
-      // It is in the BOX: with no height set, a glyph's box is the font's
-      // ascent + descent, and a Japanese face carries a tall ascent for
-      // full-width forms. Latin digits and letters ink only above the
-      // baseline, so centring that lopsided box puts the ink LOW. The
-      // report arrived right after the app took BIZ UDPGothic, which is
-      // the same event from the other side.
-      //
-      // `height: 1` with an EVEN leading distribution makes the box
-      // symmetric about the glyph instead of about the font's metrics, so
-      // the exact centring above lands where the eye reads centre.
-      //
-      // ⚠️A test cannot see this: `flutter test` never loads the bundled
-      // font and draws the test face, whose metrics are symmetric — the
-      // difference measures 0 there. What the test below CAN pin is that
-      // the box is the size we asked for.
-      height: 1,
-      leadingDistribution: TextLeadingDistribution.even,
+          !isEmptyX &&
+          model.exposureState != TimelineCellExposureState.held,
     );
   }
 

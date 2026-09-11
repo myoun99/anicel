@@ -12,6 +12,8 @@ import 'package:anicel/src/models/key_range_move.dart'
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -21,6 +23,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineFittedGlyphFontSize;
@@ -77,12 +81,19 @@ Project _project({CutCamera? camera, TransformTrack? drawTransform}) {
                 name: 'Drawing',
                 frames: const [],
                 transformTrack: drawTransform,
+                // Both rows carry a COLOUR LABEL: the key marks take it now,
+                // so an unmarked fixture could not tell a wired fill from a
+                // hard-coded paper one.
+                mark: const LayerMark(process: LayerProcess.finish),
               ),
               Layer(
                 id: _camId,
                 name: 'Camera',
                 kind: LayerKind.camera,
                 frames: const [],
+                // A COLOUR LABEL on the row, so the key mark's fill has
+                // something to be wrong about (유저 2026-09-12).
+                mark: const LayerMark(process: LayerProcess.finish),
               ),
             ],
           ),
@@ -273,6 +284,61 @@ void main() {
             )
             .shape,
         PropertyLaneKeyShape.hold,
+      );
+    });
+  });
+
+  group('B4-⑤ the mark wears the row\'s colour label, and the camera row '
+      'prints its key names', () {
+    testWidgets("the camera row's union mark takes the label colour and "
+        'prints the key NAME (F-84 실기, 유저 2026-09-12)', (tester) async {
+      final named = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(4, CanvasPoint(x: 40, y: 0))
+            .withKeyName(4, 'A'),
+        scale: PropertyTrack<double>().withKey(4, 1.5).withKeyName(4, 'A'),
+        rotation: PropertyTrack<double>().withKey(4, 0).withKeyName(4, 'A'),
+      );
+      await _pump(tester, _project(camera: CutCamera.fromTrack(named)));
+
+      expect(
+        tester
+            .widget<TimelineLaneKeyMarker>(
+              _marker(_camId, transformGroupHeaderLane.laneId, 4),
+            )
+            .color,
+        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
+        reason: '「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로」',
+      );
+      expect(
+        find.text('A'),
+        findsOneWidget,
+        reason: '「카메라레이어만 레이어에 인스턴스 이름이 표시안되」 — it '
+            'drew the mark and left the word to a band it does not have',
+      );
+    });
+
+    testWidgets("a MEMBER lane's mark takes the same label — one law for "
+        'every key mark on the axis', (tester) async {
+      await _pump(
+        tester,
+        _project(
+          drawTransform: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>().withKey(
+              8,
+              CanvasPoint(x: 9, y: 9),
+            ),
+          ),
+        ),
+      );
+      await _toggleLanes(tester, _drawId);
+      await _expandTransformGroup(tester, _drawId);
+
+      expect(
+        tester
+            .widget<TimelineLaneKeyMarker>(_marker(_drawId, 'position', 8))
+            .color,
+        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
       );
     });
   });

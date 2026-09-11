@@ -257,11 +257,11 @@ class TransformNamedChanges {
     this.opacity = const {},
   });
 
-  final Map<String, CanvasPoint> anchorPoint;
-  final Map<String, CanvasPoint> position;
-  final Map<String, double> scale;
-  final Map<String, double> rotation;
-  final Map<String, double> opacity;
+  final Map<String, NamedKeyValue<CanvasPoint>> anchorPoint;
+  final Map<String, NamedKeyValue<CanvasPoint>> position;
+  final Map<String, NamedKeyValue<double>> scale;
+  final Map<String, NamedKeyValue<double>> rotation;
+  final Map<String, NamedKeyValue<double>> opacity;
 
   bool get isEmpty =>
       anchorPoint.isEmpty &&
@@ -271,23 +271,24 @@ class TransformNamedChanges {
       opacity.isEmpty;
 }
 
-/// What [before] → [after] hands the link — [movedNamedValues] per lane, so
+/// What [before] → [after] hands the link — [movedNamedKeys] per lane, so
 /// a transform lane and an effect parameter cannot disagree about what
 /// "moved" means.
 TransformNamedChanges transformNamedKeyChanges(
   TransformTrack before,
   TransformTrack after,
 ) => TransformNamedChanges(
-  anchorPoint: movedNamedValues(before.anchorPoint, after.anchorPoint),
-  position: movedNamedValues(before.position, after.position),
-  scale: movedNamedValues(before.scale, after.scale),
-  rotation: movedNamedValues(before.rotation, after.rotation),
-  opacity: movedNamedValues(before.opacity, after.opacity),
+  anchorPoint: movedNamedKeys(before.anchorPoint, after.anchorPoint),
+  position: movedNamedKeys(before.position, after.position),
+  scale: movedNamedKeys(before.scale, after.scale),
+  rotation: movedNamedKeys(before.rotation, after.rotation),
+  opacity: movedNamedKeys(before.opacity, after.opacity),
 );
 
-/// [track] with every name in [changes] set to its value — the other half
-/// of the link, applied to the written row AND to its 겸용 siblings.
-TransformTrack transformTrackWithNamedValues(
+/// [track] with every name in [changes] set to its value and type — the
+/// other half of the link, applied to the written row AND to its 겸용
+/// siblings.
+TransformTrack transformTrackWithNamedKeys(
   TransformTrack track,
   TransformNamedChanges changes,
 ) {
@@ -295,11 +296,11 @@ TransformTrack transformTrackWithNamedValues(
     return track;
   }
   return TransformTrack.properties(
-    anchorPoint: track.anchorPoint.withNamedValues(changes.anchorPoint),
-    position: track.position.withNamedValues(changes.position),
-    scale: track.scale.withNamedValues(changes.scale),
-    rotation: track.rotation.withNamedValues(changes.rotation),
-    opacity: track.opacity.withNamedValues(changes.opacity),
+    anchorPoint: track.anchorPoint.withNamedKeys(changes.anchorPoint),
+    position: track.position.withNamedKeys(changes.position),
+    scale: track.scale.withNamedKeys(changes.scale),
+    rotation: track.rotation.withNamedKeys(changes.rotation),
+    opacity: track.opacity.withNamedKeys(changes.opacity),
   );
 }
 
@@ -345,23 +346,23 @@ bool transformLaneUsesName(
   String name, {
   Set<int> excludeFrames = const {},
 }) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.valueForName(
+  TransformPropertyId.anchorPoint => track.anchorPoint.keyForName(
     name,
     excludeFrames: excludeFrames,
   ),
-  TransformPropertyId.position => track.position.valueForName(
+  TransformPropertyId.position => track.position.keyForName(
     name,
     excludeFrames: excludeFrames,
   ),
-  TransformPropertyId.scale => track.scale.valueForName(
+  TransformPropertyId.scale => track.scale.keyForName(
     name,
     excludeFrames: excludeFrames,
   ),
-  TransformPropertyId.rotation => track.rotation.valueForName(
+  TransformPropertyId.rotation => track.rotation.keyForName(
     name,
     excludeFrames: excludeFrames,
   ),
-  TransformPropertyId.opacity => track.opacity.valueForName(
+  TransformPropertyId.opacity => track.opacity.keyForName(
     name,
     excludeFrames: excludeFrames,
   ),

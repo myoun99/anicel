@@ -609,7 +609,8 @@ class LaneVerbs {
     // what already holds the name — so a taken name stops the verb while
     // the range is still untouched.
     if (scope.effectLanes) {
-      final reads = <String, ({Set<int> frames, double? adopted})>{};
+      final reads =
+          <String, ({Set<int> frames, PropertyKey<double>? adopted})>{};
       for (final laneId in scope.targets) {
         final address = parseEffectLaneId(laneId);
         final parameterId = address?.parameterId;
@@ -625,7 +626,7 @@ class LaneVerbs {
         }
         final adopted = asked == null || cutId == null
             ? null
-            : _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
+            : _project.cutCommandCoordinator.namedEffectKeyInSpace(
                 cutId: cutId,
                 layerId: layer.id,
                 effectId: address.effectId,

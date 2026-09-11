@@ -19,6 +19,7 @@ import 'layer_label_controls.dart'
         RailSwipeColumnPointer,
         fxGlyph,
         layerLaneValueSlotWidth,
+        layerMarkColor,
         railSelectedRowColor;
 import 'timeline_current_row.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -39,9 +40,9 @@ import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart'
     show
         timelineActiveRowWashColor,
-        timelineDrawingInkColor,
-        timelineDrawingStartColor,
-        timelineFittedGlyphFontSize;
+        timelineBlockWordStyle,
+        timelineFittedGlyphFontSize,
+        timelineInBlockInk;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_frame_span_layout.dart'
@@ -1407,6 +1408,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
         ),
         shape: lane.keyShapeAt(frame),
         markerSize: _markerSize,
+        color: layerMarkColor(layer.mark),
         selected:
             selection != null &&
             _selectionCoversRow(selection) &&
@@ -1544,11 +1546,14 @@ class _LaneKeyName extends StatelessWidget {
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.clip,
-          style: TextStyle(
+          // The frame block's own print — ink, size, weight and the box
+          // that makes centring read as centred (유저 2026-09-12: 「내부에
+          // 있는 텍스트 디자인? 색도 똑같이 그대로 재사용」).
+          style: timelineBlockWordStyle(
+            DefaultTextStyle.of(context).style,
+            ink: timelineInBlockInk(),
             fontSize: fontSize,
-            height: 1,
-            // The paper's ink: the frame blocks' word (F-17).
-            color: timelineDrawingInkColor,
+            bold: true,
           ),
         ),
       ),
@@ -1676,15 +1681,41 @@ List<Widget> timelineUnionKeyMarkerSpans({
               constraints.maxWidth,
               constraints.maxHeight,
             );
-            return TimelineLaneKeyMarker(
+            final markerSize = timelineLaneUnionKeyMarkerSize(
+              crossExtent,
+              frameCellExtent: cellExtent,
+            );
+            final marker = TimelineLaneKeyMarker(
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
               shape: lane.keyShapeAt(frame),
-              markerSize: timelineLaneUnionKeyMarkerSize(
-                crossExtent,
-                frameCellExtent: cellExtent,
-              ),
+              markerSize: markerSize,
+              color: layerMarkColor(layer.mark),
+            );
+            // The NAME rides the same span — the band's own print at the
+            // union's size. 🗣️유저 2026-09-12: 「카메라레이어만 레이어에
+            // 인스턴스 이름이 표시안되」: this row drew the mark and left
+            // the word to the band it does not have.
+            final name = lane.keyNames[frame];
+            if (name == null || cellExtent < _laneKeyNameMinCellExtent) {
+              return marker;
+            }
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                marker,
+                IgnorePointer(
+                  child: _LaneKeyName(
+                    text: name,
+                    fontSize: timelineFittedGlyphFontSize(
+                      _laneKeyNameFontSize,
+                      cellExtent,
+                      crossExtent: markerSize,
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -1698,13 +1729,14 @@ List<Widget> timelineUnionKeyMarkerSpans({
 /// with the band never seeing the pointer.
 ///
 /// PUBLIC since B4 (2026-08-17): the camera row's union summary mounts this
-/// same drawing — one shape law (linear = diamond, hold = square, the
-/// frame-block white body) for every key mark on the frame axis.
+/// same drawing — one shape law (linear = diamond, hold = square, the frame
+/// block's own paper) for every key mark on the frame axis.
 class TimelineLaneKeyMarker extends StatelessWidget {
   const TimelineLaneKeyMarker({
     super.key,
     required this.shape,
     required this.markerSize,
+    required this.color,
     this.selected = false,
   });
 
@@ -1716,6 +1748,12 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   final PropertyLaneKeyShape shape;
   final double markerSize;
 
+  /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
+  /// 2026-09-12: 「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로.
+  /// 로직 그대로 재사용해서」) — [layerMarkColor] answers an unmarked row
+  /// with the same paper the blocks use, so nothing changes for one.
+  final Color color;
+
   /// Inside the live lane selection (UI-R23 #4): the marker rings in the
   /// accent so selected keys — union diamonds included — read at a glance,
   /// and so it is visible which keys the next drag will carry.
@@ -1723,28 +1761,31 @@ class TimelineLaneKeyMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
-    // union headers, member lanes, camera lanes alike); selection speaks
-    // through the accent silhouette alone.
+    // EVERY key mark fills like the frame blocks (UI-R24 #9 — union
+    // headers, member lanes, camera lanes alike), which since 2026-09-12
+    // means the row's COLOUR LABEL: 「유니언 키 색은 프레임블록이랑
+    // 마찬가지로 색라벨 그대로. 로직 그대로 재사용해서」.
     final plate = Container(
       width: markerSize,
       height: markerSize,
       decoration: BoxDecoration(
-        color: timelineDrawingStartColor,
+        color: color,
         // The MIXED mark is the same plate, round — one drawing with one
         // border rule, so a union's third shape cannot drift in colour or
         // in ring weight from the two that were already here.
         shape: shape == PropertyLaneKeyShape.mixed
             ? BoxShape.circle
             : BoxShape.rectangle,
-        // Selected keys ring in ACCENT 1 (UI-R23 #4) — a thin silhouette
-        // stroke, color only (the selection rule); accent 2 stays on the
-        // repeat wash/outline.
-        border: Border.all(
-          color: selected ? AppColors.accent : colorScheme.surface,
-          width: selected ? _selectedLaneKeyBorderWidth : 1,
-        ),
+        // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
+        // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
+        // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
+        // colour alone, the selection rule.
+        border: selected
+            ? Border.all(
+                color: AppColors.accent,
+                width: _selectedLaneKeyBorderWidth,
+              )
+            : null,
       ),
     );
     // AE convention: linear keys read as diamonds, hold keys as squares —

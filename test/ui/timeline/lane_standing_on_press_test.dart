@@ -307,6 +307,43 @@ void main() {
     );
   });
 
+  testWidgets('a window the user did not pick a type in imposes NONE: the '
+      "joining key takes the name's (F-84 실기)", (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    // The holder at 0 is LINEAR and named; the joiner at 8 is HOLD.
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 8);
+    s.laneVerbs.setLaneKeyInterpolationsForSelection(
+      PropertyKeyInterpolation.hold,
+    );
+    await tester.pumpAndSettle();
+
+    await doubleTapBand(tester, 'position', 8.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('rename-frame-ok-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      positionOf(s).keyAt(8)!.interpolation,
+      PropertyKeyInterpolation.linear,
+      reason: "the joining key ADOPTS the name's type",
+    );
+    expect(
+      positionOf(s).keyAt(0)!.interpolation,
+      PropertyKeyInterpolation.linear,
+      reason: 'and the holder keeps its own',
+    );
+  });
+
   testWidgets('a TAP inside the lane selection clears it on the release — '
       "the cells' release rule, which the band rides (H18)", (tester) async {
     final s = await pumpHost(tester);

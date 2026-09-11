@@ -150,10 +150,13 @@ void main() {
   });
 
   group('what it draws', () {
+    const labelColor = Color(0xFF123456);
+
     Future<void> pumpMarker(
       WidgetTester tester,
-      PropertyLaneKeyShape shape,
-    ) async {
+      PropertyLaneKeyShape shape, {
+      bool selected = false,
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -161,7 +164,12 @@ void main() {
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: TimelineLaneKeyMarker(shape: shape, markerSize: 12),
+                child: TimelineLaneKeyMarker(
+                  shape: shape,
+                  markerSize: 12,
+                  color: labelColor,
+                  selected: selected,
+                ),
               ),
             ),
           ),
@@ -191,6 +199,37 @@ void main() {
             .isNotEmpty,
       );
     }
+
+    testWidgets('the mark is the row\'s COLOUR LABEL with no outline of its '
+        'own — only the selection rings it (유저 2026-09-12)', (tester) async {
+      await pumpMarker(tester, PropertyLaneKeyShape.smooth);
+      final plain = tester.widget<Container>(
+        find.descendant(
+          of: find.byType(TimelineLaneKeyMarker),
+          matching: find.byType(Container),
+        ),
+      );
+      expect((plain.decoration! as BoxDecoration).color, labelColor);
+      expect(
+        (plain.decoration! as BoxDecoration).border,
+        isNull,
+        reason: '「그냥 심플하게 바탕색만 남겨서」',
+      );
+
+      await pumpMarker(tester, PropertyLaneKeyShape.smooth, selected: true);
+      final ringed = tester.widget<Container>(
+        find.descendant(
+          of: find.byType(TimelineLaneKeyMarker),
+          matching: find.byType(Container),
+        ),
+      );
+      expect((ringed.decoration! as BoxDecoration).color, labelColor);
+      expect(
+        (ringed.decoration! as BoxDecoration).border,
+        isNotNull,
+        reason: 'the selection still speaks — in accent, colour alone',
+      );
+    });
 
     testWidgets('mixed is a CIRCLE, and never rotated', (tester) async {
       await pumpMarker(tester, PropertyLaneKeyShape.mixed);

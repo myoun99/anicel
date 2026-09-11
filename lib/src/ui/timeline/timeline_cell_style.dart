@@ -129,6 +129,45 @@ Color timelineInBlockInk({bool dimmed = false}) => dimmed
     ? timelineDrawingInkColor.withValues(alpha: 0.55)
     : timelineDrawingInkColor;
 
+/// How a WORD inside a block is printed: its ink, its fitted size, the bold
+/// rule, and the box that makes centring read as centred.
+///
+/// 🚨ONE print for the frame block's name and the lane key's name (유저
+/// 2026-09-12: 「내부에 있는 텍스트 디자인? 색도 똑같이 그대로 재사용」). What
+/// each caller decides for itself is the ink, the size and whether the word
+/// is bold; what neither may spell twice is the print.
+///
+/// 🚨F-48 ② (유저 2026-08-28): 「점·프레임 이름이 칸 중앙보다 미묘하게
+/// 아래」. The cells painter's centring is exact — `rect.center -
+/// glyph.size/2`, snapped to physical pixels — so the drift was not in the
+/// geometry. It is in the BOX: with no height set, a glyph's box is the
+/// font's ascent + descent, and a Japanese face carries a tall ascent for
+/// full-width forms. Latin digits and letters ink only above the baseline,
+/// so centring that lopsided box puts the ink LOW. The report arrived right
+/// after the app took BIZ UDPGothic, which is the same event from the other
+/// side.
+///
+/// `height: 1` with an EVEN leading distribution makes the box symmetric
+/// about the glyph instead of about the font's metrics, so exact centring
+/// lands where the eye reads centre.
+///
+/// ⚠️A test cannot see this: `flutter test` never loads the bundled font and
+/// draws the test face, whose metrics are symmetric — the difference
+/// measures 0 there. What a test CAN pin is that the box is the size asked
+/// for.
+TextStyle timelineBlockWordStyle(
+  TextStyle base, {
+  required Color ink,
+  required double fontSize,
+  required bool bold,
+}) => base.copyWith(
+  color: ink,
+  fontSize: fontSize,
+  fontWeight: bold ? FontWeight.bold : base.fontWeight,
+  height: 1,
+  leadingDistribution: TextLeadingDistribution.even,
+);
+
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
 /// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha

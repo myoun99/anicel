@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -165,6 +166,71 @@ void main() {
       joined.value,
       CanvasPoint(x: 0, y: 0),
       reason: 'joining ADOPTS the value the name holds',
+    );
+  });
+
+  test('a canvas pose write keeps the key HOLD — and the 겸용 sibling '
+      'follows in value AND type', () {
+    session.updateActiveCutCameraTrack(
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 0, y: 0))
+            .withKeyName(0, 'A'),
+      ),
+    );
+    final source = session.requireActiveCut.id;
+    session.standOnRow(
+      LaneRowAddress(cameraOf(source).id, 'position'),
+      frameIndex: 0,
+    );
+    session.laneVerbs.setLaneKeyInterpolationsForSelection(
+      PropertyKeyInterpolation.hold,
+    );
+    final pair = makeLinkedPair();
+
+    // The canvas gizmo's write: a POSE at the playhead, no type in hand.
+    session.selectCut(pair.source);
+    session.camera.setCameraKeyframeAtCurrentFrame(
+      CameraPose(center: CanvasPoint(x: 12, y: 12), zoom: 1),
+    );
+
+    PropertyKey<CanvasPoint> keyOf(CutId cutId) =>
+        cutById(cutId).camera.track.position.keyAt(0)!;
+    expect(
+      keyOf(pair.source).interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: '「홀드인상태서 … 값 바꾸면 홀드가 리니어로 돌아와」 — no longer',
+    );
+    expect(keyOf(pair.linked).value, CanvasPoint(x: 12, y: 12));
+    expect(
+      keyOf(pair.linked).interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: 'the sibling holds the same key, type included',
+    );
+  });
+
+  test('the TYPE alone crosses the 겸용 group on a named key', () {
+    session.updateActiveCutCameraTrack(
+      TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 0, y: 0))
+            .withKeyName(0, 'A'),
+      ),
+    );
+    final pair = makeLinkedPair();
+
+    session.standOnRow(
+      LaneRowAddress(cameraOf(pair.linked).id, 'position'),
+      frameIndex: 0,
+    );
+    session.laneVerbs.setLaneKeyInterpolationsForSelection(
+      PropertyKeyInterpolation.hold,
+    );
+
+    expect(
+      cutById(pair.source).camera.track.position.keyAt(0)!.interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: '「겸용컷끼리 홀드/리니어타입 … 싹다링크해야하는데」',
     );
   });
 

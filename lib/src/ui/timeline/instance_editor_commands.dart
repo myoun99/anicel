@@ -642,7 +642,13 @@ Future<void> _renameLaneKey(
   // the covered keys agree on — nothing lit when they disagree, the ○ the
   // header draws for them — and a header's range is all of its members, so
   // a header's pick lands on every member at once.
-  var interpolation = session.laneVerbs.laneKeyInterpolationForSelection;
+  // ⛔Only a type the user PICKED is written. The window opens on what the
+  // covered keys agree on, and writing that back on the way out would hand
+  // the joining key's own type to every key the name reaches — a join
+  // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
+  // link, so re-stating it is no longer free).
+  final agreed = session.laneVerbs.laneKeyInterpolationForSelection;
+  PropertyKeyInterpolation? picked;
   return _renameThenOfferLink<String>(
     context,
     prompt: (
@@ -652,8 +658,8 @@ Future<void> _renameLaneKey(
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
       fieldTrailing: (setLocal) => _keyInterpolationPills(
-        selected: interpolation,
-        onPicked: (picked) => setLocal(() => interpolation = picked),
+        selected: picked ?? agreed,
+        onPicked: (kind) => setLocal(() => picked = kind),
       ),
     ),
     // The RANGE form is the only one called: a single key is the one-frame
@@ -665,7 +671,7 @@ Future<void> _renameLaneKey(
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
-            interpolation: interpolation,
+            interpolation: picked,
           )
           ? trimmed
           : null;
@@ -673,13 +679,14 @@ Future<void> _renameLaneKey(
     onConflict: (
       join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
         name,
-        interpolation: interpolation,
+        interpolation: picked,
       ),
-      // The name stood down; the type was confirmed in the same window.
+      // The name stood down; a type the user picked in the same window was
+      // still confirmed, so it lands.
       decline: () {
-        final picked = interpolation;
-        if (picked != null) {
-          session.laneVerbs.setLaneKeyInterpolationsForSelection(picked);
+        final kind = picked;
+        if (kind != null) {
+          session.laneVerbs.setLaneKeyInterpolationsForSelection(kind);
         }
       },
     ),

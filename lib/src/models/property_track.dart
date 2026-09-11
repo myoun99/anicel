@@ -100,17 +100,25 @@ class PropertyTrack<T> {
   PropertyTrack<T> withKey(
     int frameIndex,
     T value, {
-    PropertyKeyInterpolation interpolation = PropertyKeyInterpolation.linear,
+    PropertyKeyInterpolation? interpolation,
   }) {
+    final existing = keys[frameIndex];
     return PropertyTrack(
       keys: {
         ...keys,
         frameIndex: PropertyKey(
           value,
-          interpolation: interpolation,
-          // A name survives value edits: it is the key's identity, not
-          // part of what it holds.
-          name: keys[frameIndex]?.name,
+          // A key's NAME and its TYPE both survive a value edit: they are
+          // the key's identity, not part of what it holds. 🗣️유저
+          // 2026-09-12: 「홀드인상태서 캔버스쪽 직접 컨트롤해서 값 바꾸면
+          // 홀드가 리니어로 돌아와」 — the camera's pose facade writes
+          // through here with no type to hand over, and the hold was gone
+          // on every drag.
+          interpolation:
+              interpolation ??
+              existing?.interpolation ??
+              PropertyKeyInterpolation.linear,
+          name: existing?.name,
         ),
       },
     );
@@ -161,35 +169,23 @@ class PropertyTrack<T> {
     );
   }
 
-  /// Every key called [name] set to [value] — the link "same name, same
-  /// value" applied to this track.
+  /// Every key called [name] set to [held] — the link "same name, same
+  /// key" applied to this track.
   ///
   /// The write that starts a propagation runs this over its own track and
   /// over every other track sharing the naming space, so a named key edited
   /// in one place moves everywhere it appears.
-  PropertyTrack<T> withNamedValue(String name, T value) {
-    var changed = false;
-    final next = <int, PropertyKey<T>>{};
-    for (final entry in keys.entries) {
-      final key = entry.value;
-      if (key.name == name && key.value != value) {
-        next[entry.key] = key.copyWith(value: value);
-        changed = true;
-      } else {
-        next[entry.key] = key;
-      }
-    }
-    return changed ? PropertyTrack(keys: next) : this;
-  }
+  PropertyTrack<T> withNamedKey(String name, NamedKeyValue<T> held) =>
+      withNamedKeys({name: held});
 
-  /// [this] with every key whose name appears in [values] set to that
-  /// name's value — the many-names form of [withNamedValue].
+  /// [this] with every key whose name appears in [held] set to that name's
+  /// value AND type — the many-names form of [withNamedKey].
   ///
   /// One transform write can move several named keys at once (a pose key
   /// touches position, scale and rotation together), so the link applies
   /// them in one pass rather than rebuilding the track per name.
-  PropertyTrack<T> withNamedValues(Map<String, T> values) {
-    if (values.isEmpty || keys.isEmpty) {
+  PropertyTrack<T> withNamedKeys(Map<String, NamedKeyValue<T>> held) {
+    if (held.isEmpty || keys.isEmpty) {
       return this;
     }
     var changed = false;
@@ -197,36 +193,43 @@ class PropertyTrack<T> {
     for (final entry in keys.entries) {
       final key = entry.value;
       final name = key.name;
-      if (name != null && values.containsKey(name)) {
-        final value = values[name] as T;
-        if (key.value != value) {
-          next[entry.key] = key.copyWith(value: value);
-          changed = true;
-          continue;
-        }
+      final linked = name == null ? null : held[name];
+      if (linked != null &&
+          (key.value != linked.value ||
+              key.interpolation != linked.interpolation)) {
+        next[entry.key] = key.copyWith(
+          value: linked.value,
+          interpolation: linked.interpolation,
+        );
+        changed = true;
+        continue;
       }
       next[entry.key] = key;
     }
     return changed ? PropertyTrack(keys: next) : this;
   }
 
-  /// The value the keys called [name] hold here, or null when this track
-  /// does not use the name.
+  /// The key the name [name] holds here, or null when this track does not
+  /// use the name.
   ///
-  /// The link IS "same name, same value", so every match holds the same
-  /// number and the first one speaks for all of them. This is the read a
-  /// rename does before it commits: joining a name adopts the value the
-  /// name ALREADY has, the way linking a frame adopts the drawing that is
-  /// already there rather than overwriting it (user 2026-08-10).
+  /// The link IS "same name, same key", so every match holds the same
+  /// number and the same type, and the first one speaks for all of them.
+  /// This is the read a rename does before it commits: joining a name
+  /// adopts what the name ALREADY holds, the way linking a frame adopts
+  /// the drawing that is already there rather than overwriting it (user
+  /// 2026-08-10).
   /// [excludeFrames] drops keys a RANGE rename is about to name: those are
   /// the keys doing the joining, so they must not answer for the name they
   /// are joining. "Is it taken?" and "what does it hold?" are the same
   /// question, so they stay one method — a range asks it with the range
   /// excluded, a single key with nothing excluded.
-  T? valueForName(String name, {Set<int> excludeFrames = const {}}) {
+  PropertyKey<T>? keyForName(
+    String name, {
+    Set<int> excludeFrames = const {},
+  }) {
     for (final entry in keys.entries) {
       if (entry.value.name == name && !excludeFrames.contains(entry.key)) {
-        return entry.value.value;
+        return entry.value;
       }
     }
     return null;
@@ -241,15 +244,21 @@ class PropertyTrack<T> {
   /// asking for exactly that. Un-naming (a null [name]) touches no values:
   /// there is no shared number left to agree on.
   ///
-  /// Which value they land on, in order: [adopted] when the name already
+  /// Which KEY they land on, in order: [adopted] when the name already
   /// holds one somewhere (joining adopts, the frame-link rule), else the
   /// key at [preferredFrame] — the one you are standing on — else the
-  /// earliest key in range. Interpolation rides across untouched; adopting
-  /// a value must not restyle the segment leaving a key.
+  /// earliest key in range. Its TYPE rides across with its value.
+  ///
+  /// ⛔This REVERSES "interpolation rides across untouched; adopting a
+  /// value must not restyle the segment leaving a key" (mine, no user
+  /// behind it). 🗣️유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입
+  /// 링크안되는건가? 싹다링크해야하는데」 — a name is ONE key seen in
+  /// several places, and a joined key holding the name's number with its
+  /// own hold is exactly the half-link they reported.
   PropertyTrack<T>? withRangeNamed({
     required Set<int> frames,
     required String? name,
-    T? adopted,
+    PropertyKey<T>? adopted,
     int? preferredFrame,
   }) {
     final keyed = frames.where((frame) => keys[frame] != null).toList()..sort();
@@ -263,13 +272,18 @@ class PropertyTrack<T> {
       // key it was never pointing at — which is what naming one far-away
       // key did before this guard.
       final standing = preferredFrame != null && keyed.contains(preferredFrame)
-          ? keys[preferredFrame]?.value
+          ? keys[preferredFrame]
           : null;
-      final value = adopted ?? standing ?? keys[keyed.first]!.value;
+      final landing = adopted ?? standing ?? keys[keyed.first]!;
       for (final frame in keyed) {
         final key = next.keys[frame]!;
-        if (key.value != value) {
-          next = next.withKey(frame, value, interpolation: key.interpolation);
+        if (key.value != landing.value ||
+            key.interpolation != landing.interpolation) {
+          next = next.withKey(
+            frame,
+            landing.value,
+            interpolation: landing.interpolation,
+          );
         }
       }
     }
@@ -403,31 +417,44 @@ class PropertyTrack<T> {
   String toString() => 'PropertyTrack(keys: $keys)';
 }
 
-/// The named keys whose VALUE moved between [before] and [after] — what one
-/// track edit hands the "same name, same value" link.
+/// What a named key hands its link: the number AND the type of the segment
+/// leaving it.
+///
+/// 🗣️유저 2026-09-12: 「겸용컷끼리 홀드/리니어타입 링크안되는건가?
+/// 싹다링크해야하는데」 — a name is ONE key seen in several places, so the
+/// two travel together or the link is only half there.
+typedef NamedKeyValue<T> = ({T value, PropertyKeyInterpolation interpolation});
+
+/// The named keys one track edit MOVED between [before] and [after] — what
+/// it hands the "same name, same key" link.
 ///
 /// A RENAME carries nothing, and neither does a key that ARRIVES already
-/// named: joining a name adopts the value that name ALREADY holds, which
-/// the rename verb pulls before it commits (the frame-link rule, user
-/// 2026-08-10). Only a number that MOVED propagates from here.
-Map<String, T> movedNamedValues<T>(
+/// named: joining a name adopts what that name ALREADY holds, which the
+/// rename verb pulls before it commits (the frame-link rule, user
+/// 2026-08-10). That is why a key whose NAME changed is skipped rather than
+/// trusted to have moved nothing — a joining key carrying its own hold
+/// would otherwise impose it on every key the name reaches.
+Map<String, NamedKeyValue<T>> movedNamedKeys<T>(
   PropertyTrack<T> before,
   PropertyTrack<T> after,
 ) {
-  final moved = <String, T>{};
+  final moved = <String, NamedKeyValue<T>>{};
   if (after.isEmpty) {
     return moved;
   }
   for (final entry in after.keys.entries) {
-    final name = entry.value.name;
+    final key = entry.value;
+    final name = key.name;
     if (name == null) {
       continue;
     }
     final old = before.keys[entry.key];
-    if (old == null || old.value == entry.value.value) {
+    if (old == null ||
+        old.name != name ||
+        (old.value == key.value && old.interpolation == key.interpolation)) {
       continue;
     }
-    moved[name] = entry.value.value;
+    moved[name] = (value: key.value, interpolation: key.interpolation);
   }
   return moved;
 }

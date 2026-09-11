@@ -66,7 +66,7 @@ List<LayerEffect>? effectsWithLaneRangeNamed(
   required String laneId,
   required Set<int> frames,
   required String? name,
-  double? adopted,
+  PropertyKey<double>? adopted,
   int? preferredFrame,
 }) {
   return _editParameter(effects, laneId, (parameter, spec) {

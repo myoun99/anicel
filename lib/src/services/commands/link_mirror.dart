@@ -70,7 +70,7 @@ namedTransformWrites(
     (
       cutId: cutId,
       layerId: layerId,
-      track: transformTrackWithNamedValues(after, changes),
+      track: transformTrackWithNamedKeys(after, changes),
     ),
   ];
   if (changes.isEmpty) {
@@ -89,7 +89,7 @@ namedTransformWrites(
       cutId: target.cutId,
       layerId: target.layerId,
     );
-    final next = transformTrackWithNamedValues(current, changes);
+    final next = transformTrackWithNamedKeys(current, changes);
     if (next != current) {
       writes.add((cutId: target.cutId, layerId: target.layerId, track: next));
     }

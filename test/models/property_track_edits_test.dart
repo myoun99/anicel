@@ -57,21 +57,41 @@ void main() {
       8: const PropertyKey(2.0, name: 'a'),
     });
 
-    test('withNamedValue rewrites every key of that name whose value '
+    test('withNamedKey rewrites every key of that name whose value or type '
         'differs and leaves the rest', () {
-      final next = track.withNamedValue('a', 2.0);
+      const linear = PropertyKeyInterpolation.linear;
+      final next = track.withNamedKey('a', (
+        value: 2.0,
+        interpolation: linear,
+      ));
       expect(next.keys[0]!.value, 2.0, reason: 'was 1.0, changes');
       expect(next.keys[8]!.value, 2.0, reason: 'already 2.0, untouched');
       expect(next.keys[4]!.value, 2.0, reason: 'another name, untouched');
-      expect(identical(track.withNamedValue('b', 2.0), track), isTrue);
+      expect(
+        identical(
+          track.withNamedKey('b', (value: 2.0, interpolation: linear)),
+          track,
+        ),
+        isTrue,
+      );
     });
 
-    test('withNamedValues applies each name once, changed keys only', () {
-      final next = track.withNamedValues({'a': 5.0, 'zz': 9.0});
+    test('withNamedKeys applies each name once, changed keys only', () {
+      const linear = PropertyKeyInterpolation.linear;
+      final next = track.withNamedKeys({
+        'a': (value: 5.0, interpolation: linear),
+        'zz': (value: 9.0, interpolation: linear),
+      });
       expect(next.keys[0]!.value, 5.0);
       expect(next.keys[8]!.value, 5.0);
       expect(next.keys[4]!.value, 2.0);
-      expect(identical(track.withNamedValues({'b': 2.0}), track), isTrue);
+      expect(
+        identical(
+          track.withNamedKeys({'b': (value: 2.0, interpolation: linear)}),
+          track,
+        ),
+        isTrue,
+      );
     });
   });
 }

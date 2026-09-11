@@ -101,11 +101,11 @@ TransformTrack? transformTrackWithLaneRangeNamed(
   TransformTrack? adoptFrom,
   int? preferredFrame,
 }) {
-  T? held<T>(PropertyTrack<T> Function(TransformTrack) lane) {
+  PropertyKey<T>? held<T>(PropertyTrack<T> Function(TransformTrack) lane) {
     if (name == null || adoptFrom == null) {
       return null;
     }
-    return lane(adoptFrom).valueForName(name);
+    return lane(adoptFrom).keyForName(name);
   }
 
   switch (laneId) {
@@ -196,7 +196,6 @@ TransformTrack? transformTrackWithLaneValueEdited(
         anchorPoint: track.anchorPoint.withKey(
           frameIndex,
           point,
-          interpolation: _keptInterpolation(track.anchorPoint, frameIndex),
         ),
       );
     case 'position':
@@ -208,7 +207,6 @@ TransformTrack? transformTrackWithLaneValueEdited(
         position: track.position.withKey(
           frameIndex,
           point,
-          interpolation: _keptInterpolation(track.position, frameIndex),
         ),
       );
     case 'scale':
@@ -220,7 +218,6 @@ TransformTrack? transformTrackWithLaneValueEdited(
         scale: track.scale.withKey(
           frameIndex,
           percent / 100,
-          interpolation: _keptInterpolation(track.scale, frameIndex),
         ),
       );
     case 'rotation':
@@ -232,7 +229,6 @@ TransformTrack? transformTrackWithLaneValueEdited(
         rotation: track.rotation.withKey(
           frameIndex,
           degrees,
-          interpolation: _keptInterpolation(track.rotation, frameIndex),
         ),
       );
     case 'opacity':
@@ -244,7 +240,6 @@ TransformTrack? transformTrackWithLaneValueEdited(
         opacity: track.opacity.withKey(
           frameIndex,
           (percent / 100).clamp(0.0, 1.0).toDouble(),
-          interpolation: _keptInterpolation(track.opacity, frameIndex),
         ),
       );
   }
@@ -264,7 +259,6 @@ TransformTrack transformTrackWithPositionDragged(
     position: track.position.withKey(
       frameIndex,
       position,
-      interpolation: _keptInterpolation(track.position, frameIndex),
     ),
   );
 }
@@ -281,7 +275,6 @@ TransformTrack transformTrackWithScaleDragged(
     scale: track.scale.withKey(
       frameIndex,
       zoom,
-      interpolation: _keptInterpolation(track.scale, frameIndex),
     ),
   );
 }
@@ -296,7 +289,6 @@ TransformTrack transformTrackWithRotationDragged(
     rotation: track.rotation.withKey(
       frameIndex,
       rotationDegrees,
-      interpolation: _keptInterpolation(track.rotation, frameIndex),
     ),
   );
 }
@@ -313,7 +305,6 @@ TransformTrack transformTrackWithAnchorDragged(
     anchorPoint: track.anchorPoint.withKey(
       frameIndex,
       anchorPoint,
-      interpolation: _keptInterpolation(track.anchorPoint, frameIndex),
     ),
   );
 }
@@ -331,13 +322,6 @@ CanvasPoint? _parsePoint(String input) {
   return CanvasPoint(x: x, y: y);
 }
 
-PropertyKeyInterpolation _keptInterpolation<T>(
-  PropertyTrack<T> lane,
-  int frameIndex,
-) {
-  return lane.keyAt(frameIndex)?.interpolation ??
-      PropertyKeyInterpolation.linear;
-}
 
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).
 ///
@@ -381,7 +365,6 @@ TransformTrack? transformTrackWithGroupReset(
       next = next.withKey(
         frame,
         value,
-        interpolation: _keptInterpolation(lane, frame),
       );
     }
     return next == lane ? null : next;

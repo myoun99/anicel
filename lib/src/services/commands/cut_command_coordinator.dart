@@ -21,6 +21,7 @@ import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/project.dart';
+import '../../models/property_track.dart' show PropertyKey;
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/exposure_memo.dart';
@@ -1060,7 +1061,7 @@ class CutCommandCoordinator {
   /// carries the same id in every use site. Asking only the local row would
   /// call a name free while a sibling holds it, and the rename would then
   /// silently fork one name into two values.
-  double? namedEffectKeyValueInSpace({
+  PropertyKey<double>? namedEffectKeyInSpace({
     required CutId cutId,
     required LayerId layerId,
     required EffectId effectId,
@@ -1075,7 +1076,7 @@ class CutCommandCoordinator {
     );
     for (final target in targets) {
       final isSource = target.cutId == cutId && target.layerId == layerId;
-      final value = namedEffectKeyValue(
+      final key = namedEffectKey(
         _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
         effectId: effectId,
         parameterId: parameterId,
@@ -1084,8 +1085,8 @@ class CutCommandCoordinator {
         // sibling's keys are all "somewhere else" by construction.
         excludeFrames: isSource ? excludeFramesOnSource : const {},
       );
-      if (value != null) {
-        return value;
+      if (key != null) {
+        return key;
       }
     }
     return null;

@@ -768,18 +768,18 @@ void main() {
                 CanvasPoint(x: 1, y: 1),
                 interpolation: PropertyKeyInterpolation.hold,
               ),
-              rotation: PropertyTrack<double>()
-                  .withKey(8, 12, interpolation: PropertyKeyInterpolation.hold)
-                  .withKey(8, 12),
+              rotation: PropertyTrack<double>().withKey(8, 12),
             ),
           ),
         ),
       );
 
       expect(cameraUnionMarker(tester, 4).shape, PropertyLaneKeyShape.hold);
-      // A linear key (the second withKey overwrote hold with the default
-      // linear) reads as a diamond even when another lane would hold
-      // elsewhere — [transformKeyHoldUnion], the one ■ law.
+      // A LINEAR key reads as a diamond even when another lane would hold
+      // elsewhere — [transformKeyHoldUnion], the one ■ law. ⚠️This fixture
+      // used to MAKE that key by overwriting a hold one, back when a value
+      // edit reset the type; it keeps the type now (유저 2026-09-12), so the
+      // linear key is written as one.
       expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
     });
   });

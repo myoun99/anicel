@@ -5,17 +5,26 @@
 // was dropped. This pin fills exactly one channel.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 void main() {
   test('a change set with only opacity is not empty', () {
     expect(const TransformNamedChanges().isEmpty, isTrue);
     expect(
-      const TransformNamedChanges(opacity: {'fade': 0.5}).isEmpty,
+      const TransformNamedChanges(
+        opacity: {
+          'fade': (value: 0.5, interpolation: PropertyKeyInterpolation.linear),
+        },
+      ).isEmpty,
       isFalse,
     );
     expect(
-      const TransformNamedChanges(rotation: {'turn': 90}).isEmpty,
+      const TransformNamedChanges(
+        rotation: {
+          'turn': (value: 90, interpolation: PropertyKeyInterpolation.linear),
+        },
+      ).isEmpty,
       isFalse,
     );
   });
