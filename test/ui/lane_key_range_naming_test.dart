@@ -328,4 +328,49 @@ void main() {
       PropertyKeyInterpolation.hold,
     );
   });
+
+  test("an EFFECT lane's taken name stops the range write — nothing is "
+      'written until the join, which adopts the value the name holds', () {
+    final layerId = session.activeLayer!.id;
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    Layer layer() => session.layers.firstWhere((each) => each.id == layerId);
+    final effect = layer().effects.single;
+    final parameter = effect.parameterOf('blurX');
+    session.effectsAndFx.updateLayerEffects(layerId, [
+      effect.withParameter(
+        'blurX',
+        EffectParameter(
+          value: parameter.value,
+          track: parameter.track.withKey(0, 3).withKey(4, 8),
+        ),
+      ),
+    ]);
+    final laneId = effectLaneId(effect.id, 'blurX');
+    void selectFrame(int frame) => session.updateLaneRangeSelectionDrag(
+      layerId: layerId,
+      laneId: laneId,
+      anchorIndex: frame,
+      headIndex: frame,
+      spanLaneIds: [laneId],
+    );
+    blur() => layer().effects.single.parameterOf('blurX').track;
+
+    selectFrame(0);
+    expect(laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);
+    selectFrame(4);
+    expect(
+      laneVerbs.setLaneKeyNamesForSelection('A'),
+      isTrue,
+      reason: 'the key at 0 already holds the name',
+    );
+    expect(
+      blur().keyAt(4)!.name,
+      isNull,
+      reason: 'nothing is written while the question is open',
+    );
+
+    laneVerbs.linkLaneKeyNamesForSelection('A');
+    expect(blur().keyAt(4)!.name, 'A');
+    expect(blur().keyAt(4)!.value, 3, reason: 'joining adopts');
+  });
 }
