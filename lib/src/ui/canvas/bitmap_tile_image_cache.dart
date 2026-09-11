@@ -269,6 +269,12 @@ class BitmapTileImageCache extends ChangeNotifier {
   bool needsDecodeStart(BitmapTile tile) =>
       _images[tile] == null && _decodeAsk[tile] == null;
 
+  /// Whether the engine REFUSED [tile]'s decode — a picture that will not
+  /// come that way, so anything waiting for it would wait forever. (An
+  /// adoption can still give it one; see [_decodeAsk].)
+  bool decodeRefused(BitmapTile tile) =>
+      _decodeAsk[tile] == _TileDecodeAsk.refused;
+
   /// Decode STARTS a consumer should pay per frame (R18 B-1): each start
   /// runs a synchronous tile copy + premultiply on the UI thread, so
   /// bursts of a hundred-plus starts in one frame hitch. Completions

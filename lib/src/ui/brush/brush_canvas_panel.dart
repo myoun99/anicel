@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
+import '../canvas/shown_cels.dart';
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/cel_source_effect_pass.dart';
@@ -782,12 +783,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null || overlay == null) {
       _memoActiveSurfacePainter = null;
       _activeSurfacePainterToken = null;
+      ShownCels.instance.hide(this);
       return null;
     }
     final token = widget._activeSurfaceIdentityFor(coordinator);
     if (token == null) {
       _memoActiveSurfacePainter = null;
       _activeSurfacePainterToken = null;
+      ShownCels.instance.hide(this);
       return null;
     }
     if (_memoActiveSurfacePainter != null &&
@@ -795,6 +798,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
+    // The canvas says which cel it is drawing, and THROUGH what: the
+    // colour keys make the tiles it paints other objects than the cel's
+    // own, so a picture made ahead for the cel's own would go unused.
+    ShownCels.instance.show(
+      this,
+      (token.key.layerId, token.key.frameId),
+      painted: (surface) =>
+          celSurfaceWithSourceEffects(surface, widget.activeSourceEffects),
+    );
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
       // ★DRAWN THROUGH THE KEYS. Cached per TILE, so a dab re-keys the one
       // tile it changed and the rest of the cel answers from memory.
@@ -934,6 +946,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   @override
   void dispose() {
+    ShownCels.instance.hide(this);
     // From the REMEMBERED object, for the reason spelled out below about
     // the viewport: the widget's may already point somewhere else.
     _listenedCelPixels?.removeListener(_handleCelPixelsChanged);

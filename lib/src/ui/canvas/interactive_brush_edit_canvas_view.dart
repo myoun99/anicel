@@ -46,6 +46,7 @@ import 'bitmap_tile_image_cache.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_touch_contacts.dart';
+import 'shown_cels.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_fill.dart';
@@ -466,6 +467,7 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
+    ShownCels.instance.hide(this);
     BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
     _settlingState._settlingFallbackTimer?.cancel();
     // Only OUR model — a host-owned one outlives this view (it survives
@@ -485,6 +487,13 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   Widget build(BuildContext context) {
+    // The canvas says which cel it draws — only while it draws one; the
+    // merged stack draws it otherwise, and says so itself.
+    if (widget.paintsContent && widget.editable) {
+      ShownCels.instance.show(this, (widget.layerId, widget.frameId));
+    } else {
+      ShownCels.instance.hide(this);
+    }
     // ⚠️ONE TREE SHAPE, editable or not. It used to return a bare
     // `SizedBox.expand()` while standing down, and that is what made I-10's
     // second half impossible: a listener that appears only after the cel

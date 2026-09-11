@@ -57,6 +57,11 @@ class UndoSurfacePair {
   Future<bool> park() => UndoSurfaceSnapshot.parkAll([before, after]);
 
   void drop() => UndoSurfaceSnapshot.dropAll([before, after]);
+
+  void dropReadAhead() {
+    before.dropReadAhead();
+    after.dropReadAhead();
+  }
 }
 
 /// ONE surface an undo entry is holding, and its residence: in memory, or
@@ -177,12 +182,38 @@ class UndoSurfaceSnapshot {
   /// Whether the tiles have left RAM, by either route.
   bool _letGo = false;
 
+  /// A parked payload read back EARLY — for the step after the one being
+  /// taken, so the pictures it will show can be ready before it lands —
+  /// and the surface it leaned on while it was put together.
+  ///
+  /// 🚨★★★**PROVISIONAL UNTIL A STEP ADOPTS IT.** Its shared half was taken
+  /// from [against], and [surfaceOver] adopts it only when the cel it is
+  /// handed is that SAME object. Anything else — the cel moved on in
+  /// between, a lift erased part of it — falls through to the exact read
+  /// from the file, which is why the file stays until an adoption. A
+  /// read-ahead that leaned on the wrong surface therefore costs the
+  /// pictures it warmed and nothing more: a wrong picture cannot be put
+  /// together from it.
+  ///
+  /// ⚠️[against] is WEAK. Held strongly it would pin the whole surface it
+  /// leaned on — the shape of the 12 MiB [_sharedCoords] records — and a
+  /// surface that is gone cannot be the one a step hands in anyway.
+  ({
+    WeakReference<BitmapSurface>? against,
+    BitmapSurface surface,
+    Map<TileCoord, BitmapTile> owned,
+  })?
+  _ahead;
+
   bool get isParked => _letGo;
 
   /// RAM this snapshot is holding on its own: zero once parked, because
-  /// the bytes are then a file.
+  /// the bytes are then a file — unless a read-ahead brought them back
+  /// early ([_ahead]), and then they are RAM like any other until a step
+  /// adopts them or the budget takes them back.
   int get residentBytes =>
-      (_owned?.length ?? 0) * BitmapTile.bytesFor(_tileSize);
+      ((_owned?.length ?? 0) + (_ahead?.owned.length ?? 0)) *
+      BitmapTile.bytesFor(_tileSize);
 
   /// The surface, read back from the room if it is parked — or NULL when
   /// the payload will not come back.
@@ -210,6 +241,9 @@ class UndoSurfaceSnapshot {
   /// shared coordinate. A surface assembled from a stale base would be the
   /// wrong picture painted over the right one, which is worse than the
   /// undo not happening.
+  ///
+  /// ⚠️A read-ahead ([readAhead]) is ADOPTED here rather than read a second
+  /// time — but only against the very surface it leaned on ([_ahead]).
   BitmapSurface? surfaceOver(BitmapSurface? live) {
     // ⛔THE DROP COMES FIRST, and [drop]'s own doc is why: it「stays a
     // valid snapshot afterwards — one that answers null」. Without this
@@ -226,6 +260,84 @@ class UndoSurfaceSnapshot {
     if (!_letGo) {
       return null;
     }
+    final ahead = _ahead;
+    final read = ahead != null && _leanedOn(ahead, live)
+        ? (surface: ahead.surface, owned: ahead.owned)
+        : _readBack(live);
+    _ahead = null;
+    if (read == null) {
+      return null;
+    }
+    // Resident again, and the file is dead the moment its bytes are back:
+    // a later park writes a fresh one, and leaving this behind would grow
+    // the room by a copy per undo.
+    _owned = read.owned;
+    _surface = read.surface;
+    final path = _parkedPath;
+    _parkedPath = null;
+    // Resident again by every measure — [isParked] has to say so, or a
+    // later park would take its own early return and never write.
+    _letGo = false;
+    if (path != null) {
+      ScratchFile.remove(path);
+    }
+    return _surface;
+  }
+
+  /// What [surfaceOver] would answer for [live], read EARLY — for the step
+  /// after the one being taken, so its pictures can be made ready before
+  /// it lands. Null when the payload will not come back.
+  ///
+  /// Resident: the surface itself. Parked: put together against [live] and
+  /// HELD, file and all, until a step adopts it or the budget takes it
+  /// back ([dropReadAhead]; [park] does it too) — see [_ahead] for why a
+  /// copy that leaned on the wrong surface is never adopted.
+  BitmapSurface? readAhead(BitmapSurface? live) {
+    if (_dropped) {
+      return null;
+    }
+    final resident = _surface;
+    if (resident != null || !_letGo) {
+      return resident;
+    }
+    final ahead = _ahead;
+    if (ahead != null && _leanedOn(ahead, live)) {
+      return ahead.surface;
+    }
+    final read = _readBack(live);
+    _ahead = read == null
+        ? null
+        : (
+            against: live == null ? null : WeakReference(live),
+            surface: read.surface,
+            owned: read.owned,
+          );
+    return read?.surface;
+  }
+
+  /// Gives a read-ahead copy back. The file it came from is still in the
+  /// room, so nothing is lost but the head start.
+  void dropReadAhead() => _ahead = null;
+
+  static bool _leanedOn(
+    ({
+      WeakReference<BitmapSurface>? against,
+      BitmapSurface surface,
+      Map<TileCoord, BitmapTile> owned,
+    })
+    ahead,
+    BitmapSurface? live,
+  ) {
+    final against = ahead.against;
+    return against == null ? live == null : identical(against.target, live);
+  }
+
+  /// The payload put back together against [live] — the shared tiles from
+  /// it, the owned ones from the file — or null when either will not
+  /// answer.
+  ({BitmapSurface surface, Map<TileCoord, BitmapTile> owned})? _readBack(
+    BitmapSurface? live,
+  ) {
     final shared = _sharedTilesFrom(live);
     if (shared == null) {
       return null;
@@ -234,11 +346,13 @@ class UndoSurfaceSnapshot {
     if (path == null) {
       // It let go without writing anything: it owned no tile, so the
       // shared ones ARE the whole picture and there are no holes in it.
-      _letGo = false;
-      return _surface = BitmapSurface(
-        canvasSize: _canvasSize,
-        tileSize: _tileSize,
-        tiles: shared,
+      return (
+        surface: BitmapSurface(
+          canvasSize: _canvasSize,
+          tileSize: _tileSize,
+          tiles: shared,
+        ),
+        owned: const <TileCoord, BitmapTile>{},
       );
     }
     final bytes = ScratchFile.read(path);
@@ -251,21 +365,14 @@ class UndoSurfaceSnapshot {
     } on Object {
       return null;
     }
-    // Resident again, and the file is dead the moment its bytes are back:
-    // a later park writes a fresh one, and leaving this behind would grow
-    // the room by a copy per undo.
-    _owned = owned;
-    _surface = BitmapSurface(
-      canvasSize: _canvasSize,
-      tileSize: _tileSize,
-      tiles: {...shared, ...owned},
+    return (
+      surface: BitmapSurface(
+        canvasSize: _canvasSize,
+        tileSize: _tileSize,
+        tiles: {...shared, ...owned},
+      ),
+      owned: owned,
     );
-    _parkedPath = null;
-    // Resident again by every measure — [isParked] has to say so, or a
-    // later park would take its own early return and never write.
-    _letGo = false;
-    ScratchFile.remove(path);
-    return _surface;
   }
 
   /// The shared tiles, taken from [live] — or null when it cannot answer
@@ -333,6 +440,9 @@ class UndoSurfaceSnapshot {
 
   Future<bool> _park() async {
     if (isParked) {
+      // Parked already — but a read-ahead copy is RAM, and the budget
+      // asking again is the budget asking for that too.
+      _ahead = null;
       return true;
     }
     final owned = _owned;
@@ -435,6 +545,7 @@ class UndoSurfaceSnapshot {
     // and [_park] has to do it when it lands. Reading `_parkedPath` alone
     // made this a silent no-op exactly when the room was busiest.
     _dropped = true;
+    _ahead = null;
     final path = _parkedPath;
     if (path == null) {
       return;

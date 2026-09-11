@@ -67,6 +67,7 @@ import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
 import 'session/block_shift.dart';
 import 'session/cut_shift.dart';
+import 'session/history_pictures.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -498,6 +499,11 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   late final HistoryManager historyManager;
+
+  /// Undo and redo whose first frame is whole — see [HistoryPictures].
+  late final HistoryPictures historyPictures = HistoryPictures(
+    history: historyManager,
+  );
   @override
   late final CutCommandCoordinator cutCommandCoordinator;
   @override
@@ -1154,6 +1160,7 @@ class EditorSessionManager extends ChangeNotifier
     onionSkinSettings.dispose,
     onionSkinLayerIds.dispose,
     trackFrameRangeSelection.dispose,
+    historyPictures.dispose,
     historyManager.dispose,
   ];
 
@@ -1714,9 +1721,18 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
-  void undo() => _stepHistory(historyManager.undo);
+  /// ⚠️Through [historyPictures], never straight to the history: a step
+  /// whose pictures are not ready yet waits for them instead of showing a
+  /// blank frame.
+  void undo() => historyPictures.step(
+    undo: true,
+    apply: () => _stepHistory(historyManager.undo),
+  );
 
-  void redo() => _stepHistory(historyManager.redo);
+  void redo() => historyPictures.step(
+    undo: false,
+    apply: () => _stepHistory(historyManager.redo),
+  );
 
   // --- Layer state / commands --------------------------------------------
 

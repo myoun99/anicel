@@ -2,6 +2,7 @@ import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
+import '../cels_ahead.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
 import 'cel_snapshot_restore.dart';
@@ -17,7 +18,11 @@ import 'cel_snapshot_restore.dart';
 /// is self-contained: it survives session eviction and outlives every
 /// cache).
 class BrushStrokeHistoryCommand
-    implements Command, RetainedBytesCommand, ParkableCommand {
+    implements
+        Command,
+        RetainedBytesCommand,
+        ParkableCommand,
+        PictureRestoringCommand {
   BrushStrokeHistoryCommand({
     required this.coordinator,
     required BrushStrokeCommitData strokeData,
@@ -57,6 +62,24 @@ class BrushStrokeHistoryCommand
 
   @override
   void dropPayload() => _surfaces?.drop();
+
+  /// What an undo (or a redo) would put back — see
+  /// [PictureRestoringCommand]. A stroke that changed nothing puts nothing
+  /// back.
+  @override
+  void readAhead(CelsAhead cels, {required bool undo}) {
+    if (!_committedChanges) {
+      return;
+    }
+    cels.readSnapshot(
+      _frameKey,
+      undo ? _surfaces?.before : _surfaces?.after,
+      () => coordinator.currentSurfaceOf(_frameKey),
+    );
+  }
+
+  @override
+  void dropReadAhead() => _surfaces?.dropReadAhead();
 
   @override
   String get description => 'Brush stroke';

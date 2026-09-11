@@ -5,6 +5,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
+import '../cels_ahead.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -20,7 +21,11 @@ import 'link_mirror.dart';
 /// an axis stored in canvas coordinates means two different places when the
 /// canvases disagree.
 class ResizeCutCanvasCommand
-    implements Command, RetainedBytesCommand, ParkableCommand {
+    implements
+        Command,
+        RetainedBytesCommand,
+        ParkableCommand,
+        PictureRestoringCommand {
   ResizeCutCanvasCommand({
     required this.repository,
     required this.cutId,
@@ -77,6 +82,33 @@ class ResizeCutCanvasCommand
 
   @override
   void dropPayload() => UndoSurfaceSnapshot.dropAll(_snapshots);
+
+  /// The UNDO half only: a redo re-runs the blit, and what a blit leaves
+  /// cannot be read before it runs. The reader is the one [undo] uses, so
+  /// the step recognises what this leaned on.
+  @override
+  void readAhead(CelsAhead cels, {required bool undo}) {
+    final store = brushFrameStore;
+    if (!undo || store == null) {
+      return;
+    }
+    for (final surfaces in _previousBaked.values) {
+      for (final entry in surfaces.entries) {
+        cels.readSnapshot(
+          entry.key,
+          entry.value,
+          () => store.bakedSurfaceOrNull(entry.key),
+        );
+      }
+    }
+  }
+
+  @override
+  void dropReadAhead() {
+    for (final snapshot in _snapshots) {
+      snapshot.dropReadAhead();
+    }
+  }
 
   Iterable<UndoSurfaceSnapshot> get _snapshots => [
     for (final surfaces in _previousBaked.values) ...surfaces.values,

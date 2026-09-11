@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/brush_frame_key.dart';
+import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/volatile_scratch_files.dart';
@@ -204,6 +206,7 @@ class HistoryManager extends ChangeNotifier {
     // again — the same re-arming `BrushFrameStore` does on a new edit.
     _spillStoodDown = false;
     _trimRetainedBytes();
+    _revision += 1;
     notifyListeners();
   }
 
@@ -354,6 +357,14 @@ class HistoryManager extends ChangeNotifier {
     if (_disposed || total <= _budget.bytes) {
       return;
     }
+    // 🚨THE READ-AHEAD COPIES GO BEFORE ANY ENTRY DOES. Each is only a
+    // head start on a step, and the file it was read from is still in the
+    // room; an entry dropped here is history the user cannot get back.
+    dropReadAheadOf([..._undoStack, ..._redoStack]);
+    total = retainedBytes;
+    if (total <= _budget.bytes) {
+      return;
+    }
     final entriesBefore = _undoStack.length + _redoStack.length;
     // REDO SHEDS FIRST, for the same reason it parks first.
     total -= _shed(_redoStack, total - _budget.bytes, keep: 0, undone: true);
@@ -366,6 +377,7 @@ class HistoryManager extends ChangeNotifier {
     // the stacks without the user asking, and a spill pass that ends in a
     // shed reaches it from a microtask nobody else is watching.
     if (_undoStack.length + _redoStack.length != entriesBefore) {
+      _revision += 1;
       notifyListeners();
     }
   }
@@ -420,6 +432,49 @@ class HistoryManager extends ChangeNotifier {
   /// may execute() a fresh command; the stacks re-check after it runs.
   VoidCallback? onBeforeUndoRedo;
 
+  /// Whether [onBeforeUndoRedo] would adopt something RIGHT NOW.
+  ///
+  /// Asked by a step that WAITED for its pictures (the UI's
+  /// HistoryPictures): work the user began after pressing — a lift, an
+  /// open transform box — is theirs, and a late step that adopted it would
+  /// land it out from under their hand.
+  bool Function()? pendingBeforeUndoRedo;
+
+  /// Counts every change to the stacks — a push, a step, a clear, a shed.
+  ///
+  /// A step that waited is honoured only while this has not moved: one
+  /// applied over a history that moved on would undo something the user
+  /// never asked to undo.
+  int get revision => _revision;
+  int _revision = 0;
+
+  /// What the next undo — or, with [undo] false, the next redo — would put
+  /// back on each cel [wants], read BEFORE the step is taken, so the
+  /// pictures it will show can be made ready first. Empty when the step
+  /// puts back no snapshot.
+  ///
+  /// ⚠️A parked payload comes back through a synchronous disk read here,
+  /// one step early instead of inside the step, and stays provisional
+  /// until the step adopts it ([UndoSurfaceSnapshot.readAhead]) — which is
+  /// why WHEN this runs cannot make a step put back the wrong picture.
+  Map<BrushFrameKey, CelStep> readAhead({
+    required bool undo,
+    required bool Function(BrushFrameKey key) wants,
+  }) {
+    final stack = undo ? _undoStack : _redoStack;
+    final cels = CelsAhead(wants: wants);
+    if (stack.isNotEmpty) {
+      final next = stack.last;
+      // ⚠️The cast is not ceremony — see [_parkDeepEnd].
+      if (next is PictureRestoringCommand) {
+        (next as PictureRestoringCommand).readAhead(cels, undo: undo);
+      }
+    }
+    // What came back is RAM again, and the budget says whether it stays.
+    _trimRetainedBytes();
+    return cels.cels;
+  }
+
   void undo() => _step(
     from: _undoStack,
     to: _redoStack,
@@ -463,6 +518,7 @@ class HistoryManager extends ChangeNotifier {
     final command = from.removeLast();
     apply(command);
     to.add(command);
+    _revision += 1;
     // The bytes did not move anywhere, but the budget may have been
     // lowered by pressure since the last push — and nothing else runs
     // between one Ctrl+Z and the next.
@@ -476,6 +532,7 @@ class HistoryManager extends ChangeNotifier {
     _undoStack.clear();
     _redoStack.clear();
     _spillStoodDown = false;
+    _revision += 1;
     notifyListeners();
   }
 }

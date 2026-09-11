@@ -1,3 +1,5 @@
+import 'cels_ahead.dart';
+
 abstract class Command {
   String get description;
 
@@ -100,7 +102,11 @@ void dropPayloadsOf(Iterable<Command> commands) {
 /// build one wraps a brush stroke — so the entries the budget most needed
 /// to see were the ones it could not.
 class CompositeCommand
-    implements Command, RetainedBytesCommand, ParkableCommand {
+    implements
+        Command,
+        RetainedBytesCommand,
+        ParkableCommand,
+        PictureRestoringCommand {
   CompositeCommand({required this.description, required this.commands});
 
   @override
@@ -120,6 +126,19 @@ class CompositeCommand
 
   @override
   void dropPayload() => dropPayloadsOf(commands);
+
+  /// In the order the step runs the children: a later one leans on what an
+  /// earlier one put back, and [CelsAhead] carries that along.
+  @override
+  void readAhead(CelsAhead cels, {required bool undo}) {
+    final ordered = undo ? commands.reversed : commands;
+    for (final command in ordered.whereType<PictureRestoringCommand>()) {
+      command.readAhead(cels, undo: undo);
+    }
+  }
+
+  @override
+  void dropReadAhead() => dropReadAheadOf(commands);
 
   @override
   void execute() {

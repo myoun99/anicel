@@ -4,6 +4,7 @@ import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../canvas_selection_region.dart';
 import '../cache_invalidation_executor.dart';
+import '../cels_ahead.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
 import 'cel_snapshot_restore.dart';
@@ -20,7 +21,11 @@ import 'cel_snapshot_restore.dart';
 /// restores the pre-lift picture byte-exactly, session and cache state
 /// notwithstanding (the surfaces are self-contained references).
 class BrushLiftMoveHistoryCommand
-    implements Command, RetainedBytesCommand, ParkableCommand {
+    implements
+        Command,
+        RetainedBytesCommand,
+        ParkableCommand,
+        PictureRestoringCommand {
   BrushLiftMoveHistoryCommand({
     required this.coordinator,
     required this.frameKey,
@@ -116,6 +121,17 @@ class BrushLiftMoveHistoryCommand
 
   @override
   void dropPayload() => _surfaces?.drop();
+
+  /// Not landed yet: nothing to read — see [PictureRestoringCommand].
+  @override
+  void readAhead(CelsAhead cels, {required bool undo}) => cels.readSnapshot(
+    frameKey,
+    undo ? _surfaces?.before : _surfaces?.after,
+    () => coordinator.currentSurfaceOf(frameKey),
+  );
+
+  @override
+  void dropReadAhead() => _surfaces?.dropReadAhead();
 
   @override
   String get description => 'Move selection';

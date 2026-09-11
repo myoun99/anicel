@@ -276,6 +276,11 @@ class _HomePageState extends State<HomePage> {
     // first — an undo never pops out from under the unadopted lift.
     _session.historyManager.onBeforeUndoRedo =
         _canvasSelectionCommands.confirmPendingMove;
+    // ...and a step that WAITED for its pictures asks first whether there
+    // is anything to adopt: work begun after the press is the user's.
+    _session.historyManager.pendingBeforeUndoRedo = () =>
+        _canvasSelectionCommands.movePending ||
+        _canvasSelectionCommands.transformActive;
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
