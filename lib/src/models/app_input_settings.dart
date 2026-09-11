@@ -531,9 +531,9 @@ abstract final class AppInput {
   /// the user's. ⚠️Not a device question, which the paragraph above
   /// retired: it is a panel with nothing to draw on. 🗣️I-14 (유저
   /// 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드 존재안하니 한손가락
-  /// 핑거시 팬」 — the media viewer says navigate, and every question below
-  /// that reads the slot takes the same answer, so a finger there pans AND
-  /// drives no tool.
+  /// 핑거시 팬」 — the media viewer says navigate, and the tool door below
+  /// ([toolAcceptsPointer]) takes the same answer, so a finger there pans
+  /// AND drives no tool.
   static CanvasTouchDragAction touchDragActionFor(
     int fingerCount, {
     CanvasTouchDragAction? oneFinger,
