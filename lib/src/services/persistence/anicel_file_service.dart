@@ -13,6 +13,8 @@ import '../media/project_media_sources.dart' show ProjectConforms;
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
+import 'scratch_file.dart';
+import 'session_scratch.dart';
 import 'anicel_project_archive.dart';
 
 /// A loaded .anicel: the project with media paths already RESOLVED (relative
@@ -378,6 +380,12 @@ class AnicelFileService {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
     // collision and each store adopts back exactly its own refs.
+    // A project file whose name vanished while we held it is copied out
+    // before anything reads it — see [_rescueAVanishedProjectFile].
+    _rescueAVanishedProjectFile([
+      brushFrameStore,
+      ...auxCelStores,
+    ]);
     final saveSnapshot = _bakedAcrossStores(brushFrameStore, auxCelStores);
     final stores = saveSnapshot.stores;
     final snapshots = saveSnapshot.snapshots;
@@ -402,6 +410,35 @@ class AnicelFileService {
             if (ownKeys.contains(entry.key)) entry.key: entry.value,
         }, dirtyTicksAtSnapshot: snapshots[index].dirtyTicks);
       }
+    }
+
+    /// A cel the save could not carry lets go of its ref — see
+    /// [BrushFrameStore.forgetCelsLostWithTheirFile] for where it would
+    /// still have pointed. Only a full save can lose one: an append runs
+    /// only when every clean cel is already in the file it appends to.
+    void forgetEach(Set<BrushFrameKey> lostKeys) {
+      if (!adoptRefs) {
+        return;
+      }
+      for (var index = 0; index < stores.length; index += 1) {
+        stores[index].forgetCelsLostWithTheirFile([
+          for (final key in lostKeys)
+            if (snapshots[index].fileRefs.containsKey(key)) key,
+        ]);
+      }
+    }
+
+    /// How every save ends, whichever way it wrote: the lost refs go, the
+    /// file the refs now point into is HELD ([OpenProjectFile.hold] — a full
+    /// save's rename had to let go of it), and a rescue copy nothing reads
+    /// any more is retired.
+    Set<BrushFrameKey> settle(Set<BrushFrameKey> lostKeys) {
+      forgetEach(lostKeys);
+      if (adoptRefs) {
+        OpenProjectFile.instance.hold(filePath);
+      }
+      _retireRescues(stores);
+      return lostKeys;
     }
 
     // Incremental soundness: the target must already exist and every cel
@@ -463,13 +500,13 @@ class AnicelFileService {
       );
       if (adopted != null) {
         adoptEach(adopted);
-        return lost(
+        return settle(lost(
           adopted,
           carried: {
             for (final key in allKeys)
               if (!dirty.contains(key)) key,
           },
-        );
+        ));
       }
       // Torn tail or garbage over threshold → compaction below.
     }
@@ -487,7 +524,7 @@ class AnicelFileService {
       onProgress: onProgress,
     );
     adoptEach(adopted);
-    return lost(adopted);
+    return settle(lost(adopted));
   }
 
   /// Splits the dirty set into the cels that still have content and the
@@ -956,9 +993,21 @@ class AnicelFileService {
       ...baked.fileRefs.keys,
     };
     final works = <_CelWork>[];
+    // 🚨A CLEAN CEL THAT IS STILL HOT IS NOT ONLY IN THE FILE. Its ref is
+    // the cheapest source, but when the file behind it is GONE — descriptor
+    // and all, the one loss the rescue above cannot undo — the same bytes
+    // are still in RAM (a clean promotion keeps its surface beside its ref
+    // until cooling drops it for free), and taking the ref anyway reported
+    // the picture lost while it sat in memory (F-72 follow-up, 2026-09-11).
+    // Asked once per path, here on the UI isolate.
+    final missing = <String, bool>{};
+    bool fileMissing(String path) =>
+        missing[path] ??= !File(path).existsSync();
     for (final key in allKeys) {
       final ref = baked.fileRefs[key];
-      if (ref != null && !dirty.contains(key)) {
+      if (ref != null &&
+          !dirty.contains(key) &&
+          !(baked.hot.containsKey(key) && fileMissing(ref.filePath))) {
         // Clean + file-backed: the cheapest source is the file itself
         // (no re-encode; the isolate streams the exact bytes through).
         works.add(
@@ -1307,6 +1356,67 @@ class AnicelFileService {
     final normalized = filePath.replaceAll('\\', '/');
     final slash = normalized.lastIndexOf('/');
     return slash <= 0 ? '.' : normalized.substring(0, slash);
+  }
+
+  /// 🚨★★★**A NAME THAT VANISHED WHILE WE HELD THE FILE IS NOT A LOSS.** On
+  /// POSIX a delete or a move takes only the name; the bytes stay readable
+  /// through the descriptor [OpenProjectFile] holds. The save's writer cannot
+  /// use that descriptor — it runs in another isolate and opens by path — so
+  /// the bytes are copied out through it into this run's room, every ref
+  /// moves onto the copy, and the save goes on as though nothing had happened
+  /// (F-72 follow-up; 유저 결정 2026-09-11 「복사 방향대로 가자」). Windows never
+  /// gets here: it refuses to delete or move a file we hold.
+  ///
+  /// A no-op when there is nothing to rescue — or when the descriptor died with
+  /// the name (a cloud provider evicting its local copy), the one loss left:
+  /// the save then reports what it could not reach.
+  static void _rescueAVanishedProjectFile(List<BrushFrameStore> stores) {
+    final open = OpenProjectFile.instance;
+    final held = open.heldPath;
+    if (held == null || !open.heldNameVanished) {
+      return;
+    }
+    final rescued = open.copyOut(
+      held,
+      '${SessionScratch.stagedFolder()}/rescued-'
+      '${DateTime.now().microsecondsSinceEpoch}.anicel',
+    );
+    if (rescued == null) {
+      return;
+    }
+    for (final store in stores) {
+      store.repointFileRefs(held, rescued);
+    }
+    _rescueCopies.add(rescued);
+    // The refs read from the copy now; the vanished file's last descriptor
+    // goes with this.
+    open.hold(rescued);
+  }
+
+  /// Rescue copies a ref may still read from — see [_retireRescues].
+  static final Set<String> _rescueCopies = {};
+
+  /// A rescue copy goes the moment no ref reads from it — the staged media's
+  /// rule (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」). A cel drawn on while
+  /// the save ran keeps its old ref and its dirt, so the copy can outlive the
+  /// save that made it, but only until the save that carries that cel.
+  static void _retireRescues(List<BrushFrameStore> stores) {
+    if (_rescueCopies.isEmpty) {
+      return;
+    }
+    final read = <String>{
+      for (final store in stores)
+        for (final ref in store.bakedSnapshotForSave().fileRefs.values)
+          ref.filePath,
+    };
+    _rescueCopies.removeWhere((copy) {
+      if (read.contains(copy)) {
+        return false;
+      }
+      OpenProjectFile.instance.releaseFor(copy);
+      ScratchFile.remove(copy);
+      return true;
+    });
   }
 
   static bool _samePath(String a, String b) =>

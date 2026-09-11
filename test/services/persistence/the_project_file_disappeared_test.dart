@@ -17,6 +17,8 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/persistence/open_project_file.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 
 /// 🚨★★★**THE PROJECT FILE CAN VANISH WHILE THE PROJECT IS OPEN.**
 ///
@@ -70,6 +72,15 @@ void main() {
     );
   }
 
+  /// The file goes AND the session's descriptor with it — the one way a cel
+  /// can still be lost (a cloud provider evicting its local copy). Held,
+  /// Windows would refuse the delete, and POSIX would keep the bytes
+  /// readable for the save's rescue.
+  void takeTheFileAway(String path) {
+    OpenProjectFile.instance.release();
+    File(path).deleteSync();
+  }
+
   test('🚨saving after the file was deleted, with a stroke since, must not '
       'throw a raw PathNotFoundException', () async {
     const service = AnicelFileService();
@@ -88,7 +99,7 @@ void main() {
     expect(File(path).existsSync(), isTrue);
 
     // The user deletes it in the Files app.
-    File(path).deleteSync();
+    takeTheFileAway(path);
 
     // ...and draws. Only f2 is dirty now; f1's bytes live in the file
     // that is gone.
@@ -120,7 +131,7 @@ void main() {
       brushFrameStore: store,
       filePath: path,
     );
-    File(path).deleteSync();
+    takeTheFileAway(path);
     store.storeBakedSurface(key('p', 'f2'), inked(9));
 
     await service.save(
@@ -137,9 +148,13 @@ void main() {
       contains(anicelCelEntryName(key('p', 'f2'))),
       reason: 'the cel that was in RAM is written',
     );
-    // ⚠️f1 is not asserted either way here: its bytes were only in the
-    // deleted file, and what the save should DO about that is the
-    // decision this test exists to pin once it is made.
+    expect(
+      names,
+      contains(anicelCelEntryName(key('p', 'f1'))),
+      reason:
+          '🚨f1 was clean but still HOT — the bytes the file held are in RAM, '
+          'so the save writes them from there instead of losing them',
+    );
   });
 
   test('a save with NO stroke since the delete also lands', () async {
@@ -155,7 +170,7 @@ void main() {
       brushFrameStore: store,
       filePath: path,
     );
-    File(path).deleteSync();
+    takeTheFileAway(path);
 
     await service.save(
       project: project,
@@ -183,8 +198,13 @@ void main() {
       reason: 'an ordinary save loses nothing, and must say so',
     );
 
-    File(path).deleteSync();
+    // f1 cools off to the file alone (a clean file-backed cel's cooling is a
+    // free drop), so its only copy is the file about to go. Still hot, it
+    // would be written from RAM — see the test that keeps it hot.
+    store.hotCelByteBudget = 0;
+    takeTheFileAway(path);
     store.storeBakedSurface(key('p', 'f2'), inked(9));
+    await store.drainCooling();
 
     final lost = await service.save(
       project: project,
@@ -309,4 +329,189 @@ void main() {
     },
     skip: Platform.isWindows ? false : 'only Windows refuses a locked read',
   );
+
+  test('🚨the session holds the file it saved into — Windows will not let it '
+      'be taken away, POSIX keeps its bytes (F-72)', () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/held.anicel';
+    final store = BrushFrameStore();
+    store.storeBakedSurface(key('p', 'f1'), inked(3));
+    final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    expect(
+      OpenProjectFile.instance.heldPath,
+      path,
+      reason:
+          '⛔a full save lets go of the file to rename onto it; taking it back '
+          'only at the next cold read left it unheld until then',
+    );
+    if (Platform.isWindows) {
+      expect(
+        () => File(path).deleteSync(),
+        throwsA(isA<FileSystemException>()),
+        reason: 'held, the file cannot be deleted out from under the session',
+      );
+    }
+  });
+
+  test('🚨a name that vanished while the session held the file loses '
+      'nothing — its bytes are copied out through the handle (F-72)', () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/vanished.anicel';
+    final vault = '${directory.path}/where-the-bytes-went.anicel';
+    final store = BrushFrameStore();
+    for (final (frame, value) in [('f1', 3), ('f3', 7), ('f2', 5)]) {
+      store.storeBakedSurface(key('p', frame), inked(value));
+    }
+    final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    // What a POSIX delete or move leaves: the name gone, our descriptor
+    // still reading the bytes. Windows refuses both while we hold the file,
+    // so the test moves it and hands the session that descriptor.
+    OpenProjectFile.instance.release();
+    File(path).renameSync(vault);
+    OpenProjectFile.instance.debugHoldAs(vault, path);
+    // f1 and f3 cool off to the file alone; the newest, f2, stays hot.
+    store.hotCelByteBudget = 0;
+    store.storeBakedSurface(key('p', 'f2'), inked(9));
+    await store.drainCooling();
+
+    final lost = await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    expect(
+      lost,
+      isEmpty,
+      reason:
+          '⛔f1 and f3 lived only in the vanished file — and were still '
+          'readable through the descriptor the session held',
+    );
+    expect(
+      {for (final entry in parseAnicelZipLayoutFile(path).entries) entry.name},
+      containsAll([
+        for (final frame in ['f1', 'f2', 'f3'])
+          anicelCelEntryName(key('p', frame)),
+      ]),
+    );
+    final staged = Directory(SessionScratch.stagedFolder());
+    expect(
+      staged.existsSync()
+          ? staged.listSync().where((e) => e.path.contains('rescued-'))
+          : const <FileSystemEntity>[],
+      isEmpty,
+      reason: 'the rescue copy goes the moment no ref reads from it',
+    );
+    expect(OpenProjectFile.instance.heldPath, path);
+  });
+
+  test('🚨with the descriptor gone too, a picture still in RAM is written '
+      'from there — lost means not in memory either (F-72)', () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/still-hot.anicel';
+    final store = BrushFrameStore();
+    store.storeBakedSurface(key('p', 'f1'), inked(3));
+    store.storeBakedSurface(key('p', 'f2'), inked(5));
+    final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    expect(
+      store.isCelFileBacked(key('p', 'f1')),
+      isTrue,
+      reason: 'fixture: f1 is a clean ref into the file, and still hot',
+    );
+    takeTheFileAway(path);
+
+    final lost = await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    expect(
+      lost,
+      isEmpty,
+      reason:
+          '⛔both pictures were still in RAM. Reading the clean one from its '
+          'ref alone reported it lost while the same bytes sat in memory',
+    );
+    expect(
+      {for (final entry in parseAnicelZipLayoutFile(path).entries) entry.name},
+      containsAll([
+        anicelCelEntryName(key('p', 'f1')),
+        anicelCelEntryName(key('p', 'f2')),
+      ]),
+    );
+  });
+
+  test('🚨a cel a save could not carry lets go of its old place — the file '
+      'at that path is a different one now (F-72)', () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/replaced.anicel';
+    final store = BrushFrameStore();
+    for (final (frame, value) in [('f1', 3), ('f3', 7), ('f2', 5)]) {
+      store.storeBakedSurface(key('p', frame), inked(value));
+    }
+    final project = createDefaultProject().copyWith(id: const ProjectId('p'));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    // f1 and f3 cool off to the file alone (a clean file-backed cel's
+    // cooling is a free drop); the newest, f2, stays hot.
+    store.hotCelByteBudget = 0;
+    takeTheFileAway(path);
+    store.storeBakedSurface(key('p', 'f2'), inked(9));
+    await store.drainCooling();
+    expect(
+      await service.save(
+        project: project,
+        brushFrameStore: store,
+        filePath: path,
+      ),
+      {key('p', 'f1'), key('p', 'f3')},
+      reason: 'fixture: the two cels that lived only in the file that went',
+    );
+
+    // Drawn on f2 again, so this save APPENDS onto the file the last one
+    // wrote at the same path.
+    store.storeBakedSurface(key('p', 'f2'), inked(11));
+    final lost = await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+
+    final names = {
+      for (final entry in parseAnicelZipLayoutFile(path).entries) entry.name,
+    };
+    for (final frame in ['f1', 'f3']) {
+      expect(
+        names,
+        isNot(contains(anicelCelEntryName(key('p', frame)))),
+        reason:
+            '⛔$frame is gone. Carried from its old offset, the index named '
+            'whatever sits there in the new file as $frame',
+      );
+      expect(store.celHasRenderableContent(key('p', frame)), isFalse);
+    }
+    expect(names, contains(anicelCelEntryName(key('p', 'f2'))));
+    expect(lost, isEmpty);
+  });
 }

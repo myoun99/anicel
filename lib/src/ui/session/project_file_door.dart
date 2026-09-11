@@ -30,6 +30,7 @@ import '../../services/persistence/anicel_project_archive.dart'
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/session_scratch.dart';
+import '../../services/persistence/open_project_file.dart';
 import '../../services/project_lookup.dart' show projectAudioSourcePaths;
 import '../audio/audio_conform_store.dart';
 import 'frame_clipboard.dart';
@@ -385,6 +386,9 @@ class ProjectFileDoor {
         store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
       }
     }
+    // The refs read from [filePath] now — held, as after every adopting save
+    // ([OpenProjectFile.hold]).
+    OpenProjectFile.instance.hold(filePath);
     return lost;
   }
 
@@ -557,6 +561,9 @@ class ProjectFileDoor {
     _renderCaches.conteInkRowStore.restoreFromFile(cels.inkRow);
     _renderCaches.conteInkPageStore.restoreFromFile(cels.inkPage);
     _renderCaches.envelopeInkStore.restoreFromFile(cels.envelope);
+    // Held from now on, not from the first cel read — see
+    // [OpenProjectFile.hold] for the gap that left.
+    OpenProjectFile.instance.hold(filePath);
     _project.historyManager.clear();
     _clipboard.clear();
     _layerClipboard.clear();

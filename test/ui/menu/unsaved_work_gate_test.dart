@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -208,6 +209,9 @@ void main() {
       await fixture.session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
       // The project path turns into a DIRECTORY: every later write —
       // incremental append and the full rewrite's rename alike — refuses.
+      // The session holds the file it saved; only a descriptor that died
+      // with it would let the path change under us like this.
+      OpenProjectFile.instance.release();
       File(path).deleteSync();
       Directory(path).createSync();
     });
@@ -305,7 +309,12 @@ void main() {
       reason: 'the point of this test is a session with NOTHING unsaved',
     );
 
-    File(path).deleteSync();
+    // What a POSIX delete leaves: the name gone, the session's descriptor
+    // still reading the bytes. Windows refuses to delete a file the session
+    // holds, so the test moves it and hands the session that descriptor.
+    OpenProjectFile.instance.release();
+    File(path).renameSync('$path.moved');
+    OpenProjectFile.instance.debugHoldAs('$path.moved', path);
     expect(fixture.session.projectFile.hasVanished(), isTrue);
 
     final settled = fixture.ask();

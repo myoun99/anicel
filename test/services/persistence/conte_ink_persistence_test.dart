@@ -14,6 +14,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/project_scratch_folder.dart';
+
 /// R5: the conte sheet ink rides the .anicel archive as a second cel
 /// namespace — the row plane keyed by the storyboard block's [FrameId]
 /// (the memo's identity), the page plane by page index. Load prunes row
@@ -44,7 +46,7 @@ void main() {
       'whose block is gone prunes at LOAD; the main store never sees the '
       'namespace', () async {
     final dir = Directory.systemTemp.createTempSync('anicel-conte-ink');
-    addTearDown(() => dir.deleteSync(recursive: true));
+    deleteAfterSessionEnds(dir);
     final path = '${dir.path}/ink.anicel';
 
     // Default layers carry no frames until drawn — graft one real block

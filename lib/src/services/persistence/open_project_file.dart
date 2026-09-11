@@ -122,6 +122,102 @@ class OpenProjectFile {
     }
   }
 
+  /// Takes the handle on [path] NOW rather than at the first read.
+  ///
+  /// 🚨★★★**THE PROTECTION WAS OFF EXACTLY WHEN IT WAS NEEDED.** The handle
+  /// opened at the first cel read and closed for every full save's rename,
+  /// and nothing took it back — so from a save until the next cold read the
+  /// file was not held at all: Windows let it be deleted or moved, and POSIX
+  /// let its bytes go with the name (F-72 follow-up, 2026-09-11). The
+  /// session holds the file its refs point into from the moment they do: a
+  /// project open, and every save that adopts refs.
+  ///
+  /// ⚠️Silent when there is nothing to hold — the reads that need the file
+  /// will say so themselves.
+  void hold(String path) {
+    try {
+      _handleFor(path);
+    } on FileSystemException {
+      // Nothing at [path] to hold.
+    }
+  }
+
+  /// Whether the file being held has lost its NAME — deleted or moved by
+  /// someone else while our descriptor still reads it. POSIX only: Windows
+  /// refuses both while we hold the file (the table above).
+  bool get heldNameVanished {
+    final path = _path;
+    return _handle != null && path != null && !File(path).existsSync();
+  }
+
+  /// Copies the held file's bytes, through OUR descriptor, to
+  /// [destination]; answers it, or null when [path] is not what is held or
+  /// the copy failed.
+  ///
+  /// 🚨★★★**ONCE THE NAME IS GONE, THE DESCRIPTOR IS THE ONLY WAY LEFT TO
+  /// THOSE BYTES** (POSIX: `unlink` removes the name, the bytes live while a
+  /// descriptor does) — and the save cannot use it: its writer runs in
+  /// another isolate and opens files by path. So the bytes are given a path
+  /// again, in this run's room (유저 결정 2026-09-11 「복사 방향대로 가자」).
+  ///
+  /// ⚠️Synchronous and chunked, on purpose. [readAt] shares this descriptor
+  /// and is synchronous, and an async read left pending on it would make
+  /// every cel read meanwhile throw. A one-megabyte buffer keeps the copy's
+  /// memory flat whatever the project weighs.
+  String? copyOut(String path, String destination) {
+    final open = _handle;
+    if (open == null || _path != path) {
+      return null;
+    }
+    final part = '$destination.part';
+    RandomAccessFile? out;
+    try {
+      File(destination).parent.createSync(recursive: true);
+      out = File(part).openSync(mode: FileMode.write);
+      final buffer = Uint8List(1 << 20);
+      open.setPositionSync(0);
+      while (true) {
+        final read = open.readIntoSync(buffer);
+        if (read == 0) {
+          break;
+        }
+        out.writeFromSync(buffer, 0, read);
+      }
+      out.closeSync();
+      out = null;
+      File(part).renameSync(destination);
+      return destination;
+    } on Object {
+      try {
+        out?.closeSync();
+      } on Object {
+        // Already gone.
+      }
+      try {
+        File(part).deleteSync();
+      } on Object {
+        // Nothing was written.
+      }
+      return null;
+    }
+  }
+
+  /// Holds [actual]'s bytes under the name [reported] — the state a POSIX
+  /// delete or move leaves behind: the name gone, our descriptor still
+  /// reading.
+  ///
+  /// 🧪A seam because Windows cannot produce that state while we hold the
+  /// file (it refuses to delete or move it — the table above), so a test
+  /// moves the file itself and then hands the session the descriptor the
+  /// move would have left it.
+  @visibleForTesting
+  void debugHoldAs(String actual, String reported) {
+    release();
+    debugOpens += 1;
+    _handle = File(actual).openSync();
+    _path = reported;
+  }
+
   void release() {
     final open = _handle;
     _handle = null;

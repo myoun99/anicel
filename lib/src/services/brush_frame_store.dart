@@ -671,6 +671,53 @@ class BrushFrameStore {
     }
   }
 
+  /// Moves every ref into [from] onto [to] — same offsets, same lengths,
+  /// nothing else touched: the bytes at [to] are a copy of [from] (the
+  /// save's rescue of a file whose name vanished while the session held it;
+  /// see `AnicelFileService.save`).
+  ///
+  /// ⛔Not [adoptSavedFile]: adopting CLEARS the dirt of what it adopts, and
+  /// nothing was saved here — what was drawn since the last save is exactly
+  /// as unsaved as it was.
+  ///
+  /// ⚠️The exact string, on purpose: every ref and the held path are made
+  /// from the same argument (the save's `filePath`, the opened path), so
+  /// there is no second spelling to normalise away.
+  void repointFileRefs(String from, String to) {
+    for (final entry in _fileCels.entries.toList()) {
+      final ref = entry.value;
+      if (ref.filePath == from) {
+        _fileCels[entry.key] = AnicelCelFileRef(
+          filePath: to,
+          dataOffset: ref.dataOffset,
+          length: ref.length,
+          canvasSize: ref.canvasSize,
+          tileSize: ref.tileSize,
+        );
+      }
+    }
+  }
+
+  /// Lets go of the cels a save could not carry forward — each was only a
+  /// ref into a file that is gone, descriptor and all
+  /// (`AnicelFileService.save` returns them).
+  ///
+  /// 🚨★★★**THE REF DID NOT POINT AT NOTHING — IT POINTED INTO THE NEW
+  /// FILE.** The save that reported the loss had just written a fresh
+  /// archive at that very path, so the old offset landed inside whatever
+  /// sits there now, and the next save APPENDED onto that file carrying the
+  /// ref forward as this cel (F-72 follow-up, 2026-09-11). The pixels were
+  /// gone either way; what goes here is the claim that they are still at
+  /// that offset. The cel reads as empty from now on, which is what the
+  /// person was told.
+  void forgetCelsLostWithTheirFile(Iterable<BrushFrameKey> keys) {
+    for (final key in keys) {
+      if (_fileCels.remove(key) != null) {
+        _noteCelContent(key);
+      }
+    }
+  }
+
   /// Whether the cel shows ANY picture content — the composite/export/
   /// fill resolvers' emptiness oracle. Every tier counts: representation
   /// is not existence.

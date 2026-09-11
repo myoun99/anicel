@@ -184,4 +184,73 @@ void main() {
     OpenProjectFile.instance.release();
     expect(OpenProjectFile.instance.isHolding, isFalse);
   });
+
+  test('hold takes the handle before any read, and only once', () {
+    final path = write('p.anicel', 7);
+
+    OpenProjectFile.instance.hold(path);
+    OpenProjectFile.instance.hold(path);
+
+    expect(OpenProjectFile.instance.heldPath, path);
+    expect(OpenProjectFile.debugOpens, 1, reason: 'holding what is held opens nothing');
+    expect(OpenProjectFile.instance.readAt(path, 0, 1), orderedEquals([7]));
+    expect(
+      OpenProjectFile.debugOpens,
+      1,
+      reason: 'the first read goes through the handle the hold took',
+    );
+  });
+
+  test('holding what is not there is silent', () {
+    OpenProjectFile.instance.hold('${scratch.path}/nowhere.anicel');
+    expect(OpenProjectFile.instance.isHolding, isFalse);
+  });
+
+  test('🚨copyOut copies the held bytes through the descriptor — from the '
+      'start, wherever the last read left it', () {
+    final path = '${scratch.path}${Platform.pathSeparator}p.anicel';
+    // Three buffers' worth, so the copy has to loop.
+    final bytes = Uint8List(3 << 20);
+    for (var i = 0; i < bytes.length; i += 1) {
+      bytes[i] = i % 251;
+    }
+    File(path).writeAsBytesSync(bytes);
+    OpenProjectFile.instance.readAt(path, 100, 4);
+    final copy = '${scratch.path}${Platform.pathSeparator}copy.anicel';
+
+    expect(OpenProjectFile.instance.copyOut(path, copy), copy);
+    expect(File(copy).readAsBytesSync(), bytes);
+    expect(File('$copy.part').existsSync(), isFalse);
+  });
+
+  test('copyOut answers null for a file it is not holding', () {
+    final path = write('p.anicel', 7);
+    final copy = '${scratch.path}${Platform.pathSeparator}c';
+    expect(OpenProjectFile.instance.copyOut(path, copy), isNull);
+
+    OpenProjectFile.instance.hold(path);
+    expect(
+      OpenProjectFile.instance.copyOut('${scratch.path}/other.anicel', copy),
+      isNull,
+    );
+    expect(File(copy).existsSync(), isFalse);
+  });
+
+  test('a held file whose name went reads as vanished — and its descriptor '
+      'still reads the bytes', () {
+    final path = write('p.anicel', 7);
+    OpenProjectFile.instance.hold(path);
+    expect(OpenProjectFile.instance.heldNameVanished, isFalse);
+
+    final vault = write('vault.anicel', 9);
+    final gone = '${scratch.path}${Platform.pathSeparator}gone.anicel';
+    OpenProjectFile.instance.debugHoldAs(vault, gone);
+
+    expect(OpenProjectFile.instance.heldNameVanished, isTrue);
+    expect(
+      OpenProjectFile.instance.readAt(gone, 0, 1),
+      orderedEquals([9]),
+      reason: 'the descriptor reads what the name used to point at',
+    );
+  });
 }

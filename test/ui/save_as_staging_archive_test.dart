@@ -242,6 +242,16 @@ void main() {
       reason: 'the copy carried everything, and the answer is its own',
     );
 
+    // The drawn cel cools off to the file alone: a clean file-backed cel's
+    // cooling is a free drop, and the newest cel is the one the store keeps
+    // hot, so a second drawing takes that place. Still hot, the copy would
+    // write it from RAM and be short of nothing.
+    final store = s.renderCaches.brushFrameStore;
+    store.hotCelByteBudget = 0;
+    s.selectFrameIndex(1);
+    drawOnCurrentFrame(s);
+    await store.drainCooling();
+
     // The file the drawn cel now lives in goes away: the next copy cannot
     // carry it.
     OpenProjectFile.instance.release();

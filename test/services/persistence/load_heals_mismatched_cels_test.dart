@@ -12,6 +12,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/project_scratch_folder.dart';
+
 /// R7q2 (유저 08-18: 「치유가 가볍게 가능하다면 해도 됨」): opening a file
 /// heals cels whose stored canvas size disagrees with their cut — the
 /// pre-R7 resize could leave 겸용 or unselected cuts' cels at a stale
@@ -24,7 +26,7 @@ void main() {
   test('a load crops mismatched cels to their cut size and marks the '
       'session unsaved; a healthy file loads untouched', () async {
     final dir = Directory.systemTemp.createTempSync('anicel-load-heal');
-    addTearDown(() => dir.deleteSync(recursive: true));
+    deleteAfterSessionEnds(dir);
     final path = '${dir.path}/heal.anicel';
 
     final s = EditorSessionManager(initialProject: createDefaultProject());

@@ -12,6 +12,8 @@ import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/project_scratch_folder.dart';
+
 /// The envelope's handwriting rides the .anicel archive as its own cel
 /// namespace, like the conte's. What it is keyed to is the OWNER CUT — so
 /// load prunes a sheet whose cut is gone, and never prunes by BOX: swapping
@@ -41,7 +43,7 @@ void main() {
     'gone prunes at LOAD; the main cel store never sees the namespace',
     () async {
       final dir = Directory.systemTemp.createTempSync('anicel-envelope-ink');
-      addTearDown(() => dir.deleteSync(recursive: true));
+      deleteAfterSessionEnds(dir);
       final path = '${dir.path}/envelope.anicel';
 
       final project = createDefaultProject();
