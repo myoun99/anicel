@@ -325,6 +325,57 @@ void main() {
     expect(unselectedRow.color, Colors.transparent);
   });
 
+  testWidgets('🚨H40: a pick moves the highlight and rebuilds neither the '
+      'list nor the rail', (tester) async {
+    // 유저 2026-09-11: 「고르는 프레임에서 끝나더라도 지금 안그래도 고를때
+    // 렉있어서 그부분도 효율적으로 가볍게 하고싶어」 — every tab and every row
+    // was rebuilt for a highlight that moves between two rows.
+    // The SAME list object both times, the way the library hands it over on
+    // a pick: a new list is new presets, and those are rebuilt on purpose.
+    final presets = [_calligraphy(), _marker()];
+    const groups = [BrushGroup(id: _ink, name: 'Ink')];
+    const listKey = ValueKey<String>('brush-preset-list');
+    const railKey = ValueKey<String>('brush-preset-tab-rail');
+    await _pumpPanel(
+      tester,
+      presets: presets,
+      groups: groups,
+      selectedPresetId: _marker().id,
+    );
+    final list = tester.widget(find.byKey(listKey));
+    final rail = tester.widget(find.byKey(railKey));
+
+    await _pumpPanel(
+      tester,
+      presets: presets,
+      groups: groups,
+      selectedPresetId: _calligraphy().id,
+    );
+
+    expect(
+      identical(tester.widget(find.byKey(listKey)), list),
+      isTrue,
+      reason: 'the grid is kept as built — a pick changes nothing it is '
+          'built from',
+    );
+    expect(
+      identical(tester.widget(find.byKey(railKey)), rail),
+      isTrue,
+      reason: 'and so is the rail',
+    );
+    Color? rowColor(String id) => tester
+        .widget<Material>(
+          find.ancestor(of: _row(id), matching: find.byType(Material)).first,
+        )
+        .color;
+    expect(rowColor('preset-calligraphy'), isNot(Colors.transparent));
+    expect(
+      rowColor('preset-marker'),
+      Colors.transparent,
+      reason: 'the highlight moved all the same',
+    );
+  });
+
   testWidgets('shows a compact empty state without header actions', (
     tester,
   ) async {

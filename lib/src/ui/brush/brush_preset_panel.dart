@@ -1,6 +1,7 @@
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_group.dart';
@@ -26,6 +27,7 @@ import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
+import '../sliced_value_listenable_builder.dart';
 
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
@@ -168,6 +170,25 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// Per-STATE, not a library global: two panels can be on screen at once,
   /// and a shared GlobalKey would have them fighting over one element.
   final GlobalKey _railKey = GlobalKey();
+
+  /// 🔬H40 (유저 2026-09-11): 「고르는 프레임에서 끝나더라도 지금 안그래도
+  /// 고를때 렉있어서 그부분도 효율적으로 가볍게 하고싶어」. A pick rebuilt
+  /// every tab and every row — measured, the bulk of the pick's own frame —
+  /// when all a pick changes is which row wears the highlight.
+  ///
+  /// ⇒ The selection reaches the rows through this notifier, each row
+  /// redrawing only when ITS answer flips, and the list and the rail are
+  /// kept as built until something they are built FROM changes
+  /// ([_buildList], [_buildRail]).
+  late final ValueNotifier<BrushPresetId?> _selection =
+      ValueNotifier<BrushPresetId?>(widget.selectedPresetId);
+
+  List<BrushPreset>? _visibleKept;
+  Object? _visibleKeptFor;
+  Widget? _listKept;
+  Object? _listKeptFor;
+  Widget? _railKept;
+  Object? _railKeptFor;
 
   // View options are editor-session UI state local to the panel; they are
   // deliberately not persisted or project data. The open TAB is the same
@@ -317,8 +338,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     return widget.groups.isEmpty ? null : widget.groups.first.id;
   }
 
-  /// The presets on screen: one tab's worth.
+  /// [_visiblePresetsFresh], as the same LIST until what it is made from
+  /// changes — which is what lets [_buildList] tell a rebuild with nothing
+  /// new from one with new presets.
   List<BrushPreset> get _visiblePresets {
+    final key = (widget.presets, widget.groups, _openGroupId);
+    final kept = _visibleKept;
+    if (kept != null && _visibleKeptFor == key) {
+      return kept;
+    }
+    _visibleKeptFor = key;
+    return _visibleKept = _visiblePresetsFresh;
+  }
+
+  /// The presets on screen: one tab's worth.
+  List<BrushPreset> get _visiblePresetsFresh {
     final open = _openGroupId;
     return [
       for (final preset in widget.presets)
@@ -624,10 +658,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   @override
+  void didUpdateWidget(BrushPresetPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _selection.value = widget.selectedPresetId;
+  }
+
+  @override
   void dispose() {
     _springTimer?.cancel();
     _railController.dispose();
     _scrollController.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -768,7 +809,28 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// a group used to take a row away from the brushes. A 260px panel fits
   /// about three tabs across the top but a dozen down the side, so in this
   /// panel's proportions the rail is also what scales.
+  /// The rail, kept as built while nothing it is built from changes — a
+  /// pick inside the open group changes none of it (see [_selection]).
   Widget _buildRail() {
+    final key = (
+      widget.groups,
+      widget.presets,
+      _openGroupId,
+      widget.onGroupsReordered != null,
+      widget.onGroupEdited != null,
+      _railShowIcon,
+      _railShowName,
+      _railDragging,
+    );
+    final kept = _railKept;
+    if (kept != null && _railKeptFor == key) {
+      return kept;
+    }
+    _railKeptFor = key;
+    return _railKept = _buildRailFresh();
+  }
+
+  Widget _buildRailFresh() {
     final tabs = _tabs;
     final open = _openGroupId;
     final reorderable = widget.onGroupsReordered != null;
@@ -864,7 +926,27 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// cells still drag into a new order. One column is the same grid with one
   /// column, so nothing here branches on the width and there is no view
   /// where reordering quietly stops working.
+  /// The brush grid, kept as built while nothing it is built from changes.
+  /// A pick changes none of it: the rows read the selection for themselves
+  /// ([_selection]).
   Widget _buildList(List<BrushPreset> visible, bool reorderable) {
+    final key = (
+      visible,
+      reorderable,
+      _showTipIcon,
+      _showStrokePreview,
+      _showName,
+      widget.onPresetApplied,
+    );
+    final kept = _listKept;
+    if (kept != null && _listKeptFor == key) {
+      return kept;
+    }
+    _listKeptFor = key;
+    return _listKept = _buildListFresh(visible, reorderable);
+  }
+
+  Widget _buildListFresh(List<BrushPreset> visible, bool reorderable) {
     // 🚨H37 (유저 2026-09-11): 「이름이나 스트로크 프리뷰 없애고 팁 이미지?
     // 아이콘만 남게하면 그에 맞춰서 공간 줄이도록」 — a cell is as wide as what
     // it draws, the way the rail's tabs already are. The four-column ceiling
@@ -893,7 +975,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         final preset = visible[index];
         final row = _BrushPresetRow(
           preset: preset,
-          selected: preset.id == widget.selectedPresetId,
+          selection: _selection,
           onApplied: widget.onPresetApplied,
           showTipIcon: _showTipIcon,
           showStrokePreview: _showStrokePreview,
@@ -1274,7 +1356,7 @@ class _GroupIconPicker extends StatelessWidget {
 class _BrushPresetRow extends StatelessWidget {
   const _BrushPresetRow({
     required this.preset,
-    required this.selected,
+    required this.selection,
     required this.onApplied,
     required this.showTipIcon,
     required this.showStrokePreview,
@@ -1282,7 +1364,10 @@ class _BrushPresetRow extends StatelessWidget {
   });
 
   final BrushPreset preset;
-  final bool selected;
+
+  /// Which preset is held — read here, so a pick redraws the two rows whose
+  /// answer flips and nothing else (H40, see the panel's `_selection`).
+  final ValueListenable<BrushPresetId?> selection;
   final ValueChanged<BrushPreset>? onApplied;
   final bool showTipIcon;
   final bool showStrokePreview;
@@ -1298,7 +1383,14 @@ class _BrushPresetRow extends StatelessWidget {
   static const double tipsOnlyWidth = _barWidth + _tipSide + _trailing;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SlicedValueListenableBuilder<BrushPresetId?, bool>(
+        valueListenable: selection,
+        slice: (id) => id == preset.id,
+        builder: (context, id) => _build(context, selected: id == preset.id),
+      );
+
+  Widget _build(BuildContext context, {required bool selected}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
@@ -1346,7 +1438,7 @@ class _BrushPresetRow extends StatelessWidget {
                   if (showName || showStrokePreview)
                     const SizedBox(width: _tipGap),
                 ],
-                Expanded(child: _rowBody(colorScheme)),
+                Expanded(child: _rowBody(colorScheme, selected: selected)),
                 const SizedBox(width: _trailing),
               ],
             ),
@@ -1356,7 +1448,7 @@ class _BrushPresetRow extends StatelessWidget {
     );
   }
 
-  Widget _rowBody(ColorScheme colorScheme) {
+  Widget _rowBody(ColorScheme colorScheme, {required bool selected}) {
     final nameColor = selected
         ? colorScheme.onSurface
         : colorScheme.onSurfaceVariant;
