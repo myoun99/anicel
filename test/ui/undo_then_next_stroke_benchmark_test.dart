@@ -182,6 +182,15 @@ void main() {
     final arm = Platform.environment['H30_ARM'] ?? 'keys-undo';
     var tracing = false;
 
+    /// 🔬H40: the PICK itself — the tap's handler and the frame it asks for,
+    /// per measured pick. The stroke after a pick was measured and came out
+    /// no slower than after a plain pen-up; what was not measured is the
+    /// frame the pick takes before the pen can land (유저: 「브러시 선택하면
+    /// 패널 전체가 리빌드? 다른패널조차 리빌드되는 그런 가능성」).
+    final pickHandlers = <int>[];
+    final pickFrames = <int>[];
+    var pickTracing = false;
+
     var paintedObjects = 0;
     // 🔬`H30_PAINTED=1`: WHERE the first frame painted — each painted render
     // object is filed under the nearest ancestor wearing a string key, for
@@ -525,7 +534,41 @@ void main() {
       expect(shown.length, greaterThanOrEqualTo(2), reason: 'two to pick');
       final target = shown[pickIndex % 2];
       pickIndex += 1;
+      if (pickTracing) {
+        // ignore: avoid_print
+        print('[H30] ==== dirtied by the PICK');
+        debugPrintScheduleBuildForStacks = true;
+        debugPrintRebuildDirtyWidgets = true;
+        if (listPainted) {
+          debugProfilePaintsEnabled = true;
+          paintedBy = <String, int>{};
+        }
+      }
+      final handler = Stopwatch()..start();
       await tester.tap(tileOf(target), kind: PointerDeviceKind.stylus);
+      handler.stop();
+      final frame = Stopwatch()..start();
+      await tester.pump();
+      frame.stop();
+      if (pickTracing) {
+        debugPrintScheduleBuildForStacks = false;
+        debugPrintRebuildDirtyWidgets = false;
+        // ignore: avoid_print
+        print('[H30] ==== the pick frame is done');
+        if (listPainted) {
+          debugProfilePaintsEnabled = false;
+          // Where the PICK's own frame painted — whether the canvas is in it.
+          final regions = (paintedBy ?? const <String, int>{}).entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          paintedBy = null;
+          for (final region in regions.take(15)) {
+            // ignore: avoid_print
+            print('[H40-PAINTED] ${region.value}  ${region.key}');
+          }
+        }
+      }
+      pickHandlers.add(handler.elapsedMicroseconds);
+      pickFrames.add(frame.elapsedMicroseconds);
       if (arm == 'preset-pick-hover') {
         final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
         await pen.moveTo(strokeStart(strokeIndex));
@@ -569,6 +612,9 @@ void main() {
         await drawOneStroke();
       }
     }
+    // The warm-up's picks are not the measurement.
+    pickHandlers.clear();
+    pickFrames.clear();
 
     const rounds = 12;
     final plain = List<int>.filled(7, 0);
@@ -608,7 +654,9 @@ void main() {
       // difference. The idle pump is measured on purpose — it says whether
       // the cost is that step's own work waiting for a frame.
       await drawOneStroke();
+      pickTracing = last && traceDirtying;
       await treatmentStep();
+      pickTracing = false;
       final idle = Stopwatch()..start();
       await tester.pump();
       idle.stop();
@@ -668,6 +716,18 @@ void main() {
     print(line(picksPresets ? 'after a PICK   ' : 'after an UNDO  ', undone));
     // ignore: avoid_print
     print(line('after UNDO+REDO', redone));
+    if (pickFrames.isNotEmpty) {
+      String mean(List<int> v) =>
+          (v.reduce((a, b) => a + b) / v.length / 1000).toStringAsFixed(2);
+      String most(List<int> v) =>
+          (v.reduce((a, b) => a > b ? a : b) / 1000).toStringAsFixed(2);
+      // ignore: avoid_print
+      print(
+        '[H30] the PICK itself: handler ${mean(pickHandlers)}ms '
+        '(max ${most(pickHandlers)}) + frame ${mean(pickFrames)}ms '
+        '(max ${most(pickFrames)}) over ${pickFrames.length} picks',
+      );
+    }
     // ignore: avoid_print
     print(
       '[H30] delta FIRST-PUMP '
