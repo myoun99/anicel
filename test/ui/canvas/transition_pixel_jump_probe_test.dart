@@ -207,10 +207,10 @@ void main() {
 
     Uint8List? baseline;
 
-    int report(String phase, Uint8List probe) {
+    ({int diff, int onTileBoundary}) report(String phase, Uint8List probe) {
       final base = baseline;
       if (base == null) {
-        return 0;
+        return (diff: 0, onTileBoundary: 0);
       }
       var diff = 0;
       var onLineEdge = 0;
@@ -273,7 +273,7 @@ void main() {
         'dirty=${cache.lastDirtyRect} '
         '${samples.isEmpty ? '' : 'samples=${samples.join(' ')}'}',
       );
-      return diff;
+      return (diff: diff, onTileBoundary: onTileBoundary);
     }
 
     // ------------------------------------------------------------------
@@ -394,11 +394,22 @@ void main() {
     // snapped translation, so the fractional-pan strip cannot exist any
     // more — it is structurally impossible, not merely unobserved. The
     // integer-pan run pins the zero the routes always had.
+    // ⚠️Interior only, since F-67 (2026-09-11). The snap now lands the
+    // translation on whole + phase device pixels above 1:1 (1/4 px at
+    // 150%), so the content's EDGES sit at fractional device positions —
+    // and this software backend covers a fractional edge differently when
+    // it is an image's resampled edge (buffer route) and when it is a
+    // rect's anti-aliased edge (the walk): measured, every differing pixel
+    // is on a tile/content boundary row or column, none inside. The
+    // artwork's pixels — the ones a route flip would move — still agree
+    // byte for byte, and the walk is not a route the frame can fall to
+    // above 1:1 in production anyway (the buffer is bounded by the view).
     expect(
-      walkDiff,
+      walkDiff.diff - walkDiff.onTileBoundary,
       0,
-      reason: 'buffer route vs direct walk must be byte-identical at any '
-          'pan phase — a nonzero diff is the transition route-flip jump',
+      reason: 'buffer route vs direct walk must agree byte for byte away '
+          'from the content edges at any pan phase — a nonzero diff is the '
+          'transition route-flip jump',
     );
   }
 

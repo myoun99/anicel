@@ -22,6 +22,26 @@ export '../../services/viewport_transform_matrix.dart';
 /// ⛔A rotated view is exempt: sampling under rotation is inherently
 /// fractional, and rounding a pre-rotation translate in device space is
 /// ill-defined. Flips snap like everything else.
+///
+/// 🚨★★★F-67 (2026-09-11): WHOLE pixels was the right law at 1:1 and the
+/// wrong one under magnification. Above 1 the display samples the artwork
+/// at `FilterQuality.none`, so device pixel i reads texel
+/// `floor((i + 0.5 - t) / s)` — and for a scale s = p/q with p odd and q
+/// even (110% = 11/10, 125% = 5/4, 150% = 3/2, …) a whole-pixel t puts one
+/// column in every q EXACTLY on a texel boundary. Which texel that column
+/// shows is then decided by float rounding, and the engine's cached
+/// raster of the picture reaches the same point through different
+/// operands than a live repaint: those columns hopped a whole texel at
+/// every cache engage/disengage — pen-down/up, tool change, pan start.
+/// 실기 09-11: hops at 105·110·115·125·130·135·150·175·250%, none at
+/// 100·120·140·160·180·200·300·400% — exactly the p-odd/q-even set.
+///
+/// So the translation is snapped to `whole + `[samplingPhaseFor]`(s)`
+/// device pixels: the phase at which every visible sample point is as far
+/// from a texel boundary as this scale allows. At 1:1 and at every whole
+/// zoom the phase is 0 and the bytes are what they always were; at 110%
+/// it is a quarter pixel, and the nearest tie is 1/22 of a texel away —
+/// hundreds of times the rounding any path can carry.
 CanvasViewport renderSnappedViewport(
   CanvasViewport viewport,
   double devicePixelRatio,
@@ -29,15 +49,64 @@ CanvasViewport renderSnappedViewport(
   if (viewport.rotationDegrees != 0) {
     return viewport;
   }
-  final panX =
-      (viewport.panX * devicePixelRatio).roundToDouble() / devicePixelRatio;
-  final panY =
-      (viewport.panY * devicePixelRatio).roundToDouble() / devicePixelRatio;
+  final phase = samplingPhaseFor(viewport.zoom.abs() * devicePixelRatio);
+  double snap(double pan) =>
+      ((pan * devicePixelRatio - phase).roundToDouble() + phase) /
+      devicePixelRatio;
+  final panX = snap(viewport.panX);
+  final panY = snap(viewport.panY);
   if (panX == viewport.panX && panY == viewport.panY) {
     return viewport;
   }
   return viewport.copyWith(panX: panX, panY: panY);
 }
+
+/// The fraction of a device pixel the render translation is snapped TO at
+/// display scale [scale] (zoom × device pixel ratio), in sixteenths.
+///
+/// Zero at 1:1 and below — whole pixels, the old law, byte for byte — and
+/// zero wherever whole pixels already keep every sample off the texel
+/// boundaries (every whole zoom). Otherwise the sixteenth that maximises
+/// the smallest distance from `((j + 0.5 - phase) / scale)` to an integer
+/// over 8192 device pixels either side of the origin: for a 1%-step zoom
+/// the denominator's power of two is at most 4, and one of the sixteenths
+/// always lands the residues on the half — the tie is then 1/(2q) of a
+/// texel away, 1/200 at worst, where the paths' rounding is ~1e-5.
+///
+/// Memoised on the scale: a pinch changes it every frame, and the search
+/// is 16 × 16384 subtractions.
+double samplingPhaseFor(double scale) {
+  if (!(scale > 1) || !scale.isFinite) {
+    return 0;
+  }
+  final memo = _phaseMemo;
+  if (memo != null && memo.scale == scale) {
+    return memo.phase;
+  }
+  var best = 0.0;
+  var bestMargin = -1.0;
+  for (var sixteenth = 0; sixteenth < 16; sixteenth += 1) {
+    final phase = sixteenth / 16;
+    var margin = 0.5;
+    for (var j = -8192; j < 8192 && margin > bestMargin; j += 1) {
+      final u = (j + 0.5 - phase) / scale;
+      final d = (u - u.roundToDouble()).abs();
+      if (d < margin) {
+        margin = d;
+      }
+    }
+    // Strictly better only: ties keep the smaller phase, so a scale that
+    // whole pixels already serve keeps phase 0 and its exact bytes.
+    if (margin > bestMargin + 1e-9) {
+      bestMargin = margin;
+      best = phase;
+    }
+  }
+  _phaseMemo = (scale: scale, phase: best);
+  return best;
+}
+
+({double scale, double phase})? _phaseMemo;
 
 /// The ONE way painters take canvas-space geometry to the screen (P8):
 /// translate · scale · rotate · flip — the matrix
