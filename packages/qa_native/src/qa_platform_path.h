@@ -29,6 +29,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <share.h>
 
 /// UTF-8 [path] into [wide], or 0 when it is not valid UTF-8 or does not fit.
 ///
@@ -49,7 +50,11 @@ static inline FILE* qa_open_path_read(const char* path) {
   if (!qa_widen_path(path, wide, (int)(sizeof(wide) / sizeof(wide[0])))) {
     return NULL;
   }
-  return _wfopen(wide, L"rb");
+  // `_wfsopen`, not the `_wfopen_s` MSVC's C4996 names: the `_s` family
+  // opens a file in secure mode, which shuts out every writer while it is
+  // open — a save or an export over a file being read would be refused.
+  // _SH_DENYNO is the sharing `_wfopen` always had; only the warning goes.
+  return _wfsopen(wide, L"rb", _SH_DENYNO);
 }
 
 /// Positions [file] at absolute [offset], or 0 if it will not go.

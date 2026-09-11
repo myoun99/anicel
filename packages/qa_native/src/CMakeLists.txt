@@ -196,6 +196,11 @@ if(MSVC)
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
     PROPERTIES COMPILE_OPTIONS "/wd4267;/wd4244;/wd4996;/wd4018;/wd4389")
+  # rnnoise, compiled inside qa_audio_denoise.c, does its float arithmetic
+  # with double literals: C4305, truncation it means, in files kept verbatim.
+  # The clang/gcc branch below already drops it with -Wno-conversion.
+  set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/qa_audio_denoise.c"
+    APPEND PROPERTY COMPILE_OPTIONS "/wd4305")
 else()
   set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"

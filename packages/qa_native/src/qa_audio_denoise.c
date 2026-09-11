@@ -46,6 +46,12 @@
 #include "third_party/rnnoise/src/rnn_data.c"
 #include "third_party/rnnoise/src/rnn.c"
 #include "third_party/rnnoise/src/rnn_reader.c"
+// celt_lpc.c and denoise.c each define PITCH_BUF_SIZE — (768+960) and
+// (PITCH_MAX_PERIOD+PITCH_FRAME_SIZE), the same 1728 spelled twice. Compiled
+// apart they never meet; in this one translation unit the second spelling
+// is a redefinition every compiler warns about (MSVC C4005). Dropping the
+// first here keeps both vendored files verbatim.
+#undef PITCH_BUF_SIZE
 #include "third_party/rnnoise/src/denoise.c"
 
 // The rate RNNoise's filterbank and model are built around.
