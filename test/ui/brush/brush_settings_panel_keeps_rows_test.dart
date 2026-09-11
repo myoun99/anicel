@@ -17,8 +17,9 @@ void main() {
   /// The panel the way the workspace drives it: the state it is handed is
   /// whatever the notifier holds, and a row's write lands in the notifier.
   Future<(ValueNotifier<BrushToolState>, List<BrushToolState>)> pumpPanel(
-    WidgetTester tester,
-  ) async {
+    WidgetTester tester, {
+    bool libraryCallbacks = false,
+  }) async {
     final notifier = ValueNotifier<BrushToolState>(a);
     addTearDown(notifier.dispose);
     final written = <BrushToolState>[];
@@ -34,6 +35,11 @@ void main() {
                   written.add(next);
                   notifier.value = next;
                 },
+                // NEW closures on every build, the way the workspace hands
+                // them over.
+                onTipImportRequested: libraryCallbacks ? () {} : null,
+                onRenameTip: libraryCallbacks ? (_) {} : null,
+                onDeleteTip: libraryCallbacks ? (_) {} : null,
               ),
             ),
           ),
@@ -100,6 +106,18 @@ void main() {
       tester.widget<FieldSlider>(find.byKey(amountKey)).onChanged,
       isNotNull,
     );
+  });
+
+  testWidgets('🚨the tip rows are kept too — though the library hands the '
+      'panel new callbacks on every build', (tester) async {
+    final (notifier, _) = await pumpPanel(tester, libraryCallbacks: true);
+    const tipKey = ValueKey<String>('brush-tip-picker-tip');
+    final tip = tester.widget(find.byKey(tipKey));
+
+    notifier.value = a.copyWith(flow: 0.9);
+    await tester.pump();
+
+    expect(identical(tester.widget(find.byKey(tipKey)), tip), isTrue);
   });
 
   testWidgets('a row whose pressure curve changed is rebuilt — its button '

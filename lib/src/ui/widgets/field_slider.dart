@@ -282,6 +282,16 @@ class _FieldSliderState extends State<FieldSlider> {
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
 
+  /// The +/− pair as last built, and what it was built from.
+  ///
+  /// 🔬H40 (유저 2026-09-11): 「고를때 렉있어서 그부분도 효율적으로 가볍게
+  /// 하고싶어」. A bar rebuilds for every value it is handed and every frame
+  /// of a drag, and the pair — two buttons, their tooltips, their ink —
+  /// changes with none of that: only with the bar's height, whether it takes
+  /// the gesture, and the language its tooltips speak.
+  Widget? _stepper;
+  Object? _stepperFor;
+
   bool get _vertical => widget.axis == Axis.vertical;
 
   /// Where a pointer sits along the track, 0..1.
@@ -751,14 +761,28 @@ class _FieldSliderState extends State<FieldSlider> {
     if (widget.axis == Axis.vertical || widget.label == null) {
       return bar;
     }
+    // Kept while nothing it shows changes (see [_stepper]). Its [_stepBy]
+    // reads the bar's value at press time, so a pair built under an earlier
+    // value steps from the current one.
+    final key = (
+      widget.height,
+      _enabled,
+      AppText.strings.stepUp,
+      AppText.strings.stepDown,
+    );
+    final stepper = _stepper != null && _stepperFor == key
+        ? _stepper!
+        : _FieldSliderStepper(
+            height: widget.height,
+            enabled: _enabled,
+            onStep: _stepBy,
+          );
+    _stepper = stepper;
+    _stepperFor = key;
     return Row(
       children: [
         Expanded(child: bar),
-        _FieldSliderStepper(
-          height: widget.height,
-          enabled: _enabled,
-          onStep: _stepBy,
-        ),
+        stepper,
       ],
     );
   }

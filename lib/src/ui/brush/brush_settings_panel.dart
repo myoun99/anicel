@@ -90,6 +90,21 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
 
   List<Widget> _kept = const [];
 
+  // The library's tip callbacks, handed to the rows as this state's own
+  // methods, which read the current callback at call time. The workspace
+  // builds new closures on every rebuild, so the rows could never be kept
+  // while they carried those; a method's tear-off compares EQUAL from one
+  // build to the next, which is what [_sameRow] asks.
+  void _importTipNow() => widget.onTipImportRequested?.call();
+  void _renameTipNow(BrushTipEntry tip) => widget.onRenameTip?.call(tip);
+  void _deleteTipNow(BrushTipEntry tip) => widget.onDeleteTip?.call(tip);
+  VoidCallback? get _importTip =>
+      widget.onTipImportRequested == null ? null : _importTipNow;
+  void Function(BrushTipEntry tip)? get _renameTip =>
+      widget.onRenameTip == null ? null : _renameTipNow;
+  void Function(BrushTipEntry tip)? get _deleteTip =>
+      widget.onDeleteTip == null ? null : _deleteTipNow;
+
   /// [fresh], with every row that shows what the kept row at its place
   /// showed replaced by that kept instance.
   List<Widget> _keepRows(List<Widget> fresh) {
@@ -126,8 +141,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           a.keyValue == b.keyValue &&
           (a.onChanged == null) == (b.onChanged == null),
     (final _AntiAliasRow a, final _AntiAliasRow b) => a.value == b.value,
-    // The library's own callbacks ARE compared: they come from outside and
-    // are not read through a getter by the row.
+    // The library's callbacks ARE compared: the rows carry the panel's own
+    // forwarders ([_importTip] and its two siblings) — tear-offs of one
+    // method on one state, equal across builds, reading the library's
+    // callback at call time.
     (final BrushTipPickerRow a, final BrushTipPickerRow b) =>
       a.label == b.label &&
           a.role == b.role &&
@@ -199,9 +216,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             role: BrushTipRole.tip,
             selected: state.tipMask,
             tips: tips,
-            onImportRequested: onTipImportRequested,
-            onRenameTip: onRenameTip,
-            onDeleteTip: onDeleteTip,
+            onImportRequested: _importTip,
+            onRenameTip: _renameTip,
+            onDeleteTip: _deleteTip,
             // The sampled tip REPLACES hardness and tip shape, so clearing
             // it is how a brush gets its parametric footprint back — which
             // is why this goes through withTipMask rather than copyWith.
@@ -411,9 +428,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             role: BrushTipRole.dual,
             selected: state.dualMask,
             tips: tips,
-            onImportRequested: onTipImportRequested,
-            onRenameTip: onRenameTip,
-            onDeleteTip: onDeleteTip,
+            onImportRequested: _importTip,
+            onRenameTip: _renameTip,
+            onDeleteTip: _deleteTip,
             onPicked: (mask) =>
                 onChanged(state.withMask(BrushMaskSlot.dual, mask)),
           ),
@@ -455,9 +472,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
             // that would never match a library entry.
             selected: state.textureMaskSource,
             tips: tips,
-            onImportRequested: onTipImportRequested,
-            onRenameTip: onRenameTip,
-            onDeleteTip: onDeleteTip,
+            onImportRequested: _importTip,
+            onRenameTip: _renameTip,
+            onDeleteTip: _deleteTip,
             onPicked: (mask) =>
                 onChanged(state.withMask(BrushMaskSlot.texture, mask)),
           ),

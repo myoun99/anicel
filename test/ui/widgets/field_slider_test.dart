@@ -461,6 +461,33 @@ void main() {
             'at the bottom',
       );
     });
+
+    testWidgets('🚨H40: the +/− pair is kept while nothing it shows changes — '
+        'a new value, or a drag frame, does not rebuild it', (tester) async {
+      final value = ValueNotifier<double>(0.3);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(harness(value: value));
+      const upKey = ValueKey<String>('field-slider-step-up');
+      final up = tester.widget(find.byKey(upKey));
+
+      value.value = 0.7;
+      await tester.pump();
+
+      expect(identical(tester.widget(find.byKey(upKey)), up), isTrue);
+    });
+
+    testWidgets('and rebuilt when the bar goes dead — its buttons dim with it',
+        (tester) async {
+      final value = ValueNotifier<double>(0.3);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(harness(value: value));
+      const upKey = ValueKey<String>('field-slider-step-up');
+      final up = tester.widget(find.byKey(upKey));
+
+      await tester.pumpWidget(harness(value: value, enabled: false));
+
+      expect(identical(tester.widget(find.byKey(upKey)), up), isFalse);
+    });
   });
 
   testWidgets('disabled slider ignores input and dims', (tester) async {
