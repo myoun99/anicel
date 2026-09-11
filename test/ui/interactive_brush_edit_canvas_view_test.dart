@@ -1308,7 +1308,7 @@ void main() {
               _sessionState(width: 200, height: 16),
               results.add,
               inputSettings: BrushEditCanvasInputSettings(size: 8),
-              onAltPick: picks.add,
+              onHoldPick: picks.add,
               onTemporaryToolHold: holds.add,
               onTemporaryToolRelease: ({required keep}) => releases.add(keep),
             ),
@@ -1343,7 +1343,7 @@ void main() {
                 _sessionState(width: 200, height: 16),
                 results.add,
                 inputSettings: BrushEditCanvasInputSettings(size: 8),
-                onAltPick: picks.add,
+                onHoldPick: picks.add,
                 onTemporaryToolHold: holds.add,
               ),
             ),
@@ -1393,7 +1393,7 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              onAltPick: picks.add,
+              onHoldPick: picks.add,
             ),
           ),
         );
@@ -1541,7 +1541,7 @@ void main() {
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              onAltPick: picks.add,
+              onHoldPick: picks.add,
               onTemporaryToolHold: holds.add,
             ),
           ),
@@ -2214,7 +2214,7 @@ InteractiveBrushEditCanvasView _view(
   BrushEditCanvasInputSettings inputSettings =
       BrushEditCanvasInputSettings.defaults,
   CanvasViewport? viewport,
-  ValueChanged<CanvasPoint>? onAltPick,
+  ValueChanged<CanvasPoint>? onHoldPick,
   void Function(CanvasTool tool)? onTemporaryToolHold,
   void Function({required bool keep})? onTemporaryToolRelease,
   void Function(String actionId)? onInvokeAction,
@@ -2225,7 +2225,7 @@ InteractiveBrushEditCanvasView _view(
     frameId: const FrameId('frame-a'),
     inputSettings: inputSettings,
     viewport: viewport,
-    onAltPick: onAltPick,
+    onHoldPick: onHoldPick,
     onTemporaryToolHold: onTemporaryToolHold,
     onTemporaryToolRelease: onTemporaryToolRelease,
     onInvokeAction: onInvokeAction,

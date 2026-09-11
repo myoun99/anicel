@@ -17,6 +17,7 @@ import '../services/cut_piece_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/temporary_tool.dart';
 import '../core/dev_profile.dart';
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';

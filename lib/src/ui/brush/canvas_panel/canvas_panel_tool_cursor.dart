@@ -51,31 +51,22 @@ class _CanvasPanelToolCursor {
   /// R26 #23: the fill tool's own cursor icon (no sampling involved).
   bool get fillCursorActive =>
       _state.widget.toolCursorsEnabled &&
-      _state.widget.brushToolState.tool == CanvasTool.fill &&
-      !eyedropperCursorActive;
+      _state.widget.brushToolState.tool == CanvasTool.fill;
 
-  /// The brush/eraser tip outline. Alt-held sampling takes the pointer over
-  /// (the eyedropper is what the user is aiming with at that moment), and
-  /// the selection tools own it outright.
+  /// The brush/eraser tip outline — the selection tools own the pointer
+  /// outright, and a held eyedropper is a tool switch now (I-15), so it
+  /// never shares the pointer with the outline.
   bool get brushCursorActive =>
       _state.widget.toolCursorsEnabled &&
-      canvasToolPaints(_state.widget.brushToolState.tool) &&
-      !eyedropperCursorActive;
+      canvasToolPaints(_state.widget.brushToolState.tool);
 
-  /// Whether the eyedropper cursor + hover swatch are armed: the tool
-  /// itself, or Alt held over a painting tool (the temporary pick).
-  bool get eyedropperCursorActive {
-    if (_state.widget.sampleColorAt == null) {
-      return false;
-    }
-    final tool = _state.widget.brushToolState.tool;
-    if (tool == CanvasTool.eyedropper) {
-      return _state.widget.onEyedropperPick != null;
-    }
-    return _state._altHeld &&
-        canvasToolPaints(tool) &&
-        _state.widget.onAltColorPick != null;
-  }
+  /// Whether the eyedropper cursor + hover swatch are armed: the tool is
+  /// the eyedropper — picked, or held (a mapped button or Alt switches to it
+  /// for as long as it is held, I-15).
+  bool get eyedropperCursorActive =>
+      _state.widget.sampleColorAt != null &&
+      _state.widget.brushToolState.tool == CanvasTool.eyedropper &&
+      _state.widget.onEyedropperPick != null;
 
   /// R27 #17: the last pointer position seen on the canvas — hovers AND
   /// button-held moves alike.

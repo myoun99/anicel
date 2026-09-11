@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
@@ -640,44 +641,59 @@ void main() {
     );
   });
 
-  testWidgets('Alt+click picks the color and starts no stroke', (tester) async {
+  testWidgets('🗣️I-15: while the 「이동」 key is held a primary drag PANS '
+      'and every tool stands down; let go and the same drag draws', (
+    tester,
+  ) async {
+    addTearDown(() => CanvasPanHold.held.value = false);
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
     );
-    final altPicks = <int>[];
-
+    final viewports = <CanvasViewport>[];
     await tester.pumpWidget(
       app(
         BrushCanvasPanel(
           coordinator: coordinator,
           availableFrameKeys: frameKeys,
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          sampleColorAt: (_) => 0xFFAABBCC,
-          onAltColorPick: altPicks.add,
+          onViewportChanged: viewports.add,
         ),
       ),
     );
     await tester.pumpAndSettle();
-
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tapCanvas(tester, const Offset(30, 30));
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-    await tester.pumpAndSettle();
-
-    expect(altPicks, [0xFFAABBCC]);
-    expect(
-      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
-      isFalse,
+    final hand = find.byWidgetPredicate(
+      (widget) =>
+          widget is MouseRegion && widget.cursor == SystemMouseCursors.grab,
     );
-    // Without Alt the same tap draws — the gate is the modifier, not the
-    // handler wiring.
-    await tapCanvas(tester, const Offset(30, 30));
-    await tester.pumpAndSettle();
-    expect(
-      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
-      isTrue,
-    );
+    bool drawn() =>
+        coordinator.frameStore.celHasRenderableContent(frameKeys.first);
+    Future<void> mouseDrag() async {
+      final mouse = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(30, 30)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(42, 36)));
+      await tester.pump();
+      await mouse.up();
+      await tester.pumpAndSettle();
+    }
+
+    CanvasPanHold.held.value = true;
+    await tester.pump();
+    expect(hand, findsOneWidget, reason: 'the hand says what a press does');
+    await mouseDrag();
+    expect(viewports, isNotEmpty, reason: 'the drag moved the view');
+    expect(drawn(), isFalse, reason: 'the brush stood down for the pan');
+
+    CanvasPanHold.held.value = false;
+    await tester.pump();
+    expect(hand, findsNothing);
+    viewports.clear();
+    await mouseDrag();
+    expect(viewports, isEmpty);
+    expect(drawn(), isTrue, reason: 'let go, and the drag is the brush again');
   });
 
   testWidgets('the eyedropper shows a hover swatch of the color under the '
@@ -783,35 +799,6 @@ void main() {
       greaterThan(samples.first.x),
       reason: 'the sample point followed the pointer',
     );
-  });
-
-  testWidgets('holding Alt arms the eyedropper cursor on a painting tool '
-      '(R11-②)', (tester) async {
-    const trackerKey = ValueKey<String>('eyedropper-hover-tracker');
-    final frameKeys = BrushCanvasFixture.createFrameKeys();
-    await tester.pumpWidget(
-      app(
-        BrushCanvasPanel(
-          coordinator: BrushCanvasFixture.createCoordinator(
-            frameKeys: frameKeys,
-          ),
-          availableFrameKeys: frameKeys,
-          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          sampleColorAt: (_) => 0xFFAABBCC,
-          onAltColorPick: (_) {},
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(trackerKey), findsNothing);
-
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.pump();
-    expect(find.byKey(trackerKey), findsOneWidget);
-
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
-    await tester.pump();
-    expect(find.byKey(trackerKey), findsNothing);
   });
 
   testWidgets('tool taps convert through the live viewport', (tester) async {

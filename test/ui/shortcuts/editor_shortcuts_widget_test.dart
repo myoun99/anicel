@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -160,6 +161,34 @@ void main() {
     expect(shapeOf(), CanvasShapeKind.lasso);
   });
 
+  testWidgets('🗣️I-15: holding Alt over the brush IS the eyedropper tool '
+      '(「툴 바껴서 해당툴을 사용한다」); letting go returns it — the '
+      'selection keeps its own Alt', (tester) async {
+    await pumpHome(tester);
+    CanvasTool toolOf() =>
+        tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.brush);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(toolOf(), CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(toolOf(), CanvasTool.brush);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+    expect(toolOf(), CanvasTool.select, reason: 'Alt subtracts there');
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.select);
+  });
+
   testWidgets('R/Shift+R rotate the canvas view; H flips it (P8)', (
     tester,
   ) async {
@@ -190,7 +219,8 @@ void main() {
     expect(viewportOf().flipHorizontal, isFalse);
   });
 
-  testWidgets('Ctrl+Z undoes; Space enters playback', (tester) async {
+  testWidgets('Ctrl+Z undoes; Space HOLDS the pan and plays nothing — '
+      'during playback it only stops it (I-15)', (tester) async {
     await pumpHome(tester);
 
     // Create an undoable step (a drawing via the menu).
@@ -214,9 +244,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.appIconButton(undoButton).onPressed, isNull);
 
-    // Space starts playback (the playback view mounts). Plain pumps: the
-    // playback ticker never lets pumpAndSettle settle.
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    // 🗣️I-15 (유저 2026-09-11): 「기존 재생단축키가 스페이스바인데 그냥
+    // 해제」 — Space HOLDS the pan now, and starts nothing.
+    expect(
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space),
+      isTrue,
+      reason: 'the pan took the key — it does nothing else',
+    );
+    await tester.pump();
+    expect(CanvasPanHold.held.value, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-playback-view')),
+      findsNothing,
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.pump();
+    expect(CanvasPanHold.held.value, isFalse);
+
+    // Playback starts from its button (the playback view mounts). Plain
+    // pumps: the playback ticker never lets pumpAndSettle settle.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('playback-play-button')),
+    );
     await tester.pump();
     await tester.pump();
     expect(
@@ -231,8 +280,9 @@ void main() {
     // for keys until 2026-09-08, so Space was stopping playback and then
     // ALSO running its binding, which started it again. The view stayed up
     // because the key did two things, which is exactly what 「입력 일 안함」
-    // forbids.
-    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    // forbids. I-15 keeps that law for the space bar's new job: the press
+    // that stops playback takes no pan hold on the way.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
     await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('canvas-playback-view')),
@@ -241,6 +291,8 @@ void main() {
           'canvas is back to its drawing surface — and no ticker is left '
           'running for the teardown to trip over',
     );
+    expect(CanvasPanHold.held.value, isFalse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.pumpAndSettle();
   });
 

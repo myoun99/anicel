@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
@@ -229,6 +230,48 @@ void main() {
 
     expect(probes.actions, isEmpty, reason: 'no flip on a navigate slot');
     expect(probes.viewports, isNotEmpty, reason: 'one-finger pan');
+  });
+
+  testWidgets('🗣️I-15: while the 「이동」 key is held a PRIMARY mouse drag '
+      'is the very pan a wheel click starts — and never otherwise', (
+    tester,
+  ) async {
+    addTearDown(() => CanvasPanHold.held.value = false);
+    final probes = await pumpEngine(tester);
+
+    // What one drag DID to the view — null when it did nothing. The layer
+    // keeps its own live viewport, so each drag starts where the last one
+    // left it.
+    Future<Offset?> drag(int buttons) async {
+      final reports = probes.viewports.length;
+      final before = reports == 0 ? CanvasViewport() : probes.viewports.last;
+      final mouse = await tester.startGesture(
+        const Offset(200, 200),
+        kind: PointerDeviceKind.mouse,
+        buttons: buttons,
+      );
+      await mouse.moveBy(const Offset(30, 12));
+      await tester.pump();
+      await mouse.up();
+      await tester.pump();
+      if (probes.viewports.length == reports) {
+        return null;
+      }
+      final after = probes.viewports.last;
+      return Offset(after.panX - before.panX, after.panY - before.panY);
+    }
+
+    expect(await drag(kPrimaryButton), isNull, reason: 'the tool has it');
+    final wheel = await drag(kMiddleMouseButton);
+    expect(wheel, isNotNull);
+
+    CanvasPanHold.held.value = true;
+    expect(await drag(kPrimaryButton), wheel, reason: 'the very same pan');
+    expect(
+      await drag(kSecondaryMouseButton),
+      isNull,
+      reason: 'the right button keeps its own mapping',
+    );
   });
 
   testWidgets('🗣️I-14: a host that answers the one-finger slot ITSELF pans '

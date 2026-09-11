@@ -27,13 +27,6 @@ class _BrushEditPress {
   final Set<int> _activeTouchPointers = <int>{};
   bool _multiTouchNavigation = false;
 
-  /// 유저 확정 — one law for every dropper: 「클릭중이면 색 바뀌도록 …
-  /// 같은법으로. 드래그중 계속샘플」. The mapped hold above has always done
-  /// this ('누르는 동안 해당 색을 뽑는다', PEN-7a) and the eyedropper TOOL now
-  /// does it on the tap layer; Alt was the third door, and it was the one
-  /// still picking once per press.
-  int? _altPickPointer;
-
   /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
   /// on a sibling view, whose pointer this view will never see. A live
   /// sub-slop touch stroke here is really the first half of a pinch, so
@@ -153,17 +146,6 @@ class _BrushEditPress {
     // off-canvas artwork; only the pasteboard wall stops them.
     final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
 
-    // Alt+click = temporary eyedropper (P5): pick, never stroke.
-    final onAltPick = _state.widget.onAltPick;
-    if (onAltPick != null && HardwareKeyboard.instance.isAltPressed) {
-      // TS7: remembered, so the drag that follows keeps sampling.
-      _altPickPointer = event.pointer;
-      if (startsInsidePasteboard) {
-        onAltPick(canvasPosition);
-      }
-      return;
-    }
-
     // FILL tap (R22-A / R23): the flood's stamp becomes ONE overlay
     // image at the commit's exact placement, and the commit itself
     // DEFERS past the tap frame — the finished fill shows while the
@@ -230,7 +212,7 @@ class _BrushEditPress {
         // The eyedropper picks anywhere on the pasteboard, like Flash
         // (off-canvas artwork is real artwork).
         if (_state._isInsidePasteboard(pickPosition)) {
-          _state.widget.onAltPick?.call(pickPosition);
+          _state.widget.onHoldPick?.call(pickPosition);
         }
         return _MappedPress.consumed;
       case CanvasPointerAction.eraser:
@@ -311,25 +293,15 @@ class _BrushEditPress {
     // stroke is never hijacked mid-line.
     _state._hold.handleMappedButtonRiseDuringContact(event);
     // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
-    // '누르는 동안 해당 색을 뽑는다').
+    // '누르는 동안 해당 색을 뽑는다'). 유저 확정 — one law for every dropper:
+    // 「클릭중이면 색 바뀌도록 … 같은법으로. 드래그중 계속샘플」 — the tool
+    // does it on the tap layer and a held button does it here. Alt was a
+    // third door until I-15 made it the tool itself.
     if (event.pointer == _state._hold._mappedHoldPointer &&
         _state._hold._mappedHoldIsEyedropper) {
       final pickPosition = _state._canvasPositionFromLocal(event.localPosition);
       if (_state._isInsidePasteboard(pickPosition)) {
-        _state.widget.onAltPick?.call(pickPosition);
-      }
-      return;
-    }
-    // TS7: the ALT pick does the same. Alt is re-read rather than assumed —
-    // letting go of the key mid-drag ends the sampling, which is the same
-    // moment the crosshair goes away.
-    if (event.pointer == _altPickPointer) {
-      if (!HardwareKeyboard.instance.isAltPressed) {
-        return;
-      }
-      final pickPosition = _state._canvasPositionFromLocal(event.localPosition);
-      if (_state._isInsidePasteboard(pickPosition)) {
-        _state.widget.onAltPick?.call(pickPosition);
+        _state.widget.onHoldPick?.call(pickPosition);
       }
       return;
     }
@@ -465,17 +437,14 @@ class _BrushEditPress {
 
   /// THIS POINTER IS GONE — the bookkeeping both endings of a press owe,
   /// whether the pointer lifted or was cancelled: its contact buttons, its
-  /// place in the touch census, the tool mapping it was holding, and its
-  /// claim on the alt-pick. What each ending does BESIDES this (a lift
+  /// place in the touch census, and the tool mapping it was holding. What
+  /// each ending does BESIDES this (a lift
   /// runs the fill tap and commits the dabs; a cancel forgets the tap and
   /// discards) is the two laws, and they stay at the callers.
   void _releasePointer(int pointer) {
     _state._hold._lastContactButtons.remove(pointer);
     _forgetTouchPointer(pointer);
     _state._hold.releaseMappedHold(pointer);
-    if (pointer == _altPickPointer) {
-      _altPickPointer = null;
-    }
   }
 
   void _forgetTouchPointer(int pointer) {

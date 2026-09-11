@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
 import '../canvas/shown_cels.dart';
 import '../debug/repaint_cause.dart';
@@ -42,6 +41,7 @@ import 'promoted_touch_aim_policy.dart' show aimIsPromotedTouch;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
+import '../canvas/canvas_pan_hold.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
@@ -179,7 +179,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.onAltColorPick,
     this.fillDabAt,
     this.shapeFillDabFor,
     this.selectionMaskOptions,
@@ -558,12 +557,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Null hides the swatch, like the other two.
   final ValueChanged<int>? onBackdropColorChanged;
 
-  /// A committed eyedropper pick (switches back to the painting tool).
+  /// An eyedropper pick — the tool's tap and drag, and a held mapped
+  /// button's live pick alike. ONE pick (I-15): the Alt-only pick that stood
+  /// beside it is gone, because Alt switches to the eyedropper tool now.
   final ValueChanged<int>? onEyedropperPick;
-
-  /// An Alt+click TEMPORARY pick while painting: color only, the active
-  /// tool stays (the CSP muscle-memory shortcut).
-  final ValueChanged<int>? onAltColorPick;
 
   /// PEN-7a: the mapped-hold tool switch (canvas right/wheel-click
   /// mappings) — threaded through to the workspace's tool notifier.
@@ -692,9 +689,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
-  /// True while Alt is held — the temporary eyedropper (R11-②): the cursor
-  /// and hover swatch arm without switching tools.
-  bool _altHeld = false;
 
   /// The pointer's viewport position + the composite color under it while
   /// the eyedropper cursor is armed; drives the hover swatch only.
@@ -840,8 +834,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // 🚨D34 최종: a finger ANYWHERE drops the tool aim — see
     // [CanvasTouchContacts.addAppWideTouchListener] and [_handleAppWideTouch].
     CanvasTouchContacts.addAppWideTouchListener(_handleAppWideTouch);
-    _altHeld = HardwareKeyboard.instance.isAltPressed;
-    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    CanvasPanHold.held.addListener(_onPanHoldChanged);
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
@@ -973,7 +966,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
     }
-    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    CanvasPanHold.held.removeListener(_onPanHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
     widget.selectionCommands?.regionHistoryRecorder = null;
     // Leave no verb pointing at a dead State: the buttons must go dead
@@ -993,15 +986,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.dispose();
   }
 
-  bool _handleKeyEvent(KeyEvent event) {
-    final alt = HardwareKeyboard.instance.isAltPressed;
-    if (alt != _altHeld && mounted) {
-      setState(() => _altHeld = alt);
-      if (!alt) {
-        _eyedropperHover.value = null;
-      }
+  /// I-15: the pan hold took the pointer — the tool's aim is nobody's until
+  /// it lets go (a pointer that may not drive a tool may not aim it).
+  void _onPanHoldChanged() {
+    if (CanvasPanHold.held.value) {
+      _forgetCanvasPointer();
     }
-    return false;
   }
 
   /// [sample] false on pointer DOWN: the tap layer's pick samples that
@@ -1113,7 +1103,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     required PointerDeviceKind kind,
     bool sample = true,
   }) {
-    if (!AppInput.toolAcceptsPointer(kind)) {
+    // I-15: nor while the pan hold has the pointer — it drives no tool.
+    if (!AppInput.toolAcceptsPointer(kind) || CanvasPanHold.held.value) {
       return;
     }
     // 🚨D34: and a MOUSE that a finger produced does not aim either.
@@ -1625,14 +1616,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       frameId: activeKey.frameId,
       inputSettings: widget.brushToolState.toInputSettings(),
       viewport: _viewportState._viewport,
-      // Alt+click = temporary eyedropper (P5): color only, the active
-      // painting tool stays.
-      onAltPick: widget.sampleColorAt == null || widget.onAltColorPick == null
+      // A held mapped button's live pick (PEN-7a) — the eyedropper's own
+      // pick, because the tool IS the eyedropper while it is held.
+      onHoldPick:
+          widget.sampleColorAt == null || widget.onEyedropperPick == null
           ? null
           : (point) {
               final color = widget.sampleColorAt!(point);
               if (color != null) {
-                widget.onAltColorPick!(color);
+                widget.onEyedropperPick!(color);
               }
             },
       onPressNeedsCel: widget.onPressNeedsCel,

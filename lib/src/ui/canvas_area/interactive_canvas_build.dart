@@ -15,6 +15,14 @@ class _InteractiveCanvasBuild {
 
   final _EditorCanvasAreaState _state;
 
+  /// The held-tool road (PEN-7a, I-15) over this canvas's tool channel —
+  /// the same [TemporaryTool] the shell's held keys switch through.
+  TemporaryTool _temporaryTool(EditorSessionManager session) => TemporaryTool(
+    session: session,
+    current: () => _state.widget.brushToolState.value,
+    change: _state.widget.onBrushToolStateChanged,
+  );
+
   late final bool _isPlaybackActive;
   late final bool _inGap;
   late final bool _cameraOverlayVisible;
@@ -377,29 +385,14 @@ class _InteractiveCanvasBuild {
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
         _state.widget.brushToolState.value.copyWith(color: color),
       ),
-      onAltColorPick: (color) => _state.widget.onBrushToolStateChanged?.call(
-        _state.widget.brushToolState.value.copyWith(color: color),
-      ),
       // PEN-7a: the mapped hold temporarily switches the TOOL —
       // the user's design: reuse the one tool-switch path so the
       // cursor, panels and per-tool settings memory all follow.
       // Release springs back (default) or keeps the switched
-      // tool, per the mapping.
-      onTemporaryToolHold: (tool) {
-        session.heldOriginalTool ??= _state.widget.brushToolState.value.tool;
-        _state.widget.onBrushToolStateChanged?.call(
-          _state.widget.brushToolState.value.copyWith(tool: tool),
-        );
-      },
-      onTemporaryToolRelease: ({required keep}) {
-        final original = session.heldOriginalTool;
-        session.heldOriginalTool = null;
-        if (!keep && original != null) {
-          _state.widget.onBrushToolStateChanged?.call(
-            _state.widget.brushToolState.value.copyWith(tool: original),
-          );
-        }
-      },
+      // tool, per the mapping. I-15: a held KEY switches through
+      // the same [TemporaryTool] from the shell.
+      onTemporaryToolHold: _temporaryTool(session).hold,
+      onTemporaryToolRelease: _temporaryTool(session).release,
       // PEN-7b: the control-mode touch slots — the flip funnel
       // comes from the shell; the brush-size drag lands here
       // (this widget owns the tool state channel).

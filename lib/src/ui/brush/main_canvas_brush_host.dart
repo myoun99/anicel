@@ -84,7 +84,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.onAltColorPick,
     this.fillDabAt,
     this.shapeFillDabFor,
     this.selectionMaskOptions,
@@ -241,7 +240,6 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The flip HUD's state, threaded down to the panel that mounts it.
   final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
-  final ValueChanged<int>? onAltColorPick;
   final BrushDab? Function(
     CanvasPoint point,
     int color,
@@ -526,7 +524,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
-      onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
       shapeFillDabFor: widget.shapeFillDabFor,
       selectionMaskOptions: widget.selectionMaskOptions,

@@ -93,6 +93,18 @@ CanvasShapeKind? armedCutShape(BrushToolState state) =>
 bool canvasToolPaints(CanvasTool tool) =>
     tool == CanvasTool.brush || tool == CanvasTool.eraser;
 
+/// Whether the DRAWING VIEW takes [tool]'s presses — the brush, the eraser
+/// and the bucket (R22-A runs the fill through the view's own pipeline);
+/// every other tool mounts a layer of its own above it.
+///
+/// It is where a held pen or mouse button stands in for another tool — the
+/// view is what reads the mapping (PEN-7a) — and so where a held key does
+/// too (I-15): one law, applied in one place. Elsewhere the key keeps its
+/// own meaning: the selection's Alt subtracts, the transform's scales about
+/// the centre.
+bool canvasToolTakesDrawingPress(CanvasTool tool) =>
+    canvasToolPaints(tool) || tool == CanvasTool.fill;
+
 /// Whether [tool] puts marks on the CEL — the strokes and the fill.
 ///
 /// The question "would this press actually draw?" used to be spelled out at

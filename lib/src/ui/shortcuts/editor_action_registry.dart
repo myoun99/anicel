@@ -23,6 +23,7 @@ class EditorActionDefinition {
     required this.category,
     required this.defaultActivators,
     this.defaultTouchGesture,
+    this.hold = false,
   });
 
   final String id;
@@ -35,6 +36,11 @@ class EditorActionDefinition {
   /// dialog either way. Stored as the [TouchGesture] enum NAME to keep
   /// this file free of UI imports.
   final String? defaultTouchGesture;
+
+  /// A HELD action (I-15): its key is in force while it is down and lets go
+  /// with it — the pan on Space. It is not an intent, so it never enters
+  /// the Shortcuts map; `EditorKeyHolds` takes it on the same road instead.
+  final bool hold;
 }
 
 /// Registry ids (referenced from dispatch and menu labels).
@@ -47,6 +53,10 @@ abstract final class EditorActionIds {
   static const frameWalkDown = 'frame-walk-down';
   static const drawingPrevious = 'drawing-previous';
   static const drawingNext = 'drawing-next';
+
+  /// 🗣️I-15: 「단축키에 이동 추가 … 기본값을 … 스페이스바로」 — a HELD
+  /// shortcut ([EditorActionDefinition.hold]).
+  static const canvasPanHold = 'canvas-pan-hold';
   static const playbackToggle = 'playback-toggle';
   static const voiceRecordToggle = 'voice-record-toggle';
   static const undo = 'edit-undo';
@@ -160,6 +170,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.period, control: true),
     ],
   ),
+  // 🗣️I-15 (유저 2026-09-11): 「손바닥 툴을 만들지는 않음. 다만 단축키에
+  // 이동? 추가하는건 추가하고, 기본값을 휠클릭이 아니라 스페이스바로
+  // 이동」 — held, not pressed: while Space is down a primary drag pans.
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasPanHold,
+    label: 'Pan (hold)',
+    category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
+    hold: true,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.playbackToggle,
     label: 'Play / Pause',
@@ -167,7 +187,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     // PEN-7b: four-finger tap = play/pause (the Callipeg convention the
     // user picked), beside the 2-tap undo / 3-tap redo family.
     defaultTouchGesture: 'fourFingerTap',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
+    // I-15: 「기존 재생단축키가 스페이스바인데 그냥 해제」 — Space is the
+    // pan hold now. Every action stays assignable in the dialog.
+    defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.voiceRecordToggle,

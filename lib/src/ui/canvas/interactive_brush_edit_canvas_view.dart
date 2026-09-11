@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/placed_tile.dart';
 import '../../models/bitmap_surface.dart';
@@ -142,7 +142,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
-    this.onAltPick,
+    this.onHoldPick,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -226,9 +226,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Alt+pointer-down picks a color instead of starting a stroke (P5's
-  /// temporary eyedropper); null disables the shortcut.
-  final ValueChanged<CanvasPoint>? onAltPick;
+  /// A held mapped button's live pick (PEN-7a: 「누르는 동안 해당 색을
+  /// 뽑는다」) — the press began here, so this view keeps sampling for it.
+  /// Null disables it. 🪦It was `onAltPick` while Alt picked through this
+  /// view too; I-15 put Alt on the eyedropper tool itself.
+  final ValueChanged<CanvasPoint>? onHoldPick;
 
   /// PEN-7a mapped-hold session: a secondary-button press switched the
   /// tool temporarily — the shell mirrors it on the tool notifier so the

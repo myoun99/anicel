@@ -137,11 +137,24 @@ class _PanelBuild {
     );
   }
 
-  /// What sits on the artwork inside the pointer census: the bare canvas
-  /// when no cursor visual is armed, else the deck — underlay, canvas,
-  /// overlay, the tap layer, the tool cursors, the selection layer and
-  /// the idle ants.
-  Widget _cursorDeck(BuildContext context) {
+  /// What sits on the artwork inside the pointer census — [_toolDeck],
+  /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
+  /// deck takes no pointer at all, so every tool stands down for the pan at
+  /// once, and the hand says what a press will do.
+  Widget _cursorDeck(BuildContext context) => ValueListenableBuilder<bool>(
+    valueListenable: CanvasPanHold.held,
+    builder: (context, held, deck) => MouseRegion(
+      opaque: false,
+      cursor: held ? SystemMouseCursors.grab : MouseCursor.defer,
+      child: IgnorePointer(ignoring: held, child: deck),
+    ),
+    child: _toolDeck(context),
+  );
+
+  /// The bare canvas when no cursor visual is armed, else the deck —
+  /// underlay, canvas, overlay, the tap layer, the tool cursors, the
+  /// selection layer and the idle ants.
+  Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final underlayBuilder = _underlayBuilder;
     final idleSelection = _idleSelection;

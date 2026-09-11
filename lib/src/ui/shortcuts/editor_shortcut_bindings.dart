@@ -58,6 +58,11 @@ class EditorShortcutBindings extends ChangeNotifier {
   Map<ShortcutActivator, Intent> get shortcuts {
     final map = <ShortcutActivator, Intent>{};
     for (final definition in definitions) {
+      // A HELD action is taken on the way past (EditorKeyHolds), never
+      // dispatched as an intent.
+      if (definition.hold) {
+        continue;
+      }
       for (final activator in activatorsFor(definition.id)) {
         map[activator] = EditorActionIntent(definition.id);
       }
@@ -253,7 +258,12 @@ class EditorShortcutBindings extends ChangeNotifier {
 /// never switches tools. Modifier shortcuts still resolve — but any the
 /// field itself handles (Ctrl+Z text undo) are consumed below us first.
 class EditorShortcutManager extends ShortcutManager {
-  EditorShortcutManager({super.shortcuts});
+  EditorShortcutManager({super.shortcuts, this.onHoldKey});
+
+  /// The held keys (I-15, `EditorKeyHolds.engage`) — taken on THIS road,
+  /// after the text-field guard, so a focused field keeps its space bar the
+  /// same way it keeps its letters.
+  final KeyEventResult Function(KeyEvent event)? onHoldKey;
 
   @override
   KeyEventResult handleKeypress(BuildContext context, KeyEvent event) {
@@ -261,6 +271,10 @@ class EditorShortcutManager extends ShortcutManager {
         !HardwareKeyboard.instance.isControlPressed &&
         !HardwareKeyboard.instance.isMetaPressed) {
       return KeyEventResult.ignored;
+    }
+    final held = onHoldKey?.call(event) ?? KeyEventResult.ignored;
+    if (held == KeyEventResult.handled) {
+      return held;
     }
     return super.handleKeypress(context, event);
   }

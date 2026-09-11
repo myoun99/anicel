@@ -172,7 +172,7 @@ class _BrushEditHold {
     _state.widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
     final pickPosition = _state._canvasPositionFromLocal(event.localPosition);
     if (_state._isInsidePasteboard(pickPosition)) {
-      _state.widget.onAltPick?.call(pickPosition);
+      _state.widget.onHoldPick?.call(pickPosition);
     }
   }
 

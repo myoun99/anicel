@@ -30,6 +30,7 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import '../models/app_workspace_colors.dart';
 import 'debug/input_inspector.dart';
@@ -48,6 +49,7 @@ import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
     show toggleVoiceRecordingWithFeedback;
 import 'shortcuts/editor_action_registry.dart';
+import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/shortcut_settings_store.dart';
 import 'timeline/timeline_action_toolbar.dart'
@@ -202,6 +204,19 @@ class _HomePageState extends State<HomePage> {
   /// FLUTTER_TEST like the workspace layout.
   late final EditorShortcutBindings _shortcuts = EditorShortcutBindings(
     store: _unlessTesting(ShortcutSettingsStore.new),
+  );
+
+  /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
+  /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
+  late final EditorKeyHolds _keyHolds = EditorKeyHolds(
+    bindings: _shortcuts,
+    tool: _brushTool,
+    temporaryTool: TemporaryTool(
+      session: _session,
+      current: () => _brushTool.value,
+      change: (next) => _brushTool.value = next,
+    ),
+    strokeLive: _session.brushInputActive,
   );
 
   /// Autosave (P3): dirty-session snapshots into the recovery folder. The
@@ -449,6 +464,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    // The pan flag is app-wide: a shell that goes away must not keep it.
+    _keyHolds.dispose();
     PencilInteractionService.instance.onPencilTap = null;
     _session.historyManager.removeListener(_recordRecentColor);
     _session.voiceRecording.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
@@ -795,7 +812,10 @@ class _HomePageState extends State<HomePage> {
           child: ListenableBuilder(
             listenable: _shortcuts,
             builder: (context, _) => Shortcuts.manager(
-              manager: EditorShortcutManager(shortcuts: _shortcuts.shortcuts),
+              manager: EditorShortcutManager(
+                shortcuts: _shortcuts.shortcuts,
+                onHoldKey: _keyHolds.engage,
+              ),
               child: Actions(
                 actions: {
                   EditorActionIntent: CallbackAction<EditorActionIntent>(

@@ -13,8 +13,9 @@ void main() {
     final bindings = EditorShortcutBindings();
     final map = bindings.shortcuts;
 
-    // One entry per default activator, each dispatching its action id.
-    for (final definition in editorActionDefinitions) {
+    // One entry per default activator, each dispatching its action id — a
+    // HELD action excepted (I-15, pinned below).
+    for (final definition in editorActionDefinitions.where((d) => !d.hold)) {
       for (final activator in definition.defaultActivators) {
         final intent = map[activator];
         expect(intent, isA<EditorActionIntent>());
@@ -22,6 +23,35 @@ void main() {
       }
     }
     expect(bindings.conflictedActionIds, isEmpty);
+  });
+
+  test('🗣️I-15: 「이동」 is HELD on Space — never an intent in the map — '
+      'and playback lets Space go (its four-finger tap stays)', () {
+    final bindings = EditorShortcutBindings();
+    expect(
+      editorActionDefinitions.where((d) => d.hold).map((d) => d.id),
+      [EditorActionIds.canvasPanHold],
+      reason: 'the one held action',
+    );
+    final pan = bindings.activatorsFor(EditorActionIds.canvasPanHold);
+    expect(pan, hasLength(1));
+    expect(
+      activatorsEqual(
+        pan.single,
+        const SingleActivator(LogicalKeyboardKey.space),
+      ),
+      isTrue,
+    );
+    expect(
+      bindings.shortcuts.keys.whereType<SingleActivator>().where(
+        (activator) => activator.trigger == LogicalKeyboardKey.space,
+      ),
+      isEmpty,
+      reason: 'Space dispatches no intent — the hold takes it on the way',
+    );
+    final playback = bindings.definitionFor(EditorActionIds.playbackToggle)!;
+    expect(playback.defaultActivators, isEmpty);
+    expect(playback.defaultTouchGesture, 'fourFingerTap');
   });
 
   test('overrides replace defaults, re-recording back to the default '
