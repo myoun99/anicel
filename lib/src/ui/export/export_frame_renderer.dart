@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
@@ -11,6 +13,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
+import '../../models/movie_cel.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
@@ -66,19 +69,53 @@ class ExportFrameRenderer {
       {};
 
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
+    // 🚨A MOVIE's pictures are read through, never held here: a stream
+    // holds its cut's surfaces for the whole run, and a movie is a
+    // full-canvas picture per FRAME — a 30-second take would pin every one
+    // of them past the store's byte budget. The store keeps what its budget
+    // allows; [_hydrate] puts back what a frame needs.
+    if (movieCelOf(frame.id) != null) {
+      return _readSurface(cut, layer, frame);
+    }
     final surfaces = _surfacesByCut.putIfAbsent(cut.id, () => {});
-    return surfaces.putIfAbsent((layer.id, frame.id), () {
-      final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
-      // R19 P3b: the baked raster is the truth — a READ-ONLY reference
-      // (valid display cache first, else baked; the coordinator donates
-      // on every commit, undo and redo). Nothing is stored back, so
-      // batch exports don't grow the shared cache; null = an empty cel.
-      return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
-        frameKey,
-        canvasSize: cut.canvasSize,
-      );
-    });
+    return surfaces.putIfAbsent(
+      (layer.id, frame.id),
+      () => _readSurface(cut, layer, frame),
+    );
   }
+
+  BitmapSurface? _readSurface(Cut cut, Layer layer, Frame frame) {
+    final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
+    // R19 P3b: the baked raster is the truth — a READ-ONLY reference
+    // (valid display cache first, else baked; the coordinator donates
+    // on every commit, undo and redo). Nothing is stored back, so
+    // batch exports don't grow the shared cache; null = an empty cel.
+    return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
+      frameKey,
+      canvasSize: cut.canvasSize,
+    );
+  }
+
+  /// How many surfaces the renderer holds right now (test hook) — a movie's
+  /// pictures are never among them.
+  @visibleForTesting
+  int get debugHeldSurfaceCount {
+    var held = 0;
+    for (final surfaces in _surfacesByCut.values) {
+      for (final surface in surfaces.values) {
+        if (surface != null) {
+          held += 1;
+        }
+      }
+    }
+    return held;
+  }
+
+  /// Decodes the movie pictures [cut] shows at [frameIndex] before its
+  /// composite is planned: export walks frames nobody is looking at, so
+  /// nothing else will have (the playback warmer awaits the same call).
+  Future<void> _hydrate(Cut cut, int frameIndex) =>
+      session.movieCels.hydrate(cut, frameIndex);
 
   /// Cuts whose FX-stripped view has already been built (memoized: the
   /// stream renders the same cut for many frames).
@@ -165,10 +202,11 @@ class ExportFrameRenderer {
     ExportSizeMode mode, {
     CanvasSize? outputSize,
     bool withNameTags = false,
-  }) {
+  }) async {
     final cut = task.cut;
     // The single-cut streams' retention: one cut's cels at a time.
     _retainSurfacesFor([cut.id]);
+    await _hydrate(cut, task.frameIndex);
     final pose = mode == ExportSizeMode.camera
         ? session.camera.cameraPoseForCut(cut, task.frameIndex)
         : CameraPose(
@@ -588,6 +626,7 @@ class ExportFrameRenderer {
     for (var i = 0; i < positions.length; i += 1) {
       final position = positions[i];
       final cut = position.cut;
+      await _hydrate(cut, position.localFrameIndex);
       final image = await _stackRenderService.renderThroughCamera(
         nodes: planCutFrameCompositeTree(
           cut: _cutForRender(cut),
