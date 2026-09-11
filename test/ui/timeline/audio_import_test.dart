@@ -271,9 +271,12 @@ void main() {
   });
 
   testWidgets('dragging a media asset onto an SE block links the sound to '
-      'that block', (tester) async {
+      'that block — the empty-cell entrance lies only over the gaps', (
+    tester,
+  ) async {
     const foot = r'C:\snd\foot.wav';
     const dragSourceKey = ValueKey<String>('test-media-drag-source');
+    (LayerId, int, String)? placedInstead;
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('drop-project'),
@@ -348,6 +351,8 @@ void main() {
                     onPixelsPerFrameChanged: (_) {},
                     showSeconds: false,
                     onShowSecondsChanged: (_) {},
+                    onPlaceMediaAsset: (layerId, frameIndex, path) =>
+                        placedInstead = (layerId, frameIndex, path),
                   ),
                 ),
               ),
@@ -372,6 +377,7 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
+    expect(placedInstead, isNull, reason: 'not a new block beside it');
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
     expect(seLayer().audioClips.single.filePath, foot);
@@ -387,6 +393,123 @@ void main() {
     session.undo();
     expect(seLayer().audioClips.single.offsetFrames, 6);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('dragging a sound onto an EMPTY SE cell reports that row and '
+      'cell to the place entrance — only the gaps carry that target, so a '
+      'block keeps its own', (tester) async {
+    const foot = r'C:\snd\foot.wav';
+    const dragSourceKey = ValueKey<String>('test-media-drag-source');
+    (LayerId, int, String)? placed;
+    await tester.binding.setSurfaceSize(const Size(1600, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('cell-project'),
+        name: 'Cell Project',
+        createdAt: DateTime.utc(2026, 9, 12),
+        tracks: [
+          Track(
+            id: const TrackId('cell-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('cell-cut'),
+                name: 'Cell Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: _seLayerId,
+                    name: 'S1',
+                    kind: LayerKind.se,
+                    frames: [
+                      Frame(
+                        id: const FrameId('cell-f1'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: {
+                      2: const TimelineExposure.drawing(
+                        FrameId('cell-f1'),
+                        length: 4,
+                      ),
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              SizedBox(
+                height: 40,
+                child: Draggable<MediaAssetDragData>(
+                  data: const MediaAssetDragData(path: foot, name: 'foot.wav'),
+                  // The pool row's own anchor: a target reads the pointer.
+                  dragAnchorStrategy: pointerDragAnchorStrategy,
+                  feedback: const SizedBox(width: 8, height: 8),
+                  child: Container(
+                    key: dragSourceKey,
+                    width: 40,
+                    height: 40,
+                    color: const Color(0xFF888888),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: session,
+                  builder: (context, _) => TimelineTabHost(
+                    session: session,
+                    orientation: TimelineOrientation.horizontal,
+                    onOrientationChanged: (_) {},
+                    pixelsPerFrame: 48,
+                    onPixelsPerFrameChanged: (_) {},
+                    showSeconds: false,
+                    onShowSecondsChanged: (_) {},
+                    onPlaceMediaAsset: (layerId, frameIndex, path) =>
+                        placed = (layerId, frameIndex, path),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Each empty stretch carries its own target — before the block on 2..5
+    // and after it — and nothing covers the block.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-se-cell-drop-audio-se-0')),
+      findsOneWidget,
+    );
+    final cells = find.byKey(
+      const ValueKey<String>('timeline-se-cell-drop-audio-se-6'),
+    );
+    expect(cells, findsOneWidget);
+    // Cell 8: two cells into the stretch after the block.
+    final at = tester.getTopLeft(cells) + const Offset(2 * 48 + 24, 8);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(dragSourceKey)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(at);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(placed, (_seLayerId, 8, foot));
   });
 
   testWidgets('REC1-A: deleting the carrier block prunes the audio link '

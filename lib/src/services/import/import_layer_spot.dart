@@ -48,3 +48,25 @@ final class RowFramesSpot extends ImportLayerSpot {
   @override
   int get hashCode => Object.hash(layerId, frameIndex);
 }
+
+/// A SOUND let go on an SE row's empty cell: a new block on [layerId] from
+/// [frameIndex] on, as long as the sound or up to the row's next block
+/// (유저 2026-09-11, 미디어 배치 라운드: 「SE 행의 빈 칸 → 새 블록」).
+final class SeCellSpot extends ImportLayerSpot {
+  const SeCellSpot({required this.layerId, required this.frameIndex});
+
+  final LayerId layerId;
+
+  /// The cell the sound was let go on, in the CUT's frames — as the row
+  /// showed it. The track's frame is [TrackSeWindow]'s to work out.
+  final int frameIndex;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SeCellSpot &&
+      other.layerId == layerId &&
+      other.frameIndex == frameIndex;
+
+  @override
+  int get hashCode => Object.hash(SeCellSpot, layerId, frameIndex);
+}

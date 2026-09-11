@@ -738,7 +738,7 @@ class _WorkspaceTabs {
               onPlaceMediaAsset: (layerId, frameIndex, path) {
                 final session = _state.widget.session;
                 // A drop that lands nowhere does nothing and opens nothing.
-                final spot = session.frameDropSpot(layerId, frameIndex, path);
+                final spot = session.dropSpotFor(layerId, frameIndex, path);
                 if (spot == null) {
                   return;
                 }

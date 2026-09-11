@@ -17,7 +17,9 @@ import '../../models/layer_section_defaults.dart' show nextSeLayerName;
 import '../../models/media_asset.dart';
 import '../../models/se_take_placement.dart';
 import '../../models/timeline_coverage.dart' show drawingBlocks;
+import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
+import '../../models/track_se_window.dart';
 import '../../services/command.dart' show CompositeCommand;
 import '../../services/commands/import_media_command.dart';
 import '../../services/commands/track_se_layer_commands.dart';
@@ -168,6 +170,14 @@ class ImportLanding {
       if (!inCut || !_acceptsPlacedFrames(spot.layerId)) {
         return null;
       }
+    }
+    // A sound let go on an SE cell needs that row on this track.
+    if (spot is SeCellSpot &&
+        (targetCut == null ||
+            !_selection.activeTrack.seLayers.any(
+              (layer) => layer.id == spot.layerId,
+            ))) {
+      return null;
     }
     final source = normalizedMediaPath(path);
     return ImportArrival(
@@ -343,11 +353,12 @@ class ImportLanding {
     return true;
   }
 
-  /// A SOUND onto the track's SE rows, from the active cut's start: the
-  /// first row with room for it ([firstSeRowFreeFor]), or a new row after
-  /// the last. Its block is tagged 「SE」 and carries the file's name as its
-  /// dialogue (유저 2026-09-11: 「블록의 이름을 SE(SE 고정 …), 대사를 파일
-  /// 이름(확장자포함)으로」).
+  /// A SOUND onto the track's SE rows: from the active cut's start, the
+  /// first row with room for it ([firstSeRowFreeFor]) or a new row after the
+  /// last — or, let go on an SE row's empty cell ([SeCellSpot]), that row
+  /// from that cell. Its block is tagged 「SE」 and carries the file's name
+  /// as its dialogue (유저 2026-09-11: 「블록의 이름을 SE(SE 고정 …), 대사를
+  /// 파일 이름(확장자포함)으로」).
   ///
   /// ⛔NOT A SECOND WAY TO PUT A SOUND ON A ROW. The block and its clip land
   /// the way a recorded take lands — [planSeTakePlacement], the one planner
@@ -359,16 +370,42 @@ class ImportLanding {
     required int lengthFrames,
     List<MediaAsset> assets = const [],
   }) {
-    if (arrival.targetCut == null || lengthFrames < 1) {
+    final cut = arrival.targetCut;
+    if (cut == null || lengthFrames < 1) {
       return false;
     }
     final track = _selection.activeTrack;
-    final start = _project.activeCutGlobalStartFrame;
-    final free = firstSeRowFreeFor(
-      track.seLayers,
-      startFrame: start,
-      lengthFrames: lengthFrames,
+    // The ONE converter between the cut's frames and the track's.
+    final window = TrackSeWindow(
+      cutStartFrame: _project.activeCutGlobalStartFrame,
+      cutDurationFrames: cut.duration,
     );
+    final Layer? free;
+    final int start;
+    var length = lengthFrames;
+    if (arrival.spot case final SeCellSpot cell) {
+      // The row and the cell it was let go on (「SE 행의 빈 칸 → 새
+      // 블록」); the next block bounds its length, as it bounds any entry
+      // written onto a row.
+      start = window.toGlobalFrame(cell.frameIndex);
+      free = track.seLayers
+          .where((layer) => layer.id == cell.layerId)
+          .firstOrNull;
+      final gaps = free == null
+          ? const <({int startIndex, int length})>[]
+          : emptyGapsBetween(free, start, start + lengthFrames);
+      if (gaps.isEmpty || gaps.first.startIndex != start) {
+        return false;
+      }
+      length = gaps.first.length;
+    } else {
+      start = window.toGlobalFrame(0);
+      free = firstSeRowFreeFor(
+        track.seLayers,
+        startFrame: start,
+        lengthFrames: lengthFrames,
+      );
+    }
     final row =
         free ??
         Layer(
@@ -381,7 +418,7 @@ class ImportLanding {
     final plan = planSeTakePlacement(
       layer: row,
       startFrame: start,
-      lengthFrames: lengthFrames,
+      lengthFrames: length,
       filePath: arrival.source,
       takeFrameId: _frameIds.mintFrameId(row.id),
       newFrameId: () => _frameIds.mintFrameId(row.id),

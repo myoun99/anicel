@@ -44,7 +44,7 @@ import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/media_asset.dart' show mediaAssetKindForPath;
+import '../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../services/import/import_layer_spot.dart';
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/onion_skin_settings.dart';
@@ -2276,6 +2276,19 @@ class EditorSessionManager extends ChangeNotifier
           importBakeAllowed(kind: mediaAssetKindForPath(path), placing: true)
       ? RowFramesSpot(layerId: layerId, frameIndex: frameIndex)
       : null;
+
+  /// Where a file let go on ANY row lands — one question, whatever row the
+  /// drop found: a picture on a row that takes frames ([frameDropSpot]), a
+  /// SOUND on an SE row's empty cell (유저 2026-09-11: 「SE 행의 빈 칸 → 새
+  /// 블록」). Null when it lands nowhere, and the drop does nothing.
+  ImportLayerSpot? dropSpotFor(LayerId layerId, int frameIndex, String path) {
+    if (isTrackSeLayerId(layerId)) {
+      return mediaAssetKindForPath(path) == MediaAssetKind.audio
+          ? SeCellSpot(layerId: layerId, frameIndex: frameIndex)
+          : null;
+    }
+    return frameDropSpot(layerId, frameIndex, path);
+  }
 
   // ── the shove: its own object, in its own file ────────────────────────
   //

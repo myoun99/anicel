@@ -582,8 +582,9 @@ void main() {
 
     testWidgets('🚨a drop decides where it lands (유저 2026-09-11: 「떨어뜨린 '
         '자리가 곧 답」): the canvas opens the window on a new layer above '
-        'the active one, a drawing row on its own frames — and a sound on a '
-        'drawing row opens nothing', (tester) async {
+        'the active one, a drawing row on its own frames, an SE row\'s empty '
+        'cell on that cell — and a sound on a drawing row or a picture on an '
+        'SE row opens nothing', (tester) async {
       await _pumpHome(tester);
       final session = tester
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -649,6 +650,21 @@ void main() {
         findsNothing,
         reason: '「그림 행 → 받지 않는다」 — nothing opens',
       );
+
+      // 「SE 행의 빈 칸 → 새 블록」: a sound on an SE row's empty cell.
+      final se = session.activeTrack.seLayers.first;
+      final cellTarget = find.byKey(
+        ValueKey<String>('timeline-se-cell-drop-${se.id}-0'),
+      );
+      final cellStart = tester.getTopLeft(cellTarget) + const Offset(2, 2);
+      drop(cellTarget, 'door.wav', cellStart);
+      await tester.pump();
+      expect(openSpot(), SeCellSpot(layerId: se.id, frameIndex: 0));
+      await close();
+
+      drop(cellTarget, 'bg.png', cellStart);
+      await tester.pump();
+      expect(find.byType(ImportDialog), findsNothing);
     });
 
     testWidgets('the top strip switches what the app is lying on', (

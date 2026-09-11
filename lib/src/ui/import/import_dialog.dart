@@ -1079,7 +1079,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — answered, so shown
       // locked, like every answer the context gave.
       valueOf: (path) => _isSound(path)
-          ? const _SoundOnSeRows()
+          ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
           : spot ?? _settingsFor(path).into,
       appliesTo: _placeable,
       enabledFor: (path, value) =>
@@ -1095,12 +1095,22 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// A drop's answer in words: 「새 레이어」 for the canvas, the row and the
-  /// cell for a row's frames (「A 원화 · 9번 칸」, the mockup's words).
+  /// cell for a row's frames or an SE cell (「A 원화 · 9번 칸」, 「S1 · 6번
+  /// 칸」 — the mockup's words).
   String _spotLabel(ImportLayerSpot spot) => switch (spot) {
     AboveActiveLayerSpot() => AppText.strings.imIntoNewLayer,
     RowFramesSpot(:final layerId, :final frameIndex) =>
       AppText.strings.imIntoRowCell(
         widget.session.layerById(layerId)?.name ?? '',
+        frameIndex + 1,
+      ),
+    SeCellSpot(:final layerId, :final frameIndex) =>
+      AppText.strings.imIntoRowCell(
+        widget.session.activeTrack.seLayers
+                .where((layer) => layer.id == layerId)
+                .firstOrNull
+                ?.name ??
+            '',
         frameIndex + 1,
       ),
   };

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
@@ -609,10 +610,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the window on any row long enough to scroll.
   Widget? _assetDropTarget(TimelineFrameGeometry frames) {
     final onDrop = onDropMediaAssetOnLayer;
-    if (onDrop == null ||
-        layerKindUsesSeSheetCells(layer.kind) ||
-        !layer.kind.holdsDrawings) {
+    if (onDrop == null || !layer.kind.holdsDrawings) {
       return null;
+    }
+    if (layerKindUsesSeSheetCells(layer.kind)) {
+      return _seCellDropTargets(frames, onDrop);
     }
     return _spanLayer([
       TimelineFrameSpan(
@@ -630,6 +632,45 @@ class TimelineFrameCellsRow extends StatelessWidget {
       ),
     ]);
   }
+
+  /// An SE row's EMPTY stretches, each a place entrance for a new sound
+  /// (유저 2026-09-11: 「SE 행의 빈 칸 → 새 블록」). On top, like every drop
+  /// target on a row — under the range layer and the chrome, an empty
+  /// cell's drop lands on THEM — but only over the gaps: a block keeps its
+  /// own target in [_seOverlays], and a sound let go on it joins it, as
+  /// before. The gaps are [emptyGapsBetween]'s, the one free-span answer.
+  Widget? _seCellDropTargets(
+    TimelineFrameGeometry frames,
+    void Function(LayerId layerId, int frameIndex, String path) onDrop,
+  ) {
+    final gaps = emptyGapsBetween(
+      layer,
+      frames.frameStartIndex,
+      frames.frameEndIndexExclusive,
+    );
+    if (gaps.isEmpty) {
+      return null;
+    }
+    return _spanLayer([
+      for (final gap in gaps)
+        TimelineFrameSpan(
+          placement: TimelineFrameSpanPlacement(
+            startIndex: gap.startIndex,
+            endIndexExclusive: gap.startIndex + gap.length,
+          ),
+          child: _LayerAssetDropTarget(
+            dropKey: ValueKey<String>(
+              '$keyPrefix-se-cell-drop-${layer.id}-${gap.startIndex}',
+            ),
+            layerId: layer.id,
+            geometry: geometry,
+            axis: axis,
+            spanStartIndex: gap.startIndex,
+            onDrop: onDrop,
+          ),
+        ),
+    ]);
+  }
 }
 
 /// The row's share of a place entrance ([MediaAssetDropTarget] is the
@@ -645,6 +686,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
     required this.geometry,
     required this.axis,
     required this.onDrop,
+    this.spanStartIndex,
   });
 
   final Key dropKey;
@@ -653,19 +695,24 @@ class _LayerAssetDropTarget extends StatelessWidget {
   final Axis axis;
   final void Function(LayerId layerId, int frameIndex, String path) onDrop;
 
-  /// This widget's box IS the span that starts at the row's first frame, so
-  /// a local offset plus that frame's edge is a ROW-local one — which is the
+  /// The frame this target's span starts at — the row's first visible frame
+  /// when null (a drawing row's whole-row target), a gap's first frame for an
+  /// SE row's empty stretch.
+  final int? spanStartIndex;
+
+  /// This widget's box IS the span that starts at [spanStartIndex], so a
+  /// local offset plus that frame's edge is a ROW-local one — which is the
   /// coordinate space the geometry answers in, window and all.
   int _frameIndexAt(BuildContext context, Offset globalPosition) {
     final frames = geometry.value;
+    final start = spanStartIndex ?? frames.frameStartIndex;
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize) {
-      return frames.frameStartIndex;
+      return start;
     }
     final local = box.globalToLocal(globalPosition);
     return frames.frameIndexAt(
-      frames.edgeAt(frames.frameStartIndex) +
-          (axis == Axis.horizontal ? local.dx : local.dy),
+      frames.edgeAt(start) + (axis == Axis.horizontal ? local.dx : local.dy),
     );
   }
 

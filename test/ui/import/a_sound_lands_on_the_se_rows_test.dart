@@ -11,11 +11,14 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show createDefaultCut;
+import 'package:anicel/src/services/import/import_layer_spot.dart';
+import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -225,5 +228,169 @@ void main() {
     }
     expect(s.activeTrack.seLayers.first.timeline[start], isNotNull);
     await tester.pumpAndSettle();
+  });
+
+  group('a sound let go on an SE row\'s EMPTY CELL (「SE 행의 빈 칸 → 새 '
+      '블록」)', () {
+    testWidgets('the drop names a sound\'s spot on an SE row and nothing else '
+        'there — and a picture row keeps its own answer', (tester) async {
+      final s = session();
+      final se = s.activeTrack.seLayers.first;
+      final picture = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+
+      expect(
+        s.dropSpotFor(se.id, 5, 'door.wav'),
+        SeCellSpot(layerId: se.id, frameIndex: 5),
+      );
+      expect(s.dropSpotFor(se.id, 5, 'a.png'), isNull);
+      expect(
+        s.dropSpotFor(picture.id, 5, 'a.png'),
+        RowFramesSpot(layerId: picture.id, frameIndex: 5),
+      );
+      expect(s.dropSpotFor(picture.id, 5, 'door.wav'), isNull);
+    });
+
+    testWidgets('it lands on THAT row from THAT cell, and the next block '
+        'bounds its length', (tester) async {
+      final s = session();
+      final start = s.activeCutGlobalStartFrame;
+      final s2 = s.activeTrack.seLayers[1];
+      occupy(s, s2, start + 8, 4);
+
+      final landed = await tester.runAsync(() async {
+        final path = await writeSound('door.wav', 1);
+        return s.importDoors.importSoundFile(
+          path: path,
+          copyIntoProject: false,
+          spot: SeCellSpot(layerId: s2.id, frameIndex: 5),
+        );
+      });
+
+      expect(landed, isTrue);
+      expect(
+        s.activeTrack.seLayers[1].timeline[start + 5]?.length,
+        3,
+        reason: 'up to the block at 8',
+      );
+      expect(s.activeTrack.seLayers.first.timeline[start + 5], isNull);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a cell a block already covers takes no new block', (
+      tester,
+    ) async {
+      final s = session();
+      final start = s.activeCutGlobalStartFrame;
+      final s1 = s.activeTrack.seLayers.first;
+      occupy(s, s1, start + 2, 6);
+
+      final landed = await tester.runAsync(() async {
+        final path = await writeSound('door.wav', 1);
+        return s.importDoors.importSoundFile(
+          path: path,
+          copyIntoProject: false,
+          spot: SeCellSpot(layerId: s1.id, frameIndex: 4),
+        );
+      });
+
+      expect(landed, isFalse);
+      expect(s.mediaPool.mediaAssets, isEmpty);
+    });
+
+    testWidgets('with the SECOND cut open the cell is that cut\'s — the row '
+        'is the track\'s', (tester) async {
+      final s = session();
+      final first = s.requireActiveCut;
+      final second = createDefaultCut(
+        cutId: const CutId('cell-second-cut'),
+        name: '2',
+        layerId: const LayerId('cell-second-cut-layer'),
+        canvasSize: first.canvasSize,
+      );
+      s.repository.insertCut(trackId: s.activeTrack.id, cut: second);
+      s.selectCut(second.id);
+      final start = s.activeCutGlobalStartFrame;
+      expect(
+        start,
+        first.duration,
+        reason: 'the premise: it starts after cut 1',
+      );
+      final s1 = s.activeTrack.seLayers.first;
+
+      final landed = await tester.runAsync(() async {
+        final path = await writeSound('door.wav', 1);
+        return s.importDoors.importSoundFile(
+          path: path,
+          copyIntoProject: false,
+          spot: SeCellSpot(layerId: s1.id, frameIndex: 3),
+        );
+      });
+
+      expect(landed, isTrue);
+      expect(s.activeTrack.seLayers.first.timeline[start + 3], isNotNull);
+      expect(
+        s.activeTrack.seLayers.first.timeline[3],
+        isNull,
+        reason: 'not cell 3 of the track',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the window names the row and the cell, locked', (
+      tester,
+    ) async {
+      final path = await tester.runAsync(() => writeSound('door.wav', 1));
+      final s = session();
+      // Not the first row: the label names THIS row.
+      final s2 = s.activeTrack.seLayers[1];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(
+              session: s,
+              initialPaths: [path!],
+              placeOnly: true,
+              spot: SeCellSpot(layerId: s2.id, frameIndex: 5),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: into, matching: find.byType(Text)),
+            )
+            .data,
+        AppText.strings.imIntoRowCell(s2.name, 6),
+      );
+    });
+
+    testWidgets('a cell on a row this track does not have is refused before '
+        'anything is read', (tester) async {
+      final s = session();
+      final s1 = s.activeTrack.seLayers.first;
+
+      expect(
+        s.importLanding.arriveAt(
+          ImportDestination.activeCutLayer,
+          path: 'door.wav',
+          spot: const SeCellSpot(layerId: LayerId('elsewhere'), frameIndex: 0),
+        ),
+        isNull,
+      );
+      expect(
+        s.importLanding.arriveAt(
+          ImportDestination.activeCutLayer,
+          path: 'door.wav',
+          spot: SeCellSpot(layerId: s1.id, frameIndex: 0),
+        ),
+        isNotNull,
+      );
+    });
   });
 }
