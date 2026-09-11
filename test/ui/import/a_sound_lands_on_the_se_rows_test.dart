@@ -6,12 +6,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show createDefaultCut;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -156,6 +160,31 @@ void main() {
     final s1 = s.activeTrack.seLayers.first;
     expect(s1.timeline[start]?.length, 4);
     expect(s1.audioClips.single.offsetFrames, 2);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('with the SECOND cut open the sound starts at that cut\'s start '
+      'on the track — the SE rows are the track\'s, not the cut\'s', (
+    tester,
+  ) async {
+    final s = session();
+    final first = s.requireActiveCut;
+    final second = createDefaultCut(
+      cutId: const CutId('sound-second-cut'),
+      name: '2',
+      layerId: const LayerId('sound-second-cut-layer'),
+      canvasSize: first.canvasSize,
+    );
+    s.repository.insertCut(trackId: s.activeTrack.id, cut: second);
+    s.selectCut(second.id);
+    final start = s.activeCutGlobalStartFrame;
+    expect(start, first.duration, reason: 'the premise: it starts after cut 1');
+
+    expect(await place(tester, s), isTrue);
+
+    final s1 = s.activeTrack.seLayers.first;
+    expect(s1.timeline[start], isNotNull);
+    expect(s1.timeline[0], isNull, reason: 'not at the track\'s start');
     await tester.pumpAndSettle();
   });
 
