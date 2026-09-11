@@ -21,7 +21,9 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
 /// pair and what it covers as VALUES, and the painter's order through a
 /// canvas spy.
 void main() {
-  const scheme = ColorScheme.light();
+  // Seeded, so the marks' ink and the pair's ink are two colours (the
+  // bare light scheme answers onSurfaceVariant with onSurface).
+  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF3F6E8C));
 
   TimelineRulerScale scaleOf({
     Axis axis = Axis.horizontal,
@@ -67,6 +69,11 @@ void main() {
   group('the pair', () {
     test('is the number and the second at the playhead, bold on the full '
         'ink', () {
+      expect(
+        scheme.onSurface,
+        isNot(scheme.onSurfaceVariant),
+        reason: 'fixture: the two inks differ',
+      );
       final writing = rulerWriting(scaleOf(), 30);
       expect(writing.pair.map(textOf), ['31', '1']);
       for (final glyph in writing.pair) {
@@ -168,6 +175,13 @@ void main() {
         reason: 'fixture: the mark one frame back reaches the pair',
       );
       expect(writing.covered, contains(mark));
+      final own = TimelineFrameRulerPainter.glyphsAt(scale, 24, current: false)
+          .singleWhere((glyph) => textOf(glyph) == '1');
+      expect(
+        styleOf(own).color,
+        scheme.onSurfaceVariant,
+        reason: 'a mark keeps the marks\' ink; only the pair wears the full',
+      );
     });
   });
 
