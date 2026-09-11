@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
         timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
 import 'timeline_cell_probe.dart';
 
@@ -360,9 +361,12 @@ void main() {
       await _expandTransformGroup(tester, _drawId);
 
       final key8 = tester.getCenter(_marker(_drawId, 'position', 8));
+      // The select travels past [InstantTapRegion.travelSlop]: a press that
+      // travels less is a TAP, and a tap clears — on a lane exactly as on a
+      // cells row, since the band rides the cells' own release rule.
       await tester.dragFrom(
         key8,
-        const Offset(4, 0),
+        const Offset(InstantTapRegion.travelSlop + 2, 0),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();
@@ -404,9 +408,10 @@ void main() {
 
       // SELECT the key at frame 8 on the position lane.
       final key8 = tester.getCenter(_marker(_camId, 'position', 8));
+      // Past the tap slop, as above: a shorter press is a tap, which clears.
       await tester.dragFrom(
         key8,
-        const Offset(4, 0),
+        const Offset(InstantTapRegion.travelSlop + 2, 0),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();

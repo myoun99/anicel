@@ -579,17 +579,24 @@ Future<void> _editInstructionSet(
 /// which link verb takes it. Both are collaborators, not modes; this
 /// template is the ONE place holding the guard between the two dialogs.
 ///
-/// [fieldTrailing] is content confirmed alongside the name — the key
-/// window's TYPE — built with the window's own setState so it can show its
-/// pick. [onLinkDeclined] is what the flow still owes when the user keeps
-/// the name as it was: the part of the window that did not collide.
+/// The prompt's `fieldTrailing` is content confirmed alongside the name —
+/// the key window's TYPE — built with the window's own setState so it can
+/// show its pick. `onConflict` holds the two answers to the question:
+/// `join` takes the name that is taken, and `decline` is what the flow
+/// still owes when the user keeps the name as it was — the part of the
+/// window that did not collide.
 Future<void> _renameThenOfferLink<T extends Object>(
   BuildContext context, {
-  required ({String initialName, String? title, String? fieldLabel}) prompt,
+  required ({
+    String initialName,
+    String? title,
+    String? fieldLabel,
+    Widget Function(StateSetter setLocal)? fieldTrailing,
+  })
+  prompt,
   required T? Function(String nextName) rename,
-  required void Function(T conflict) link,
-  Widget Function(StateSetter setLocal)? fieldTrailing,
-  VoidCallback? onLinkDeclined,
+  required ({void Function(T conflict) join, VoidCallback? decline})
+  onConflict,
 }) async {
   final nextName = await showDialogVerb<String>(
     context,
@@ -598,7 +605,7 @@ Future<void> _renameThenOfferLink<T extends Object>(
         initialName: prompt.initialName,
         title: prompt.title,
         fieldLabel: prompt.fieldLabel,
-        fieldTrailing: fieldTrailing?.call(setLocal),
+        fieldTrailing: prompt.fieldTrailing?.call(setLocal),
       ),
     ),
   );
@@ -615,10 +622,10 @@ Future<void> _renameThenOfferLink<T extends Object>(
     (_) => const FrameNameConflictDialog(),
   );
   if (shouldLink != true) {
-    onLinkDeclined?.call();
+    onConflict.decline?.call();
     return;
   }
-  link(conflict);
+  onConflict.join(conflict);
 }
 
 Future<void> _renameLaneKey(
@@ -644,10 +651,10 @@ Future<void> _renameLaneKey(
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
-    ),
-    fieldTrailing: (setLocal) => _keyInterpolationPills(
-      selected: interpolation,
-      onPicked: (picked) => setLocal(() => interpolation = picked),
+      fieldTrailing: (setLocal) => _keyInterpolationPills(
+        selected: interpolation,
+        onPicked: (picked) => setLocal(() => interpolation = picked),
+      ),
     ),
     // The RANGE form is the only one called: a single key is the one-frame
     // span at the playhead, so naming one and naming five is the same verb
@@ -663,17 +670,19 @@ Future<void> _renameLaneKey(
           ? trimmed
           : null;
     },
-    link: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
-      name,
-      interpolation: interpolation,
+    onConflict: (
+      join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
+        name,
+        interpolation: interpolation,
+      ),
+      // The name stood down; the type was confirmed in the same window.
+      decline: () {
+        final picked = interpolation;
+        if (picked != null) {
+          session.laneVerbs.setLaneKeyInterpolationsForSelection(picked);
+        }
+      },
     ),
-    // The name stood down; the type was confirmed in the same window.
-    onLinkDeclined: () {
-      final picked = interpolation;
-      if (picked != null) {
-        session.laneVerbs.setLaneKeyInterpolationsForSelection(picked);
-      }
-    },
   );
 }
 
@@ -714,8 +723,9 @@ Future<void> _renameSelectedFrame(
       initialName: session.selectedFrameName ?? '',
       title: null,
       fieldLabel: null,
+      fieldTrailing: null,
     ),
     rename: session.frameVerbs.renameSelectedFrame,
-    link: session.frameVerbs.linkSelectedFrame,
+    onConflict: (join: session.frameVerbs.linkSelectedFrame, decline: null),
   );
 }

@@ -114,8 +114,14 @@ import '../../tool/refactor/clone_scan.dart';
 /// ⛔It is not merged: two layouts, deliberately different, and a layout
 /// spec for two would take the number's style, place and order as
 /// arguments for a shape seen twice. 🔜A third strip merges them.
+///
+/// 90 → 89 (2026-09-11, F-17's key window). The window's TYPE made a THIRD
+/// walk of the lane-key verbs' accumulate-and-flag loop — Create, Delete,
+/// and the name/type write — so the rule of three merged them into one
+/// fold (`_foldedEdits` in `lane_verbs.dart`), and the older Create/Delete
+/// pair (63 tokens) went with it.
 void main() {
-  const ceiling = 90;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -307,6 +307,32 @@ void main() {
     );
   });
 
+  testWidgets('a TAP inside the lane selection clears it on the release — '
+      "the cells' release rule, which the band rides (H18)", (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await tester.dragFrom(
+      bandPoint(tester, 'position', 2.5),
+      const Offset(3 * cellWidth, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      s.laneRangeSelection.value?.contains(3),
+      isTrue,
+      reason: 'fixture: a range on the lane',
+    );
+
+    // INSIDE the range: the press stands without clearing — it may be the
+    // start of a move — so only the release can be what clears it.
+    await tester.tapAt(
+      bandPoint(tester, 'position', 3.5),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+    expect(s.laneRangeSelection.value, isNull);
+  });
+
   test('the guard asks on the axis the span lives on: a track-SE lane span '
       'is stored GLOBAL, and a window-frame press inside it reads inside', () {
     const seId = LayerId('stand-se');

@@ -408,6 +408,22 @@ class LaneVerbs {
     );
   }
 
+  /// Folds [step] over [laneIds] from [start] and hands the result to
+  /// [commit] ONCE, when any lane changed — one undo for the whole span.
+  /// Returns whether anything was committed.
+  bool _commitLaneFold<T>(
+    T start,
+    Iterable<String> laneIds,
+    T? Function(T value, String laneId) step, {
+    required void Function(T value) commit,
+  }) {
+    final next = _foldedEdits(start, laneIds, step);
+    if (next != null) {
+      commit(next);
+    }
+    return next != null;
+  }
+
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
   /// position/scale/rotation ([timelineLanesForLayer] builds its lanes
   /// without anchor and opacity), so a GROUP-header span — which expands
@@ -450,53 +466,38 @@ class LaneVerbs {
       return false;
     }
     final layer = scope.layer;
-    final targets = scope.targets;
     if (scope.effectLanes) {
-      var effects = layer.effects;
-      var changed = false;
-      for (final laneId in targets) {
-        for (final frame in effectLaneKeyFrames(effects, laneId).toList()) {
-          if (!lane.contains(frame)) {
-            continue;
-          }
-          final next = effectsWithLaneKeyRemoved(
-            effects,
+      return _commitLaneFold(
+        layer.effects,
+        scope.targets,
+        (effects, laneId) => _foldedEdits(
+          effects,
+          effectLaneKeyFrames(effects, laneId).where(lane.contains),
+          (value, frame) => effectsWithLaneKeyRemoved(
+            value,
             laneId: laneId,
             frameIndex: frame,
-          );
-          if (next != null) {
-            effects = next;
-            changed = true;
-          }
-        }
-      }
-      if (changed) {
-        _commitLaneEffects(layer, effects, description: 'Delete keys');
-      }
-      return changed;
+          ),
+        ),
+        commit: (effects) =>
+            _commitLaneEffects(layer, effects, description: 'Delete keys'),
+      );
     }
-    var track = _laneTransformTrackOf(layer);
-    var changed = false;
-    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
-      for (final frame in transformLaneKeyFrames(track, laneId).toList()) {
-        if (!lane.contains(frame)) {
-          continue;
-        }
-        final next = transformTrackWithLaneKeyRemoved(
-          track,
+    return _commitLaneFold(
+      _laneTransformTrackOf(layer),
+      _laneVerbTargetsFor(layer, scope.targets),
+      (track, laneId) => _foldedEdits(
+        track,
+        transformLaneKeyFrames(track, laneId).where(lane.contains),
+        (value, frame) => transformTrackWithLaneKeyRemoved(
+          value,
           laneId: laneId,
           frameIndex: frame,
-        );
-        if (next != null) {
-          track = next;
-          changed = true;
-        }
-      }
-    }
-    if (changed) {
-      _commitLaneTransformTrack(layer, track, description: 'Delete keys');
-    }
-    return changed;
+        ),
+      ),
+      commit: (track) =>
+          _commitLaneTransformTrack(layer, track, description: 'Delete keys'),
+    );
   }
 
   /// What every lane verb settles first: the row the lane range names (an
@@ -680,7 +681,7 @@ class LaneVerbs {
     }
     final layer = scope.layer;
     final cutId = _timeline.editingSession.activeCutId;
-    final targets = scope.targets;
+    final asked = names ? name : null;
     final preferred = _laneVerbFrameFor(lane.layerId);
     final why = !names
         ? 'Set key type'
@@ -688,73 +689,73 @@ class LaneVerbs {
         ? 'Unname keys'
         : 'Name keys';
 
+    // Every lane is READ before any is written — the keys it covers, and
+    // what already holds the name — so a taken name stops the verb while
+    // the range is still untouched.
     if (scope.effectLanes) {
-      var effects = layer.effects;
-      var changed = false;
-      for (final laneId in targets) {
+      final reads = <String, ({Set<int> frames, double? adopted})>{};
+      for (final laneId in scope.targets) {
         final address = parseEffectLaneId(laneId);
         final parameterId = address?.parameterId;
         if (address == null || parameterId == null) {
           continue;
         }
         final frames = effectLaneKeyFrames(
-          effects,
+          layer.effects,
           laneId,
         ).where(lane.contains).toSet();
         if (frames.isEmpty) {
           continue;
         }
-        if (names) {
-          double? adopted;
-          if (name != null && cutId != null) {
-            adopted = _project.cutCommandCoordinator
-                .namedEffectKeyValueInSpace(
-                  cutId: cutId,
-                  layerId: layer.id,
-                  effectId: address.effectId,
-                  parameterId: parameterId,
+        final adopted = asked == null || cutId == null
+            ? null
+            : _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
+                cutId: cutId,
+                layerId: layer.id,
+                effectId: address.effectId,
+                parameterId: parameterId,
+                name: asked,
+                excludeFramesOnSource: frames,
+              );
+        if (adopted != null && !adopt) {
+          return true;
+        }
+        reads[laneId] = (frames: frames, adopted: adopted);
+      }
+      _commitLaneFold(
+        layer.effects,
+        reads.keys,
+        (effects, laneId) {
+          final read = reads[laneId]!;
+          final named = !names
+              ? null
+              : effectsWithLaneRangeNamed(
+                  effects,
+                  laneId: laneId,
+                  frames: read.frames,
                   name: name,
-                  excludeFramesOnSource: frames,
+                  adopted: read.adopted,
+                  preferredFrame: preferred,
                 );
-            if (adopted != null && !adopt) {
-              return true;
-            }
-          }
-          final next = effectsWithLaneRangeNamed(
-            effects,
-            laneId: laneId,
-            frames: frames,
-            name: name,
-            adopted: adopted,
-            preferredFrame: preferred,
-          );
-          if (next != null) {
-            effects = next;
-            changed = true;
-          }
-        }
-        if (interpolation != null) {
-          final typed = effectsWithLaneKeysInterpolated(
-            effects,
-            laneId: laneId,
-            frames: frames,
-            interpolation: interpolation,
-          );
-          if (typed != null) {
-            effects = typed;
-            changed = true;
-          }
-        }
-      }
-      if (changed) {
-        _commitLaneEffects(layer, effects, description: why);
-      }
+          final typed = interpolation == null
+              ? null
+              : effectsWithLaneKeysInterpolated(
+                  named ?? effects,
+                  laneId: laneId,
+                  frames: read.frames,
+                  interpolation: interpolation,
+                );
+          return typed ?? named;
+        },
+        commit: (effects) =>
+            _commitLaneEffects(layer, effects, description: why),
+      );
       return false;
     }
 
-    var track = _laneTransformTrackOf(layer);
-    var changed = false;
-    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
+    final track = _laneTransformTrackOf(layer);
+    final reads = <String, ({Set<int> frames, TransformTrack? holder})>{};
+    for (final laneId in _laneVerbTargetsFor(layer, scope.targets)) {
       final property = transformPropertyOfLaneId(laneId);
       if (property == null) {
         continue;
@@ -766,48 +767,47 @@ class LaneVerbs {
       if (frames.isEmpty) {
         continue;
       }
-      if (names) {
-        TransformTrack? holder;
-        if (name != null) {
-          holder = _laneTransformHoldingName(
-            layer,
-            property,
-            name,
-            excludeFrames: frames,
-          );
-          if (holder != null && !adopt) {
-            return true;
-          }
-        }
-        final next = transformTrackWithLaneRangeNamed(
-          track,
-          laneId: laneId,
-          frames: frames,
-          name: name,
-          adoptFrom: holder,
-          preferredFrame: preferred,
-        );
-        if (next != null) {
-          track = next;
-          changed = true;
-        }
+      final holder = asked == null
+          ? null
+          : _laneTransformHoldingName(
+              layer,
+              property,
+              asked,
+              excludeFrames: frames,
+            );
+      if (holder != null && !adopt) {
+        return true;
       }
-      if (interpolation != null) {
-        final typed = transformTrackWithLaneKeysInterpolated(
-          track,
-          laneId: laneId,
-          frames: frames,
-          interpolation: interpolation,
-        );
-        if (typed != null) {
-          track = typed;
-          changed = true;
-        }
-      }
+      reads[laneId] = (frames: frames, holder: holder);
     }
-    if (changed) {
-      _commitLaneTransformTrack(layer, track, description: why);
-    }
+    _commitLaneFold(
+      track,
+      reads.keys,
+      (value, laneId) {
+        final read = reads[laneId]!;
+        final named = !names
+            ? null
+            : transformTrackWithLaneRangeNamed(
+                value,
+                laneId: laneId,
+                frames: read.frames,
+                name: name,
+                adoptFrom: read.holder,
+                preferredFrame: preferred,
+              );
+        final typed = interpolation == null
+            ? null
+            : transformTrackWithLaneKeysInterpolated(
+                named ?? value,
+                laneId: laneId,
+                frames: read.frames,
+                interpolation: interpolation,
+              );
+        return typed ?? named;
+      },
+      commit: (value) =>
+          _commitLaneTransformTrack(layer, value, description: why),
+    );
     return false;
   }
 
@@ -908,73 +908,82 @@ class LaneVerbs {
       return;
     }
     final layer = scope.layer;
-    final targets = scope.targets;
-    // R6: an EFFECT-lane selection freezes keys on the effect chain
-    // instead — same rule, same single undo.
-    if (scope.effectLanes) {
-      var effects = layer.effects;
-      var effectsChanged = false;
-      for (final laneId in targets) {
-        for (
-          var frame = lane.startIndex;
-          frame < lane.endIndexExclusive;
-          frame += 1
-        ) {
-          if (frame < 0 ||
-              effectLaneKeyFrames(effects, laneId).contains(frame)) {
-            continue;
-          }
-          final next = effectsWithLaneKeyToggled(
-            effects,
-            laneId: laneId,
-            frameIndex: frame,
-          );
-          if (next != null) {
-            effects = next;
-            effectsChanged = true;
-          }
-        }
-      }
-      if (effectsChanged) {
-        _commitLaneEffects(layer, effects, description: 'Create keys');
-      }
-      return;
-    }
-    var track = _laneTransformTrackOf(layer);
-    final isCamera = layer.kind == LayerKind.camera;
-    var changed = false;
-    // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
-    // still one undo.
-    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
+    final frames = [
       for (
         var frame = lane.startIndex;
         frame < lane.endIndexExclusive;
         frame += 1
-      ) {
-        if (frame < 0 ||
-            transformLaneKeyFrames(track, laneId).contains(frame)) {
-          continue;
-        }
-        final next = transformTrackWithLaneKeyToggled(
-          track,
-          laneId: laneId,
-          frameIndex: frame,
-          resolvedPose: _laneResolvedPose(layer, frame),
-          resolvedAnchorPoint: isCamera
+      )
+        if (frame >= 0) frame,
+    ];
+    // R6: an EFFECT-lane selection freezes keys on the effect chain
+    // instead — same rule, same single undo.
+    if (scope.effectLanes) {
+      _commitLaneFold(
+        layer.effects,
+        scope.targets,
+        (effects, laneId) => _foldedEdits(
+          effects,
+          frames,
+          (value, frame) => effectLaneKeyFrames(value, laneId).contains(frame)
               ? null
-              : _internals.layerAnchorPointAtFrame(layer, frame),
-          resolvedOpacity: isCamera
-              ? 1
-              : _internals.layerOpacityAtFrame(layer, frame),
-        );
-        if (next != null) {
-          track = next;
-          changed = true;
-        }
-      }
+              : effectsWithLaneKeyToggled(
+                  value,
+                  laneId: laneId,
+                  frameIndex: frame,
+                ),
+        ),
+        commit: (effects) =>
+            _commitLaneEffects(layer, effects, description: 'Create keys'),
+      );
+      return;
     }
-    if (changed) {
-      _commitLaneTransformTrack(layer, track, description: 'Create keys');
-    }
+    final isCamera = layer.kind == LayerKind.camera;
+    // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
+    // still one undo.
+    _commitLaneFold(
+      _laneTransformTrackOf(layer),
+      _laneVerbTargetsFor(layer, scope.targets),
+      (track, laneId) => _foldedEdits(
+        track,
+        frames,
+        (value, frame) => transformLaneKeyFrames(value, laneId).contains(frame)
+            ? null
+            : transformTrackWithLaneKeyToggled(
+                value,
+                laneId: laneId,
+                frameIndex: frame,
+                resolvedPose: _laneResolvedPose(layer, frame),
+                resolvedAnchorPoint: isCamera
+                    ? null
+                    : _internals.layerAnchorPointAtFrame(layer, frame),
+                resolvedOpacity: isCamera
+                    ? 1
+                    : _internals.layerOpacityAtFrame(layer, frame),
+              ),
+      ),
+      commit: (track) =>
+          _commitLaneTransformTrack(layer, track, description: 'Create keys'),
+    );
   }
+}
+
+/// [start] with [step] applied for each of [items] in turn, or null when no
+/// step changed it — a step answers null when it leaves the value alone.
+///
+/// ⛔THE LANE-KEY VERBS FOLD THIS WAY. Create, Delete and the key window's
+/// name/type write each walked their lanes and frames with the same
+/// accumulate-and-flag loop, once per family (effect chain, transform
+/// track), and the clone scan named the third copy when the window's TYPE
+/// arrived (F-17, 2026-09-11).
+T? _foldedEdits<T, I>(
+  T start,
+  Iterable<I> items,
+  T? Function(T value, I item) step,
+) {
+  T? result;
+  for (final item in items) {
+    result = step(result ?? start, item) ?? result;
+  }
+  return result;
 }
