@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_anti_alias.dart';
@@ -23,7 +24,7 @@ import '../text/app_strings.dart';
 ///
 /// The brush library lives in the separate [BrushPresetPanel]; this panel
 /// only mutates the live [BrushToolState].
-class BrushSettingsPanel extends StatelessWidget {
+class BrushSettingsPanel extends StatefulWidget {
   const BrushSettingsPanel({
     super.key,
     required this.state,
@@ -59,6 +60,96 @@ class BrushSettingsPanel extends StatelessWidget {
   // the blend labels (ja = CSP terms), and the rest of the panel reads its
   // wording from `AppText.strings`.
 
+  @override
+  State<BrushSettingsPanel> createState() => _BrushSettingsPanelState();
+}
+
+/// 🔬H40 (유저 2026-09-11): 「고르는 프레임에서 끝나더라도 지금 안그래도 고를때
+/// 렉있어서 그부분도 효율적으로 가볍게 하고싶어」. With this panel open, a
+/// pick's frame was measured at half a second, and nearly all of it was
+/// here: every slider, its stepper, its pressure button and their tooltips
+/// were built again for every brush — the rows two brushes share included.
+///
+/// ⇒ A row that SHOWS what it showed before is handed back as the very
+/// instance it was ([_keepRows]), which the framework skips whole. What a
+/// row shows is its label, its number, its range and unit, whether it is
+/// alive, and its pressure curves ([_sameRow]).
+///
+/// ⚠️A kept row's callbacks must write the brush in hand NOW, not the one it
+/// was built with — so the configuration is read through the getters below
+/// at CALL time, and the rows keep closing over those names as they always
+/// did. ⛔A row that holds the state ITSELF as a field cannot be kept at all
+/// (tip rotation, the dual blend): it would write that snapshot back.
+class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
+  BrushToolState get state => widget.state;
+  ValueChanged<BrushToolState> get onChanged => widget.onChanged;
+  List<BrushTipEntry> get tips => widget.tips;
+  VoidCallback? get onTipImportRequested => widget.onTipImportRequested;
+  void Function(BrushTipEntry tip)? get onRenameTip => widget.onRenameTip;
+  void Function(BrushTipEntry tip)? get onDeleteTip => widget.onDeleteTip;
+
+  List<Widget> _kept = const [];
+
+  /// [fresh], with every row that shows what the kept row at its place
+  /// showed replaced by that kept instance.
+  List<Widget> _keepRows(List<Widget> fresh) {
+    final kept = _kept;
+    if (kept.length == fresh.length) {
+      for (var i = 0; i < fresh.length; i += 1) {
+        if (_sameRow(kept[i], fresh[i])) {
+          fresh[i] = kept[i];
+        }
+      }
+    }
+    _kept = fresh;
+    return fresh;
+  }
+
+  /// Whether [kept] and [fresh] show the same thing. Callbacks are not
+  /// compared: theirs read the configuration at call time (see the class).
+  static bool _sameRow(Widget kept, Widget fresh) => switch ((kept, fresh)) {
+    (final _PanelSlider a, final _PanelSlider b) =>
+      a.label == b.label &&
+          a.value == b.value &&
+          a.min == b.min &&
+          a.max == b.max &&
+          a.unit == b.unit &&
+          a.displayScale == b.displayScale &&
+          a.divisions == b.divisions &&
+          a.scale == b.scale &&
+          a.keyValue == b.keyValue &&
+          (a.onChanged == null) == (b.onChanged == null) &&
+          _sameTrailing(a.trailing, b.trailing),
+    (final _PanelSwitch a, final _PanelSwitch b) =>
+      a.label == b.label &&
+          a.value == b.value &&
+          a.keyValue == b.keyValue &&
+          (a.onChanged == null) == (b.onChanged == null),
+    (final _AntiAliasRow a, final _AntiAliasRow b) => a.value == b.value,
+    // The library's own callbacks ARE compared: they come from outside and
+    // are not read through a getter by the row.
+    (final BrushTipPickerRow a, final BrushTipPickerRow b) =>
+      a.label == b.label &&
+          a.role == b.role &&
+          a.selected == b.selected &&
+          identical(a.tips, b.tips) &&
+          a.onImportRequested == b.onImportRequested &&
+          a.onRenameTip == b.onRenameTip &&
+          a.onDeleteTip == b.onDeleteTip,
+    _ => false,
+  };
+
+  static bool _sameTrailing(Widget? kept, Widget? fresh) =>
+      switch ((kept, fresh)) {
+        (null, null) => true,
+        (final PressureCurveButton a, final PressureCurveButton b) =>
+          a.keyValue == b.keyValue &&
+              a.title == b.title &&
+              a.enabled == b.enabled &&
+              mapEquals(a.curves, b.curves),
+        _ => false,
+      };
+
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
   Widget _pressureButton(BrushPressureTarget target, String title) {
@@ -80,7 +171,7 @@ class BrushSettingsPanel extends StatelessWidget {
         key: const ValueKey<String>('brush-settings-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: _keepRows([
           // 유저 확정 (rail-and-strip): SIZE, OPACITY and BLEND — each with
           // its pressure curve or lock — left this panel for the TOP STRIP.
           // They are the settings a hand changes mid-stroke, against a test
@@ -457,7 +548,7 @@ class BrushSettingsPanel extends StatelessWidget {
           // settings convention into the gap. It lives in the frame pill —
           // beside the other verbs that make and unmake a block, which is
           // the group it belongs to.
-        ],
+        ]),
       ),
     );
   }
