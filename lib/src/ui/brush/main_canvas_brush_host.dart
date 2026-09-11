@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
@@ -13,6 +12,7 @@ import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
+import '../canvas/canvas_press.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -25,7 +25,6 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../../services/layer_pose_paint.dart';
-import '../../models/app_input_settings.dart' show AppInput;
 import 'brush_canvas_panel.dart';
 import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
@@ -433,9 +432,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
           hasEditableFrame || viewHearsTheEmptyPress || onPressNeedsCel == null
           ? null
           : (event) {
-              if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
-                return;
-              }
               // ⛔The TOOL question is NOT asked here any more. It rode
               // this call site while this was the only one; it lives inside
               // `onPressNeedsCel` now, so the view's press and this one get
@@ -446,8 +442,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
               // notice. A finger whose one-finger slot is flip/pan/none is
               // navigating, not drawing — telling it "no frame here" was
               // noise on every page flip.
-              if (event.kind == PointerDeviceKind.touch &&
-                  !AppInput.touchDraws) {
+              //
+              // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고
+              // 클릭하면 이거는 드로잉로직이 아니라 프레임이 존재하지
+              // 않는다는 메시지 안뜨도록」. Nor does a press the pan takes or
+              // a mapped button claims — and the PRESS question went the way
+              // the tool question did: this call site asked its own copy of
+              // half of it (the primary bit, the finger's slot), and asks
+              // [canvasPressDraws] now, as the view's press does. No tail
+              // hold is known up here.
+              if (!canvasPressDraws(event, penTailActive: false)) {
                 return;
               }
               // Make the cell if it can be made, and explain the silence

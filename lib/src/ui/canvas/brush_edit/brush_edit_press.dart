@@ -118,25 +118,27 @@ class _BrushEditPress {
     // requests is asynchronous, and the stroke starts now.
     _state._overlay.syncPenTailMapping();
     var mappedErase = _state._overlay.penTailErases;
-    final mapping = _state._hold.mappedPointerActionFor(event);
+    final mapping = canvasMappingFor(
+      event,
+      penTailActive: _state._penTailActive,
+    );
     if (mapping != null) {
       if (_multiTouchNavigation ||
           _state._activeDrawingPointer != null ||
           _state._hold._mappedHoldPointer != null) {
         return;
       }
-      switch (_pressAsMappedAction(mapping, event)) {
-        case _MappedPress.consumed:
-          return;
-        case _MappedPress.erase:
-          mappedErase = true;
+      _actOnMappedPress(mapping, event);
+      if (!canvasMappedActionDraws(mapping.action)) {
+        return;
       }
+      mappedErase = true;
     }
 
     if (!mappedErase &&
         (_multiTouchNavigation ||
             _state._activeDrawingPointer != null ||
-            !_isPrimaryButton(_state._hold.effectiveButtons(event)))) {
+            !canvasPrimaryDown(canvasPressButtons(event)))) {
       return;
     }
 
@@ -170,11 +172,12 @@ class _BrushEditPress {
     );
   }
 
-  /// A press the pen tail or a mapped button turned into an action: pan
-  /// and the history verbs consume it, the eyedropper hold consumes it
-  /// after picking, and the eraser hold turns the stroke that follows into
-  /// an erase — every mapped press is one of the two.
-  _MappedPress _pressAsMappedAction(
+  /// What a mapped button's press DOES on its way down: the history verbs
+  /// fire, the eyedropper hold picks, the eraser hold takes the tool, and
+  /// the pan is the panel's gesture layer's. Whether a stroke follows is
+  /// not decided here — [canvasMappedActionDraws] says, for this press and
+  /// for the empty cel that asks whether the press will draw.
+  void _actOnMappedPress(
     CanvasPointerMapping mapping,
     PointerDownEvent event,
   ) {
@@ -183,19 +186,17 @@ class _BrushEditPress {
       // Pan belongs to the panel's viewport gesture layer — this view
       // only stands down so no stroke competes with it.
       case CanvasPointerAction.pan:
-        return _MappedPress.consumed;
+        break;
       case CanvasPointerAction.undo:
         // Skip when the button press already fired during hover (the
         // hover edge below) and the tip then touched with it held.
         if (!_state._hold.mappedButtonHeldSinceHover(event)) {
           _state.widget.onInvokeAction?.call('edit-undo');
         }
-        return _MappedPress.consumed;
       case CanvasPointerAction.redo:
         if (!_state._hold.mappedButtonHeldSinceHover(event)) {
           _state.widget.onInvokeAction?.call('edit-redo');
         }
-        return _MappedPress.consumed;
       case CanvasPointerAction.eyedropper:
         _state._hold._mappedHoldPointer = event.pointer;
         _state._hold._mappedHoldRelease = mapping.release;
@@ -214,15 +215,11 @@ class _BrushEditPress {
         if (_state._isInsidePasteboard(pickPosition)) {
           _state.widget.onHoldPick?.call(pickPosition);
         }
-        return _MappedPress.consumed;
       case CanvasPointerAction.eraser:
         _state._hold._mappedHoldPointer = event.pointer;
         _state._hold._mappedHoldRelease = mapping.release;
         _state._hold._mappedHoldIsEyedropper = false;
         _state.widget.onTemporaryToolHold?.call(CanvasTool.eraser);
-        return _MappedPress.erase;
-      // Falls through into the normal stroke start below with the
-      // erase-substituted settings snapshot.
     }
   }
 
@@ -455,45 +452,9 @@ class _BrushEditPress {
     }
   }
 
-  /// The mapping a set of non-primary [bits] drives: the wheel click owns
-  /// the tertiary bit, and everything else reads as the secondary — the
-  /// barrel button, whichever bit the driver puts it on.
-  CanvasPointerMapping? mappingForButtons(int bits) {
-    // A live tail hold owns the tool: the two mappings share one hold
-    // slot, and whichever engaged first keeps it. Letting a barrel press
-    // take the tool mid-flip would leave the tail with nothing to spring
-    // back to when the pen is finally turned upright.
-    if (bits == 0 || _state._penTailActive) {
-      return null;
-    }
-    final settings = AppInput.settings.value;
-    if ((bits & kTertiaryButton) != 0) {
-      return settings.canvasWheelClick;
-    }
-    return settings.canvasRightClick;
-  }
-
-  /// R28: a MASK test, not equality. A barrel button held while the tip
-  /// touches down reports `primary | barrel`, and the old `== primary`
-  /// test read that as "not drawing" — so on a driver that does ride the
-  /// barrel bit into contact, the pen went dead instead of picking. The
-  /// mapped-press path runs first and claims those pointers, so anything
-  /// still reaching here with the primary bit down is a real stroke.
-  bool _isPrimaryButton(int buttons) => (buttons & kPrimaryButton) != 0;
-
   /// R26 #5: a view disposed mid-touch never sees its pointer-up — its
   /// contacts must leave the app-wide census or ink stays blocked.
   void releaseTouchContacts() {
     CanvasTouchContacts.removeAll(_activeTouchPointers);
   }
-}
-
-/// What a mapped press did with the pointer-down (see
-/// [_BrushEditPress._pressAsMappedAction]).
-enum _MappedPress {
-  /// The mapping ate the press: nothing else happens on this down.
-  consumed,
-
-  /// An eraser hold began: the stroke that follows erases.
-  erase,
 }

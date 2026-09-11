@@ -1,4 +1,10 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show
+        PointerDeviceKind,
+        kPrimaryButton,
+        kSecondaryButton,
+        kSecondaryMouseButton;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -12,6 +18,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -37,6 +44,7 @@ import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    CanvasPanHold.held.value = false;
   });
 
   final mainPanel = find.byKey(
@@ -331,6 +339,199 @@ void main() {
     );
 
     session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고 클릭하면 이거는
+  // 드로잉로직이 아니라 프레임이 존재하지 않는다는 메시지 안뜨도록. 다른 툴도
+  // 마찬가지로 … 근본적/구조적으로 해결」. As opened nothing has been drawn, so
+  // there is no editing stack and the SHELL's listener hears these presses.
+  testWidgets('with nothing drawn yet, a press that pans or picks hears '
+      'nothing — the refusal is for a press that would draw', (tester) async {
+    await openApp(tester);
+    final point = visibleCanvasPoint(tester);
+    final refusal = find.text(AppText.strings.noticeNoFrameHere);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    final pan = await tester.startGesture(point, kind: PointerDeviceKind.mouse);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(refusal, findsNothing, reason: 'the held 「이동」: the press pans');
+    await pan.moveBy(const Offset(30, 20));
+    await tester.pump();
+    await pan.up();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
+
+    final pick = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+      buttons: kPrimaryButton | kSecondaryButton,
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      refusal,
+      findsNothing,
+      reason: 'a barrel held with the tip is the eyedropper hold',
+    );
+    await pick.up();
+    await tester.pumpAndSettle();
+
+    final draw = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      refusal,
+      findsOneWidget,
+      reason: 'LIVENESS — a press that would draw still says why not',
+    );
+    await draw.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('with the auto-frame on and nothing drawn yet, a held-Space '
+      'press makes no block', (tester) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      autoCreateFrameOnDraw: true,
+    );
+    final session = (await openApp(tester)).session;
+    final layerId = session.activeLayerId!;
+    int blocks() => session.activeCutOrNull!.layers
+        .firstWhere((layer) => layer.id == layerId)
+        .timeline
+        .length;
+    final before = blocks();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    final pan = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await pan.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await pan.up();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
+    expect(blocks(), before, reason: 'a pan makes no block');
+
+    final draw = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await draw.up();
+    await tester.pumpAndSettle();
+    expect(
+      blocks(),
+      before + 1,
+      reason: 'LIVENESS — a press that would draw does make one',
+    );
+
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('on an empty frame a barrel held with the tip makes no block — '
+      'the eyedropper hold is not a stroke', (tester) async {
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      autoCreateFrameOnDraw: true,
+    );
+    final session = (await openApp(tester)).session;
+
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    final layerId = session.activeLayerId!;
+    Layer layer() => session.activeCutOrNull!.layers.firstWhere(
+      (candidate) => candidate.id == layerId,
+    );
+    final blocksBefore = layer().timeline.length;
+    session.selectFrameIndex(4);
+    await tester.pumpAndSettle();
+    expect(hasCel(tester), isFalse);
+
+    final pick = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+      buttons: kPrimaryButton | kSecondaryButton,
+    );
+    await tester.pump();
+    await pick.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await pick.up();
+    await tester.pumpAndSettle();
+
+    expect(layer().timeline.length, blocksBefore, reason: 'a pick makes none');
+    expect(session.layerContentBoundsAt(layer(), 4), isNull);
+
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a view standing down asks for a block only for a press the '
+      'stroke path would draw with', (tester) async {
+    var asks = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InteractiveBrushEditCanvasView(
+            sessionState: BrushEditSessionState(
+              canvasState: CanvasSurfaceState(
+                currentSurface: BitmapSurface(
+                  canvasSize: const CanvasSize(width: 64, height: 64),
+                  tileSize: 2,
+                ),
+              ),
+              materializationHistoryState:
+                  BrushBitmapMaterializationHistoryState(),
+            ),
+            layerId: const LayerId('layer-a'),
+            frameId: const FrameId('frame-a'),
+            inputSettings: BrushEditCanvasInputSettings(),
+            onSourceStrokeCommitted: (_) {},
+            editable: false,
+            onPressNeedsCel: () {
+              asks += 1;
+              return false;
+            },
+          ),
+        ),
+      ),
+    );
+    final at =
+        tester.getTopLeft(find.byType(InteractiveBrushEditCanvasView)) +
+        const Offset(20, 20);
+
+    Future<void> press(int buttons, PointerDeviceKind kind) async {
+      final gesture = await tester.startGesture(
+        at,
+        kind: kind,
+        buttons: buttons,
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await press(kPrimaryButton | kSecondaryButton, PointerDeviceKind.stylus);
+    expect(
+      asks,
+      0,
+      reason: 'the barrel is the eyedropper hold — the stroke path hands it '
+          'to the mapping',
+    );
+    await press(kSecondaryMouseButton, PointerDeviceKind.mouse);
+    expect(asks, 0, reason: 'nor does the right click');
+
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      canvasRightClick: const CanvasPointerMapping(
+        action: CanvasPointerAction.eraser,
+      ),
+    );
+    await press(kSecondaryMouseButton, PointerDeviceKind.mouse);
+    expect(asks, 1, reason: 'an eraser hold IS a stroke — it asks');
+
+    await press(kPrimaryButton, PointerDeviceKind.stylus);
+    expect(asks, 2, reason: 'and so does the tip alone');
   });
 
   // The main canvas runs MERGED (`paintsContent: false` — the composite

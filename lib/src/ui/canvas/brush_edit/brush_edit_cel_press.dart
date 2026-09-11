@@ -22,16 +22,23 @@ class _BrushEditCelPress {
   /// where the pen actually landed rather than where it had moved on to.
   PointerDownEvent? _pendingCelPress;
 
-  /// Standing down, and something pressed: ask the shell for a cel.
+  /// Standing down, and something pressed: ask the shell for a cel — for a
+  /// press that DRAWS.
   ///
-  /// ⛔PRIMARY contact only, the rule the stroke path keeps as well: a
-  /// mapped barrel/middle press means pan or undo, and none of those wants
-  /// a block made underneath it.
+  /// ⛔Only what the stroke path would draw with: a mapped barrel/middle
+  /// press means pan or undo, and none of those wants a block made
+  /// underneath it. This asked its own copy of half that rule — 「is the
+  /// primary bit down?」 — so a barrel held with the tip, which the stroke
+  /// path hands to its mapping, still asked (and, with the auto-frame on,
+  /// made a block). [canvasPressDraws] is the stroke path's readings in its
+  /// order (🗣️I-15 follow-up, 유저 2026-09-11: 「브러시로 그리는 로직이
+  /// 발생하는 상황이 아닌데 프레임 존재하지 않는다는 메시지뜨니 …
+  /// 근본적/구조적으로 해결」).
   void pressAsksForACel(PointerDownEvent event) {
     if (_pendingCelPress != null) {
       return;
     }
-    if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+    if (!canvasPressDraws(event, penTailActive: _state._penTailActive)) {
       return;
     }
     if (!(_state.widget.onPressNeedsCel?.call() ?? false)) {

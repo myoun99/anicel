@@ -8,7 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
 import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
-import 'canvas_pan_hold.dart';
+import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'flip_hud_controller.dart';
 
@@ -17,9 +17,10 @@ import 'flip_hud_controller.dart';
 /// Living at the panel level is what keeps navigation working on timeline
 /// positions without an editable frame.
 ///
-/// - Middle-mouse drag pans — and, while the 「이동」 key is held (Space by
-///   default), so does a primary drag (I-15: one pan, held from a button or
-///   from a key).
+/// - A press [canvasPressPans] calls a pan drags the view: the primary
+///   button while the 「이동」 key is held (I-15 — Space by default), or a
+///   button mapped to the pan (PEN-7a) — one pan, held from a key or a
+///   button.
 /// - Scroll wheel zooms around the cursor — no modifier key by design.
 /// - Trackpad pinch/pan gestures zoom around the focal point and pan
 ///   (mouse-less desktops; the same events arrive from some touchpads).
@@ -194,7 +195,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (!_startsPan(event.buttons) ||
+    if (!canvasPressPans(event.buttons) ||
         _panPointer != null ||
         widget.strokeActive) {
       return;
@@ -202,28 +203,6 @@ class _CanvasViewportGestureLayerState
     _panPointer = event.pointer;
     _panStartLocalPosition = event.localPosition;
     _panStartViewport = _liveViewport;
-  }
-
-  /// Whether this button chord starts a viewport PAN: any pressed
-  /// secondary bit whose CANVAS mapping says pan (PEN-7a) — the wheel/
-  /// middle bit (default mapping) or the right bit when assigned — or,
-  /// while the 「이동」 key is held, the primary bit (I-15). The pen tip's
-  /// contact bit rides along on stylus presses, so the check is per-bit,
-  /// not equality.
-  bool _startsPan(int buttons) {
-    if (CanvasPanHold.held.value && (buttons & kPrimaryButton) != 0) {
-      return true;
-    }
-    final settings = AppInput.settings.value;
-    if ((buttons & kTertiaryButton) != 0 &&
-        settings.canvasWheelClick.action == CanvasPointerAction.pan) {
-      return true;
-    }
-    if ((buttons & kSecondaryButton) != 0 &&
-        settings.canvasRightClick.action == CanvasPointerAction.pan) {
-      return true;
-    }
-    return false;
   }
 
   void _handlePointerMove(PointerMoveEvent event) {

@@ -23,54 +23,6 @@ class _BrushEditHold {
 
   bool _mappedHoldIsEyedropper = false;
 
-  /// Every button bit that is NOT the primary contact (R27 #17 / R28).
-  ///
-  /// The mapping used to recognise EXACTLY `kSecondaryButton` and
-  /// `kTertiaryButton`. A stylus barrel that a driver reports on any other
-  /// bit — Windows Ink and the Wacom driver have several configurations —
-  /// then fell through every branch in silence, which is the shape of the
-  /// "와콤 펜은 우클릭버튼인거 확인했는데 툴이 아예 안 바뀜" report. Treating
-  /// any non-primary bit as the secondary mapping costs nothing (the
-  /// primary contact is the only one that draws) and stops the behaviour
-  /// depending on which bit a driver happens to pick.
-  static const int _nonPrimaryButtons = ~kPrimaryButton;
-
-  /// The secondary-ish bits of [buttons]: null when only the primary (or
-  /// nothing) is down.
-  static int _mappedButtonBits(int buttons) => buttons & _nonPrimaryButtons;
-
-  /// The canvas mapping row for a secondary-button press (PEN-7a); null =
-  /// not a mapped press (primary drawing input, or touch).
-  CanvasPointerMapping? mappedPointerActionFor(PointerDownEvent event) {
-    if (event.kind == PointerDeviceKind.touch) {
-      return null;
-    }
-    return _state._press.mappingForButtons(
-      _mappedButtonBits(effectiveButtons(event)),
-    );
-  }
-
-  /// The buttons to BELIEVE for [event].
-  ///
-  /// A driver sidecar that speaks for this moment WINS — the same
-  /// contract [_state._pressure.normalizedPressure] already follows, and for the same
-  /// reason: the OS path can be lying about what the pen just did.
-  ///
-  /// The lie this catches: Windows Ink hands a Wacom barrel press to a
-  /// legacy window (Flutter never asks for WM_POINTER) as a PHANTOM PEN
-  /// TAP — kind stylus, pressure exactly 0.0, the PRIMARY button down,
-  /// on its own pointer id, while the pen is still hovering. Taken
-  /// literally that is a drawing contact, so the barrel never reached
-  /// its mapping AND the phantom opened a real stroke on top of it.
-  ///
-  /// Note this is a truth source, not a fingerprint: nothing here
-  /// guesses from pressure being 0. A device with no pressure at all
-  /// reports 0 for every honest contact it ever makes, so reading the
-  /// zero as "must be a barrel press" would turn every stroke on such a
-  /// tablet into a button press.
-  int effectiveButtons(PointerEvent event) =>
-      PenSidecars.freshButtons() ?? event.buttons;
-
   /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
   /// edge detector's memory (S-Pen/Wacom report barrel presses while
   /// hovering; a rising mapped button fires one-shot actions without
@@ -78,8 +30,10 @@ class _BrushEditHold {
   /// carries its own undo).
   int _lastHoverButtons = 0;
 
-  bool mappedButtonHeldSinceHover(PointerDownEvent event) =>
-      (_lastHoverButtons & _mappedButtonBits(effectiveButtons(event))) != 0;
+  bool mappedButtonHeldSinceHover(PointerDownEvent event) {
+    final bits = canvasMappedButtonBits(canvasPressButtons(event));
+    return (_lastHoverButtons & bits) != 0;
+  }
 
   /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
   /// button press — a Wacom barrel button pressed while the pen hovers
@@ -99,7 +53,7 @@ class _BrushEditHold {
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }
-    final buttons = effectiveButtons(event);
+    final buttons = canvasPressButtons(event);
     final previousButtons = _lastHoverButtons;
     final pressed = buttons & ~previousButtons;
     final released = previousButtons & ~buttons;
@@ -115,8 +69,11 @@ class _BrushEditHold {
     // the pen over — not touching down with it — the moment the eraser
     // arrives.
     _state._overlay.syncPenTailMapping();
-    final pressedBits = _mappedButtonBits(pressed);
-    final mapping = _state._press.mappingForButtons(pressedBits);
+    final pressedBits = canvasMappedButtonBits(pressed);
+    final mapping = canvasMappingForButtons(
+      pressedBits,
+      penTailActive: _state._penTailActive,
+    );
     if (mapping == null) {
       return;
     }
@@ -152,7 +109,7 @@ class _BrushEditHold {
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }
-    final buttons = effectiveButtons(event);
+    final buttons = canvasPressButtons(event);
     final previous = _lastContactButtons[event.pointer] ?? 0;
     final pressed = buttons & ~previous;
     _lastContactButtons[event.pointer] = buttons;
@@ -162,7 +119,10 @@ class _BrushEditHold {
         _state._activeDrawingPointer != null) {
       return;
     }
-    final mapping = _state._press.mappingForButtons(_mappedButtonBits(pressed));
+    final mapping = canvasMappingForButtons(
+      canvasMappedButtonBits(pressed),
+      penTailActive: _state._penTailActive,
+    );
     if (mapping == null || mapping.action != CanvasPointerAction.eyedropper) {
       return;
     }

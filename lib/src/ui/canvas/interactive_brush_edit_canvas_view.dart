@@ -45,6 +45,7 @@ import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
+import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
 
