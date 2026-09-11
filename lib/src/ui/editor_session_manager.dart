@@ -2256,17 +2256,13 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   /// Whether a file dropped on [layerId]'s frame area may land there as new
-  /// frames: a row a dragged block may land on — that law, asked rather
-  /// than restated — minus the two whose cells are not the row's own
-  /// pixels, an image layer and a reference layer (유저 2026-09-11:
-  /// 「이미지 · 참조 레이어의 프레임 영역 → 받지 않는다」).
-  bool acceptsPlacedFrames(LayerId layerId) {
-    final layer = layerById(layerId);
-    return layer != null &&
-        blockMoveEligible(layerId) &&
-        layer.kind != LayerKind.image &&
-        layer.mediaReference == null;
-  }
+  /// frames (유저 2026-09-11: 「이미지 · 참조 레이어의 프레임 영역 → 받지
+  /// 않는다」): a row a dragged block may land on — that law, asked rather
+  /// than restated, and it already turns an image row away (its one cel is
+  /// pinned, [standsDownFromRetime]) — minus a reference row, whose cells
+  /// come from its file.
+  bool acceptsPlacedFrames(LayerId layerId) =>
+      blockMoveEligible(layerId) && layerById(layerId)?.mediaReference == null;
 
   /// Where a file let go on [layerId]'s frame area, at [frameIndex], lands
   /// — or null when it lands nowhere. Frames are pixels, so only a file
