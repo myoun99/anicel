@@ -9,6 +9,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/ui_scale_binding.dart';
@@ -111,7 +114,47 @@ void main() {
     if (policy != 'automatic') {
       AnicelBinding.applyFocusHighlightPolicy(FocusManager.instance);
     }
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    // 🔬H40 (유저 2026-09-11): 「브러시 선택하고 첫 스트로크시? 선택한 직후
+    // 스트로크할때 0.1초 버벅임? … 브러시 선택하면 패널 전체가 리빌드?
+    // 다른패널조차 리빌드되는 그런 가능성일까싶음」. `H30_ARM=preset-pick`
+    // (and `preset-pick-hover`) press a brush between the strokes instead of
+    // an undo — which needs a library to press, and under FLUTTER_TEST the
+    // workspace's own loads from nothing. So those arms hand it the built-in
+    // presets on temp files, the way `workspace_applies_a_preset_test` does.
+    final picksPresets = (Platform.environment['H30_ARM'] ?? '').startsWith(
+      'preset-',
+    );
+    if (picksPresets) {
+      final directory = (await tester.runAsync(
+        () => Directory.systemTemp.createTemp('h40-presets'),
+      ))!;
+      addTearDown(() => directory.deleteSync(recursive: true));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            presetFileService: BrushPresetFileService(
+              filePath: '${directory.path}/brush_presets.json',
+            ),
+            tipLibraryService: BrushTipLibraryService(
+              directoryPath: '${directory.path}/tips',
+            ),
+          ),
+        ),
+      );
+      for (var tries = 0; tries < 40; tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+        final panels = find.byType(BrushPresetPanel).evaluate();
+        if (panels.isNotEmpty &&
+            (panels.first.widget as BrushPresetPanel).presets.isNotEmpty) {
+          break;
+        }
+      }
+    } else {
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    }
     await tester.pumpAndSettle();
 
     // The default project has no cel at the playhead — author one.
@@ -464,8 +507,48 @@ void main() {
       );
     }
 
+    /// 🔬H40: the next of two presets on screen, pressed with the pen the way
+    /// a hand does — alternating, so every press is a real change of brush.
+    /// `preset-pick-hover` then hovers the pen to the canvas, so the pressed
+    /// tile's hover exit is not billed to the stroke (see [pressRailButton]).
+    var pickIndex = 0;
+    Future<void> pickNextPreset() async {
+      final panel = tester.widget<BrushPresetPanel>(
+        find.byType(BrushPresetPanel).first,
+      );
+      Finder tileOf(String id) =>
+          find.byKey(ValueKey<String>('brush-preset-entry-$id'));
+      final shown = [
+        for (final preset in panel.presets)
+          if (tileOf(preset.id.value).evaluate().isNotEmpty) preset.id.value,
+      ];
+      expect(shown.length, greaterThanOrEqualTo(2), reason: 'two to pick');
+      final target = shown[pickIndex % 2];
+      pickIndex += 1;
+      await tester.tap(tileOf(target), kind: PointerDeviceKind.stylus);
+      if (arm == 'preset-pick-hover') {
+        final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
+        await pen.moveTo(strokeStart(strokeIndex));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<BrushPresetPanel>(find.byType(BrushPresetPanel).first)
+            .selectedPresetId
+            ?.value,
+        target,
+        reason: 'the pick has to have happened for the stroke after it to '
+            'measure anything',
+      );
+    }
+
     /// What the treatment arm does between its two strokes.
     Future<void> treatmentStep() async {
+      if (picksPresets) {
+        await pickNextPreset();
+        return;
+      }
       if (arm == 'key-only') {
         // A key that runs no action — the keyboard's touch and nothing else.
         await tester.sendKeyEvent(LogicalKeyboardKey.shiftLeft);
@@ -481,6 +564,10 @@ void main() {
       await pressUndo();
       await pressRedo();
       await drawOneStroke();
+      if (picksPresets) {
+        await pickNextPreset();
+        await drawOneStroke();
+      }
     }
 
     const rounds = 12;
@@ -578,7 +665,7 @@ void main() {
     // ignore: avoid_print
     print(line('after a PEN-UP ', plain));
     // ignore: avoid_print
-    print(line('after an UNDO  ', undone));
+    print(line(picksPresets ? 'after a PICK   ' : 'after an UNDO  ', undone));
     // ignore: avoid_print
     print(line('after UNDO+REDO', redone));
     // ignore: avoid_print
