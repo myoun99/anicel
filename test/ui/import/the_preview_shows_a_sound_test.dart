@@ -150,6 +150,9 @@ void main() {
     await tester.pumpWidget(preview('C:/snd/door.wav'));
     await tester.pumpWidget(preview(null));
     answer.complete(twoSeconds);
+    // The answer lands in a microtask the first pump flushes AFTER its
+    // frame; only the second pump draws what that answer changed.
+    await tester.pump();
     await tester.pump();
 
     expect(
