@@ -12,6 +12,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
@@ -80,6 +82,52 @@ void main() {
     },
   );
 
+  // 🗣️F-78 (유저 2026-09-11): 「타임시트의 se행. se블록의 이름란이 뷰포트에서
+  // 안보이면 대사 텍스트가 사라짐」. Every kind whose START writes across its
+  // whole span rides the sheet too: an SE entry (its name and dialogue), a
+  // hold chain (its word) and a repeat chain (its word) — each running the
+  // length of the cut, so the probes below land on rows whose start is
+  // culled.
+  Layer chainedFromTheEnd(String id, TimelineRunEdgeMode mode) =>
+      rederiveRunBehaviors(
+        Layer(
+          id: LayerId(id),
+          name: id.toUpperCase(),
+          frames: <Frame>[
+            Frame(id: FrameId('$id-f1'), duration: 1, strokes: const []),
+          ],
+          timeline: <int, TimelineExposure>{
+            0: TimelineExposure.drawing(FrameId('$id-f1'), length: 2),
+          },
+        ).copyWith(
+          runBehaviors: [
+            TimelineRunBehavior(
+              anchorFrameId: FrameId('$id-f1'),
+              side: TimelineRunEdgeSide.end,
+              mode: mode,
+            ),
+          ],
+        ),
+        cutFrameCount: 240,
+      );
+  final se = Layer(
+    id: const LayerId('se'),
+    name: 'S1',
+    kind: LayerKind.se,
+    frames: <Frame>[
+      Frame(
+        id: const FrameId('se-f1'),
+        duration: 1,
+        name: 'あいうえおかきくけこさしすせそたちつてとなにぬねの',
+        seName: 'SE',
+        strokes: const [],
+      ),
+    ],
+    timeline: <int, TimelineExposure>{
+      0: const TimelineExposure.drawing(FrameId('se-f1'), length: 240),
+    },
+  );
+
   final document = TimesheetDocument.fromCut(
     cut: Cut(
       id: const CutId('cut-1'),
@@ -90,10 +138,13 @@ void main() {
         animationLayer('a'),
         animationLayer('b'),
         animationLayer('c'),
+        chainedFromTheEnd('h', TimelineRunEdgeMode.hold),
+        chainedFromTheEnd('r', TimelineRunEdgeMode.repeat),
       ],
     ),
     projectName: 'P',
     fps: 24,
+    trackSeLayers: [se],
   );
 
   TimesheetDocumentPainter painterAt(CanvasViewport viewport) =>
@@ -134,6 +185,43 @@ void main() {
         reason:
             'culling may only drop what the clip discards; anything else '
             'is a row of the sheet that stopped being drawn',
+      );
+    });
+  }
+
+  // F-78: each span-writing kind, its column in view and its START row
+  // just above the view's top (row 5: past the one row of slack), so the
+  // rows in view are the ones its start writes down.
+  final layout = TimesheetDocumentLayout(document: document, continuous: true);
+  for (final (name, which) in <(String, bool Function(TimesheetColumn))>[
+    (
+      'an SE entry — its name and dialogue',
+      (column) => column.kind == TimesheetColumnKind.se,
+    ),
+    ('a hold chain — its word', (column) => column.label == 'H'),
+    ('a repeat chain — its word', (column) => column.label == 'R'),
+  ]) {
+    testWidgets('culling changes no pixel — $name, its start row scrolled '
+        'off the top', (tester) async {
+      final column = document.columns.indexWhere(which);
+      expect(column, isNonNegative, reason: 'fixture: the column is there');
+      final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
+      final top =
+          layout.halfRowsTop(0) + 5 * TimesheetDocumentLayout.rowHeight;
+      final viewport = CanvasViewport(panX: 40 - left, panY: -top, zoom: 1);
+      const size = Size(360, 520);
+      late ByteData culled;
+      late ByteData whole;
+      await tester.runAsync(() async {
+        culled = await _render(painterAt(viewport), size, culling: true);
+        whole = await _render(painterAt(viewport), size, culling: false);
+      });
+      expect(
+        _differingBytes(culled, whole),
+        0,
+        reason:
+            'a start cell writes down its whole span; culling its row may '
+            'not take that writing with it',
       );
     });
   }
