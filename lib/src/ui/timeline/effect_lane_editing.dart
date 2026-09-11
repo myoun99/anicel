@@ -80,6 +80,24 @@ List<LayerEffect>? effectsWithLaneRangeNamed(
   });
 }
 
+/// [effects] with parameter lane [laneId]'s keys inside [frames] set to
+/// [interpolation] — the key window's TYPE (F-17), the range form of the
+/// naming next door. Null when nothing changed.
+List<LayerEffect>? effectsWithLaneKeysInterpolated(
+  List<LayerEffect> effects, {
+  required String laneId,
+  required Set<int> frames,
+  required PropertyKeyInterpolation interpolation,
+}) {
+  return _editParameter(effects, laneId, (parameter, spec) {
+    final track = parameter.track.withKeysInterpolated(
+      frames: frames,
+      interpolation: interpolation,
+    );
+    return track == null ? null : parameter.copyWith(track: track);
+  });
+}
+
 /// Applies a value typed into a lane's value editor.
 ///
 /// Editing a lane's value KEYS it at the playhead — always (R9 #18).

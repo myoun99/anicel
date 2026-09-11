@@ -314,12 +314,16 @@ class CellInstances {
       return false;
     }
     // Standing on a LANE row, the instance is that lane's KEY — which the
-    // owning layer's kind cannot answer.
-    if (_laneVerbs.canNameLaneKeys) {
-      return true;
+    // owning layer's kind cannot answer. A lane cell with no key has none;
+    // the camera row answers here too, being its transform header (F-17).
+    if (_laneVerbs.laneVerbRange != null) {
+      return _laneVerbs.canNameLaneKeys;
     }
     return switch (layer.kind) {
-      LayerKind.camera ||
+      // Reached only under a band that holds more than the camera: the band
+      // claims the press as cells, and a camera cell's own instance is its
+      // key, answered above.
+      LayerKind.camera => false,
       LayerKind.instruction => _cells.hasActiveNonNegativeCell,
       LayerKind.se =>
         _selection.selectedFrame != null ||

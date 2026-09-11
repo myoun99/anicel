@@ -7,16 +7,22 @@ import 'app_prompt_dialog.dart';
 /// cancel. SE rows reuse it with sheet wording ([title]/[fieldLabel]
 /// overrides) — the frame name IS the sheet's name/dialogue text there,
 /// which is also why an empty value is allowed here: clearing a sheet cell
-/// is a real edit.
+/// is a real edit. Lane KEYS wear it too, with their type beside the name
+/// ([fieldTrailing]).
 class RenameFrameDialog extends StatelessWidget {
   const RenameFrameDialog({
     super.key,
     required this.initialName,
     this.title,
     this.fieldLabel,
+    this.fieldTrailing,
   });
 
   final String initialName;
+
+  /// The key window's TYPE, beside the name (F-17) — see
+  /// [AppPromptDialog.fieldTrailing]. Null for a frame.
+  final Widget? fieldTrailing;
 
   /// Null takes the tabled frame wording in the program language.
   final String? title;
@@ -32,6 +38,7 @@ class RenameFrameDialog extends StatelessWidget {
       fieldLabel: fieldLabel ?? strings.renameFrameField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
+      fieldTrailing: fieldTrailing,
     );
   }
 }

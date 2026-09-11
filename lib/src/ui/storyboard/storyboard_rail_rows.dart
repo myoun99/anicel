@@ -1239,6 +1239,7 @@ class _StoryboardRailRows {
             );
           },
       onTapAt: host.onTapAt,
+      onActivateAt: host.onActivateAt,
       onTapClear: host.onTapClear,
       onMoveBegin: host.onMoveBegin,
       onMoveUpdate: host.onMoveUpdate,

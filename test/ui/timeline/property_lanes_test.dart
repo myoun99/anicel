@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
@@ -920,29 +921,39 @@ void main() {
       );
     });
 
-    test('hold toggle flips a key between linear and hold', () {
+    test("the key TYPE lands on the range's keys and nothing else — the "
+        "key window's second half (F-17)", () {
       final track = TransformTrack.empty().copyWith(
-        rotation: PropertyTrack<double>().withKey(3, 45),
+        rotation: PropertyTrack<double>()
+            .withKey(3, 45)
+            .withKey(5, 90)
+            .withKeyName(3, 'A'),
       );
 
-      final held = transformTrackWithLaneHoldToggled(
+      final held = transformTrackWithLaneKeysInterpolated(
         track,
         laneId: 'rotation',
-        frameIndex: 3,
+        frames: {3},
+        interpolation: PropertyKeyInterpolation.hold,
       )!;
+      final key = held.rotation.keyAt(3)!;
+      expect(key.interpolation, PropertyKeyInterpolation.hold);
+      expect(key.name, 'A', reason: 'the name rides across');
+      expect(key.value, 45, reason: 'and so does the value');
       expect(
-        held.rotation.keyAt(3)!.interpolation,
-        PropertyKeyInterpolation.hold,
-      );
-
-      final linear = transformTrackWithLaneHoldToggled(
-        held,
-        laneId: 'rotation',
-        frameIndex: 3,
-      )!;
-      expect(
-        linear.rotation.keyAt(3)!.interpolation,
+        held.rotation.keyAt(5)!.interpolation,
         PropertyKeyInterpolation.linear,
+        reason: 'outside the range, untouched',
+      );
+      expect(
+        transformTrackWithLaneKeysInterpolated(
+          held,
+          laneId: 'rotation',
+          frames: {3},
+          interpolation: PropertyKeyInterpolation.hold,
+        ),
+        isNull,
+        reason: 'already that type: nothing to write',
       );
     });
   });
@@ -1006,15 +1017,22 @@ void main() {
       // grammar of its own, because the lane-move path had no arm for the
       // track its lanes actually edit (`cut.camera.track`).
       //
-      // Default zoom = 24px per frame. The first drag SELECTS frame 8; the
-      // second, starting inside that selection, moves it +2.
+      // Default zoom = 24px per frame. The first drag SELECTS from frame 8;
+      // the second, starting inside that selection, moves it +2. The select
+      // travels past [InstantTapRegion.travelSlop]: a press that travels
+      // less is a TAP, and a tap clears — on this row exactly as on a cells
+      // row, since the lane band rides the cells' own release rule.
       final band = find.byKey(
         const ValueKey<String>(
           'timeline-lane-range-gesture-lane-cam-layer-position',
         ),
       );
       final keyAt8 = tester.getCenter(_laneKey('position', 8));
-      await tester.dragFrom(keyAt8, const Offset(4, 0), kind: PointerDeviceKind.mouse);
+      await tester.dragFrom(
+        keyAt8,
+        const Offset(InstantTapRegion.travelSlop + 2, 0),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pumpAndSettle();
       expect(band, findsOneWidget, reason: 'the camera lane has a band now');
 
@@ -1461,10 +1479,12 @@ void main() {
       final step = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
       final keyAt0 = tester.getCenter(laneKey('position', 0));
       // 2026-08-08: two drags, not one. The first selects frame 0 — the
-      // marker has no drag of its own any more, on this row or any other.
+      // marker has no drag of its own any more, on this row or any other —
+      // and it travels past [InstantTapRegion.travelSlop], or it is a tap,
+      // and a tap clears (the cells' release rule, which the lane rides).
       await tester.dragFrom(
         keyAt0,
-        const Offset(0, 4),
+        const Offset(0, InstantTapRegion.travelSlop + 2),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();

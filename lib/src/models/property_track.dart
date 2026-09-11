@@ -279,6 +279,28 @@ class PropertyTrack<T> {
     return next == this ? null : next;
   }
 
+  /// The keys inside [frames] set to [interpolation] — the TYPE half of the
+  /// key window, in the range form the name half already has (F-17, 유저
+  /// 2026-09-01: 「해당 키 공용 편집창 손봐서 이름변경이랑 오른쪽에 유니언
+  /// 타입 변경 두개 존재하도록」). Values and names ride across untouched.
+  /// Null when nothing here changed.
+  PropertyTrack<T>? withKeysInterpolated({
+    required Set<int> frames,
+    required PropertyKeyInterpolation interpolation,
+  }) {
+    Map<int, PropertyKey<T>>? next;
+    for (final frame in frames) {
+      final key = keys[frame];
+      if (key == null || key.interpolation == interpolation) {
+        continue;
+      }
+      (next ??= Map<int, PropertyKey<T>>.of(keys))[frame] = key.copyWith(
+        interpolation: interpolation,
+      );
+    }
+    return next == null ? null : PropertyTrack(keys: next);
+  }
+
   /// The NAMED keys by frame — what a lane row hands its band so the link
   /// is visible where it lives. Frames absent here are unnamed.
   Map<int, String> get namedKeysByFrame => {

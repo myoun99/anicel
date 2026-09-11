@@ -1,48 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/dialogs/camera_key_dialog.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_dialog.dart';
-import 'package:anicel/src/ui/timeline/camera_key_edit.dart';
 
-/// The instance-edit family's window and one of its kinds — neither named
-/// by a test (2026-09-05).
+/// The instance-edit family's window — named by no test until 2026-09-05.
+/// Its camera kind went with the camera's own key window (F-17,
+/// 2026-09-11): the camera row edits its keys in the common key window.
 ///
 /// 🚨The shell owns no chrome: what it holds is what the FAMILY shares —
 /// the stable action keys every kind's tests and muscle memory rely on,
 /// the optional Delete, and the preview slot below the fields.
 void main() {
-  Future<Object?> showAndTap(
-    WidgetTester tester,
-    Widget dialog,
-    String buttonKey,
-  ) async {
-    Object? popped;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  popped = await showDialog<Object?>(
-                    context: context,
-                    builder: (_) => dialog,
-                  );
-                },
-                child: const Text('open'),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
-    await tester.pumpAndSettle();
-    return popped;
-  }
-
   Future<void> pumpShell(
     WidgetTester tester, {
     Widget? preview,
@@ -126,97 +93,6 @@ void main() {
 
       await pumpShell(tester, preview: const Text('a preview'));
       expect(find.text('a preview'), findsOneWidget);
-    });
-  });
-
-  group('the camera key dialog', () {
-    CameraKeyLaneState lane(
-      String id, {
-      bool keyed = true,
-      String value = '10, 20',
-      bool hold = false,
-    }) => CameraKeyLaneState(
-      laneId: id,
-      label: id,
-      keyed: keyed,
-      valueText: value,
-      hold: hold,
-    );
-
-    testWidgets('the title names the frame in ONE-based counting — the '
-        'sheet is read by people', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CameraKeyDialog(frameIndex: 4, lanes: [lane('position')]),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('5'), findsWidgets);
-    });
-
-    testWidgets('🚨it pops EVERY lane\'s state, so the host folds them into '
-        'ONE track edit rather than three', (tester) async {
-      final popped = await showAndTap(
-        tester,
-        CameraKeyDialog(
-          frameIndex: 0,
-          lanes: [lane('position'), lane('scale'), lane('rotation')],
-        ),
-        'instance-edit-ok-button',
-      );
-
-      expect(popped, isA<List<CameraKeyLaneState>>());
-      expect((popped! as List<CameraKeyLaneState>).length, 3);
-    });
-
-    testWidgets('🚨a typed value is TRIMMED on the way out — a stray space '
-        'is not part of the number', (tester) async {
-      Object? popped;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: Center(
-                child: ElevatedButton(
-                  onPressed: () async {
-                    popped = await showDialog<Object?>(
-                      context: context,
-                      builder: (_) => CameraKeyDialog(
-                        frameIndex: 0,
-                        lanes: [lane('position')],
-                      ),
-                    );
-                  },
-                  child: const Text('open'),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.tap(find.text('open'));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byType(TextField).first, '  30, 40  ');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect((popped! as List<CameraKeyLaneState>).single.valueText, '30, 40');
-    });
-
-    testWidgets('cancel pops NOTHING, whatever was typed', (tester) async {
-      final popped = await showAndTap(
-        tester,
-        CameraKeyDialog(frameIndex: 0, lanes: [lane('position')]),
-        'instance-edit-cancel-button',
-      );
-
-      expect(popped, isNull);
     });
   });
 }

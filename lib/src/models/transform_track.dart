@@ -327,12 +327,21 @@ String? transformLaneKeyName(
   TransformTrack track,
   TransformPropertyId property,
   int frameIndex,
+) => transformLaneKeyAt(track, property, frameIndex)?.name;
+
+/// [property]'s key at [frameIndex], or null — a lane's key read without
+/// knowing its value type, so its NAME and its TYPE (the key window's two
+/// halves) come off the same read.
+PropertyKey<Object?>? transformLaneKeyAt(
+  TransformTrack track,
+  TransformPropertyId property,
+  int frameIndex,
 ) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.keyAt(frameIndex)?.name,
-  TransformPropertyId.position => track.position.keyAt(frameIndex)?.name,
-  TransformPropertyId.scale => track.scale.keyAt(frameIndex)?.name,
-  TransformPropertyId.rotation => track.rotation.keyAt(frameIndex)?.name,
-  TransformPropertyId.opacity => track.opacity.keyAt(frameIndex)?.name,
+  TransformPropertyId.anchorPoint => track.anchorPoint.keyAt(frameIndex),
+  TransformPropertyId.position => track.position.keyAt(frameIndex),
+  TransformPropertyId.scale => track.scale.keyAt(frameIndex),
+  TransformPropertyId.rotation => track.rotation.keyAt(frameIndex),
+  TransformPropertyId.opacity => track.opacity.keyAt(frameIndex),
 };
 
 /// Whether [property]'s lane keys at [frameIndex] at all — a name needs a

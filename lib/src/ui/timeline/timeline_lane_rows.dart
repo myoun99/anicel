@@ -1433,8 +1433,8 @@ class TimelineLaneFrameRow extends StatelessWidget {
     ];
   }
 
-  /// ㉗: EVERY key name sits in the middle of its cell. The two branches
-  /// differ only in what they are printed ON.
+  /// ㉗: EVERY key name sits in the middle of its cell — and since F-17
+  /// every key name is PRINTED the same way too.
   ///
   /// 🚨THE MEMBER USED TO SIT BESIDE ITS DIAMOND ON MY SAY-SO, not the
   /// user's. 유저 원문 ㉗ said 「**유니언 이름은** 오른쪽 위가 아니라 칸 중앙」
@@ -1448,6 +1448,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// and the name moves to the centre over it. The word itself is what says
   /// a key is there. Display only: the band's own gestures (stand, select,
   /// move) own this axis, and a label is not a second grammar.
+  ///
+  /// 🚨AND THE MEMBER'S WORD WORE A SECOND RULE — the band's grey and a
+  /// smaller type — on my say-so again ("a member's mark is not paper").
+  /// 유저 2026-09-01: 「키에 이름 지정시, 헤더엔 제대로 중앙에 검정색으로
+  /// 텍스트뜨는데 멤버엔 왜 텍스트가 회색계열인지? … 다른 규칙 두지말라했는데
+  /// 왜 자꾸 멋대로 하는거지? 아예 통일하라고」. One print now: the frame
+  /// block's type rule at the union's size, in the paper's ink.
   Widget _keyName(int frame, String text) {
     return Positioned(
       left: (frame - frameStartIndex) * _cellExtent,
@@ -1455,26 +1462,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
       width: _cellExtent,
       height: _crossExtent,
       child: IgnorePointer(
-        child: lane.isGroupHeader
-            ? _LaneKeyName(
-                text: text,
-                // The frame blocks' own type rule, so a change there reaches
-                // this too (유저: 「프레임블록 쪽 텍스트 디자인을 바꾸면 한 번에
-                // 적용되도록」).
-                fontSize: timelineFittedGlyphFontSize(
-                  _laneKeyNameFontSize,
-                  _cellExtent,
-                  crossExtent: _markerSize,
-                ),
-                // Printed ON the paper-white mark, so it takes the paper's
-                // ink rather than the band's.
-                color: timelineDrawingInkColor,
-                alignment: Alignment.center,
-              )
-            // ⛔The BAND's ink and the band's own small type — a member's
-            // mark is not paper, so nothing here borrows the union's paper
-            // rules.
-            : _LaneKeyName(text: text, alignment: Alignment.center),
+        child: _LaneKeyName(
+          text: text,
+          // The frame blocks' own type rule, so a change there reaches this
+          // too (유저: 「프레임블록 쪽 텍스트 디자인을 바꾸면 한 번에
+          // 적용되도록」) — fitted to the UNION's mark on every row, so a
+          // member's word is the header's word.
+          fontSize: timelineFittedGlyphFontSize(
+            _laneKeyNameFontSize,
+            _cellExtent,
+            crossExtent: timelineLaneUnionKeyMarkerSize(
+              _crossExtent,
+              frameCellExtent: _cellExtent,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1525,31 +1527,18 @@ const double _laneKeyNameFontSize = 8;
 /// (a 9px strip above the mark) went with the beside-the-diamond layout
 /// they existed to serve — `F-17-Q1` 답 B.
 class _LaneKeyName extends StatelessWidget {
-  const _LaneKeyName({
-    required this.text,
-    this.fontSize = _laneKeyNameFontSize,
-    this.color,
-    this.alignment = Alignment.centerLeft,
-  });
+  const _LaneKeyName({required this.text, required this.fontSize});
 
   final String text;
 
-  /// ㉗: the union's name is set by the FRAME BLOCK's fit rule
-  /// ([timelineFittedGlyphFontSize]) so the two never drift; a member's
-  /// label keeps the band's own small type.
+  /// ㉗: set by the FRAME BLOCK's fit rule ([timelineFittedGlyphFontSize])
+  /// so the two never drift — on the header and the member alike (F-17).
   final double fontSize;
-
-  /// Null takes the band's ink. The union's name is printed on its
-  /// paper-white mark, so it passes the paper's.
-  final Color? color;
-
-  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) {
     return ClipRect(
       child: Align(
-        alignment: alignment,
         child: Text(
           text,
           maxLines: 1,
@@ -1558,7 +1547,8 @@ class _LaneKeyName extends StatelessWidget {
           style: TextStyle(
             fontSize: fontSize,
             height: 1,
-            color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
+            // The paper's ink: the frame blocks' word (F-17).
+            color: timelineDrawingInkColor,
           ),
         ),
       ),

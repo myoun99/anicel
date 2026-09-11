@@ -775,6 +775,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           ),
                       // H18: the cells family's release rule, here too.
                       onTapClear: _session.clearLaneRangeSelection,
+                      // The cells' double tap on a lane (유저 2026-09-11:
+                      // 「…싹 법 하나로 통일」), through this rail's own two
+                      // verbs — its Edit for a key, its ＋ for an empty cell.
+                      onActivateAt: (layerId, laneId, globalFrame) {
+                        if (_session.laneVerbs.canNameLaneKeys) {
+                          unawaited(editActiveInstance(context, _session));
+                        } else {
+                          _createInstanceHere();
+                        }
+                      },
                       onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
                       onMoveUpdate: (frameDelta) => _session
                           .laneMove.updateLaneRangeMoveDrag(frameDelta: frameDelta),

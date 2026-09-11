@@ -201,6 +201,112 @@ void main() {
     expect(track.position.keyAt(8), isNull);
   });
 
+  // 🗣️유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등
+  // 이런거 싹 법 하나로 통일」 — the frame block's double tap on a LANE row: a
+  // key opens its window, an empty cell is keyed (「빈 칸이면 만들고, 찬 칸이면
+  // 연다」).
+  Future<void> doubleTapBand(
+    WidgetTester tester,
+    String laneId,
+    double frame,
+  ) async {
+    final at = bandPoint(tester, laneId, frame);
+    await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+  }
+
+  PropertyTrack<CanvasPoint> positionOf(EditorSessionManager s) => s.layers
+      .firstWhere((layer) => layer.id == drawId)
+      .transformTrack
+      .position;
+
+  testWidgets('a DOUBLE tap on a lane KEY opens the common key window, and on '
+      'an EMPTY lane cell keys it', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+
+    await doubleTapBand(tester, 'position', 8.5);
+    expect(find.text('Rename key'), findsOneWidget, reason: 'a key: its window');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    await doubleTapBand(tester, 'position', 4.5);
+    expect(find.text('Rename key'), findsNothing, reason: 'nothing to open');
+    expect(
+      positionOf(s).keyAt(4),
+      isNotNull,
+      reason: 'the empty cell was keyed, as a cells row makes its instance',
+    );
+  });
+
+  testWidgets('a double tap on the GROUP HEADER opens the window for every '
+      'member at that frame, and its TYPE lands on each (F-17)', (
+    tester,
+  ) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+
+    await doubleTapBand(tester, 'transform-group', 8.5);
+    expect(find.text('Rename key'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      positionOf(s).keyAt(8)!.interpolation,
+      PropertyKeyInterpolation.hold,
+    );
+  });
+
+  testWidgets('a taken name the user does NOT join still takes the TYPE — '
+      'it was confirmed in the same window (F-17)', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    // 'A' is held by the key at 0.
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await tester.pumpAndSettle();
+
+    await doubleTapBand(tester, 'position', 8.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final key = positionOf(s).keyAt(8)!;
+    expect(key.name, isNull, reason: 'the name stood down');
+    expect(
+      key.interpolation,
+      PropertyKeyInterpolation.hold,
+      reason: 'the type did not',
+    );
+  });
+
   test('the guard asks on the axis the span lives on: a track-SE lane span '
       'is stored GLOBAL, and a window-frame press inside it reads inside', () {
     const seId = LayerId('stand-se');

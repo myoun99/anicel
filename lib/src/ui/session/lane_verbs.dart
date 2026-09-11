@@ -5,6 +5,8 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/property_track.dart'
+    show PropertyKey, PropertyKeyInterpolation;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -16,6 +18,7 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithGroupReset,
         effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
+        effectsWithLaneKeysInterpolated,
         effectsWithLaneRangeNamed;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
@@ -25,6 +28,7 @@ import '../timeline/transform_lane_editing.dart'
         transformTrackWithGroupReset,
         transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
+        transformTrackWithLaneKeysInterpolated,
         transformTrackWithLaneRangeNamed;
 import '../timeline/se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
@@ -246,20 +250,49 @@ class LaneVerbs {
     if (span != null) {
       return span;
     }
-    if (_internals.currentRow case LaneRowAddress(
-      :final layerId,
-      :final laneId,
-    )) {
-      final frame = _laneVerbFrameFor(layerId);
+    // 🚨㉙ → F-17/F-84: the CAMERA row IS its transform group header — its
+    // band already draws the members' union (B4) — and 유저 2026-09-11:
+    // 「트랜스폼이나 카메라나 똑같으니까 법 싹 하나로 통일해줘」. So a band on
+    // the camera row ALONE is a header span, and standing on it stands on
+    // the header: every lane verb (name, type, add, delete) reaches the
+    // camera's keys through the one path the fx header's take.
+    final cells = _selection.frameRangeSelection.value;
+    if (cells != null &&
+        cells.spanLayerIds.length == 1 &&
+        _isCameraRow(cells.spanLayerIds.single)) {
       return TimelineLaneSelection(
-        layerId: layerId,
-        laneId: laneId,
-        startIndex: frame,
-        endIndexExclusive: frame + 1,
+        layerId: cells.spanLayerIds.single,
+        laneId: transformGroupHeaderLane.laneId,
+        startIndex: cells.startIndex,
+        endIndexExclusive: cells.endIndexExclusive,
       );
     }
-    return null;
+    return switch (_internals.currentRow) {
+      LaneRowAddress(:final layerId, :final laneId) => _standingSpan(
+        layerId,
+        laneId,
+      ),
+      // A band that also holds other rows claims the press as CELLS.
+      LayerRowAddress(:final layerId)
+          when cells == null && _isCameraRow(layerId) =>
+        _standingSpan(layerId, transformGroupHeaderLane.laneId),
+      _ => null,
+    };
   }
+
+  /// The row you are STANDING on, as a one-frame span at the playhead.
+  TimelineLaneSelection _standingSpan(LayerId layerId, String laneId) {
+    final frame = _laneVerbFrameFor(layerId);
+    return TimelineLaneSelection(
+      layerId: layerId,
+      laneId: laneId,
+      startIndex: frame,
+      endIndexExclusive: frame + 1,
+    );
+  }
+
+  bool _isCameraRow(LayerId layerId) =>
+      laneVerbLayerFor(layerId)?.kind == LayerKind.camera;
 
   /// The transform track a LANE row edits: the CAMERA row's lanes live on
   /// the cut's camera, every other row's on the layer itself.
@@ -484,23 +517,24 @@ class LaneVerbs {
     );
   }
 
-  /// The names the LANE RANGE's keys carry — one entry per key, null for an
-  /// unnamed one. Empty when the range holds no key at all.
+  /// The keys the LANE RANGE covers, one entry per key. Empty when the
+  /// range holds no key at all.
   ///
-  /// Both naming gates read this, so "can I name here" and "what do they
-  /// already say" cannot disagree about which keys the range covers.
-  Set<String?> _laneRangeKeyNames() {
+  /// The naming gates and the key window's TYPE all read this, so "can I
+  /// name here", "what do they already say" and "what type are they"
+  /// cannot disagree about which keys the range covers.
+  List<PropertyKey<Object?>> _laneRangeKeys() {
     final lane = laneVerbRange;
     if (lane == null) {
-      return const {};
+      return const [];
     }
     final scope = _laneVerbScope(lane);
     if (scope == null) {
-      return const {};
+      return const [];
     }
     final layer = scope.layer;
     final targets = scope.targets;
-    final names = <String?>{};
+    final keys = <PropertyKey<Object?>>[];
     if (scope.effectLanes) {
       for (final laneId in targets) {
         final address = parseEffectLaneId(laneId);
@@ -518,12 +552,12 @@ class LaneVerbs {
           }
           for (final entry in track.keys.entries) {
             if (lane.contains(entry.key)) {
-              names.add(entry.value.name);
+              keys.add(entry.value);
             }
           }
         }
       }
-      return names;
+      return keys;
     }
     final track = _laneTransformTrackOf(layer);
     for (final laneId in _laneVerbTargetsFor(layer, targets)) {
@@ -532,13 +566,19 @@ class LaneVerbs {
         continue;
       }
       for (final frame in transformLaneKeyFrames(track, laneId)) {
-        if (lane.contains(frame)) {
-          names.add(transformLaneKeyName(track, property, frame));
+        final key = transformLaneKeyAt(track, property, frame);
+        if (key != null && lane.contains(frame)) {
+          keys.add(key);
         }
       }
     }
-    return names;
+    return keys;
   }
+
+  /// The names the range's keys carry — null for an unnamed one.
+  Set<String?> _laneRangeKeyNames() => {
+    for (final key in _laneRangeKeys()) key.name,
+  };
 
   /// Whether the lane range has a key to name — Edit Instance's gate on a
   /// property row.
@@ -553,6 +593,14 @@ class LaneVerbs {
   String? get laneKeyNameForSelection {
     final names = _laneRangeKeyNames();
     return names.length == 1 ? names.first : null;
+  }
+
+  /// The TYPE the range's keys agree on, or null when they disagree — what
+  /// the key window's type opens with, by the rule the name above follows
+  /// (and the ○ the group header draws where its members disagree).
+  PropertyKeyInterpolation? get laneKeyInterpolationForSelection {
+    final kinds = {for (final key in _laneRangeKeys()) key.interpolation};
+    return kinds.length == 1 ? kinds.first : null;
   }
 
   /// Names every key the LANE RANGE covers, on every lane it spans — the
@@ -573,19 +621,55 @@ class LaneVerbs {
   /// Returns true when [name] is ALREADY taken OUTSIDE the range and
   /// NOTHING was written — the caller asks ONCE for the whole range and
   /// then calls [linkLaneKeyNamesForSelection].
-  bool setLaneKeyNamesForSelection(String? name) =>
-      _writeLaneKeyNamesForSelection(name, adopt: false);
+  ///
+  /// [interpolation], when given, lands on the same keys in the same undo
+  /// step — the key window's TYPE (F-17, 유저 2026-09-01: 「이름변경이랑
+  /// 오른쪽에 유니언 타입 변경 두개 존재하도록」).
+  bool setLaneKeyNamesForSelection(
+    String? name, {
+    PropertyKeyInterpolation? interpolation,
+  }) => _writeLaneKeysForSelection(
+    names: true,
+    name: name,
+    interpolation: interpolation,
+    adopt: false,
+  );
 
   /// Joins [name] across the range, ADOPTING the value it already holds —
   /// the answer to the "합칠까요?" [setLaneKeyNamesForSelection] raises.
-  void linkLaneKeyNamesForSelection(String name) =>
-      _writeLaneKeyNamesForSelection(name, adopt: true);
+  void linkLaneKeyNamesForSelection(
+    String name, {
+    PropertyKeyInterpolation? interpolation,
+  }) => _writeLaneKeysForSelection(
+    names: true,
+    name: name,
+    interpolation: interpolation,
+    adopt: true,
+  );
+
+  /// The TYPE alone, on the keys the range covers — what the key window
+  /// still owes when its name stood down (a taken name the user chose not
+  /// to join): the type was confirmed in the same window.
+  void setLaneKeyInterpolationsForSelection(
+    PropertyKeyInterpolation interpolation,
+  ) => _writeLaneKeysForSelection(
+    names: false,
+    interpolation: interpolation,
+    adopt: false,
+  );
 
   /// The shared body: walks the spanned lanes, and stops at the FIRST lane
   /// whose name is taken unless [adopt] says the user already agreed.
   /// Stopping before any commit is what makes the confirmation honest —
   /// nothing is half-written while the dialog is up.
-  bool _writeLaneKeyNamesForSelection(String? name, {required bool adopt}) {
+  ///
+  /// [names] false leaves every name as it is: the TYPE alone.
+  bool _writeLaneKeysForSelection({
+    required bool names,
+    String? name,
+    PropertyKeyInterpolation? interpolation,
+    required bool adopt,
+  }) {
     final lane = laneVerbRange;
     if (lane == null) {
       return false;
@@ -598,7 +682,11 @@ class LaneVerbs {
     final cutId = _timeline.editingSession.activeCutId;
     final targets = scope.targets;
     final preferred = _laneVerbFrameFor(lane.layerId);
-    final why = name == null ? 'Unname keys' : 'Name keys';
+    final why = !names
+        ? 'Set key type'
+        : name == null
+        ? 'Unname keys'
+        : 'Name keys';
 
     if (scope.effectLanes) {
       var effects = layer.effects;
@@ -616,31 +704,46 @@ class LaneVerbs {
         if (frames.isEmpty) {
           continue;
         }
-        double? adopted;
-        if (name != null && cutId != null) {
-          adopted = _project.cutCommandCoordinator.namedEffectKeyValueInSpace(
-            cutId: cutId,
-            layerId: layer.id,
-            effectId: address.effectId,
-            parameterId: parameterId,
+        if (names) {
+          double? adopted;
+          if (name != null && cutId != null) {
+            adopted = _project.cutCommandCoordinator
+                .namedEffectKeyValueInSpace(
+                  cutId: cutId,
+                  layerId: layer.id,
+                  effectId: address.effectId,
+                  parameterId: parameterId,
+                  name: name,
+                  excludeFramesOnSource: frames,
+                );
+            if (adopted != null && !adopt) {
+              return true;
+            }
+          }
+          final next = effectsWithLaneRangeNamed(
+            effects,
+            laneId: laneId,
+            frames: frames,
             name: name,
-            excludeFramesOnSource: frames,
+            adopted: adopted,
+            preferredFrame: preferred,
           );
-          if (adopted != null && !adopt) {
-            return true;
+          if (next != null) {
+            effects = next;
+            changed = true;
           }
         }
-        final next = effectsWithLaneRangeNamed(
-          effects,
-          laneId: laneId,
-          frames: frames,
-          name: name,
-          adopted: adopted,
-          preferredFrame: preferred,
-        );
-        if (next != null) {
-          effects = next;
-          changed = true;
+        if (interpolation != null) {
+          final typed = effectsWithLaneKeysInterpolated(
+            effects,
+            laneId: laneId,
+            frames: frames,
+            interpolation: interpolation,
+          );
+          if (typed != null) {
+            effects = typed;
+            changed = true;
+          }
         }
       }
       if (changed) {
@@ -663,29 +766,43 @@ class LaneVerbs {
       if (frames.isEmpty) {
         continue;
       }
-      TransformTrack? holder;
-      if (name != null) {
-        holder = _laneTransformHoldingName(
-          layer,
-          property,
-          name,
-          excludeFrames: frames,
+      if (names) {
+        TransformTrack? holder;
+        if (name != null) {
+          holder = _laneTransformHoldingName(
+            layer,
+            property,
+            name,
+            excludeFrames: frames,
+          );
+          if (holder != null && !adopt) {
+            return true;
+          }
+        }
+        final next = transformTrackWithLaneRangeNamed(
+          track,
+          laneId: laneId,
+          frames: frames,
+          name: name,
+          adoptFrom: holder,
+          preferredFrame: preferred,
         );
-        if (holder != null && !adopt) {
-          return true;
+        if (next != null) {
+          track = next;
+          changed = true;
         }
       }
-      final next = transformTrackWithLaneRangeNamed(
-        track,
-        laneId: laneId,
-        frames: frames,
-        name: name,
-        adoptFrom: holder,
-        preferredFrame: preferred,
-      );
-      if (next != null) {
-        track = next;
-        changed = true;
+      if (interpolation != null) {
+        final typed = transformTrackWithLaneKeysInterpolated(
+          track,
+          laneId: laneId,
+          frames: frames,
+          interpolation: interpolation,
+        );
+        if (typed != null) {
+          track = typed;
+          changed = true;
+        }
       }
     }
     if (changed) {

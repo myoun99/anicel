@@ -95,4 +95,36 @@ void main() {
 
     expect(activations, <int>[2]);
   });
+
+  // 🗣️유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등
+  // 이런거 싹 법 하나로 통일」 — a lane band rides this same gate, so a lane is
+  // part of WHICH cell a tap hit.
+  test("a layer's cell and its lane's cell at one frame are TWO cells", () {
+    const layerId = LayerId('a');
+    TimelineCellDoubleTapGate.recordTapDown(layerId, 3);
+    expect(
+      TimelineCellDoubleTapGate.acceptsActivation(
+        layerId,
+        3,
+        laneId: 'position',
+      ),
+      isFalse,
+      reason: 'the cells row, then its lane: two seeks',
+    );
+    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
+    expect(
+      TimelineCellDoubleTapGate.acceptsActivation(layerId, 3, laneId: 'scale'),
+      isFalse,
+      reason: 'two lanes of one layer: two cells',
+    );
+    TimelineCellDoubleTapGate.recordTapDown(layerId, 3, laneId: 'position');
+    expect(
+      TimelineCellDoubleTapGate.acceptsActivation(
+        layerId,
+        3,
+        laneId: 'position',
+      ),
+      isTrue,
+    );
+  });
 }

@@ -904,6 +904,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                         spanLaneIds: span,
                       ),
               onTapAt: _standOnLane,
+              // 유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창
+              // 안열리는것등 이런거 싹 법 하나로 통일」 — the cells' double
+              // tap, on a lane. The first tap already stood here.
+              onActivateAt: (layerId, laneId, frameIndex) =>
+                  _activateCellEditor(layerId, frameIndex),
               // H18: the cells family's release rule, on lanes too — a press
               // that turned out to be a tap takes its anchor span back
               // instead of leaving a one-cell band behind.

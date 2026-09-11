@@ -19,11 +19,19 @@ class TimelineCellDoubleTapGate {
   TimelineCellDoubleTapGate._();
 
   static LayerId? _layerId;
+  static String? _laneId;
   static int? _frameIndex;
 
-  /// Records a tap-down on ([layerId], [frameIndex]).
-  static void recordTapDown(LayerId layerId, int frameIndex) {
+  /// Records a tap-down on ([layerId], [frameIndex]) — of the lane [laneId]
+  /// when the row is a property lane, whose cells are its owner's frames
+  /// too: a layer's cell and its lane's cell at one frame are two cells.
+  static void recordTapDown(
+    LayerId layerId,
+    int frameIndex, {
+    String? laneId,
+  }) {
     _layerId = layerId;
+    _laneId = laneId;
     _frameIndex = frameIndex;
   }
 
@@ -35,16 +43,21 @@ class TimelineCellDoubleTapGate {
   /// flaky under load (a widget test's fake-clock pump can take seconds of
   /// real time). This gate answers "where", never "when". Consumes the
   /// record either way.
-  static bool acceptsActivation(LayerId layerId, int frameIndex) {
-    final sameCell = _layerId == layerId && _frameIndex == frameIndex;
-    _layerId = null;
-    _frameIndex = null;
+  static bool acceptsActivation(
+    LayerId layerId,
+    int frameIndex, {
+    String? laneId,
+  }) {
+    final sameCell =
+        _layerId == layerId && _laneId == laneId && _frameIndex == frameIndex;
+    reset();
     return sameCell;
   }
 
   /// Test seam: forgets any recorded tap.
   static void reset() {
     _layerId = null;
+    _laneId = null;
     _frameIndex = null;
   }
 }
@@ -57,15 +70,22 @@ class TimelineCellDoubleTapGate {
 /// zoom). The dense timeline rows and the storyboard's sparse strips both
 /// build their handler HERE, so "which press arms the gate" cannot fork
 /// per surface again (절대명령 2026-08-17: reuse the frame-block law, never
-/// invent a sibling of it).
+/// invent a sibling of it). The LANE bands mount it too, naming their lane
+/// (유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등 이런거
+/// 싹 법 하나로 통일」).
 void Function(Offset localPosition) timelineCellDoubleTapRecord({
   required LayerId layerId,
+  String? laneId,
   required int? Function(Offset localPosition) frameAt,
 }) {
   return (localPosition) {
     final frameIndex = frameAt(localPosition);
     if (frameIndex != null) {
-      TimelineCellDoubleTapGate.recordTapDown(layerId, frameIndex);
+      TimelineCellDoubleTapGate.recordTapDown(
+        layerId,
+        frameIndex,
+        laneId: laneId,
+      );
     }
   };
 }
@@ -79,13 +99,18 @@ void Function(Offset localPosition) timelineCellDoubleTapRecord({
 /// pears.
 GestureTapDownCallback timelineCellDoubleTapActivation({
   required LayerId layerId,
+  String? laneId,
   required int? Function(Offset localPosition) frameAt,
   required void Function(int frameIndex) onActivate,
 }) {
   return (details) {
     final frameIndex = frameAt(details.localPosition);
     if (frameIndex != null &&
-        TimelineCellDoubleTapGate.acceptsActivation(layerId, frameIndex)) {
+        TimelineCellDoubleTapGate.acceptsActivation(
+          layerId,
+          frameIndex,
+          laneId: laneId,
+        )) {
       onActivate(frameIndex);
     }
   };

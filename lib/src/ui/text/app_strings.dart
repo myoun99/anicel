@@ -283,9 +283,8 @@ enum AppStrings {
   String get seUnlinkAudio => _s('seUnlinkAudio');
 
   /// '{frame}' is replaced with the 1-based frame number.
-  String get cameraKeyTitleTemplate => _s('cameraKeyTitleTemplate');
-  String get cameraKeyLinear => _s('cameraKeyLinear');
-  String get cameraKeyHold => _s('cameraKeyHold');
+  String get keyInterpolationLinear => _s('keyInterpolationLinear');
+  String get keyInterpolationHold => _s('keyInterpolationHold');
 
   // --- Convert to linked cut ---
   String get convertLinkedCutTitle => _s('convertLinkedCutTitle');
@@ -1433,9 +1432,8 @@ enum AppStrings {
     'seLinkedAudioLabel': 'Linked audio',
     'seLinkedAudioNone': 'None',
     'seUnlinkAudio': 'Unlink',
-    'cameraKeyTitleTemplate': 'Camera keys — frame {frame}',
-    'cameraKeyLinear': 'Linear',
-    'cameraKeyHold': 'Hold',
+    'keyInterpolationLinear': 'Linear',
+    'keyInterpolationHold': 'Hold',
     'convertLinkedCutTitle': 'Convert to linked cut',
     'convertLinkedCutBodyTemplate':
         'Link "{cut}" (origin) with another cut. Layers with the SAME NAME '
@@ -2391,9 +2389,8 @@ enum AppStrings {
     'seLinkedAudioLabel': 'リンクされた音声',
     'seLinkedAudioNone': 'なし',
     'seUnlinkAudio': 'リンクを解除',
-    'cameraKeyTitleTemplate': 'カメラキー — {frame}フレーム目',
-    'cameraKeyLinear': 'リニア',
-    'cameraKeyHold': 'ホールド',
+    'keyInterpolationLinear': 'リニア',
+    'keyInterpolationHold': 'ホールド',
     'convertLinkedCutTitle': 'リンクカットに変換',
     'convertLinkedCutBodyTemplate':
         '「{cut}」（原本）を別のカットとリンクします。同じ名前のレイヤーが'
@@ -3441,9 +3438,8 @@ enum AppStrings {
     'seLinkedAudioLabel': '링크된 오디오',
     'seLinkedAudioNone': '없음',
     'seUnlinkAudio': '링크 해제',
-    'cameraKeyTitleTemplate': '카메라 키 — {frame}프레임',
-    'cameraKeyLinear': '리니어',
-    'cameraKeyHold': '홀드',
+    'keyInterpolationLinear': '리니어',
+    'keyInterpolationHold': '홀드',
     'convertLinkedCutTitle': '링크 컷으로 변환',
     'convertLinkedCutBodyTemplate':
         '"{cut}"(원본)을 다른 컷과 링크합니다. 이름이 같은 레이어끼리 '
@@ -4489,9 +4485,8 @@ enum AppStrings {
     'seLinkedAudioLabel': 'Audio lié',
     'seLinkedAudioNone': 'Aucun',
     'seUnlinkAudio': 'Dissocier',
-    'cameraKeyTitleTemplate': 'Clés caméra — image {frame}',
-    'cameraKeyLinear': 'Linéaire',
-    'cameraKeyHold': 'Maintien',
+    'keyInterpolationLinear': 'Linéaire',
+    'keyInterpolationHold': 'Maintien',
     'convertLinkedCutTitle': 'Convertir en plan lié',
     'convertLinkedCutBodyTemplate':
         'Lier « {cut} » (origine) à un autre plan. Les calques de MÊME NOM '
@@ -5561,9 +5556,8 @@ enum AppStrings {
     'seLinkedAudioLabel': '已链接音频',
     'seLinkedAudioNone': '无',
     'seUnlinkAudio': '解除链接',
-    'cameraKeyTitleTemplate': '摄影表关键帧 — 第 {frame} 帧',
-    'cameraKeyLinear': '线性',
-    'cameraKeyHold': '保持',
+    'keyInterpolationLinear': '线性',
+    'keyInterpolationHold': '保持',
     'convertLinkedCutTitle': '转换为链接镜头',
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',

@@ -153,15 +153,22 @@ TransformTrack? transformTrackWithLaneRangeNamed(
   return null;
 }
 
-/// Flips a key between linear and HOLD interpolation (AE's Toggle Hold
-/// Keyframe).
-TransformTrack? transformTrackWithLaneHoldToggled(
+/// Sets lane [laneId]'s keys inside [frames] to [interpolation] — the key
+/// window's TYPE (F-17), in the range form every key verb takes. Null when
+/// nothing changed.
+///
+/// It replaced a per-key Toggle Hold that only the camera's own key window
+/// ever called. That window is gone, and the common one says WHICH type
+/// rather than flipping whichever it was.
+TransformTrack? transformTrackWithLaneKeysInterpolated(
   TransformTrack track, {
   required String laneId,
-  required int frameIndex,
+  required Set<int> frames,
+  required PropertyKeyInterpolation interpolation,
 }) => transformLaneLens(laneId)?.update(
   track,
-  <U>(PropertyTrack<U> lane) => _holdToggled(lane, frameIndex),
+  <U>(PropertyTrack<U> lane) =>
+      lane.withKeysInterpolated(frames: frames, interpolation: interpolation),
 );
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
@@ -453,17 +460,3 @@ TransformTrack? transformTrackWithLaneSpanKeysShifted(
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) =>
     transformLaneLens(laneId)?.keyFrames(track) ?? const {};
-
-PropertyTrack<T>? _holdToggled<T>(PropertyTrack<T> lane, int frameIndex) {
-  final key = lane.keyAt(frameIndex);
-  if (key == null) {
-    return null;
-  }
-  return lane.withKey(
-    frameIndex,
-    key.value,
-    interpolation: key.interpolation == PropertyKeyInterpolation.hold
-        ? PropertyKeyInterpolation.linear
-        : PropertyKeyInterpolation.hold,
-  );
-}

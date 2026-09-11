@@ -5,14 +5,13 @@ import '../../models/edit_instance_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/property_track.dart' show PropertyKeyInterpolation;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaAssetDefaultName;
 import '../../models/text_cel_style.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
-import '../../services/camera_pose_resolver.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
-import '../dialogs/camera_key_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/frame_name_conflict_dialog.dart';
 import '../dialogs/instruction_event_dialog.dart';
@@ -21,8 +20,9 @@ import '../dialogs/rename_frame_dialog.dart';
 import '../dialogs/se_instance_dialog.dart';
 import '../dialogs/text_cel_dialog.dart';
 import '../editor_session_manager.dart';
+import '../export/export_settings_modules.dart'
+    show ExportPillItem, ExportPillStrip;
 import '../text/app_strings.dart';
-import 'camera_key_edit.dart';
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 
@@ -62,8 +62,15 @@ Future<void> activateCellEditor(
   // layer owns it" — a drawing row standing on its Rotation lane would
   // otherwise rename the frame, which is the row's cell and not the thing
   // under the cursor at all.
-  if (session.laneVerbs.canNameLaneKeys) {
-    await _renameLaneKey(context, session);
+  //
+  // ⚠️And a lane cell with NO key has no instance: the answer is nothing,
+  // not the owner's cel, which is where this used to fall through to. The
+  // camera row answers here too — it IS its transform header (F-17), and
+  // the lane verbs say so.
+  if (session.laneVerbs.laneVerbRange != null) {
+    if (session.laneVerbs.canNameLaneKeys) {
+      await _renameLaneKey(context, session);
+    }
     return;
   }
   switch (layer.kind) {
@@ -78,7 +85,13 @@ Future<void> activateCellEditor(
         previewAxis,
       );
     case LayerKind.camera:
-      await _editCameraKeys(context, session, frameIndex);
+      // 🗣️F-17 (유저 2026-09-01): 「카메라레이어 헤더에서 편집작동시키면
+      // 아직도 카메라 키 창 뜸. 이거 없애라고. 공통창 키 이름변경 창
+      // 뜨게하라고. 다른 fx헤더에서 그렇게 뜨잖아」. The camera row's
+      // instance is its KEY, answered by the lane branch above through the
+      // common window; this arm is reached only under a cell band holding
+      // more than the camera, which claims the press as cells.
+      break;
     case LayerKind.text:
       await _editTextCel(context, session);
     case LayerKind.folder:
@@ -130,11 +143,17 @@ Future<void> activateCellOnDoubleTap(
   if (frameIndex >= 0 && session.currentFrameIndex != frameIndex) {
     session.selectFrameIndex(frameIndex);
   }
-  // ⚠️Asked BEFORE the editor and AFTER the seek, but NOT before the lane
-  // branch: a drawing row standing on its Rotation lane is asking about the
-  // LANE, and a lane's key creation is not this fork's business — so the
-  // fork stands down and the editor's own lane branch answers.
-  if (!session.laneVerbs.canNameLaneKeys && !session.cellInstances.activeCellHoldsAnInstance) {
+  // ⚠️Asked AFTER the seek, and of the ROW you stand on: a LANE row's
+  // instance is its KEY (the camera row's too — it IS its transform
+  // header), so a lane cell with no key is EMPTY whatever cel its owner
+  // holds under the playhead, and the double tap keys it. 유저 2026-09-11:
+  // 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등 이런거 싹 법 하나로
+  // 통일」 — the frame block's 「빈 칸이면 만들고, 찬 칸이면 연다」 on every
+  // row.
+  final instanceHere = session.laneVerbs.laneVerbRange != null
+      ? session.laneVerbs.canNameLaneKeys
+      : session.cellInstances.activeCellHoldsAnInstance;
+  if (!instanceHere) {
     createActiveInstance(session);
     return;
   }
@@ -202,57 +221,6 @@ Future<void> editActiveInstance(
     frameIndex: session.currentFrameIndex,
     previewAxis: previewAxis,
   );
-}
-
-/// Camera cells: per-lane key/value/interpolation dialog at the frame; the
-/// edited states fold into ONE track commit (one undo).
-Future<void> _editCameraKeys(
-  BuildContext context,
-  EditorSessionManager session,
-  int frameIndex,
-) async {
-  if (frameIndex < 0) {
-    return;
-  }
-  final cut = session.activeCutOrNull;
-  if (cut == null) {
-    return;
-  }
-  final before = cameraKeyLaneStatesAt(
-    cut.camera.track,
-    frameIndex: frameIndex,
-    resolvedPose: resolveCameraPoseAt(
-      camera: cut.camera,
-      canvasSize: cut.canvasSize,
-      frameIndex: frameIndex,
-    ),
-  );
-
-  final after = await showDialogVerb<List<CameraKeyLaneState>>(
-    context,
-    (_) => CameraKeyDialog(frameIndex: frameIndex, lanes: before),
-  );
-  if (after == null) {
-    return;
-  }
-
-  // Re-read after the dialog: the track may have changed underneath.
-  final trackAfterDialog = session.activeCutOrNull?.camera.track;
-  if (trackAfterDialog == null) {
-    return;
-  }
-  final next = transformTrackWithKeyDialogApplied(
-    trackAfterDialog,
-    frameIndex: frameIndex,
-    before: before,
-    after: after,
-  );
-  if (next != null) {
-    session.updateActiveCutCameraTrack(
-      next,
-      description: 'Edit camera keys at frame ${frameIndex + 1}',
-    );
-  }
 }
 
 /// SE cells: covered cells edit the covering entry's name/dialogue in the
@@ -610,18 +578,28 @@ Future<void> _editInstructionSet(
 /// [FrameId] for a frame — one nullable conflict token either way) and in
 /// which link verb takes it. Both are collaborators, not modes; this
 /// template is the ONE place holding the guard between the two dialogs.
+///
+/// [fieldTrailing] is content confirmed alongside the name — the key
+/// window's TYPE — built with the window's own setState so it can show its
+/// pick. [onLinkDeclined] is what the flow still owes when the user keeps
+/// the name as it was: the part of the window that did not collide.
 Future<void> _renameThenOfferLink<T extends Object>(
   BuildContext context, {
   required ({String initialName, String? title, String? fieldLabel}) prompt,
   required T? Function(String nextName) rename,
   required void Function(T conflict) link,
+  Widget Function(StateSetter setLocal)? fieldTrailing,
+  VoidCallback? onLinkDeclined,
 }) async {
   final nextName = await showDialogVerb<String>(
     context,
-    (_) => RenameFrameDialog(
-      initialName: prompt.initialName,
-      title: prompt.title,
-      fieldLabel: prompt.fieldLabel,
+    (_) => StatefulBuilder(
+      builder: (context, setLocal) => RenameFrameDialog(
+        initialName: prompt.initialName,
+        title: prompt.title,
+        fieldLabel: prompt.fieldLabel,
+        fieldTrailing: fieldTrailing?.call(setLocal),
+      ),
     ),
   );
   if (nextName == null) {
@@ -637,6 +615,7 @@ Future<void> _renameThenOfferLink<T extends Object>(
     (_) => const FrameNameConflictDialog(),
   );
   if (shouldLink != true) {
+    onLinkDeclined?.call();
     return;
   }
   link(conflict);
@@ -650,6 +629,13 @@ Future<void> _renameLaneKey(
     return Future<void>.value();
   }
   final strings = AppText.strings;
+  // 🗣️F-17 (유저 2026-09-01): 「해당 키 공용 편집창 손봐서 이름변경이랑
+  // 오른쪽에 유니언 타입 변경 두개 존재하도록. 물론 헤더에서 작동시
+  // 유니언타입 일괄변경되는건 기존이랑 조작감 동일」. The TYPE opens on what
+  // the covered keys agree on — nothing lit when they disagree, the ○ the
+  // header draws for them — and a header's range is all of its members, so
+  // a header's pick lands on every member at once.
+  var interpolation = session.laneVerbs.laneKeyInterpolationForSelection;
   return _renameThenOfferLink<String>(
     context,
     prompt: (
@@ -658,6 +644,10 @@ Future<void> _renameLaneKey(
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
+    ),
+    fieldTrailing: (setLocal) => _keyInterpolationPills(
+      selected: interpolation,
+      onPicked: (picked) => setLocal(() => interpolation = picked),
     ),
     // The RANGE form is the only one called: a single key is the one-frame
     // span at the playhead, so naming one and naming five is the same verb
@@ -668,11 +658,46 @@ Future<void> _renameLaneKey(
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
+            interpolation: interpolation,
           )
           ? trimmed
           : null;
     },
-    link: session.laneVerbs.linkLaneKeyNamesForSelection,
+    link: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
+      name,
+      interpolation: interpolation,
+    ),
+    // The name stood down; the type was confirmed in the same window.
+    onLinkDeclined: () {
+      final picked = interpolation;
+      if (picked != null) {
+        session.laneVerbs.setLaneKeyInterpolationsForSelection(picked);
+      }
+    },
+  );
+}
+
+/// The key window's TYPE — the grouped-choice control (유저 2026-09-09:
+/// 「여러개중 하나 선택한다거나 … 그룹으로 묶여있는 선택은 이 ui 사용하도록
+/// 공용화」). Nothing is lit while the covered keys disagree.
+Widget _keyInterpolationPills({
+  required PropertyKeyInterpolation? selected,
+  required ValueChanged<PropertyKeyInterpolation> onPicked,
+}) {
+  final strings = AppText.strings;
+  return ExportPillStrip(
+    items: [
+      for (final (kind, label) in [
+        (PropertyKeyInterpolation.linear, strings.keyInterpolationLinear),
+        (PropertyKeyInterpolation.hold, strings.keyInterpolationHold),
+      ])
+        ExportPillItem(
+          keyValue: 'rename-key-interpolation-${kind.name}',
+          label: label,
+          selected: selected == kind,
+          onTap: () => onPicked(kind),
+        ),
+    ],
   );
 }
 

@@ -30,6 +30,7 @@ class AppPromptDialog extends StatefulWidget {
     this.cancelKey,
     this.confirmKey,
     this.extra,
+    this.fieldTrailing,
   });
 
   /// The same window with its four keys derived from ONE name:
@@ -61,6 +62,7 @@ class AppPromptDialog extends StatefulWidget {
     this.multiline = false,
     this.numeric = false,
     this.extra,
+    this.fieldTrailing,
   }) : windowKey = ValueKey<String>('$keyPrefix-dialog'),
        fieldKey = ValueKey<String>('$keyPrefix-text-field'),
        cancelKey = ValueKey<String>('$keyPrefix-cancel-button'),
@@ -70,6 +72,11 @@ class AppPromptDialog extends StatefulWidget {
   /// edit as the name, so the two are confirmed together rather than
   /// through two dialogs in a row.
   final Widget? extra;
+
+  /// Optional content BESIDE the field, on its right — the key window's
+  /// TYPE (F-17: 「이름변경이랑 오른쪽에 유니언 타입 변경」). Confirmed with
+  /// the name like [extra]; it takes its own width and the field the rest.
+  final Widget? fieldTrailing;
 
   final String title;
   final IconData? titleIcon;
@@ -127,6 +134,22 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
     Navigator.of(context).pop(value);
   }
 
+  /// [field] with [AppPromptDialog.fieldTrailing] on its right, when there
+  /// is one.
+  Widget _besideTrailing(Widget field) {
+    final trailing = widget.fieldTrailing;
+    if (trailing == null) {
+      return field;
+    }
+    return Row(
+      children: [
+        Expanded(child: field),
+        const SizedBox(width: 8),
+        IntrinsicWidth(child: trailing),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppWindow(
@@ -134,7 +157,11 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
       title: widget.title,
       titleIcon: widget.titleIcon,
       onClose: () => Navigator.of(context).pop(),
-      width: widget.multiline ? 420 : 300,
+      width: widget.multiline
+          ? 420
+          : widget.fieldTrailing == null
+          ? 300
+          : 400,
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -142,7 +169,8 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
           AppWindowField(
             label: widget.fieldLabel,
             emphasized: true,
-            child: TextField(
+            child: _besideTrailing(
+              TextField(
           key: widget.fieldKey,
           controller: _controller,
           autofocus: true,
@@ -161,6 +189,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
             }
           },
               onSubmitted: widget.multiline ? null : (_) => _submit(),
+            ),
             ),
           ),
           if (widget.extra != null) ...[

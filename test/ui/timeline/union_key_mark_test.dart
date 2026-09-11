@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingInkColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
@@ -147,6 +149,23 @@ void main() {
         reason: '${lane.laneId} — 「이름만 칸 중앙에」',
       );
     }
+  });
+
+  // 🗣️F-17 (유저 2026-09-01): 「키에 이름 지정시, 헤더엔 제대로 중앙에
+  // 검정색으로 텍스트뜨는데 멤버엔 왜 텍스트가 회색계열인지? … 다른 규칙
+  // 두지말라했는데 왜 자꾸 멋대로 하는거지? 아예 통일하라고」.
+  testWidgets('🚨and EVERY key name is PRINTED the same — the member wears '
+      "the header's ink and the header's type", (tester) async {
+    TextStyle nameStyle() => tester.widget<Text>(find.text('Wall')).style!;
+
+    await pumpLane(tester, union);
+    final header = nameStyle();
+    await pumpLane(tester, member);
+    final memberName = nameStyle();
+
+    expect(header.color, timelineDrawingInkColor, reason: "the paper's ink");
+    expect(memberName.color, header.color, reason: 'one ink');
+    expect(memberName.fontSize, header.fontSize, reason: 'one type');
   });
 
   testWidgets('⛔and the member mark is still 6px — that was option A', (

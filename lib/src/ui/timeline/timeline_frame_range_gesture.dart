@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
+import 'timeline_cell_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
@@ -538,6 +539,7 @@ class TimelineLaneRangeHooks {
     required this.onMoveUpdate,
     required this.onMoveEnd,
     required this.onMoveCancel,
+    this.onActivateAt,
   });
 
   /// The session's live LANE selection.
@@ -562,6 +564,12 @@ class TimelineLaneRangeHooks {
 
   /// A press on the band: STAND on the frame of this (layer, lane).
   final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
+
+  /// A DOUBLE tap on one cell of the band — see
+  /// [TimelineLaneRangeCallbacks.onActivateAt]. Null leaves the band
+  /// without one.
+  final void Function(LayerId layerId, String laneId, int frameIndex)?
+  onActivateAt;
 
   /// A plain tap on the band (no drag): clears the selection — the CELLS
   /// family's `TimelineRangeGestureCallbacks.onTapClear`, restated for lanes.
@@ -594,6 +602,7 @@ class TimelineLaneRangeCallbacks {
     required this.onMoveCancel,
     this.onGripTaken,
     this.onGripReleased,
+    this.onActivateAt,
   });
 
   /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
@@ -634,6 +643,17 @@ class TimelineLaneRangeCallbacks {
   /// on the DOWN, before a pan may follow — so ranging on an fx row stands
   /// first exactly as ranging on a cells row does.
   final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
+
+  /// A DOUBLE tap on ONE cell of the band: the frame block's activation law
+  /// on a lane — 「빈 칸이면 만들고, 찬 칸이면 연다」 — through the same gate
+  /// the cells ride, so two taps on two frames stay two stands.
+  ///
+  /// 🗣️유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등
+  /// 이런거 싹 법 하나로 통일」. A lane band stood on the press and ranged on
+  /// the drag like a cells row, and was the one row a double tap did
+  /// nothing on. Null leaves the band without one.
+  final void Function(LayerId layerId, String laneId, int frameIndex)?
+  onActivateAt;
 
   /// A plain tap on the band (no drag): clears the selection — the CELLS
   /// family's [TimelineRangeGestureCallbacks.onTapClear], restated for
@@ -834,6 +854,7 @@ class _TimelineLaneRangeGestureLayerState
 
   @override
   Widget build(BuildContext context) {
+    final activate = widget.callbacks.onActivateAt;
     return Positioned.fill(
       key: ValueKey<String>(
         'timeline-lane-range-layer-${widget.layer.id}-${widget.laneId}',
@@ -852,11 +873,23 @@ class _TimelineLaneRangeGestureLayerState
       child: InstantTapRegion(
         behavior: HitTestBehavior.translucent,
         pressSeeksFor: AppInput.timelineCellPressSeeks,
+        // The frame block's activation law, RECORD half: which cell of THIS
+        // lane the press hit — the recogniser reports only the second tap.
+        onPressDown: timelineCellDoubleTapRecord(
+          layerId: widget.layer.id,
+          laneId: widget.laneId,
+          frameAt: _frameAt,
+        ),
         onTap: (localPosition) => widget.callbacks.onTapAt(
           widget.layer.id,
           widget.laneId,
           _frameAt(localPosition),
         ),
+        // H18's clear (below) rides the cells' own release rule now —
+        // [InstantTapRegion.onSettledTap], exactly as
+        // `timelineRowCellsPaintArea` mounts it — so the double tap can sit
+        // where the tap-up did.
+        onSettledTap: (_) => widget.callbacks.onTapClear(),
         // 🚨H18 (유저 2026-08-22): 「**fx헤더,멤버행의 선택범위 규칙이 다름.**
         // 일반 프레임셀은 클릭한다고 선택범위 작동 안하는데 fx헤더,멤버행은
         // 클릭한다고 선택범위 작동하는거같음. **또 몇번째인지 모를정도의 통일
@@ -877,7 +910,17 @@ class _TimelineLaneRangeGestureLayerState
         // `_startDrag`), and its tap clears here exactly as the cells' does.
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapUp: (_) => widget.callbacks.onTapClear(),
+          // …and its ACTIVATION half, on the same gate.
+          onDoubleTapDown: activate == null
+              ? null
+              : timelineCellDoubleTapActivation(
+                  layerId: widget.layer.id,
+                  laneId: widget.laneId,
+                  frameAt: _frameAt,
+                  onActivate: (frame) =>
+                      activate(widget.layer.id, widget.laneId, frame),
+                ),
+          onDoubleTap: activate == null ? null : () {},
           child: _eagerPanDetector(
             context: context,
             debugOwner: this,

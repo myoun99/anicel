@@ -12,9 +12,11 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
@@ -365,4 +367,69 @@ void main() {
       );
     });
   }
+
+  // 🗣️유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등
+  // 이런거 싹 법 하나로 통일」 — on the storyboard's lanes too, through this
+  // panel's own two verbs: an empty cell is keyed, a key opens the common
+  // key window.
+  testWidgets('a DOUBLE tap on a V lane keys an empty cell, and on the key '
+      'opens the common key window', (tester) async {
+    late ProjectRepository repository;
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          initialProject: _project(),
+          onRepositoryCreated: (created) => repository = created,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    await twirlOpenVLanes(tester);
+
+    final laneId = effectLaneId(_trackEffect, 'brightness');
+    final laneRow = find.byKey(
+      ValueKey<String>('storyboard-track-lane-row-0-$laneId'),
+    );
+    await tester.ensureVisible(laneRow);
+    await tester.pumpAndSettle();
+    final rowRect = tester.getRect(laneRow);
+    final at = Offset(rowRect.left + 6, rowRect.center.dy);
+    Future<void> doubleTap() async {
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+    }
+
+    PropertyTrack<double> brightness() => repository
+        .requireProject()
+        .tracks
+        .single
+        .effects
+        .single
+        .parameterOf('brightness')
+        .track;
+
+    expect(brightness().isEmpty, isTrue, reason: 'fixture: no key yet');
+    await doubleTap();
+    expect(brightness().isEmpty, isFalse, reason: 'the empty cell was keyed');
+    expect(find.text('Rename key'), findsNothing);
+
+    await doubleTap();
+    expect(
+      find.text('Rename key'),
+      findsOneWidget,
+      reason: 'the key opens its window',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
 }

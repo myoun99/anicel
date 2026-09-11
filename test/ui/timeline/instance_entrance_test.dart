@@ -11,10 +11,13 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/export/export_settings_modules.dart'
+    show ExportPill;
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../flyout_test_helpers.dart';
@@ -186,7 +189,7 @@ void main() {
 
     await _doubleTapCell(tester, 'timeline-cell-cam-2');
     expect(
-      find.text('Camera keys — frame 3'),
+      find.text('Rename key'),
       findsNothing,
       reason:
           'an empty cell has nothing to open — creation is silent, the '
@@ -198,11 +201,13 @@ void main() {
       reason: 'the row created through ITS OWN verb (a camera key)',
     );
 
-    // Filled now, so the very same gesture means the other thing.
+    // Filled now, so the very same gesture means the other thing — the
+    // COMMON key window (F-17): the camera row is its transform header, and
+    // its cell's instance is its key.
     await _doubleTapCell(tester, 'timeline-cell-cam-2');
-    expect(find.text('Camera keys — frame 3'), findsOneWidget);
+    expect(find.text('Rename key'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
   });
@@ -287,40 +292,78 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  /// 🚨The DIALOG's undo behaviour, reached the way that still reaches it
-  /// on an empty cell.
-  ///
-  /// ⛔This used to double-tap the empty camera cell. I-9 gave that gesture
-  /// the other meaning — an empty cell CREATES — and the pair above pins
-  /// that. What this case is actually about is 「keying a lane commits ONE
-  /// undo step」, so it comes in through the shared pill's Edit Instance,
-  /// which never creates and therefore still opens an empty cell's dialog.
-  testWidgets('the camera key dialog commits ONE undo step', (tester) async {
+  /// 🗣️F-17 (유저 2026-09-01): 「카메라레이어 헤더에서 편집작동시키면 아직도
+  /// 카메라 키 창 뜸. 이거 없애라고. 공통창 키 이름변경 창 뜨게하라고 … 해당
+  /// 키 공용 편집창 손봐서 이름변경이랑 오른쪽에 유니언 타입 변경 두개
+  /// 존재하도록. 물론 헤더에서 작동시 유니언타입 일괄변경되는건 기존이랑
+  /// 조작감 동일」. The camera row is its transform header, so ONE name and
+  /// ONE type land on every member key at the frame — as one undo step.
+  testWidgets('the camera row edits its keys in the COMMON key window — a '
+      'name and a type on every member, ONE undo step', (tester) async {
     final repository = await _pumpHome(tester);
 
     await tapTimelineCell(tester, 'cam', 2);
     await tester.pumpAndSettle();
+    await _tapToolbarAdd(tester);
+    expect(_cut(repository).camera.track.position.keyAt(2), isNotNull);
+
     await tapCommandButton(
       tester,
       const ValueKey<String>('shared-edit-button'),
     );
-    expect(find.text('Camera keys — frame 3'), findsOneWidget);
+    expect(
+      find.text('Rename key'),
+      findsOneWidget,
+      reason: 'the common window — the camera no longer keeps one of its own',
+    );
+    ExportPill pill(String kind) => tester.widget<ExportPill>(
+      find.byKey(ValueKey<String>('rename-key-interpolation-$kind')),
+    );
+    expect(
+      pill('linear').selected,
+      isTrue,
+      reason: 'the window opens on the type the keys agree on',
+    );
+    expect(pill('hold').selected, isFalse);
 
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'Wall',
+    );
     await tester.tap(
-      find.byKey(const ValueKey<String>('camera-key-toggle-position')),
+      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
     );
     await tester.pumpAndSettle();
+    expect(pill('hold').selected, isTrue, reason: 'the pick shows at once');
+    expect(pill('linear').selected, isFalse);
     await tester.tap(
-      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
     );
     await tester.pumpAndSettle();
 
-    expect(_cut(repository).camera.track.position.keyAt(2), isNotNull);
-    expect(_cut(repository).camera.track.scale.keyAt(2), isNull);
+    final track = _cut(repository).camera.track;
+    for (final key in [
+      track.position.keyAt(2),
+      track.scale.keyAt(2),
+      track.rotation.keyAt(2),
+    ]) {
+      expect(key!.name, 'Wall', reason: 'the header names every member');
+      expect(
+        key.interpolation,
+        PropertyKeyInterpolation.hold,
+        reason: 'and types every member (「일괄변경」)',
+      );
+    }
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
-    expect(_cut(repository).camera.track.position.keyAt(2), isNull);
+    final undone = _cut(repository).camera.track.position.keyAt(2)!;
+    expect(undone.name, isNull, reason: 'ONE step took the name…');
+    expect(
+      undone.interpolation,
+      PropertyKeyInterpolation.linear,
+      reason: '…and the type with it',
+    );
   });
 
   testWidgets('toolbar Add on the camera layer keys the current pose at '
@@ -384,21 +427,22 @@ void main() {
   /// predicates for 「이 셀에 열 게 있나」 are one getter now
   /// (`canEditCellInstanceAtCurrentFrame`), and this test is what fails if
   /// they ever come apart again.
-  testWidgets('toolbar Edit Instance opens the camera key dialog for the '
-      'camera layer', (tester) async {
+  testWidgets('toolbar Edit Instance on a camera KEY opens the COMMON key '
+      'window — the camera row is its transform header (F-17)', (tester) async {
     await _pumpHome(tester);
 
     await tapTimelineCell(tester, 'cam', 0);
     await tester.pumpAndSettle();
+    await _tapToolbarAdd(tester);
     // Edit Instance lives in the Frame ▾ flyout (R-toolbar round).
     await tapCommandButton(
       tester,
       const ValueKey<String>('shared-edit-button'),
     );
 
-    expect(find.text('Camera keys — frame 1'), findsOneWidget);
+    expect(find.text('Rename key'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
   });
