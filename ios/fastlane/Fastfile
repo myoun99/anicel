@@ -19,10 +19,11 @@ APP_IDENTIFIER = "com.myoun.anicel".freeze
 
 # 🚨THE WEBSITE'S ADDRESS IS WRITTEN HERE AND NOWHERE ELSE. docs/ is the
 # site, published by GitLab from the mirror (.gitlab-ci.yml), and this is
-# where it answers. App Store Connect used to keep a hand-typed copy of the
-# privacy policy's address, and that copy went on naming GitHub Pages after
-# the suspension took them down (2026-09-01). The beta lane writes it from
-# here now, so moving the site is an edit to this line and nothing else.
+# where it answers. App Store Connect's Test Information kept two hand-typed
+# copies of it — the privacy policy and the marketing page — and both went
+# on naming GitHub Pages after the suspension took them down (2026-09-01).
+# Moving only the privacy one left the marketing one dead (2026-09-11), so
+# the beta lane writes every address it names from here.
 #
 # ⚠️The address GitLab gave the project under its unique domain, the default
 # for a new project (Deploy › Pages). Turning the unique domain off moves the
@@ -118,16 +119,23 @@ require "net/http"
 # feeding would show them an old promise beside a new build. A pages job
 # that failed, a push that never reached the mirror, a site switched back to
 # members-only — each reads here as a page that is not this commit's.
+#
+# The root is checked as well as the files: it is the marketing page App
+# Store Connect names, and it is GitLab, not a file, that decides what the
+# root answers with.
 def ensure_site_is_docs
   docs = File.expand_path("../../docs")
   pages = Dir.glob("**/*", base: docs).select do |path|
     File.file?(File.join(docs, path))
   end
-  unless pages.include?(PRIVACY_PAGE)
-    UI.user_error!("docs/#{PRIVACY_PAGE} is gone; App Store Connect names it")
+  ["index.html", PRIVACY_PAGE].each do |named|
+    next if pages.include?(named)
+
+    UI.user_error!("docs/#{named} is gone; App Store Connect names it")
   end
-  pages.each do |path|
-    url = URI.join(SITE_URL, path)
+  served = pages.map { |path| [URI.join(SITE_URL, path), path] }
+  served << [URI(SITE_URL), "index.html"]
+  served.each do |url, path|
     response = Net::HTTP.get_response(url)
     next if response.is_a?(Net::HTTPOK) &&
             response.body.b == File.binread(File.join(docs, path))
@@ -143,25 +151,37 @@ def ensure_site_is_docs
 end
 
 # Test Information in App Store Connect, one entry per language it is kept
-# in, names the privacy policy; each entry is pointed at the page above. The
-# rest of it — the description, the feedback address, the reviewer's
-# contact — is the Account Holder's to type, and is left alone.
-def point_tester_privacy_policy
-  url = URI.join(SITE_URL, PRIVACY_PAGE).to_s
+# in, names the site twice: the marketing page and the privacy policy. Each
+# entry is pointed at the pages above. The rest of it — the description, the
+# feedback address, the reviewer's contact — is the Account Holder's to
+# type, and is left alone.
+def point_test_information_at_site
+  wanted = {
+    marketingUrl: SITE_URL,
+    privacyPolicyUrl: URI.join(SITE_URL, PRIVACY_PAGE).to_s,
+  }
   app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
   UI.user_error!("App Store Connect has no app #{APP_IDENTIFIER}") unless app
   localizations = app.get_beta_app_localizations
   if localizations.empty?
-    UI.important("Test Information is empty: no privacy policy to point")
+    UI.important("Test Information is empty: no site address to point")
   end
   localizations.each do |localization|
-    next if localization.privacy_policy_url == url
+    current = {
+      marketingUrl: localization.marketing_url,
+      privacyPolicyUrl: localization.privacy_policy_url,
+    }
+    stale = wanted.reject { |field, url| current[field] == url }
+    next if stale.empty?
 
     Spaceship::ConnectAPI.patch_beta_app_localizations(
       localization_id: localization.id,
-      attributes: { privacyPolicyUrl: url },
+      attributes: stale,
     )
-    UI.message("Test Information (#{localization.locale}) now names #{url}")
+    UI.message(
+      "Test Information (#{localization.locale}) now names " \
+      "#{stale.values.join(' and ')}",
+    )
   end
 end
 
@@ -170,12 +190,12 @@ platform :ios do
   lane :beta do
     key = asc_key
 
-    # What a tester is shown about privacy, settled before anything is signed
+    # What a tester is shown of the site, settled before anything is signed
     # or built: the site serving docs/ as committed, and App Store Connect
-    # naming its privacy page. A build that would send testers to a stale
-    # policy stops here.
+    # naming its pages. A build that would send testers to a stale page stops
+    # here.
     ensure_site_is_docs
-    point_tester_privacy_policy
+    point_test_information_at_site
 
     # A CI keychain starts empty, and its password has to be one fastlane
     # knows — the default login keychain's is not.
