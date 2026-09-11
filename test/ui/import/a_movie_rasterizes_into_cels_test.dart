@@ -166,14 +166,17 @@ void main() {
       isFalse,
       reason: 'already cels',
     );
+  });
 
-    // A STILL reference is the plain rasterize command's: its one cel IS
-    // its pixels, with nothing to decode. ⚠️Built HERE as one block over a
-    // row, rather than imported: an image row is born covering its cut, so
-    // the block count would answer first and this guard would never be the
+  test('a STILL reference is not this verb\'s either — its one cel IS its '
+      'pixels', () async {
+    final (s, layer) = await placed();
+    // ⚠️The movie's own row, still ONE block, pointed at a picture instead.
+    // A row imported as a still is born covering its cut, so the block
+    // count would turn it away and the guard under test would never be the
     // one that spoke.
     final png = await writeSolidPng(tempDir, 'bg.png');
-    final still = rowOf(s, layer).copyWith(
+    final still = layer.copyWith(
       mediaReference: MediaReference(assetPath: png),
     );
     s.repository.replaceLayer(layer: still);
@@ -184,7 +187,7 @@ void main() {
         layerId: still.id,
       ),
       isFalse,
-      reason: 'a still\'s cel IS its pixels — nothing here to decode',
+      reason: 'nothing here to decode — the plain rasterize command\'s',
     );
   });
 }
