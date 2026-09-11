@@ -226,6 +226,32 @@ void main() {
     expect(find.text(CanvasTool.brush.name), findsOneWidget);
   });
 
+  testWidgets('a held key and a held pen button share ONE road: when they '
+      'overlap, the tool from before either of them comes back', (
+    tester,
+  ) async {
+    await pumpRoad(tester);
+    // PEN-7a: the barrel button mapped to the eraser, held.
+    final penButton = TemporaryTool(
+      session: session,
+      current: () => tool.value,
+      change: (next) => tool.value = next,
+    );
+    penButton.hold(CanvasTool.eraser);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.eyedropper);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    expect(tool.value.tool, CanvasTool.brush);
+    penButton.release(keep: false);
+    expect(tool.value.tool, CanvasTool.brush);
+
+    // A mapping that KEEPS the tool leaves it in hand.
+    penButton.hold(CanvasTool.eraser);
+    penButton.release(keep: true);
+    expect(tool.value.tool, CanvasTool.eraser);
+    expect(session.heldOriginalTool, isNull);
+  });
+
   testWidgets('a shell that goes away lets go of the pan', (tester) async {
     await pumpRoad(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);

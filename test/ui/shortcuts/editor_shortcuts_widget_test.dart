@@ -1,3 +1,5 @@
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -187,6 +189,37 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.select);
+  });
+
+  testWidgets('🗣️I-15 one law: a held RIGHT button on the canvas switches '
+      'the tool through the same road as Alt — and springs back', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    CanvasTool toolOf() =>
+        tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;
+    final addFrame = find.byKey(const ValueKey<String>('new-frame-button'));
+    await tester.ensureVisible(addFrame);
+    await tester.pumpAndSettle();
+    await tester.tap(addFrame);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.brush);
+
+    final panel = tester.getRect(
+      find.byKey(const ValueKey<String>('main-canvas-brush-host-container')),
+    );
+    final right = await tester.startGesture(
+      Offset(panel.center.dx, panel.top + panel.height / 4),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pump();
+    expect(toolOf(), CanvasTool.eyedropper);
+    await right.up();
+    await tester.pump();
+    expect(toolOf(), CanvasTool.brush);
   });
 
   testWidgets('R/Shift+R rotate the canvas view; H flips it (P8)', (

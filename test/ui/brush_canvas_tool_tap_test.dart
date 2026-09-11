@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
-import 'package:flutter/gestures.dart' show kMiddleMouseButton, kPrimaryButton;
+import 'package:flutter/gestures.dart'
+    show kMiddleMouseButton, kPrimaryButton, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -694,6 +695,45 @@ void main() {
     await mouseDrag();
     expect(viewports, isEmpty);
     expect(drawn(), isTrue, reason: 'let go, and the drag is the brush again');
+  });
+
+  testWidgets('🗣️I-15: a held RIGHT button picks through the ONE eyedropper '
+      'pick — live along the drag, and no stroke', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    final picks = <int>[];
+    await tester.pumpWidget(
+      app(
+        BrushCanvasPanel(
+          coordinator: coordinator,
+          availableFrameKeys: frameKeys,
+          cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+          sampleColorAt: (point) => 0xFF000000 | point.x.round(),
+          onEyedropperPick: picks.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final right = await tester.startGesture(
+      canvasGlobalOffset(tester, const Offset(10, 10)),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pump();
+    await right.moveTo(canvasGlobalOffset(tester, const Offset(40, 10)));
+    await tester.pump();
+    await right.up();
+    await tester.pumpAndSettle();
+
+    expect(picks.length, greaterThanOrEqualTo(2), reason: 'press AND drag');
+    expect(picks.last, isNot(picks.first), reason: 'it followed the pointer');
+    expect(
+      coordinator.frameStore.celHasRenderableContent(frameKeys.first),
+      isFalse,
+    );
   });
 
   testWidgets('the eyedropper shows a hover swatch of the color under the '
