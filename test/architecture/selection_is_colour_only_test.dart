@@ -71,11 +71,13 @@ void main() {
 ///  * `brush_preset_panel` ×2 and `brush_tip_picker` — a preset/tip tile's
 ///    outline goes 1 → 1.5.
 ///  * `text_cel_dialog` — a font tile's outline goes 1 → 2.
-///  * `timeline_lane_rows` — a lane KEY's outline, and the comment two
-///    lines above it already says "color only (the selection rule)".
+///  * 🪦`timeline_lane_rows` — a lane KEY's outline. GONE on 2026-09-12:
+///    the mark has no outline of its own any more (유저: 「지금 실루엣에
+///    외곽선 회색 존재하는거같은데 삭제」), so the accent ring it wears when
+///    selected is the only border there is, and nothing thickens.
 ///  * `app_window` — a window TAB's label goes w400 → w500.
 ///
 /// ⛔NOT FIXED HERE ON PURPOSE. Which of these the user wants flattened is
 /// a look decision, and the audit's job was to make them countable so the
 /// question can be asked once instead of drifting.
-const int _knownNonColourSelection = 6;
+const int _knownNonColourSelection = 5;

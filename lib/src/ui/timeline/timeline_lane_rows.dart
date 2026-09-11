@@ -1641,6 +1641,33 @@ double _squareInCell(
 /// floor [timelineFittedGlyphFontSize] holds every other mark to.
 const double _keyMarkerFloor = 4.0;
 
+/// The union key's WORD for one frame — null when the row names no key
+/// there, or when the cell is too narrow to read one.
+///
+/// The band's gate ([_keyNames]) and the band's print ([_LaneKeyName]), so
+/// the camera row says what every other row says about a named key.
+Widget? _unionKeyName(
+  PropertyLaneRow lane, {
+  required int frame,
+  required double cellExtent,
+  required double markerSize,
+}) {
+  final name = lane.keyNames[frame];
+  if (name == null || cellExtent < _laneKeyNameMinCellExtent) {
+    return null;
+  }
+  return IgnorePointer(
+    child: _LaneKeyName(
+      text: name,
+      fontSize: timelineFittedGlyphFontSize(
+        _laneKeyNameFontSize,
+        cellExtent,
+        crossExtent: markerSize,
+      ),
+    ),
+  );
+}
+
 /// The UNION summary markers of one row, as [TimelineFrameSpan] children
 /// for the row's span layout — the CAMERA row's key marks (B4).
 ///
@@ -1693,30 +1720,18 @@ List<Widget> timelineUnionKeyMarkerSpans({
               markerSize: markerSize,
               color: layerMarkColor(layer.mark),
             );
-            // The NAME rides the same span — the band's own print at the
-            // union's size. 🗣️유저 2026-09-12: 「카메라레이어만 레이어에
-            // 인스턴스 이름이 표시안되」: this row drew the mark and left
-            // the word to the band it does not have.
-            final name = lane.keyNames[frame];
-            if (name == null || cellExtent < _laneKeyNameMinCellExtent) {
-              return marker;
-            }
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                marker,
-                IgnorePointer(
-                  child: _LaneKeyName(
-                    text: name,
-                    fontSize: timelineFittedGlyphFontSize(
-                      _laneKeyNameFontSize,
-                      cellExtent,
-                      crossExtent: markerSize,
-                    ),
-                  ),
-                ),
-              ],
+            // The NAME rides the same span — 🗣️유저 2026-09-12:
+            // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row
+            // drew the mark and left the word to a band it does not have.
+            final word = _unionKeyName(
+              lane,
+              frame: frame,
+              cellExtent: cellExtent,
+              markerSize: markerSize,
             );
+            return word == null
+                ? marker
+                : Stack(fit: StackFit.expand, children: [marker, word]);
           },
         ),
       ),

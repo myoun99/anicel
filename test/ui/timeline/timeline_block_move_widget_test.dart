@@ -412,9 +412,10 @@ metrics: const TimelineGridMetrics(
     expect(selectUpdates.first.$3, 5, reason: 'anchor = the pressed cell');
 
     // Selected key markers ring in ACCENT 1 (UI-R23 #4): the LANE
-    // selection covering the key at frame 2 flips the marker's border to
-    // the thin accent-1 stroke; the wash overlay marks the span.
-    Border markerBorder() {
+    // selection covering the key at frame 2 gives the mark its ONLY
+    // border — an unselected mark has none at all since 2026-09-12
+    // (유저: 「외곽선 회색 … 삭제. 그냥 심플하게 바탕색만 남겨서」).
+    Border? markerBorder() {
       final container = tester.widget<Container>(
         find
             .descendant(
@@ -425,12 +426,12 @@ metrics: const TimelineGridMetrics(
             )
             .first,
       );
-      return (container.decoration! as BoxDecoration).border! as Border;
+      return (container.decoration! as BoxDecoration).border as Border?;
     }
 
     laneSelection.value = null;
     await tester.pump();
-    expect(markerBorder().top.color, isNot(AppColors.accent));
+    expect(markerBorder(), isNull, reason: 'no outline of its own');
     laneSelection.value = const TimelineLaneSelection(
       layerId: LayerId('layer-a'),
       laneId: 'position',
@@ -438,8 +439,8 @@ metrics: const TimelineGridMetrics(
       endIndexExclusive: 4,
     );
     await tester.pump();
-    expect(markerBorder().top.color, AppColors.accent);
-    expect(markerBorder().top.width, moreOrLessEquals(4 / 3));
+    expect(markerBorder()!.top.color, AppColors.accent);
+    expect(markerBorder()!.top.width, moreOrLessEquals(4 / 3));
     // R27 #14: the span BAND no longer lives inside the lane row — it is
     // the cell selection's band, drawn by the cursor overlay. This
     // harness mounts lane bands alone, so only the key ring is visible
