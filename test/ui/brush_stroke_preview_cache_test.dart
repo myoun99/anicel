@@ -386,6 +386,14 @@ void main() {
 
       final name = find.text('Ink Pen');
       expect(tester.widget<Text>(name).style?.color, AppColors.inkOnPaint);
+      // The one ink is BLACK — pinned as the colour 유저 named, because a
+      // test that only compares against the constant stays green whatever
+      // the constant is changed to.
+      expect(
+        AppColors.inkOnPaint,
+        const Color(0xFF000000),
+        reason: '「공용슬라이더랑 똑같이 검정색 통일」',
+      );
       expect(
         tester.getCenter(name),
         tester.getCenter(find.byKey(const ValueKey<String>('row'))),
