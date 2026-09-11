@@ -110,7 +110,7 @@ void main() {
         ),
         cutFrameCount: 240,
       );
-  final se = Layer(
+  Layer seEntry(String dialogue) => Layer(
     id: const LayerId('se'),
     name: 'S1',
     kind: LayerKind.se,
@@ -118,7 +118,7 @@ void main() {
       Frame(
         id: const FrameId('se-f1'),
         duration: 1,
-        name: 'あいうえおかきくけこさしすせそたちつてとなにぬねの',
+        name: dialogue,
         seName: 'SE',
         strokes: const [],
       ),
@@ -128,7 +128,7 @@ void main() {
     },
   );
 
-  final document = TimesheetDocument.fromCut(
+  TimesheetDocument sheetWith(Layer se) => TimesheetDocument.fromCut(
     cut: Cut(
       id: const CutId('cut-1'),
       name: '1',
@@ -145,6 +145,10 @@ void main() {
     projectName: 'P',
     fps: 24,
     trackSeLayers: [se],
+  );
+
+  final document = sheetWith(
+    seEntry('あいうえおかきくけこさしすせそたちつてとなにぬねの'),
   );
 
   TimesheetDocumentPainter painterAt(CanvasViewport viewport) =>
@@ -193,21 +197,37 @@ void main() {
   // just above the view's top (row 5: past the one row of slack), so the
   // rows in view are the ones its start writes down.
   final layout = TimesheetDocumentLayout(document: document, continuous: true);
-  for (final (name, which) in <(String, bool Function(TimesheetColumn))>[
-    (
-      'an SE entry — its name and dialogue',
-      (column) => column.kind == TimesheetColumnKind.se,
-    ),
-    ('a hold chain — its word', (column) => column.label == 'H'),
-    ('a repeat chain — its word', (column) => column.label == 'R'),
-  ]) {
+  for (final (name, which, page, topRow)
+      in <(String, bool Function(TimesheetColumn), int, int)>[
+        (
+          'an SE entry — its name and dialogue',
+          (column) => column.kind == TimesheetColumnKind.se,
+          0,
+          5,
+        ),
+        // HOLD stacks down rows 1-4 from its start at row 1, and a word's
+        // rows read as EMPTY cells: from row 3 its tail is in view while
+        // the walk has to step over those empty rows to reach the start.
+        ('a hold chain — its word', (column) => column.label == 'H', 0, 3),
+        ('a repeat chain — its word', (column) => column.label == 'R', 0, 5),
+        // The span runs on into the next page, where its start is not: the
+        // walk-back stops at that page's top.
+        (
+          'an SE entry on the page it runs on into',
+          (column) => column.kind == TimesheetColumnKind.se,
+          1,
+          5,
+        ),
+      ]) {
     testWidgets('culling changes no pixel — $name, its start row scrolled '
         'off the top', (tester) async {
       final column = document.columns.indexWhere(which);
       expect(column, isNonNegative, reason: 'fixture: the column is there');
-      final left = layout.halfLeft(0, 0) + layout.columnLeftInHalf(column);
+      final left =
+          layout.halfLeft(page, 0) + layout.columnLeftInHalf(column);
       final top =
-          layout.halfRowsTop(0) + 5 * TimesheetDocumentLayout.rowHeight;
+          layout.halfRowsTop(page) +
+          topRow * TimesheetDocumentLayout.rowHeight;
       final viewport = CanvasViewport(panX: 40 - left, panY: -top, zoom: 1);
       const size = Size(360, 520);
       late ByteData culled;
@@ -225,4 +245,42 @@ void main() {
       );
     });
   }
+
+  // …and the half a span runs on into keeps NONE of its writing: the walk
+  // stops at that half's top. On the PRINTED page, where the halves sit
+  // side by side — the continuous sheet lets a page's writing run on down
+  // into the next by design. Judged against a second dialogue rather than
+  // against culling off, because the walk runs in both of those renders.
+  testWidgets('an SE entry keeps its writing in the half it starts in — the '
+      'half it runs on into reads the same whatever it says', (tester) async {
+    // A different LENGTH: the test font draws every glyph as the same
+    // box, so only where the glyphs land can tell two dialogues apart.
+    final other = sheetWith(seEntry('らりるれろわを'));
+    final column = document.columns.indexWhere(
+      (column) => column.kind == TimesheetColumnKind.se,
+    );
+    final printed = TimesheetDocumentLayout(document: document);
+    final left = printed.halfLeft(0, 1) + printed.columnLeftInHalf(column);
+    final top =
+        printed.halfRowsTop(0) + 5 * TimesheetDocumentLayout.rowHeight;
+    final viewport = CanvasViewport(panX: 40 - left, panY: -top, zoom: 1);
+    TimesheetDocumentPainter painterFor(TimesheetDocument sheet) =>
+        TimesheetDocumentPainter(
+          document: sheet,
+          layout: TimesheetDocumentLayout(document: sheet),
+          viewport: viewport,
+        );
+    const size = Size(360, 520);
+    late ByteData mine;
+    late ByteData theirs;
+    await tester.runAsync(() async {
+      mine = await _render(painterFor(document), size, culling: true);
+      theirs = await _render(painterFor(other), size, culling: true);
+    });
+    expect(
+      _differingBytes(mine, theirs),
+      0,
+      reason: 'the dialogue belongs to the page its entry starts on',
+    );
+  });
 }
