@@ -4,6 +4,7 @@ import 'audio_clip.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'timeline_empty_gaps.dart';
 import 'timeline_exposure.dart';
 
 /// A landed take (REC1-B): the SE row's next state and the id of the new
@@ -39,8 +40,11 @@ class SeTakePlacement {
 /// Breakdown offsets are a drawing-row concept and no SE row carries
 /// them; trims go through [TimelineExposure.copyWith]'s normalization.
 ///
-/// [newFrameId] mints ids for split/shared remainders. Returns null when
-/// [lengthFrames] < 1.
+/// [newFrameId] mints ids for split/shared remainders. [name] and [seName]
+/// write the new instance's dialogue and name tag — a placed sound's file
+/// name and 「SE」, where a recorded take leaves both empty — and
+/// [offsetFrames] is how far into the file its sound starts. Returns null
+/// when [lengthFrames] < 1.
 SeTakePlacement? planSeTakePlacement({
   required Layer layer,
   required int startFrame,
@@ -49,6 +53,9 @@ SeTakePlacement? planSeTakePlacement({
   required FrameId takeFrameId,
   required FrameId Function() newFrameId,
   bool takeClipped = false,
+  String? name,
+  String? seName,
+  int offsetFrames = 0,
 }) {
   if (lengthFrames < 1 || startFrame < 0) {
     return null;
@@ -78,7 +85,13 @@ SeTakePlacement? planSeTakePlacement({
     for (final frame in layer.frames)
       if (referenced.contains(frame.id)) frame,
     ...splice.clonedFrames,
-    Frame(id: takeFrameId, duration: 1, strokes: const [], name: null),
+    Frame(
+      id: takeFrameId,
+      duration: 1,
+      strokes: const [],
+      name: name,
+      seName: seName,
+    ),
   ];
   final nextClips = <AudioClip>[
     for (final clip in layer.audioClips)
@@ -90,7 +103,12 @@ SeTakePlacement? planSeTakePlacement({
               )
             : clip,
     ...splice.clonedClips,
-    AudioClip(filePath: filePath, frameId: takeFrameId, clipped: takeClipped),
+    AudioClip(
+      filePath: filePath,
+      frameId: takeFrameId,
+      offsetFrames: offsetFrames,
+      clipped: takeClipped,
+    ),
   ];
 
   return SeTakePlacement(
@@ -101,6 +119,35 @@ SeTakePlacement? planSeTakePlacement({
     ),
     takeFrameId: takeFrameId,
   );
+}
+
+/// The name tag a placed sound's block carries — the word a timesheet
+/// writes for a sound, not a character's name (유저 2026-09-11: 「블록의
+/// 이름을 SE(SE 고정. 타임시트에 캐릭터가 아니라 사운드 작성시 진짜로
+/// SE라고 씀)」).
+const placedSoundNameTag = 'SE';
+
+/// The first of [rows], in their own order — the one order every panel
+/// draws — with no block anywhere in [startFrame, startFrame +
+/// lengthFrames): where a placed sound goes (유저 2026-09-11, 미디어 배치
+/// 라운드 6: 「SE1부터 시작해서 뒤든 앞이든 겹치지 않는, 공간이 존재하는
+/// 기존 SE행」). Null when every row is taken there — the caller makes a new
+/// one. "Free" is [emptyGapsBetween]'s answer, the one the range create
+/// already asks.
+Layer? firstSeRowFreeFor(
+  Iterable<Layer> rows, {
+  required int startFrame,
+  required int lengthFrames,
+}) {
+  for (final row in rows) {
+    final gaps = emptyGapsBetween(row, startFrame, startFrame + lengthFrames);
+    if (gaps.length == 1 &&
+        gaps.single.startIndex == startFrame &&
+        gaps.single.length == lengthFrames) {
+      return row;
+    }
+  }
+  return null;
 }
 
 /// Splicing a take into an SE row, block by block, the way tape is cut.

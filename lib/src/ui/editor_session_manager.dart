@@ -1946,6 +1946,9 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     landing: importLanding,
     fingerprints: mediaFingerprints,
+    pool: mediaPool,
+    conforms: audioConformStore,
+    frameRate: () => projectSettings.projectFrameRate,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(

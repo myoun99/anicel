@@ -550,6 +550,7 @@ void main() {
     'imFitContain': (s) => s.imFitContain,
     'imFitStretch': (s) => s.imFitStretch,
     'imIntoNewLayer': (s) => s.imIntoNewLayer,
+    'imIntoSeRow': (s) => s.imIntoSeRow,
     'imIntoNewCut': (s) => s.imIntoNewCut,
     'imPsdMerge': (s) => s.imPsdMerge,
     'imPsdExpand': (s) => s.imPsdExpand,

@@ -89,6 +89,11 @@ class _ImportTally {
   final List<String> done = [];
 }
 
+/// The Into answer a SOUND gives: the track's SE rows, by their own rule.
+final class _SoundOnSeRows {
+  const _SoundOnSeRows();
+}
+
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
@@ -504,24 +509,12 @@ class _ImportDialogState extends State<ImportDialog> {
     tally.warnings.addAll(folderWarnings);
   }
 
-  /// Places every picked file, audio first. Answers FALSE when the dialog
-  /// went away part-way — the caller must not touch its state after that.
+  /// Places every picked file — a picture where the window says, a sound on
+  /// the track's SE rows. Answers FALSE when the dialog went away part-way —
+  /// the caller must not touch its state after that.
   Future<bool> _placeFiles(_ImportTally tally) async {
-    // Audio registers rather than places, and does it in as few undos
-    // as the per-file answers allow.
-    final audioPaths = [
-      for (final path in _files)
-        if (mediaAssetKindForPath(path) == MediaAssetKind.audio) path,
-    ];
-    if (audioPaths.isNotEmpty) {
-      tally.imported += _registerBatches(widget.session, audioPaths);
-      tally.done.addAll(audioPaths);
-    }
     for (final path in _files) {
       final kind = mediaAssetKindForPath(path);
-      if (kind == MediaAssetKind.audio) {
-        continue;
-      }
       if (_unplaceableKinds.contains(kind)) {
         tally.warnings.add(
           AppText.strings.imNotPlaceable(mediaAssetDefaultName(path)),
@@ -591,6 +584,15 @@ class _ImportDialogState extends State<ImportDialog> {
     final settings = _settingsFor(path);
     final carry = settings.mode == ImportFileMode.keepInside;
     final bake = settings.bake;
+    if (kind == MediaAssetKind.audio) {
+      return widget.session.importDoors.importSoundFile(
+        path: path,
+        copyIntoProject: carry,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        spot: widget.spot,
+      );
+    }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
@@ -993,18 +995,23 @@ class _ImportDialogState extends State<ImportDialog> {
       ))
         _bakeColumn(placing),
       if (placing && any(_placeable)) _intoColumn(),
-      if (placing && any(_placeable)) _fitColumn(placing),
+      if (placing && any(_placesPicture)) _fitColumn(placing),
       // 「PSD가 아닌파일은 PSD열 삭제」.
       if (placing && any(importPathIsPsd)) _psdColumn(placing),
     ];
   }
 
-  /// Whether this window places [path] at all: a sound is registered here,
-  /// and a movie waits for its decoder.
-  bool _placeable(String path) {
-    final kind = mediaAssetKindForPath(path);
-    return kind != MediaAssetKind.audio && !_unplaceableKinds.contains(kind);
-  }
+  /// Whether this window places [path] at all — a movie waits for its
+  /// decoder; a picture and a sound both place.
+  bool _placeable(String path) =>
+      !_unplaceableKinds.contains(mediaAssetKindForPath(path));
+
+  /// Whether [path] places as a PICTURE — the only thing a fit means
+  /// anything for. A sound goes to the SE rows.
+  bool _placesPicture(String path) => _placeable(path) && !_isSound(path);
+
+  bool _isSound(String path) =>
+      mediaAssetKindForPath(path) == MediaAssetKind.audio;
 
   ImportColumn<Object?> _fileColumn() => ImportColumn<Object?>(
     id: 'file',
@@ -1065,13 +1072,20 @@ class _ImportDialogState extends State<ImportDialog> {
       labelOf: (value) => switch (value) {
         final ImportDestination into => importIntoLabel(into),
         final ImportLayerSpot dropped => _spotLabel(dropped),
+        _SoundOnSeRows() => AppText.strings.imIntoSeRow,
         _ => '',
       },
-      valueOf: (path) => spot ?? _settingsFor(path).into,
+      // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
+      // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — answered, so shown
+      // locked, like every answer the context gave.
+      valueOf: (path) => _isSound(path)
+          ? const _SoundOnSeRows()
+          : spot ?? _settingsFor(path).into,
       appliesTo: _placeable,
       enabledFor: (path, value) =>
-          value != ImportDestination.activeCutLayer ||
-          widget.session.activeCutOrNull != null,
+          !_isSound(path) &&
+          (value != ImportDestination.activeCutLayer ||
+              widget.session.activeCutOrNull != null),
       onPick: (paths, value) {
         if (value is ImportDestination) {
           _setSettings(paths, (settings) => settings.copyWith(into: value));
@@ -1097,7 +1111,7 @@ class _ImportDialogState extends State<ImportDialog> {
     values: MediaFitMode.values,
     labelOf: (value) => importFitLabel(value! as MediaFitMode),
     valueOf: (path) => _settingsFor(path).fit,
-    appliesTo: _placeable,
+    appliesTo: _placesPicture,
     enabledFor: (path, value) =>
         value == MediaFitMode.none ||
         !importFitLocked(_settingsFor(path), placing: placing),

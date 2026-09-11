@@ -218,26 +218,34 @@ void main() {
     expect(openOptions(), isEmpty, reason: 'and it is not the window\'s');
   });
 
-  testWidgets('a sound among pictures answers only what a sound can: bake, '
-      'into and fit are dashes on its row', (tester) async {
+  testWidgets('a sound among pictures answers only what a sound can: its '
+      'place is the SE rows, locked (「소리파일: 추천대로 통일」), and bake '
+      'and fit are dashes on its row', (tester) async {
     final png = await tester.runAsync(() => writePng('a.png'));
     final wav = await tester.runAsync(() => writeWav('se.wav'));
     await open(tester, session(), [png!, wav!]);
 
-    for (final id in ['bake', 'into', 'fit']) {
+    expect(cellWord(tester, 'into', wav), AppText.strings.imIntoSeRow);
+    await tester.ensureVisible(cell('into', wav));
+    await tester.pumpAndSettle();
+    await tester.tap(cell('into', wav), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(openOptions(), isEmpty, reason: 'the SE rows\' rule answered it');
+    for (final id in ['bake', 'fit']) {
       expect(cellWord(tester, id, wav), '—', reason: id);
     }
   });
 
-  testWidgets('a batch of nothing but sound asks no picture question at all', (
-    tester,
-  ) async {
+  testWidgets('a batch of nothing but sound asks no picture question at all '
+      '— its one placement answer, the SE rows, is shown', (tester) async {
     final wav = await tester.runAsync(() => writeWav('se.wav'));
     await open(tester, session(), [wav!]);
 
-    for (final id in ['bake', 'into', 'fit', 'psd']) {
+    for (final id in ['bake', 'fit', 'psd']) {
       expect(column(id), findsNothing, reason: id);
     }
+    expect(column('into'), findsOneWidget);
+    expect(cellWord(tester, 'into', wav), AppText.strings.imIntoSeRow);
     expect(column('file'), findsOneWidget);
   });
 }

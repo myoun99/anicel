@@ -13,6 +13,7 @@ import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../models/project_frame_rate.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
@@ -20,12 +21,14 @@ import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../audio/audio_conform_store.dart';
 import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
+import 'media_pool.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
 
-/// The image / PSD / PDF import doors.
+/// The image / PSD / PDF / sound import doors.
 class ProjectImportDoors {
   ProjectImportDoors({
     required ProjectAccess project,
@@ -34,12 +37,18 @@ class ProjectImportDoors {
     required RenderCaches renderCaches,
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
+    required MediaPool pool,
+    required AudioConformStore conforms,
+    required ProjectFrameRate Function() frameRate,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
        _renderCaches = renderCaches,
        _landing = landing,
-       _fingerprints = fingerprints;
+       _fingerprints = fingerprints,
+       _pool = pool,
+       _conforms = conforms,
+       _frameRate = frameRate;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -47,6 +56,9 @@ class ProjectImportDoors {
   final RenderCaches _renderCaches;
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
+  final MediaPool _pool;
+  final AudioConformStore _conforms;
+  final ProjectFrameRate Function() _frameRate;
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps
@@ -514,6 +526,55 @@ class ProjectImportDoors {
     } finally {
       await document.dispose();
     }
+  }
+
+  /// A SOUND onto the track's SE rows ([ImportLanding.landSound]). The
+  /// conform answers how long it is, and [inFrame]/[outFrame] trim it: the
+  /// in point is how far into the file the block's sound starts, the span
+  /// is the block's length. Returns false when the sound cannot be read or
+  /// there is no cut to measure from.
+  Future<bool> importSoundFile({
+    required String path,
+    required bool copyIntoProject,
+    int inFrame = 0,
+    int? outFrame,
+    ImportLayerSpot? spot,
+  }) async {
+    final gate = _landing.arriveAt(
+      ImportDestination.activeCutLayer,
+      path: path,
+      spot: spot,
+    );
+    if (gate == null) {
+      return false;
+    }
+    final source = _pool.importAudioFile(path);
+    final conform = await _conforms.ensureFor(source);
+    final peaks = conform != null && conform.isUsable ? conform.peaks : null;
+    if (peaks == null) {
+      return false;
+    }
+    final total = peaks.durationFrames(_frameRate());
+    final first = inFrame.clamp(0, total - 1);
+    final last = (outFrame ?? total - 1).clamp(first, total - 1);
+    final landed = _landing.landSound(
+      arrival: gate,
+      offsetFrames: first,
+      lengthFrames: last - first + 1,
+      assets: [
+        importedMediaAsset(
+          path: source,
+          kind: MediaAssetKind.audio,
+          fit: MediaFitMode.contain,
+          identity: readMediaIdentity(source),
+          carried: copyIntoProject,
+        ),
+      ],
+    );
+    if (landed) {
+      _changes.notifyChanged();
+    }
+    return landed;
   }
 
   /// A page extent as whole pixels the renderer accepts.

@@ -230,4 +230,74 @@ void main() {
       isNull,
     );
   });
+
+  test('a PLACED sound writes its dialogue, its 「SE」 tag and where in the '
+      'file it starts — a take leaves all three at their defaults', () {
+    final plan = planSeTakePlacement(
+      layer: _seRow(frames: const [], timeline: const {}),
+      startFrame: 2,
+      lengthFrames: 5,
+      filePath: _sound,
+      takeFrameId: _takeId,
+      newFrameId: () => const FrameId('never'),
+      name: 'door.wav',
+      seName: placedSoundNameTag,
+      offsetFrames: 3,
+    )!;
+    final frame = plan.layer.frames.single;
+    expect((frame.name, frame.seName), ('door.wav', 'SE'));
+    expect(plan.layer.audioClips.single.offsetFrames, 3);
+
+    final take = _plan(
+      _seRow(frames: const [], timeline: const {}),
+      start: 2,
+      length: 5,
+    );
+    final takeFrame = take.layer.frames.single;
+    expect((takeFrame.name, takeFrame.seName), (null, null));
+    expect(take.layer.audioClips.single.offsetFrames, 0);
+  });
+
+  group('the row a placed sound takes (「SE1부터 … 겹치지 않는 … 기존 '
+      'SE행」)', () {
+    Layer row(String id, Map<int, TimelineExposure> timeline) => Layer(
+      id: LayerId(id),
+      name: id,
+      kind: LayerKind.se,
+      frames: [
+        for (final exposure in timeline.values)
+          Frame(id: exposure.frameId!, duration: 1, strokes: const []),
+      ],
+      timeline: timeline,
+    );
+
+    test('the first row, in order, with no block anywhere in the span', () {
+      final s1 = row('S1', {
+        0: const TimelineExposure.drawing(FrameId('a'), length: 3),
+      });
+      final s2 = row('S2', const {});
+      expect(
+        firstSeRowFreeFor([s1, s2], startFrame: 0, lengthFrames: 2)?.id,
+        s2.id,
+        reason: 'S1 is taken where it would start',
+      );
+      expect(
+        firstSeRowFreeFor([s1, s2], startFrame: 3, lengthFrames: 4)?.id,
+        s1.id,
+        reason: 'past its block S1 has room — 「뒤든 앞이든 겹치지 않는」',
+      );
+    });
+
+    test('a block the span runs INTO takes the row too, and a row with no '
+        'room anywhere answers nothing', () {
+      final s1 = row('S1', {
+        5: const TimelineExposure.drawing(FrameId('b'), length: 2),
+      });
+      expect(firstSeRowFreeFor([s1], startFrame: 2, lengthFrames: 4), isNull);
+      expect(
+        firstSeRowFreeFor([s1], startFrame: 2, lengthFrames: 3)?.id,
+        s1.id,
+      );
+    });
+  });
 }

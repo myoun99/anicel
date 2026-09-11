@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 
 /// The import/placement window: the interpretation table shows the parse
@@ -842,11 +843,12 @@ void main() {
       );
     });
 
-    testWidgets('🚨a sound REGISTERS rather than places, and it still counts '
-        'as imported — a batch of nothing but sound must not report '
-        '"Nothing imported."', (tester) async {
+    testWidgets('🚨a sound PLACES on the SE rows (유저 2026-09-11: 「소리파일: '
+        '추천대로 통일」), and it counts as imported — a batch of nothing but '
+        'sound must not report "Nothing imported."', (tester) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
+        audioConformStore: soundConformStore(),
       );
       addTearDown(session.dispose);
       final wav = await tester.runAsync(() async {
@@ -854,8 +856,8 @@ void main() {
         await file.writeAsBytes(const [0x52, 0x49, 0x46, 0x46]);
         return file.path;
       });
-      // A PLACEMENT run (a destination is chosen), not the pool: this is
-      // the branch where audio takes the batch door on its own.
+      // A PLACEMENT run (a destination is chosen), not the pool: a sound
+      // goes through its own door onto the SE rows.
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -879,12 +881,18 @@ void main() {
       expect(
         session.repository.requireProject().mediaAssets,
         isNotEmpty,
-        reason: 'the sound registered',
+        reason: 'the sound registered as it placed',
+      );
+      expect(
+        session.activeTrack.seLayers.first
+            .timeline[session.activeCutGlobalStartFrame],
+        isNotNull,
+        reason: 'it landed on SE1 from the cut start',
       );
       expect(
         find.text('Nothing imported.'),
         findsNothing,
-        reason: 'a registration IS an import — the batch counted it',
+        reason: 'a placement IS an import — the batch counted it',
       );
     });
 

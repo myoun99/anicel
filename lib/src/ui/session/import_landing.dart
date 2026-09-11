@@ -12,11 +12,15 @@ import '../../models/cut_id.dart';
 import '../../models/drawing_block_move.dart' show planDrawingRangeMove;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
+import '../../models/layer_section_defaults.dart' show nextSeLayerName;
 import '../../models/media_asset.dart';
+import '../../models/se_take_placement.dart';
 import '../../models/timeline_coverage.dart' show drawingBlocks;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../services/command.dart' show CompositeCommand;
 import '../../services/commands/import_media_command.dart';
+import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/editing/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize, importedCut;
@@ -326,6 +330,84 @@ class ImportLanding {
             before: row,
             after: rederiveRunBehaviors(landed, cutFrameCount: cutFrameCount),
           ),
+          if (assets.isNotEmpty)
+            ImportMediaCommand(
+              repository: _project.repository,
+              editingSession: _timeline.editingSession,
+              assetAdditions: assets,
+              description: arrival.undoDescription,
+            ),
+        ],
+      ),
+    );
+    return true;
+  }
+
+  /// A SOUND onto the track's SE rows, from the active cut's start: the
+  /// first row with room for it ([firstSeRowFreeFor]), or a new row after
+  /// the last. Its block is tagged 「SE」 and carries the file's name as its
+  /// dialogue (유저 2026-09-11: 「블록의 이름을 SE(SE 고정 …), 대사를 파일
+  /// 이름(확장자포함)으로」).
+  ///
+  /// ⛔NOT A SECOND WAY TO PUT A SOUND ON A ROW. The block and its clip land
+  /// the way a recorded take lands — [planSeTakePlacement], the one planner
+  /// for that — and the row's change and the pool's registration are ONE
+  /// undo step, as a take's are.
+  bool landSound({
+    required ImportArrival arrival,
+    required int offsetFrames,
+    required int lengthFrames,
+    List<MediaAsset> assets = const [],
+  }) {
+    if (arrival.targetCut == null || lengthFrames < 1) {
+      return false;
+    }
+    final track = _selection.activeTrack;
+    final start = _project.activeCutGlobalStartFrame;
+    final free = firstSeRowFreeFor(
+      track.seLayers,
+      startFrame: start,
+      lengthFrames: lengthFrames,
+    );
+    final row =
+        free ??
+        Layer(
+          id: _layerIds.mint(),
+          name: nextSeLayerName(track.seLayers),
+          frames: const [],
+          timeline: const {},
+          kind: LayerKind.se,
+        );
+    final plan = planSeTakePlacement(
+      layer: row,
+      startFrame: start,
+      lengthFrames: lengthFrames,
+      filePath: arrival.source,
+      takeFrameId: _frameIds.mintFrameId(row.id),
+      newFrameId: () => _frameIds.mintFrameId(row.id),
+      name: arrival.displayName,
+      seName: placedSoundNameTag,
+      offsetFrames: offsetFrames,
+    );
+    if (plan == null) {
+      return false;
+    }
+    _project.historyManager.execute(
+      CompositeCommand(
+        description: arrival.undoDescription,
+        commands: [
+          if (free == null)
+            AddTrackSeLayerCommand(
+              repository: _project.repository,
+              trackId: track.id,
+              layer: plan.layer,
+            )
+          else
+            UpdateLayerTimelineCommand(
+              repository: _project.repository,
+              before: free,
+              after: plan.layer,
+            ),
           if (assets.isNotEmpty)
             ImportMediaCommand(
               repository: _project.repository,
