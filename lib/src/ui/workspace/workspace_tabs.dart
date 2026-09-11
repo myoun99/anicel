@@ -756,6 +756,24 @@ class _WorkspaceTabs {
                   spot: spot,
                 );
               },
+              // A pool row let go on the LAYER AREA: a new layer at the gap
+              // the rail's caret showed (「레이어 영역(가로선) → 새 레이어」).
+              // Nothing is stood on — the row does not exist yet.
+              onPlaceMediaAssetBetweenLayers: (displayLayers, slot, path) {
+                final spot = _state.widget.session.layerSlotSpotFor(
+                  displayLayers,
+                  slot,
+                  path,
+                );
+                if (spot == null) {
+                  return;
+                }
+                _state._openImportWindow(
+                  initialPaths: [path],
+                  placeOnly: true,
+                  spot: spot,
+                );
+              },
               orientation: _state._timelineOrientation.value,
               onOrientationChanged: (orientation) {
                 _state._timelineOrientation.value = orientation;

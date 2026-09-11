@@ -28,6 +28,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart' show effectHeaderRowsOf;
+import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -635,6 +636,25 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                             crossExtent: _headers.naturalHeaderExtent,
                           ),
                         ),
+                        // The sheet's header strip is the rail turned on its
+                        // side, so it is the same place entrance, along x.
+                        if (widget.hooks.onDropMediaAssetBetweenLayers
+                            case final onDrop?)
+                          Positioned.fill(
+                            child: LayerPlacementEntrance(
+                              key: const ValueKey<String>(
+                                'xsheet-layer-placement-entrance',
+                              ),
+                              rowAxis: Axis.horizontal,
+                              pitch: _metrics.layerRowHeight,
+                              rows: () => _dragRows,
+                              onHover:
+                                  widget.hooks.rowDragHooks?.onPlacementHover,
+                              onLeave:
+                                  widget.hooks.rowDragHooks?.onPlacementLeave,
+                              onDrop: onDrop,
+                            ),
+                          ),
                       ],
                     ),
                   ],

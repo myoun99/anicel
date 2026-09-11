@@ -4,6 +4,7 @@ import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
@@ -383,37 +384,24 @@ class LayerVerbs {
     _changes.notifyChanged();
   }
 
-  /// Inserts a NEW ROW the way one joins the stack above the active layer.
-  ///
-  /// Two structural rules, and they used to live inside the drawing-kind
-  /// arm where every later kind had to remember them:
-  /// - an attach group is INDIVISIBLE (R26 #36): the row lands past the
-  ///   whole group, never between a base and its attach rows — whether the
-  ///   active row is the base or one of its attaches. BOTH sides count: a
-  ///   below-only group used to slip through an above-only check.
-  /// - the row INHERITS the active row's folder. A row inserted into a
-  ///   folder's contiguous member run without belonging to it breaks the
-  ///   folder invariant and composites in the wrong scope; for R6b's
-  ///   adjustment that meant filtering nothing at all, silently.
+  /// Inserts a NEW ROW the way one joins the stack above the active layer:
+  /// aimed at the slot above it and placed by [newRowPlacement], the one
+  /// answer every door that makes a row takes — Add Layer, a file let go
+  /// on the canvas, a file let go between two rail rows. Its two structural
+  /// rules (an attach group is indivisible; a new row joins the folder of
+  /// the row below it) are written there, with why.
   void addRowAboveActive(Layer Function(Cut cut) build) {
     final cut = _project.requireActiveCut;
-    final active = _selection.activeLayer;
+    final placement = newRowPlacement(
+      cut.layers,
+      _controllers.layerController.insertionIndexAboveActiveLayer(),
+    );
     final built = build(cut);
-    final layer = active?.folderId == null
-        ? built
-        : built.copyWith(folderId: active!.folderId);
-    final baseId = active == null
-        ? null
-        : isAttachedLayer(active)
-        ? active.attachedToLayerId
-        : active.id;
-    if (baseId != null && attachedGroupSlice(baseId, cut.layers).length > 1) {
-      _controllers.layerController.addLayer(
-        layer: layer,
-        insertionIndex: attachedGroupEndIndex(baseId, cut.layers),
-      );
-      return;
-    }
-    _controllers.layerController.addLayer(layer: layer);
+    _controllers.layerController.addLayer(
+      layer: placement.folderId == null
+          ? built
+          : built.copyWith(folderId: placement.folderId),
+      insertionIndex: placement.index,
+    );
   }
 }

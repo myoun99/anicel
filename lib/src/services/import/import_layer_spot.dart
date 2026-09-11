@@ -70,3 +70,21 @@ final class SeCellSpot extends ImportLayerSpot {
   @override
   int get hashCode => Object.hash(SeCellSpot, layerId, frameIndex);
 }
+
+/// A new layer at a gap between two rows of the layer area — where the
+/// rail's own caret showed the line (유저 2026-09-11, 미디어 배치 라운드:
+/// 「레이어 영역(가로선) → 새 레이어」). [insertionIndex] is the model index
+/// that line named; `newRowPlacement` still says which folder the row
+/// joins, as it does for every new row.
+final class LayerSlotSpot extends ImportLayerSpot {
+  const LayerSlotSpot(this.insertionIndex);
+
+  final int insertionIndex;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LayerSlotSpot && other.insertionIndex == insertionIndex;
+
+  @override
+  int get hashCode => Object.hash(LayerSlotSpot, insertionIndex);
+}

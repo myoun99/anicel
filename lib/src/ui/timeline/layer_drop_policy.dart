@@ -31,6 +31,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/new_row_placement.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_section_policy.dart';
@@ -210,6 +211,37 @@ int? modelInsertionForSlot({
     return atListEnd ? only : only + 1;
   }
   return atListEnd ? only + 1 : only;
+}
+
+/// Where a NEW row lands for the caret gap [slot] of [displayRows] — the
+/// model index, or null where no new row may go.
+///
+/// The answers a moved row gets, asked for a row that is not in the stack
+/// yet: the gap must name a place in [stack] ([modelInsertionForSlot]); it
+/// must sit in the DRAWING section, read off the row below as a landing's
+/// section is (`_Lift.below`) — a picture row let go between camera rows
+/// would re-bucket into its own section, so the line would promise a place
+/// it does not land; and it must not split an attach group
+/// ([newRowPlacement] would carry the row past the group, and the line has
+/// to be where the row goes).
+int? newRowInsertionForSlot({
+  required List<Layer> stack,
+  required List<Layer> displayRows,
+  required int slot,
+}) {
+  final insertAt = modelInsertionForSlot(
+    stack: stack,
+    displayRows: displayRows,
+    slot: slot,
+  );
+  if (insertAt == null) {
+    return null;
+  }
+  final neighbour = insertAt > 0 ? stack[insertAt - 1] : stack.first;
+  if (timelineSectionForLayerKind(neighbour.kind) != TimelineSection.drawing) {
+    return null;
+  }
+  return newRowPlacement(stack, insertAt).index == insertAt ? insertAt : null;
 }
 
 /// The plan for dropping [movingId]'s run at [insertAt] in [stack], or null
@@ -920,6 +952,33 @@ List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
     }
   }
   return layers;
+}
+
+/// The gap among the LAYER rows on screen nearest a pointer standing
+/// [along] into a uniform strip of [pitch]-long rows — the caret a drag
+/// that holds no row raises (a file from the pool).
+///
+/// 유저 2026-08-12 ④: the line is where the cursor is — the nearest
+/// boundary between layer rows. Lanes only ever trail the layer they belong
+/// to, so the last gap is the strip's end.
+int nearestLayerGap(
+  List<TimelineDisplayRow> rows,
+  double along,
+  double pitch,
+) {
+  final layers = layerRowsOf(rows);
+  var nearest = 0;
+  var nearestDistance = double.infinity;
+  for (var slot = 0; slot <= layers.length; slot += 1) {
+    final edge =
+        (slot < layers.length ? layers[slot].rowIndex : rows.length) * pitch;
+    final distance = (along - edge).abs();
+    if (distance < nearestDistance) {
+      nearest = slot;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
 }
 
 /// One dragged row's view of the rail: the layer rows on screen, where the

@@ -15,6 +15,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart' show nextSeLayerName;
 import '../../models/media_asset.dart';
+import '../../models/new_row_placement.dart';
 import '../../models/se_take_placement.dart';
 import '../../models/timeline_coverage.dart' show drawingBlocks;
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
@@ -259,15 +260,40 @@ class ImportLanding {
       );
     }
     if (arrival.targetCut != null) {
+      // A drop's spot aims the new rows — above the active row, or at the
+      // gap the rail's caret showed — and they join the stack the way every
+      // new row does ([newRowPlacement]): the folder of the row below,
+      // never inside an attach group. No spot is the import menu's answer,
+      // the top of the stack.
+      final stack = _project.requireActiveCut.layers;
+      final placement = switch (arrival.spot) {
+        AboveActiveLayerSpot() => newRowPlacement(
+          stack,
+          _layerIndexAboveActive(),
+        ),
+        LayerSlotSpot(:final insertionIndex) => newRowPlacement(
+          stack,
+          insertionIndex,
+        ),
+        _ => null,
+      };
+      final folderId = placement?.folderId;
       _project.historyManager.execute(
         ImportMediaCommand(
           repository: _project.repository,
           editingSession: _timeline.editingSession,
           targetCutId: arrival.cutId,
-          newLayers: layers,
-          layerInsertionIndex: arrival.spot is AboveActiveLayerSpot
-              ? _layerIndexAboveActive()
-              : null,
+          // The batch's own top rows join; rows an imported folder holds
+          // keep pointing at it.
+          newLayers: folderId == null
+              ? layers
+              : [
+                  for (final layer in layers)
+                    layer.folderId == null
+                        ? layer.copyWith(folderId: folderId)
+                        : layer,
+                ],
+          layerInsertionIndex: placement?.index,
           assetAdditions: assets,
           description: description,
         ),

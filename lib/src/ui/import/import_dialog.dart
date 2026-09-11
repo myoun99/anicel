@@ -1100,7 +1100,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// cell for a row's frames or an SE cell (「A 원화 · 9번 칸」, 「S1 · 6번
   /// 칸」 — the mockup's words).
   String _spotLabel(ImportLayerSpot spot) => switch (spot) {
-    AboveActiveLayerSpot() => AppText.strings.imIntoNewLayer,
+    AboveActiveLayerSpot() || LayerSlotSpot() => AppText.strings.imIntoNewLayer,
     RowFramesSpot(:final layerId, :final frameIndex) =>
       AppText.strings.imIntoRowCell(
         widget.session.layerById(layerId)?.name ?? '',

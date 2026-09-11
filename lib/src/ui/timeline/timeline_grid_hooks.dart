@@ -72,6 +72,7 @@ class TimelineGridHooks {
     this.onShowSecondsChanged,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
+    this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.attachArrowPlacementOf,
@@ -210,6 +211,12 @@ class TimelineGridHooks {
   /// this cut and this layer already answered.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// A media-browser row let go on the LAYER AREA, at the gap [slot] of
+  /// [displayLayers]: a new layer there (「레이어 영역(가로선) → 새
+  /// 레이어」). Null leaves the layer area refusing the drag.
+  final void Function(List<Layer> displayLayers, int slot, String path)?
+  onDropMediaAssetBetweenLayers;
 
   /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
   /// that opens the window carrying mute/solo/fader/pan. Null hides the

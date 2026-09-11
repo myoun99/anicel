@@ -480,6 +480,26 @@ class _LayerGridRailRows {
                         layerSectionLabelSlotWidth,
                   ),
                 ),
+                // The layer area as a place entrance, on top so a file let
+                // go anywhere on the rail finds it — an empty box the rest
+                // of the time, so every row keeps its own pointer.
+                if (_state.widget.hooks.onDropMediaAssetBetweenLayers
+                    case final onDrop?)
+                  Positioned.fill(
+                    child: LayerPlacementEntrance(
+                      key: const ValueKey<String>(
+                        'timeline-layer-placement-entrance',
+                      ),
+                      rowAxis: Axis.vertical,
+                      pitch: _state._metrics.layerRowHeight,
+                      rows: () => _state._dragRows,
+                      onHover:
+                          _state.widget.hooks.rowDragHooks?.onPlacementHover,
+                      onLeave:
+                          _state.widget.hooks.rowDragHooks?.onPlacementLeave,
+                      onDrop: onDrop,
+                    ),
+                  ),
               ],
             ),
           ),

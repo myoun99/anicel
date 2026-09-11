@@ -583,8 +583,10 @@ void main() {
     testWidgets('🚨a drop decides where it lands (유저 2026-09-11: 「떨어뜨린 '
         '자리가 곧 답」): the canvas opens the window on a new layer above '
         'the active one, a drawing row on its own frames, an SE row\'s empty '
-        'cell on that cell — and a sound on a drawing row or a picture on an '
-        'SE row opens nothing', (tester) async {
+        'cell on that cell, the layer area a new layer at the gap — and a '
+        'sound on a drawing row or a picture on an SE row opens nothing', (
+      tester,
+    ) async {
       await _pumpHome(tester);
       final session = tester
           .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -665,6 +667,23 @@ void main() {
       drop(cellTarget, 'bg.png', cellStart);
       await tester.pump();
       expect(find.byType(ImportDialog), findsNothing);
+
+      // 「레이어 영역(가로선) → 새 레이어」: a picture let go on the layer
+      // area, on the drawing row's top edge — a new layer at that gap.
+      final entrance = find.byKey(
+        const ValueKey<String>('timeline-layer-placement-entrance'),
+      );
+      final railRow = find.byKey(
+        ValueKey<String>('timeline-rail-row-${row.id}-row'),
+      );
+      drop(
+        entrance,
+        'bg.png',
+        tester.getTopLeft(railRow) + const Offset(24, 2),
+      );
+      await tester.pump();
+      expect(openSpot(), isA<LayerSlotSpot>());
+      await close();
     });
 
     testWidgets('the top strip switches what the app is lying on', (

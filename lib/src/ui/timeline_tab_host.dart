@@ -54,6 +54,7 @@ class TimelineTabHost extends StatefulWidget {
     super.key,
     required this.session,
     this.onPlaceMediaAsset,
+    this.onPlaceMediaAssetBetweenLayers,
     required this.orientation,
     required this.onOrientationChanged,
     required this.pixelsPerFrame,
@@ -86,6 +87,12 @@ class TimelineTabHost extends StatefulWidget {
   /// window should do.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onPlaceMediaAsset;
+
+  /// A media-browser row let go on the LAYER AREA, at the gap [slot] of
+  /// [displayLayers] — the host opens the place window for a new layer
+  /// there. Null leaves the layer area refusing the drag.
+  final void Function(List<Layer> displayLayers, int slot, String path)?
+  onPlaceMediaAssetBetweenLayers;
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
   final double pixelsPerFrame;
@@ -774,6 +781,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // move and made the slide feel heavy (R5-⑧); the session drag
             // API stays for callers that need the cross-panel mirror.
             onDropMediaAssetOnLayer: widget.onPlaceMediaAsset,
+            onDropMediaAssetBetweenLayers:
+                widget.onPlaceMediaAssetBetweenLayers,
             audioLane: TimelineAudioLaneCallbacks(
               // Media-browser drops: link the dragged sound to the block.
               onDropMediaAsset: (layerId, blockStartFrame, path) =>
@@ -936,6 +945,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
               onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
               onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
+              // A file from the pool over the layer area raises the caret a
+              // moved row does (「레이어 영역(가로선) → 새 레이어」).
+              onPlacementHover: _session.layerRowDragVerbs.showPlacementCaret,
+              onPlacementLeave: _session.layerRowDragVerbs.clearPlacementCaret,
               // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
               // selection moves it — the cells' grammar, transposed.
               //

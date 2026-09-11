@@ -49,8 +49,10 @@ final class LayerRowSubject extends LayerRowDragSubject {
 
   final LayerId layerId;
 
+  /// A file over the layer area raises a new row's caret in this lane too.
   @override
-  bool sharesLaneWith(LayerRowDragSubject other) => other is LayerRowSubject;
+  bool sharesLaneWith(LayerRowDragSubject other) =>
+      other is LayerRowSubject || other is MediaPlacementSubject;
 
   @override
   bool operator ==(Object other) =>
@@ -59,6 +61,23 @@ final class LayerRowSubject extends LayerRowDragSubject {
 
   @override
   int get hashCode => Object.hash(LayerRowSubject, layerId);
+}
+
+/// A FILE from the pool over the layer area — not a row (유저 2026-09-11:
+/// 「레이어 영역(가로선) → 새 레이어」). The caret it raises is a new row's,
+/// so it shares the layer stack's lane; nothing lifts, because no row on
+/// the rail is what the pointer holds.
+final class MediaPlacementSubject extends LayerRowDragSubject {
+  const MediaPlacementSubject();
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) => other is LayerRowSubject;
+
+  @override
+  bool operator ==(Object other) => other is MediaPlacementSubject;
+
+  @override
+  int get hashCode => (MediaPlacementSubject).hashCode;
 }
 
 /// A storyboard V ROW: the project's track order (R5 #9).
@@ -173,6 +192,8 @@ TimelineRowAddress timelineRowAddressOfDragSubject(
     layerId,
     laneId,
   ),
+  // A file is not a row: no surface asks a selection about one.
+  MediaPlacementSubject() => throw StateError('a pool file is not a row'),
 };
 
 /// A row drag in flight, as the rails draw it.
@@ -226,6 +247,8 @@ class TimelineRowDragHooks {
     this.isInRowSelection,
     this.onSelectBegin,
     this.onSelectEnd,
+    this.onPlacementHover,
+    this.onPlacementLeave,
   });
 
   final ValueListenable<LayerRowDragState?> drag;
@@ -302,6 +325,16 @@ class TimelineRowDragHooks {
 
   final VoidCallback onEnd;
   final VoidCallback onCancel;
+
+  /// A file from the pool standing over the layer area at the gap [slot]
+  /// of [displayLayers] — the caret the new row a drop makes would take
+  /// (「레이어 영역(가로선) → 새 레이어」). Null on surfaces the pool cannot
+  /// drop on.
+  final void Function(List<Layer> displayLayers, int slot, String path)?
+  onPlacementHover;
+
+  /// That file left the layer area, or was let go on it.
+  final VoidCallback? onPlacementLeave;
 }
 
 /// The caret's thickness and colour, shared by every rail that draws one.
@@ -828,6 +861,8 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           // caret or a swallow can be drawn for one.
           LaneRowSubject(:final layerId, :final laneId) =>
             '${layerId.value}:$laneId',
+          // A file is never a row's subject — here for the same reason.
+          MediaPlacementSubject() => 'placement',
         }}',
       ),
       child: IgnorePointer(
@@ -951,6 +986,8 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           // caret or a swallow can be drawn for one.
           LaneRowSubject(:final layerId, :final laneId) =>
             '${layerId.value}:$laneId',
+          // A file is never a row's subject — here for the same reason.
+          MediaPlacementSubject() => 'placement',
         }}',
       ),
       left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),

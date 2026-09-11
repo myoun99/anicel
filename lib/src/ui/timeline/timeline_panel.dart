@@ -73,6 +73,7 @@ class TimelinePanel extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
+    this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     required this.onAddLayer,
@@ -240,6 +241,11 @@ class TimelinePanel extends StatefulWidget {
   /// A media-browser row dropped on a drawing layer; null refuses the drag.
   final void Function(LayerId layerId, int frameIndex, String path)?
   onDropMediaAssetOnLayer;
+
+  /// A media-browser row let go on the layer area, at a gap between rows;
+  /// null refuses the drag.
+  final void Function(List<Layer> displayLayers, int slot, String path)?
+  onDropMediaAssetBetweenLayers;
 
   /// The SE row's mixer (R10 R3), both orientations: its solo tint, and
   /// the speaker press that opens the window carrying mute/solo/fader/pan.
@@ -534,6 +540,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onShowSecondsChanged: widget.onShowSecondsChanged,
       audioLane: widget.audioLane,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
+      onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,

@@ -6,8 +6,11 @@ import '../../models/layer_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/media_asset.dart'
+    show MediaAssetKind, mediaAssetKindForPath;
+import '../timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import '../timeline/layer_row_drag.dart'
-    show LayerRowDragState, LayerRowDragSubject;
+    show LayerRowDragState, LayerRowDragSubject, MediaPlacementSubject;
 import 'session_roles.dart';
 import 'row_selection.dart';
 import 'effects_and_fx.dart';
@@ -179,5 +182,43 @@ class LayerRowDrag {
   void cancelLayerRowDrag() {
     _rowOrderDrag?.cancel();
     _rowOrderDrag = null;
+  }
+
+  /// A file from the pool standing over the layer area at the gap [slot] of
+  /// [displayLayers]: the caret a moved row raises, raised for the new row
+  /// the drop would make — where [newRowInsertionForSlot] says one may go
+  /// (「레이어 영역(가로선) → 새 레이어」).
+  ///
+  /// ⛔Never for a SOUND: round 6 sends a sound from the layer area to the
+  /// SE rows by their rule (「소리파일: 추천대로 통일」), so a line at the
+  /// pointer would promise a place the sound does not go.
+  void showPlacementCaret(List<Layer> displayLayers, int slot, String path) {
+    final cut = _project.activeCutOrNull;
+    final legal =
+        cut != null &&
+        mediaAssetKindForPath(path) != MediaAssetKind.audio &&
+        newRowInsertionForSlot(
+              stack: cut.layers,
+              displayRows: displayLayers,
+              slot: slot,
+            ) !=
+            null;
+    if (!legal) {
+      clearPlacementCaret();
+      return;
+    }
+    inFlight.value = LayerRowDragState(
+      subject: const MediaPlacementSubject(),
+      caretSlot: slot,
+      legal: true,
+    );
+  }
+
+  /// The file left the layer area, or was let go: its caret goes — and
+  /// only its caret, never a row drag's.
+  void clearPlacementCaret() {
+    if (inFlight.value?.subject is MediaPlacementSubject) {
+      inFlight.value = null;
+    }
   }
 }

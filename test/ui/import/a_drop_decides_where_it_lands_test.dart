@@ -12,6 +12,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -478,6 +479,140 @@ void main() {
       expect(word(tester, 'into', png), AppText.strings.imIntoNewLayer);
       await press(tester, 'into', png);
       expect(anOptionIsOpen(), isFalse);
+    });
+
+    testWidgets('the layer area: a new layer too, locked — the rail\'s '
+        'caret already showed where', (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      final s = session();
+      await open(tester, s, png!, const LayerSlotSpot(1));
+
+      expect(word(tester, 'into', png), AppText.strings.imIntoNewLayer);
+      await press(tester, 'into', png);
+      expect(anOptionIsOpen(), isFalse);
+    });
+  });
+
+  group('🚨a new row joins the stack by ONE answer (`newRowPlacement`) — the '
+      'rail\'s gap and the canvas alike', () {
+    const folderId = LayerId('drop-folder');
+
+    /// [s]'s drawing row made the one member of a folder, the folder row
+    /// directly above it (the folder invariant).
+    Layer foldAround(EditorSessionManager s) {
+      final member = drawingRow(s).copyWith(folderId: folderId);
+      s.repository.replaceLayer(layer: member);
+      final at = s.requireActiveCut.layers.indexWhere(
+        (layer) => layer.id == member.id,
+      );
+      s.repository.insertLayer(
+        cutId: s.requireActiveCut.id,
+        layer: Layer(
+          id: folderId,
+          name: 'F',
+          frames: const [],
+          timeline: const {},
+          kind: LayerKind.folder,
+        ),
+        index: at + 1,
+      );
+      expect(
+        folderStructureProblem(s.requireActiveCut.layers),
+        isNull,
+        reason: 'the premise: a well-formed folder',
+      );
+      return member;
+    }
+
+    /// Imports one still with [spot] and returns the rows it added.
+    Future<List<Layer>> land(
+      WidgetTester tester,
+      EditorSessionManager s,
+      ImportLayerSpot spot,
+    ) async {
+      final before = {for (final layer in s.requireActiveCut.layers) layer.id};
+      final landed = await tester.runAsync(() async {
+        final path = await writePng('a.png');
+        return s.importDoors.importImageFile(
+          path: path,
+          destination: ImportDestination.activeCutLayer,
+          copyIntoProject: false,
+          spot: spot,
+        );
+      });
+      expect(landed, isTrue);
+      return [
+        for (final layer in s.requireActiveCut.layers)
+          if (!before.contains(layer.id)) layer,
+      ];
+    }
+
+    testWidgets('a picture let go between two rail rows lands at that gap, '
+        'inside the folder of the row below it', (tester) async {
+      final s = session();
+      final member = foldAround(s);
+      final gap =
+          s.requireActiveCut.layers.indexWhere(
+            (layer) => layer.id == member.id,
+          ) +
+          1;
+
+      final added = (await land(tester, s, LayerSlotSpot(gap))).single;
+
+      final layers = s.requireActiveCut.layers;
+      expect(layers.indexOf(added), gap);
+      expect(added.folderId, folderId);
+      expect(folderStructureProblem(layers), isNull);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🚨the canvas drop with a folder member active joins that '
+        'folder — it used to land inside the run without belonging to it', (
+      tester,
+    ) async {
+      final s = session();
+      final member = foldAround(s);
+      s.selectLayer(member.id);
+
+      final added = (await land(tester, s, const AboveActiveLayerSpot()))
+          .single;
+
+      expect(added.folderId, folderId);
+      expect(folderStructureProblem(s.requireActiveCut.layers), isNull);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🚨the canvas drop on an attach base lands past its rider — '
+        'the group is indivisible, as Add Layer keeps it', (tester) async {
+      final s = session();
+      final base = drawingRow(s);
+      final at = s.requireActiveCut.layers.indexWhere(
+        (layer) => layer.id == base.id,
+      );
+      final rider = Layer(
+        id: const LayerId('drop-rider'),
+        name: 'R',
+        frames: const [],
+        timeline: const {},
+        attachedToLayerId: base.id,
+      );
+      s.repository.insertLayer(
+        cutId: s.requireActiveCut.id,
+        layer: rider,
+        index: at + 1,
+      );
+      s.selectLayer(base.id);
+
+      final added = (await land(tester, s, const AboveActiveLayerSpot()))
+          .single;
+
+      final layers = s.requireActiveCut.layers;
+      expect(
+        layers.indexOf(added),
+        layers.indexWhere((layer) => layer.id == rider.id) + 1,
+        reason: 'above the rider, never between it and its base',
+      );
+      await tester.pumpAndSettle();
     });
   });
 }

@@ -46,6 +46,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../services/import/import_layer_spot.dart';
+import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
 import '../models/onion_skin_settings.dart';
 import '../models/timesheet_info.dart';
@@ -2288,6 +2289,30 @@ class EditorSessionManager extends ChangeNotifier
           : null;
     }
     return frameDropSpot(layerId, frameIndex, path);
+  }
+
+  /// Where a file let go on the LAYER AREA lands: a new row at the gap the
+  /// rail's caret showed ([newRowInsertionForSlot]), 「레이어 영역(가로선) →
+  /// 새 레이어」. A sound takes the SE rows' rule whichever way it came in
+  /// (round 6), and the canvas's spot is the one that already says so. Null
+  /// where no new row may go, and the drop does nothing.
+  ImportLayerSpot? layerSlotSpotFor(
+    List<Layer> displayLayers,
+    int slot,
+    String path,
+  ) {
+    if (mediaAssetKindForPath(path) == MediaAssetKind.audio) {
+      return const AboveActiveLayerSpot();
+    }
+    final cut = activeCutOrNull;
+    final index = cut == null
+        ? null
+        : newRowInsertionForSlot(
+            stack: cut.layers,
+            displayRows: displayLayers,
+            slot: slot,
+          );
+    return index == null ? null : LayerSlotSpot(index);
   }
 
   // ── the shove: its own object, in its own file ────────────────────────
