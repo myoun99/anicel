@@ -236,9 +236,12 @@ void main() {
         find.byKey(const ValueKey<String>('import-name-/in/$long')),
       );
       final extension = tester.getSize(find.text('.png'));
+      // The room is stated here, not read back from the table: a floor the
+      // test takes from the code it guards moves with that code.
+      const readableRoom = 120.0;
       expect(
         name.width + extension.width,
-        greaterThanOrEqualTo(ImportFileTable.nameMinWidth - 0.5),
+        greaterThanOrEqualTo(readableRoom - 0.5),
         reason: 'the fixed columns used to leave the name 20px',
       );
       expect(find.text('.png'), findsOneWidget);
@@ -259,6 +262,20 @@ void main() {
       expect(word.bottom, lessThanOrEqualTo(chip.bottom));
       expect(chip.top, greaterThanOrEqualTo(line.top));
       expect(chip.bottom, lessThanOrEqualTo(line.bottom));
+      // Boxes nest even when squeezed — a word pressed into 6px still sits
+      // inside its chip. A cut is a box shorter than what it holds needs.
+      for (final box in [
+        find.descendant(of: cell('mode', 'a.png'), matching: find.text('carry')),
+        cell('mode', 'a.png'),
+      ]) {
+        final render = tester.renderObject<RenderBox>(box);
+        expect(
+          render.size.height,
+          greaterThanOrEqualTo(
+            render.getMinIntrinsicHeight(render.size.width) - 0.5,
+          ),
+        );
+      }
     });
 
     testWidgets('the narrowest width grows with the questions asked, and '
