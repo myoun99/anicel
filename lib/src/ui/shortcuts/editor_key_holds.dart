@@ -95,9 +95,7 @@ final class EditorKeyHolds {
       return;
     }
     _held[key] = _KeyHold.eyedropper;
-    if (!joining) {
-      temporaryTool.hold(CanvasTool.eyedropper);
-    }
+    temporaryTool.hold(CanvasTool.eyedropper);
   }
 
   void _onStrokeLive() {

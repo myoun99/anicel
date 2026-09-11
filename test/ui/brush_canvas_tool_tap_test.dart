@@ -736,6 +736,37 @@ void main() {
     );
   });
 
+  testWidgets('the eyedropper cursor is the TOOL alone — a painting tool '
+      'with the pick wired never arms it (I-15: Alt switches the tool)', (
+    tester,
+  ) async {
+    const trackerKey = ValueKey<String>('eyedropper-hover-tracker');
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+    );
+    Future<void> pumpWith(CanvasTool tool) async {
+      await tester.pumpWidget(
+        app(
+          BrushCanvasPanel(
+            coordinator: coordinator,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+            sampleColorAt: (_) => 0xFFAABBCC,
+            onEyedropperPick: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpWith(CanvasTool.brush);
+    expect(find.byKey(trackerKey), findsNothing);
+    await pumpWith(CanvasTool.eyedropper);
+    expect(find.byKey(trackerKey), findsOneWidget);
+  });
+
   testWidgets('the eyedropper shows a hover swatch of the color under the '
       'pointer (R11-②)', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
