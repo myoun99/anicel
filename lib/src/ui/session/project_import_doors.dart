@@ -7,13 +7,15 @@
 // [ImportLanding] rather than a copy each.
 
 import 'dart:typed_data';
-import 'dart:ui' as ui show ImageByteFormat;
+import 'dart:ui' as ui show Image, ImageByteFormat;
 
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -21,8 +23,11 @@ import '../../services/import/media_import_planner.dart';
 import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../../services/straight_rgba_image.dart';
 import '../audio/audio_conform_store.dart';
+import '../import/import_file_settings.dart';
 import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
@@ -189,9 +194,6 @@ class ProjectImportDoors {
       }
       return false;
     }
-    // Frames dropped on a row are that row's cels, so their pixels are
-    // keyed under it rather than under the layer that was only planned.
-    final rowId = spot is RowFramesSpot ? spot.layerId : null;
     // 🔑 AFTER the registration. The bytes were read to decode them, so the
     // hash costs no I/O. A RASTERIZING import used to skip it because it
     // registered nothing; it registers now (유저 2026-09-11: 「구워도 풀에
@@ -205,35 +207,19 @@ class ProjectImportDoors {
     // track through the inserted cut). Duplicate folding compresses the
     // bake list, so every bake names its SOURCE frame index.
     try {
-      final bakedCut = _project.cutById(cutId);
-      if (bakedCut != null) {
-        for (final bake in bakes) {
-          final surface = await rasterizeImageToSurface(
-            image: decoded[bake.sourceFrameIndex].image,
-            canvas: bakedCut.canvasSize,
-            fit: bake.fit,
-          );
-          bakeCelSurface(
-            _renderCaches.brushFrameStore,
-            _internals.brushFrameKeyForCut(
-              bakedCut,
-              rowId ?? bake.layerId,
-              bake.frameId,
-            ),
-            surface,
-          );
-        }
-      }
+      await _bakeLandedCels(
+        cutId,
+        layer,
+        bakes,
+        spot: spot,
+        pictureOf: (bake, _) async =>
+            (image: decoded[bake.sourceFrameIndex].image, owned: false),
+      );
     } finally {
       for (final frame in decoded) {
         frame.image.dispose();
       }
     }
-
-    _changes.refreshAfterCutCommand(
-      preferredActiveLayerId: rowId ?? layer.id,
-    );
-    _changes.notifyChanged();
     return true;
   }
 
@@ -457,7 +443,6 @@ class ProjectImportDoors {
       if (!landed) {
         return false;
       }
-      final rowId = spot is RowFramesSpot ? spot.layerId : null;
       // ⛔ No fingerprint here. A PDF is opened BY PATH and rendered page by
       // page precisely so a hundred-page conte never lands in memory at
       // once; reading it whole to hash it would undo the one thing this
@@ -472,60 +457,277 @@ class ProjectImportDoors {
       // so one damaged page must leave its cel empty and be REPORTED —
       // never abort into a half-baked import the dialog would retry as a
       // duplicate.
-      final bakedCut = _project.cutById(cutId);
-      if (bakedCut != null) {
-        var done = 0;
-        for (final bake in bakes) {
-          // The bake counts within the SPAN; the document counts from its
-          // first page.
+      await _bakeLandedCels(
+        cutId,
+        layer,
+        bakes,
+        spot: spot,
+        onProgress: onRenderProgress,
+        // The bake counts within the SPAN; the document counts from its
+        // first page.
+        onFailed: (bake) =>
+            onPageRenderFailed?.call(firstPage + bake.sourceFrameIndex),
+        pictureOf: (bake, canvas) async {
           final pageIndex = firstPage + bake.sourceFrameIndex;
-          try {
-            final pageSize = document.pageSize(pageIndex);
-            final placement = placementRectFor(
-              sourceWidth: _pagePixels(pageSize.width),
-              sourceHeight: _pagePixels(pageSize.height),
-              canvas: bakedCut.canvasSize,
-              fit: bake.fit,
-            );
-            final image = await document.renderPage(
-              pageIndex,
-              width: _pagePixels(placement.width),
-              height: _pagePixels(placement.height),
-            );
-            try {
-              final surface = await rasterizeImageToSurface(
-                image: image,
-                canvas: bakedCut.canvasSize,
-                fit: bake.fit,
-              );
-              bakeCelSurface(
-                _renderCaches.brushFrameStore,
-                _internals.brushFrameKeyForCut(
-                  bakedCut,
-                  rowId ?? bake.layerId,
-                  bake.frameId,
-                ),
-                surface,
-              );
-            } finally {
-              image.dispose();
-            }
-          } on Object {
-            onPageRenderFailed?.call(pageIndex);
-          }
-          done += 1;
-          onRenderProgress?.call(done, bakes.length);
-        }
-      }
-
-      _changes.refreshAfterCutCommand(
-        preferredActiveLayerId: rowId ?? layer.id,
+          final pageSize = document.pageSize(pageIndex);
+          final placement = placementRectFor(
+            sourceWidth: _pagePixels(pageSize.width),
+            sourceHeight: _pagePixels(pageSize.height),
+            canvas: canvas,
+            fit: bake.fit,
+          );
+          final image = await document.renderPage(
+            pageIndex,
+            width: _pagePixels(placement.width),
+            height: _pagePixels(placement.height),
+          );
+          return (image: image, owned: true);
+        },
       );
-      _changes.notifyChanged();
       return true;
     } finally {
       await document.dispose();
     }
+  }
+
+  /// A MOVIE (미디어 배치 라운드 6). The picture lands the way a sequence
+  /// does — kept as a REFERENCE when the window's bake is off (one cel over
+  /// the span, decoded when it is shown), baked into cels when it is on or
+  /// when the drop was a picture row's frames (「프레임 영역은 늘
+  /// 굽는다」) — and its SOUND, when [withSound] asks and the movie has
+  /// one, lands on the SE rows by the sound's own law, starting where the
+  /// picture starts (「같은 시작 · 같은 구간」). One undo step for the pair;
+  /// after that they are two blocks (「짝 = 따로따로」).
+  ///
+  /// [settings] are the window row's answers, taken whole — where it goes,
+  /// carry or link, bake, 「소리」, the fit, IN/OUT. IN/OUT count PROJECT
+  /// frames on the sound's clock ([MovieClock]), the frames a sound's IN/OUT
+  /// count, so the pair share one span and the sound's in point is exact.
+  Future<bool> importVideoFile({
+    required String path,
+    required ImportFileSettings settings,
+    void Function(int rendered, int total)? onRenderProgress,
+    void Function(int movieFrame)? onFrameRenderFailed,
+    ImportLayerSpot? spot,
+  }) async {
+    // The destination gate runs BEFORE the movie opens — a refused import
+    // must not have a document to leak.
+    final gate = _landing.arriveAt(settings.into, path: path, spot: spot);
+    if (gate == null) {
+      return false;
+    }
+    final opened = await videoDecodeBackend.open(gate.source);
+    if (opened == null) {
+      return false;
+    }
+    try {
+      final info = opened.info;
+      final project = _project.repository.requireProject();
+      final clock = MovieClock(
+        projectRate: _frameRate(),
+        audioSpeed: (
+          numerator: project.audioSpeedNumerator,
+          denominator: project.audioSpeedDenominator,
+        ),
+        movieRate: (
+          numerator: info.fpsNumerator,
+          denominator: info.fpsDenominator,
+        ),
+      );
+      final kept = KeptSpan(
+        length: clock.projectFramesCovering(info.frameCount),
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+      );
+      // A NEW cut is made at the movie's own size, which its locked 1:1
+      // fit fills exactly.
+      final arrival = gate.targetCut == null
+          ? gate.withCanvasSize(
+              CanvasSize(width: info.width, height: info.height),
+            )
+          : gate;
+      final source = arrival.source;
+      final Layer layer;
+      final List<PlannedCelBake> bakes;
+      if (settings.bake || spot is RowFramesSpot) {
+        final movieFrames = [
+          for (var n = kept.first; n <= kept.last; n += 1)
+            clock.movieFrameAt(n),
+        ];
+        final plan = planSequenceLayer(
+          sourceFiles: List<String>.filled(movieFrames.length, source),
+          // A movie frame the clock shows twice is ONE picture held
+          // (「중복 접기」): the fingerprint IS the movie frame.
+          frameFingerprints: movieFrames,
+          sourceFrameIndices: movieFrames,
+          displayName: arrival.displayName,
+          cutId: arrival.cutId,
+          fit: settings.fit,
+          rasterize: true,
+          mint: arrival.mint,
+        );
+        layer = plan.layer;
+        bakes = plan.bakes;
+      } else {
+        layer = planMovieReferenceLayer(
+          referencePath: source,
+          displayName: arrival.displayName,
+          span: (first: kept.first, count: kept.count),
+          mint: arrival.mint,
+        );
+        bakes = const [];
+      }
+      // Baked or not, the file registers (유저 2026-09-11: 「구워도 풀에
+      // 남음」) — ONE entry, which the sound points at too.
+      final asset = importedMediaAsset(
+        path: source,
+        kind: MediaAssetKind.video,
+        fit: settings.fit,
+        identity: readMediaIdentity(source),
+        carried: settings.mode == ImportFileMode.keepInside,
+        sourceFps: info.fps,
+        frameCount: info.frameCount,
+      );
+      // The conform answers whether there is a sound at all — the one the
+      // sound's playback will read.
+      final withMovieSound =
+          settings.sound &&
+          await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
+              null;
+      var landed = false;
+      _project.historyManager.runAsOneStep(arrival.undoDescription, () {
+        landed = _landing.land(
+          [layer],
+          arrival: arrival,
+          duration: kept.count,
+          assets: [asset],
+        );
+        if (!landed || !withMovieSound) {
+          return;
+        }
+        // A NEW cut is the active one by now, so the sound asks the gate
+        // again, there.
+        final soundArrival = arrival.targetCut != null
+            ? arrival
+            : _landing.arriveAt(
+                ImportDestination.activeCutLayer,
+                path: source,
+              );
+        if (soundArrival != null) {
+          _landing.landSound(
+            arrival: soundArrival,
+            offsetFrames: kept.first,
+            lengthFrames: kept.count,
+          );
+        }
+      });
+      if (!landed) {
+        return false;
+      }
+      await _bakeLandedCels(
+        arrival.cutId,
+        layer,
+        bakes,
+        spot: spot,
+        onProgress: onRenderProgress,
+        // One frame the reader refuses leaves its cel empty and is
+        // reported — never an abort into a half-baked import.
+        onFailed: (bake) => onFrameRenderFailed?.call(bake.sourceFrameIndex),
+        pictureOf: (bake, _) async {
+          final rgba = await videoDecodeBackend.frame(
+            opened.token,
+            bake.sourceFrameIndex,
+          );
+          if (rgba == null) {
+            throw StateError(
+              'Movie frame ${bake.sourceFrameIndex} did not decode.',
+            );
+          }
+          final image = await decodeStraightRgbaImage(
+            rgba: rgba,
+            width: info.width,
+            height: info.height,
+          );
+          return (image: image, owned: true);
+        },
+      );
+      return true;
+    } finally {
+      await videoDecodeBackend.close(opened.token);
+    }
+  }
+
+  /// Bakes a landed import's cels and hands the session the row to stand
+  /// on — the TAIL every picture door shares (a still or a GIF, a PDF's
+  /// pages, a movie's frames). Frames dropped on a row ([spot]) are that
+  /// row's cels, so their pixels are keyed under it rather than under the
+  /// [layer] that was only planned. A picture for each bake comes from
+  /// [pictureOf], given the cut's canvas; it is rasterized there with the
+  /// bake's fit and donated through the ordinary cel path. [onProgress]
+  /// counts every bake, made or not.
+  ///
+  /// With [onFailed], a bake that throws leaves its cel empty and is
+  /// reported, and the rest go on: the structure is already committed, and
+  /// a half-baked import is one the window would retry as a duplicate.
+  /// Without it the throw is the caller's.
+  ///
+  /// ⛔ONE TAIL, THREE DOORS. The still/GIF door and the PDF door each wrote
+  /// it out — the cut, the loop, the row to stand on — and the movie door
+  /// was the third.
+  Future<void> _bakeLandedCels(
+    CutId cutId,
+    Layer layer,
+    List<PlannedCelBake> bakes, {
+    required ImportLayerSpot? spot,
+    required Future<({ui.Image image, bool owned})> Function(
+      PlannedCelBake bake,
+      CanvasSize canvas,
+    )
+    pictureOf,
+    void Function(int done, int total)? onProgress,
+    void Function(PlannedCelBake bake)? onFailed,
+  }) async {
+    final rowId = spot is RowFramesSpot ? spot.layerId : null;
+    // Pixels bake AFTER the structure exists: the keys resolve the owner
+    // track through the inserted cut.
+    final cut = _project.cutById(cutId);
+    if (cut != null) {
+      var done = 0;
+      for (final bake in bakes) {
+        try {
+          final picture = await pictureOf(bake, cut.canvasSize);
+          try {
+            final surface = await rasterizeImageToSurface(
+              image: picture.image,
+              canvas: cut.canvasSize,
+              fit: bake.fit,
+            );
+            bakeCelSurface(
+              _renderCaches.brushFrameStore,
+              _internals.brushFrameKeyForCut(
+                cut,
+                rowId ?? bake.layerId,
+                bake.frameId,
+              ),
+              surface,
+            );
+          } finally {
+            if (picture.owned) {
+              picture.image.dispose();
+            }
+          }
+        } on Object {
+          if (onFailed == null) {
+            rethrow;
+          }
+          onFailed(bake);
+        }
+        done += 1;
+        onProgress?.call(done, bakes.length);
+      }
+    }
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
+    _changes.notifyChanged();
   }
 
   /// A SOUND onto the track's SE rows ([ImportLanding.landSound]). The
@@ -565,7 +767,10 @@ class ProjectImportDoors {
       assets: [
         importedMediaAsset(
           path: source,
-          kind: MediaAssetKind.audio,
+          // A movie's sound comes from the MOVIE: one pool entry for the
+          // pair, so a relink finds both (「리링크는 풀 항목이 하나라 둘 다
+          // 한 번에 따라간다」).
+          kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
           fit: MediaFitMode.contain,
           identity: readMediaIdentity(source),
           carried: copyIntoProject,

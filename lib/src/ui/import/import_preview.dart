@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../models/kept_span.dart';
+import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/import/raster_cel_import.dart';
@@ -45,6 +46,7 @@ class ImportPreview extends StatefulWidget {
     required this.rangeEditable,
     required this.soundPeaks,
     required this.frameRate,
+    this.audioSpeed = (numerator: 1, denominator: 1),
   });
 
   /// The file being looked at, or null when nothing is selected.
@@ -66,6 +68,11 @@ class ImportPreview extends StatefulWidget {
   /// The project's rate: a sound runs over the frames IN/OUT and the block
   /// it becomes are counted in.
   final ProjectFrameRate frameRate;
+
+  /// The project's accumulated audio pull. A movie's frames are counted on
+  /// the SOUND's clock ([MovieClock]) — the frames its IN/OUT and the block
+  /// it becomes are counted in, the same ones a sound's are.
+  final ({int numerator, int denominator}) audioSpeed;
 
   /// The narrowest this zone lays out: the transport's own minimum inside
   /// the inset around it. The window gives the file table the rest.
@@ -164,10 +171,10 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// one was usually the media viewer's, and it went blank with no error.
   /// A handle says which movie is whose, and the decoder puts it back.
   Future<void> _loadVideo(String path) async {
-    final decoder = QaVideoDecoder.instance;
-    if (decoder == null || !decoder.isSupported) {
-      // No engine, or a build without a reader: the zone stays empty and
-      // the window's footer already says a movie cannot be placed.
+    // The capability belongs to the thing that reads — the BACKEND, as the
+    // viewer asks it ([VideoDecodeBackend.supported]); a decoder asked
+    // beside it could disagree with the one doing the work.
+    if (!videoDecodeBackend.supported) {
       setState(() {});
       return;
     }
@@ -185,6 +192,18 @@ class _ImportPreviewState extends State<ImportPreview> {
     setState(() => _video = video);
     await _renderVideoFrame(0);
   }
+
+  /// The movie's clock: its transport counts PROJECT frames, and each one
+  /// shows the movie frame that holds its instant — the placement counts
+  /// them the same way, so what IN/OUT frame here is what lands.
+  MovieClock _clockOf(QaVideoInfo info) => MovieClock(
+    projectRate: widget.frameRate,
+    audioSpeed: widget.audioSpeed,
+    movieRate: (
+      numerator: info.fpsNumerator,
+      denominator: info.fpsDenominator,
+    ),
+  );
 
   /// Draws the frame under the playhead. One at a time: a scrub asks for
   /// the frame it landed on, not for the ones it passed over.
@@ -335,7 +354,9 @@ class _ImportPreviewState extends State<ImportPreview> {
     final video = _video;
     if (video != null) {
       return (
-        frameCount: video.info.frameCount,
+        frameCount: _clockOf(
+          video.info,
+        ).projectFramesCovering(video.info.frameCount),
         picture: _videoFrame,
         sound: null,
       );
@@ -479,6 +500,12 @@ class _ImportPreviewState extends State<ImportPreview> {
         setState(() => _position = frame);
         if (_pdfPages > 0) {
           unawaited(_renderPdfPage(frame));
+        }
+        final video = _video;
+        if (video != null) {
+          unawaited(
+            _renderVideoFrame(_clockOf(video.info).movieFrameAt(frame)),
+          );
         }
       },
       // Playback belongs to the day a video arrives; stepping is what

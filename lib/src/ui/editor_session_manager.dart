@@ -44,7 +44,8 @@ import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
-import '../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
+import '../models/media_asset.dart'
+    show MediaAssetKind, mediaAssetKindForPath, normalizedMediaPath;
 import '../services/import/import_layer_spot.dart';
 import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
@@ -2284,12 +2285,23 @@ class EditorSessionManager extends ChangeNotifier
   /// 블록」). Null when it lands nowhere, and the drop does nothing.
   ImportLayerSpot? dropSpotFor(LayerId layerId, int frameIndex, String path) {
     if (isTrackSeLayerId(layerId)) {
-      return mediaAssetKindForPath(path) == MediaAssetKind.audio
+      return _mayCarrySound(path)
           ? SeCellSpot(layerId: layerId, frameIndex: frameIndex)
           : null;
     }
     return frameDropSpot(layerId, frameIndex, path);
   }
+
+  /// Whether [path] can put a SOUND on an SE row: a sound, or a movie the
+  /// conform has not found silent (「소리 없는 영상이면 칩이 금지로
+  /// 바뀐다」). A movie the conform has not answered yet is let through —
+  /// its landing asks again, and lands nothing where there is nothing.
+  bool _mayCarrySound(String path) => switch (mediaAssetKindForPath(path)) {
+    MediaAssetKind.audio => true,
+    MediaAssetKind.video =>
+      audioConformStore.failureFor(normalizedMediaPath(path)) == null,
+    _ => false,
+  };
 
   /// Where a file let go on the LAYER AREA lands: a new row at the gap the
   /// rail's caret showed ([newRowInsertionForSlot]), 「레이어 영역(가로선) →

@@ -249,11 +249,6 @@ void main() {
       final s = await pumpWindow(tester, path!, poolOnly: true);
 
       expect(
-        find.textContaining('placement not available'),
-        findsNothing,
-        reason: 'nothing is being placed, so nothing can be unplaceable',
-      );
-      expect(
         find.byKey(const ValueKey<String>('import-rasterize-toggle')),
         findsNothing,
         reason: 'rasterize is a question about a placed layer',
@@ -276,28 +271,12 @@ void main() {
       );
       await tester.pump();
       expect(
-        find.textContaining('placement not available'),
+        find.byKey(const ValueKey<String>('import-column-bake')),
         findsNothing,
-        reason: 'the chip is disabled: pressing it changes nothing',
+        reason:
+            'the chip is disabled: pressing it changes nothing — a placement '
+            'would have asked the movie whether it bakes',
       );
-    });
-
-    testWidgets('placed from anywhere else, the same movie is refused BY '
-        'NAME', (tester) async {
-      final path = await tester.runAsync(writeMovie);
-      final s = await pumpWindow(tester, path!, poolOnly: false);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-place-timeline')),
-      );
-      await tester.pump();
-      expect(find.textContaining('placement not available'), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('placement is not available'), findsOneWidget);
-      expect(s.mediaPool.mediaAssets, isEmpty);
     });
 
     testWidgets('every other entrance still starts on a placement', (
@@ -1427,16 +1406,6 @@ void main() {
       expect(find.byType(ImportFileTable), findsOneWidget);
     });
 
-    testWidgets('a movie in a placing batch is refused in the reader\'s '
-        'language, and the note names it', (tester) async {
-      final movie = await writeMovie(tester);
-      await pumpOn(tester, [movie]);
 
-      final note = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('import-unplaceable-note')),
-      );
-      expect(note.data, contains(AppText.strings.imRegisterInstead));
-      expect(note.data, contains('ref'));
-    });
   });
 }

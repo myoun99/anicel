@@ -332,8 +332,10 @@ void main() {
     expect(s.frameDropSpot(row.id, 4, 'door.wav'), isNull);
     expect(
       s.frameDropSpot(row.id, 4, 'take.mov'),
-      isNull,
-      reason: 'a movie is not baked by this window yet',
+      RowFramesSpot(layerId: row.id, frameIndex: 4),
+      reason:
+          'a movie has pictures: its span bakes into the row\'s cels '
+          '(「그림 행의 프레임 영역 → 그림만, 구간을 셀로 굽는다」)',
     );
   });
 

@@ -58,6 +58,7 @@ class ImportFileSettings {
     this.psd = PsdPlaceMode.merge,
     this.inFrame = 0,
     this.outFrame,
+    this.sound = true,
   });
 
   final ImportFileMode mode;
@@ -82,6 +83,11 @@ class ImportFileSettings {
   final int inFrame;
   final int? outFrame;
 
+  /// Whether a MOVIE brings its sound onto the SE rows (the 「소리」
+  /// column, 라운드 6) — asked only of a movie that has one
+  /// ([importSoundAllowed]).
+  final bool sound;
+
   bool get isTrimmed => inFrame > 0 || outFrame != null;
 
   ImportFileSettings copyWith({
@@ -93,6 +99,7 @@ class ImportFileSettings {
     int? inFrame,
     int? outFrame,
     bool clearOut = false,
+    bool? sound,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -101,6 +108,7 @@ class ImportFileSettings {
     psd: psd ?? this.psd,
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
+    sound: sound ?? this.sound,
   );
 
   @override
@@ -112,11 +120,12 @@ class ImportFileSettings {
       other.fit == fit &&
       other.psd == psd &&
       other.inFrame == inFrame &&
-      other.outFrame == outFrame;
+      other.outFrame == outFrame &&
+      other.sound == sound;
 
   @override
   int get hashCode =>
-      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame);
+      Object.hash(mode, bake, into, fit, psd, inFrame, outFrame, sound);
 }
 
 /// What a file of this [kind] answers before anyone has answered for it.
@@ -159,11 +168,39 @@ bool importModeAllowed({
 };
 
 /// Whether the BAKE question is asked of a file of [kind] at all: only where
-/// something is placed, and only of pictures. Sound has no pixels, and a
-/// movie is not baked by this window until video placement brings its
-/// decode-to-cels.
+/// something is placed, and only of what has pictures. Sound has none; a
+/// movie does, and for a movie the answer is whether it stays a reference
+/// (「참조 여부 = 배치 창의 굽기 열」, 라운드 6).
 bool importBakeAllowed({required MediaAssetKind? kind, required bool placing}) =>
-    placing && (kind == MediaAssetKind.image || kind == MediaAssetKind.pdf);
+    placing &&
+    (kind == MediaAssetKind.image ||
+        kind == MediaAssetKind.pdf ||
+        kind == MediaAssetKind.video);
+
+/// Whether the 「소리」 question is asked: of a MOVIE being placed, and only
+/// one that has a sound (라운드 6 확인: 「소리열: 추천대로」 — 소리가 있는
+/// 동영상 행에만).
+bool importSoundAllowed({
+  required MediaAssetKind? kind,
+  required bool placing,
+  required bool hasSound,
+}) => placing && kind == MediaAssetKind.video && hasSound;
+
+/// Whether the 「소리」 answer is the PLACE's: a movie let go on an SE row's
+/// empty cell IS its sound (「SE 행 드롭은 켬으로 잠김」).
+bool importSoundLocked(ImportLayerSpot? spot) => spot is SeCellSpot;
+
+/// What a row answers before anyone has answered for it — its KIND's
+/// default (a movie starts as a reference) and its PLACE's: a movie dropped
+/// on a picture row's frames starts without its sound, which can be turned
+/// on (「프레임 영역 드롭은 끔(켤 수 있음)」).
+ImportFileSettings seedImportSettings({
+  required MediaAssetKind? kind,
+  ImportLayerSpot? spot,
+}) => ImportFileSettings(
+  mode: defaultImportMode(kind),
+  sound: spot is! RowFramesSpot,
+);
 
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
@@ -223,7 +260,13 @@ ImportFileSettings resolvedImportSettings(
   final fit = importFitLocked(settings, placing: placing)
       ? MediaFitMode.none
       : settings.fit;
-  return settings.copyWith(mode: mode, bake: bake, fit: fit, psd: psd);
+  return settings.copyWith(
+    mode: mode,
+    bake: bake,
+    fit: fit,
+    psd: psd,
+    sound: importSoundLocked(spot) || settings.sound,
+  );
 }
 
 /// The words the file table's cells show — the app's strings, so the window
@@ -254,5 +297,5 @@ String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
   PsdPlaceMode.expand => AppText.strings.imPsdExpand,
 };
 
-String importBakeLabel(bool bake) =>
-    bake ? AppText.strings.commonOn : AppText.strings.commonOff;
+String importOnOffLabel(bool on) =>
+    on ? AppText.strings.commonOn : AppText.strings.commonOff;

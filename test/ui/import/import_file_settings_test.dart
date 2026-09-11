@@ -55,7 +55,8 @@ void main() {
   });
 
   group('bake — the layer\'s question', () {
-    test('asked only where something is PLACED, and only of pictures', () {
+    test('asked only where something is PLACED, and only of what has '
+        'pictures', () {
       expect(
         importBakeAllowed(kind: MediaAssetKind.image, placing: true),
         isTrue,
@@ -73,8 +74,10 @@ void main() {
       );
       expect(
         importBakeAllowed(kind: MediaAssetKind.video, placing: true),
-        isFalse,
-        reason: 'a movie bakes with video placement, not in this window yet',
+        isTrue,
+        reason:
+            'a movie has pictures — for a movie the answer is whether it '
+            'stays a reference (「참조 여부 = 배치 창의 굽기 열」)',
       );
     });
 
@@ -271,7 +274,7 @@ void main() {
       for (final psd in PsdPlaceMode.values) {
         expect(importPsdLabel(psd), isNotEmpty);
       }
-      expect(importBakeLabel(true), isNot(importBakeLabel(false)));
+      expect(importOnOffLabel(true), isNot(importOnOffLabel(false)));
     });
 
     test('⛔the fit never says the word the file column says for carrying — '

@@ -206,8 +206,13 @@ SequenceLayerImportPlan planSequenceLayer({
   double? sourceFps,
   MediaAssetKind assetKind = MediaAssetKind.image,
   int? pageCount,
+  List<int>? sourceFrameIndices,
 }) {
   assert(sourceFiles.length == frameFingerprints.length);
+  assert(
+    sourceFrameIndices == null ||
+        sourceFrameIndices.length == sourceFiles.length,
+  );
   final layerId = mint.nextLayerId();
   final frames = <Frame>[];
   final timeline = SplayTreeMap<int, TimelineExposure>();
@@ -248,7 +253,10 @@ SequenceLayerImportPlan planSequenceLayer({
         frameId: frameId,
         sourceFile: sourceFiles[i],
         fit: fit,
-        sourceFrameIndex: i,
+        // A movie shows its frames on the SOUND's clock, so position i is
+        // not movie frame i (`MovieClock`); every other source counts one
+        // for one.
+        sourceFrameIndex: sourceFrameIndices?[i] ?? i,
       ),
     );
     currentCel = frameId;
@@ -293,6 +301,38 @@ SequenceLayerImportPlan planSequenceLayer({
               pageCount: pageCount,
             ),
           ],
+  );
+}
+
+/// A MOVIE kept as a reference (미디어 배치 라운드 6: 「배치 창의 굽기 열이
+/// 끔이면 참조」): ONE cel exposed over the whole [span], pointing at the
+/// file from the span's first frame.
+///
+/// ⚠️The cel has no pixels, and that is the design, not a gap: a movie is
+/// decoded when it is shown (08-31 「굽지 않고 재생할 때 디코드」), so the
+/// one block the timeline draws IS the model — moving it moves the
+/// exposure, trimming its head moves [MediaReference.frameOffset] (the SE
+/// block's sound shift, 「앞을 자르면 파일 안의 시작점이 움직인다」), and
+/// timing a frame at a time waits for the rasterize that makes it cels.
+/// [span] counts PROJECT frames on the sound's clock, like a sound's.
+Layer planMovieReferenceLayer({
+  required String referencePath,
+  required String displayName,
+  required ({int first, int count}) span,
+  required ImportIdMint mint,
+}) {
+  final layerId = mint.nextLayerId();
+  final frameId = mint.nextFrameId(layerId);
+  return Layer(
+    id: layerId,
+    name: displayName,
+    frames: [Frame(id: frameId, duration: 1, strokes: const [])],
+    timeline: SplayTreeMap<int, TimelineExposure>()
+      ..[0] = TimelineExposure.drawing(frameId, length: span.count),
+    mediaReference: MediaReference(
+      assetPath: referencePath,
+      frameOffset: span.first,
+    ),
   );
 }
 

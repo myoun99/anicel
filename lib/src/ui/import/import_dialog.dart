@@ -15,6 +15,7 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show largeCarriedAssetBytes;
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
+import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -130,10 +131,9 @@ class _ImportDialogState extends State<ImportDialog> {
   ImportFileSettings _settingsFor(String path) {
     final kind = mediaAssetKindForPath(path);
     final resolved = resolvedImportSettings(
-      // Untouched rows answer with their KIND's default — a movie starts
-      // as a reference. Seeding here rather than in the constructor keeps
-      // "what this kind does by default" one fact in one place.
-      _settings[path] ?? ImportFileSettings(mode: defaultImportMode(kind)),
+      // Untouched rows answer with their seed ([_seedFor]) — a movie starts
+      // as a reference, and without its sound on a picture row's frames.
+      _settings[path] ?? _seedFor(path),
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing,
@@ -170,9 +170,49 @@ class _ImportDialogState extends State<ImportDialog> {
   ) {
     setState(() {
       for (final path in paths) {
-        _settings[path] = change(_settings[path] ?? const ImportFileSettings());
+        _settings[path] = change(_settings[path] ?? _seedFor(path));
       }
     });
+  }
+
+  /// 🐛ONE SEED FOR READING AND WRITING ([seedImportSettings]). A row's
+  /// first answer used to start from the class's blank default instead, so
+  /// pressing Bake on a movie also turned its Link into Keep — one column
+  /// changed under a press in another.
+  ImportFileSettings _seedFor(String path) => seedImportSettings(
+    kind: mediaAssetKindForPath(path),
+    spot: widget.spot,
+  );
+
+  /// Whether each MOVIE in the batch has a sound, by its pool key — the
+  /// conform answers, and the 「소리」 column asks only of a movie with one.
+  final Map<String, bool> _movieSound = {};
+
+  void _probeMovieSound(String path) {
+    if (mediaAssetKindForPath(path) != MediaAssetKind.video) {
+      return;
+    }
+    final key = normalizedMediaPath(path);
+    if (_movieSound.containsKey(key)) {
+      return;
+    }
+    unawaited(
+      widget.session.audioConformStore.ensurePeaksFor(key).then((peaks) {
+        if (mounted) {
+          setState(() => _movieSound[key] = peaks != null);
+        }
+      }),
+    );
+  }
+
+  /// The project's accumulated audio pull — a movie's preview counts its
+  /// frames on the sound's clock, as its placement does.
+  ({int numerator, int denominator}) get _projectAudioSpeed {
+    final project = widget.session.repository.requireProject();
+    return (
+      numerator: project.audioSpeedNumerator,
+      denominator: project.audioSpeedDenominator,
+    );
   }
 
   /// Whether the project CARRIES these files or points at them where they
@@ -231,6 +271,7 @@ class _ImportDialogState extends State<ImportDialog> {
         }
       } else {
         _files.add(path);
+        _probeMovieSound(path);
       }
     }
     final dropped = _folder;
@@ -358,10 +399,6 @@ class _ImportDialogState extends State<ImportDialog> {
 
   bool get _canImport =>
       !_running && (_files.isNotEmpty || (_folder != null && _parsed != null));
-
-  /// Kinds not placeable yet (video needs a decode engine): named
-  /// honestly instead of failing as a decode. PDF left this set in R4.
-  static const Set<MediaAssetKind> _unplaceableKinds = {MediaAssetKind.video};
 
   /// True while the import is WAITING on somebody else's bytes rather
   /// than doing its own work — which is the only stretch of a run that
@@ -515,12 +552,6 @@ class _ImportDialogState extends State<ImportDialog> {
   Future<bool> _placeFiles(_ImportTally tally) async {
     for (final path in _files) {
       final kind = mediaAssetKindForPath(path);
-      if (_unplaceableKinds.contains(kind)) {
-        tally.warnings.add(
-          AppText.strings.imNotPlaceable(mediaAssetDefaultName(path)),
-        );
-        continue;
-      }
       // A PLACEMENT reads the file, so this is where the picked path
       // has to become a path that reads — the same law the two open
       // doors go through. A cloud file arrives here as a placeholder
@@ -558,11 +589,11 @@ class _ImportDialogState extends State<ImportDialog> {
       return;
     }
     if (failedPages.isNotEmpty) {
+      final name = mediaAssetDefaultName(path);
       tally.warnings.add(
-        AppText.strings.imPagesFailed(
-          mediaAssetDefaultName(path),
-          failedPages.length,
-        ),
+        kind == MediaAssetKind.video
+            ? AppText.strings.imFramesFailed(name, failedPages.length)
+            : AppText.strings.imPagesFailed(name, failedPages.length),
       );
     }
     if (ok) {
@@ -592,6 +623,9 @@ class _ImportDialogState extends State<ImportDialog> {
         outFrame: settings.outFrame,
         spot: widget.spot,
       );
+    }
+    if (kind == MediaAssetKind.video) {
+      return _placeMovie(path, settings, failedPages);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
@@ -633,6 +667,52 @@ class _ImportDialogState extends State<ImportDialog> {
   /// Why a placement that ran and answered `false` did not land, most
   /// specific reason first: a build with no renderer, then a destination
   /// that is not there.
+  /// A MOVIE's door (미디어 배치 라운드 6). Let go on an SE row's empty
+  /// cell it is its sound alone (「SE 행은 소리만 담으므로 영상의 소리만
+  /// 블록이 된다」). Anywhere else the picture lands — cels when it bakes,
+  /// behind the app's one wait window, because a bake is hundreds of them
+  /// (「이런 무거움이 예상되는 로직은 로딩 ui 띄우도록」) — with its sound on
+  /// the SE rows when the 「소리」 answer says so.
+  Future<bool> _placeMovie(
+    String path,
+    ImportFileSettings settings,
+    List<int> failedFrames,
+  ) {
+    final doors = widget.session.importDoors;
+    final carry = settings.mode == ImportFileMode.keepInside;
+    if (widget.spot is SeCellSpot) {
+      return doors.importSoundFile(
+        path: path,
+        copyIntoProject: carry,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        spot: widget.spot,
+      );
+    }
+    Future<bool> place(void Function(int rendered, int total)? progress) =>
+        doors.importVideoFile(
+          path: path,
+          settings: settings,
+          onRenderProgress: progress,
+          onFrameRenderFailed: failedFrames.add,
+          spot: widget.spot,
+        );
+    if (!settings.bake) {
+      return place(null);
+    }
+    return runWithAppProgress<bool>(
+      context: context,
+      title: mediaAssetDefaultName(path),
+      titleIcon: Icons.movie_outlined,
+      runningLabel: AppText.strings.bakeProgressRunning,
+      doneLabel: AppText.strings.bakeProgressDone,
+      windowKey: const ValueKey<String>('movie-bake-progress'),
+      task: (report) => place(
+        (rendered, total) => report(total <= 0 ? 1 : rendered / total),
+      ),
+    );
+  }
+
   String _placementFailure(
     String path,
     MediaAssetKind? kind,
@@ -710,10 +790,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // The size warning moved down here with the settings column: what
       // travels inside the project file is now the sum of per-row answers,
       // so it belongs where the window speaks about the batch.
-      footerNote:
-          _status.isEmpty &&
-              _largeCarriedPaths().isEmpty &&
-              _unplaceablePaths().isEmpty
+      footerNote: _status.isEmpty && _largeCarriedPaths().isEmpty
           ? null
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,7 +803,6 @@ class _ImportDialogState extends State<ImportDialog> {
                     style: Theme.of(context).textTheme.labelSmall,
                     overflow: TextOverflow.ellipsis,
                   ),
-                _unplaceableNote(context),
                 _largeCarriedNote(context),
               ],
             ),
@@ -911,6 +987,7 @@ class _ImportDialogState extends State<ImportDialog> {
                 rangeEditable: _placing,
                 soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
                 frameRate: widget.session.projectSettings.projectFrameRate,
+                audioSpeed: _projectAudioSpeed,
                 onRangeChanged: (start, end) {
                   if (previewPath == null) {
                     return;
@@ -996,21 +1073,28 @@ class _ImportDialogState extends State<ImportDialog> {
         ),
       ))
         _bakeColumn(placing),
-      if (placing && any(_placeable)) _intoColumn(),
+      // A movie's sound, asked only of a movie that has one (라운드 6 확인:
+      // 「소리열: 추천대로」).
+      if (any(_asksSound)) _soundColumn(),
+      if (placing && _files.isNotEmpty) _intoColumn(),
       if (placing && any(_placesPicture)) _fitColumn(placing),
       // 「PSD가 아닌파일은 PSD열 삭제」.
       if (placing && any(importPathIsPsd)) _psdColumn(placing),
     ];
   }
 
-  /// Whether this window places [path] at all — a movie waits for its
-  /// decoder; a picture and a sound both place.
-  bool _placeable(String path) =>
-      !_unplaceableKinds.contains(mediaAssetKindForPath(path));
-
   /// Whether [path] places as a PICTURE — the only thing a fit means
-  /// anything for. A sound goes to the SE rows.
-  bool _placesPicture(String path) => _placeable(path) && !_isSound(path);
+  /// anything for. A sound goes to the SE rows; a movie is a picture here,
+  /// and its sound follows the 「소리」 answer.
+  bool _placesPicture(String path) => !_isSound(path);
+
+  /// Whether the 「소리」 question is this row's: a movie being placed that
+  /// the conform found a sound in ([_probeMovieSound]).
+  bool _asksSound(String path) => importSoundAllowed(
+    kind: mediaAssetKindForPath(path),
+    placing: _placing,
+    hasSound: _movieSound[normalizedMediaPath(path)] ?? false,
+  );
 
   bool _isSound(String path) =>
       mediaAssetKindForPath(path) == MediaAssetKind.audio;
@@ -1043,7 +1127,7 @@ class _ImportDialogState extends State<ImportDialog> {
     label: AppText.strings.imBake,
     style: ImportColumnStyle.toggle,
     values: const [false, true],
-    labelOf: (value) => importBakeLabel(value == true),
+    labelOf: (value) => importOnOffLabel(value == true),
     valueOf: (path) => _settingsFor(path).bake,
     appliesTo: (path) => importBakeAllowed(
       kind: mediaAssetKindForPath(path),
@@ -1060,6 +1144,22 @@ class _ImportDialogState extends State<ImportDialog> {
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => settings.copyWith(bake: value == true),
+    ),
+  );
+
+  ImportColumn<Object?> _soundColumn() => ImportColumn<Object?>(
+    id: 'sound',
+    label: AppText.strings.imSound,
+    style: ImportColumnStyle.toggle,
+    values: const [false, true],
+    labelOf: (value) => importOnOffLabel(value == true),
+    valueOf: (path) => _settingsFor(path).sound,
+    appliesTo: _asksSound,
+    enabledFor: (path, value) =>
+        value == true || !importSoundLocked(widget.spot),
+    onPick: (paths, value) => _setSettings(
+      paths,
+      (settings) => settings.copyWith(sound: value == true),
     ),
   );
 
@@ -1083,7 +1183,7 @@ class _ImportDialogState extends State<ImportDialog> {
       valueOf: (path) => _isSound(path)
           ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
           : spot ?? _settingsFor(path).into,
-      appliesTo: _placeable,
+      appliesTo: (path) => true,
       enabledFor: (path, value) =>
           !_isSound(path) &&
           (value != ImportDestination.activeCutLayer ||
@@ -1148,37 +1248,6 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
-  /// Files this window cannot place — a movie, until there is a decoder.
-  ///
-  /// Their Into cell shows a dash, which says the question does not apply
-  /// but not WHY. The row cannot carry the reason without becoming a
-  /// paragraph, so the reason sits in the footer and names them.
-  List<String> _unplaceablePaths() {
-    if (!_placing) {
-      return const [];
-    }
-    return [
-      for (final path in _files)
-        if (_unplaceableKinds.contains(mediaAssetKindForPath(path))) path,
-    ];
-  }
-
-  Widget _unplaceableNote(BuildContext context) {
-    final paths = _unplaceablePaths();
-    if (paths.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final named = paths.map(mediaAssetDefaultName).take(3).join(', ');
-    final more = paths.length > 3
-        ? AppText.strings.imAndMore(paths.length - 3)
-        : '';
-    return Text(
-      '$named$more: ${AppText.strings.imRegisterInstead}',
-      key: const ValueKey<String>('import-unplaceable-note'),
-      style: Theme.of(context).textTheme.labelSmall,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
 
   /// `MM-DD`, which is what a row has space for and what a person scanning
   /// a folder of today's work is actually reading.

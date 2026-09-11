@@ -425,7 +425,14 @@ class ImportLanding {
       }
       length = gaps.first.length;
     } else {
-      start = window.toGlobalFrame(0);
+      // A movie's sound starts where its picture starts (「같은 시작 · 같은
+      // 구간」): the cell a picture row's frames were dropped on, the cut's
+      // first frame wherever a new row came in.
+      final pictureStart = switch (arrival.spot) {
+        RowFramesSpot(:final frameIndex) => frameIndex,
+        _ => 0,
+      };
+      start = window.toGlobalFrame(pictureStart);
       free = firstSeRowFreeFor(
         track.seLayers,
         startFrame: start,
