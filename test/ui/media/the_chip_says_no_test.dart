@@ -14,6 +14,16 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 /// 「불가능 = 칩의 금지 표시(커서는 그대로)」 · 「가능할 때와 불가능할 때 — 칩
 /// 하나로만 말한다」 · 「아이콘은 파일 종류를 따른다」).
 void main() {
+  test('each kind has its own picture — the one the pool row always showed', () {
+    expect(mediaAssetKindIcon(MediaAssetKind.audio), Icons.music_note_outlined);
+    expect(mediaAssetKindIcon(MediaAssetKind.image), Icons.image_outlined);
+    expect(mediaAssetKindIcon(MediaAssetKind.video), Icons.movie_outlined);
+    expect(
+      mediaAssetKindIcon(MediaAssetKind.pdf),
+      Icons.picture_as_pdf_outlined,
+    );
+  });
+
   group('the chip', () {
     Future<void> pumpChip(
       WidgetTester tester, {
