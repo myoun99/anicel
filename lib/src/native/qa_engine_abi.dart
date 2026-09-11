@@ -158,7 +158,16 @@ import 'dart:io';
 ///   stream in — left one Dart call per pixel on each side of the kernel,
 ///   and measured in one process it bought 1.6x on flat line art and
 ///   nothing on 4K. Written inside this version, before it landed.
-const int kQaEngineAbiVersion = 34;
+/// - v35: the video decoder's document became a HANDLE. `qa_video_decode_open`
+///   and `_open_range` answer one (0 is still 「could not」), `_info`,
+///   `_frame` and `_close` take it, and `qa_video_decode_close_all` closes
+///   the row of them. ONE native document meant whoever wanted a movie had
+///   to put the other's back — measured ~111ms a switch — and a movie kept
+///   as a reference put three more callers in the room at once: the canvas
+///   it is shown on, the playback warmer filling the frames ahead, and
+///   export walking a whole cut. Each backend still addresses exactly one
+///   document; the law picks which slot before it calls a hook.
+const int kQaEngineAbiVersion = 35;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

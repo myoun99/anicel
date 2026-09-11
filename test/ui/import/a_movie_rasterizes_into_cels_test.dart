@@ -11,9 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
@@ -168,21 +168,23 @@ void main() {
     );
 
     // A STILL reference is the plain rasterize command's: its one cel IS
-    // its pixels, with nothing to decode.
-    await s.importDoors.importImageFile(
-      path: await writeSolidPng(tempDir, 'bg.png'),
-      destination: ImportDestination.activeCutLayer,
-      copyIntoProject: false,
+    // its pixels, with nothing to decode. ⚠️Built HERE as one block over a
+    // row, rather than imported: an image row is born covering its cut, so
+    // the block count would answer first and this guard would never be the
+    // one that spoke.
+    final png = await writeSolidPng(tempDir, 'bg.png');
+    final still = rowOf(s, layer).copyWith(
+      mediaReference: MediaReference(assetPath: png),
     );
-    final still = s.requireActiveCut.layers.lastWhere(
-      (candidate) => candidate.mediaReference != null,
-    );
+    s.repository.replaceLayer(layer: still);
+
     expect(
       await s.importDoors.rasterizeMovieReference(
         cutId: s.requireActiveCut.id,
         layerId: still.id,
       ),
       isFalse,
+      reason: 'a still\'s cel IS its pixels — nothing here to decode',
     );
   });
 }

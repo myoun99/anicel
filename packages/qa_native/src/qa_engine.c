@@ -5054,4 +5054,10 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // Originals come back as RUNS, and an undo reads its recipe at a step
 // (0 for a uniform one) - the flat-bytes shape left a Dart call per pixel on
 // each side of the kernel. Changed inside this version, before it landed.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 34; }
+// v35: the video decoder's document became a HANDLE. `qa_video_decode_open`
+// and `_open_range` answer one (0 is still failure), `_info`, `_frame` and
+// `_close` take it, and `qa_video_decode_close_all` closes the lot. One
+// native document meant a ~111ms re-open per switch, and a movie kept as a
+// reference put three callers in the room at once — the canvas where it is
+// shown, the playback warmer ahead of it, and export walking the cut.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 35; }

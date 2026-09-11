@@ -8,20 +8,20 @@ import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_engine_path.dart';
 
-/// 🚨★★★**ONE NATIVE DOCUMENT, TWO PARTS OF THE APP THAT WANT ONE.**
+/// 🚨★★★**EVERY MOVIE THAT IS OPEN STAYS OPEN.**
 ///
-/// The media viewer plays a movie. The import window scrubs one. Both used
-/// to call `open` and then `frame`, and the second open silently closed the
-/// first — the import preview said so in a comment and treated it as a
-/// property to live with: 「opening one here is also what closes the last」.
+/// The media viewer plays a movie. The placement window scrubs one. A movie
+/// kept as a reference decodes where the canvas stands, the playback warmer
+/// fills the frames ahead of it, and export walks a whole cut. They used to
+/// share ONE native document: the second open silently closed the first —
+/// the import preview said so in a comment and treated it as a property to
+/// live with — and the fix after that was a handle the decoder could put
+/// BACK, at a measured ~111ms per switch.
 ///
-/// What that reads as, to a person, is a viewer whose picture stops
-/// changing. No error anywhere: `frame` simply answers null on a document
-/// nobody opened, and the render is dropped.
-///
-/// ⛔The fix is not 「remember to re-open」 at each call site. A handle
-/// carries WHICH movie, and the decoder puts it back — so the two consumers
-/// interleave, at the price of a re-open, instead of one going blank.
+/// ⛔A price per switch is not a price you pay once. Two of those callers
+/// interleaving frame by frame paid it per frame, which is a stutter with
+/// nothing on screen to explain it. The document is a native handle now, so
+/// 「whose movie is loaded」 is not a question anything asks.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
@@ -126,38 +126,39 @@ void main() {
 
     final viewer = decoder.openDocument(movies.first);
     expect(viewer, isNotNull, reason: decoder.lastError);
-    final before = decoder.frameOf(viewer!, 0);
-    expect(before, isNotNull, reason: 'the first movie must open and decode');
+    expect(decoder.frameOf(viewer!, 0), isNotNull);
 
-    // The import window opens ITS movie — the exact act that used to take
-    // the viewer's away.
+    // The placement window opens ITS movie — the exact act that used to
+    // take the viewer's away.
     final preview = decoder.openDocument(movies.second);
     expect(preview, isNotNull, reason: decoder.lastError);
     expect(decoder.frameOf(preview!, 0), isNotNull);
 
-    // 🚨THE ASSERTION. Before the handle, this came back null.
-    final after = decoder.frameOf(viewer, 1);
     expect(
-      after,
+      decoder.frameOf(viewer, 1),
       isNotNull,
-      reason: 'the viewer must still be able to read its own movie after '
-          'the import window opened another',
+      reason: 'the viewer must still read its own movie after the window '
+          'opened another',
     );
-
     // And back the other way, so the rule is not 「whoever was first」.
     expect(decoder.frameOf(preview, 1), isNotNull);
+    expect(
+      viewer.handle,
+      isNot(preview.handle),
+      reason: 'two documents, two handles — that IS the law',
+    );
   }, skip: skip);
 
   test('the same frame reads the same either side of a switch', () {
-    // ⚠️Not just 「non-null」: a re-open that landed on the wrong frame, or
-    // read out of the OTHER movie, would pass the test above.
+    // ⚠️Not just 「non-null」: a document that had been put back on the wrong
+    // frame, or read out of the OTHER movie, would pass the test above.
     final decoder = QaVideoDecoder.instance;
     if (decoder == null || !decoder.isSupported) {
       return;
     }
     final movies = twoMovies();
     if (movies == null) {
-      return; // no encoder here — the fixtures cannot be made
+      return;
     }
     final viewer = decoder.openDocument(movies.first)!;
     final wanted = Uint8List.fromList(decoder.frameOf(viewer, 3)!);
@@ -165,63 +166,43 @@ void main() {
     final preview = decoder.openDocument(movies.second)!;
     decoder.frameOf(preview, 7);
 
-    final again = decoder.frameOf(viewer, 3);
-    expect(again, isNotNull);
     expect(
-      again,
+      decoder.frameOf(viewer, 3),
       orderedEquals(wanted),
-      reason: 'frame 3 of the viewer\'s movie is frame 3 whatever the import '
-          'window did in between',
+      reason: 'frame 3 of the viewer\'s movie is frame 3 whatever the '
+          'placement window did in between',
     );
   }, skip: skip);
 
-  test('staying on one movie costs NO re-opens, and switching costs exactly '
-      'one', () {
-    // 🚨★★★**THE COST, NOT THE OUTCOME.** Re-opening is self-healing — a
-    // consumer whose movie was closed under it gets it back on the next
-    // frame — so 「it still works」 stays true however badly this is done.
-    // At a measured ~111ms per re-open on 1080p, the difference between an
-    // interleave that costs nothing and one that stutters is exactly this
-    // number, and nothing else in the app can see it.
+  test('reading one movie, then the other, then back — each answers with '
+      'ITS OWN picture every time', () {
+    // 🚨The interleave the app actually does now: the canvas stands on one
+    // movie while the warmer fills another's frames. Alternating used to
+    // mean a re-open per frame; what a test can still see is that neither
+    // side ever answers with the other's picture.
     final decoder = QaVideoDecoder.instance;
     if (decoder == null || !decoder.isSupported) {
       return;
     }
     final movies = twoMovies();
     if (movies == null) {
-      return; // no encoder here — the fixtures cannot be made
+      return;
     }
-    final viewer = decoder.openDocument(movies.first)!;
-    final preview = decoder.openDocument(movies.second)!;
+    final first = decoder.openDocument(movies.first)!;
+    final second = decoder.openDocument(movies.second)!;
+    final red = Uint8List.fromList(decoder.frameOf(first, 0)!);
+    final blue = Uint8List.fromList(decoder.frameOf(second, 0)!);
 
-    QaVideoDecoder.debugReopens = 0;
-    // The preview is the one loaded, so its own frames are free.
-    decoder.frameOf(preview, 0);
-    decoder.frameOf(preview, 1);
-    decoder.frameOf(preview, 2);
-    expect(
-      QaVideoDecoder.debugReopens,
-      0,
-      reason: 'reading the movie that is already loaded must not re-open it '
-          '— that would make playback pay a random access per frame',
-    );
-
-    decoder.frameOf(viewer, 0);
-    expect(QaVideoDecoder.debugReopens, 1, reason: 'one switch, one re-open');
-    decoder.frameOf(viewer, 1);
-    expect(
-      QaVideoDecoder.debugReopens,
-      1,
-      reason: 'and then it stays put — the switch is what costs, not the '
-          'reading after it',
-    );
+    for (var round = 0; round < 3; round += 1) {
+      expect(decoder.frameOf(first, 0), orderedEquals(red));
+      expect(decoder.frameOf(second, 0), orderedEquals(blue));
+    }
   }, skip: skip);
 
-  test('closing a document that is not the loaded one costs nothing', () {
-    // ⛔A bare `close` from one consumer took the other's movie with it. The
-    // handle makes that recoverable rather than fatal, so what is left to
-    // check is that it does not happen at all: the OTHER consumer must not
-    // have to pay a re-open for somebody else's dispose.
+  test('closing one document leaves the other reading', () {
+    // ⛔A bare close from one consumer took the other's movie with it. Each
+    // handle is its own document now, so a dispose over here cannot be felt
+    // over there.
     final decoder = QaVideoDecoder.instance;
     if (decoder == null || !decoder.isSupported) {
       return;
@@ -232,18 +213,48 @@ void main() {
     }
     final viewer = decoder.openDocument(movies.first)!;
     final preview = decoder.openDocument(movies.second)!;
-    decoder.frameOf(preview, 0);
+    final wanted = Uint8List.fromList(decoder.frameOf(preview, 1)!);
 
-    // The viewer is disposed while the import preview's movie is loaded.
+    // The viewer is disposed while the placement window is still scrubbing.
     decoder.closeDocument(viewer);
 
-    QaVideoDecoder.debugReopens = 0;
-    expect(decoder.frameOf(preview, 1), isNotNull);
     expect(
-      QaVideoDecoder.debugReopens,
-      0,
-      reason: 'the viewer closed a document that was not open — the import '
-          'window must not have to reload because of it',
+      decoder.frameOf(preview, 1),
+      orderedEquals(wanted),
+      reason: 'somebody else\'s dispose is not an event this document has',
     );
+  }, skip: skip);
+
+  test('the slots run out HONESTLY — and a close hands one back', () {
+    // ⚠️A fixed row of documents is a refusal that has to be readable: the
+    // alternative is an open that answers a handle nothing can read.
+    final decoder = QaVideoDecoder.instance;
+    if (decoder == null || !decoder.isSupported) {
+      return;
+    }
+    final movies = twoMovies();
+    if (movies == null) {
+      return;
+    }
+    final open = <QaVideoDocument>[];
+    for (var i = 0; i < 8; i += 1) {
+      final document = decoder.openDocument(movies.first);
+      if (document == null) {
+        break;
+      }
+      open.add(document);
+    }
+    expect(open, hasLength(8), reason: decoder.lastError);
+    expect(
+      decoder.openDocument(movies.second),
+      isNull,
+      reason: 'the ninth has nowhere to go',
+    );
+    expect(decoder.lastError, contains('too many'));
+
+    decoder.closeDocument(open.removeLast());
+    final after = decoder.openDocument(movies.second);
+    expect(after, isNotNull, reason: 'the closed slot is free again');
+    expect(decoder.frameOf(after!, 0), isNotNull);
   }, skip: skip);
 }

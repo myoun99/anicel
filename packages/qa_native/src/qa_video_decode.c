@@ -31,9 +31,16 @@
 // a platform whose path is not written, and the app says "no decoder in
 // this build" instead of failing as a corrupt file.
 //
-// One document at a time, like the export session. Scrubbing a preview is
-// the driving case and it looks at one movie at a time; a second reader
-// would double the memory a decode holds for no caller that exists.
+// MANY DOCUMENTS, one at a time under the hooks. This said 「one document at
+// a time, like the export session」 while scrubbing a preview was the only
+// caller; 2026-09-12 gave it three at once — a movie kept as a reference
+// decodes where it is SHOWN, the playback warmer fills the frames ahead of
+// the playhead, and export walks a whole cut. With one native document
+// those interleave by RE-OPENING, measured ~111ms apiece, which is a
+// stutter per switch and a random access per frame at worst. So a document
+// is a HANDLE now: the law holds a few slots, picks which one the hooks are
+// working on, and each backend still addresses exactly one document —
+// spelled exactly as it was.
 
 #include <stdint.h>
 #include <stdio.h>
@@ -120,13 +127,62 @@ typedef struct {
   int32_t open;
 } qa_decode_doc;
 
-static qa_decode_doc g_doc;
+/// How many movies may be open at once.
+///
+/// The app's own count, with room: the canvas shows one, the warmer fills
+/// ahead on the same one, export walks a cut's rows, and the media viewer
+/// and the placement window each hold their own. A slot costs the backend's
+/// own handle plus this file's few numbers — the PICTURES are the memory,
+/// and those are the caller's (a decoded frame is copied out on every read).
+#define QA_DECODE_DOCS 8
 
-/// Where a rotated frame is decoded before it is turned upright. Grown on
-/// demand and kept across frames — a movie's size does not change, so this
-/// allocates once per document at most. ⛔Freed on close, not per frame.
-static uint8_t* g_rotate_scratch;
-static int64_t g_rotate_scratch_bytes;
+/// Where a backend keeps its own state for ONE document.
+///
+/// ⚠️Bytes rather than a union of the three backends' structs: only one
+/// backend compiles into a build, and naming the other two here would drag
+/// their platform headers into every one. Each backend checks its own fit
+/// at compile time.
+typedef union {
+  unsigned char bytes[192];
+  void* as_pointer;
+  long long as_integer;
+  double as_double;
+} qa_backend_store;
+
+typedef struct {
+  qa_decode_doc doc;
+  qa_backend_store backend;
+  /// Where a rotated frame is decoded before it is turned upright. Grown on
+  /// demand and kept across frames — a movie's size does not change, so this
+  /// allocates once per document at most. ⛔Freed on close, not per frame.
+  uint8_t* rotate_scratch;
+  int64_t rotate_scratch_bytes;
+} qa_decode_slot;
+
+static qa_decode_slot g_docs[QA_DECODE_DOCS];
+
+/// The slot the hooks work on. The law points it at the document a call
+/// names BEFORE it calls any hook, and a backend never asks which one.
+static qa_decode_slot* g_slot = &g_docs[0];
+
+/// ⛔THE BACKENDS ARE NOT REWRITTEN FOR THIS. Each one addresses a single
+/// document — that is the honest platform surface — so the names they were
+/// written against now read the SELECTED slot's fields instead of a global.
+/// A backend body that says `g_doc.fps_num` says it about the document the
+/// law just picked, which is the same sentence it always was.
+#define g_doc (g_slot->doc)
+#define g_rotate_scratch (g_slot->rotate_scratch)
+#define g_rotate_scratch_bytes (g_slot->rotate_scratch_bytes)
+
+/// The slot [handle] names, or NULL. Handles are one-based so that 0 is
+/// 「no document」 the way every other answer in this file spells failure.
+static qa_decode_slot* qa_decode_slot_of(int32_t handle) {
+  if (handle < 1 || handle > QA_DECODE_DOCS) {
+    return NULL;
+  }
+  qa_decode_slot* slot = &g_docs[handle - 1];
+  return slot->doc.open ? slot : NULL;
+}
 
 /// Whether this build has a reader at all. Android answers by `dlsym`, so
 /// this is a hook rather than a constant.
@@ -396,7 +452,11 @@ typedef struct {
   int32_t mf_started;
 } qa_video_decode_state;
 
-static qa_video_decode_state g_dec;
+/// ⚠️In the SLOT, not a global of its own — the law picks the document
+/// before it calls a hook. The name is unchanged, so the reader below is.
+#define g_dec (*(qa_video_decode_state*)g_slot->backend.bytes)
+typedef char qa_win_state_fits[
+    sizeof(qa_video_decode_state) <= sizeof(qa_backend_store) ? 1 : -1];
 
 static int32_t qa_backend_supported(void) { return 1; }
 
@@ -711,13 +771,27 @@ extern int32_t qa_video_apple_decode_read(
     int32_t error_capacity);
 extern void qa_video_apple_decode_close(void);
 
+/// Which document the calls above are about. Objective-C cannot see this
+/// file's slots, so the law names the slot by INDEX and that file keeps its
+/// own row of states — the same shape, one layer down.
+extern void qa_video_apple_decode_select(int32_t slot);
+
 static int32_t qa_backend_supported(void) { return 1; }
 
-static void qa_backend_close(void) { qa_video_apple_decode_close(); }
+/// The selected slot, as an index the other file can hold.
+static void qa_apple_select(void) {
+  qa_video_apple_decode_select((int32_t)(g_slot - g_docs));
+}
+
+static void qa_backend_close(void) {
+  qa_apple_select();
+  qa_video_apple_decode_close();
+}
 
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length) {
+  qa_apple_select();
   // ⚠️A range reaches AVFoundation through a resource loader rather than a
   // URL — see `qa_video_apple.m`, which is also the only compiler that ever
   // sees it.
@@ -747,6 +821,7 @@ static int32_t qa_backend_open(const char* path,
 /// this is a real cost, paid once per jump, and the law's 「already
 /// positioned」 rule is what keeps a play from paying it per frame.
 static int32_t qa_backend_reposition(int64_t index) {
+  qa_apple_select();
   return qa_video_apple_decode_reposition(index, g_doc.fps_num, g_doc.fps_den,
                                           g_decode_error,
                                           (int32_t)sizeof(g_decode_error));
@@ -762,6 +837,7 @@ static int32_t qa_sample_reaches_hook(int64_t stamp,
 }
 
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
+  qa_apple_select();
   // ⚠️STORED size: this writes the picture the file holds, and the law
   // turns it upright afterwards.
   return qa_video_apple_decode_read(
@@ -931,7 +1007,10 @@ typedef struct {
   int32_t track;
 } qa_video_droid_decode;
 
-static qa_video_droid_decode g_droid_dec;
+/// ⚠️In the SLOT, like every backend's state — see [qa_decode_slot].
+#define g_droid_dec (*(qa_video_droid_decode*)g_slot->backend.bytes)
+typedef char qa_droid_state_fits[
+    sizeof(qa_video_droid_decode) <= sizeof(qa_backend_store) ? 1 : -1];
 
 static void qa_backend_close(void) {
   if (g_droid_dec.codec != NULL) {
@@ -1223,15 +1302,57 @@ QA_EXPORT int32_t qa_video_decode_supported(void) {
   return qa_backend_supported();
 }
 
-QA_EXPORT void qa_video_decode_close(void) {
+/// Closes [slot], whatever it was holding. Selecting it first is what makes
+/// the backend's own close about the right document.
+static void qa_decode_close_slot(qa_decode_slot* slot) {
+  g_slot = slot;
   qa_backend_close();
   free(g_rotate_scratch);
   g_rotate_scratch = NULL;
   g_rotate_scratch_bytes = 0;
   memset(&g_doc, 0, sizeof(g_doc));
+  memset(&slot->backend, 0, sizeof(slot->backend));
   // ⛔A closed reader is positioned nowhere. Zeroing above leaves this 0,
   // which names frame 0 — the one index a stale「next」could wrongly claim.
   g_doc.next_index = -1;
+}
+
+QA_EXPORT void qa_video_decode_close(int32_t handle) {
+  qa_decode_slot* slot = qa_decode_slot_of(handle);
+  if (slot == NULL) {
+    return;
+  }
+  qa_decode_close_slot(slot);
+}
+
+/// Every document at once — what a teardown wants, and the only close a
+/// caller holding no handle can honestly make.
+QA_EXPORT void qa_video_decode_close_all(void) {
+  for (int32_t i = 0; i < QA_DECODE_DOCS; i += 1) {
+    if (g_docs[i].doc.open) {
+      qa_decode_close_slot(&g_docs[i]);
+    }
+  }
+}
+
+/// The first slot holding nothing, selected — or NULL when all are taken.
+static qa_decode_slot* qa_decode_take_slot(void) {
+  for (int32_t i = 0; i < QA_DECODE_DOCS; i += 1) {
+    if (!g_docs[i].doc.open) {
+      g_slot = &g_docs[i];
+      memset(&g_slot->doc, 0, sizeof(g_slot->doc));
+      memset(&g_slot->backend, 0, sizeof(g_slot->backend));
+      g_doc.next_index = -1;
+      return g_slot;
+    }
+  }
+  qa_decode_set_error("too many movies are open at once");
+  return NULL;
+}
+
+/// The handle [slot] answers to.
+static int32_t qa_decode_handle_of(const qa_decode_slot* slot) {
+  return (int32_t)(slot - g_docs) + 1;
 }
 
 /// 🚨★★★**A MOVIE INSIDE THE PROJECT FILE IS A RANGE, NOT A PATH.**
@@ -1254,7 +1375,6 @@ QA_EXPORT void qa_video_decode_close(void) {
 QA_EXPORT int32_t qa_video_decode_open_range(const char* path,
                                              int64_t offset,
                                              int64_t length) {
-  qa_video_decode_close();
   qa_decode_set_error(NULL);
   if (path == NULL || path[0] == '\0') {
     qa_decode_set_error("no path");
@@ -1264,17 +1384,26 @@ QA_EXPORT int32_t qa_video_decode_open_range(const char* path,
     qa_decode_set_error("that range is not inside the file");
     return 0;
   }
-  return qa_decode_finish_open(path, offset, length);
+  qa_decode_slot* slot = qa_decode_take_slot();
+  if (slot == NULL) {
+    return 0;
+  }
+  return qa_decode_finish_open(path, offset, length)
+             ? qa_decode_handle_of(slot)
+             : 0;
 }
 
 QA_EXPORT int32_t qa_video_decode_open(const char* path) {
-  qa_video_decode_close();
   qa_decode_set_error(NULL);
   if (path == NULL || path[0] == '\0') {
     qa_decode_set_error("no path");
     return 0;
   }
-  return qa_decode_finish_open(path, 0, 0);
+  qa_decode_slot* slot = qa_decode_take_slot();
+  if (slot == NULL) {
+    return 0;
+  }
+  return qa_decode_finish_open(path, 0, 0) ? qa_decode_handle_of(slot) : 0;
 }
 
 /// Everything both opens do once the backend has answered — one copy, so
@@ -1284,12 +1413,12 @@ static int32_t qa_decode_finish_open(const char* path,
                                      int64_t offset,
                                      int64_t length) {
   if (!qa_backend_open(path, offset, length)) {
-    qa_video_decode_close();
+    qa_decode_close_slot(g_slot);
     return 0;
   }
   if (g_doc.stored_width <= 0 || g_doc.stored_height <= 0) {
     qa_decode_set_error("the video stream has no frame size");
-    qa_video_decode_close();
+    qa_decode_close_slot(g_slot);
     return 0;
   }
   // The display size is the law's answer, not each backend's. A quarter
@@ -1310,15 +1439,18 @@ static int32_t qa_decode_finish_open(const char* path,
   return 1;
 }
 
-QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
+QA_EXPORT int32_t qa_video_decode_info(int32_t handle,
+                                       int32_t* width,
                                        int32_t* height,
                                        int64_t* frame_count,
                                        int32_t* fps_num,
                                        int32_t* fps_den) {
-  if (!g_doc.open) {
+  qa_decode_slot* slot = qa_decode_slot_of(handle);
+  if (slot == NULL) {
     qa_decode_set_error("no document is open");
     return 0;
   }
+  g_slot = slot;
   if (width != NULL) *width = g_doc.width;
   if (height != NULL) *height = g_doc.height;
   if (frame_count != NULL) *frame_count = g_doc.frame_count;
@@ -1327,13 +1459,16 @@ QA_EXPORT int32_t qa_video_decode_info(int32_t* width,
   return 1;
 }
 
-QA_EXPORT int32_t qa_video_decode_frame(int64_t index,
+QA_EXPORT int32_t qa_video_decode_frame(int32_t handle,
+                                        int64_t index,
                                         uint8_t* rgba,
                                         int32_t capacity) {
-  if (!g_doc.open) {
+  qa_decode_slot* slot = qa_decode_slot_of(handle);
+  if (slot == NULL) {
     qa_decode_set_error("no document is open");
     return 0;
   }
+  g_slot = slot;
   if (rgba == NULL || capacity < g_doc.width * g_doc.height * 4) {
     qa_decode_set_error("frame buffer too small");
     return 0;

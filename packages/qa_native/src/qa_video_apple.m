@@ -577,19 +577,48 @@ void qa_video_apple_abort(void) {
 
 @end
 
-static AVAsset* g_decode_asset = nil;
-static AVAssetTrack* g_decode_track = nil;
+/// ONE ROW PER DOCUMENT the law can hold open — `qa_video_decode.c`'s slots,
+/// mirrored one layer down. That file names the document by INDEX before
+/// every call below ([qa_video_apple_decode_select]), so every name here
+/// still means 「the document being worked on」, exactly as it did when there
+/// was only ever one.
+///
+/// ⚠️Rows rather than a struct: these are ARC references, and an array of
+/// object pointers keeps them strong without a single ownership qualifier
+/// in any of the bodies.
+#define QA_APPLE_DECODE_DOCS 8
+
+static AVAsset* g_decode_asset_of[QA_APPLE_DECODE_DOCS];
+static AVAssetTrack* g_decode_track_of[QA_APPLE_DECODE_DOCS];
 /// Held for as long as the asset is open — AVFoundation keeps only a WEAK
 /// reference to a resource-loader delegate, so letting this go is how a
 /// carried movie stops answering mid-play.
-static QaRangeResourceLoader* g_decode_serving = nil;
-static AVAssetReader* g_decode_reader = nil;
-static AVAssetReaderTrackOutput* g_decode_output = nil;
-static int32_t g_decode_width = 0;
-static int32_t g_decode_height = 0;
-static int64_t g_decode_duration_us = 0;
-static int32_t g_decode_rotation = 0;
-static double g_decode_nominal_rate = 0.0;
+static QaRangeResourceLoader* g_decode_serving_of[QA_APPLE_DECODE_DOCS];
+static AVAssetReader* g_decode_reader_of[QA_APPLE_DECODE_DOCS];
+static AVAssetReaderTrackOutput* g_decode_output_of[QA_APPLE_DECODE_DOCS];
+static int32_t g_decode_width_of[QA_APPLE_DECODE_DOCS];
+static int32_t g_decode_height_of[QA_APPLE_DECODE_DOCS];
+static int64_t g_decode_duration_us_of[QA_APPLE_DECODE_DOCS];
+static int32_t g_decode_rotation_of[QA_APPLE_DECODE_DOCS];
+static double g_decode_nominal_rate_of[QA_APPLE_DECODE_DOCS];
+
+/// Which row the calls below are about.
+static int32_t g_decode_slot = 0;
+
+void qa_video_apple_decode_select(int32_t slot) {
+  g_decode_slot = (slot >= 0 && slot < QA_APPLE_DECODE_DOCS) ? slot : 0;
+}
+
+#define g_decode_asset g_decode_asset_of[g_decode_slot]
+#define g_decode_track g_decode_track_of[g_decode_slot]
+#define g_decode_serving g_decode_serving_of[g_decode_slot]
+#define g_decode_reader g_decode_reader_of[g_decode_slot]
+#define g_decode_output g_decode_output_of[g_decode_slot]
+#define g_decode_width g_decode_width_of[g_decode_slot]
+#define g_decode_height g_decode_height_of[g_decode_slot]
+#define g_decode_duration_us g_decode_duration_us_of[g_decode_slot]
+#define g_decode_rotation g_decode_rotation_of[g_decode_slot]
+#define g_decode_nominal_rate g_decode_nominal_rate_of[g_decode_slot]
 
 /// Tears down the reader without touching the asset — [qa_backend_reposition]
 /// builds a fresh one over the same asset for every jump.
