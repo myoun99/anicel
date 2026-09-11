@@ -314,6 +314,44 @@ void main() {
       expect(displayScaleOf(0.5), 0.5);
       expect(displayScaleOf(-2), 2, reason: 'a flip is not a reduction');
     });
+
+    test(
+      'the edge is one more texel boundary: cut on the pixel grid under '
+      'nearest, anti-aliased under bilinear and under rotation '
+      '(F-67-paper-edge)',
+      () {
+        expect(
+          displayEdgeAntiAliased(CanvasViewport(zoom: 1.1)),
+          isFalse,
+          reason: 'magnified samples nearest: every boundary inside the '
+              'image is decided by pixel centres, and the outer edge is '
+              'one more of them — anti-aliasing it alone paints the '
+              'blended line the phase snap made visible at 110%',
+        );
+        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 1)), isFalse);
+        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 2)), isFalse);
+        expect(
+          displayEdgeAntiAliased(
+            CanvasViewport(zoom: 1.1, flipHorizontal: true),
+          ),
+          isFalse,
+          reason: 'a flip is axis-aligned',
+        );
+        expect(
+          displayEdgeAntiAliased(CanvasViewport(zoom: 0.5)),
+          isTrue,
+          reason: 'reduced samples bilinear: the boundaries inside blend, '
+              'so the edge blends with them',
+        );
+        expect(
+          displayEdgeAntiAliased(
+            CanvasViewport(zoom: 1.1, rotationDegrees: 15),
+          ),
+          isTrue,
+          reason: 'a rotated edge is a diagonal',
+        );
+      },
+    );
   });
 }
 

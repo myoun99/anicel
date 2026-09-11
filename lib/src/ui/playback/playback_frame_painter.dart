@@ -148,15 +148,20 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// like the artwork they annotate.
   final List<ResolvedSeNameTag> seNameTags;
 
-  void _paintPaper(Canvas canvas, Rect rect) {
+  void _paintPaper(Canvas canvas, Rect rect, {required bool antiAlias}) {
     if (!paintPaper) {
       return;
     }
     final background = paperBackground;
     if (background != null) {
-      paintProjectPaper(canvas, rect, background);
+      paintProjectPaper(canvas, rect, background, antiAlias: antiAlias);
     } else {
-      canvas.drawRect(rect, Paint()..color = paperColor);
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..color = paperColor
+          ..isAntiAlias = antiAlias,
+      );
     }
   }
 
@@ -232,8 +237,26 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     // pose: there the cut's finished picture (paper included) moves within
     // the output frame, matching the MP4 bake.
     final resolvedCutPose = cutPose;
+    final composite = image;
+    // The frames that STAND IN for the editing stack — canvas mode, no cut
+    // pose, a composite at canvas resolution (or none at all) — cut the
+    // canvas's boundary the way the editing stack cuts it
+    // (`displayEdgeAntiAliased`, F-67-paper-edge), the paper and the
+    // composite alike, or a scrub would switch the edge line on and off.
+    // Camera mode, a cut pose and the degraded tiers keep the anti-aliased
+    // edge they had: their interiors are filtered too.
+    final standsInForEditing =
+        pose == null &&
+        resolvedCutPose == null &&
+        (composite == null ||
+            (composite.width == canvasSize.width &&
+                composite.height == canvasSize.height));
+    final edgeAntiAlias =
+        resolvedViewport == null ||
+        !standsInForEditing ||
+        displayEdgeAntiAliased(resolvedViewport);
     if (pose == null) {
-      _paintPaper(canvas, canvasRect);
+      _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
     }
     if (resolvedCutPose != null) {
       canvas.save();
@@ -249,9 +272,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     if (pose != null) {
       canvas.save();
       applyCameraProjection(canvas, pose, cameraFrameSize!);
-      _paintPaper(canvas, canvasRect);
+      _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
     }
-    final composite = image;
     if (composite != null && imageOpacity > 0) {
       // 🚨SCRUB ↔ STILL PARITY (device report B2, 2026-08-17): in canvas
       // mode with a canvas-resolution composite this draw IS the editing
@@ -272,17 +294,16 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       // canvas anyway. Camera mode (and the unexercised cut pose) project
       // through transforms the editing canvas never renders, so they too
       // keep the sampling they always had.
-      final editingResample =
-          pose == null &&
-          resolvedCutPose == null &&
-          composite.width == canvasSize.width &&
-          composite.height == canvasSize.height;
+      final editingResample = standsInForEditing;
       final imagePaint = Paint()
         ..filterQuality = editingResample
             ? filterQualityForDisplayScale(
                 displayScaleOf(resolvedViewport?.zoom ?? 1),
               )
             : FilterQuality.low
+        // The composite's edge is the canvas's edge: the same cut as the
+        // paper's above (F-67-paper-edge).
+        ..isAntiAlias = edgeAntiAlias
         ..color = alphaOnly(imageOpacity);
       // The V row's chain filters the picture on its way onto the stage.
       //

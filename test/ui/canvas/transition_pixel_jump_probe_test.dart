@@ -394,22 +394,24 @@ void main() {
     // snapped translation, so the fractional-pan strip cannot exist any
     // more — it is structurally impossible, not merely unobserved. The
     // integer-pan run pins the zero the routes always had.
-    // ⚠️Interior only, since F-67 (2026-09-11). The snap now lands the
-    // translation on whole + phase device pixels above 1:1 (1/4 px at
-    // 150%), so the content's EDGES sit at fractional device positions —
-    // and this software backend covers a fractional edge differently when
-    // it is an image's resampled edge (buffer route) and when it is a
-    // rect's anti-aliased edge (the walk): measured, every differing pixel
-    // is on a tile/content boundary row or column, none inside. The
-    // artwork's pixels — the ones a route flip would move — still agree
-    // byte for byte, and the walk is not a route the frame can fall to
-    // above 1:1 in production anyway (the buffer is bounded by the view).
+    // ⚠️For a few hours on 2026-09-11 this was INTERIOR ONLY: F-67's snap
+    // lands the translation on whole + phase device pixels above 1:1 (1/4
+    // px at 150%), so the content's edges sit at fractional device
+    // positions — and this software backend covered a fractional edge
+    // differently as an image's resampled edge (buffer route) and as a
+    // rect's anti-aliased edge (the walk): 486 pixels, every one on a
+    // boundary row or column. F-67-paper-edge closed that the same day:
+    // on an axis-aligned view under nearest sampling neither edge is
+    // anti-aliased any more (`displayEdgeAntiAliased`), both are cut by
+    // pixel centres, and the two routes agree everywhere again — edges
+    // included, which is what `the_canvas_edge_is_cut_on_the_pixel_grid`
+    // pins at 110% and this line pins at 150%.
     expect(
-      walkDiff.diff - walkDiff.onTileBoundary,
+      walkDiff.diff,
       0,
-      reason: 'buffer route vs direct walk must agree byte for byte away '
-          'from the content edges at any pan phase — a nonzero diff is the '
-          'transition route-flip jump',
+      reason: 'buffer route vs direct walk must agree byte for byte at any '
+          'pan phase, edges included — a nonzero diff is the transition '
+          'route-flip jump (or the edge cut differently by the two routes)',
     );
   }
 

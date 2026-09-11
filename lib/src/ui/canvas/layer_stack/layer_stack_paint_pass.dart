@@ -378,7 +378,12 @@ class _LayerStackPaintPass {
           Paint()
             ..filterQuality = filterQualityForDisplayScale(
               displayScaleOf(_painter.viewport.zoom),
-            ),
+            )
+            // The buffer's edge IS the canvas's edge on screen, cut by the
+            // same law as the paper's (F-67-paper-edge): under nearest on
+            // an axis-aligned view it is one more texel boundary, decided
+            // by pixel centres, not a blended line.
+            ..isAntiAlias = displayEdgeAntiAliased(_painter.viewport),
         );
       } finally {
         // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
@@ -861,7 +866,16 @@ class _LayerStackPaintPass {
     if (rect.isEmpty) {
       return;
     }
-    paintProjectPaper(into, rect, _painter.paperBackground);
+    paintProjectPaper(
+      into,
+      rect,
+      _painter.paperBackground,
+      // The display law's edge (F-67-paper-edge). On screen — the walk —
+      // this rect is the canvas's edge; inside the s=1 buffer it is whole
+      // and the flag cannot matter; under the scaled recording the view is
+      // reduced and the law says anti-aliased, as it always was.
+      antiAlias: displayEdgeAntiAliased(_painter.viewport),
+    );
   }
 
   void _paintBackdropSplit(Canvas into, Rect rect, double rasterScale) {

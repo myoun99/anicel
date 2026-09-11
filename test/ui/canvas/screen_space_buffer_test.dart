@@ -251,6 +251,10 @@ void main() {
           canvasSize.height.toDouble(),
         ).deflate(1 / s),
         const ProjectBackground.color(0xFF00FF00),
+        // A reduced view: the display law keeps the edge anti-aliased
+        // (`displayEdgeAntiAliased` — the boundaries inside are bilinear
+        // too), so the reference draws it the way it always did.
+        antiAlias: true,
       );
       into.drawImageRect(
         flat.image,

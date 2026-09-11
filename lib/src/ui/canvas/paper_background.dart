@@ -7,16 +7,28 @@ import '../../models/project_background.dart';
 /// it show through, which is the four-plane stage's whole point. The old
 /// alpha checkerboard moved to the backdrop's alpha-preview toggle
 /// ([paintAlphaCheckerboard]); the paper itself never checkers.
+///
+/// [antiAlias] is REQUIRED: on the display the paper's edge is the canvas's
+/// edge, and how it is cut is the display law's answer
+/// (`displayEdgeAntiAliased` in `display_resample.dart` — F-67-paper-edge).
+/// A default here would let a new route inherit an edge nobody chose, the
+/// door A4 shut on `filterQuality`.
 void paintProjectPaper(
   Canvas canvas,
   Rect rect,
-  ProjectBackground background,
-) {
+  ProjectBackground background, {
+  required bool antiAlias,
+}) {
   final color = Color(background.argb);
   if (color.a <= 0) {
     return;
   }
-  canvas.drawRect(rect, Paint()..color = color);
+  canvas.drawRect(
+    rect,
+    Paint()
+      ..color = color
+      ..isAntiAlias = antiAlias,
+  );
 }
 
 /// The BACKDROP plane under the alpha-preview toggle, as a painter: fills

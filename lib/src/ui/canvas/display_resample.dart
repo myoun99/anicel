@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import '../../models/canvas_viewport.dart';
+
 /// 🚨★★★ SAMPLING IS A PROPERTY OF THE DISPLAY, NOT OF THE LAYER.
 ///
 /// 유저 확정 (T21, 2026-08-13): 「**줌이 정한다** — 확대는 `none`, 축소는
@@ -40,3 +42,36 @@ ui.FilterQuality filterQualityForDisplayScale(double scale) =>
 /// screen at 100% zoom is still 1:1 artwork-to-canvas: the buffer is at
 /// canvas resolution, so it is the canvas-to-view scale that decides.
 double displayScaleOf(double zoom) => zoom.abs();
+
+/// Whether the OUTER EDGE of what lands on the display — the display
+/// buffer's blit, the paper rect under it, the playback composite that
+/// stands in for both during a scrub — is anti-aliased.
+///
+/// 🚨★★★THE EDGE IS ONE MORE TEXEL BOUNDARY (F-67-paper-edge, 2026-09-11).
+/// Under nearest sampling every boundary INSIDE the image is decided per
+/// device pixel by where its centre falls: a pixel shows one texel or the
+/// next, never a blend. The image's outer edge — and the paper rect that
+/// shares it — was the one boundary the engine cut differently: with
+/// anti-aliasing a fractional edge covers its pixel partly, which is a
+/// blended line one pixel wide along the canvas that nothing inside the
+/// canvas has. The render snap's phase (F-67) put that edge a quarter
+/// pixel in at 110%, and the line showed: 75% paper over the backdrop.
+/// 유저 09-11: 「고칠 수 있다면 고치자」.
+///
+/// So on an axis-aligned view under `none` the edge is NOT anti-aliased:
+/// it lands where the pixel centres say, the same rule the texels inside
+/// follow, and every route that draws the boundary — cached or live,
+/// buffer or walk, editing or playback — cuts it on the same pixel, and
+/// the leftmost texel keeps its column (an edge ROUNDED inward would have
+/// dropped it). Bilinear (reduced) blends the boundaries inside too, and a
+/// rotated view's edges are diagonals, so anti-aliasing stays there. A
+/// flip is axis-aligned and changes nothing.
+///
+/// ⚠️Impeller (iPad, Android) may not honour `isAntiAlias = false` at all —
+/// unverified here, Windows is Skia. If it does not, those devices keep the
+/// blended line they have today, which is no worse; the phase snap does not
+/// depend on this either way.
+bool displayEdgeAntiAliased(CanvasViewport viewport) =>
+    viewport.rotationDegrees != 0 ||
+    filterQualityForDisplayScale(displayScaleOf(viewport.zoom)) !=
+        ui.FilterQuality.none;
