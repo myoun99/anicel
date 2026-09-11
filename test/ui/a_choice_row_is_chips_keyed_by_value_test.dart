@@ -275,7 +275,7 @@ void main() {
           reason: 'chip $key',
         );
       }
-      expect(chipAt(tester, 'import-media-copy').label, 'Keep inside');
+      expect(chipAt(tester, 'import-media-copy').label, 'Keep');
       expect(chipAt(tester, 'import-fit-contain').label, 'Keep aspect');
       expect(chipAt(tester, 'import-revision-originalOnly').label, 'Originals');
     });
