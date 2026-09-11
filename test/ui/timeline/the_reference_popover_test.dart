@@ -3,6 +3,7 @@
 // its POOL state, or 「선택한 레이어」 when the press acts on several rows;
 // its one button bakes 「래스터라이즈 · N장」 — the whole selection when the
 // pressed row is in it, that row alone when it is not — as ONE undo.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
+import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -271,6 +273,43 @@ void main() {
       findsOneWidget,
       reason: 'the one window heavy work waits behind',
     );
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, movie).mediaReference == null,
+    );
+    expect(current(s, movie).frames, hasLength(6));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the layer menu takes the same road — its rasterize is this '
+      'verb, so a movie goes behind the window there too', (tester) async {
+    final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
+    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
+    late BuildContext menuContext;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              menuContext = context;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    final waitWindow = find.byKey(
+      const ValueKey<String>('movie-rasterize-progress'),
+    );
+    // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
+    // test body waiting on it is a test body not pumping.
+    unawaited(rasterizeActiveRow(menuContext, s));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
 
     await settle(
       tester,

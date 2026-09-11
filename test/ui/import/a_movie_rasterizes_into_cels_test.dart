@@ -13,12 +13,14 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/solid_png_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -163,6 +165,24 @@ void main() {
       ),
       isFalse,
       reason: 'already cels',
+    );
+
+    // A STILL reference is the plain rasterize command's: its one cel IS
+    // its pixels, with nothing to decode.
+    await s.importDoors.importImageFile(
+      path: await writeSolidPng(tempDir, 'bg.png'),
+      destination: ImportDestination.activeCutLayer,
+      copyIntoProject: false,
+    );
+    final still = s.requireActiveCut.layers.lastWhere(
+      (candidate) => candidate.mediaReference != null,
+    );
+    expect(
+      await s.importDoors.rasterizeMovieReference(
+        cutId: s.requireActiveCut.id,
+        layerId: still.id,
+      ),
+      isFalse,
     );
   });
 }
