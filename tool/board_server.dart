@@ -335,6 +335,16 @@ Future<void> _handle(HttpRequest req) async {
         // because an answer is something the user said that I have to read
         // and act on. One card, one row, and the answer is where the work is.
         final origin = kind == 'decision' ? originOfId(id, File(_recordsPath)) : '';
+        // 🚨THE RECORD KEEPS THE USER'S WORD, NOT THE RADIO'S VALUE. The
+        // value is the option's key — an index by construction — so the line
+        // used to read `{"answer":"2"}` and said nothing on its own
+        // (유저 2026-09-12: 「보드에 2만으로는 알수없잖아」). Resolved HERE,
+        // where the answer is written, so no writer has to remember it.
+        final answer = answerWordFor(
+          id,
+          '${body['answer'] ?? ''}',
+          File(_recordsPath),
+        );
         // 🚨★★★WHAT THE USER SUBMITS IS AN ENTRY, and the entry says where the
         // card goes. ⛔Every branch here used to write a `state` as well, and
         // the story then overrode it — the same 「한 질문에 리더 둘」 this
@@ -352,7 +362,7 @@ Future<void> _handle(HttpRequest req) async {
           _append({
             'kind': kind,
             'id': id,
-            'answer': body['answer'] ?? '',
+            'answer': answer,
             'answerNote': memo,
             'ts': _now(),
             'state': 'archived',
@@ -367,7 +377,7 @@ Future<void> _handle(HttpRequest req) async {
           _append({
             'kind': kind,
             'id': id,
-            'answer': body['answer'] ?? '',
+            'answer': answer,
             'answerNote': memo,
             'ts': _now(),
           });

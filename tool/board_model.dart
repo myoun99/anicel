@@ -21,6 +21,42 @@ import 'dart:io';
 /// read for those. ⚠️Returns empty for a question that belongs to nothing —
 /// an old standalone one — and that answer still lands in 분류 전 as itself,
 /// because there is no origin for it to land on.
+/// The submitted [answer] as THE USER'S WORD: an option's key resolved to
+/// that option's label, or [answer] unchanged when it names no option.
+///
+/// 🚨★★★**A RECORD HAS TO SAY WHAT WAS CHOSEN, ON ITS OWN.** The radio's
+/// value is `o['key']`, and a key is an INDEX by construction (see where
+/// options are parsed) — so an answered question landed in the records file
+/// as `{"answer":"2"}`, which means nothing to anyone reading that line later
+/// (유저 2026-09-12: 「보드에 2만으로는 알수없잖아」).
+///
+/// ⚠️The BOARD was never confused: `_askBody` resolves the key back to its
+/// label when it draws. That is exactly what made this hard to see — and why
+/// it still had to be fixed. 기록이 원본이고 보드는 열 때마다 그려진다, so a
+/// line that needs its card beside it to be read is a line that says nothing.
+///
+/// ⛔NOT a second field. `answer` already means the user's word — board_check
+/// leaves it out of the pointer checks for that very reason — and a new key
+/// would be one more thing every reader has to learn.
+/// ⛔An answer naming no option is returned UNTOUCHED: free text, the panel's
+/// `other`, and every answer recorded before this one stay exactly as written.
+/// ⚠️It parses the board to ask one question, like [originOfId] beside it. A
+/// submit is a human-paced act and the board is parsed to draw it anyway;
+/// a second parser written here to save that would be the copy this file
+/// exists to avoid.
+String answerWordFor(String id, String answer, File records) {
+  if (answer.isEmpty) return answer;
+  for (final card in readBoard(records)) {
+    if (card.id != id) continue;
+    for (final option in card.options) {
+      if ('${option['key']}' != answer) continue;
+      final label = '${option['label'] ?? ''}'.trim();
+      return label.isEmpty ? answer : label;
+    }
+  }
+  return answer;
+}
+
 String originOfId(String id, File records) {
   final m = kQName.firstMatch(id);
   final byName = m?.group(1) ?? '';

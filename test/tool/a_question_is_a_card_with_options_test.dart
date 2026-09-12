@@ -101,6 +101,53 @@ void main() {
     expect(one(cards, 'W').state, 'open');
   });
 
+  group('답은 유저의 말로 적힌다', () {
+    // 🚨유저 2026-09-12: 「보드에 2만으로는 알수없잖아. 그런것도 개선해줘」.
+    //
+    // The radio's value is the option's KEY, and a key is an index by
+    // construction — so what the user picked reached the records file as a
+    // number. The board drew it correctly (it resolves the key when it
+    // renders), which is precisely why nobody noticed: only the LINE was
+    // unreadable, and the line is the record.
+    File recordsFile(List<String> lines) =>
+        File('${dir.path}/board.jsonl')
+          ..writeAsStringSync(lines.map((l) => '$l\n').join());
+
+    test('🚨a key comes back as its LABEL — the line says what was chosen', () {
+      final file = recordsFile([origin, question('decision')]);
+      expect(answerWordFor('W-Q1', 'a', file), 'A안');
+      expect(answerWordFor('W-Q1', 'b', file), 'B안');
+    });
+
+    test('🚨an option written with NO key resolves too — the key is its '
+        'INDEX, and that index is what the record used to keep', () {
+      final file = recordsFile([
+        origin,
+        '{"kind":"decision","id":"W-Q2","at":"질문","title":"어느 쪽",'
+            '"where":"거기","why":"막혔다",'
+            '"options":[{"label":"그대로 둔다"},{"label":"드러낸다"},'
+            '{"label":"잘라 맞춘다"}],"ts":"2026-08-31T02:00:00Z"}',
+      ]);
+      expect(answerWordFor('W-Q2', '2', file), '드러낸다');
+    });
+
+    test('⛔an answer naming no option is kept EXACTLY as written', () {
+      final file = recordsFile([origin, question('decision')]);
+      // Free text, the panel's `other`, and every answer written before this
+      // existed — all of them are already the user's word.
+      expect(answerWordFor('W-Q1', '직접 적은 답', file), '직접 적은 답');
+      expect(answerWordFor('W-Q1', 'other', file), 'other');
+      expect(answerWordFor('W-Q1', 'se-lane', file), 'se-lane');
+    });
+
+    test('⛔an empty answer stays empty, and an unknown card changes nothing',
+        () {
+      final file = recordsFile([origin, question('decision')]);
+      expect(answerWordFor('W-Q1', '', file), '');
+      expect(answerWordFor('nope', 'a', file), 'a');
+    });
+  });
+
   test('⛔a legacy `decision` with no options still asks', () {
     // Written before options were required. It must keep its panel rather
     // than silently becoming an ordinary row — the very failure above.
