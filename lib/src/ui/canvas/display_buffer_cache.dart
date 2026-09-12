@@ -46,18 +46,22 @@ class DisplayBufferCache {
 
   void _tellHeldBytes() => onHeldBytesChanged?.call(heldBytes);
 
-  /// Bytes the kept buffer holds: one canvas-resolution RGBA image, or
-  /// none.
+  /// Bytes this cache pins: THE WHOLE CHAIN, not just the kept image.
   ///
   /// 🔬**Counted because it is not small.** One buffer is the visible
   /// canvas at 1:1 — 33MB on a 4K view — and it is held for as long as
   /// nothing changes, which is most of the time. It was outside
   /// [collectMemoryCensus] until 2026-09-10, so the readout was short by a
   /// whole canvas per open view and nobody could see it.
-  int get heldBytes {
-    final image = _image;
-    return image == null ? 0 : image.width * image.height * 4;
-  }
+  ///
+  /// 🚨★★★IT USED TO ANSWER `_image` ALONE, AND THAT WAS A FALSE STATEMENT
+  /// (2026-09-12). A derived buffer pins the one before it — see
+  /// [_derivedDepth] — so this object can hold [_maxDerivedDepth] canvases
+  /// while reporting one. The census is the app's only way to name a
+  /// holder, so an under-reporting counter does not merely lose precision:
+  /// it moves the bytes into 「엔진·폰트·프레임워크」, which is exactly where
+  /// the user's screenshots found 10GB that nothing would own.
+  int get heldBytes => _image == null ? 0 : _chainBytes;
 
   ui.Image? _image;
   Rect? _rect;
@@ -139,9 +143,19 @@ class DisplayBufferCache {
   /// (`DlDeferredImageGPUSkia::ImageWrapper` holds an `sk_sp<DisplayList>`)
   /// until the raster thread gets to it. So a buffer drawn from the kept
   /// one RETAINS it, and the next buffer retains that: derive N times with
-  /// no rasterization in between and the chain is N long. It costs almost
-  /// nothing resident — a display list is small — which is exactly why
-  /// nothing noticed.
+  /// no rasterization in between and the chain is N long.
+  ///
+  /// ⛔IT WAS WRITTEN HERE THAT THE CHAIN "COSTS ALMOST NOTHING RESIDENT —
+  /// A DISPLAY LIST IS SMALL". THAT IS FALSE, AND IT COST THE USER 10GB
+  /// (2026-09-12). The display list is small; what it holds is not. Each
+  /// link's list references the deferred image before it, so every link
+  /// pins A WHOLE CANVAS of pixels until the chain collapses. Measured in
+  /// `drawing_does_not_grow_the_footprint_test.dart`: on a 1200×1200 view
+  /// (5.76MB a buffer) the chain peaks at 516MB and the footprint climbs
+  /// 106·207·308·409·511MB in a straight line, falling back only when the
+  /// depth budget forces a full compose — and the peak is a LINEAR
+  /// function of the budget. 128 links of a 1920×1080 canvas is 1.06GB,
+  /// which is the user's own "half a stroke adds 1000~1600MB".
   ///
   /// ⛔RELEASING THAT CHAIN IS RECURSIVE, IN THE ENGINE, ON THE RASTER
   /// THREAD: `~DisplayList → DisposeOps → ~DlDeferredImageGPUSkia →
@@ -173,9 +187,40 @@ class DisplayBufferCache {
   /// alternative: the chain has no length of its own to be under.
   static const int _maxDerivedDepth = 128;
 
+  /// Bytes the chain pins right now: every image from the kept one back to
+  /// the last compose that started from nothing.
+  ///
+  /// 🚨★★★MAINTAINED IN [store] AND NOWHERE ELSE, beside [_derivedDepth],
+  /// because they are the SAME EVENT counted in two units. A field updated
+  /// anywhere else would be a second answer to "how deep is the chain".
+  int _chainBytes = 0;
+
+  /// The most the chain may pin before the next compose has to start from
+  /// nothing.
+  ///
+  /// 🚨★★★THE LINK BUDGET ABOVE GUARDS THE RASTER THREAD'S STACK; THIS ONE
+  /// GUARDS MEMORY. They are two costs of one chain, not one cost counted
+  /// twice, and 128 links was chosen against a 2MB stack with no thought
+  /// for the bytes each link pins — which is how a stroke came to cost a
+  /// gigabyte (see [_derivedDepth]).
+  ///
+  /// ⛔ABSOLUTE, NOT A MULTIPLE OF THE CANVAS: a big canvas must not be
+  /// allowed to pin proportionally more, because the machine it has to run
+  /// on is the same one (구형 기기 방침). 64MB is ~44 links of a 600×600
+  /// view, ~11 of 1200×1200, ~8 of 1920×1080, ~2 of 4K.
+  ///
+  /// ⚠️THE FIRST DERIVATION IS ALWAYS ALLOWED, whatever the canvas costs:
+  /// this budget bounds ACCUMULATION, and at depth 0 there is none. That
+  /// keeps the healthy path — where a rasterized frame resets the depth
+  /// every frame and the true depth is 1 — identical at every canvas size,
+  /// instead of silently turning the patch optimisation off on large ones.
+  static const int _maxChainBytes = 64 << 20;
+
   /// Whether the kept image may be drawn into the next one at all. Both
-  /// doors below ask it, so neither can forget the budget.
-  bool get _mayDeriveAgain => _derivedDepth < _maxDerivedDepth;
+  /// doors below ask it, so neither can forget either budget.
+  bool get _mayDeriveAgain =>
+      _derivedDepth == 0 ||
+      (_derivedDepth < _maxDerivedDepth && _chainBytes < _maxChainBytes);
 
   /// The deepest the chain has ever been this session.
   ///
@@ -295,6 +340,11 @@ class DisplayBufferCache {
       fullCount += 1;
     }
     _derivedDepth = derived ? _derivedDepth + 1 : 0;
+    // The same event in the other unit. A compose that started from
+    // nothing pins exactly its own image; a derived one pins that on top
+    // of everything the chain already held.
+    final imageBytes = image.width * image.height * 4;
+    _chainBytes = derived ? _chainBytes + imageBytes : imageBytes;
     if (derived) {
       _noteDepth();
       _watchRasterizedFrames();
@@ -400,6 +450,7 @@ class DisplayBufferCache {
     // Nothing is kept, so nothing can be derived FROM: the next store
     // starts a new chain whatever it is.
     _derivedDepth = 0;
+    _chainBytes = 0;
     // ⛔The snapshot goes with the image. Kept across an invalidate it would
     // describe a frame nobody holds any more, and the next paint would
     // "find" a small dirty rect against a base that no longer exists.

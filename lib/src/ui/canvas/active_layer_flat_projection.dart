@@ -132,6 +132,20 @@ abstract final class ActiveLayerFlatProjection {
   ///
   /// Null when the subset breaks or a changed coordinate's image is not
   /// ready — the caller falls back to [buildOrNull] or the walk.
+  ///
+  /// 🚨★★★NOT WIRED YET (⏸5b), AND WHOEVER WIRES IT OWES A BYTE BUDGET.
+  /// Drawing `previous.image` into the recording that becomes the next
+  /// image is the SAME SHAPE as the display buffer's patch, and that shape
+  /// pins a chain: `toImageSync` hands back an unrasterized image, and the
+  /// display list that draws it holds the image before it, one flat per
+  /// link, until a frame rasterizes. Unbounded it cost the user 10GB
+  /// (2026-09-12) — see `DisplayBufferCache._maxChainBytes`, which is
+  /// where the budget for THAT chain lives.
+  ///
+  /// ⛔Do not reach over and share that field. They are two chains with
+  /// two lifetimes, and one number answering both is the trap
+  /// ([[make-the-invariant-unrepresentable]]); if a third appears, THEN
+  /// they have earned a common home (3의 규칙).
   static ActiveLayerFlatImage? patchOrNull({
     required ActiveLayerFlatImage previous,
     required Set<TileCoord> changedCoords,
