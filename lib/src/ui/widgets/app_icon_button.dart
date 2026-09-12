@@ -194,6 +194,7 @@ class AppIconButton extends StatelessWidget {
     this.isSelected = false,
     this.size = AppIconButtonSize.bar,
     this.outlined = false,
+    this.danger = false,
   });
 
   /// Stable widget key (the tests' handle). It lands on the
@@ -220,6 +221,20 @@ class AppIconButton extends StatelessWidget {
   /// (the mockup the user approved on 2026-09-11 draws it so). Still the one
   /// button (「앱에 버튼은 한 종류」): the same face, its shape's side drawn.
   final bool outlined;
+
+  /// Something is WRONG with what this button is about, and it wears
+  /// [AppColors.danger] until it is not — the reference row's file button
+  /// when the row asks its file for more film than the file has (유저
+  /// 2026-09-12: 「참조버튼을 빨갛게」).
+  ///
+  /// ⛔A STATE OF THE ONE BUTTON, not a red button beside the normal one
+  /// (「앱에 버튼은 한 종류」). It is exactly the shape [isSelected] already
+  /// has — a flag that changes the ink and nothing else — so a second
+  /// widget for it would be two buttons to keep in step forever.
+  /// ⚠️Red is CHROME talking about chrome here, which is what [AppColors]
+  /// reserves `danger` for; the session's red/green pair is a different
+  /// colour for a different question.
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +301,7 @@ class AppIconButton extends StatelessWidget {
         // before: 0 fires, on master and on the light face alike.
         onSemanticTap: onPressed,
         isSelected: isSelected,
+        danger: danger,
         minWidth: onGrid(size.minWidth),
         maxWidth: onGrid(size.maxWidth),
         height: onGrid(size.height),
@@ -297,7 +313,9 @@ class AppIconButton extends StatelessWidget {
           size.height,
           side: outlined
               ? BorderSide(
-                  color: isSelected
+                  color: danger
+                      ? AppColors.danger
+                      : isSelected
                       ? AppColors.accent
                       : AppColors.hairlineStrong,
                 )
@@ -325,6 +343,7 @@ class AppIconButtonFace extends StatefulWidget {
     required this.onPressed,
     required this.onSemanticTap,
     required this.isSelected,
+    required this.danger,
     required this.minWidth,
     required this.maxWidth,
     required this.height,
@@ -344,6 +363,7 @@ class AppIconButtonFace extends StatefulWidget {
   /// exactly when [onPressed] is.
   final VoidCallback? onSemanticTap;
   final bool isSelected;
+  final bool danger;
   final double minWidth;
   final double maxWidth;
   final double height;
@@ -364,6 +384,13 @@ class AppIconButtonFace extends StatefulWidget {
   /// theme answers.
   static final ButtonStyle _accentInk = IconButton.styleFrom(
     foregroundColor: AppColors.accent,
+  );
+
+  /// The same one step, in [AppColors.danger] — so the state layer under a
+  /// hover or a press is derived from the red the glyph is wearing rather
+  /// than from the accent it is not.
+  static final ButtonStyle _dangerInk = IconButton.styleFrom(
+    foregroundColor: AppColors.danger,
   );
 
   /// M3's `IconButton` defaults (`_IconButtonDefaultsM3`), the last step —
@@ -492,7 +519,16 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
   Widget build(BuildContext context) {
     final enabled = _enabled;
     final states = _states;
-    final own = widget.isSelected ? AppIconButtonFace._accentInk : null;
+    // 🚨DANGER OUTRANKS SELECTED. The red is about the thing the button
+    // acts on and stands until that is fixed; selected says only that its
+    // popover is open this instant — and a button that fell back to accent
+    // while its own popover was open would drop the louder fact at exactly
+    // the moment the popover is there to explain it.
+    final own = widget.danger
+        ? AppIconButtonFace._dangerInk
+        : widget.isSelected
+        ? AppIconButtonFace._accentInk
+        : null;
     final theme = IconButtonTheme.of(context).style;
     final defaults = AppIconButtonFace._m3DefaultsFor(
       Theme.of(context).colorScheme,

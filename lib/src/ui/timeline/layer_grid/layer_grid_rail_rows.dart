@@ -273,6 +273,8 @@ class _LayerGridRailRows {
           _state.widget.hooks.onToggleLayerFillReference,
       onOpenLayerMixer: _state.widget.hooks.onOpenLayerMixer,
       onOpenLayerReference: _state.widget.hooks.onOpenLayerReference,
+      isReferenceSourceShort:
+          _state.widget.hooks.layerSourceIsShortOf?.call(row.layer.id) ?? false,
       isLayerSoloed:
           _state.widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
       attachArrowPlacement: _state.widget.hooks.attachArrowPlacementOf?.call(

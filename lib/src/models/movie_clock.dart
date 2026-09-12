@@ -1,3 +1,4 @@
+import '../native/qa_video_decoder.dart' show QaVideoInfo;
 import 'project_frame_rate.dart';
 
 /// THE MOVIE RIDES THE SOUND'S CLOCK (유저 2026-09-11, 미디어 배치 라운드 6:
@@ -73,4 +74,29 @@ class MovieClock {
       audioSpeed.denominator <= 0 ||
       movieRate.numerator <= 0 ||
       movieRate.denominator <= 0;
+}
+
+/// The clock [movie] runs on in a project at [projectRate] whose sounds
+/// carry [audioSpeed].
+///
+/// 🚨★★★ONE ASSEMBLY. Three places each unpacked the decoder's rate
+/// fraction into a [MovieClock] of their own — the import window's preview,
+/// the door that PLACES a movie, and the hydrator that DECODES one — and
+/// the three have to answer identically or the app contradicts itself: the
+/// preview's IN/OUT is what lands, and a bake has to land on exactly the
+/// frames the reference was showing. Nothing here decides anything; it
+/// exists so that the unpacking is written once, beside the law it feeds.
+MovieClock movieClockFor({
+  required ProjectFrameRate projectRate,
+  required ({int numerator, int denominator}) audioSpeed,
+  required QaVideoInfo movie,
+}) {
+  return MovieClock(
+    projectRate: projectRate,
+    audioSpeed: audioSpeed,
+    movieRate: (
+      numerator: movie.fpsNumerator,
+      denominator: movie.fpsDenominator,
+    ),
+  );
 }

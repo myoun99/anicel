@@ -14,12 +14,14 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
@@ -139,6 +141,66 @@ void main() {
     });
     return (s, s.requireActiveCut.layers.firstWhere(isMovieReference).id);
   }
+
+  final shortLine = find.byKey(
+    const ValueKey<String>('layer-reference-source-short'),
+  );
+
+  /// Lets the hydrator OPEN the cut's movie rows and answer what they are —
+  /// the decoder's frame count is what the warning line counts against, and
+  /// it lands asynchronously.
+  Future<void> learnTheFile(WidgetTester tester, EditorSessionManager s) async {
+    await tester.runAsync(() => s.movieCels.hydrate(s.requireActiveCut, 0));
+    await tester.pump();
+  }
+
+  testWidgets('⛔a row its file can cover says nothing, and the window is '
+      'the plain one — the premise', (tester) async {
+    final (s, rowId) = await movieSession(tester, frameCount: 24, inFrame: 4);
+    await learnTheFile(tester, s);
+
+    await openOn(tester, s, rowId);
+    expect(shortLine, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('🚨a row dragged PAST the end of its file says by how much, as '
+      'one more item of the popover the red button opens (유저 2026-09-12: '
+      '「팝오버 항목중 하나로 내용 띄우도록」)', (tester) async {
+    final (s, rowId) = await movieSession(tester, frameCount: 24, inFrame: 4);
+    // The TAIL edge is deliberately uncapped where the head is capped by the
+    // in point ([clampExposureEdgeDelta]), so this is how a row comes to ask
+    // for film its file does not hold — a placed take that was 20 frames
+    // becomes 26, and the last 6 have nothing behind them.
+    s.activeCutControllers.timelineController.shiftExposureEdge(
+      layerId: rowId,
+      blockStartIndex: 0,
+      edge: TimelineBlockEdge.end,
+      delta: 6,
+    );
+    await learnTheFile(tester, s);
+
+    await openOn(tester, s, rowId);
+    expect(shortLine, findsOneWidget);
+    expect(
+      tester.widget<Text>(shortLine).data,
+      'Runs 6 frames past the source',
+      reason: 'the number is project frames, the unit the row is drawn in',
+    );
+    // 🚨THE PIN IS OVERFLOW, NOT A NUMBER. What can actually go wrong is a
+    // window sized without the line and then asked to draw it; a hand-copied
+    // pixel count would only ever re-state the constant back to itself.
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '자리는 예약하고 내용만 바꾼다 — the window made room for it',
+    );
+    expect(
+      buttonLabel(tester),
+      contains(AppText.strings.layerRasterizeLabel),
+      reason: 'the bake is still the popover own action',
+    );
+  });
 
   /// The decode runs in `runAsync`; its answers land on the pumps after —
   /// which carry the clock too, so the window's own timers run out.

@@ -136,6 +136,8 @@ class _XSheetGridHeaders {
           _state.widget.hooks.onToggleLayerFillReference,
       onOpenLayerMixer: _state.widget.hooks.onOpenLayerMixer,
       onOpenLayerReference: _state.widget.hooks.onOpenLayerReference,
+      isReferenceSourceShort:
+          _state.widget.hooks.layerSourceIsShortOf?.call(layer.id) ?? false,
       attachArrowPlacement: _state.widget.hooks.attachArrowPlacementOf?.call(
         layer.id,
       ),

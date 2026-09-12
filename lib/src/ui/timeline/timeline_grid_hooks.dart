@@ -79,6 +79,7 @@ class TimelineGridHooks {
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -249,6 +250,10 @@ class TimelineGridHooks {
   /// 라운드 3). Null hides the button.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// Whether that row asks its file for more than the file can show — the
+  /// button goes red and the popover says by how much (유저 2026-09-12).
+  final bool Function(LayerId layerId)? layerSourceIsShortOf;
 
   /// Which way a row's attach ARROW points in its sheet slot (R10 R3), or
   /// null off an attach group. A RESOLVER, not a list: the answer depends

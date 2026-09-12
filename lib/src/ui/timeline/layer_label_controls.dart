@@ -1565,6 +1565,7 @@ class LayerReferenceButton extends StatefulWidget {
     super.key,
     required this.keyValue,
     required this.onOpen,
+    this.isSourceShort = false,
   });
 
   /// The full widget key string ('timeline-layer-reference-a').
@@ -1573,6 +1574,15 @@ class LayerReferenceButton extends StatefulWidget {
   /// Opens the popover under THIS button's context. The button stays lit
   /// until the future completes — until the popover has closed.
   final Future<void> Function(BuildContext anchorContext) onOpen;
+
+  /// The row asks its file for more film than the file has, so the button
+  /// wears [AppColors.danger] (유저 2026-09-12: 「참조버튼을 빨갛게 만들고,
+  /// 그걸 누르면 팝오버 항목중 하나로 내용 띄우도록 하자」).
+  ///
+  /// ⛔The BUTTON says it, not a new badge beside it: the slot is already
+  /// there on every reference row, and red on a control the user can press
+  /// is what makes the popover the place the detail lives.
+  final bool isSourceShort;
 
   /// The box's side: a notch under the rail row, so the edge reads as the
   /// button's own and not as the row's.
@@ -1608,6 +1618,7 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
       ),
       icon: const Icon(Icons.insert_drive_file_outlined),
       isSelected: _isOpen,
+      danger: widget.isSourceShort,
       outlined: true,
       onPressed: _openPopover,
     );

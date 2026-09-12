@@ -416,6 +416,7 @@ class EditorSessionManager extends ChangeNotifier
   late final MovieCelHydrator movieCels = MovieCelHydrator(
     project: this,
     internals: this,
+    changes: this,
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
   );
@@ -1219,13 +1220,7 @@ class EditorSessionManager extends ChangeNotifier
               resolveCarriedConform: projectFile.carriedConformFor,
               resolveProjectSampleRate: () =>
                   repository.requireProject().audioSampleRate,
-              resolveAudioSpeed: () {
-                final project = repository.requireProject();
-                return (
-                  numerator: project.audioSpeedNumerator,
-                  denominator: project.audioSpeedDenominator,
-                );
-              },
+              resolveAudioSpeed: () => repository.requireProject().audioSpeed,
               // Widget tests: run conforms inline — a worker isolate started
               // under fake async outlives the test (the prerender scheduler's
               // FLUTTER_TEST branch, same reason). Missing fixture paths

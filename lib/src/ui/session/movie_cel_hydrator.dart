@@ -44,21 +44,27 @@ class MovieCelHydrator {
   MovieCelHydrator({
     required ProjectAccess project,
     required SessionInternals internals,
+    required ChangeSink changes,
     required RenderCaches renderCaches,
     required ProjectFrameRate Function() frameRate,
   }) : _project = project,
        _internals = internals,
+       _changes = changes,
        _renderCaches = renderCaches,
        _frameRate = frameRate;
 
   final ProjectAccess _project;
   final SessionInternals _internals;
+  final ChangeSink _changes;
   final RenderCaches _renderCaches;
   final ProjectFrameRate Function() _frameRate;
 
   /// Each movie's open document, by path — opened once; a movie that would
   /// not open is remembered as such instead of retried at every frame.
   final Map<String, Future<_OpenMovie?>> _opened = {};
+
+  /// What each movie TURNED OUT TO BE, once its open has answered.
+  final Map<String, QaVideoInfo> _facts = {};
 
   /// Pictures being decoded right now: positions that show one frame of the
   /// file — and askers that come back before it lands — wait for ONE
@@ -75,6 +81,16 @@ class MovieCelHydrator {
   /// it would fill goes with the session.
   bool _disposed = false;
 
+  /// What the DECODER said [path] is, or null while nothing has opened it.
+  ///
+  /// 🚨★★★THE FILE'S OWN TRUTH, ASKED SYNCHRONOUSLY — the shape
+  /// [AudioConformStore.failureFor] already has, and for the same reason: a
+  /// widget cannot await, so the fact is learned where it is learned anyway
+  /// and left here to be read. ⛔NOT the pool's copy. `MediaAsset.sourceFps`
+  /// is a `double` and its `frameCount` was written at registration, while
+  /// this is what the decoder answered about the file that is there now.
+  QaVideoInfo? factsFor(String path) => _facts[path];
+
   /// Decodes every movie cel [cut] composes at [frameIndex] that the store
   /// has not got at the cut's canvas — the rows the composite plan itself
   /// resolves, so a hidden row is never decoded.
@@ -85,7 +101,16 @@ class MovieCelHydrator {
       return Future<void>.value();
     }
     final store = _renderCaches.brushFrameStore;
-    final jobs = <Future<void>>[];
+    // EVERY movie row of the cut is OPENED, not only the ones composing at
+    // this frame. What the file turns out to be is what the rail's reference
+    // button says about the row, and a row whose block the playhead has not
+    // reached yet is exactly the row someone is looking at when they wonder.
+    // Costs one open per path for the life of the session ([_opened]).
+    final jobs = <Future<void>>[
+      for (final layer in cut.layers)
+        if (isMovieReference(layer))
+          _movieFor(layer.mediaReference!.assetPath),
+    ];
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
@@ -114,21 +139,14 @@ class MovieCelHydrator {
     String path,
     int elapsed,
   ) async {
-    final movie = await (_opened[path] ??= _open(path));
+    final movie = await _movieFor(path);
     if (movie == null || _disposed) {
       return;
     }
-    final project = _project.repository.requireProject();
-    final movieFrame = MovieClock(
+    final movieFrame = movieClockFor(
       projectRate: _frameRate(),
-      audioSpeed: (
-        numerator: project.audioSpeedNumerator,
-        denominator: project.audioSpeedDenominator,
-      ),
-      movieRate: (
-        numerator: movie.info.fpsNumerator,
-        denominator: movie.info.fpsDenominator,
-      ),
+      audioSpeed: _project.repository.requireProject().audioSpeed,
+      movie: movie.info,
     ).movieFrameAt(elapsed);
     final picture = await _pictureOf(movie, (
       path,
@@ -184,6 +202,22 @@ class MovieCelHydrator {
     }
   }
 
+  /// [path]'s open movie — opened once, and the moment it answers its facts
+  /// become askable ([factsFor]).
+  ///
+  /// 🚨THE FACT ARRIVES LATE, SO WHOEVER DREW WITHOUT IT IS TOLD. A rail
+  /// that read [factsFor] before the open landed drew the row as if the file
+  /// were long enough; nothing else would ever call it back.
+  Future<_OpenMovie?> _movieFor(String path) async {
+    final movie = await (_opened[path] ??= _open(path));
+    if (movie == null || _disposed || _facts.containsKey(path)) {
+      return movie;
+    }
+    _facts[path] = movie.info;
+    _changes.notifyChanged();
+    return movie;
+  }
+
   static Future<_OpenMovie?> _open(String path) async {
     final reader = videoDecodeBackend;
     final opened = await reader.open(path);
@@ -198,6 +232,7 @@ class MovieCelHydrator {
     _disposed = true;
     final opened = [..._opened.values];
     _opened.clear();
+    _facts.clear();
     _decoded.clear();
     for (final document in opened) {
       final movie = await document;

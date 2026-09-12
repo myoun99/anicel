@@ -884,7 +884,7 @@ Frame? resolveExposedFrameAt(Layer layer, int frameIndex) {
   return frame.copyWith(
     id: movieCelFrameId(
       frame.id,
-      frameIndex - block.startIndex + layer.mediaReference!.frameOffset,
+      movieElapsedAt(layer.mediaReference!, frameIndex - block.startIndex),
     ),
   );
 }

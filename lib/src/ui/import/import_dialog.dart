@@ -207,13 +207,8 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// The project's accumulated audio pull — a movie's preview counts its
   /// frames on the sound's clock, as its placement does.
-  ({int numerator, int denominator}) get _projectAudioSpeed {
-    final project = widget.session.repository.requireProject();
-    return (
-      numerator: project.audioSpeedNumerator,
-      denominator: project.audioSpeedDenominator,
-    );
-  }
+  ({int numerator, int denominator}) get _projectAudioSpeed =>
+      widget.session.repository.requireProject().audioSpeed;
 
   /// Whether the project CARRIES these files or points at them where they
   /// are. Carrying is the default now, on every platform.

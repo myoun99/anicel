@@ -601,6 +601,17 @@ enum AppStrings {
   /// several rows (미디어 배치 라운드 3).
   String get tlLayerReference => _s('tlLayerReference');
   String get tlSelectedLayers => _s('tlSelectedLayers');
+
+  /// The reference popover's warning line: the row runs [frames] PROJECT
+  /// frames past the end of the file it points at (유저 2026-09-12).
+  ///
+  /// ⚠️A METHOD, so the reader table above does not list it — that table is
+  /// built by scanning this file for `String get`, and a key taking `{n}`
+  /// has no getter to scan. `exCelCount` is the same shape for the same
+  /// reason; ADDING a line for this one turns the table's own check red.
+  String tlReferenceSourceShort(int frames) =>
+      _s('tlReferenceSourceShort').replaceFirst('{n}', '$frames');
+
   String get tlAudioLane => _s('tlAudioLane');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
@@ -2194,6 +2205,7 @@ enum AppStrings {
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
     'tlLinkedLayerTooltip': 'Linked layer — pictures are shared',
     'tlLayerReference': 'Reference',
+    'tlReferenceSourceShort': 'Runs {n} frames past the source',
     'tlSelectedLayers': 'Selected layers',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Name Tag',
@@ -3256,6 +3268,7 @@ enum AppStrings {
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
     'tlLinkedLayerTooltip': 'リンクレイヤー — 絵を共有しています',
     'tlLayerReference': '参照',
+    'tlReferenceSourceShort': '素材より{n}フレーム長い',
     'tlSelectedLayers': '選択したレイヤー',
     'tlAudioLane': '音声',
     'tlNameTagGroup': 'ネームタグ',
@@ -4306,6 +4319,7 @@ enum AppStrings {
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
     'tlLinkedLayerTooltip': '링크 레이어 — 그림을 공유합니다',
     'tlLayerReference': '참조',
+    'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
     'tlAudioLane': '오디오',
     'tlNameTagGroup': '네임태그',
@@ -5386,6 +5400,7 @@ enum AppStrings {
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
     'tlLinkedLayerTooltip': 'Calque lié — les images sont partagées',
     'tlLayerReference': 'Référence',
+    'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Cartouche',
@@ -6367,6 +6382,7 @@ enum AppStrings {
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
     'tlLinkedLayerTooltip': '链接图层 — 画面是共享的',
     'tlLayerReference': '引用',
+    'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',
     'tlAudioLane': '音频',
     'tlNameTagGroup': '名牌',

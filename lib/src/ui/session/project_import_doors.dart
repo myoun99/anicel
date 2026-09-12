@@ -761,20 +761,11 @@ class ProjectImportDoors {
   /// rate — ONE answer for the door that places a movie and the verb that
   /// rasterizes one, which have to agree or a bake would land on different
   /// frames than the reference showed.
-  MovieClock _movieClock(QaVideoInfo info) {
-    final project = _project.repository.requireProject();
-    return MovieClock(
-      projectRate: _frameRate(),
-      audioSpeed: (
-        numerator: project.audioSpeedNumerator,
-        denominator: project.audioSpeedDenominator,
-      ),
-      movieRate: (
-        numerator: info.fpsNumerator,
-        denominator: info.fpsDenominator,
-      ),
-    );
-  }
+  MovieClock _movieClock(QaVideoInfo info) => movieClockFor(
+    projectRate: _frameRate(),
+    audioSpeed: _project.repository.requireProject().audioSpeed,
+    movie: info,
+  );
 
   /// The bake [rasterizeMovieReference] runs once it holds the row, its one
   /// block and the open movie: the positions become cels on the sound's
@@ -793,7 +784,7 @@ class ProjectImportDoors {
     final clock = _movieClock(info);
     final movieFrames = [
       for (var position = 0; position < block.length; position += 1)
-        clock.movieFrameAt(position + reference.frameOffset),
+        clock.movieFrameAt(movieElapsedAt(reference, position)),
     ];
     final plan = planSequenceLayer(
       sourceFiles: List<String>.filled(

@@ -8,7 +8,9 @@ import '../editor_session_manager.dart';
 import '../input/control_press_claim.dart';
 import '../media/media_asset_pool_state.dart';
 import '../text/app_strings.dart';
+import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
+import 'movie_source_shortfall.dart';
 import 'rasterize_reference_rows.dart';
 
 /// The reference button's popover (유저 2026-09-11, 미디어 배치 라운드 3~6):
@@ -22,22 +24,59 @@ import 'rasterize_reference_rows.dart';
 const double layerReferencePopoverWidth = 236;
 const double layerReferencePopoverHeight = 72;
 
+/// One caption line taller — the window when it has to say the row runs
+/// past its source (유저 2026-09-12: 「팝오버 항목중 하나로 내용 띄우도록」).
+///
+/// ⚠️MEASURED, not guessed: the body is 60 without the line and 76 with it,
+/// and the window carries 12 around the body — so this is 88 exactly, the
+/// same way [layerReferencePopoverHeight] is 72. A window with slack in it
+/// would hide the day the line stops fitting.
+const double layerReferencePopoverShortHeight = 88;
+
 Future<void> showLayerReferencePopover(
   BuildContext anchorContext, {
   required EditorSessionManager session,
   required LayerId layerId,
 }) {
+  // 🚨MEASURED ONCE, HERE, AND CARRIED IN. The window's height is settled
+  // before it opens, so the line it makes room for has to be the same line
+  // the body draws — 「자리는 항상 예약하고 내용만 바꾼다」. Were the body to
+  // ask again as it built, a fact landing mid-life would add a line to a
+  // window already sized without it.
+  final shortfall = layerReferenceShortfall(session, layerId);
   return showAnchoredPopup<void>(
     anchorContext,
     label: 'layer-reference',
     width: layerReferencePopoverWidth,
-    height: layerReferencePopoverHeight,
+    height: shortfall > 0
+        ? layerReferencePopoverShortHeight
+        : layerReferencePopoverHeight,
     builder: (context, close) => _LayerReferencePopover(
       session: session,
       layerId: layerId,
+      shortfall: shortfall,
       close: close,
     ),
   );
+}
+
+/// The WORST shortfall among the rows a press on [pressedId] acts on, in
+/// project frames, or 0 when every one of them fits its file.
+///
+/// The worst rather than the sum: the number names how far past its source
+/// one row runs, and adding two rows' overruns would name nothing at all.
+int layerReferenceShortfall(
+  EditorSessionManager session,
+  LayerId pressedId,
+) {
+  var worst = 0;
+  for (final layer in layerReferenceTargets(session, pressedId)) {
+    final shortfall = movieSourceShortfall(session, layer);
+    if (shortfall > worst) {
+      worst = shortfall;
+    }
+  }
+  return worst;
 }
 
 /// The REFERENCE rows a press on [pressedId] bakes, in stack order: the rows
@@ -58,11 +97,18 @@ class _LayerReferencePopover extends StatelessWidget {
   const _LayerReferencePopover({
     required this.session,
     required this.layerId,
+    required this.shortfall,
     required this.close,
   });
 
   final EditorSessionManager session;
   final LayerId layerId;
+
+  /// Project frames the worst row runs past its source, 0 when none does —
+  /// measured by [showLayerReferencePopover], because the window's height
+  /// was reserved from this very number.
+  final int shortfall;
+
   final VoidCallback close;
 
   @override
@@ -104,6 +150,21 @@ class _LayerReferencePopover extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: AnchoredPopupText.caption,
           ),
+          // The red button's OWN WORDS. The rail can only go red; pressing
+          // it is how the user asks what is red about it, so the detail
+          // lives here as one more item and nowhere else.
+          if (shortfall > 0) ...[
+            const SizedBox(height: 2),
+            Text(
+              AppText.strings.tlReferenceSourceShort(shortfall),
+              key: const ValueKey<String>('layer-reference-source-short'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AnchoredPopupText.caption.copyWith(
+                color: AppColors.danger,
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           _RasterizeButton(
             label:

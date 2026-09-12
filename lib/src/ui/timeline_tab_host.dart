@@ -9,6 +9,7 @@ import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import 'timeline/layer_reference_popover.dart';
+import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
@@ -827,6 +828,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   layerId: layerId,
                 ),
+            // ONE law, two readers: the rail asks whether to go red, the
+            // popover asks by how much, and both get the answer from
+            // [movieSourceShortfall].
+            layerSourceIsShortOf: (layerId) {
+              final layer = _session.layerById(layerId);
+              return layer != null && movieSourceShortfall(_session, layer) > 0;
+            },
             // Kind-dispatched (unified layer controls): the camera row drives
             // the camera-view notifiers, every other row the layer flags.
             onToggleLayerVisibility: _toggleLayerVisibility,

@@ -80,6 +80,7 @@ class TimelinePanel extends StatefulWidget {
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.layerSourceIsShortOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -276,6 +277,9 @@ class TimelinePanel extends StatefulWidget {
   /// 3). Null hides the button.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// Whether that row asks its file for more than the file can show.
+  final bool Function(LayerId layerId)? layerSourceIsShortOf;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -569,6 +573,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       onOpenLayerReference: widget.onOpenLayerReference,
+      layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,
       onToggleLayerFillReference: widget.onToggleLayerFillReference,

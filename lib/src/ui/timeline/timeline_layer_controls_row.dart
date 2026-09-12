@@ -136,6 +136,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerFillReference,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.isReferenceSourceShort = false,
     this.isLayerSoloed = false,
     this.hasLanes = false,
     this.lanesExpanded = false,
@@ -227,6 +228,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// reserved slot.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// Whether this row asks its file for more film than the file has — the
+  /// button turns red, and its popover says by how much.
+  final bool isReferenceSourceShort;
 
   /// Whether this SE row is soloed (AUDIO-PRO R1) — the speaker tints
   /// accent while soloing narrows monitoring to the soloed rows.
@@ -683,6 +688,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     }
     return LayerReferenceButton(
       keyValue: '$keyPrefix-layer-reference-${layer.id}',
+      isSourceShort: isReferenceSourceShort,
       onOpen: (anchorContext) => onOpen(anchorContext, layer.id),
     );
   }

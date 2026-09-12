@@ -33,6 +33,7 @@ void main() {
     Layer layer, {
     Future<void> Function(BuildContext, LayerId)? onOpen,
     PressFire fireOn = PressFire.upInside,
+    bool isSourceShort = false,
   }) => MaterialApp(
     home: Material(
       child: PressFireScope(
@@ -47,6 +48,7 @@ void main() {
           onToggleLayerTimesheet: (_) {},
           onLayerMarkSelected: (_, _) {},
           onOpenLayerReference: onOpen,
+          isReferenceSourceShort: isSourceShort,
         ),
       ),
     ),
@@ -145,5 +147,44 @@ void main() {
     closed.complete();
     await tester.pumpAndSettle();
     expect(glyph(), rest);
+  });
+
+  testWidgets('a row asking its file for more film than it holds wears '
+      'DANGER — and keeps it while its own popover is open, because the red '
+      'is what the popover is there to explain (유저 2026-09-12)', (
+    tester,
+  ) async {
+    final closed = Completer<void>();
+    Color glyph() => IconTheme.of(
+      tester.element(
+        find.descendant(of: button('ref'), matching: find.byType(Icon)),
+      ),
+    ).color!;
+
+    await tester.pumpWidget(
+      row(layerNamed('ref', file: 'take.mov'), onOpen: (_, _) => closed.future),
+    );
+    expect(glyph(), isNot(AppColors.danger), reason: 'the premise');
+
+    await tester.pumpWidget(
+      row(
+        layerNamed('ref', file: 'take.mov'),
+        onOpen: (_, _) => closed.future,
+        isSourceShort: true,
+      ),
+    );
+    expect(glyph(), AppColors.danger);
+
+    await tester.tap(button('ref'));
+    await tester.pump();
+    expect(
+      glyph(),
+      AppColors.danger,
+      reason: 'lit is the transient fact; short is the standing one',
+    );
+    expect(glyph(), isNot(AppColors.accent));
+
+    closed.complete();
+    await tester.pumpAndSettle();
   });
 }

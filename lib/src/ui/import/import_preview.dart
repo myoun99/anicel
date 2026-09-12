@@ -196,13 +196,10 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// The movie's clock: its transport counts PROJECT frames, and each one
   /// shows the movie frame that holds its instant — the placement counts
   /// them the same way, so what IN/OUT frame here is what lands.
-  MovieClock _clockOf(QaVideoInfo info) => MovieClock(
+  MovieClock _clockOf(QaVideoInfo info) => movieClockFor(
     projectRate: widget.frameRate,
     audioSpeed: widget.audioSpeed,
-    movieRate: (
-      numerator: info.fpsNumerator,
-      denominator: info.fpsDenominator,
-    ),
+    movie: info,
   );
 
   /// Draws the frame under the playhead. One at a time: a scrub asks for

@@ -178,6 +178,13 @@ class Project {
   final int audioSpeedNumerator;
   final int audioSpeedDenominator;
 
+  /// The pull as ONE value. Four places paired these two fields into
+  /// exactly this record by hand — the conform store, the import window's
+  /// preview, the movie hydrator and the door that places a movie — and a
+  /// pair carried by hand is a pair that can be carried inverted.
+  ({int numerator, int denominator}) get audioSpeed =>
+      (numerator: audioSpeedNumerator, denominator: audioSpeedDenominator);
+
   /// PROJECT-side export state (출력 UI): the cut checks the Cels/Timesheet
   /// project scope excludes and each cut's Cels manual delta. Travels with
   /// the film; written through the repository with no history entry.
