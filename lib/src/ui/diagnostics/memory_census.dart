@@ -223,9 +223,15 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       bytes:
           StaticRaster.censusBytes +
           // ⛔The editing canvas's display buffer belongs on the same row:
-          // it is a panel holding a raster of itself, one canvas-resolution
-          // image (33MB at 4K) kept for as long as nothing changes. It
-          // lives in a widget State, so it is PUSHED here — 2026-09-10.
+          // it is a panel holding a raster of itself, kept for as long as
+          // nothing changes. It lives in a widget State, so it is PUSHED
+          // here — 2026-09-10.
+          //
+          // ⚠️NOT one image. A derived buffer pins the one it was drawn
+          // from, so this is the whole chain, up to
+          // `DisplayBufferCache._maxChainBytes` — it read one image until
+          // 2026-09-12, and the canvases it was not counting showed up in
+          // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
           session.renderCaches.canvasBufferBytes,
     ),
     // Pushed by the mounted viewers rather than read off a holder the
