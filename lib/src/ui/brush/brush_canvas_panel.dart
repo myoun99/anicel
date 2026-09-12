@@ -237,8 +237,16 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// The coordinator for the verbs that EDIT PIXELS — null whenever this
   /// frame cannot be drawn on, which is the condition every one of those
-  /// verbs was already written against. Only the interactive view itself
-  /// reads [coordinator] directly, because it stays mounted either way.
+  /// verbs was already written against.
+  ///
+  /// ⛔THE VERBS, AND NOTHING THAT PAINTS. Everything that DRAWS reads
+  /// [celEditable] and [coordinator] directly — the interactive view, which
+  /// stays mounted either way, and the surface painter that fills it. This
+  /// getter folds in the ROW question, and painting is not a verb.
+  /// 🗣️유저 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데 트랜스폼에
+  /// 서면 그림이 사라져」 — the painter read this, so standing on a property
+  /// lane left the live row in the composite tree with nobody to paint it.
+  /// H19 split the two questions; this keeps them split one layer down.
   BrushFrameEditingCoordinator? get _editableCoordinator =>
       celEditable && rowAcceptsStrokes ? coordinator : null;
 
@@ -772,7 +780,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   late final _CanvasPanelToolCursor _toolCursor = _CanvasPanelToolCursor(this);
 
   BitmapSurfacePainter? _activeSurfacePainter() {
-    final coordinator = widget._editableCoordinator;
+    // ★THE CEL QUESTION, NOT THE ROW'S (H19): a lane refuses the STROKE,
+    // it does not empty the canvas.
+    final coordinator = widget.celEditable ? widget.coordinator : null;
     final overlay = widget.activeStrokeOverlayModel;
     if (coordinator == null || overlay == null) {
       _memoActiveSurfacePainter = null;

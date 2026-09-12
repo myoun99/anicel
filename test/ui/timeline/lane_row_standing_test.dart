@@ -15,6 +15,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -522,7 +523,9 @@ void main() {
       expect(laneRing, timelineStandingCellDecoration);
     });
 
-    testWidgets('a lane takes no strokes; its layer does', (tester) async {
+    testWidgets('a lane takes no strokes; its layer keeps its picture', (
+      tester,
+    ) async {
       await _pump(tester);
       final session = _sessionOf(tester);
       // A cel to draw on, so "refused" cannot pass for "nothing here".
@@ -537,12 +540,30 @@ void main() {
       );
       bool canvasTakesStrokes() => canvas().rowAcceptsStrokes;
       bool canvasHasCel() => canvas().celEditable;
+      // ⛔AND WHAT IS ACTUALLY PAINTED. The flag above answers "is there a
+      // cel"; it stayed true through the whole of 유저 2026-09-12: 「레이어에
+      // 서있을땐 그림 제대로 보이는데 트랜스폼에 서면 그림이 사라져」, because
+      // what had gone was the live row's PAINTER. The composite tree stands
+      // the row up either way, so only this reads what the user sees.
+      bool canvasPaintsCel() =>
+          tester
+              .widget<CanvasLayerStackView>(
+                find.descendant(
+                  of: find.byKey(
+                    const ValueKey<String>('main-canvas-brush-host'),
+                  ),
+                  matching: find.byType(CanvasLayerStackView),
+                ),
+              )
+              .activeSurfacePainter !=
+          null;
 
       expect(
         canvasTakesStrokes(),
         isTrue,
         reason: 'standing on the drawing row, on its cel',
       );
+      expect(canvasPaintsCel(), isTrue, reason: 'the cel is on screen');
 
       await _openLanes(tester, layerId: _drawId);
       await _pressLaneName(tester, 'position', 'Position', layerId: _drawId);
@@ -569,6 +590,13 @@ void main() {
         reason: '⛔the cel is still THERE — a lane refuses the STROKE, it '
             'does not empty the canvas',
       );
+      expect(
+        canvasPaintsCel(),
+        isTrue,
+        reason: '⛔AND IT IS STILL DRAWN. The flag above was already true '
+            'while the picture was gone — the painter had gone with the '
+            'verbs. Whatever row you stand on, the picture stays.',
+      );
 
       // And back: the layer row takes strokes again.
       await tester.tap(
@@ -577,6 +605,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(canvasTakesStrokes(), isTrue);
       expect(canvasHasCel(), isTrue);
+      expect(canvasPaintsCel(), isTrue);
     });
   });
 

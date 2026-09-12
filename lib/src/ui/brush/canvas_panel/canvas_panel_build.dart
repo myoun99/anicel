@@ -194,9 +194,16 @@ class _PanelBuild {
               child: underlayBuilder(
                 context,
                 _state._viewportState._viewport,
-                _state.widget._editableCoordinator == null
-                    ? null
-                    : _state._activeSurfacePainter(),
+                // ★ONE PLACE DECIDES WHETHER THERE IS A PAINTER, and
+                // it is the builder. This call site used to ask the VERB
+                // coordinator first — a second copy of the same decision,
+                // with the ROW question mixed in — so standing on a
+                // property lane never even asked, and the live row sat in
+                // the composite tree with nobody to paint it. 🗣️유저
+                // 2026-09-12: 「레이어에 서있을땐 그림 제대로 보이는데
+                // 트랜스폼에 서면 그림이 사라져」. The builder answers null
+                // by itself when there is nothing to paint.
+                _state._activeSurfacePainter(),
                 _state._selectionFloat,
               ),
             ),
