@@ -42,6 +42,20 @@ import 'media_pool.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
 
+/// WHAT LANDS when a movie is placed, before any of it has landed: where it
+/// arrives, the span it covers on the sound's clock, and the row itself.
+///
+/// One value because three steps read it — the plan makes it, the landing
+/// puts it in the project, the bake fills its pixels — and a step deriving
+/// its own copy of 「where does this go, how long is it」 is how the bake
+/// lands on different frames than the reference showed.
+typedef _MoviePlacement = ({
+  ImportArrival arrival,
+  KeptSpan kept,
+  Layer layer,
+  List<PlannedCelBake> bakes,
+});
+
 /// The image / PSD / PDF / sound import doors.
 class ProjectImportDoors {
   ProjectImportDoors({
@@ -530,101 +544,28 @@ class ProjectImportDoors {
     }
     try {
       final info = opened.info;
-      final clock = _movieClock(info);
-      final kept = KeptSpan(
-        length: clock.projectFramesCovering(info.frameCount),
-        inFrame: settings.inFrame,
-        outFrame: settings.outFrame,
+      final planned = _planMovieLayer(
+        gate,
+        info,
+        settings,
+        rasterize: settings.bake || spot is RowFramesSpot,
       );
-      // A NEW cut is made at the movie's own size, which its locked 1:1
-      // fit fills exactly.
-      final arrival = gate.targetCut == null
-          ? gate.withCanvasSize(
-              CanvasSize(width: info.width, height: info.height),
-            )
-          : gate;
+      final arrival = planned.arrival;
       final source = arrival.source;
-      final Layer layer;
-      final List<PlannedCelBake> bakes;
-      if (settings.bake || spot is RowFramesSpot) {
-        final movieFrames = [
-          for (var n = kept.first; n <= kept.last; n += 1)
-            clock.movieFrameAt(n),
-        ];
-        final plan = planSequenceLayer(
-          sourceFiles: List<String>.filled(movieFrames.length, source),
-          // A movie frame the clock shows twice is ONE picture held
-          // (「중복 접기」): the fingerprint IS the movie frame.
-          frameFingerprints: movieFrames,
-          sourceFrameIndices: movieFrames,
-          displayName: arrival.displayName,
-          cutId: arrival.cutId,
-          fit: settings.fit,
-          rasterize: true,
-          mint: arrival.mint,
-        );
-        layer = plan.layer;
-        bakes = plan.bakes;
-      } else {
-        layer = planMovieReferenceLayer(
-          referencePath: source,
-          displayName: arrival.displayName,
-          span: (first: kept.first, count: kept.count),
-          mint: arrival.mint,
-        );
-        bakes = const [];
-      }
-      // Baked or not, the file registers (유저 2026-09-11: 「구워도 풀에
-      // 남음」) — ONE entry, which the sound points at too.
-      final asset = importedMediaAsset(
-        path: source,
-        kind: MediaAssetKind.video,
-        fit: settings.fit,
-        identity: readMediaIdentity(source),
-        carried: settings.mode == ImportFileMode.keepInside,
-        sourceFps: info.fps,
-        frameCount: info.frameCount,
-      );
+      final asset = _movieAsset(source, info, settings);
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
           settings.sound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
-      var landed = false;
-      _project.historyManager.runAsOneStep(arrival.undoDescription, () {
-        landed = _landing.land(
-          [layer],
-          arrival: arrival,
-          duration: kept.count,
-          assets: [asset],
-        );
-        if (!landed || !withMovieSound) {
-          return;
-        }
-        // A NEW cut is the active one by now, so the sound asks the gate
-        // again, there.
-        final soundArrival = arrival.targetCut != null
-            ? arrival
-            : _landing.arriveAt(
-                ImportDestination.activeCutLayer,
-                path: source,
-              );
-        if (soundArrival != null) {
-          _landing.landSound(
-            arrival: soundArrival,
-            offsetFrames: kept.first,
-            lengthFrames: kept.count,
-          );
-        }
-      });
-      if (!landed) {
+      if (!_landMovieWithSound(planned, asset, withSound: withMovieSound)) {
         return false;
       }
       await _bakeLandedCels(
         arrival.cutId,
-        layer,
-        bakes,
+        planned.layer,
+        planned.bakes,
         rowId: _rowOf(spot),
         onProgress: onRenderProgress,
         // One frame the reader refuses leaves its cel empty and is
@@ -636,6 +577,125 @@ class ProjectImportDoors {
     } finally {
       await videoDecodeBackend.close(opened.token);
     }
+  }
+
+  /// What a placed movie LANDS AS: the span it covers on the sound's clock,
+  /// the cut it arrives in — a NEW one is made at the movie's own size,
+  /// which its locked 1:1 fit fills exactly — and the row itself.
+  ///
+  /// [rasterize] asks for cels (the window's 「굽는다」, or a drop onto a
+  /// row's frames); without it the row draws from the file and there is
+  /// nothing to bake.
+  _MoviePlacement _planMovieLayer(
+    ImportArrival gate,
+    QaVideoInfo info,
+    ImportFileSettings settings, {
+    required bool rasterize,
+  }) {
+    final clock = _movieClock(info);
+    final kept = KeptSpan(
+      length: clock.projectFramesCovering(info.frameCount),
+      inFrame: settings.inFrame,
+      outFrame: settings.outFrame,
+    );
+    final arrival = gate.targetCut == null
+        ? gate.withCanvasSize(
+            CanvasSize(width: info.width, height: info.height),
+          )
+        : gate;
+    final source = arrival.source;
+    if (!rasterize) {
+      return (
+        arrival: arrival,
+        kept: kept,
+        layer: planMovieReferenceLayer(
+          referencePath: source,
+          displayName: arrival.displayName,
+          span: (first: kept.first, count: kept.count),
+          mint: arrival.mint,
+        ),
+        bakes: const [],
+      );
+    }
+    final movieFrames = [
+      for (var n = kept.first; n <= kept.last; n += 1) clock.movieFrameAt(n),
+    ];
+    final plan = planSequenceLayer(
+      sourceFiles: List<String>.filled(movieFrames.length, source),
+      // A movie frame the clock shows twice is ONE picture held
+      // (「중복 접기」): the fingerprint IS the movie frame.
+      frameFingerprints: movieFrames,
+      sourceFrameIndices: movieFrames,
+      displayName: arrival.displayName,
+      cutId: arrival.cutId,
+      fit: settings.fit,
+      rasterize: true,
+      mint: arrival.mint,
+    );
+    return (
+      arrival: arrival,
+      kept: kept,
+      layer: plan.layer,
+      bakes: plan.bakes,
+    );
+  }
+
+  /// The pool entry a placed movie registers — baked or not (유저
+  /// 2026-09-11: 「구워도 풀에 남음」) — ONE entry, which the sound points
+  /// at too.
+  MediaAsset _movieAsset(
+    String source,
+    QaVideoInfo info,
+    ImportFileSettings settings,
+  ) => importedMediaAsset(
+    path: source,
+    kind: MediaAssetKind.video,
+    fit: settings.fit,
+    identity: readMediaIdentity(source),
+    carried: settings.mode == ImportFileMode.keepInside,
+    sourceFps: info.fps,
+    frameCount: info.frameCount,
+  );
+
+  /// The picture and its sound land as ONE undo step; after that they are
+  /// two blocks (「짝 = 따로따로」). The sound starts where the picture
+  /// starts and runs as long (「같은 시작 · 같은 구간」), and it is landed
+  /// only when [withSound] says the movie brought one.
+  bool _landMovieWithSound(
+    _MoviePlacement planned,
+    MediaAsset asset, {
+    required bool withSound,
+  }) {
+    final arrival = planned.arrival;
+    final kept = planned.kept;
+    var landed = false;
+    _project.historyManager.runAsOneStep(arrival.undoDescription, () {
+      landed = _landing.land(
+        [planned.layer],
+        arrival: arrival,
+        duration: kept.count,
+        assets: [asset],
+      );
+      if (!landed || !withSound) {
+        return;
+      }
+      // A NEW cut is the active one by now, so the sound asks the gate
+      // again, there.
+      final soundArrival = arrival.targetCut != null
+          ? arrival
+          : _landing.arriveAt(
+              ImportDestination.activeCutLayer,
+              path: arrival.source,
+            );
+      if (soundArrival != null) {
+        _landing.landSound(
+          arrival: soundArrival,
+          offsetFrames: kept.first,
+          lengthFrames: kept.count,
+        );
+      }
+    });
+    return landed;
   }
 
   /// RASTERIZE a movie kept as a reference (§6-f; the video spec the user
