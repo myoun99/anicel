@@ -147,6 +147,12 @@ List<int> storyboardDivisionKeys({
   return keys;
 }
 
+/// ⛔RETIRED (I-21 ②, 2026-09-12), kept only so nobody writes it again.
+/// The storyboard front edge used to have its own law: the grabbed panel
+/// lost frames, nobody grew, and the cut's length absorbed the difference.
+/// It is the SHARED lead-edge rule now, reached by flattening the track
+/// into panels (`models/storyboard_panel_slots.dart`).
+///
 /// How far the panel at [panelIndex] may be shortened from its FRONT, or
 /// null when there is no such panel to re-time.
 ///

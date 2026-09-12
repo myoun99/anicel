@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 
+import 'dart:collection';
+
 import 'package:flutter/foundation.dart' show mapEquals;
 
-import '../../../models/cut.dart';
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
-import '../../../models/cut_lead_edge_plan.dart';
+import '../../../models/block_run_lead_edge.dart';
+import '../../../models/storyboard_panel_slots.dart';
 import '../../../models/layer.dart';
 import '../../../models/storyboard_coverage.dart';
 import '../../../models/storyboard_timeline_layout.dart';
+import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -93,8 +96,14 @@ sealed class CutTrimDrag implements EditorDragSession {
     };
   }
 
-  /// The start TRIM's leftward growth cascades through the PREDECESSORS'
-  /// gaps, so the whole track's order and gaps join the drag snapshot.
+  /// The lead edge TRADES with the block in front of it (I-21), so the
+  /// whole track's order, gaps AND durations join the drag snapshot: the
+  /// cut that gives up frames is somebody else's, and `commit` reads every
+  /// before-value it is about to change.
+  ///
+  /// ⛔A snapshot of the dragged cut alone is what the old law needed —
+  /// there, nothing in front ever resized. Keeping it that narrow made
+  /// `commit` read a null for the neighbour the moment the law changed.
   static CutLeadTrimDrag _beginLead({
     required EdgeDragRoles roles,
     required List<StoryboardTimelineLayoutEntry> layout,
@@ -108,13 +117,15 @@ sealed class CutTrimDrag implements EditorDragSession {
     return CutLeadTrimDrag._(
       roles: roles,
       cutId: entry.cutId,
-      beforeDurations: {entry.cutId: entry.cut.duration},
+      beforeDurations: {
+        for (final candidate in trackEntries)
+          candidate.cutId: candidate.cut.duration,
+      },
       beforeGaps: {
         for (final candidate in trackEntries)
           candidate.cutId: candidate.cut.leadingGapFrames,
       },
       order: [for (final candidate in trackEntries) candidate.cutId],
-      index: entry.cutIndex,
       panelIndex: panelIndex,
     );
   }
@@ -277,25 +288,40 @@ sealed class CutTrimDrag implements EditorDragSession {
   List<({Layer before, Layer after})> _rowEditsForResizedCuts({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
-  }) {
+  }) => _conteRowEdits(afterDurations.keys, (cutId, row) {
+    if (beforeDurations[cutId] == afterDurations[cutId]) {
+      return null;
+    }
+    return storyboardTimelineFilledToCover(
+      timeline: row.timeline,
+      cutDuration: afterDurations[cutId]!,
+    );
+  });
+
+  /// The conte-row edits for [cutIds], as [rewrite] answers them — the one
+  /// walk both edges make: find the cut, find its row, keep only the rows a
+  /// rewrite actually changed.
+  ///
+  /// ⛔THE EDGES DIFFER IN THE REWRITE, NOTHING ELSE. They each spelled this
+  /// walk out until the clone scan caught the pair (I-21 ②); a second copy
+  /// is how one edge would quietly stop skipping unchanged rows.
+  List<({Layer before, Layer after})> _conteRowEdits(
+    Iterable<CutId> cutIds,
+    SplayTreeMap<int, TimelineExposure>? Function(CutId cutId, Layer row)
+    rewrite,
+  ) {
     final edits = <({Layer before, Layer after})>[];
-    for (final entry in afterDurations.entries) {
-      if (beforeDurations[entry.key] == entry.value) {
-        continue;
-      }
-      final cut = _roles.project.cutById(entry.key);
+    for (final cutId in cutIds) {
+      final cut = _roles.project.cutById(cutId);
       final row = cut == null ? null : storyboardLayerForCut(cut);
       if (row == null) {
         continue;
       }
-      final filled = storyboardTimelineFilledToCover(
-        timeline: row.timeline,
-        cutDuration: entry.value,
-      );
-      if (filled == null || mapEquals(filled, row.timeline)) {
+      final next = rewrite(cutId, row);
+      if (next == null || mapEquals(next, row.timeline)) {
         continue;
       }
-      edits.add((before: row, after: row.copyWith(timeline: filled)));
+      edits.add((before: row, after: row.copyWith(timeline: next)));
     }
     return edits;
   }
@@ -318,17 +344,18 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     required super.beforeDurations,
     required super.beforeGaps,
     required List<CutId> order,
-    required int index,
     required int panelIndex,
   }) : _order = order,
-       _index = index,
        _panelIndex = panelIndex,
        super._();
 
-  /// Track cut order + the dragged cut's slot, snapshotted because the
-  /// leftward cascade pushes predecessor gaps (R12-⑦).
+  /// Track cut order, snapshotted because the drag reads every cut's
+  /// panels against the layout it started from.
+  ///
+  /// ⛔The dragged cut's ORDINAL went with the second law (I-21 ②): the
+  /// target is found by (cut, panel) in the flattened run now, so an index
+  /// into the cut list would be a second way to say the same thing.
   final List<CutId> _order;
-  final int _index;
 
   /// Which conte PANEL this drag grabbed, cut-local. Every panel hangs a
   /// front grip on the strip (user's rule 2026-08-02), and the panel you
@@ -336,93 +363,101 @@ final class CutLeadTrimDrag extends CutTrimDrag {
   /// from the cut alone.
   final int _panelIndex;
 
+  /// The panel layout the last [_plan] answered with, so the row half of
+  /// the same answer is READ rather than computed twice — the base
+  /// `update` asks for the plan and the row edits separately.
+  List<int>? _plannedPanelLengths;
+  List<StoryboardPanelSlot> _plannedPanels = const [];
+
   @override
   ({Map<CutId, int> durations, Map<CutId, int> gaps}) _plan(
     int cumulativeDelta,
   ) {
-    // The floor is the STORYBOARD row's extent, not one frame: its cells are
-    // panels OF this cut, so an edge cannot be dragged past the panel it
-    // belongs to (delete the cells to shrink further). Cuts without a
-    // storyboard row keep the plain one-frame floor.
-    final trimmedCut = _roles.project.cutById(_cutId);
-    final plan = planCutLeadEdge(
-      slots: [
-        for (final id in _order)
-          (
-            id: id,
-            leadingGapFrames: _beforeGaps[id]!,
-            // Nothing but the dragged cut changes duration mid-drag, and the
-            // preview never touches the repository, so a live read IS the
-            // before-value for every slot.
-            duration: _roles.project.cutById(id)?.duration ?? 1,
-          ),
-      ],
-      targetIndex: _index,
+    // ★THE TRACK AS PANELS (I-21 ②, 유저 2026-09-12). A cut with a conte
+    // row is several blocks; a cut without one is a single block that
+    // happens to be the whole cut. Flattened that way, 「앞 컷의 마지막
+    // 콘티 블록」 and 「앞 컷 자체」 stop being two cases — both are "the
+    // block in front" — and the shared lead-edge rule answers for both.
+    //
+    // ↩️What this replaced: the cut axis clamped against a floor derived
+    // from the grabbed panel, and then a SECOND law re-keyed the row so
+    // that nobody grew and the cut's length absorbed the difference. Two
+    // laws for one gesture, disagreeing with the frame axis by design.
+    final before = [
+      for (final id in _order)
+        (
+          id: id,
+          leadingGapFrames: _beforeGaps[id]!,
+          // Nothing but the dragged cut changes duration mid-drag, and the
+          // preview never touches the repository, so a live read IS the
+          // before-value for every slot.
+          duration: _roles.project.cutById(id)?.duration ?? 1,
+          divisionKeys: _divisionKeysOf(id),
+        ),
+    ];
+    final panels = panelSlotsOfCuts(before);
+    final targetIndex = panels.indexWhere(
+      (panel) => panel.cutId == _cutId && panel.panelIndex == _panelIndex,
+    );
+    if (targetIndex == -1) {
+      _plannedPanelLengths = null;
+      _plannedPanels = const [];
+      return (durations: const {}, gaps: const {});
+    }
+    final layout = planBlockRunLeadEdge(
+      slots: [for (final panel in panels) panel.slot],
+      targetIndex: targetIndex,
       frameDelta: cumulativeDelta,
-      minDuration: trimmedCut == null ? 1 : _minimumDurationFor(trimmedCut),
     );
-    return (durations: plan.durations, gaps: plan.gaps);
+    _plannedPanels = panels;
+    _plannedPanelLengths = layout.lengths;
+    return cutsFromPanelLayout(
+      panels: panels,
+      leadingGaps: layout.leadingGaps,
+      lengths: layout.lengths,
+      before: before,
+    );
   }
 
-  /// How far this drag may shrink the cut, as a minimum DURATION — the shape
-  /// [planCutLeadEdge] wants.
-  ///
-  /// The floor belongs to the panel the grip is on: that panel keeps one
-  /// frame, and since every other panel keeps its commas, the cut's floor is
-  /// its current duration less that panel's room. A cut with no conte row
-  /// (or a row a drag cannot address) keeps the plain one-frame floor.
-  ///
-  /// ⚠️ [minimumCutDurationFor] is the LAST panel's floor and is the right
-  /// answer for the trailing edge only. Using it here let a drag ask the
-  /// first cell for a negative length — the assert in
-  /// [StoryboardCoverageCell] — whenever the grabbed panel was shorter than
-  /// the last one.
-  int _minimumDurationFor(Cut cut) {
-    final row = storyboardLayerForCut(cut);
-    if (row == null) {
-      return 1;
-    }
-    final maxShrink = storyboardPanelLeadMaxShrink(
-      timeline: row.timeline,
-      cutDuration: cut.duration,
-      panelIndex: _panelIndex,
-    );
-    return maxShrink == null ? 1 : math.max(1, cut.duration - maxShrink);
-  }
-
-  /// The conte-row rewrite a LEAD drag owes: the grabbed panel loses the
-  /// applied frames off its front and every other panel keeps its commas.
-  ///
-  /// The shift is read off the plan's own result, never off the raw
-  /// cumulative delta — the plan clamps, and the delta does not know it did.
-  ///
-  /// Empty when the cut has no row, when the drag was clamped to nothing, or
-  /// when the row cannot be addressed — in each of those the plain cut
-  /// duration change is the whole edit.
-  @override
-  List<({Layer before, Layer after})> _rowEditsForPlan(
-    ({Map<CutId, int> durations, Map<CutId, int> gaps}) planned,
-  ) {
-    final applied =
-        _beforeDurations[_cutId]! - (planned.durations[_cutId] ?? 0);
-    if (applied == 0) {
-      return const [];
-    }
-    final cut = _roles.project.cutById(_cutId);
+  /// The conte row's division keys for [id], cut-local — empty when the cut
+  /// has no row, which is exactly what makes it one panel.
+  List<int> _divisionKeysOf(CutId id) {
+    final cut = _roles.project.cutById(id);
     final row = cut == null ? null : storyboardLayerForCut(cut);
     if (cut == null || row == null) {
       return const [];
     }
-    final retimed = storyboardTimelineWithPanelLeadRetimed(
+    return storyboardDivisionKeys(
       timeline: row.timeline,
       cutDuration: cut.duration,
-      panelIndex: _panelIndex,
-      delta: applied,
     );
-    if (retimed == null || mapEquals(retimed, row.timeline)) {
+  }
+
+  /// The conte rows this drag owes, read off the SAME panel layout the
+  /// plan answered with — every cut whose panels moved, not only the one
+  /// the grip is on, because a lead edge trades across cut boundaries now.
+  ///
+  /// Empty when the plan found nothing, when a cut has no row, or when a
+  /// row and its panels disagree about how many blocks there are.
+  @override
+  List<({Layer before, Layer after})> _rowEditsForPlan(
+    ({Map<CutId, int> durations, Map<CutId, int> gaps}) planned,
+  ) {
+    final lengths = _plannedPanelLengths;
+    if (lengths == null) {
       return const [];
     }
-    return [(before: row, after: row.copyWith(timeline: retimed))];
+    final byCut = <CutId, List<int>>{};
+    for (var i = 0; i < _plannedPanels.length; i += 1) {
+      (byCut[_plannedPanels[i].cutId] ??= <int>[]).add(lengths[i]);
+    }
+    return _conteRowEdits(
+      byCut.keys,
+      (cutId, row) => conteTimelineFromPanels(
+        timeline: row.timeline,
+        panelLengths: byCut[cutId]!,
+      ),
+    );
   }
 }
 

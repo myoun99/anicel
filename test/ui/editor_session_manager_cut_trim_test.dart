@@ -117,9 +117,8 @@ void main() {
     expect(s.cutById(first)!.duration, before + 6);
   });
 
-  test('R10 R4: the LEAD edge follows the frame axis — the end stays put, '
-      'the GLUED cut in front slides wholesale, and the film\'s head '
-      'empties', () {
+  test('I-21: the LEAD edge follows the frame axis — the end stays put and '
+      'the cut in front TRADES frames, keeping its head', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
     final secondDuration = s.cutById(second)!.duration;
@@ -130,10 +129,10 @@ void main() {
       isTrue,
     );
 
-    // Rightward: this cut loses frames off its front. The cut glued in
-    // front of it does NOT have a gap torn open between them — it
-    // translates, keeping its own length, and the difference comes to rest
-    // at the head of the film.
+    // ↩️I-21 (유저 2026-09-12) REVERSED WHAT HAPPENS IN FRONT. Rightward,
+    // this cut loses frames off its front and the cut it touches TAKES
+    // them: the pair trades across the one boundary the hand is holding,
+    // the film's head never empties, and nothing else on the track moves.
     edgeDragOf(s).updateCutEdgeDrag(5);
     expect(previewedDuration(s, second), secondDuration - 5);
     expect(
@@ -143,42 +142,55 @@ void main() {
     );
     expect(
       previewedGap(s, first),
-      5,
-      reason: 'the head of the film is what empties',
+      0,
+      reason: 'nothing opens at the head of the film any more',
     );
     expect(
       previewedDuration(s, first),
-      firstDuration,
-      reason: 'the predecessor MOVES, it does not resize',
+      firstDuration + 5,
+      reason: 'the cut in front RESIZES — it kept its head and took the '
+          'frames this one gave up',
     );
 
     // Rightward movement clamps at length 1.
     edgeDragOf(s).updateCutEdgeDrag(secondDuration + 40);
     expect(previewedDuration(s, second), 1);
 
-    // Leftward past the wall (no gap, no predecessor slack) clamps back
-    // to the original start — nothing changes.
-    edgeDragOf(s).updateCutEdgeDrag(-9);
-    expect(s.dragPreview.value, isNull);
+    // ↩️Leftward is no longer a wall: the cut in front has frames to give
+    // (I-21). It gives them down to one and the travel stops there —
+    // asking for more changes nothing further.
+    edgeDragOf(s).updateCutEdgeDrag(-999);
+    expect(previewedDuration(s, first), 1);
+    expect(
+      previewedDuration(s, second),
+      secondDuration + firstDuration - 1,
+      reason: 'everything the neighbour had above its floor came across',
+    );
+    expect(
+      previewedGap(s, first),
+      0,
+      reason: 'the head of the film never opens — heads are pinned',
+    );
 
     edgeDragOf(s).updateCutEdgeDrag(4);
     edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(second)!.leadingGapFrames, 0);
-    expect(s.cutById(first)!.leadingGapFrames, 4);
+    expect(s.cutById(first)!.leadingGapFrames, 0);
+    expect(s.cutById(first)!.duration, firstDuration + 4);
     expect(s.cutById(second)!.duration, secondDuration - 4);
     // The cut's END is pinned, so nothing behind it moved.
     expect(layoutStart(s, second) + s.cutById(second)!.duration, secondEnd);
 
-    // ONE undo step restores the head AND the length.
+    // ONE undo step restores BOTH lengths.
     s.undo();
-    expect(s.cutById(first)!.leadingGapFrames, 0);
+    expect(s.cutById(first)!.duration, firstDuration);
     expect(s.cutById(second)!.duration, secondDuration);
     s.redo();
     expect(s.cutById(second)!.duration, secondDuration - 4);
   });
 
-  test('start-edge leftward GROWTH pushes predecessors through their gaps '
-      '(block-body push language) and adds the movement to the length', () {
+  test('I-21: start-edge leftward growth spends the GAP first and then the '
+      'neighbour\'s own frames — nothing in front is pushed', () {
     final (s, first, second) = twoCutSession();
 
     // Give the FIRST cut a 4-frame lead-in gap. Its START edge trims from
@@ -193,22 +205,27 @@ void main() {
     final secondDuration = s.cutById(second)!.duration;
     final secondEnd = layoutStart(s, second) + secondDuration;
 
-    // Grow the SECOND cut's start left by 6: its own gap is 0, so the
-    // cascade pushes the first cut left through ITS gap (4 frames of
-    // slack) and clamps there — the length grows by the achieved 4.
+    // Grow the SECOND cut's start left by 6. Its own leading gap is 0, so
+    // every frame comes out of the cut it touches — which keeps its head
+    // at frame 4 and simply becomes shorter.
     edgeDragOf(s).beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     edgeDragOf(s).updateCutEdgeDrag(-6);
-    expect(previewedGap(s, first), 0);
-    expect(previewedDuration(s, second), secondDuration + 4);
+    expect(
+      previewedGap(s, first),
+      4,
+      reason: 'the lead-in in FRONT of the first cut is untouched — the '
+          'drag never reaches past the block it trades with',
+    );
+    expect(previewedDuration(s, second), secondDuration + 6);
+    expect(previewedDuration(s, first), firstDuration - 6);
     edgeDragOf(s).endCutEdgeDrag();
 
-    expect(s.cutById(first)!.leadingGapFrames, 0);
-    expect(layoutStart(s, first), 0);
-    expect(s.cutById(second)!.duration, secondDuration + 4);
-    expect(layoutStart(s, second), firstDuration);
-    // The END is pinned; the predecessor's length never changes.
+    expect(s.cutById(first)!.leadingGapFrames, 4);
+    expect(layoutStart(s, first), 4, reason: 'its head never moved');
+    expect(s.cutById(second)!.duration, secondDuration + 6);
+    expect(s.cutById(first)!.duration, firstDuration - 6);
+    // The END is pinned, so everything behind it holds still.
     expect(layoutStart(s, second) + s.cutById(second)!.duration, secondEnd);
-    expect(s.cutById(first)!.duration, firstDuration);
   });
 
   test('the FIRST cut start-trims too — its gap is black lead-in and the '
@@ -345,8 +362,8 @@ void main() {
     edgeDragOf(s).updateCutEdgeDrag(5);
     edgeDragOf(s).endCutEdgeDrag();
 
-    // R10 R4: the emptiness lands at the head, not between the neighbours.
-    expect(s.cutById(first)!.leadingGapFrames, 5);
+    // I-21: no emptiness appears at all — the cut in front took the frames.
+    expect(s.cutById(first)!.leadingGapFrames, 0);
     expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(
       s.activeTrack.transitionLayer.instructions,
