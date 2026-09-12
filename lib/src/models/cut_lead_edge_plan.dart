@@ -42,7 +42,7 @@ CutLeadEdgePlan planCutLeadEdge({
     slots: blockMoveSlotsOf(slots),
     targetIndex: targetIndex,
     frameDelta: frameDelta,
-    minLength: minDuration,
+    limits: (minLength: minDuration, reach: 1),
   );
 
   final target = slots[targetIndex];

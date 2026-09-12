@@ -514,21 +514,21 @@ class ExposureEdgeDrag implements EditorDragSession {
   }
 
   void _updateBulk(int cumulativeDelta, Map<LayerId, BulkRetimeRow> bulk) {
-    final lengthDelta = _edge == TimelineBlockEdge.end
-        ? cumulativeDelta
-        : -cumulativeDelta;
     final edits = <({Layer before, Layer after})>[];
     final previews = <LayerId, Layer>{};
     for (final entry in bulk.entries) {
       final beforeLayer = entry.value.before;
-      final after = _roles.controllers.timelineController.retimedLayerForBlocks(
-        layer: beforeLayer,
-        newLengthByStart: {
-          for (final start in entry.value.starts)
-            if (beforeLayer.timeline[start]?.isDrawing ?? false)
-              start: beforeLayer.timeline[start]!.length! + lengthDelta,
-        },
-      );
+      final after = _edge == TimelineBlockEdge.start
+          ? _bulkLeadEdgeLayer(beforeLayer, entry.value, cumulativeDelta)
+          : _roles.controllers.timelineController.retimedLayerForBlocks(
+              layer: beforeLayer,
+              newLengthByStart: {
+                for (final start in entry.value.starts)
+                  if (beforeLayer.timeline[start]?.isDrawing ?? false)
+                    start:
+                        beforeLayer.timeline[start]!.length! + cumulativeDelta,
+              },
+            );
       if (after != null && after != beforeLayer) {
         edits.add((before: beforeLayer, after: after));
         // Track-SE rows preview in their DISPLAY form (cut-local axis); the
@@ -556,6 +556,42 @@ class ExposureEdgeDrag implements EditorDragSession {
         : previews.length == 1
         ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
         : BlockMoveDragPreview(previewLayers: previews);
+  }
+
+  /// A bulk LEAD-edge step for one row — the same law a single grip
+  /// follows, reaching as far as the SELECTION does (I-21, 유저
+  /// 2026-09-12: 「선택한 블록의 앞에 있는 선택된 모든 블록을 차례대로
+  /// 1코마될때까지 밀고, 그 다음도 … 불도저로 쭉 미는느낌. 마지막 선택된
+  /// 블록의 헤드에서 멈추도록」).
+  ///
+  /// ⛔The TRAILING edge keeps the uniform retime above: a bulk trailing
+  /// drag re-times every selected block by the same amount, which is the
+  /// verb that has always been there and is not what this feedback was
+  /// about.
+  ///
+  /// The row's own dragged block is the one under the pointer where the
+  /// pointer is; on the OTHER rows of the selection it is the last selected
+  /// block, because that is the one whose front edge faces the same
+  /// direction the hand is pulling.
+  Layer? _bulkLeadEdgeLayer(
+    Layer before,
+    BulkRetimeRow row,
+    int cumulativeDelta,
+  ) {
+    final starts = [...row.starts]..sort();
+    if (starts.isEmpty) {
+      return null;
+    }
+    final anchor = before.id == _before.id ? _blockStart : starts.last;
+    final targetStart = starts.contains(anchor) ? anchor : starts.last;
+    // Everything selected IN FRONT of it is what the bulldozer may reach.
+    final reach = starts.where((start) => start < targetStart).length;
+    return _roles.controllers.timelineController.leadEdgeLayerForBlock(
+      layer: before,
+      blockStartIndex: targetStart,
+      delta: cumulativeDelta,
+      reach: math.max(1, reach),
+    );
   }
 
   /// The synced resize a BULK drag owes: the sync row's own edit decides it,

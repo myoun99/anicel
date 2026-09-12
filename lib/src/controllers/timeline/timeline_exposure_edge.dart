@@ -195,6 +195,31 @@ class _TimelineExposureEdge {
     return layout.toTimeline();
   }
 
+  /// [layer] after a LEAD-edge drag of the block starting at
+  /// [blockStartIndex], reaching [reach] blocks in front — the SELECTION's
+  /// answer when a range is live, one when it is not.
+  ///
+  /// The bulk path needs the rule at LAYER level (it rewrites whole rows
+  /// per drag step) and the single-grip path needs it at timeline level;
+  /// both arrive here, so "how a lead edge lays out" is written once.
+  Layer? leadEdgeLayerForBlock({
+    required Layer layer,
+    required int blockStartIndex,
+    required int delta,
+    int reach = 1,
+  }) {
+    final layout = _BlockLayout.of(layer.timeline);
+    final targetIndex = layout.blocks.indexWhere(
+      (block) => block.startIndex == blockStartIndex,
+    );
+    if (targetIndex == -1 || delta == 0) {
+      return null;
+    }
+    _applyLeadEdge(layout, targetIndex: targetIndex, delta: delta, reach: reach);
+    final next = layer.copyWith(timeline: layout.toTimeline());
+    return next == layer ? null : next;
+  }
+
   /// How far this block's lead edge can travel forward, by the shared
   /// rule: ask it for an unreachable delta and see what it grants.
   ///
@@ -231,6 +256,7 @@ class _TimelineExposureEdge {
     _BlockLayout layout, {
     required int targetIndex,
     required int delta,
+    int reach = 1,
   }) {
     var previousEnd = 0;
     final slots = <BlockMoveSlot>[];
@@ -246,6 +272,7 @@ class _TimelineExposureEdge {
       slots: slots,
       targetIndex: targetIndex,
       frameDelta: delta,
+      limits: (minLength: 1, reach: reach),
     );
 
     var cursor = 0;

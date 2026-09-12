@@ -113,7 +113,7 @@ void main() {
       slots: slots([(0, 4), (0, 4)]),
       targetIndex: 1,
       frameDelta: 99,
-      minLength: 2,
+      limits: (minLength: 2, reach: 1),
     );
 
     expect(layout.lengths, [6, 2]);
@@ -153,11 +153,81 @@ void main() {
       slots: slots([(0, 4), (0, 2)]),
       targetIndex: 1,
       frameDelta: 3,
-      minLength: 5,
+      limits: (minLength: 5, reach: 1),
     );
 
     expect(layout.lengths, [4, 2], reason: 'nothing shrinks below the floor');
     expect(startsOf(layout), [0, 4]);
+  });
+
+  group('reach — how far in front the edge may trade (유저 2026-09-12)', () {
+    test('with reach 2 the squeeze WALKS: the nearest block goes to one '
+        'frame, then the next, and the squeezed ones pack forward', () {
+      // [0,4) [4,8) [8,12), all glued. Grow the last one's front by 5: the
+      // neighbour gives 3 (4 → 1) and the one beyond it gives 2 (4 → 2).
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 4), (0, 4)]),
+        targetIndex: 2,
+        frameDelta: -5,
+        limits: (minLength: 1, reach: 2),
+      );
+
+      expect(layout.lengths, [2, 1, 9]);
+      expect(
+        startsOf(layout),
+        [0, 2, 3],
+        reason: 'the squeezed neighbour was PUSHED forward as the block in '
+            'front of it gave up frames; the front-most head never moved',
+      );
+    });
+
+    test('it stops at the HEAD of the last block it may reach', () {
+      // Same run, asked for far more than exists: 3 + 3 = 6 frames are all
+      // the two blocks in front can give before they hit one frame each.
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 4), (0, 4)]),
+        targetIndex: 2,
+        frameDelta: -999,
+        limits: (minLength: 1, reach: 2),
+      );
+
+      expect(layout.lengths, [1, 1, 10]);
+      expect(
+        startsOf(layout),
+        [0, 1, 2],
+        reason: 'both are down to one frame and packed against the head of '
+            'the first — the drag can go no further',
+      );
+    });
+
+    test('reach 1 is the default and still stops at the first neighbour', () {
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 4), (0, 4), (0, 4)]),
+        targetIndex: 2,
+        frameDelta: -999,
+      );
+
+      expect(
+        layout.lengths,
+        [4, 1, 7],
+        reason: 'the block beyond the neighbour was never asked',
+      );
+      expect(startsOf(layout), [0, 4, 5]);
+    });
+
+    test('gaps inside the reach are spent before the blocks are', () {
+      // [0,2) gap(1) [3,5) gap(2) [7,9): growing the last by 4 spends the
+      // 2-frame gap, then 2 frames of the block in front of it.
+      final layout = planBlockRunLeadEdge(
+        slots: slots([(0, 2), (1, 2), (2, 2)]),
+        targetIndex: 2,
+        frameDelta: -4,
+        limits: (minLength: 1, reach: 2),
+      );
+
+      expect(layout.lengths, [2, 1, 6], reason: 'the gap paid 2, the block 1');
+      expect(startsOf(layout), [0, 2, 3]);
+    });
   });
 
   test('a zero delta changes nothing', () {

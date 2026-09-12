@@ -32,6 +32,16 @@ import 'dart:math' as math;
 
 import 'block_run_move.dart';
 
+/// What bounds a lead-edge drag: the floor every block it touches keeps,
+/// and how many blocks in front it may trade with.
+///
+/// ★ONE VALUE BECAUSE IT IS ONE QUESTION — "how far may this go" — and the
+/// two halves are never decided apart: the caller that knows the reach is
+/// the caller that knows the floor.
+typedef LeadEdgeLimits = ({int minLength, int reach});
+
+const LeadEdgeLimits defaultLeadEdgeLimits = (minLength: 1, reach: 1);
+
 /// Where every slot sits after a lead-edge drag.
 class BlockRunLeadEdgeLayout {
   const BlockRunLeadEdgeLayout({
@@ -51,16 +61,40 @@ class BlockRunLeadEdgeLayout {
 /// Plans a drag of `slots[targetIndex]`'s LEAD edge by [frameDelta] frames
 /// (positive shortens the block from the front).
 ///
-/// [minLength] floors the dragged block; [frameDelta] is additionally
-/// clamped so nothing lands before frame 0 — growing a block forward can
-/// only consume the slack that actually exists ahead of it, and the head of
-/// the axis is the wall.
+/// [minLength] floors every block the drag touches — the dragged one and
+/// the ones it trades with.
+///
+/// ★[reach] IS THE ONLY THING THE THREE CASES DISAGREE ABOUT (유저
+/// 2026-09-12): how many blocks IN FRONT this edge may trade with.
+///
+///  * a plain grip reaches ONE — the block it touches (the default);
+///  * a grip inside a range selection reaches every SELECTED block in
+///    front of it — 「불도저로 쭉 미는 느낌」, each squeezed to one frame
+///    in turn and the squeezed ones packed forward;
+///  * the storyboard's first panel reaches into the CUT in front (its
+///    last conte block, or the cut itself when it has none).
+///
+/// The travel stops at the head of the last block it may reach, which is
+/// why the caller says how far rather than the rule guessing.
+///
+/// ★THE BOUNDARY WALKS FORWARD. Whatever the gap in front cannot pay for
+/// comes out of the block in front — nearest first, each down to
+/// [LeadEdgeLimits.minLength] before the next one is asked — and a block
+/// that gave everything it had is PUSHED forward by whatever the one
+/// ahead of it gives up next. Everything outside the reach keeps both its
+/// head and its length, which is the wall the travel stops against.
+///
+/// ⛔A SEPARATED neighbour trades only on the way FORWARD: shrinking from
+/// the front hands its frames to a block it is GLUED to, and to nobody
+/// when a gap already lies between them — there the empty space simply
+/// grows, which is the rule this axis always had.
 BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   required List<BlockMoveSlot> slots,
   required int targetIndex,
   required int frameDelta,
-  int minLength = 1,
+  LeadEdgeLimits limits = defaultLeadEdgeLimits,
 }) {
+  final minLength = limits.minLength;
   assert(targetIndex >= 0 && targetIndex < slots.length, 'target must exist');
 
   // Absolute starts, so the contact questions read the way they read on
@@ -79,7 +113,7 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
     slots,
     targetIndex,
     starts: starts,
-    minLength: minLength,
+    limits: limits,
   );
   final delta = frameDelta.clamp(-maxGrow, maxShrink);
 
@@ -88,23 +122,22 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   newStarts[targetIndex] = starts[targetIndex] + delta;
   lengths[targetIndex] = target.length - delta;
 
-  // ★THE ONE BOUNDARY. Whatever the gap in front cannot pay for comes out
-  // of the predecessor's LENGTH — its head, and therefore everything in
-  // front of it, never moves. `gap` is what the empty space absorbs;
-  // `traded` is what the neighbour's exposure gives up (or takes back,
-  // when the drag shortens this block and hands frames forward).
-  if (targetIndex > 0) {
-    final gap = slots[targetIndex].leadingGap;
-    // ⛔ONLY A TOUCHING NEIGHBOUR TRADES. Growing forward spends the gap
-    // first and only then asks the neighbour (`-delta - gap`); shrinking
-    // from the front hands its frames to a neighbour it is GLUED to, and
-    // to nobody when a gap already separates them — there the empty space
-    // simply grows, which is the rule this axis always had for a
-    // separated predecessor.
-    final traded = delta < 0
-        ? math.max(0, -delta - gap)
-        : (gap == 0 ? -delta : 0);
-    lengths[targetIndex - 1] = slots[targetIndex - 1].length - traded;
+  // The walk itself; the law it follows is stated in the doc above.
+  if (targetIndex > 0 && delta < 0) {
+    _tradeForward(
+      slots,
+      (
+        targetIndex: targetIndex,
+        owed: -delta,
+        limits: limits,
+        starts: starts,
+      ),
+      newStarts: newStarts,
+      lengths: lengths,
+    );
+  } else if (targetIndex > 0 && slots[targetIndex].leadingGap == 0) {
+    // Shrinking against a block it touches: that one takes the frames back.
+    lengths[targetIndex - 1] = slots[targetIndex - 1].length + delta;
   }
 
   return BlockRunLeadEdgeLayout(
@@ -113,24 +146,88 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   );
 }
 
-/// How far the lead edge can travel FORWARD (a negative delta): the empty
-/// space in front, plus the frames the glued predecessor can give up
-/// before it would fall under [minLength].
+/// What a forward trade reads: which block is being dragged, how many
+/// frames it is asking for, the limits it obeys and where every block sat
+/// before the drag.
+typedef _TradeInput = ({
+  int targetIndex,
+  int owed,
+  LeadEdgeLimits limits,
+  List<int> starts,
+});
+
+/// Takes [input.owed] frames out of the blocks in front — gaps first,
+/// then lengths, nearest first, each down to the floor — and PACKS what
+/// lies between the last block reached and the dragged edge, each keeping
+/// whatever gap it has left. The head of the last block reached never
+/// moves: that is the wall the travel stops against.
 ///
-/// ⛔NOT "every gap up to frame 0" any more (I-21). Heads are pinned now,
-/// so nothing in front can be compacted to make room — only the immediate
-/// neighbour trades, and only down to its own floor. The FIRST block has
-/// no neighbour, so its room is simply the head of the axis.
+/// Writes through [newStarts] and [lengths]; the dragged block's own start
+/// and length are settled here too, because where it ends up IS what the
+/// blocks in front just gave.
+void _tradeForward(
+  List<BlockMoveSlot> slots,
+  _TradeInput input, {
+  required List<int> newStarts,
+  required List<int> lengths,
+}) {
+  final targetIndex = input.targetIndex;
+  final starts = input.starts;
+  var owed = input.owed;
+  var reached = targetIndex;
+  // What each gap has LEFT once the drag spent its share: a spent gap must
+  // not reappear in the packing below.
+  final gapsLeft = [for (final slot in slots) slot.leadingGap];
+  for (
+    var i = targetIndex - 1;
+    i >= 0 && targetIndex - i <= input.limits.reach;
+    i -= 1
+  ) {
+    final spent = math.min(owed, slots[i + 1].leadingGap);
+    gapsLeft[i + 1] = slots[i + 1].leadingGap - spent;
+    owed -= spent;
+    final gives = math.min(
+      owed,
+      math.max(0, slots[i].length - input.limits.minLength),
+    );
+    lengths[i] = slots[i].length - gives;
+    owed -= gives;
+    reached = i;
+    if (owed == 0) {
+      break;
+    }
+  }
+  var cursor = starts[reached];
+  for (var i = reached; i < targetIndex; i += 1) {
+    newStarts[i] = cursor;
+    cursor += lengths[i] + gapsLeft[i + 1];
+  }
+  final targetEnd = starts[targetIndex] + slots[targetIndex].length;
+  newStarts[targetIndex] = cursor;
+  lengths[targetIndex] = targetEnd - cursor;
+}
+
+/// How far the lead edge can travel FORWARD (a negative delta): the empty
+/// space it crosses, plus the frames every block within [reach] can give
+/// up before it would fall under [minLength].
+///
+/// ⛔NOT "every gap up to frame 0" (I-21): blocks outside the reach are
+/// never compacted, so the wall is the head of the last block the drag may
+/// touch. The FIRST block has nothing in front, so its room is the head of
+/// the axis.
 int _roomInFront(
   List<BlockMoveSlot> slots,
   int index, {
   required List<int> starts,
-  required int minLength,
+  required LeadEdgeLimits limits,
 }) {
   if (index == 0) {
     return math.max(0, starts[0]);
   }
-  final gap = slots[index].leadingGap;
-  final neighbourGives = math.max(0, slots[index - 1].length - minLength);
-  return math.max(0, gap + neighbourGives);
+  var room = 0;
+  for (var i = index - 1; i >= 0 && index - i <= limits.reach; i -= 1) {
+    room += slots[i + 1].leadingGap;
+    room += math.max(0, slots[i].length - limits.minLength);
+  }
+  return math.max(0, room);
 }

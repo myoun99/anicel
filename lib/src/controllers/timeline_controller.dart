@@ -367,6 +367,21 @@ class TimelineController {
     layer: layer,
     newLengthByStart: newLengthByStart,
   );
+
+  /// The LEAD-edge law at layer level — the bulk drag's entrance to the
+  /// same rule the single grip uses (I-21). [reach] is how many blocks in
+  /// front it may trade with: the selected ones, or one.
+  Layer? leadEdgeLayerForBlock({
+    required Layer layer,
+    required int blockStartIndex,
+    required int delta,
+    int reach = 1,
+  }) => _edge.leadEdgeLayerForBlock(
+    layer: layer,
+    blockStartIndex: blockStartIndex,
+    delta: delta,
+    reach: reach,
+  );
   void retimeBlocksForLayer({
     required LayerId layerId,
     required Map<int, int> newLengthByStart,
