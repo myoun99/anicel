@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -211,6 +212,155 @@ void main() {
 
       expect(cache.derivedDepth, 0);
       expect(cache.heldBytes, 0);
+    });
+  });
+
+  /// 🎯THE REAL BASE (유저 결정 2026-09-13: 「사슬을 없앤다 — 파생 베이스를
+  /// 실체 이미지로」). The head is only ever drawn; what the next paint
+  /// derives from is a plain `toImage` snapshot of the same picture, which
+  /// has no recipe behind it and so pins nothing. The chain cannot form —
+  /// the budgets above become the net for the paints before the first
+  /// snapshot lands and for a raster thread that never answers.
+  group('the real base ends the chain', () {
+    const rect = Rect.fromLTWH(0, 0, 4, 4);
+    const tokens = (
+      overlay: <Object, Object>{},
+      tiles: <Object, Object>{'t': 'made-with-the-head'},
+    );
+
+    /// A head with a snapshot on its way — the shape `_composeMiss` makes.
+    Future<Completer<ui.Image>> storeAndPromote({
+      Object staticKey = 'static',
+      Rect at = rect,
+      bool derived = false,
+    }) async {
+      cache.store(
+        'k',
+        staticKey,
+        at,
+        await makeImage(4),
+        derived: derived,
+        tokens: tokens,
+      );
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      return landing;
+    }
+
+    test('🚨a landed snapshot is the patch base, and it is NOT deferred — '
+        'so deriving from it forms no link', () async {
+      final landing = await storeAndPromote();
+      final real = await makeImage(4);
+      landing.complete(real);
+      await pumpEventQueue();
+
+      final base = cache.patchBaseFor('static', rect);
+      expect(base, isNotNull);
+      expect(identical(base!.image, real), isTrue, reason: 'the snapshot');
+      expect(base.deferred, isFalse);
+      expect(
+        base.tokens.tiles['t'],
+        'made-with-the-head',
+        reason: 'described by what the HEAD was stored with — one picture, '
+            'rasterized twice',
+      );
+      expect(cache.promotedCount, 1);
+      expect(
+        cache.heldBytes,
+        2 * 4 * 4 * 4,
+        reason: 'the head AND the real base are both resident',
+      );
+    });
+
+    test('🚨past both budgets the real base still answers — the budgets '
+        'guard the head, and the head is no longer what is derived from',
+        () async {
+      for (var i = 0; i < 200; i += 1) {
+        cache.store('k$i', 'static', rect, await makeImage(4), derived: true);
+      }
+      expect(cache.patchBaseFor('static', rect), isNull, reason: 'the head');
+      final landing = Completer<ui.Image>();
+      cache.promote(landing.future);
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+
+      final base = cache.patchBaseFor('static', rect);
+      expect(base, isNotNull);
+      expect(base!.deferred, isFalse);
+    });
+
+    test('one snapshot in flight at a time — the cost decision', () async {
+      expect(cache.wantsPromotion, isTrue);
+      final landing = await storeAndPromote();
+      expect(cache.wantsPromotion, isFalse, reason: 'not before it lands');
+
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(cache.wantsPromotion, isTrue);
+    });
+
+    test('a snapshot that fails frees the slot; the head stays the base',
+        () async {
+      final landing = await storeAndPromote();
+      landing.completeError(StateError('lost GPU context'));
+      await pumpEventQueue();
+
+      expect(cache.wantsPromotion, isTrue);
+      expect(cache.promotedCount, 0);
+      final base = cache.patchBaseFor('static', rect);
+      expect(base?.deferred, isTrue, reason: 'derived from the head, under budget');
+    });
+
+    test('⛔a snapshot landing after the layer tree moved on is released, '
+        'not adopted', () async {
+      final landing = await storeAndPromote();
+      cache.store('k2', 'other-static', rect, await makeImage(4));
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+
+      expect(cache.promotedCount, 0);
+      expect(cache.patchBaseFor('other-static', rect)?.deferred, isTrue);
+      expect(cache.heldBytes, 4 * 4 * 4, reason: 'only the head');
+    });
+
+    test('a snapshot landing after a PAN is kept with its own rect, and '
+        'carries as the scroll base', () async {
+      final landing = await storeAndPromote();
+      const moved = Rect.fromLTWH(1, 0, 4, 4);
+      cache.store('k2', 'static', moved, await makeImage(4), derived: true);
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+
+      expect(cache.promotedCount, 1);
+      expect(
+        cache.patchBaseFor('static', moved)?.deferred,
+        isTrue,
+        reason: 'the real base covers the OLD rect, so the patch door falls '
+            'back to the head stored at the new one',
+      );
+      final scroll = cache.scrollBaseFor('static', moved);
+      expect(scroll, isNotNull);
+      expect(scroll!.deferred, isFalse);
+      expect(scroll.rect, rect, reason: 'the rect ITS pixels cover');
+    });
+
+    test('invalidate drops the real base too, and a landing after dispose '
+        'is released without an owner', () async {
+      final landing = await storeAndPromote();
+      landing.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(cache.heldBytes, 2 * 4 * 4 * 4);
+
+      cache.invalidate();
+      expect(cache.heldBytes, 0);
+      expect(cache.patchBaseFor('static', rect), isNull);
+
+      final late = await storeAndPromote();
+      cache.dispose();
+      late.complete(await makeImage(4));
+      await pumpEventQueue();
+      expect(cache.promotedCount, 1, reason: 'the one from before dispose');
+      expect(cache.wantsPromotion, isFalse, reason: 'disposed');
     });
   });
 }

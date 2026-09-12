@@ -35,11 +35,41 @@ import 'dart:ui' as ui;
 /// · `dispose()` on an image inside such a chain releases the Dart handle
 ///   and nothing else.
 /// `Picture.toImage()` (async) is a plain snapshot and pins nothing; it is
-/// the answer wherever a frame of latency is acceptable.
-ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) {
+/// the answer wherever a frame of latency is acceptable — and, through
+/// [rasterPictureAndSnapshot], the way the display buffer stopped forming
+/// a chain at all (2026-09-13): the deferred image is only ever DRAWN, and
+/// the snapshot of the same picture is what the next paint derives from.
+ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) =>
+    withPicture(recorder, (picture) => picture.toImageSync(width, height));
+
+/// [rasterPicture]'s deferred image, plus — when [snapshot] — a plain
+/// `toImage` of the SAME picture, started before the picture is released.
+///
+/// ⛔Same picture, same pixels: the two are one recording rasterized
+/// twice, so whatever describes one (the live-surface tokens it was made
+/// from) describes the other, and the caller may keep them as a pair
+/// without a second measurement. The `Future` is safe across the picture's
+/// disposal — `Picture::toImage` captures the display list in its own
+/// raster task (`picture.cc`, `DoRasterizeToImage`).
+({ui.Image deferred, Future<ui.Image>? real}) rasterPictureAndSnapshot(
+  ui.PictureRecorder recorder,
+  int width,
+  int height, {
+  required bool snapshot,
+}) => withPicture(
+  recorder,
+  (picture) => (
+    deferred: picture.toImageSync(width, height),
+    real: snapshot ? picture.toImage(width, height) : null,
+  ),
+);
+
+/// Ends [recorder], hands the picture to [use], and releases it whatever
+/// [use] does — the one `finally` every raster above shares.
+T withPicture<T>(ui.PictureRecorder recorder, T Function(ui.Picture) use) {
   final picture = recorder.endRecording();
   try {
-    return picture.toImageSync(width, height);
+    return use(picture);
   } finally {
     picture.dispose();
   }

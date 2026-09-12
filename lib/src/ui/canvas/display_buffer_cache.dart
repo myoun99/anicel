@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -60,11 +61,116 @@ class DisplayBufferCache {
   /// holder, so an under-reporting counter does not merely lose precision:
   /// it moves the bytes into 「엔진·폰트·프레임워크」, which is exactly where
   /// the user's screenshots found 10GB that nothing would own.
-  int get heldBytes => _image == null ? 0 : _chainBytes;
+  int get heldBytes {
+    final base = _realBase;
+    return (_image == null ? 0 : _chainBytes) +
+        (base == null ? 0 : base.width * base.height * 4);
+  }
 
   ui.Image? _image;
   Rect? _rect;
   Object? _key;
+
+  /// 🎯THE REAL BASE — what the next paint derives from, so that the
+  /// deferred head is only ever DRAWN and never drawn FROM (유저 결정
+  /// 2026-09-13: 「사슬을 없앤다 — 파생 베이스를 실체 이미지로」).
+  ///
+  /// A plain `toImage` snapshot of the picture that made a recent head:
+  /// the same pixels, with NO recipe behind them, so a picture that draws
+  /// it pins one real image and nothing else. Patching from it forms no
+  /// chain — the head made from it references a real image, and releasing
+  /// that head releases a structure one deep. The two budgets above stop
+  /// being the mechanism and become the safety net for two windows: the
+  /// paints before the first snapshot lands, and a raster thread that never
+  /// answers (then the head is derived from, under budget, exactly as
+  /// before).
+  ///
+  /// ⚠️It is as old as the paint whose picture it was made from, so the
+  /// dirty rect measured against ITS tokens spans every paint since — two
+  /// or three of a stroke's steps, which is the price of not chaining and
+  /// is why the tokens travel with the image ([_realBaseTokens]).
+  ///
+  /// Kept with its OWN rect and static key: a landing after a pan is still
+  /// a valid scroll base (the pixels are offset, not wrong), and a landing
+  /// after the layer tree changed is not a base at all.
+  ui.Image? _realBase;
+  Rect? _realBaseRect;
+  Object? _realBaseStaticKey;
+  LiveSurfaceTokens _realBaseTokens = noLiveSurfaceTokens;
+
+  /// Whether a snapshot is still on its way. ONE IN FLIGHT AT A TIME, and
+  /// that is the cost decision: a snapshot is a whole extra raster pass,
+  /// so the buffer does not start another until the last one has landed —
+  /// on a GPU that answers within a frame that is every other paint, on a
+  /// slower one fewer, and the base is correspondingly older. Better a
+  /// larger dirty rect than a raster thread paying twice per paint.
+  bool _promotionInFlight = false;
+
+  /// Whether the next compose should also snapshot its picture.
+  bool get wantsPromotion => !_promotionInFlight && !_disposed;
+
+  /// How many snapshots landed and became the base. The counters' own
+  /// law: a promotion that never lands looks exactly like one that works
+  /// — the head would simply be derived from under budget, as before.
+  int promotedCount = 0;
+
+  bool _disposed = false;
+
+  /// Offers [pending] — the snapshot of the picture that made the head just
+  /// stored — as the next base. Describes it with what [store] just
+  /// recorded (static key, rect, tokens): the two are one picture.
+  void promote(Future<ui.Image> pending) {
+    final staticKey = _staticKey;
+    final rect = _rect;
+    final tokens = keptTokens;
+    _promotionInFlight = true;
+    // Deliberately not awaited: the paint that started it is long over by
+    // the time it lands, and the landing has nobody to report to but this
+    // cache. Both arms below clear the slot, so a snapshot that fails frees
+    // the next compose to ask again.
+    unawaited(
+      pending.then(
+        (image) {
+          _promotionInFlight = false;
+          // ⛔A snapshot of a picture the layer tree has moved on from is
+          // not a base for anything, and one that lands after dispose has
+          // no owner. Either way it is released here, or it is a leak.
+          if (_disposed || staticKey == null || staticKey != _staticKey) {
+            image.dispose();
+            return;
+          }
+          _realBase?.dispose();
+          _realBase = image;
+          _realBaseRect = rect;
+          _realBaseStaticKey = staticKey;
+          _realBaseTokens = tokens;
+          promotedCount += 1;
+          _tellHeldBytes();
+        },
+        onError: (Object _) {
+          // A lost GPU context, a size the driver refused: the head stays
+          // the base under budget, and the next compose asks again.
+          _promotionInFlight = false;
+        },
+      ),
+    );
+  }
+
+  /// What a base answers with: the image, the rect its pixels cover, the
+  /// tokens to measure the dirty rect from, and whether drawing it forms a
+  /// link ([deferred] — only the head does).
+  ({ui.Image image, Rect rect, LiveSurfaceTokens tokens, bool deferred})?
+  _realBaseFor(Object staticKey, {required bool Function(Rect was) fits}) {
+    final base = _realBase;
+    final was = _realBaseRect;
+    if (base == null ||
+        was == null ||
+        _realBaseStaticKey != staticKey ||
+        !fits(was)) {
+      return null;
+    }
+    return (image: base, rect: was, tokens: _realBaseTokens, deferred: false);
+  }
 
   /// The part of the key that does not move with the live surface, kept
   /// apart so a stroke step can still recognise its own previous frame.
@@ -199,12 +305,16 @@ class DisplayBufferCache {
   /// The most the chain may pin before the next compose has to start from
   /// nothing — THE MEMORY BUDGET.
   ///
-  /// 🚨★★★NOT A SAFETY NET: THE TWO BUDGETS ARE THE ONLY THING THAT EVER
-  /// COLLAPSES THE CHAIN. A chain has two costs — the raster thread's stack
-  /// and memory — so it has two budgets, and whichever binds first forces
-  /// the full compose that lets the whole run go. 128 links was chosen
-  /// against a 2MB stack with no thought for the bytes each link pins,
-  /// which is how a stroke came to cost a gigabyte (see [_derivedDepth]).
+  /// 🚨★★★THE TWO BUDGETS ARE THE ONLY THING THAT EVER COLLAPSES A CHAIN.
+  /// A chain has two costs — the raster thread's stack and memory — so it
+  /// has two budgets, and whichever binds first forces the full compose
+  /// that lets the whole run go. 128 links was chosen against a 2MB stack
+  /// with no thought for the bytes each link pins, which is how a stroke
+  /// came to cost a gigabyte (see [_derivedDepth]). Since the real base
+  /// ([_realBase], 2026-09-13) a chain forms only in the paints before the
+  /// first snapshot lands, or when the raster thread never answers — so in
+  /// ordinary drawing these never bind, and they are what stands when it
+  /// is not ordinary.
   ///
   /// ⛔ABSOLUTE, NOT A MULTIPLE OF THE CANVAS: a big canvas must not be
   /// allowed to pin proportionally more, because the machine it has to run
@@ -249,8 +359,10 @@ class DisplayBufferCache {
   /// [patched] and [derived] are two questions, deliberately two flags.
   /// [patched] is the PROBE — "did the patch path run" — and a scrolled
   /// carry answers it false. [derived] is what the two budgets above
-  /// count: a carry draws the kept image too, so it answers true. One flag
-  /// for both would let a pan build the chain unwatched.
+  /// count — "did this picture draw the DEFERRED head", the one draw that
+  /// forms a link: a carry from the head answers true, a patch from the
+  /// real base answers false even though it patched. One flag for both
+  /// would let a pan build the chain unwatched.
   ///
   /// [tokens] is what the live surface looked like as [image] was made —
   /// what a later paint measures its dirty rect from. Null when that could
@@ -303,7 +415,15 @@ class DisplayBufferCache {
   /// ⛔Null unless [staticKey] AND [rect] both match: a changed layer tree
   /// or a moved viewport means the old pixels are wrong everywhere, not
   /// just where the stroke went.
-  ({ui.Image image, Rect rect})? patchBaseFor(Object staticKey, Rect rect) {
+  ///
+  /// 🎯THE REAL BASE FIRST, whenever it fits — it forms no chain. The head
+  /// only when there is no real base yet, and then under both budgets.
+  ({ui.Image image, Rect rect, LiveSurfaceTokens tokens, bool deferred})?
+  patchBaseFor(Object staticKey, Rect rect) {
+    final real = _realBaseFor(staticKey, fits: (was) => was == rect);
+    if (real != null) {
+      return real;
+    }
     final image = _image;
     if (image == null || _staticKey != staticKey || _rect != rect) {
       return null;
@@ -311,7 +431,7 @@ class DisplayBufferCache {
     if (!_mayDeriveAgain) {
       return null;
     }
-    return (image: image, rect: rect);
+    return (image: image, rect: rect, tokens: keptTokens, deferred: true);
   }
 
   /// The kept image and the rect it ALREADY covers, when the extent has
@@ -335,24 +455,30 @@ class DisplayBufferCache {
   /// pixels can hold a stale live layer. The caller composites the live
   /// dirty rect along with the exposed band, and must refuse the carry when
   /// it cannot say where the live surface changed.
-  ({ui.Image image, Rect rect})? scrollBaseFor(Object staticKey, Rect rect) {
+  ({ui.Image image, Rect rect, LiveSurfaceTokens tokens, bool deferred})?
+  scrollBaseFor(Object staticKey, Rect rect) {
+    bool carries(Rect was) {
+      if (was == rect) {
+        // Not moved: that is [patchBaseFor]'s case, and it knows more.
+        return false;
+      }
+      final overlap = was.intersect(rect);
+      return !overlap.isEmpty && overlap.width > 0 && overlap.height > 0;
+    }
+
+    final real = _realBaseFor(staticKey, fits: carries);
+    if (real != null) {
+      return real;
+    }
     final image = _image;
     final was = _rect;
     if (image == null || was == null || _staticKey != staticKey) {
       return null;
     }
-    if (!_mayDeriveAgain) {
+    if (!_mayDeriveAgain || !carries(was)) {
       return null;
     }
-    if (was == rect) {
-      // Not moved: that is [patchBaseFor]'s case, and it knows more.
-      return null;
-    }
-    final overlap = was.intersect(rect);
-    if (overlap.isEmpty || overlap.width <= 0 || overlap.height <= 0) {
-      return null;
-    }
-    return (image: image, rect: was);
+    return (image: image, rect: was, tokens: keptTokens, deferred: true);
   }
 
   /// How many stores carried a moved buffer instead of compositing it whole.
@@ -383,10 +509,22 @@ class DisplayBufferCache {
     // describe a frame nobody holds any more, and the next paint would
     // "find" a small dirty rect against a base that no longer exists.
     keptTokens = noLiveSurfaceTokens;
+    // And the real base goes with it, for the same reason: an invalidate
+    // says the old pixels are wrong everywhere, whichever image holds them.
+    // A snapshot still in flight lands on a changed static key and is
+    // released by [promote]'s own check.
+    _realBase?.dispose();
+    _realBase = null;
+    _realBaseRect = null;
+    _realBaseStaticKey = null;
+    _realBaseTokens = noLiveSurfaceTokens;
     _tellHeldBytes();
   }
 
-  void dispose() => invalidate();
+  void dispose() {
+    _disposed = true;
+    invalidate();
+  }
 
   /// Whether anything is kept — the seam a cost test reads.
   @visibleForTesting

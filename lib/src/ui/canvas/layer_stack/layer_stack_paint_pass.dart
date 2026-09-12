@@ -4,10 +4,21 @@ part of '../canvas_layer_stack_view.dart';
 /// (with the live dirty rect), the previous buffer to scroll, or neither —
 /// and what the live surface looks like now, stored with the buffer this
 /// miss makes so the NEXT miss can measure from it.
+/// A base to start a miss from: the image, the rect its pixels cover, the
+/// tokens the dirty rect is measured from, and whether drawing it forms a
+/// link in the deferred chain (only the cache's HEAD does; its real base
+/// does not — `DisplayBufferCache` says why).
+typedef _Base = ({
+  ui.Image image,
+  Rect rect,
+  LiveSurfaceTokens tokens,
+  bool deferred,
+});
+
 typedef _MissPlan = ({
-  ({ui.Image image, Rect rect})? base,
+  _Base? base,
   Rect? dirty,
-  ({ui.Image image, Rect rect})? scroll,
+  _Base? scroll,
   bool canScroll,
   LiveSurfaceTokens? tokens,
 });
@@ -252,17 +263,19 @@ class _LayerStackPaintPass {
             // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
             // carrying looks exactly like one that never could, and this
             // line is what a hands-on report can show.
-            // ⛔`chain` BELONGS BESIDE THEM FOR THE SAME REASON. It is how
-            // deep the deferred-image chain is NOW — it grows by one per
-            // patched paint and only a full compose resets it, so during a
-            // stroke it saws between 0 and the budget's edge. A report
-            // showing it stuck high, or stuck at 0 mid-stroke, names a
-            // budget that stopped firing or one that fires every paint —
-            // see [DisplayBufferCache.derivedDepth].
+            // ⛔`chain` AND `real` BELONG BESIDE THEM FOR THE SAME REASON.
+            // `chain` is how deep the deferred-image chain is NOW — with the
+            // real base landing it should read 0 or 1 mid-stroke; stuck
+            // high it says the snapshots stopped landing and the head is
+            // being derived from under budget. `real` is how many snapshots
+            // became the base — a promotion that never lands looks exactly
+            // like one that works. See [DisplayBufferCache.derivedDepth]
+            // and [DisplayBufferCache.promotedCount].
             : ' full=${_painter.bufferCache!.fullCount}'
                   ' patched=${_painter.bufferCache!.patchedCount}'
                   ' carried=${_painter.bufferCache!.scrolledCount}'
-                  ' chain=${_painter.bufferCache!.derivedDepth}';
+                  ' chain=${_painter.bufferCache!.derivedDepth}'
+                  ' real=${_painter.bufferCache!.promotedCount}';
         final top =
             (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value)))
@@ -1096,25 +1109,36 @@ class _LayerStackPaintPass {
     final recorder = ui.PictureRecorder();
     final into = Canvas(recorder);
     into.translate(-rect.left, -rect.top);
-    // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw the
-    // KEPT image into this recorder, which is what makes the new image
-    // retain the old one (`DisplayBufferCache._derivedDepth` says what
-    // that costs and why it is bounded); the third starts from nothing.
+    // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
+    // into this recorder; when that base is the cache's deferred HEAD the
+    // new image retains it (`DisplayBufferCache._derivedDepth` says what
+    // that costs and why it is bounded), when it is the REAL base it does
+    // not, and the base itself says which. The third starts from nothing.
     // Re-deriving the answer next to `store` is how the scrolled carry
     // came to be counted as a fresh compose in the first place.
     final bool derived;
     if (base != null && dirty != null) {
       _blitPatched(into, base.image, rect, dirty);
-      derived = true;
+      derived = base.deferred;
     } else if (scroll != null && canScroll) {
       cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
-      derived = true;
+      derived = scroll.deferred;
     } else {
       // The canvas-resolution buffer records with a translate only.
       _paintContent(into, rasterRect: rect, rasterScale: 1);
       derived = false;
     }
-    final image = rasterPicture(recorder, width, height);
+    // 🎯THE SNAPSHOT THAT ENDS THE CHAIN: the same picture, rasterized once
+    // more as a plain image, becomes the base the NEXT paint derives from
+    // — so the deferred image made here is only ever drawn, never drawn
+    // from. Asked of the cache, which knows whether one is still in flight.
+    final made = rasterPictureAndSnapshot(
+      recorder,
+      width,
+      height,
+      snapshot: cache != null && key != null && cache.wantsPromotion,
+    );
+    final image = made.deferred;
     if (cache != null && key != null) {
       cache.store(
         key,
@@ -1127,6 +1151,10 @@ class _LayerStackPaintPass {
       );
       if (canScroll) {
         cache.scrolledCount += 1;
+      }
+      final real = made.real;
+      if (real != null) {
+        cache.promote(real);
       }
       return _bufferOf(image, rect, owned: false);
     }
@@ -1151,26 +1179,6 @@ class _LayerStackPaintPass {
     final base = cache == null || key == null
         ? null
         : cache.patchBaseFor(_painter.compositeKey, rect);
-    // ⛔ALWAYS, even with no base to patch: this call is also what SEES
-    // what the live surface looks like now, and that goes into the store
-    // with the buffer this miss makes. Asking it only when a patch was
-    // already possible left the first buffer without a snapshot, so the
-    // first real stroke step compared against nothing and fell back to a
-    // full raster — measured, with the counter reading zero.
-    //
-    // 🚨★★★SEEN here, RECORDED only by `store` (F-68 ③). Recording on every
-    // call — including the paints a floating selection keeps uncacheable —
-    // moved the snapshot ahead of the image it described, and the patch
-    // after a confirm then carried the ring the lift had erased back from
-    // the buffer made before it.
-    final change = cache == null
-        ? (located: false, dirty: null, now: null)
-        : _painter._liveDirtyCanvasRect();
-    // ⛔TWO ANSWERS, NOT ONE. `located: false` is "cannot say where"; a null
-    // rect with `located: true` is "nothing changed", which is the BEST case
-    // for a carry and used to be indistinguishable from the worst.
-    final dirty = change.dirty;
-    cache?.lastDirtyRect = dirty;
     // 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD. A moved extent is not a wrong
     // buffer, it is an OFFSET one: the buffer is canvas resolution, so one
     // buffer pixel is one canvas pixel at every zoom and the overlap belongs
@@ -1185,6 +1193,33 @@ class _LayerStackPaintPass {
     final scroll = base != null || cache == null || key == null
         ? null
         : cache.scrollBaseFor(_painter.compositeKey, rect);
+    // ⛔ALWAYS, even with no base to patch: this call is also what SEES
+    // what the live surface looks like now, and that goes into the store
+    // with the buffer this miss makes. Asking it only when a patch was
+    // already possible left the first buffer without a snapshot, so the
+    // first real stroke step compared against nothing and fell back to a
+    // full raster — measured, with the counter reading zero.
+    //
+    // 🚨★★★SEEN here, RECORDED only by `store` (F-68 ③). Recording on every
+    // call — including the paints a floating selection keeps uncacheable —
+    // moved the snapshot ahead of the image it described, and the patch
+    // after a confirm then carried the ring the lift had erased back from
+    // the buffer made before it.
+    //
+    // 🎯MEASURED FROM THE BASE THAT WILL BE DRAWN, not from the head: the
+    // real base is a paint or three older than the head, and a dirty rect
+    // measured from the head's tokens would miss the steps between — a
+    // stroke with holes in it, on every platform.
+    final change = cache == null
+        ? (located: false, dirty: null, now: null)
+        : _painter._liveDirtyCanvasRect(
+            since: (base ?? scroll)?.tokens ?? cache.keptTokens,
+          );
+    // ⛔TWO ANSWERS, NOT ONE. `located: false` is "cannot say where"; a null
+    // rect with `located: true` is "nothing changed", which is the BEST case
+    // for a carry and used to be indistinguishable from the worst.
+    final dirty = change.dirty;
+    cache?.lastDirtyRect = dirty;
     // ⚠️REFUSED WHEN THE LIVE SURFACE CANNOT SAY WHERE IT CHANGED. Carrying
     // the overlap would carry a stale live layer with it, and nothing else
     // in the key would notice.
@@ -1223,12 +1258,7 @@ class _LayerStackPaintPass {
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
   /// and repaints only the bands the pan exposed, plus [dirty]; answers
   /// the area repainted.
-  double _blitScrolled(
-    Canvas into,
-    ({ui.Image image, Rect rect}) scroll,
-    Rect rect,
-    Rect? dirty,
-  ) {
+  double _blitScrolled(Canvas into, _Base scroll, Rect rect, Rect? dirty) {
     final was = scroll.rect;
     final overlap = was.intersect(rect);
     into.drawImageRect(

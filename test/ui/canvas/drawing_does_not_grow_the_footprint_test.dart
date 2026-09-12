@@ -81,11 +81,14 @@ void main() {
   /// visible — a clipped arm would quietly measure a smaller defect.
   const defaultViewSide = 1200.0;
 
-  /// `DisplayBufferCache._maxChainBytes`, in MB. ⚠️Written out rather than
-  /// read from the class: the budget is the thing under test, and a test
-  /// that asks the code what the answer is cannot fail when the answer
-  /// changes.
-  const maxChainMb = 64;
+  /// The most the buffer may pin while painting: the head and the real
+  /// base (two canvases of 5.76MB at this view side), plus room for one
+  /// deferred ancestor in the paints before a snapshot lands. Far under
+  /// `DisplayBufferCache._maxChainBytes` (64MB) on purpose — that budget
+  /// is the net, and a test bounded at the net cannot tell the net from
+  /// the floor. ⚠️Written out rather than read from the class: a test that
+  /// asks the code what the answer is cannot fail when the answer changes.
+  const residentBufferMb = 24;
 
   const warmUpPaints = 5;
   const measuredPaints = 200;
@@ -208,16 +211,26 @@ void main() {
     // in.
     final curve = <int>[];
     var chainPeak = 0;
-    for (var step = warmUpPaints; step < measuredPaints; step += 1) {
-      await paintStep(step);
-      // Read AFTER every paint, not at the end: the chain collapses when
-      // the budget forces a full compose, so a final reading would report
-      // the trough of a sawtooth and call the peak zero.
-      chainPeak = max(chainPeak, buffers.heldBytes);
-      if ((step - warmUpPaints + 1) % 25 == 0) {
-        curve.add(footprintMb() - baseline);
+    // 🎯UNDER `runAsync`, WITH A TURN OF THE EVENT QUEUE AFTER EACH PAINT.
+    // The real base arrives through `Picture.toImage`, whose completion is
+    // a real engine callback; the fake async zone a plain `pump` runs in
+    // never delivers it, so the snapshots would all still be "in flight",
+    // `wantsPromotion` would stay false, and every paint would derive
+    // from the head under budget — the old shape, measured as the new one.
+    // The `promotedCount` assertion below is what says this actually ran.
+    await tester.runAsync(() async {
+      for (var step = warmUpPaints; step < measuredPaints; step += 1) {
+        await paintStep(step);
+        await Future<void>.delayed(Duration.zero);
+        // Read AFTER every paint, not at the end: a chain collapses when a
+        // budget forces a full compose, so a final reading would report
+        // the trough of a sawtooth and call the peak zero.
+        chainPeak = max(chainPeak, buffers.heldBytes);
+        if ((step - warmUpPaints + 1) % 25 == 0) {
+          curve.add(footprintMb() - baseline);
+        }
       }
-    }
+    });
     await tester.runAsync(collectGarbage);
     final afterGc = footprintMb();
     final after = counters();
@@ -237,6 +250,7 @@ void main() {
           '\n    buffer: patched=${buffers.patchedCount} '
           'full=${buffers.fullCount} '
           'depth=${buffers.derivedDepth} '
+          'real=${buffers.promotedCount} '
           'chainPeak=${chainPeak >> 20}MB',
     );
   }
@@ -307,29 +321,42 @@ void main() {
         '${withBuffer.reading}\n$control';
     printOnFailure(reading);
 
-    // 🚨★★★①THE BUDGET HOLDS — exact, and free of footprint noise. The
-    // cache now reports what the CHAIN pins rather than what its head
-    // image costs, so this reading IS the defect. Before the byte budget
-    // it peaked at 184MB on this 600×600 view (128 links × 1.44MB) and at
-    // 1.06GB on a 1920×1080 canvas, which is the user's own "half a stroke
-    // adds 1000~1600MB".
+    // 🚨★★★①NO CHAIN — exact, and free of footprint noise. The cache
+    // reports what it pins: the head, the real base, and any deferred
+    // ancestors the head still holds. With the real base landing, that is
+    // TWO canvases (11.5MB here) and the deferred depth saws between 0
+    // and 1; the bound leaves room for one more. Before the real base it
+    // read 64MB — the budget's edge — and before the byte budget 516MB on
+    // this view, 1.06GB on a 1920×1080 canvas.
     expect(
       withBuffer.chainPeakMb,
-      lessThanOrEqualTo(maxChainMb),
-      reason: 'the display buffer chain outgrew its byte budget:\n$reading',
+      lessThanOrEqualTo(residentBufferMb),
+      reason: 'the display buffer pinned more than head + real base:\n'
+          '$reading',
     );
-    // ②AND THE PROCESS AGREES — the independent half, and the one that
-    // would have caught this without trusting a counter this same commit
-    // wrote ([[adversarial-verify-is-not-optional]]: suspect the
-    // instrument first). Loose because the footprint carries ±70MB of
-    // allocator noise; the view side is what puts the defect an order of
-    // magnitude above that. The curve in the reading is the honest
-    // picture — unbounded it climbs, bounded it saws.
+    // ②AND THE SNAPSHOTS ACTUALLY LANDED. Without this, a promotion that
+    // never completes would leave every paint deriving from the head under
+    // budget — 64MB pinned, ① red, and this line is what names the cause.
     expect(
-      withBuffer.keptMb,
-      lessThan(320),
-      reason: 'painting kept memory no counter can name:\n$reading',
+      buffers.promotedCount,
+      greaterThan(measuredPaints ~/ 8),
+      reason: 'real bases stopped landing — the head is being derived from '
+          'under budget instead:\n$reading',
     );
+    // ⛔THE PROCESS FOOTPRINT IS A READING HERE, NOT A GATE. It was the
+    // independent instrument that found the chain — the one that did not
+    // trust the counter the fix wrote — and it is still printed above for
+    // whoever runs this file ALONE. But `flutter test` runs files in
+    // parallel isolates of ONE process, and a process footprint counts the
+    // neighbours: the same run that read +151MB alone read +760MB in a
+    // batch of 800 tests (2026-09-13) and went red on nothing — and the
+    // CONTROL beside it, which allocates nothing of its own, read +6.7GB
+    // (1,279 → 8,041MB) in that batch while its curve stayed a healthy
+    // saw. A gate that
+    // measures whoever happens to be running beside it is the "빈 것을
+    // 쟀다" trap with the sign flipped. To re-check the engine against the
+    // counter, run this file by itself and read the curve: unbounded it
+    // climbs, bounded it saws, and with the real base it stays flat.
     // ⛔THERE IS DELIBERATELY NO "WITHOUT THE BUFFER" ARM, AND THAT COST
     // A WHOLE ROUND TO LEARN (2026-09-12).
     //

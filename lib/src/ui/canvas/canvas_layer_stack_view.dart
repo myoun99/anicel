@@ -1783,10 +1783,18 @@ class _LayerStackPainter extends CustomPainter {
     );
   }
 
-  /// Where the LIVE surface changed since the KEPT buffer was made, in
-  /// canvas space — measured against [DisplayBufferCache.keptTokens], the
-  /// snapshot stored WITH that buffer — plus what the surface looks like
-  /// now, for the buffer this paint is about to store.
+  /// Where the LIVE surface changed since the base this paint will draw
+  /// was made, in canvas space — measured against [since], the tokens
+  /// stored WITH that base — plus what the surface looks like now, for the
+  /// buffer this paint is about to store.
+  ///
+  /// 🎯[since] IS THE BASE'S, NOT THE HEAD'S. The cache's real base is a
+  /// paint or three older than its head (`DisplayBufferCache._realBase`),
+  /// so a dirty rect measured from the head's tokens would leave the steps
+  /// between them out of the patch — a stroke with holes in it. The
+  /// caller asks the cache which base it will draw and passes that base's
+  /// tokens; the head's own tokens are only the fallback for a compose
+  /// that starts from nothing.
   ///
   /// 🚨`located: false` is the safe answer and it costs only a full
   /// re-raster, which is what every paint did before the cache existed. It
@@ -1801,12 +1809,12 @@ class _LayerStackPainter extends CustomPainter {
   /// One pixel is cheap and the alternative is a class of bug that only
   /// shows on some zoom levels.
   ({bool located, Rect? dirty, LiveSurfaceTokens? now})
-  _liveDirtyCanvasRect() {
+  _liveDirtyCanvasRect({required LiveSurfaceTokens since}) {
     final now = _liveSurfaceTokens();
     if (now == null) {
       return (located: false, dirty: null, now: null);
     }
-    final kept = bufferCache!.keptTokens;
+    final kept = since;
     if (kept.tiles.isEmpty) {
       // Nothing to compare against — the first paint after a cold start,
       // or a kept image made without a snapshot.
