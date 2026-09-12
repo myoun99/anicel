@@ -1490,9 +1490,9 @@ enum AppStrings {
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
     'convertLinkedCutResizeFirst':
-        'These cuts have different canvas sizes. Linked cuts show one '
-        'picture, so the origin\'s size will win — matching the sizes '
-        'first is recommended.',
+        'These cuts have different canvas sizes. Linked cuts share one '
+        'canvas, so this cut will be resized to the origin\'s size. Undo '
+        'restores it.',
     'toolGuide': 'Guide',
     'guideKindSymmetry': 'Symmetry',
     'guideKindPerspective': 'Perspective',
@@ -2455,8 +2455,8 @@ enum AppStrings {
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
     'convertLinkedCutResizeFirst':
-        'キャンバスサイズが異なります。兼用カットは一枚の絵を共有するため'
-        '元のカットのサイズが優先されます。先にサイズを揃えることをおすすめします。',
+        'キャンバスサイズが異なります。兼用カットはキャンバスを共有するため'
+        'このカットは元のカットのサイズに変更されます。元に戻すと復元されます。',
     'toolGuide': 'ガイド',
     'guideKindSymmetry': '対称',
     'guideKindPerspective': 'パース',
@@ -3515,8 +3515,8 @@ enum AppStrings {
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
     'convertLinkedCutResizeFirst':
-        '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 그림 한 장을 함께 쓰므로 '
-        '원본 컷의 크기가 이깁니다 — 먼저 크기를 맞춘 뒤 변경하시길 권합니다.',
+        '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 캔버스를 함께 쓰므로 '
+        '이 컷이 원본 컷의 크기로 바뀝니다. 실행 취소하면 되돌아갑니다.',
     'toolGuide': '가이드',
     'guideKindSymmetry': '대칭',
     'guideKindPerspective': '퍼스',

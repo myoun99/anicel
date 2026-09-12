@@ -78,6 +78,24 @@ class _LinkCommands {
   /// [plan] previews the effect for the confirmation dialog; the caller
   /// shows it and only then invokes this. No-op when nothing would link.
   /// One undo step. Needs the brush frame store.
+  /// 겸용 변경 (L2b): links [targetCutId] to [originCutId].
+  ///
+  /// ★A 겸용 GROUP SHARES ONE CANVAS SIZE, and linking is where that starts
+  /// being true. 🗣️유저 2026-09-12: 「링크컷인데 컷 하나 캔버스크기 바꾸면
+  /// 다른 링크된컷도 바뀌어야 하는데 안바뀌거든?」 — the RESIZE was never
+  /// the broken half (`ResizeCutCanvasCommand` already fans out through
+  /// `linkedCutSiblings`, measured both ways). This was: a convert left
+  /// the two at whatever sizes they happened to have, and the dialog
+  /// merely SAID the origin's size wins. A pair that starts out of step
+  /// stays out of step, which is what reads as "the other cut does not
+  /// change".
+  ///
+  /// ⛔The resize is not re-implemented here. [ResizeCutCanvasCommand]
+  /// owns the whole motion — the model write, the one-pass raster
+  /// adoption, the anchor, the exact undo — and it walks the 겸용 siblings
+  /// itself, so COMPOSING it is what keeps ONE law. Composing also keeps
+  /// the conversion one undo step, as [ConvertToLinkedCutCommand]'s own
+  /// doc already promised.
   void convertCutToLinked({
     required CutId originCutId,
     required CutId targetCutId,
@@ -101,7 +119,15 @@ class _LinkCommands {
       targetCut: targetCut,
     );
 
-    _coordinator.historyManager.execute(
+    final commands = <Command>[
+      if (targetCut.canvasSize != originCut.canvasSize)
+        ResizeCutCanvasCommand(
+          repository: _coordinator.repository,
+          cutId: targetCutId,
+          canvasSize: originCut.canvasSize,
+          anchor: CanvasResizeAnchor.center,
+          brushFrameStore: store,
+        ),
       ConvertToLinkedCutCommand(
         repository: _coordinator.repository,
         brushFrameStore: store,
@@ -110,6 +136,15 @@ class _LinkCommands {
         unionLayerIdMap: plan.unionLayerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
       ),
+    ];
+
+    _coordinator.historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: 'Convert cut $targetCutId to link $originCutId',
+              commands: commands,
+            ),
     );
   }
 
