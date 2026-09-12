@@ -754,21 +754,32 @@ Iterable<String> _answersNobodyRead(
 /// silent way to leave.
 Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
   final byId = {for (final c in cards) c.id: c};
+  // 🚨★★★「끝났다」 IS ASKED OF [endedCards], NOT RE-DECIDED HERE.
+  //
+  // ⛔This used to read `state == archived || deleted` and nothing else, while
+  // the WRITER refused records on anything [endedCards] calls ended. The two
+  // disagreed about the same cards and both were loud: a question answered by
+  // hand carries no `state`, so `board_say` said 「이미 끝난 카드」 while this
+  // said 「끝나지도 않았는데」 — and no line existed that satisfied both.
+  //
+  // 🧪실측 2026-09-12: EIGHT questions stood in this complaint and SIX of them
+  // were answered — finished work the gate kept naming, which is how a gate
+  // teaches people to skim it. The other two are the real thing this rule
+  // exists for (a question nobody can reach to answer), and they still are.
+  final ended = endedCards(cards);
   final lost = <String>[];
   for (final c in cards) {
     if (c.kind == 'law' || c.kind == 'meta') continue;
     if (acks.contains(c.id)) continue;
     // Two of the three legitimate ways to be off the board.
-    if (c.state == 'archived' || c.state == 'deleted') continue;
+    if (ended.containsKey(c.id)) continue;
     final host = c.foldedInto;
     if (host == null) continue;
     // The third: 「접힘」 means 「drawn INSIDE that card」. If that card is not
     // drawn, the sentence is false and this one is nowhere at all.
     final into = byId[host];
-    final shown = into != null &&
-        into.state != 'archived' &&
-        into.state != 'deleted' &&
-        into.foldedInto == null;
+    final shown =
+        into != null && !ended.containsKey(into.id) && into.foldedInto == null;
     if (!shown) lost.add('${c.id}→$host');
   }
   if (lost.isEmpty) return;

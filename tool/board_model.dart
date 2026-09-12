@@ -798,6 +798,65 @@ List<String> checksWaiting(BoardCard e) {
 /// panel.
 bool cardAsks(BoardCard c) => c.options.isNotEmpty || c.kind == 'decision';
 
+/// Whether an answered question is STILL only a question — no 대분류 has
+/// moved it into a work column since.
+///
+/// ⚠️Reads [lastSection] and [kSection], the same pair [placeByStory] uses to
+/// put the card on screen, for the reason the guard beside it gives: what is
+/// being asked is 「would the board draw this as work」, and asking it any
+/// other way is a second opinion that can drift from what is drawn.
+bool _stillOnlyAsking(BoardCard c) {
+  final section = kSection[lastSection(c)];
+  return section == null || section == 'ask';
+}
+
+/// Which cards have ENDED, and why.
+///
+/// 🚨★★★IT LIVES HERE BECAUSE TWO SIDES ASK IT. `board_say` refuses a new
+/// subject on an ended card and `board_check` decides whether a folded card
+/// has quietly fallen off the board — the same question, and while this
+/// function sat in the writer the gate answered it with a private
+/// `state == archived || deleted` of its own. They disagreed about the very
+/// same cards: a question answered BY HAND carries no `state`, so one side
+/// called it 「이미 끝난 카드」 and the other 「끝나지도 않았는데」, and there
+/// was no line anyone could write that satisfied both. That is precisely the
+/// two-readers bug this file's own header forbids.
+///
+/// ⚠️A question that already carries an ANSWER counts as ended. It is not
+/// archived by state, but writing a NEW question onto it is the same mistake:
+/// the panel shows the old answer and the new words never become a question.
+Map<String, String> endedCards(List<BoardCard> cards) => {
+      for (final c in cards)
+        if (c.state == 'archived')
+          c.id: '완료'
+        else if (c.state == 'deleted')
+          c.id: '삭제됨'
+        // 🚨★★★A QUESTION, not merely a card carrying an `answer`.
+        // ⛔`R27-rest` is an ordinary work card whose old `/submit` left
+        // `answer:"ok"` on it, and the first version of this guard read that
+        // as 「answered question」 and refused to let me record findings on
+        // live work. Measured within the hour of shipping it.
+        // ⚠️`cardAsks` is the same reader the board draws by, so this cannot
+        // drift into a second opinion about what a question is.
+        //
+        // 🚨★★★BUT ONLY WHILE IT IS STILL JUST A QUESTION. A card can raise a
+        // question, get its answer, and CARRY ON AS WORK — `F-34` did exactly
+        // that (asked how many digits a slider shows, 유저 answered on
+        // 2026-09-01, and the next entry was `남은 것` with the plan). The
+        // options stay on the card, so `cardAsks` keeps saying yes for ever,
+        // and the guard was refusing every record about the work — including
+        // the one that says it landed. Measured 2026-09-10: the card sat in
+        // 착수 가능 with the code already written and no way to say so.
+        //
+        // ⛔The refusal's own reason is 「끝난 카드는 보드가 안 그린다」, so the
+        // test has to be WHETHER IT IS DRAWN AS WORK. A card whose last
+        // 대분류 is a question column is still a question; one that has moved
+        // to 남은 것 · 착수 가능 · 하는 중 · 실기 확인 is not, and records
+        // belong on it like any other card.
+        else if (cardAsks(c) && c.answer != null && _stillOnlyAsking(c))
+          c.id: '이미 답이 나온 질문',
+    };
+
 void foldQuestionsIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
   for (final q in byId.values.toList()) {
     if (!cardAsks(q)) continue;

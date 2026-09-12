@@ -463,6 +463,79 @@ void main() {
     });
   });
 
+  group('질문도 호스트와 함께 죽지 않는다', () {
+    // 🚨THE SAME LAW AS THE CHECKS BELOW, asked of the QUESTION fold — which
+    // never got it. 실측 2026-09-12: eight questions sat in the 「어디에도 안
+    // 그려지는」 complaint, six of them already answered.
+    //
+    // ⛔A RULE-SPECIFIC MATCHER, not `isEmpty`. This fixture legitimately
+    // trips other rules, so a pair written against the whole output would be
+    // measuring those instead of this one — the empty-room failure this file
+    // already caught itself in once.
+    // 🚨★★★THE HOST FINISHES LAST, and that is not decoration. Folding ADDS a
+    // 「질문」 entry to the host stamped when the question was RAISED, and the
+    // host's column is recomputed from its last entry afterwards — so a
+    // fixture whose 완료 predates the question puts the host back in 답할 것
+    // and the rule never fires. 🧪It measured an empty room on the first
+    // writing of this very test: the gate returned '' and both halves of the
+    // pair passed for the same wrong reason.
+    List<String> board({required bool answered}) => [
+          '{"kind":"decision","id":"W-Q1","at":"질문","title":"물음",'
+              '"where":"거기","why":"막혔다","options":[{"key":"1","label":"A"},'
+              '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('09:00')}"}',
+          if (answered)
+            '{"kind":"decision","id":"W-Q1","answer":"1",'
+                '"ts":"${at('10:00')}"}',
+          '{"kind":"item","id":"W","at":"완료","said":"끝",'
+              '"ts":"${at('11:00')}"}',
+        ];
+
+    test('🚨★★★an UNANSWERED question whose host ended is NAMED — there is no '
+        'longer anywhere a person could reach it to answer it', () {
+      expect(complaintsFor(board(answered: false)), contains('W-Q1→W'));
+    });
+
+    test('⛔but an ANSWERED one is not named — it is finished, and the writer '
+        'already says so (`endedCards`)', () {
+      expect(
+        complaintsFor(board(answered: true)),
+        isNot(contains('끝나지도 않았는데')),
+        reason: '두 게이트가 한 정의를 쓴다 — 답이 나온 질문은 끝난 것이다',
+      );
+    });
+
+    test('🚨★★★and the HOST is read the same way — a card that ended by being '
+        'ANSWERED carries no `state` to say so', () {
+      // ⛔TWO SURVIVING MUTANTS WROTE THIS ONE, and the first fixture I tried
+      // could not have killed either. Swapping the host's test back to
+      // `state != archived` leaves the two cases above green, because their
+      // host ended by 완료 and `state` answers that on its own.
+      //
+      // 🚨⛔AND A QUESTION HOSTING A QUESTION CANNOT KILL IT EITHER: `shown`
+      // also asks `into.foldedInto == null`, and an inner question is itself
+      // folded into its own origin — so that clause decides the case before
+      // the ended test is ever consulted. 🧪Measured: the mutant survived a
+      // `W-Q1-Q1→W-Q1` fixture untouched.
+      //
+      // ⇒ The host has to be ended by its ANSWER *and* not folded itself.
+      // That is a card carrying options — `cardAsks` asks about options, not
+      // about the word `decision` — which an `item` id never gets folded by.
+      expect(
+        complaintsFor([
+          '{"kind":"item","id":"W","at":"질문","title":"물음","where":"거기",'
+              '"why":"막혔다","options":[{"key":"1","label":"A"},'
+              '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('09:00')}"}',
+          '{"kind":"item","id":"W","answer":"1","ts":"${at('10:00')}"}',
+          '{"kind":"decision","id":"W-Q1","at":"질문","title":"딸린 물음",'
+              '"where":"거기","why":"막혔다","options":[{"key":"1","label":"A"},'
+              '{"key":"2","label":"B"}],"recommend":"1","ts":"${at('11:00')}"}',
+        ]),
+        contains('W-Q1→W'),
+        reason: '답으로 끝난 호스트 안에 접힌 질문도 갈 곳이 없다',
+      );
+    });
+  });
+
   group('체크는 호스트와 함께 죽지 않는다', () {
     test('🚨★★★a check whose host has ended still stands on its own', () {
       // 🧪TEN of them were gone this way: the 4GB save check rode
