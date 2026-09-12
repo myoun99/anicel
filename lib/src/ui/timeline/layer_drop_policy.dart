@@ -34,6 +34,8 @@ import '../../models/layer_id.dart';
 import '../../models/new_row_placement.dart';
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
+import 'timeline_drag_preview.dart'
+    show MediaPlacementPreview, TimelineDragPreview;
 import 'timeline_section_policy.dart';
 
 /// A legal landing: the cut's new stack order, and the rows whose folder
@@ -961,6 +963,48 @@ List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
 /// 유저 2026-08-12 ④: the line is where the cursor is — the nearest
 /// boundary between layer rows. Lanes only ever trail the layer they belong
 /// to, so the last gap is the strip's end.
+/// WHERE gap [slot] sits in the drawn row list — the row it stands above,
+/// or the end of the list for the gap after the last layer row.
+///
+/// 🚨Named because TWO things need it and they must not drift: the caret
+/// measures its distance from this edge ([nearestLayerGap]), and the
+/// silhouette row is inserted AT it ([rowsWithSilhouette]). Written twice,
+/// a line and a row that are supposed to mark the same gap would eventually
+/// mark different ones.
+int displayIndexForGap(List<TimelineDisplayRow> rows, int slot) {
+  final layers = layerRowsOf(rows);
+  return slot < layers.length ? layers[slot].rowIndex : rows.length;
+}
+
+/// [rows] with the drop's silhouette row standing in its gap, or [rows]
+/// unchanged when nothing is being dragged over the layer area.
+///
+/// 🚨★★★**DRAWN, NEVER COUNTED.** This runs AFTER the list the entrance
+/// measures against has been taken, so the gap under the pointer is counted
+/// on the rows WITHOUT this one. Count it and every row below shifts by one
+/// under a still pointer, so the gap it came from stops being the gap it is
+/// over and the caret jumps a row per pixel — the cost the decision named
+/// (유저 2026-09-12, Q2: 「끄는 동안 행이 오르내린다」).
+List<TimelineDisplayRow> rowsWithSilhouette(
+  List<TimelineDisplayRow> rows,
+  TimelineDragPreview? preview,
+) {
+  if (preview is! MediaPlacementPreview) {
+    return rows;
+  }
+  final row = preview.silhouetteRow;
+  final slot = preview.silhouetteSlot;
+  if (row == null || slot == null) {
+    return rows;
+  }
+  final at = displayIndexForGap(rows, slot);
+  return [
+    ...rows.take(at),
+    TimelineDisplayRow.layer(row, layerIndex: slot),
+    ...rows.skip(at),
+  ];
+}
+
 int nearestLayerGap(
   List<TimelineDisplayRow> rows,
   double along,

@@ -74,6 +74,8 @@ class TimelinePanel extends StatefulWidget {
     this.audioLane,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
+    this.onHoverMediaAssetOnLayer,
+    this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
@@ -247,6 +249,16 @@ class TimelinePanel extends StatefulWidget {
   /// Whether a file at a frame of a row can land there; null is yes.
   final bool Function(LayerId layerId, int frameIndex, String path)?
   acceptsMediaAssetOnLayer;
+
+  /// Where a file being dragged STANDS on a row, per pointer step — what
+  /// the silhouette is drawn from. It travels beside the accepts answer
+  /// because they are two halves of one hover: whether it may land, and
+  /// where it would.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onHoverMediaAssetOnLayer;
+
+  /// The file left the rows without being let go.
+  final void Function()? onLeaveMediaAssetOnLayer;
 
   /// A media-browser row let go on the layer area, at a gap between rows;
   /// null refuses the drag.
@@ -552,6 +564,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
       audioLane: widget.audioLane,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
+      onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
+      onLeaveMediaAssetOnLayer: widget.onLeaveMediaAssetOnLayer,
       onDropMediaAssetBetweenLayers: widget.onDropMediaAssetBetweenLayers,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       onOpenLayerReference: widget.onOpenLayerReference,

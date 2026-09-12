@@ -15,6 +15,7 @@ import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -642,6 +643,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       audioLane: widget.hooks.audioLane,
       onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.hooks.acceptsMediaAssetOnLayer,
+      onHoverMediaAssetOnLayer: widget.hooks.onHoverMediaAssetOnLayer,
+      onLeaveMediaAssetOnLayer: widget.hooks.onLeaveMediaAssetOnLayer,
       showSeconds: widget.hooks.showSeconds,
       commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,
@@ -825,9 +828,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // how many rows sit between two fx headers (their members may be
     // twirled open). Held for the wrappers built below in the same pass.
     _dragRows = rows;
+    // ⚠️AFTER the line above, never before: a file held over the layer area
+    // is DRAWN as a row in its gap, and the gap it stands in is counted on
+    // the list that does not have it ([rowsWithSilhouette] says why).
+    final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
     final rangeHooks = widget.hooks.rangeHooks;
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
+    // ⛔The gestures above take the REAL rows: nothing can be selected,
+    // dragged or edited on a row that does not exist yet.
 
     // The law, the glide stop and the overscroll clamp — [TimelineGridShell]
     // carries the PEN-9 / PEN-12 #7 / D43-2 decisions for both grids.
@@ -928,7 +937,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 // ([TimelineRowCellsPainter.rowGround]), not the
                                 // overlay's to reach further.
                                 final verticalContentHeight = math.max(
-                                  timelineDisplayRowsExtent(rows, _metrics),
+                                  // The DRAWN rows: a silhouette standing in
+                                  // a gap makes the content one row taller,
+                                  // and a scroll extent that forgot it would
+                                  // clip the row it pushed down.
+                                  timelineDisplayRowsExtent(
+                                    drawnRows,
+                                    _metrics,
+                                  ),
                                   _metrics.layerRowHeight,
                                 );
                                 // Layer-axis window: only the rows in view (plus
@@ -955,8 +971,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 _verticalSync.synchronize(
                                   effectiveVerticalScrollOffset,
                                 );
+                                // 🚨THE window is what the rail and the frame
+                                // rows both draw from, so the silhouette
+                                // enters here — once, for both — and every
+                                // surface fed by it must be fed the SAME
+                                // list: the window's indices (the pinned row
+                                // among them) point into it.
                                 final window = _rowWindowFor(
-                                  rows,
+                                  drawnRows,
                                   bodyViewportHeight,
                                   effectiveVerticalScrollOffset,
                                 );
@@ -1339,7 +1361,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     layerControlsRail:
                                                         _railRows.buildLayerControlsRail(
                                                           colorScheme,
-                                                          rows,
+                                                          drawnRows,
                                                           availableRailExtent,
                                                           window,
                                                           swipeColumns,
@@ -1353,7 +1375,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     frameGridArea:
                                                         _buildFrameGridArea(
                                                           colorScheme,
-                                                          rows,
+                                                          drawnRows,
                                                           window,
                                                           rangeHooks,
                                                           rangeGesture,

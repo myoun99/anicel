@@ -160,6 +160,15 @@ class _XSheetGridColumns {
       audioLane: _state.widget.hooks.audioLane,
       onDropMediaAssetOnLayer: _state.widget.hooks.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: _state.widget.hooks.acceptsMediaAssetOnLayer,
+      onHoverMediaAssetOnLayer: _state.widget.hooks.onHoverMediaAssetOnLayer,
+      onLeaveMediaAssetOnLayer: _state.widget.hooks.onLeaveMediaAssetOnLayer,
+      // The sheet shows what the timeline shows: a file held over a column
+      // draws the cells it would author there. ⛔Not the sheet's own rule —
+      // the same span off the same channel, resolved by the same function.
+      silhouette: timelineDragSilhouetteFor(
+        _state.widget.hooks.dragPreview?.value,
+        layer.id,
+      ),
       seClipMarkerTooltip: _state.widget.hooks.seClipMarkerTooltip,
       seSpillsIn: _state.widget.hooks.seSpillInLayerIds.contains(layer.id),
       layer: layer,

@@ -786,6 +786,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // only hovers — so the chip wears the answer before the release.
             acceptsMediaAssetOnLayer: (layerId, frameIndex, path) =>
                 _session.dropSpotFor(layerId, frameIndex, path) != null,
+            // And what that landing would MAKE, drawn where it would make
+            // it (미디어 배치 라운드 2d 2부). The verb asks the same door
+            // again rather than being told the answer: 그려지는 것과 놓았을
+            // 때 생기는 것이 한 질문에서 나온다.
+            onHoverMediaAssetOnLayer: _session.showMediaPlacement,
+            onLeaveMediaAssetOnLayer: _session.mediaPlacement.clear,
             onDropMediaAssetBetweenLayers:
                 widget.onPlaceMediaAssetBetweenLayers,
             audioLane: TimelineAudioLaneCallbacks(
@@ -957,9 +963,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
               onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
               // A file from the pool over the layer area raises the caret a
-              // moved row does (「레이어 영역(가로선) → 새 레이어」).
-              onPlacementHover: _session.layerRowDragVerbs.showPlacementCaret,
-              onPlacementLeave: _session.layerRowDragVerbs.clearPlacementCaret,
+              // moved row does (「레이어 영역(가로선) → 새 레이어」) AND the
+              // row it would make, standing in that gap (라운드 2d 2부).
+              // ⛔One verb, not two hooks: the line and the row are one
+              // answer, and a surface that raised only one of them would be
+              // showing half of what the release does.
+              onPlacementHover: _session.showLayerPlacement,
+              onPlacementLeave: _session.clearLayerPlacement,
               acceptsPlacement: (displayLayers, slot, path) =>
                   _session.layerSlotSpotFor(displayLayers, slot, path) != null,
               // ⑨: the first drag SELECTS, and a drag that starts INSIDE the

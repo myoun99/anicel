@@ -72,6 +72,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.audioLane,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
+    this.onHoverMediaAssetOnLayer,
+    this.onLeaveMediaAssetOnLayer,
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
@@ -183,6 +185,14 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// Whether a file at a frame of a row can land there; null is yes.
   final bool Function(LayerId layerId, int frameIndex, String path)?
   acceptsMediaAssetOnLayer;
+
+  /// Where a file being dragged stands on a row, per pointer step — the
+  /// other half of the hover, and what the row's silhouette comes from.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onHoverMediaAssetOnLayer;
+
+  /// It left without being let go.
+  final void Function()? onLeaveMediaAssetOnLayer;
 
   /// The shared frames/seconds display toggle (block duration labels,
   /// R26 #7).
@@ -443,6 +453,14 @@ class _TimelineFrameRowsScrollBodyState
     return TimelineFrameCellsRow(
       layer: layer,
       baseLayer: baseLayer,
+      // The cells a hovering file would author. Read off the channel the
+      // GATE above already subscribes to — it rebuilt this builder to hand
+      // over [layer], and the span belongs to the same step — so the drag
+      // preview keeps exactly one subscriber per row.
+      silhouette: timelineDragSilhouetteFor(
+        widget.dragPreview?.value,
+        layer.id,
+      ),
       active: layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
       geometry: _geometryFor(layer.kind),
@@ -468,6 +486,8 @@ class _TimelineFrameRowsScrollBodyState
       audioLane: widget.audioLane,
       onDropMediaAssetOnLayer: widget.onDropMediaAssetOnLayer,
       acceptsMediaAssetOnLayer: widget.acceptsMediaAssetOnLayer,
+      onHoverMediaAssetOnLayer: widget.onHoverMediaAssetOnLayer,
+      onLeaveMediaAssetOnLayer: widget.onLeaveMediaAssetOnLayer,
       commaDrag: widget.commaDrag,
       rangeGesture: widget.rangeGesture,
       runEdit: widget.runEdit,

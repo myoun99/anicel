@@ -27,7 +27,8 @@ import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
-import 'layer_drop_policy.dart' show effectHeaderRowsOf;
+import 'layer_drop_policy.dart'
+    show effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -968,12 +969,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // The row drag counts COLUMNS and lands on slots; only this
             // list knows how many columns sit between two fx headers.
             _dragRows = entries;
+            // ⚠️AFTER the line above: the sheet draws the silhouette column
+            // the timeline draws, and the gap is counted on the list
+            // without it ([rowsWithSilhouette]).
+            final drawnEntries = rowsWithSilhouette(
+              entries,
+              widget.hooks.dragPreview?.value,
+            );
             // The bundles are FIELDS here (the x-sheet reads them from more
             // than one builder), so the assignment stays and only the
             // construction moved.
             _rangeGesture = _rangeGestures.rangeGestureFor(entries);
             _laneRange = _rangeGestures.laneRangeFor(entries);
-            final sectionRuns = timelineSectionRuns(entries);
+            // The DRAWN columns: the band brackets what is on screen, and a
+            // silhouette column standing in the drawing section belongs
+            // inside that bracket.
+            final sectionRuns = timelineSectionRuns(drawnEntries);
 
             // The shared virtualization plan with the frame axis fed through the
             // "horizontal" inputs (the axes are swapped in this grid). Computed
@@ -987,7 +998,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // resolver when `uniformRowDeltaForCrossOffset` — which requires
             // this uniformity — is the right one.
             final columnsContentWidth = timelineDisplayRowsExtent(
-              entries,
+              // Drawn, so the content is one column wider while a file
+              // hovers — an extent that forgot it would clip the column it
+              // pushed along.
+              drawnEntries,
               _metrics,
             );
             final cutEndBoundaryOffset = timelineCutEndBoundaryX(
@@ -1150,7 +1164,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     ).copyWith(scrollbars: false),
                                     child: _buildLayerHorizontalViewport(
                                       colorScheme,
-                                      entries,
+                                      // THE drawing entrance — the columns
+                                      // and their headers come from here, so
+                                      // the silhouette column enters once,
+                                      // for both.
+                                      drawnEntries,
                                       sectionRuns,
                                       geometry,
                                     ),

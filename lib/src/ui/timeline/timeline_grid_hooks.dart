@@ -73,6 +73,8 @@ class TimelineGridHooks {
     this.audioLane,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
+    this.onHoverMediaAssetOnLayer,
+    this.onLeaveMediaAssetOnLayer,
     this.onDropMediaAssetBetweenLayers,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
@@ -218,6 +220,16 @@ class TimelineGridHooks {
   /// answer the drag's chip wears (「불가능 = 칩의 금지 표시」). Null is yes.
   final bool Function(LayerId layerId, int frameIndex, String path)?
   acceptsMediaAssetOnLayer;
+
+  /// Where a file being dragged STANDS on a row, per pointer step — the
+  /// session draws what letting go there would make (「끄는 동안 보이는
+  /// 것은 놓았을 때 생길 것이다」). Both grids hand it over, so the sheet
+  /// and the timeline show one answer.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onHoverMediaAssetOnLayer;
+
+  /// The file left the rows without being let go: the drawing goes with it.
+  final void Function()? onLeaveMediaAssetOnLayer;
 
   /// A media-browser row let go on the LAYER AREA, at the gap [slot] of
   /// [displayLayers]: a new layer there (「레이어 영역(가로선) → 새

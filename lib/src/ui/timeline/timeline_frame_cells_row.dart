@@ -28,6 +28,7 @@ import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
+import 'timeline_silhouette_painter.dart';
 
 /// One layer's row of frame cells. CURSOR-INDEPENDENT by design: nothing
 /// here reads the playhead — the selected-cell ring, the selected-exposure
@@ -58,6 +59,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.onDropMediaAssetOnLayer,
     this.acceptsMediaAssetOnLayer,
+    this.onHoverMediaAssetOnLayer,
+    this.onLeaveMediaAssetOnLayer,
+    this.silhouette,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
     this.audioLane,
@@ -181,6 +185,30 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final bool Function(LayerId layerId, int frameIndex, String path)?
   acceptsMediaAssetOnLayer;
 
+  /// Where a file being dragged STANDS on this row, while it hovers — the
+  /// same coordinate the drop would get, from the same conversion.
+  ///
+  /// ⚠️Separate from [acceptsMediaAssetOnLayer] because they answer two
+  /// questions: that one says whether a landing is possible (the chip wears
+  /// it), this one says where it would be. One callback doing both would be
+  /// a flag answering two questions.
+  final void Function(LayerId layerId, int frameIndex, String path)?
+  onHoverMediaAssetOnLayer;
+
+  /// The file left this row without being let go.
+  final VoidCallback? onLeaveMediaAssetOnLayer;
+
+  /// The cells this row would GAIN if the file now being dragged were let
+  /// go — 「끄는 동안 보이는 것은 놓았을 때 생길 것이다」 (미디어 배치 라운드
+  /// 2d-2). Null when nothing is being dragged over this row.
+  ///
+  /// ⚠️The cells themselves come from [layer], which is already the drag
+  /// preview's row (the gate above substituted it): the blocks in the way
+  /// have moved, and these are the ones that are not there yet. This span
+  /// only says WHICH — it does not author anything, and nothing here asks
+  /// where the drop would go.
+  final ({int startIndex, int endIndexExclusive})? silhouette;
+
   /// Clipped-take marker tooltip (REC1-D); null = markers off (the
   /// clipping-notice toggle, threaded as the string itself).
   final String? seClipMarkerTooltip;
@@ -229,6 +257,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         _cellsPaintArea(context),
+        ?_silhouetteLayer(),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
         // the rail's gutter bracket carries the section identity.
@@ -318,6 +347,30 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// LAYOUT time, which is what lets these rows keep their memo through a
   /// zoom step — position used to be a build-time scalar, so a zoom
   /// reconstructed every one of them.
+  /// 「아직 없는 것」 drawn over the cells it would fill.
+  ///
+  /// Through the SAME span layout the drop targets and the SE writing ride,
+  /// so the outline lands on the cells' own pixels and no second frame→pixel
+  /// arithmetic exists to drift from them. ABOVE the cells and BELOW the
+  /// gestures: a silhouette is something to look at, not something to press
+  /// (a painter-only `CustomPaint` answers no hit test, so the range pan and
+  /// the drop target underneath keep every pointer).
+  Widget? _silhouetteLayer() {
+    final span = silhouette;
+    if (span == null) {
+      return null;
+    }
+    return _spanLayer([
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: span.startIndex,
+          endIndexExclusive: span.endIndexExclusive,
+        ),
+        child: const CustomPaint(painter: TimelineSilhouettePainter()),
+      ),
+    ]);
+  }
+
   Widget _spanLayer(List<Widget> children) => Positioned.fill(
     child: TimelineFrameSpanLayout(
       geometry: geometry,
@@ -636,6 +689,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           onDrop: onDrop,
           acceptsDrop: acceptsMediaAssetOnLayer,
+          onHoverAt: onHoverMediaAssetOnLayer,
+          onLeave: onLeaveMediaAssetOnLayer,
         ),
       ),
     ]);
@@ -676,6 +731,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             spanStartIndex: gap.startIndex,
             onDrop: onDrop,
             acceptsDrop: acceptsMediaAssetOnLayer,
+            onHoverAt: onHoverMediaAssetOnLayer,
+            onLeave: onLeaveMediaAssetOnLayer,
           ),
         ),
     ]);
@@ -697,6 +754,8 @@ class _LayerAssetDropTarget extends StatelessWidget {
     required this.onDrop,
     this.spanStartIndex,
     this.acceptsDrop,
+    this.onHoverAt,
+    this.onLeave,
   });
 
   final Key dropKey;
@@ -708,6 +767,14 @@ class _LayerAssetDropTarget extends StatelessWidget {
   /// Whether the file at a frame can land there; null is yes.
   final bool Function(LayerId layerId, int frameIndex, String path)?
   acceptsDrop;
+
+  /// Where the hovering file stands, per pointer step — the coordinate the
+  /// drop would land on, so what is drawn while it hovers cannot disagree
+  /// with what a release does.
+  final void Function(LayerId layerId, int frameIndex, String path)? onHoverAt;
+
+  /// It left without being let go.
+  final VoidCallback? onLeave;
 
   /// The frame this target's span starts at — the row's first visible frame
   /// when null (a drawing row's whole-row target), a gap's first frame for an
@@ -733,6 +800,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accepts = acceptsDrop;
+    final hover = onHoverAt;
     return MediaAssetDropTarget(
       key: dropKey,
       accepts: accepts == null
@@ -742,6 +810,14 @@ class _LayerAssetDropTarget extends StatelessWidget {
               _frameIndexAt(context, globalPosition),
               data.path,
             ),
+      onHover: hover == null
+          ? null
+          : (data, globalPosition) => hover(
+              layerId,
+              _frameIndexAt(context, globalPosition),
+              data.path,
+            ),
+      onLeave: onLeave,
       onDrop: (data, globalPosition) =>
           onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
     );

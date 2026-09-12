@@ -23,6 +23,7 @@ import '../services/persistence/audio_sync_settings_store.dart';
 import 'brush/brush_tool_state.dart' show CanvasTool;
 import '../models/app_input_settings.dart';
 import 'session/drags/drawing_block_move_drag.dart';
+import 'session/drags/media_placement_drag.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
@@ -1843,6 +1844,82 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/layer_row_drag.dart): the row picked up in the
   // rail and where it may land — on a row, a track or an effect lane.
   late final LayerRowDrag layerRowDragVerbs = LayerRowDrag(project: this, changes: this, effectsAndFx: effectsAndFx, rowSelectionVerbs: rowSelectionVerbs, trackSe: trackSe, internals: this);
+
+  // ── a file held over the timeline: its own object, in its own file ──
+  //
+  // A collaborator (session/drags/media_placement_drag.dart): what a drop
+  // would make, drawn while the file still hovers — on the ONE preview
+  // channel every other drag publishes to, so 「끄는 동안 보이는 것」과
+  // 「놓았을 때 생기는 것」이 같은 코드에서 나온다.
+  late final MediaPlacementDrag mediaPlacement = MediaPlacementDrag(
+    preview: dragPreview,
+    layerById: layerById,
+    cutFrameCount: () => activeCutFrameCount,
+    // The project's own lookup, not a scan here: five callers already ask
+    // 「이 경로의 풀 항목」 through it.
+    assetFor: (path) =>
+        repository.currentProject?.mediaAssetByPath(path),
+    // The conform's SYNCHRONOUS door: a hover cannot wait, and a sound the
+    // conform has not answered for simply has no silhouette yet (the
+    // length the landing uses is the one this returns).
+    peaksFor: audioConformStore.peaksFor,
+    frameRate: () => projectSettings.projectFrameRate,
+    // 🚨An SE row is the TRACK's, so [layerById] — which walks the open
+    // cut — never finds one. These are the doors `landSound` itself uses.
+    seRowFor: trackSeGlobalLayerById,
+    seWindow: () => trackSeWindow,
+  );
+
+  /// Where a file being dragged stands on a row — the answer the silhouette
+  /// is drawn from. It asks [dropSpotFor] first, so what is DRAWN and what
+  /// a release DOES are the same question asked twice, never two rules.
+  void showMediaPlacement(LayerId layerId, int frameIndex, String path) {
+    final spot = dropSpotFor(layerId, frameIndex, path);
+    switch (spot) {
+      case SeCellSpot():
+        mediaPlacement.showOnSeCell(
+          layerId: layerId,
+          frameIndex: frameIndex,
+          path: path,
+        );
+      case RowFramesSpot():
+        mediaPlacement.showOnFrames(
+          layerId: layerId,
+          frameIndex: frameIndex,
+          path: path,
+        );
+      case _:
+        // Nowhere to land: nothing is drawn, which is what the chip's
+        // 금지 표시 already says.
+        mediaPlacement.clear();
+    }
+  }
+
+  /// A file held over the LAYER AREA, in the gap [slot] of [displayLayers]:
+  /// the rail's caret AND the row the drop would make, from ONE call.
+  ///
+  /// 🚨Two drawings of one hover, so they cannot disagree about where the
+  /// row goes — the caret marks the gap and the silhouette stands in it
+  /// (유저 2026-09-12, Q2). The caret keeps deciding whether a row may go
+  /// there at all ([showPlacementCaret] refuses a sound and an illegal
+  /// gap); the silhouette is drawn only where the same question said yes.
+  void showLayerPlacement(List<Layer> displayLayers, int slot, String path) {
+    layerRowDragVerbs.showPlacementCaret(displayLayers, slot, path);
+    if (layerSlotSpotFor(displayLayers, slot, path) is LayerSlotSpot) {
+      mediaPlacement.showOnLayerSlot(slot: slot, path: path);
+    } else {
+      // A sound goes to the SE rows whichever way it came in, so no row is
+      // being made here and nothing stands in the gap.
+      mediaPlacement.clear();
+    }
+  }
+
+  /// The file left the layer area, or was let go: the caret and the row go
+  /// together, because they arrived together.
+  void clearLayerPlacement() {
+    layerRowDragVerbs.clearPlacementCaret();
+    mediaPlacement.clear();
+  }
 
   /// The channel the workspace listens on when a drop wants a yes/no.
   ///

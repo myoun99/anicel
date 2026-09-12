@@ -125,6 +125,70 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   );
 }
 
+/// A FILE from the pool held over the timeline — 「끄는 동안 보이는 것은
+/// 놓았을 때 생길 것이다」 (미디어 배치 라운드 2d-2).
+///
+/// 🚨★★★**THE SILHOUETTE IS NOT A SECOND DRAWING OF A DROP. IT IS THIS
+/// CHANNEL.** A file being dragged and a block being dragged show the same
+/// thing through the same code: the rows come back from the same planner
+/// ([planDrawingRangeMove]), ride the same [TimelineDragPreviewRowGate], and
+/// the blocks in the way push LIVE exactly as they do for a block drag
+/// (유저 2026-09-12, Q1: 「블록 드래그와 같게 — 밀림까지 실시간」, with
+/// 「최대한 법 하나로 통일하면서 기존에있는거 잘 쓰면서」). ⛔A preview of a
+/// drop that computed its own push would be that second law.
+///
+/// What is NEW is MARKED, not drawn by a second painter: [silhouette] names
+/// the cells this drop would author, and the row paints those as not-there-
+/// yet. Everything else in [previewLayers] is a real cell that moved.
+class MediaPlacementPreview extends TimelineDragPreview {
+  const MediaPlacementPreview({
+    this.previewLayers = const {},
+    this.silhouette,
+    this.silhouetteRow,
+    this.silhouetteSlot,
+  });
+
+  /// The rows as the release would leave them — the pushed neighbours
+  /// included, since the push is the landing's own plan.
+  final Map<LayerId, Layer> previewLayers;
+
+  /// The cells [previewLayers] gained, so the row can paint the ones that
+  /// do not exist yet differently from the ones that merely moved.
+  final ({LayerId layerId, int startIndex, int endIndexExclusive})? silhouette;
+
+  /// The row this drop would ADD, drawn in the gap the rail's caret marks
+  /// (유저 2026-09-12, Q2: 「목업대로 — 실루엣 행을 끼운다」). Null when the
+  /// file is over a row rather than between two.
+  final Layer? silhouetteRow;
+
+  /// Which gap of the LAYER rows [silhouetteRow] stands in.
+  ///
+  /// 🚨★★★**DRAWN, NEVER COUNTED.** The gap under the pointer is counted on
+  /// the rows WITHOUT this one, and the insert happens where the rows are
+  /// BUILT — after the list the entrance reads. Count the inserted row and
+  /// every row below it shifts by one under a still pointer, so the gap it
+  /// came from is no longer the gap it is over: the caret would jump a row
+  /// per pixel. That is the cost the decision named (「포인터를 조금만
+  /// 움직여도 선이 한 줄 건너뛰는 떨림」), and this is where it is paid off.
+  final int? silhouetteSlot;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MediaPlacementPreview &&
+      mapEquals(other.previewLayers, previewLayers) &&
+      other.silhouette == silhouette &&
+      other.silhouetteRow == silhouetteRow &&
+      other.silhouetteSlot == silhouetteSlot;
+
+  @override
+  int get hashCode => Object.hash(
+    mapHash(previewLayers),
+    silhouette,
+    silhouetteRow,
+    silhouetteSlot,
+  );
+}
+
 /// A storyboard cut edge drag in flight: the involved cuts' previewed
 /// durations (end trims), leading gaps (start slides / gap consumption)
 /// and — when a move drag reaches into a neighbour — the previewed ORDER
@@ -201,12 +265,34 @@ Layer? timelineDragPreviewLayerFor(
     }
     return preview.previewLayers[layerId];
   }
+  if (preview is MediaPlacementPreview) {
+    // A file held over a row: the row it would land on, pushed neighbours
+    // and all. The silhouette cells are IN this layer — what marks them
+    // apart is [MediaPlacementPreview.silhouette], read where the row
+    // paints, not a second layer to resolve here.
+    return preview.previewLayers[layerId];
+  }
   if (preview is CutTrimDragPreview) {
     // A storyboard row re-keyed by its cut's edge drag (feedback #5/#9):
     // the timeline row follows the same one preview the strip renders.
     return preview.previewLayers[layerId];
   }
   return null;
+}
+
+/// The cells [preview] would AUTHOR on [layerId] — not there yet, and
+/// painted as such — or null where this row gains none.
+({int startIndex, int endIndexExclusive})? timelineDragSilhouetteFor(
+  TimelineDragPreview? preview,
+  LayerId layerId,
+) {
+  if (preview is! MediaPlacementPreview) {
+    return null;
+  }
+  final span = preview.silhouette;
+  return span == null || span.layerId != layerId
+      ? null
+      : (startIndex: span.startIndex, endIndexExclusive: span.endIndexExclusive);
 }
 
 /// The GLOBAL-axis preview layer for [layerId] (track-global hosts — the
@@ -249,6 +335,42 @@ List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
   ];
 }
 
+/// A CUT EDGE drag's preview substituted into [project]: the trimmed
+/// durations and leading gaps, the cuts in the order the release would
+/// leave them, and the rows the same drag re-keyed.
+///
+/// ⚠️Its own function because the dispatch below is a FLAT one — one arm per
+/// preview kind, each a line or two — and this arm alone builds a project.
+/// Inlined it read as though cut trims were the subject and every other
+/// preview an afterthought, and it carried the body past the round's sixty
+/// lines when the placement preview joined the switch.
+Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
+  final resized = project.copyWith(
+    tracks: [
+      for (final track in project.tracks)
+        track.copyWith(
+          cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])
+              .map(
+                (cut) =>
+                    trim.previewDurations.containsKey(cut.id) ||
+                        trim.previewGaps.containsKey(cut.id)
+                    ? cut.copyWith(
+                        duration:
+                            trim.previewDurations[cut.id] ?? cut.duration,
+                        leadingGapFrames:
+                            trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
+                      )
+                    : cut,
+              )
+              .toList(growable: false),
+        ),
+    ],
+  );
+  return trim.previewLayers.isEmpty
+      ? resized
+      : _projectWithLayersSubstituted(resized, trim.previewLayers);
+}
+
 /// A project snapshot with an in-flight drag preview substituted in —
 /// the storyboard panel renders THIS during a drag so its blocks follow
 /// the pointer while the repository stays untouched.
@@ -259,35 +381,8 @@ Project projectWithTimelineDragPreview(
   switch (preview) {
     case null:
       return project;
-    case CutTrimDragPreview(
-      :final previewDurations,
-      :final previewGaps,
-      :final previewOrder,
-      :final previewLayers,
-    ):
-      final resized = project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            track.copyWith(
-              cuts: _previewOrdered(track.cuts, previewOrder[track.id])
-                  .map(
-                    (cut) =>
-                        previewDurations.containsKey(cut.id) ||
-                            previewGaps.containsKey(cut.id)
-                        ? cut.copyWith(
-                            duration: previewDurations[cut.id] ?? cut.duration,
-                            leadingGapFrames:
-                                previewGaps[cut.id] ?? cut.leadingGapFrames,
-                          )
-                        : cut,
-                  )
-                  .toList(growable: false),
-            ),
-        ],
-      );
-      return previewLayers.isEmpty
-          ? resized
-          : _projectWithLayersSubstituted(resized, previewLayers);
+    case final CutTrimDragPreview trim:
+      return _projectWithCutTrimPreview(project, trim);
     case ExposureEdgeDragPreview(:final previewLayer):
       return _projectWithLayersSubstituted(project, {
         previewLayer.id: previewLayer,
@@ -310,6 +405,12 @@ Project projectWithTimelineDragPreview(
                 cut.copyWith(camera: CutCamera(keyframes: cameraKeyframes)),
           ) ??
           substituted;
+    case MediaPlacementPreview(:final previewLayers):
+      // The pushed rows reach the project views the same way a move's do.
+      // ⛔The silhouette ROW is not substituted here: it is not a row of
+      // this project, and a view that treated it as one would let a drag
+      // that never lands leave a layer behind.
+      return _projectWithLayersSubstituted(project, previewLayers);
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
   }
