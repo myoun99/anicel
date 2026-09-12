@@ -971,6 +971,11 @@ List<({int rowIndex, Layer layer})> layerRowsOf(List<TimelineDisplayRow> rows) {
 /// silhouette row is inserted AT it ([rowsWithSilhouette]). Written twice,
 /// a line and a row that are supposed to mark the same gap would eventually
 /// mark different ones.
+///
+/// ⚠️This sentence was FALSE for one round (2026-09-12, caught by the audit):
+/// the function was added and the caret left holding its own copy of the
+/// same ternary, so the comment described an extraction that had not
+/// happened. Naming a thing is not the same act as making everyone use it.
 int displayIndexForGap(List<TimelineDisplayRow> rows, int slot) {
   final layers = layerRowsOf(rows);
   return slot < layers.length ? layers[slot].rowIndex : rows.length;
@@ -1010,12 +1015,15 @@ int nearestLayerGap(
   double along,
   double pitch,
 ) {
-  final layers = layerRowsOf(rows);
+  // ⚠️[displayIndexForGap] walks the rows again per slot, so this is n² in
+  // the rows ON SCREEN — a windowed rail, tens of them. Paid on purpose:
+  // the alternative is this loop keeping its own copy of where a gap sits,
+  // which is exactly the drift the named function exists to stop.
+  final slots = layerRowsOf(rows).length;
   var nearest = 0;
   var nearestDistance = double.infinity;
-  for (var slot = 0; slot <= layers.length; slot += 1) {
-    final edge =
-        (slot < layers.length ? layers[slot].rowIndex : rows.length) * pitch;
+  for (var slot = 0; slot <= slots; slot += 1) {
+    final edge = displayIndexForGap(rows, slot) * pitch;
     final distance = (along - edge).abs();
     if (distance < nearestDistance) {
       nearest = slot;

@@ -264,11 +264,3 @@ void bakeCelSurface(
   store.storeRebuiltDisplayCache(key: key, previewSurface: surface);
   store.storeBakedSurface(key, surface);
 }
-
-/// A change-detection stamp for [lengthBytes] + [modifiedMillis] — the
-/// "original changed" badge's comparison key (§6-g). Cheap on purpose
-/// (no hashing a 100MB file).
-String mediaSourceStamp({
-  required int lengthBytes,
-  required int modifiedMillis,
-}) => '$modifiedMillis:$lengthBytes';
