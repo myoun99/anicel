@@ -252,14 +252,17 @@ class _LayerStackPaintPass {
             // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
             // carrying looks exactly like one that never could, and this
             // line is what a hands-on report can show.
-            // ⛔`chain` BELONGS BESIDE THEM FOR THE SAME REASON. It is the
-            // deepest the deferred-image chain has been (1–2 in ordinary
-            // painting); a hands-on report showing it high is the evidence
-            // the crash dump could not give — see [maxDerivedDepth].
+            // ⛔`chain` BELONGS BESIDE THEM FOR THE SAME REASON. It is how
+            // deep the deferred-image chain is NOW — it grows by one per
+            // patched paint and only a full compose resets it, so during a
+            // stroke it saws between 0 and the budget's edge. A report
+            // showing it stuck high, or stuck at 0 mid-stroke, names a
+            // budget that stopped firing or one that fires every paint —
+            // see [DisplayBufferCache.derivedDepth].
             : ' full=${_painter.bufferCache!.fullCount}'
                   ' patched=${_painter.bufferCache!.patchedCount}'
                   ' carried=${_painter.bufferCache!.scrolledCount}'
-                  ' chain=${_painter.bufferCache!.maxDerivedDepth}';
+                  ' chain=${_painter.bufferCache!.derivedDepth}';
         final top =
             (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value)))

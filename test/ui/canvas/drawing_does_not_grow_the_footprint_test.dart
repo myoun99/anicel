@@ -236,7 +236,7 @@ void main() {
           '\n    curve(+MB every 25 paints): ${curve.join(' ')}'
           '\n    buffer: patched=${buffers.patchedCount} '
           'full=${buffers.fullCount} '
-          'maxChain=${buffers.maxDerivedDepth} '
+          'depth=${buffers.derivedDepth} '
           'chainPeak=${chainPeak >> 20}MB',
     );
   }

@@ -12,6 +12,30 @@ import 'dart:ui' as ui;
 /// as copies of each other (2026-09-11, 88 → 91). One body, one `finally`,
 /// and a caller that needs to release something ELSE on the same throw
 /// (the effect chain's shader) wraps this in its own.
+///
+/// 🚨★★★WHAT COMES BACK IS NOT PIXELS. IT IS A RECIPE THAT PINS ITS INPUTS
+/// FOR ITS WHOLE LIFE. Read from the engine source (2026-09-13, Flutter
+/// 3.44.2 / engine 77e2e94772,
+/// `lib/ui/painting/display_list_deferred_image_gpu_skia.cc`): the
+/// deferred image keeps the picture's display list until the IMAGE is
+/// released — after rasterization too, so `OnGrContextCreated` can
+/// rasterize it again when the GPU context is lost — and that list holds a
+/// reference to every image the picture drew. Three consequences, and each
+/// has already cost this app:
+/// · Every image drawn into a KEPT result stays resident for as long as
+///   the result is kept, whether or not anything else still needs it, and
+///   a census that counts the result counts none of them.
+/// · A result drawn from a PREVIOUS result of the same kind pins that one,
+///   which pins the one before it — a chain, one whole image per link,
+///   released only when the head is and then recursively on the raster
+///   thread (2026-09-09: stack overflow at ~2,470 links; 2026-09-12: 17GB
+///   in two minutes of drawing). Every such chain owes a budget in BOTH
+///   units — links for the stack, bytes for memory — and `DisplayBufferCache`
+///   is the shape to copy.
+/// · `dispose()` on an image inside such a chain releases the Dart handle
+///   and nothing else.
+/// `Picture.toImage()` (async) is a plain snapshot and pins nothing; it is
+/// the answer wherever a frame of latency is acceptable.
 ui.Image rasterPicture(ui.PictureRecorder recorder, int width, int height) {
   final picture = recorder.endRecording();
   try {

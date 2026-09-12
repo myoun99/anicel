@@ -134,6 +134,14 @@ final Paint _tilePaint = Paint()
       // from falling back to nothing. The chain cannot run away — a
       // stand-in never blocks its tile's own decode, so every generation
       // is being replaced by truth while the next one composes.
+      //
+      // ⚠️THAT REPLACEMENT IS THE ONLY THING THAT SHORTENS IT. This is the
+      // same shape as the display buffer's chain (2026-09-13, `rasterPicture`
+      // has the engine fact): the stand-in is a deferred image and holds
+      // `preImage` for its whole life, so until the real decode lands and
+      // retires it, every generation behind it stays resident — 64KB a
+      // link, one chain per tile. Bounded by decode latency, not by a
+      // budget; a decode that never landed would be the leak.
       preImage = images.displayImageFor(preTile);
       if (preImage == null && preTile.hasInk) {
         // Pixels were here and we have no picture of them: composing now

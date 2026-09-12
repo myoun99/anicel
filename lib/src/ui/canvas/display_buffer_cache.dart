@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/rendering.dart';
 
 /// What the live surface looked like, per coordinate: the overlay's tile
@@ -133,87 +132,92 @@ class DisplayBufferCache {
   int fullCount = 0;
 
   /// How many stores IN A ROW were drawn from the kept image instead of
-  /// from nothing.
+  /// from nothing — which is exactly how many canvases the kept image
+  /// pins, because NOTHING ELSE EVER LETS ONE GO.
   ///
-  /// 🚨★★★A STACK BUDGET, NOT A CACHE STATISTIC — and the reason this
-  /// class refuses to hand its image out forever.
+  /// 🚨★★★THE ENGINE FACT THIS CLASS IS BUILT ON, READ FROM ITS SOURCE
+  /// (2026-09-13, Flutter 3.44.2 / engine 77e2e94772,
+  /// `lib/ui/painting/display_list_deferred_image_gpu_skia.cc`):
+  /// `toImageSync` hands back a `DlDeferredImageGPUSkia` whose
+  /// `ImageWrapper` keeps the picture's display list in `display_list_`
+  /// FOR THE IMAGE'S WHOLE LIFE. `SnapshotDisplayList` rasterizes it and
+  /// keeps it — there is no `reset()` anywhere in that file — because
+  /// `OnGrContextCreated` re-runs the snapshot when the GPU context is lost
+  /// and rebuilt, and the list is the only recipe it has. And the list
+  /// holds an `sk_sp<DlImage>` for every image it draws
+  /// (`DrawImageOp.image`, `dl_op_records.h`). `rasterPicture` states the
+  /// law for every caller; this class is where it bites hardest.
   ///
-  /// `toImageSync` returns an image that is NOT rasterized yet, and the
-  /// engine keeps the display list that would draw it
-  /// (`DlDeferredImageGPUSkia::ImageWrapper` holds an `sk_sp<DisplayList>`)
-  /// until the raster thread gets to it. So a buffer drawn from the kept
-  /// one RETAINS it, and the next buffer retains that: derive N times with
-  /// no rasterization in between and the chain is N long.
+  /// So a buffer drawn FROM the kept one holds the kept one for as long as
+  /// it lives, that one holds the one before it, and the chain is exactly
+  /// as long as the run of derived stores since the last compose that
+  /// started from nothing. Rasterization does not shorten it. A frame
+  /// reaching the screen does not shorten it. Only releasing the head does
+  /// — and then the whole run goes at once, recursively, on the raster
+  /// thread: `~DisplayList → DisposeOps → ~DlDeferredImageGPUSkia →
+  /// ~ImageWrapper → ~DisplayList`, ~850 bytes of stack a link against a
+  /// 2MB stack. 2026-09-09 the app died there at ~2,470 links (guard-page
+  /// violation 0x80000001, read from the dump with WinDbg; board card
+  /// `app-crash-stack-overflow-in-engine` has the walk).
   ///
-  /// ⛔IT WAS WRITTEN HERE THAT THE CHAIN "COSTS ALMOST NOTHING RESIDENT —
-  /// A DISPLAY LIST IS SMALL". THAT IS FALSE, AND IT COST THE USER 10GB
-  /// (2026-09-12). The display list is small; what it holds is not. Each
-  /// link's list references the deferred image before it, so every link
-  /// pins A WHOLE CANVAS of pixels until the chain collapses. Measured in
-  /// `drawing_does_not_grow_the_footprint_test.dart`: on a 1200×1200 view
-  /// (5.76MB a buffer) the chain peaks at 516MB and the footprint climbs
-  /// 106·207·308·409·511MB in a straight line, falling back only when the
-  /// depth budget forces a full compose — and the peak is a LINEAR
-  /// function of the budget. 128 links of a 1920×1080 canvas is 1.06GB,
-  /// which is the user's own "half a stroke adds 1000~1600MB".
+  /// ⛔TWO THINGS WERE WRITTEN HERE THAT WERE FALSE, AND BOTH COST THE USER
+  /// (2026-09-12: 544MB → 17GB in two minutes of drawing):
+  /// · "the chain costs almost nothing resident — a display list is
+  ///   small". The list is small; what it holds is not. Every link pins a
+  ///   whole canvas of pixels.
+  /// · "the count is reset by the one event that collapses the chain — a
+  ///   frame finishing rasterization". No event collapses it. This counter
+  ///   was zeroed on every `FrameTiming`, so the link budget below never
+  ///   once fired during ordinary drawing and the chain was unbounded:
+  ///   2,048 links of a 1920×1080 canvas is 17GB, and switching layers
+  ///   invalidated the head and gave it all back in one event, which is
+  ///   the user's own "레이어를 바꾸면 풀린다".
   ///
-  /// ⛔RELEASING THAT CHAIN IS RECURSIVE, IN THE ENGINE, ON THE RASTER
-  /// THREAD: `~DisplayList → DisposeOps → ~DlDeferredImageGPUSkia →
-  /// ~ImageWrapper → ~DisplayList`, ~850 bytes of stack per link against a
-  /// 2MB stack. 2026-09-09 the app died there with no frame of ours
-  /// anywhere on the stack — ~2,470 links, guard-page violation
-  /// (0x80000001). Read from the dump with WinDbg; board card
-  /// `app-crash-stack-overflow-in-engine` has the walk.
-  ///
-  /// 🎯THE COUNT IS RESET BY THE ONE EVENT THAT COLLAPSES THE CHAIN — a
-  /// frame finishing RASTERIZATION. Drawing the newest buffer snapshots it,
-  /// which releases its display list, which releases the buffer before it,
-  /// all the way down: the crash landed inside `Rasterizer::DrawToSurfaces`
-  /// for exactly that reason. So "derivations since the last rasterized
-  /// frame" is not an approximation of the chain — it IS the chain.
-  ///
-  /// [FrameTiming] reports only frames that were rasterized, which is
-  /// precisely the signal wanted: a burst of composes with no frame drawn
-  /// in between (an offscreen bake, a raster thread left behind) produces
-  /// no timing, so the count keeps climbing and the budget below fires.
+  /// 🔬Measured in `drawing_does_not_grow_the_footprint_test.dart`: on a
+  /// 1200×1200 view (5.76MB a buffer) the footprint climbs
+  /// 106·207·308·409·511MB in a straight line until a budget forces a full
+  /// compose, and the peak is a LINEAR function of the budget.
   int _derivedDepth = 0;
 
-  /// The most derivations allowed before the next compose has to start
-  /// from nothing.
-  ///
-  /// 128 links ≈ 110KB of the raster thread's 2MB — a twentieth of what it
-  /// took to die — and at 60fps an unbroken stroke pays one full compose
-  /// about every two seconds. ⛔Raising the thread's stack is not the
-  /// alternative: the chain has no length of its own to be under.
+  /// The most links allowed before the next compose has to start from
+  /// nothing — THE STACK BUDGET. 128 links ≈ 110KB of the raster thread's
+  /// 2MB, a twentieth of what it took to die. ⛔Raising the thread's stack
+  /// is not the alternative: the chain has no length of its own to be
+  /// under.
   static const int _maxDerivedDepth = 128;
 
   /// Bytes the chain pins right now: every image from the kept one back to
   /// the last compose that started from nothing.
   ///
   /// 🚨★★★MAINTAINED IN [store] AND NOWHERE ELSE, beside [_derivedDepth],
-  /// because they are the SAME EVENT counted in two units. A field updated
-  /// anywhere else would be a second answer to "how deep is the chain".
+  /// because they are the SAME EVENT counted in two units, and reset by the
+  /// same two events — a fresh store, an [invalidate] — because those are
+  /// the only two that release anything. A field touched anywhere else
+  /// would be a second answer to "how deep is the chain".
   int _chainBytes = 0;
 
   /// The most the chain may pin before the next compose has to start from
-  /// nothing.
+  /// nothing — THE MEMORY BUDGET.
   ///
-  /// 🚨★★★THE LINK BUDGET ABOVE GUARDS THE RASTER THREAD'S STACK; THIS ONE
-  /// GUARDS MEMORY. They are two costs of one chain, not one cost counted
-  /// twice, and 128 links was chosen against a 2MB stack with no thought
-  /// for the bytes each link pins — which is how a stroke came to cost a
-  /// gigabyte (see [_derivedDepth]).
+  /// 🚨★★★NOT A SAFETY NET: THE TWO BUDGETS ARE THE ONLY THING THAT EVER
+  /// COLLAPSES THE CHAIN. A chain has two costs — the raster thread's stack
+  /// and memory — so it has two budgets, and whichever binds first forces
+  /// the full compose that lets the whole run go. 128 links was chosen
+  /// against a 2MB stack with no thought for the bytes each link pins,
+  /// which is how a stroke came to cost a gigabyte (see [_derivedDepth]).
   ///
   /// ⛔ABSOLUTE, NOT A MULTIPLE OF THE CANVAS: a big canvas must not be
   /// allowed to pin proportionally more, because the machine it has to run
   /// on is the same one (구형 기기 방침). 64MB is ~44 links of a 600×600
-  /// view, ~11 of 1200×1200, ~8 of 1920×1080, ~2 of 4K.
+  /// view, ~11 of 1200×1200, ~8 of 1920×1080, ~2 of 4K — so during a
+  /// stroke a 1920×1080 canvas pays one full compose in eight paints and a
+  /// 4K one pays one in three.
   ///
   /// ⚠️THE FIRST DERIVATION IS ALWAYS ALLOWED, whatever the canvas costs:
-  /// this budget bounds ACCUMULATION, and at depth 0 there is none. That
-  /// keeps the healthy path — where a rasterized frame resets the depth
-  /// every frame and the true depth is 1 — identical at every canvas size,
-  /// instead of silently turning the patch optimisation off on large ones.
+  /// this budget bounds ACCUMULATION, and at depth 0 there is none.
+  /// Without that a canvas whose ONE image exceeds the budget could never
+  /// patch at all — the optimisation would switch itself off exactly where
+  /// it is worth most.
   static const int _maxChainBytes = 64 << 20;
 
   /// Whether the kept image may be drawn into the next one at all. Both
@@ -222,83 +226,11 @@ class DisplayBufferCache {
       _derivedDepth == 0 ||
       (_derivedDepth < _maxDerivedDepth && _chainBytes < _maxChainBytes);
 
-  /// The deepest the chain has ever been this session.
-  ///
-  /// 🚨★★★THE ONE THING THE CRASH DUMP COULD NOT SAY. It proved WHAT
-  /// collapsed (the chain, inside `Rasterizer::DrawToSurfaces`) and HOW BIG
-  /// it was (~2,470 links × 848 bytes = the whole 2MB stack), but not how
-  /// 2,470 derivations happened with no frame reaching the screen in
-  /// between — the heap is not in a WER dump, so the objects could not be
-  /// read. The frame pipeline throttles the UI thread, so ordinary
-  /// per-frame painting cannot produce that number: something paints the
-  /// canvas WITHOUT a frame being drawn. Which something is not known.
-  ///
-  /// So it is measured instead of argued (the counters' own law). In
-  /// normal use this stays at 1–2. Anything above [_deepDeriveSuspicion]
-  /// means a burst of composes the screen never saw, and
-  /// [debugFirstDeepDerive] then holds the stack that was doing it.
-  int maxDerivedDepth = 0;
-
-  /// Far above the 1–2 of ordinary painting, far below the budget — so it
-  /// fires on the real thing and never on a frame that ran long.
-  static const int _deepDeriveSuspicion = 16;
-
-  /// Who was composing when the chain first went deep. Debug builds only:
-  /// the capture is the point, and it costs a stack walk.
-  ///
-  /// ⚠️Recorded ONCE. The tenth caller is the same as the first, and a
-  /// field that keeps being overwritten is a field that says whatever
-  /// happened last.
-  StackTrace? debugFirstDeepDerive;
-
-  void _noteDepth() {
-    if (_derivedDepth > maxDerivedDepth) {
-      maxDerivedDepth = _derivedDepth;
-    }
-    assert(() {
-      if (_derivedDepth == _deepDeriveSuspicion &&
-          debugFirstDeepDerive == null) {
-        debugFirstDeepDerive = StackTrace.current;
-      }
-      return true;
-    }());
-  }
-
-  /// A frame reached the screen: every deferred image it drew has been
-  /// snapshotted, so the chain behind the kept buffer is gone.
-  ///
-  /// ⚠️Called for frames that RASTERIZED, never for work that only painted
-  /// — that difference is the whole point.
-  void noteFrameRasterized() {
-    _derivedDepth = 0;
-  }
-
-  bool _watchingFrames = false;
-
-  /// Subscribes to raster completions the first time anything derives.
-  ///
-  /// ⚠️Lazily, and never in a bare unit test: `SchedulerBinding.instance`
-  /// throws without a binding, and there are no frames there to reset on
-  /// anyway — the same shape [DeferredImageDisposer.retire] uses.
-  void _watchRasterizedFrames() {
-    if (_watchingFrames) {
-      return;
-    }
-    final SchedulerBinding binding;
-    try {
-      binding = SchedulerBinding.instance;
-    } on Object catch (_) {
-      return;
-    }
-    _watchingFrames = true;
-    binding.addTimingsCallback(_onFramesRasterized);
-  }
-
-  void _onFramesRasterized(List<FrameTiming> timings) => noteFrameRasterized();
-
-  /// The generation count itself, for the test that pins the budget.
-  @visibleForTesting
-  int get debugDerivedDepth => _derivedDepth;
+  /// How deep the chain is right now. Probe surface: the geometry field
+  /// probe prints it beside the compose counters, because "the budget
+  /// stopped firing" and "the budget fires on every paint" are both
+  /// regressions a hands-on report has to be able to show.
+  int get derivedDepth => _derivedDepth;
 
   /// The dirty rect the last compose was confined to (canvas space, after
   /// the hairline inflate); null when the compose was full. Probe surface
@@ -316,9 +248,9 @@ class DisplayBufferCache {
 
   /// [patched] and [derived] are two questions, deliberately two flags.
   /// [patched] is the PROBE — "did the patch path run" — and a scrolled
-  /// carry answers it false. [derived] is the STACK BUDGET above: a carry
-  /// draws the kept image too, so it answers true. One flag for both would
-  /// let a pan build the chain unwatched.
+  /// carry answers it false. [derived] is what the two budgets above
+  /// count: a carry draws the kept image too, so it answers true. One flag
+  /// for both would let a pan build the chain unwatched.
   ///
   /// [tokens] is what the live surface looked like as [image] was made —
   /// what a later paint measures its dirty rect from. Null when that could
@@ -345,10 +277,6 @@ class DisplayBufferCache {
     // of everything the chain already held.
     final imageBytes = image.width * image.height * 4;
     _chainBytes = derived ? _chainBytes + imageBytes : imageBytes;
-    if (derived) {
-      _noteDepth();
-      _watchRasterizedFrames();
-    }
     if (!identical(_image, image)) {
       _image?.dispose();
     }
@@ -458,15 +386,7 @@ class DisplayBufferCache {
     _tellHeldBytes();
   }
 
-  void dispose() {
-    if (_watchingFrames) {
-      _watchingFrames = false;
-      // The binding outlives this cache; a callback left on it would keep
-      // the object alive and go on resetting a counter nobody reads.
-      SchedulerBinding.instance.removeTimingsCallback(_onFramesRasterized);
-    }
-    invalidate();
-  }
+  void dispose() => invalidate();
 
   /// Whether anything is kept — the seam a cost test reads.
   @visibleForTesting

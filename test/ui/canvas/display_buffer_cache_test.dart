@@ -95,35 +95,91 @@ void main() {
     expect(cache.imageFor('k', rect), isNull);
   });
 
-  /// 🚨THE CHAIN THAT KILLED THE APP (2026-09-09). A buffer drawn from the
-  /// kept one retains it — `toImageSync` hands back an image the engine has
-  /// not rasterized, holding the display list that would draw it — so
-  /// deriving without end builds a list that is released RECURSIVELY on the
-  /// raster thread. ~2,470 links took its 2MB stack down with no frame of
-  /// ours on it.
+  /// 🚨THE CHAIN THAT KILLED THE APP (2026-09-09) AND ATE 17GB (2026-09-12).
+  /// A buffer drawn from the kept one retains it: a `toImageSync` image
+  /// keeps its display list for its WHOLE LIFE (the engine re-rasterizes
+  /// from it after a lost GPU context — read from
+  /// `display_list_deferred_image_gpu_skia.cc`, there is no reset in it),
+  /// and the list holds every image it drew. So the chain is exactly the
+  /// run of derived stores, one whole canvas a link, and it is released
+  /// only when the head is — RECURSIVELY on the raster thread. ~2,470 links
+  /// took its 2MB stack down; 2,048 of a 1920×1080 canvas is 17GB.
   ///
   /// The cache is where that is stopped, because the cache is what hands
-  /// the previous image out.
+  /// the previous image out — and nothing else stops it: rasterization
+  /// does not, a frame on screen does not. A test in this group used to
+  /// assert the opposite ("a RASTERIZED frame collapses the chain"), and
+  /// the counter it pinned was reset on every frame, which is exactly why
+  /// the link budget never fired while the user's memory climbed.
   group('the derived chain is bounded', () {
     const rect = Rect.fromLTWH(0, 0, 4, 4);
 
-    Future<void> derive(int times) async {
+    Future<void> derive(int times, {int side = 4}) async {
       for (var i = 0; i < times; i += 1) {
-        cache.store('k$i', 'static', rect, await makeImage(4), derived: true);
+        cache.store(
+          'k$i',
+          'static',
+          rect,
+          await makeImage(side),
+          derived: true,
+        );
       }
     }
 
     test('a derived store deepens the chain; a fresh one starts it over',
         () async {
       await derive(3);
-      expect(cache.debugDerivedDepth, 3);
+      expect(cache.derivedDepth, 3);
 
       cache.store('fresh', 'static', rect, await makeImage(4));
       expect(
-        cache.debugDerivedDepth,
+        cache.derivedDepth,
         0,
         reason: 'a compose that started from nothing retains no ancestor',
       );
+    });
+
+    test('🚨NOTHING BUT a fresh store or an invalidate shortens it — there '
+        'is no frame event to wait for', () async {
+      await derive(5);
+
+      // There is deliberately nothing to call here. The old design reset
+      // the count on `FrameTiming`; the engine never released anything on
+      // that event, so the reset only hid the chain from its own budget.
+      expect(cache.derivedDepth, 5);
+      expect(
+        cache.heldBytes,
+        5 * 4 * 4 * 4,
+        reason: 'and every link is still pinned, so the census says five',
+      );
+    });
+
+    test('🚨the BYTE budget refuses first when the image is big — the '
+        'chain the user hit was 128 links of 8.3MB, not 128 of 64 bytes',
+        () async {
+      // 1024² × 4 = 4MB an image: fifteen links pin 60MB and are allowed,
+      // the sixteenth reaches the 64MB budget and both doors close — at a
+      // depth the 128-link budget would still wave through.
+      await derive(15, side: 1024);
+      expect(cache.patchBaseFor('static', rect), isNotNull);
+
+      await derive(1, side: 1024);
+      expect(cache.derivedDepth, 16);
+      expect(cache.heldBytes, 16 * 1024 * 1024 * 4);
+      expect(
+        cache.patchBaseFor('static', rect),
+        isNull,
+        reason: 'sixteen 4MB links is the whole memory budget',
+      );
+      expect(
+        cache.scrollBaseFor('static', const Rect.fromLTWH(1, 0, 4, 4)),
+        isNull,
+      );
+
+      // A full compose lets the run go: one image pinned, both doors open.
+      cache.store('fresh', 'static', rect, await makeImage(1024));
+      expect(cache.heldBytes, 1024 * 1024 * 4);
+      expect(cache.patchBaseFor('static', rect), isNotNull);
     });
 
     test('🚨past the budget BOTH doors refuse, so the next compose has to '
@@ -153,54 +209,8 @@ void main() {
       await derive(200);
       cache.invalidate();
 
-      expect(cache.debugDerivedDepth, 0);
-    });
-
-    test('🎯a RASTERIZED frame collapses the chain, so the count follows it '
-        'instead of climbing forever', () async {
-      await derive(5);
-      expect(cache.debugDerivedDepth, 5);
-
-      // What the engine did at that moment: drawing the newest buffer
-      // snapshots it, which releases the display list behind it, all the
-      // way down. Nothing is left to recurse over.
-      cache.noteFrameRasterized();
-
-      expect(cache.debugDerivedDepth, 0);
-      expect(
-        cache.patchBaseFor('static', rect),
-        isNotNull,
-        reason: 'and the fast path is open again — a frame that reached the '
-            'screen must not cost the next compose anything',
-      );
-    });
-
-    test('🔬the peak is remembered, and a deep burst leaves the stack that '
-        'made it — the one thing the dump could not say', () async {
-      await derive(20);
-      cache.noteFrameRasterized();
-      await derive(3);
-
-      expect(
-        cache.maxDerivedDepth,
-        20,
-        reason: 'the PEAK, not the current depth — a burst that has since '
-            'been drawn is exactly what a report needs to show',
-      );
-      expect(
-        cache.debugFirstDeepDerive.toString(),
-        contains('display_buffer_cache.dart'),
-        reason: 'and who was composing when it went deep',
-      );
-    });
-
-    test('🚨but composes with NO frame in between still reach the budget — '
-        'that is the case the app died in', () async {
-      // No `noteFrameRasterized` anywhere in here on purpose: an offscreen
-      // bake, or a raster thread left behind, produces no frame timing.
-      await derive(200);
-
-      expect(cache.patchBaseFor('static', rect), isNull);
+      expect(cache.derivedDepth, 0);
+      expect(cache.heldBytes, 0);
     });
   });
 }

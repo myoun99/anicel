@@ -136,11 +136,12 @@ abstract final class ActiveLayerFlatProjection {
   /// 🚨★★★NOT WIRED YET (⏸5b), AND WHOEVER WIRES IT OWES A BYTE BUDGET.
   /// Drawing `previous.image` into the recording that becomes the next
   /// image is the SAME SHAPE as the display buffer's patch, and that shape
-  /// pins a chain: `toImageSync` hands back an unrasterized image, and the
-  /// display list that draws it holds the image before it, one flat per
-  /// link, until a frame rasterizes. Unbounded it cost the user 10GB
-  /// (2026-09-12) — see `DisplayBufferCache._maxChainBytes`, which is
-  /// where the budget for THAT chain lives.
+  /// pins a chain: the deferred image keeps its display list for its whole
+  /// life, and the list holds the image before it, one flat per link —
+  /// rasterization releases nothing (`rasterPicture` has the engine fact).
+  /// Unbounded it cost the user 17GB (2026-09-12) — see
+  /// `DisplayBufferCache._maxChainBytes` and `_maxDerivedDepth`, the two
+  /// budgets THAT chain answers to.
   ///
   /// ⛔Do not reach over and share that field. They are two chains with
   /// two lifetimes, and one number answering both is the trap
