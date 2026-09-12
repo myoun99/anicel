@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -24,6 +22,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/solid_png_fixture.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -47,23 +46,8 @@ void main() {
     }
   });
 
-  Future<String> writePng(String name) async {
-    final pixels = Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xAA);
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      8,
-      8,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
-    final image = await completer.future;
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-    await file.writeAsBytes(bytes!.buffer.asUint8List());
-    return file.path;
-  }
+  Future<String> writePng(String name) =>
+      writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);
 
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());

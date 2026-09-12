@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +14,7 @@ import 'package:anicel/src/ui/session/cut_folder_import_door.dart';
 import 'package:anicel/src/ui/session/project_import_doors.dart';
 
 import '../helpers/fake_pdf_document.dart';
+import '../helpers/solid_png_fixture.dart';
 
 /// The R3b import verbs end to end: a real PNG on disk becomes a layer /
 /// cut whose cels live in the brush-frame store like drawn ones, with
@@ -42,35 +41,20 @@ void main() {
     }
   });
 
+  // ⚠️[seed] is 0xAARRGGBB and its alpha byte is IGNORED — these fixtures are
+  // always opaque and vary the colour only to tell two files apart.
   Future<String> writePng(
     String name, {
     int width = 8,
     int height = 8,
     int seed = 0xFF3366FF,
-  }) async {
-    final pixels = Uint8List(width * height * 4);
-    for (var i = 0; i < pixels.length; i += 4) {
-      pixels[i] = (seed >> 16) & 0xFF;
-      pixels[i + 1] = (seed >> 8) & 0xFF;
-      pixels[i + 2] = seed & 0xFF;
-      pixels[i + 3] = 0xFF;
-    }
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      width,
-      height,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
-    final image = await completer.future;
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(bytes!.buffer.asUint8List());
-    return file.path;
-  }
+  }) => writeSolidPng(
+    tempDir,
+    name,
+    width: width,
+    height: height,
+    rgba: ((seed & 0xFFFFFF) << 8) | 0xFF,
+  );
 
   testWidgets('importImageFile as a NEW CUT (reference mode): image layer '
       'born covering, asset registered, cel pixels in the store; ONE undo '

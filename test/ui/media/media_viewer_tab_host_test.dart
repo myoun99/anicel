@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -15,6 +13,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, buildAppThem
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/solid_png_fixture.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
 /// canvas shell, page stepping, and the honest refusals. The PDF renderer
@@ -319,27 +318,15 @@ void main() {
     });
     await pumpViewer(tester);
 
-    final path = await tester.runAsync(() async {
-      final pixels = Uint8List(16 * 16 * 4);
-      for (var i = 0; i < pixels.length; i += 4) {
-        pixels[i] = 0xEE;
-        pixels[i + 3] = 0xFF;
-      }
-      final completer = Completer<ui.Image>();
-      ui.decodeImageFromPixels(
-        pixels,
-        16,
-        16,
-        ui.PixelFormat.rgba8888,
-        completer.complete,
-      );
-      final image = await completer.future;
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      final file = File('${tempDir.path}${Platform.pathSeparator}ref.png');
-      await file.writeAsBytes(bytes!.buffer.asUint8List());
-      return file.path;
-    });
+    final path = await tester.runAsync(
+      () => writeSolidPng(
+        tempDir,
+        'ref.png',
+        width: 16,
+        height: 16,
+        rgba: 0xEE0000FF,
+      ),
+    );
 
     slot.request.value = MediaViewerRequest(path: path!, kind: MediaAssetKind.image);
     await settleAsync(

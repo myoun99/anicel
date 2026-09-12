@@ -1,12 +1,11 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/solid_png_fixture.dart';
 
 /// §6-t: rasterizing a reference layer drops the asset registration only
 /// when NOTHING ELSE references its path. The last referrer's rasterize
@@ -32,30 +31,7 @@ void main() {
     }
   });
 
-  Future<String> writePng(String name) async {
-    const width = 8;
-    const height = 8;
-    final pixels = Uint8List(width * height * 4);
-    for (var i = 0; i < pixels.length; i += 4) {
-      pixels[i] = 0x33;
-      pixels[i + 1] = 0x66;
-      pixels[i + 2] = 0xFF;
-      pixels[i + 3] = 0xFF;
-    }
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      width,
-      height,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
-    final image = await completer.future;
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    final file = File('${tempDir.path}/$name');
-    await file.writeAsBytes(bytes!.buffer.asUint8List());
-    return file.path;
-  }
+  Future<String> writePng(String name) => writeSolidPng(tempDir, name);
 
   testWidgets('the asset survives every rasterize — while ANOTHER layer '
       'still references its path, and after the last one too (유저 '

@@ -1,7 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +6,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
 import 'package:anicel/src/ui/import/import_preview.dart';
+
+import '../../helpers/solid_png_fixture.dart';
 
 /// 🚨Open alpha in the import window reads as the app's ONE checker — the
 /// export preview's own (유저 2026-09-11: 「임포트의 미리보기에서 배경이
@@ -29,24 +28,16 @@ void main() {
         // Windows keeps handles briefly.
       }
     });
-    final path = await tester.runAsync(() async {
-      // Every pixel fully transparent: nothing but the checker should show.
-      final pixels = Uint8List(4 * 4 * 4);
-      final completer = Completer<ui.Image>();
-      ui.decodeImageFromPixels(
-        pixels,
-        4,
-        4,
-        ui.PixelFormat.rgba8888,
-        completer.complete,
-      );
-      final image = await completer.future;
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      final file = File('${dir!.path}${Platform.pathSeparator}open.png');
-      await file.writeAsBytes(bytes!.buffer.asUint8List());
-      return file.path;
-    });
+    // Every pixel fully transparent: nothing but the checker should show.
+    final path = await tester.runAsync(
+      () => writeSolidPng(
+        dir!,
+        'open.png',
+        width: 4,
+        height: 4,
+        rgba: 0x00000000,
+      ),
+    );
 
     await tester.pumpWidget(
       MaterialApp(

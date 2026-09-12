@@ -1,7 +1,4 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +10,8 @@ import 'package:anicel/src/ui/dialogs/text_cel_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+
+import '../helpers/solid_png_fixture.dart';
 
 /// A picker ROW in this app is one law spelled once per value: a chip
 /// keyed `<row>-<value>`, labelled from a per-value table, shown selected
@@ -199,24 +198,8 @@ void main() {
       }
     });
 
-    Future<String> writePng(String name) async {
-      final pixels = Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xAA);
-      final completer = Completer<ui.Image>();
-      ui.decodeImageFromPixels(
-        pixels,
-        8,
-        8,
-        ui.PixelFormat.rgba8888,
-        completer.complete,
-      );
-      final image = await completer.future;
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-      await file.parent.create(recursive: true);
-      await file.writeAsBytes(bytes!.buffer.asUint8List());
-      return file.path;
-    }
+    Future<String> writePng(String name) =>
+        writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);
 
     Future<void> openOn(
       WidgetTester tester,

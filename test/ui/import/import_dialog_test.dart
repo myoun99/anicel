@@ -1,5 +1,4 @@
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -19,6 +18,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
+import '../../helpers/solid_png_fixture.dart';
 
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
@@ -38,24 +38,14 @@ void main() {
     }
   });
 
-  Future<String> writePngFilled(String name, int fill) async {
-    final pixels = Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, fill);
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      8,
-      8,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
-    final image = await completer.future;
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(bytes!.buffer.asUint8List());
-    return file.path;
-  }
+  // ⚠️[fill] is ONE BYTE repeated into every channel, alpha included — these
+  // tests vary it only to tell two fixtures apart, so the shared writer is
+  // handed the same repeated byte rather than an opaque colour.
+  Future<String> writePngFilled(String name, int fill) => writeSolidPng(
+    tempDir,
+    name,
+    rgba: (fill << 24) | (fill << 16) | (fill << 8) | fill,
+  );
 
   Future<String> writePng(String name) => writePngFilled(name, 0xAA);
 
