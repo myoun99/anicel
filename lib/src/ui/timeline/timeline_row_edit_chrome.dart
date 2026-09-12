@@ -168,15 +168,17 @@ typedef TimelineChromeGripBlock = ({
 /// [layer]'s drawing blocks as grip material. Ghost repeat instances are
 /// DERIVED, so they carry no timing grips (UI-R8); a spill-in display
 /// block's start lives in an earlier cut, so it carries no start grip
-/// (UI-R7 #6, TrackSeWindow). A gapless row (the storyboard's) carries no
-/// start grips AT ALL ([suppressAllStartGrips], edge unification): every
-/// boundary belongs to the trailing edge on its left, so front edges have
-/// nothing of their own to move — the row's true front edge is the cut's
-/// start, which lives on the storyboard strip.
+/// (UI-R7 #6, TrackSeWindow).
+///
+/// ↩️A gapless row (the storyboard's) used to carry NO start grips at all,
+/// on the reading that every boundary belonged to the trailing edge on its
+/// left. I-21 retired that: a lead edge trades frames with the block in
+/// front of it, so those boundaries are real front edges again. Only the
+/// FIRST block's is still suppressed ([suppressStartGripAtZero]) — that
+/// one is the cut's own start and lives on the storyboard strip.
 List<TimelineChromeGripBlock> timelineLayerGripBlocks(
   Layer layer, {
   bool suppressStartGripAtZero = false,
-  bool suppressAllStartGrips = false,
 }) {
   final blocks = drawingBlocks(layer.timeline);
   return [
@@ -186,9 +188,8 @@ List<TimelineChromeGripBlock> timelineLayerGripBlocks(
           ordinal: ordinal,
           startIndex: blocks[ordinal].startIndex,
           endIndexExclusive: blocks[ordinal].endIndexExclusive,
-          startGrip:
-              !suppressAllStartGrips &&
-              !(suppressStartGripAtZero && blocks[ordinal].startIndex == 0),
+          startGrip: !(suppressStartGripAtZero &&
+              blocks[ordinal].startIndex == 0),
           endGrip: true,
         ),
   ];

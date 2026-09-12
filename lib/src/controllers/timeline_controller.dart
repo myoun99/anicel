@@ -2,6 +2,8 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../models/audio_clip.dart';
+import '../models/block_run_lead_edge.dart';
+import '../models/block_run_move.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -702,28 +704,6 @@ class TimelineController {
   }
 
   // --- Shift internals -----------------------------------------------------------
-
-  /// How far the start edge can grow backward: empty space in front plus
-  /// the gaps the preceding glued/pushed chain can absorb before its head
-  /// hits frame 0. Mirrors the shift algorithm's contact rules.
-  int _startEdgeGrowRoom(
-    SplayTreeMap<int, TimelineExposure> timeline, {
-    required int blockStartIndex,
-  }) {
-    // Total space before the block minus the total length of all blocks in
-    // front of it: pushing can compact every gap, so that difference is
-    // exactly the reachable room.
-    var precedingLengths = 0;
-    for (final entry in timeline.entries) {
-      if (entry.key >= blockStartIndex) {
-        break;
-      }
-      if (entry.value.isDrawing) {
-        precedingLengths += entry.value.length!;
-      }
-    }
-    return blockStartIndex - precedingLengths;
-  }
 
   // --- Shared internals -------------------------------------------------------
 

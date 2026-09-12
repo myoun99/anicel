@@ -333,14 +333,23 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   List<TimelineChromeGripBlock> _gripBlocks() => timelineLayerGripBlocks(
     layer,
-    // The spill-in block's `~` replaces its start grip (UI-R7 #6).
+    // The spill-in block's `~` replaces its start grip (UI-R7 #6) — and
+    // the conte row's first block answers the same way, for its own
+    // reason (below).
+    // ↩️I-21 (유저 2026-09-12) GAVE THE CONTE ROW ITS FRONT EDGES BACK:
+    // 「이제 이렇게하면 타임라인 내 콘티블록의 앞엣지를 살려도 된다고
+    // 생각하니 살리도록. 왜냐면 앞엣지가 더이상 컷길이를 바꾸지 않으니까」.
+    // A lead edge trades frames with the block in front of it now, so a
+    // gapless row's front edge re-times two blocks inside the cut and
+    // leaves the cut's own length alone.
+    //
+    // ⛔EXCEPT THE FIRST BLOCK'S, which is the cut's own start: 「다만
+    // 그렇다고 해도 타임라인 내 콘티블록의 첫번째 블록의 앞엣지는 진짜
+    // 컷길이 바꾸니까 그거만 없도록」 — that edge lives on the storyboard
+    // strip, where it re-times the film rather than the row.
     suppressStartGripAtZero:
-        seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
-    // A storyboard row has NO start grips at all (edge unification;
-    // feedback #10 removed the one at zero): every boundary is the trailing
-    // edge on its left, and the row's true front edge is the cut's start,
-    // which lives on the storyboard strip.
-    suppressAllStartGrips: layer.kind.coversWithoutGaps,
+        (seSpillsIn && layerKindUsesSeSheetCells(layer.kind)) ||
+        layer.kind.coversWithoutGaps,
   );
 
   /// A positioned overlay layer placed by [TimelineFrameSpanLayout] at

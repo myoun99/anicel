@@ -16,9 +16,16 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
-/// TVPaint-style comma edge shifts: glued chains ride along preserving
-/// their commas; separated blocks absorb the empty ("X") gap first and move
-/// only on contact; marks ride with their covering block.
+/// Comma edge shifts. The TRAILING edge pushes: glued chains ride along
+/// preserving their commas, separated blocks absorb the empty ("X") gap
+/// first and move only on contact. The LEAD edge trades instead (I-21,
+/// 유저 2026-09-12, 「프리미어 프로처럼」): it moves ONE boundary, spends
+/// the gap in front before asking the block in front for frames, and stops
+/// when that block is down to one — nothing in front ever moves. Marks ride
+/// with their covering block either way.
+///
+/// ⚠️The rule itself is `models/block_run_lead_edge.dart`, and its cases
+/// are pinned there; these are the frame axis reading the same answer.
 void main() {
   group('end edge', () {
     test('growing into an empty gap consumes X cells and leaves the next '
@@ -104,33 +111,37 @@ void main() {
       harness.expectTimeline({0: _drawing('a', 4)});
     });
 
-    test('growing backward pushes the glued preceding chain left through '
-        'its own gap', () {
-      // gap(1) A[1,2) B[2,4): grow B's front by 2 → A pushed to 0.
-      final harness = _Harness({1: _drawing('a', 1), 2: _drawing('b', 2)});
+    test('growing backward TAKES FRAMES FROM THE BLOCK IN FRONT — its head '
+        'never moves (I-21)', () {
+      // A[1,4) .. gap(2) .. B[6,8): grow B's front by 3. The empty space
+      // pays the first 2 and A pays the last 1 — A keeps its start at 1
+      // and simply ends a frame earlier.
+      final harness = _Harness({1: _drawing('a', 3), 6: _drawing('b', 2)});
 
-      harness.shift(blockStart: 2, edge: TimelineBlockEdge.start, delta: -2);
+      harness.shift(blockStart: 6, edge: TimelineBlockEdge.start, delta: -3);
 
-      harness.expectTimeline({0: _drawing('a', 1), 1: _drawing('b', 3)});
+      harness.expectTimeline({1: _drawing('a', 2), 3: _drawing('b', 5)});
     });
 
-    test('growing backward is clamped by frame zero', () {
+    test('growing backward stops when the block in front is down to one '
+        'frame — nothing in front is ever pushed', () {
       final harness = _Harness({0: _drawing('a', 1), 1: _drawing('b', 2)});
 
-      // Requested -3; no room at all (A already at 0 and glued).
+      // Requested -3: A is already at its floor, so it has nothing to give
+      // and the film in front cannot be compacted any more.
       harness.shift(blockStart: 1, edge: TimelineBlockEdge.start, delta: -3);
 
       harness.expectTimeline({0: _drawing('a', 1), 1: _drawing('b', 2)});
     });
 
-    test('shrinking from the front pulls the glued preceding chain right', () {
-      // A[0,1) B[1,4): shrink B's front by 2 → A follows right, staying
-      // glued; B's end stays put.
+    test('shrinking from the front HANDS ITS FRAMES to the block in front '
+        '(I-21) — the pair trades across the boundary', () {
+      // A[0,1) B[1,4): shrink B's front by 2 → A grows to 3, B's end holds.
       final harness = _Harness({0: _drawing('a', 1), 1: _drawing('b', 3)});
 
       harness.shift(blockStart: 1, edge: TimelineBlockEdge.start, delta: 2);
 
-      harness.expectTimeline({2: _drawing('a', 1), 3: _drawing('b', 1)});
+      harness.expectTimeline({0: _drawing('a', 3), 3: _drawing('b', 1)});
     });
 
     test('shrinking from the front leaves a separated preceding block and '

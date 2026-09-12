@@ -2,8 +2,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/block_run_lead_edge.dart';
 import 'package:anicel/src/models/block_run_move.dart';
 
-/// R10 R4: the lead edge's contact rule, the frame axis's answer stated
-/// once so the cut axis can give the same one.
+/// THE LEAD EDGE MOVES ONE BOUNDARY (I-21, 유저 2026-09-12 — 「프리미어
+/// 프로처럼 … 앞 블록의 헤드 그대로 두고, 그 블록이랑 현재 블록이랑 코마를
+/// 조절해서 전체적으론 안움직이도록」). Stated once here so the cut axis and
+/// the frame axis give the same answer.
+///
+/// ↩️These cases REPLACED the old law wholesale, and that is the point: the
+/// glued predecessor used to translate wholesale with its whole chain and
+/// leave the difference at the head of the film. It now keeps its head and
+/// changes its LENGTH, which is why nothing in front moves at all.
 void main() {
   List<int> startsOf(BlockRunLeadEdgeLayout layout) {
     final starts = <int>[];
@@ -20,7 +27,8 @@ void main() {
     for (final pair in pairs) (leadingGap: pair.$1, length: pair.$2),
   ];
 
-  test('a GLUED predecessor translates wholesale and the head empties', () {
+  test('a GLUED predecessor keeps its head and LENGTHENS by what the drag '
+      'gave up — the pair trades across the boundary', () {
     // [0,4) [4,8) [8,12), all glued. Shrink the middle from the front by 2.
     final layout = planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 4), (0, 4)]),
@@ -28,53 +36,56 @@ void main() {
       frameDelta: 2,
     );
 
-    expect(layout.lengths, [4, 2, 4], reason: 'only the target resizes');
+    expect(
+      layout.lengths,
+      [6, 2, 4],
+      reason: 'the frames the target gave up went to the neighbour, not to '
+          'the head of the film',
+    );
     expect(
       startsOf(layout),
-      [2, 6, 8],
-      reason: 'the predecessor slid RIGHT keeping its length; the target '
-          'ends where it always ended, so the follower never moved',
+      [0, 6, 8],
+      reason: 'both outer blocks stand exactly where they stood — the only '
+          'thing that moved is the boundary the hand was holding',
     );
-    expect(
-      layout.leadingGaps.first,
-      2,
-      reason: 'the difference lands at the HEAD of the axis',
-    );
+    expect(layout.leadingGaps, [0, 0, 0], reason: 'no emptiness appears');
   });
 
-  test('the whole glued CHAIN in front rides along', () {
+  test('the chain in FRONT does not move at all — heads are pinned', () {
     final layout = planBlockRunLeadEdge(
       slots: slots([(0, 3), (0, 3), (0, 3), (0, 6)]),
       targetIndex: 3,
       frameDelta: 4,
     );
 
-    expect(startsOf(layout), [4, 7, 10, 13]);
-    expect(layout.lengths, [3, 3, 3, 2]);
-    expect(layout.leadingGaps, [4, 0, 0, 0], reason: 'the chain stays glued');
+    expect(
+      startsOf(layout),
+      [0, 3, 6, 13],
+      reason: 'only the dragged boundary moved; the first two blocks are '
+          'not even adjacent to it',
+    );
+    expect(layout.lengths, [3, 3, 7, 2], reason: 'the neighbour absorbed 4');
   });
 
-  test('a SEPARATED predecessor holds and its gap absorbs the move', () {
-    // [0,4) then a 3-frame gap then [7,11).
+  test('a SEPARATED predecessor holds and the GAP absorbs the move', () {
+    // [0,4) then a 3-frame gap then [7,11). Shrinking from the front with a
+    // gap already between them feeds the gap, not the neighbour.
     final layout = planBlockRunLeadEdge(
       slots: slots([(0, 4), (3, 4)]),
       targetIndex: 1,
       frameDelta: 2,
     );
 
-    expect(
-      startsOf(layout),
-      [0, 9],
-      reason: 'nothing in front moves — the gap simply grows',
-    );
-    expect(layout.leadingGaps, [0, 5]);
+    expect(startsOf(layout), [0, 9]);
+    expect(layout.lengths, [4, 2], reason: 'nothing in front changed length');
+    expect(layout.leadingGaps, [0, 5], reason: 'the gap simply grew');
   });
 
-  test('growing forward eats the slack ahead and stops at frame 0 — a '
-      'predecessor is reached, never overlapped', () {
-    // [0,4) then a 2-frame gap then [6,10). There are exactly 2 frames of
-    // slack in front, so no amount of pull can take more.
-    for (final asked in [-4, -999]) {
+  test('growing forward spends the GAP first, then the neighbour\'s frames, '
+      'and STOPS when the neighbour is down to one', () {
+    // [0,4) then a 2-frame gap then [6,10): 2 frames of gap, and the
+    // neighbour can give 3 more before it would fall under one frame.
+    for (final asked in [-5, -999]) {
       final layout = planBlockRunLeadEdge(
         slots: slots([(0, 4), (2, 4)]),
         targetIndex: 1,
@@ -82,22 +93,22 @@ void main() {
       );
 
       expect(
-        startsOf(layout),
-        [0, 4],
-        reason: 'asked for $asked: the predecessor held at the head and the '
-            'target came to rest against it',
+        layout.lengths,
+        [1, 9],
+        reason: 'asked for $asked: the gap paid 2 and the neighbour paid 3, '
+            'which is everything it had above the floor',
       );
-      expect(layout.lengths, [4, 6], reason: 'it grew by the slack, no more');
       expect(
-        layout.leadingGaps,
-        [0, 0],
-        reason: 'they end up GLUED — the overlap clamp inside the walk is '
-            'defensive, because the frame-0 wall always binds first',
+        startsOf(layout),
+        [0, 1],
+        reason: 'the neighbour still starts where it started — it got '
+            'SHORTER, it did not move',
       );
+      expect(layout.leadingGaps, [0, 0], reason: 'the gap was spent');
     }
   });
 
-  test('shrinking stops at the minimum length', () {
+  test('shrinking stops at the dragged block\'s own minimum', () {
     final layout = planBlockRunLeadEdge(
       slots: slots([(0, 4), (0, 4)]),
       targetIndex: 1,
@@ -105,11 +116,11 @@ void main() {
       minLength: 2,
     );
 
-    expect(layout.lengths[1], 2);
-    expect(startsOf(layout), [2, 6]);
+    expect(layout.lengths, [6, 2]);
+    expect(startsOf(layout), [0, 6], reason: 'the neighbour held its head');
   });
 
-  test('the FIRST slot has no predecessor — the head absorbs it directly', () {
+  test('the FIRST slot has no neighbour — the head of the axis absorbs it', () {
     final layout = planBlockRunLeadEdge(
       slots: slots([(0, 6), (0, 4)]),
       targetIndex: 0,
@@ -123,6 +134,17 @@ void main() {
       [2, 6],
       reason: 'the follower never moves: the end boundary held',
     );
+  });
+
+  test('the FIRST slot growing forward stops at frame 0', () {
+    final layout = planBlockRunLeadEdge(
+      slots: slots([(2, 4), (0, 4)]),
+      targetIndex: 0,
+      frameDelta: -99,
+    );
+
+    expect(layout.leadingGaps, [0, 0]);
+    expect(layout.lengths, [6, 4], reason: 'it grew by the 2 frames of head');
   });
 
   test('a block ALREADY under the floor refuses to shrink instead of '

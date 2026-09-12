@@ -58,10 +58,12 @@ class _TimelineExposureEdge {
           // Shrink from the front: keep at least one frame.
           return delta > length - 1 ? length - 1 : delta;
         }
-        // Grow backward: limited by the room the preceding glued/pushed
-        // chain has before frame 0 — and a movie's head by the frames of
-        // the file before its in point ([_referenceAfterEdge]).
-        final room = _controller._startEdgeGrowRoom(
+        // Grow backward: the empty space in front plus what the block
+        // it touches can give up before IT would fall under one frame —
+        // the shared lead-edge rule's own limit, asked rather than
+        // re-derived (I-21). A movie's head is additionally capped by the
+        // frames of the file before its in point ([_referenceAfterEdge]).
+        final room = _leadEdgeRoomInFront(
           layer.timeline,
           blockStartIndex: blockStartIndex,
         );
@@ -169,29 +171,18 @@ class _TimelineExposureEdge {
     switch (edge) {
       case TimelineBlockEdge.end:
         layout.lengths[targetIndex] = target.length + delta;
+        // Ripple following blocks: a trailing-edge resize moves where the
+        // target ends. Contact rules — glued blocks stay glued, separated
+        // blocks move only when overlapped.
+        layout.relayAfter(targetIndex);
       case TimelineBlockEdge.start:
-        layout.starts[targetIndex] = target.startIndex + delta;
-        layout.lengths[targetIndex] = target.length - delta;
-    }
-
-    // Ripple following blocks (end-edge resizes and front shrinks change
-    // where the target ends; contact rules: glued blocks stay glued,
-    // separated blocks move only when overlapped).
-    layout.relayAfter(targetIndex);
-
-    // Ripple preceding blocks (start-edge moves): mirror of the above.
-    var nextOldStart = target.startIndex;
-    var nextNewStart = layout.starts[targetIndex];
-    for (var i = targetIndex - 1; i >= 0; i -= 1) {
-      final block = layout.blocks[i];
-      final glued = block.endIndexExclusive == nextOldStart;
-      var end = glued ? nextNewStart : block.endIndexExclusive;
-      if (end > nextNewStart) {
-        end = nextNewStart;
-      }
-      layout.starts[i] = end - block.length;
-      nextOldStart = block.startIndex;
-      nextNewStart = layout.starts[i];
+        // ★THE LEAD EDGE IS ONE RULE FOR BOTH AXES, and it lives in the
+        // model (I-21). The frame axis used to walk backwards with its
+        // own copy of the contact rules — the same algorithm the cut axis
+        // read from [planBlockRunLeadEdge], spelled twice. It is spelled
+        // once now: nothing in front moves, the neighbour trades frames
+        // across the boundary, and the target's end holds by arithmetic.
+        _applyLeadEdge(layout, targetIndex: targetIndex, delta: delta);
     }
 
     if (layout.starts.isNotEmpty && layout.starts.first < 0) {
@@ -202,5 +193,67 @@ class _TimelineExposureEdge {
     }
 
     return layout.toTimeline();
+  }
+
+  /// How far this block's lead edge can travel forward, by the shared
+  /// rule: ask it for an unreachable delta and see what it grants.
+  ///
+  /// ⛔DERIVED, NOT RE-DERIVED. The room used to be computed here from the
+  /// axis's own arithmetic ("every gap up to frame 0"), which was a second
+  /// statement of a limit the planner already owns — and the two would
+  /// have parted the moment either moved. I-21 moved it.
+  int _leadEdgeRoomInFront(
+    SplayTreeMap<int, TimelineExposure> timeline, {
+    required int blockStartIndex,
+  }) {
+    final layout = _BlockLayout.of(timeline);
+    final targetIndex = layout.blocks.indexWhere(
+      (block) => block.startIndex == blockStartIndex,
+    );
+    if (targetIndex == -1) {
+      return 0;
+    }
+    final before = layout.blocks[targetIndex].startIndex;
+    _applyLeadEdge(layout, targetIndex: targetIndex, delta: -_unreachable);
+    return before - layout.starts[targetIndex];
+  }
+
+  /// Bigger than any timeline a hand can drag — the planner clamps it.
+  static const int _unreachable = 1 << 30;
+
+  /// Lays [layout] out after a LEAD-edge drag, through the shared rule.
+  ///
+  /// The model speaks in slots (leading gap + length); this axis speaks in
+  /// absolute starts. Converting both ways is the whole adapter — and it
+  /// is what keeps "드래그하는 블록 로직은 컷블록이랑 전부 통일" true in
+  /// code rather than in two places that merely agree today.
+  void _applyLeadEdge(
+    _BlockLayout layout, {
+    required int targetIndex,
+    required int delta,
+  }) {
+    var previousEnd = 0;
+    final slots = <BlockMoveSlot>[];
+    for (final block in layout.blocks) {
+      slots.add((
+        leadingGap: block.startIndex - previousEnd,
+        length: block.length,
+      ));
+      previousEnd = block.endIndexExclusive;
+    }
+
+    final planned = planBlockRunLeadEdge(
+      slots: slots,
+      targetIndex: targetIndex,
+      frameDelta: delta,
+    );
+
+    var cursor = 0;
+    for (var i = 0; i < layout.blocks.length; i += 1) {
+      cursor += planned.leadingGaps[i];
+      layout.starts[i] = cursor;
+      layout.lengths[i] = planned.lengths[i];
+      cursor += planned.lengths[i];
+    }
   }
 }

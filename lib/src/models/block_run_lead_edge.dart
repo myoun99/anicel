@@ -5,18 +5,27 @@
 /// cancel at the back boundary. Everything after it therefore holds still,
 /// not by a rule but by arithmetic.
 ///
-/// What happens in FRONT is the rule, and it is the contact rule the frame
-/// axis has always used ([planBlockRunMove]'s sibling in
-/// `timeline_controller`'s `_shiftEdgeTimeline`): a block GLUED to the one
-/// being dragged stays glued, so it translates wholesale — same length,
-/// same internal commas — and the block glued to THAT one follows, all the
-/// way to the head of the axis, which is where the emptiness ends up. A
-/// SEPARATED predecessor holds its ground and lets its gap absorb the
-/// move, giving way only when it would otherwise be overlapped.
+/// What happens in FRONT is the rule, and I-21 (유저 2026-09-12) reversed
+/// it: 「프리미어 프로처럼 … 앞 블록의 **헤드 그대로 두고**, 그 블록이랑
+/// 현재 블록이랑 코마를 조절해서 전체적으론 안움직이도록」.
 ///
-/// So a lead-edge drag never destroys timing behind it and never destroys
-/// timing in front of it — it moves ONE boundary and lets the head of the
-/// film absorb the difference.
+/// ★EVERYTHING IN FRONT KEEPS ITS HEAD. The distance comes out of the
+/// EMPTY SPACE first, and when that is spent, out of the glued
+/// predecessor's own LENGTH — so the pair trades frames across the one
+/// boundary the hand is holding and the film in front of it does not
+/// move at all. This is Premiere's ROLLING edit, and like Premiere's it
+/// simply STOPS at the limit: the predecessor floors at [minLength], the
+/// same floor the dragged block has.
+///
+/// ↩️WHAT THIS REPLACED, so nobody restores it as a bug fix: the glued
+/// predecessor used to TRANSLATE wholesale (same length, same internal
+/// commas), dragging its own glued chain with it, and the difference
+/// ended up as emptiness at the head of the axis. That rule is gone —
+/// with heads pinned there is no backward ripple left to write.
+///
+/// A lead-edge drag still never destroys timing BEHIND it: the dragged
+/// block's end never moves, so everything after it holds still by
+/// arithmetic.
 library;
 
 import 'dart:math' as math;
@@ -59,17 +68,18 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   final starts = slotStartsOf(slots);
 
   final target = slots[targetIndex];
-  // Shrinking stops at the floor; growing stops at the head of the axis,
-  // which is every gap from frame 0 up to this block.
+  // Shrinking from the front stops at the dragged block's own floor.
   //
-  // Both are floored at zero before they meet: a block ALREADY under the
-  // floor (a cut shorter than the row it must tile, which a load or a
-  // stale minimum can hand us) would otherwise make the shrink limit
-  // negative and `clamp` throw on a lower bound above its upper.
+  // Floored at zero before the clamp: a block ALREADY under the floor (a
+  // cut shorter than the row it must tile, which a load or a stale
+  // minimum can hand us) would otherwise make the shrink limit negative
+  // and `clamp` throw on a lower bound above its upper.
   final maxShrink = math.max(0, target.length - minLength);
-  final maxGrow = math.max(
-    0,
-    starts[targetIndex] - _occupiedBefore(slots, targetIndex),
+  final maxGrow = _roomInFront(
+    slots,
+    targetIndex,
+    starts: starts,
+    minLength: minLength,
   );
   final delta = frameDelta.clamp(-maxGrow, maxShrink);
 
@@ -78,20 +88,23 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   newStarts[targetIndex] = starts[targetIndex] + delta;
   lengths[targetIndex] = target.length - delta;
 
-  // Walk BACKWARD from the target: glued predecessors ride the boundary,
-  // separated ones hold until they would be overlapped. Followers are
-  // absent from this loop on purpose — the target's end did not move.
-  var nextOldStart = starts[targetIndex];
-  var nextNewStart = newStarts[targetIndex];
-  for (var i = targetIndex - 1; i >= 0; i -= 1) {
-    final oldEnd = starts[i] + slots[i].length;
-    var end = oldEnd == nextOldStart ? nextNewStart : oldEnd;
-    if (end > nextNewStart) {
-      end = nextNewStart;
-    }
-    newStarts[i] = end - slots[i].length;
-    nextOldStart = starts[i];
-    nextNewStart = newStarts[i];
+  // ★THE ONE BOUNDARY. Whatever the gap in front cannot pay for comes out
+  // of the predecessor's LENGTH — its head, and therefore everything in
+  // front of it, never moves. `gap` is what the empty space absorbs;
+  // `traded` is what the neighbour's exposure gives up (or takes back,
+  // when the drag shortens this block and hands frames forward).
+  if (targetIndex > 0) {
+    final gap = slots[targetIndex].leadingGap;
+    // ⛔ONLY A TOUCHING NEIGHBOUR TRADES. Growing forward spends the gap
+    // first and only then asks the neighbour (`-delta - gap`); shrinking
+    // from the front hands its frames to a neighbour it is GLUED to, and
+    // to nobody when a gap already separates them — there the empty space
+    // simply grows, which is the rule this axis always had for a
+    // separated predecessor.
+    final traded = delta < 0
+        ? math.max(0, -delta - gap)
+        : (gap == 0 ? -delta : 0);
+    lengths[targetIndex - 1] = slots[targetIndex - 1].length - traded;
   }
 
   return BlockRunLeadEdgeLayout(
@@ -100,13 +113,24 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   );
 }
 
-/// How much of the axis before [index] is BLOCK rather than gap — the
-/// floor a forward-growing lead edge cannot pass, because pushing past it
-/// would put the head of the axis before frame 0.
-int _occupiedBefore(List<BlockMoveSlot> slots, int index) {
-  var occupied = 0;
-  for (var i = 0; i < index; i += 1) {
-    occupied += slots[i].length;
+/// How far the lead edge can travel FORWARD (a negative delta): the empty
+/// space in front, plus the frames the glued predecessor can give up
+/// before it would fall under [minLength].
+///
+/// ⛔NOT "every gap up to frame 0" any more (I-21). Heads are pinned now,
+/// so nothing in front can be compacted to make room — only the immediate
+/// neighbour trades, and only down to its own floor. The FIRST block has
+/// no neighbour, so its room is simply the head of the axis.
+int _roomInFront(
+  List<BlockMoveSlot> slots,
+  int index, {
+  required List<int> starts,
+  required int minLength,
+}) {
+  if (index == 0) {
+    return math.max(0, starts[0]);
   }
-  return occupied;
+  final gap = slots[index].leadingGap;
+  final neighbourGives = math.max(0, slots[index - 1].length - minLength);
+  return math.max(0, gap + neighbourGives);
 }
