@@ -38,7 +38,14 @@ class BrushFrameEditingCoordinator {
     required this.frameStore,
     required this.sessionStore,
     required this.historyPolicy,
-  }) : _activeFrameKey = initialFrameKey;
+  }) : _activeFrameKey = initialFrameKey {
+    // ★ONE RESOLVER, TWO STORES. The frame store folds every single-cel
+    // operation onto the physical cel; a session is state ABOUT that cel,
+    // so it answers to the same address or the two drift apart. Wired
+    // HERE because this is the one object holding both — the session
+    // store never grows a resolver of its own to keep in step.
+    sessionStore.setLinkResolver(frameStore.canonicalKeyOf);
+  }
 
   final BrushFrameStore frameStore;
   final BrushFrameEditSessionStore sessionStore;

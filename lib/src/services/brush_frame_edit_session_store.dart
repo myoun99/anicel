@@ -14,6 +14,31 @@ class BrushFrameEditSessionStore {
   CanvasSize _canvasSize;
   final int tileSize;
 
+  /// Link resolution — the SAME law `BrushFrameStore` keeps, because a
+  /// session is state ABOUT a physical cel: every public operation folds
+  /// its key through this first, so linked rows share ONE session.
+  ///
+  /// ⛔WITHOUT IT THE PICTURE SPLITS IN TWO. The store's pixels are one
+  /// per cel, but a session held per ROW ADDRESS keeps its own surface —
+  /// so a stroke committed through one 겸용 member left the other member's
+  /// session on the pre-stroke pixels, and the row you STAND on is painted
+  /// from the session. 🗣️유저 2026-09-12: 「컷1에서 그린 그림이 재생시에만
+  /// 표시되고 아닐땐 안보여」 — playback reads the store (right), the canvas
+  /// read the stale session (wrong).
+  ///
+  /// Identity by default, so an unlinked project — and every caller that
+  /// never wires one — behaves exactly as before. The resolver must be
+  /// idempotent; [BrushFrameEditingCoordinator] wires the frame store's,
+  /// which reads the current project's registry on every resolve.
+  BrushFrameKey Function(BrushFrameKey key) _canonicalize = _identityKey;
+
+  static BrushFrameKey _identityKey(BrushFrameKey key) => key;
+
+  /// Installs (or clears, with null) the canonical-key resolver.
+  void setLinkResolver(BrushFrameKey Function(BrushFrameKey key)? resolver) {
+    _canonicalize = resolver ?? _identityKey;
+  }
+
   /// Insertion order doubles as recency (accesses re-insert): the LAST
   /// entries are the most recently used — what [evictBeyondRetainLimit]
   /// keeps.
@@ -36,6 +61,7 @@ class BrushFrameEditSessionStore {
   }
 
   BrushEditSessionState getOrCreate(BrushFrameKey key) {
+    key = _canonicalize(key);
     final existing = sessionOrNull(key);
     if (existing != null) {
       return existing;
@@ -46,6 +72,7 @@ class BrushFrameEditSessionStore {
   }
 
   BrushEditSessionState? sessionOrNull(BrushFrameKey key) {
+    key = _canonicalize(key);
     final session = _sessions.remove(key);
     if (session == null) {
       return null;
@@ -59,12 +86,14 @@ class BrushFrameEditSessionStore {
     BrushFrameKey key,
     BrushEditSessionState sessionState,
   ) {
+    key = _canonicalize(key);
     _sessions.remove(key);
     _sessions[key] = sessionState;
     return sessionState;
   }
 
   BrushEditSessionState reset(BrushFrameKey key) {
+    key = _canonicalize(key);
     final next = _createBlankSessionState();
     _sessions.remove(key);
     _sessions[key] = next;
@@ -88,11 +117,16 @@ class BrushFrameEditSessionStore {
     if (_sessions.length <= retainLimit) {
       return;
     }
+    // The protected key is an ADDRESS like any other: fold it, or a linked
+    // member would protect a session nobody is holding and evict the live
+    // one.
+    final protected = _canonicalize(protect);
     final evictable = [
       for (final key in _sessions.keys)
-        if (key != protect) key,
+        if (key != protected) key,
     ];
-    final keepCount = retainLimit - (_sessions.containsKey(protect) ? 1 : 0);
+    final keepCount =
+        retainLimit - (_sessions.containsKey(protected) ? 1 : 0);
     final dropCount = evictable.length - keepCount;
     for (var index = 0; index < dropCount; index += 1) {
       _sessions.remove(evictable[index]);
