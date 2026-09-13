@@ -464,13 +464,16 @@ class _TimelineFrameRangeGestureLayerState
       // drivers, which left range selection pen-dead there — cell-area
       // panning stays available on the rulers/scrollbars.
       // PEN-10 probe: with the Input Inspector open, a down REACHING
-      // this layer logs 'IN' — a 'tl dn' without a matching 'IN' is the
-      // hit-test-exclusion smoking gun.
+      // this layer logs 'range IN' — a 'tl dn' without a matching 'IN' is
+      // the hit-test-exclusion smoking gun. ⛔Its own first token: the
+      // inspector keeps one slot per emitter, keyed by that word, and
+      // under `tl` this line would overwrite the glide stop's down on
+      // every press — the absence it exists to show could never be seen.
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: (event) {
           if (InputInspector.visible.value) {
-            InputInspector.note('tl IN=${event.kind.name}');
+            InputInspector.note('range IN=${event.kind.name}');
           }
           // R5 #12: a press OUTSIDE the selection drops it HERE, on the
           // down, not on the release.

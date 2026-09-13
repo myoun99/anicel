@@ -119,8 +119,8 @@ void main() {
         quality: PlaybackQuality.full,
       );
       expect(
-        InputInspector.notes.where((line) => line.startsWith('cmp ')),
-        isEmpty,
+        InputInspector.notes['cmp'],
+        isNull,
         reason: 'a hidden inspector must cost and say nothing',
       );
 
@@ -132,10 +132,9 @@ void main() {
         frameIndex: 0,
         quality: PlaybackQuality.half,
       );
-      final note = InputInspector.notes.lastWhere(
-        (line) => line.startsWith('cmp '),
-        orElse: () => fail('the compose under the inspector emits its note'),
-      );
+      final note =
+          InputInspector.notes['cmp'] ??
+          fail('the compose under the inspector emits its note');
       expect(note, contains('walk '));
       expect(note, contains('img '));
       expect(note, contains('ms'));

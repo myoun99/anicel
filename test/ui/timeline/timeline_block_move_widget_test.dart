@@ -16,6 +16,7 @@ import 'package:anicel/src/models/transform_track.dart';
 
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -173,6 +174,53 @@ metrics: metrics,
     await tester.pump();
     expect(selectUpdates, isNotEmpty);
     expect(selectUpdates.last.$1, const LayerId('se-1'));
+  });
+
+  testWidgets('PEN-10: a down on a row is TWO inspector slots — the glide '
+      'stop\'s `tl dn` and the range layer\'s `range IN`, read together',
+      (tester) async {
+    // The diagnosis is the PAIR: a `tl dn=stylus` with no IN after it is a
+    // hit-test exclusion, a `tl dn=touch` while holding a pen is a kind
+    // misreport. The inspector keeps one slot per first token (유저
+    // 2026-09-13: 「발화자마다 한 칸」), so the two must not share one — under
+    // `tl` the second overwrote the first on every press, and the absence
+    // the pair exists to show could never be seen.
+    InputInspector.visible.value = true;
+    addTearDown(InputInspector.reset);
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    await tester.pumpWidget(
+      harness(
+        layers: [blockLayer('layer-a')],
+        cursor: cursor,
+        rangeHooks: hooks(selection: selection),
+      ),
+    );
+
+    final row = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(row) + const Offset(24 + 5 * 48, 26),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(
+      InputInspector.notes['tl'],
+      contains('dn=stylus'),
+      reason: 'the glide stop saw the down: ${InputInspector.notes}',
+    );
+    expect(
+      InputInspector.notes['range'],
+      contains('IN=stylus'),
+      reason: 'and the range layer did, in a slot of its own: '
+          '${InputInspector.notes}',
+    );
   });
 
   testWidgets('the grid HANDS OVER the rows it swept, not just the layer ids '

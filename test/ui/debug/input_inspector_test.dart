@@ -102,7 +102,8 @@ void main() {
     expect(InputInspector.samples.length, InputInspector.capacity);
   });
 
-  test('PEN-10: touch-down counter + probe notes count, gate and clear', () {
+  test('PEN-10: touch-down counter + probe notes — gated, one slot per '
+      'emitter, cleared', () {
     // Touch downs count; other kinds/phases do not.
     InputInspector.record(const PointerDownEvent());
     InputInspector.record(const PointerDownEvent());
@@ -112,18 +113,31 @@ void main() {
     InputInspector.record(const PointerMoveEvent());
     expect(InputInspector.touchDownCount, 2);
 
-    // Notes only land while the inspector is visible, and stay bounded.
+    // Notes only land while the inspector is visible, and each EMITTER
+    // (the line's first token) holds one slot: a loud one overwrites its
+    // own slot and never evicts another's, and the rows keep the order the
+    // emitters first spoke in (유저 2026-09-13: 「발화자마다 한 칸」).
     InputInspector.note('hidden — dropped');
     expect(InputInspector.notes, isEmpty);
     InputInspector.visible.value = true;
-    for (var i = 0; i < InputInspector.notesCapacity + 3; i += 1) {
+    InputInspector.note('geom view=8x8');
+    for (var i = 0; i < 8; i += 1) {
       InputInspector.note('probe $i');
     }
-    expect(InputInspector.notes.length, InputInspector.notesCapacity);
     expect(
-      InputInspector.notes.last,
-      'probe ${InputInspector.notesCapacity + 2}',
+      InputInspector.notes.values,
+      orderedEquals(['geom view=8x8', 'probe 7']),
     );
+    InputInspector.note('geom view=9x9');
+    expect(
+      InputInspector.notes.values,
+      orderedEquals(['geom view=9x9', 'probe 7']),
+      reason: 'a slot keeps its row when it is overwritten',
+    );
+    // The same line again is not a change the card needs to draw.
+    final revision = InputInspector.revision.value;
+    InputInspector.note('probe 7');
+    expect(InputInspector.revision.value, revision);
 
     InputInspector.clear();
     expect(InputInspector.touchDownCount, 0);
@@ -134,16 +148,17 @@ void main() {
   testWidgets('a PINNED line is state: on the card above the rows, and it '
       'outlives the notes and the clear', (tester) async {
     // F-67 hands-on (2026-09-11): the layout probe went through `note`,
-    // and the paint probes pushed it out of the five-line ring before the
-    // screenshot — the card came back without the one number it was
-    // opened for. A layout fact is not an event.
+    // and the paint probes pushed it out of the ring (five lines then)
+    // before the screenshot — the card came back without the one number
+    // it was opened for. A layout fact is not an event: the ring is keyed
+    // per emitter now and cannot evict, but ⟲ still clears it.
     InputInspector.pin('grid', 'hidden — dropped');
     expect(InputInspector.pinned, isEmpty);
 
     InputInspector.visible.value = true;
     await tester.pumpWidget(harness());
     InputInspector.pin('grid', 'grid frac=(0.250, 0.000)');
-    for (var i = 0; i < InputInspector.notesCapacity + 3; i += 1) {
+    for (var i = 0; i < 8; i += 1) {
       InputInspector.note('paint $i');
     }
     await tester.pump();

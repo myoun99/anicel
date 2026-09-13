@@ -126,9 +126,10 @@ class _StylusGlideStopState extends State<StylusGlideStop> {
   /// PEN-10 field diagnosis: with the Input Inspector open, every
   /// pointer-down over the timeline logs its kind plus the scroll state
   /// it landed into ('cst'=coasting axes, 'scr'=axes with a live scroll
-  /// activity). Paired with the range layer's 'IN' note, one glance
+  /// activity). Paired with the range layer's `range IN=` note, one glance
   /// separates a kind misreport (dn=touch while using the pen) from a
-  /// hit-test exclusion (dn=stylus without a following IN).
+  /// hit-test exclusion (dn=stylus without a following IN) — two slots on
+  /// the inspector, so the pair can be read together.
   void _noteDown(PointerEvent event) {
     if (!InputInspector.visible.value) {
       return;

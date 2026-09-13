@@ -71,13 +71,30 @@ abstract final class InputInspector {
   /// when you stop looking cannot answer the question it exists for.
   static int arrivals = 0;
 
-  /// PEN-10: free-form probe lines (newest last) — call sites annotate
+  /// PEN-10: probe lines, ONE SLOT PER EMITTER — keyed by the line's first
+  /// token (`aim`·`buf`·`geom`·`cmp`·`stack`·`tl`…), the latest line per
+  /// key, rows in the order the emitters first spoke. Call sites annotate
   /// where an event landed (e.g. the timeline down/IN probes). Ignored
   /// while the inspector is hidden.
-  static final List<String> notes = <String>[];
+  ///
+  /// 🗣️유저 2026-09-13 (`inspector-ring-one-slot-per-emitter-Q1`):
+  /// 「발화자마다 한 칸」. This was a five-line ring, newest last, and the
+  /// loudest emitter evicted the rest — in one day the T12 line printed
+  /// per rebuild, the buffer counters per compose and the `aim` line per
+  /// hover move: 「aim census 때문에 글자가 갱신돼서 확인하기 힘들었다」. A
+  /// cadence per emitter would have been a rule per emitter, invented
+  /// again for every new one; the ring's shape was the law to change. An
+  /// emitter still owns WHEN it speaks (its own dedupe); the ring owns
+  /// WHERE the line lands.
+  ///
+  /// ⛔TWO EMITTERS, TWO TOKENS. The ring tells facts apart only by their
+  /// first word: the PEN-10 pair `tl dn=` / `range IN=` diagnoses a
+  /// hit-test exclusion by the second line's ABSENCE, and under one token
+  /// the second would overwrite the first on every down and the absence
+  /// could never be seen. A new emitter takes a word nobody else prints.
+  static final Map<String, String> notes = <String, String>{};
 
   static const int capacity = 120;
-  static const int notesCapacity = 5;
 
   /// 🚨★★★H21 — **THE FREEZE, AND IT WAS THIS.** (유저 2026-08-23, 스택
   /// 트레이스 첨부): 「인스펙터 키고 **터치하거나 키보드 조작하거나 마우스
@@ -131,33 +148,31 @@ abstract final class InputInspector {
   }
 
   static void note(String line) {
-    if (!visible.value) {
-      return;
-    }
-    notes.add(line);
-    if (notes.length > notesCapacity) {
-      notes.removeRange(0, notes.length - notesCapacity);
-    }
-    _bumpRevision();
+    final split = line.indexOf(' ');
+    _put(notes, split < 0 ? line : line.substring(0, split), line);
   }
 
   /// STATE lines, one per [key], shown above the event rows and kept until
   /// overwritten — for a fact that describes the session rather than a
   /// moment, such as where layout put the canvas on the device grid.
   ///
-  /// ⛔Not [notes]: those hold the last [notesCapacity] EVENTS, and a paint
-  /// probe pushes a layout fact out of them within two frames — the F-67
-  /// hands-on (2026-09-11) came back with a screenshot of the card and the
-  /// one line it was taken for had already scrolled off. Survives [clear]
-  /// for the same reason: clearing is about the event ring, and a layout
-  /// fact is not an event.
+  /// ⛔Not [notes]: those are EVENTS, and the card's ⟲ ([clear]) wipes
+  /// them; a layout fact is not an event and survives it. The map was born
+  /// of the F-67 hands-on (2026-09-11): the ring was five lines then, and
+  /// the paint probes pushed the layout line out within two frames — the
+  /// screenshot came back without the one number it was taken for. The
+  /// keyed ring closed the eviction; the lifetime is what still differs.
   static final Map<String, String> pinned = <String, String>{};
 
-  static void pin(String key, String line) {
-    if (!visible.value || pinned[key] == line) {
+  static void pin(String key, String line) => _put(pinned, key, line);
+
+  /// One slot per key, and a bump only when the slot's text changes — an
+  /// emitter that repeats itself costs the card nothing.
+  static void _put(Map<String, String> slots, String key, String line) {
+    if (!visible.value || slots[key] == line) {
       return;
     }
-    pinned[key] = line;
+    slots[key] = line;
     _bumpRevision();
   }
 
@@ -555,7 +570,7 @@ class _InspectorCard extends StatelessWidget {
                     key: const ValueKey<String>('input-inspector-touch-count'),
                     style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
-                  for (final line in InputInspector.notes)
+                  for (final line in InputInspector.notes.values)
                     Text(
                       line,
                       maxLines: 1,

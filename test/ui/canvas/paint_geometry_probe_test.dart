@@ -21,9 +21,10 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 ///
 /// ⛔The dedupe is the part a regression would silently destroy: the zoom
 /// is a continuous double, and putting it raw in the key would emit a note
-/// on every drag frame — the inspector's 5-line ring would be all geometry
-/// and the pen diagnostics it exists for would scroll away. So the tests
-/// pin BOTH sides: a repaint with the same geometry emits nothing, and the
+/// on every drag frame — a geometry line that moves on every frame cannot
+/// be read (and until 2026-09-13 the inspector was a five-line ring, so it
+/// would also have scrolled the pen diagnostics away). So the tests pin
+/// BOTH sides: a repaint with the same geometry emits nothing, and the
 /// bucket boundary is what re-arms the emitter.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -92,28 +93,30 @@ void main() {
     await pumpStack(tester);
     paintOnce(tester);
 
-    final geometry = InputInspector.notes
-        .where((line) => line.startsWith('geom '))
-        .toList();
-    expect(geometry, hasLength(1), reason: 'the first paint reports');
-    expect(geometry.single, contains('view=8x8'));
-    expect(geometry.single, contains('dpr='));
-    expect(geometry.single, contains('zoom~100%'));
-    expect(geometry.single, contains('buf='));
-    expect(geometry.single, contains('capped=false'));
+    final geometry = InputInspector.notes['geom'];
+    expect(geometry, isNotNull, reason: 'the first paint reports');
+    expect(geometry, contains('view=8x8'));
+    expect(geometry, contains('dpr='));
+    expect(geometry, contains('zoom~100%'));
+    expect(geometry, contains('buf='));
+    expect(geometry, contains('capped=false'));
     expect(
-      geometry.single,
+      geometry,
       contains('hist 100%:'),
       reason: 'the histogram rides along, bucketed',
     );
 
+    // `paintOnce` paints outside a frame, so a note would bump the card's
+    // revision on the spot: two more paints of the same geometry must
+    // leave it where it is.
+    final revision = InputInspector.revision.value;
     paintOnce(tester);
     paintOnce(tester);
     expect(
-      InputInspector.notes.where((line) => line.startsWith('geom ')).length,
-      1,
-      reason: 'unchanged geometry must not emit again — the 5-line ring is '
-          'shared with the pen diagnostics this inspector exists for',
+      InputInspector.revision.value,
+      revision,
+      reason: 'unchanged geometry must not emit again — a line that moves '
+          'on every paint cannot be read',
     );
   });
 
@@ -121,10 +124,8 @@ void main() {
       'one does not', (tester) async {
     await pumpStack(tester, zoom: 1);
     paintOnce(tester);
-    expect(
-      InputInspector.notes.where((line) => line.startsWith('geom ')).length,
-      1,
-    );
+    final armed = CanvasPaintGeometryProbe.lastLine;
+    expect(armed, contains('zoom~100%'));
 
     // 1.00 → 1.02: same 10% bucket, no new line even though the double
     // changed. This is the assertion that dies if the raw zoom ever gets
@@ -132,48 +133,56 @@ void main() {
     await pumpStack(tester, zoom: 1.02);
     paintOnce(tester);
     expect(
-      InputInspector.notes.where((line) => line.startsWith('geom ')).length,
-      1,
+      CanvasPaintGeometryProbe.lastLine,
+      armed,
       reason: 'a continuous zoom change inside one bucket stays quiet',
     );
+    expect(InputInspector.notes['geom'], contains('zoom~100%'));
 
     await pumpStack(tester, zoom: 0.5);
     paintOnce(tester);
-    final geometry = InputInspector.notes
-        .where((line) => line.startsWith('geom '))
-        .toList();
-    expect(geometry, hasLength(2), reason: 'a new bucket reports once');
-    expect(geometry.last, contains('zoom~50%'));
+    expect(
+      CanvasPaintGeometryProbe.lastLine,
+      isNot(armed),
+      reason: 'a new bucket re-arms the emitter',
+    );
+    expect(
+      InputInspector.notes['geom'],
+      contains('zoom~50%'),
+      reason: 'and the slot shows the new bucket',
+    );
   });
 
   /// 🚨THE BUFFER COUNTERS LINE MOVES ON A BUCKET, NOT ON EVERY COMPOSE.
   /// Keyed raw it emitted a line per full compose and per carry — a pan
-  /// is one of those per paint — and the inspector keeps FIVE notes, so
-  /// the line built to sit beside the geometry line evicted it (this
-  /// file's own bucket test went red on master, 2026-09-13). The counts
-  /// are read off the injected cache so the assertion sits exactly on the
-  /// bucket edge instead of guessing how many composes a pump costs.
+  /// is one of those per paint — and a line that moves on every paint
+  /// cannot be read mid-stroke. (It also evicted the geometry line while
+  /// the inspector was a five-line ring: this file's own bucket test went
+  /// red on master, 2026-09-13. The ring holds one slot per emitter since
+  /// that day.) The counts are read off the injected cache so the
+  /// assertion sits exactly on the bucket edge instead of guessing how
+  /// many composes a pump costs.
   ///
-  /// ⚠️PINNED ON THE CADENCE KEY FIRST, AND ON THE RING SECOND. The key is
+  /// ⚠️PINNED ON THE CADENCE KEY FIRST, AND ON THE SLOTS SECOND. The key is
   /// what the emitter dedupes on, and a raw count in it changes on the very
-  /// next compose. The ring is the thing the user reads, and it is shared:
-  /// every `pumpStack` here builds a fresh painter, and the T12 `stack
-  /// paint` probe used to key on the painter's identity (an interpolation
-  /// without braces — it printed the painter, not the flag), so seven pans
-  /// were seven of those and the ring held nothing else. With that fixed,
-  /// eight pans leave one geometry line, one T12 line and two counter
-  /// lines: four of five, and the geometry line is still there to read.
+  /// next compose. The slots are what the user reads: every `pumpStack`
+  /// here builds a fresh painter, and the T12 `stack paint` probe used to
+  /// key on the painter's identity (an interpolation without braces — it
+  /// printed the painter, not the flag), so it said nothing a reader could
+  /// use. With that fixed, eight pans leave a geometry slot, a T12 slot
+  /// that names the flag, and a counter slot that reads the eighth
+  /// compose.
   testWidgets('the buffer counters line moves once per bucket of eight full '
-      'composes — a pan does not flood the five-line ring', (tester) async {
+      'composes — a pan does not move it per paint', (tester) async {
     final buffers = DisplayBufferCache();
     addTearDown(buffers.dispose);
 
     await pumpStack(tester, buffers: buffers);
     paintOnce(tester);
     expect(
-      InputInspector.notes.where((line) => line.startsWith('buf ')),
-      hasLength(1),
-      reason: 'the first compose reports',
+      InputInspector.notes['buf'],
+      contains('full=0'),
+      reason: 'the first paint reports, counters read before it composes',
     );
     final armed = CanvasPaintGeometryProbe.lastCounters;
     expect(armed, isNotNull);
@@ -204,30 +213,24 @@ void main() {
       reason: 'the eighth crosses the bucket',
     );
 
-    // And the ring the user reads: eight rebuilds later the geometry line
-    // is still in it, beside the two counter lines and ONE T12 line that
-    // says what it was built to say.
-    final ring = InputInspector.notes;
+    // And the slots the user reads: eight rebuilds later the geometry
+    // slot is still there, the counter slot reads the crossing, and the
+    // T12 slot says what it was built to say.
+    final slots = InputInspector.notes;
     expect(
-      ring.where((line) => line.startsWith('geom ')),
-      hasLength(1),
-      reason: 'a pan must not evict the geometry line: $ring',
+      slots['geom'],
+      contains('view=8x8'),
+      reason: 'the geometry slot outlives a pan: $slots',
     );
     expect(
-      ring.where((line) => line.startsWith('buf ')),
-      hasLength(2),
-      reason: 'the first compose and the bucket crossing: $ring',
+      slots['buf'],
+      contains('full=8'),
+      reason: 'the bucket crossing wrote the counter slot: $slots',
     );
     expect(
-      ring.where((line) => line.startsWith('stack paint ')),
-      hasLength(1),
-      reason: 'the T12 line is keyed on what it prints, not on the painter '
-          'object — one line for eight rebuilds: $ring',
-    );
-    expect(
-      ring.singleWhere((line) => line.startsWith('stack paint ')),
+      slots['stack'],
       contains('paper=true'),
-      reason: 'it prints the flag, not the painter',
+      reason: 'the T12 slot prints the flag, not the painter: $slots',
     );
   });
 

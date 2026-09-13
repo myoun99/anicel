@@ -282,13 +282,17 @@ class _LayerStackPaintPass {
         // not be watched at all — the one thing they exist for.
         //
         // ⛔ALL THREE COUNTS ARE BUCKETED, NOT JUST THE PATCHES. Keyed raw,
-        // a pan emitted a line PER PAINT (every paint of a pan carries),
-        // and the inspector keeps only five notes — so the line built to
-        // sit beside the geometry line evicted it (`paint_geometry_probe_test`
-        // went red on master, 2026-09-13). Every 32 patches or carries and
-        // every 8 full composes: a paint is ~16ms, so mid-stroke and
-        // mid-pan the line moves about twice a second, and a zoom that
-        // composes whole a few times does not move it at all.
+        // a pan emitted a line PER PAINT (every paint of a pan carries) —
+        // and a line that moves every paint cannot be READ mid-stroke,
+        // which is the one thing it exists for. (While the inspector was a
+        // five-line ring it also evicted the geometry line beside it —
+        // `paint_geometry_probe_test` went red on master, 2026-09-13; the
+        // ring holds one slot per emitter since that day, so eviction is
+        // gone and readability is the reason that remains.) Every 32
+        // patches or carries and every 8 full composes: a paint is ~16ms,
+        // so mid-stroke and mid-pan the line moves about twice a second,
+        // and a zoom that composes whole a few times does not move it at
+        // all.
         //
         // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
         // carrying looks exactly like one that never could, and this line
