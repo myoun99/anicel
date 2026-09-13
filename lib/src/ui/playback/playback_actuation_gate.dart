@@ -1,10 +1,18 @@
+import 'package:flutter/gestures.dart'
+    show
+        GestureBinding,
+        PointerDownEvent,
+        PointerEvent,
+        PointerPanZoomStartEvent,
+        PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show BoxHitTestResult, RenderProxyBox, SemanticsConfiguration;
 import 'package:flutter/services.dart'
-    show HardwareKeyboard, KeyDownEvent, KeyEvent;
+    show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyUpEvent;
 
 import '../shortcuts/editor_shortcut_scope.dart';
+import '../shortcuts/shortcut_activator_codec.dart' show isModifierKey;
 import 'playback_transport.dart';
 
 /// 🚨★★★ T28-c — WHILE PLAYING, THE FIRST ACTUATION IS STOP, AND ONLY STOP.
@@ -61,12 +69,17 @@ import 'playback_transport.dart';
 /// pointer's does — while the canvas run plays. It lives in this gate's key
 /// half ([_PlaybackActuationGateState._onKey]) and in the action funnel, both
 /// asking [viewZoomPassesPlayback]; never as a check inside a zoom action.
-/// ⚠️A modifier's own key-down still stops before a chord like Shift+.
-/// exists — T28-c's 「키 다운 = 입력」 and R6q3 meet there, and which one
-/// gives is on the board (`I-19-zoom-key-playback`).
+/// A modifier's own key-down waits for the chord (✅1 below, answered on
+/// the board as `I-19-zoom-key-playback`), so the default Shift+. passes
+/// as well.
 ///
 /// ✅유저 확정 — the two questions this had, both answered (⛔재론 금지):
 /// 1. **「입력」 = actuation only**: key DOWN, pointer DOWN, wheel/zoom.
+///    🆕A MODIFIER alone is not one (유저 2026-09-13,
+///    I-19-zoom-key-playback 1번: 「수식키는 혼자선 입력으로 치지
+///    않는다」): its down waits for the key it modifies, and a modifier
+///    let go with nothing after it stops on its release —
+///    [_PlaybackActuationGateState._onKey].
 ///    ⛔Hover and plain mouse movement are not: 「커서만 움직여도 재생이
 ///    죽으면 데스크톱에서 못 쓴다」. Nothing here listens to move or hover.
 /// 2. **The actuation is CONSUMED.** A pen touching the timeline leaves no
@@ -170,11 +183,13 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_onKey);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
   }
 
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
     super.dispose();
   }
 
@@ -186,6 +201,12 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
   /// press on the timeline would arm it and the NEXT bound key — pressed
   /// minutes later, with nothing playing — would be eaten by it.
   KeyEvent? _consumedKey;
+
+  /// A modifier that went down while something played and has not been
+  /// followed by another key or pointer actuation yet: its release stops
+  /// playback, and whatever came after it decides otherwise
+  /// (I-19-zoom-key-playback; the pointer half is [_onPointer]).
+  bool _loneModifierDown = false;
 
   /// Registered for the gate's whole life, with the guard INSIDE.
   /// Subscribing and unsubscribing as playback comes and goes would make
@@ -201,6 +222,30 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     // note left there would outlive the event it describes.
     _consumedKey = null;
     if (!widget.transports.value) {
+      _loneModifierDown = false;
+      return false;
+    }
+    if (isModifierKey(event.logicalKey)) {
+      // 🚨I-19-zoom-key-playback (유저 2026-09-13, 1번): 「수식키는 혼자선
+      // 입력으로 치지 않는다」. A modifier's DOWN waits for the key it
+      // modifies — Shift+. is one zoom, not a Shift that stopped playback
+      // before the period existed. Not an input, so not eaten either: it
+      // reaches the app like any modifier, and Alt's eyedropper hold takes
+      // hold while the canvas plays. 🗣️유저, the same day, asked exactly
+      // that: 「스포이드가 잡히는게 왜 문제지? 스포이드 작동할때 재생
+      // 멈추게되는거아닌가? 전혀 문제없는데」 — the eyedropper's own press
+      // is the input. ⚠️실측 the same day: over the playback view that press
+      // does NOT stop yet — the tool tap layer takes it and samples, as it
+      // did for the eyedropper TOOL before this (board:
+      // `playback-tap-taken-by-tool-layer`). Let go with nothing after it,
+      // the modifier was a press after all, and its UP is where that one
+      // stops.
+      if (event is KeyDownEvent) {
+        _loneModifierDown = true;
+      } else if (event is KeyUpEvent && _loneModifierDown) {
+        _loneModifierDown = false;
+        widget.transports.stopAll();
+      }
       return false;
     }
     if (event is! KeyDownEvent) {
@@ -209,6 +254,7 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       // saw the beginning of.
       return false;
     }
+    _loneModifierDown = false;
     // 🚨R6q3: a bound ZOOM key is the key half of the D13 hole — it passes
     // while the canvas run plays, asked through the one predicate the action
     // funnel asks too.
@@ -221,6 +267,24 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     widget.transports.stopAll();
     _consumedKey = event;
     return true;
+  }
+
+  /// Every pointer event, app-wide — only to hear that a held modifier was
+  /// NOT alone (I-19-zoom-key-playback): a press, a wheel notch or a pinch
+  /// after it — ✅1's pointer actuations — is the "something after".
+  ///
+  /// ⚠️Not the [Listener] in [build], measured: an actuation the D13 hole
+  /// passes never reaches it (the panel shell's `MouseRegion` returns
+  /// false, so nothing above the hole joins that hit path), and a Shift
+  /// held through a canvas wheel zoom stopped playback on its release. A
+  /// global route observes without joining hit testing — the way
+  /// `home_page`'s activity clock already watches pointers.
+  void _onPointer(PointerEvent event) {
+    if (event is PointerDownEvent ||
+        event is PointerSignalEvent ||
+        event is PointerPanZoomStartEvent) {
+      _loneModifierDown = false;
+    }
   }
 
   /// 🚨★★★**「입력 일 안함」 FOR KEYS, AND IT LIVES HERE.**

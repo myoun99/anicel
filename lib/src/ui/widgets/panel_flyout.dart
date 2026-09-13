@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../shortcuts/editor_shortcut_bindings.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
@@ -83,6 +85,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.enabled = true,
     this.onSelected,
     this.submenuBuilder,
+    this.shortcuts = const [],
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
@@ -147,6 +150,15 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
   /// Runs AFTER the flyout closes.
   final VoidCallback? onSelected;
+
+  /// The registry actions this row presses. Their LIVE keys sit at the
+  /// row's right end, dim and right-aligned — 「저장 Ctrl+S」.
+  ///
+  /// 🗣️유저 2026-09-13 (I-19-menu-keys, 1번): 「중간에 점 두는게아니라
+  /// 저장 Ctrl+S 이런식으로. 단축키 텍스트는 흐린색. 단축키 텍스트
+  /// 오른쪽정렬」. The same keys a button shows in its tooltip, spelled
+  /// by the same function ([shortcutKeys]).
+  final List<String> shortcuts;
 }
 
 /// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'`, the
@@ -201,6 +213,10 @@ Future<void> showPanelFlyout(
   Rect? anchorRect,
 }) async {
   final button = anchorContext.findRenderObject()! as RenderBox;
+  // 🚨A flyout is a ROUTE, so its rows are not under the editor's
+  // shortcut scope: the bindings are read where the menu was opened and
+  // handed to every row, both levels.
+  final bindings = EditorShortcutScope.peek(anchorContext);
   final anchor = anchorRect ?? (Offset.zero & button.size);
   final overlay =
       Navigator.of(anchorContext).overlay!.context.findRenderObject()!
@@ -262,6 +278,7 @@ Future<void> showPanelFlyout(
           ? const SizedBox.shrink()
           : _SubmenuLayer(
               request: request,
+              bindings: bindings,
               onPicked: (item) {
                 pickedInSubmenu = item;
                 open.value = null;
@@ -360,7 +377,11 @@ Future<void> showPanelFlyout(
               entry: entry,
               open: open,
               child: flyoutRowSurface(
-                _itemBody(entry, hasSubmenu: entry.submenuBuilder != null),
+                _itemBody(
+                  entry,
+                  bindings: bindings,
+                  hasSubmenu: entry.submenuBuilder != null,
+                ),
               ),
             ),
           ),
@@ -555,9 +576,14 @@ class _HoverReporter extends StatelessWidget {
 
 /// The child popover — ONE overlay the hover moves, not a route per stage.
 class _SubmenuLayer extends StatelessWidget {
-  const _SubmenuLayer({required this.request, required this.onPicked});
+  const _SubmenuLayer({
+    required this.request,
+    required this.bindings,
+    required this.onPicked,
+  });
 
   final _OpenSubmenu request;
+  final EditorShortcutBindings? bindings;
   final ValueChanged<PanelFlyoutItem> onPicked;
 
   static const double _width = 200;
@@ -600,7 +626,9 @@ class _SubmenuLayer extends StatelessWidget {
                   // ⛔The SAME row surface and the SAME body the parent list
                   // draws — a submenu that laid itself out would drift from
                   // the list it belongs to.
-                  child: flyoutRowSurface(_itemBody(item)),
+                  child: flyoutRowSurface(
+                    _itemBody(item, bindings: bindings),
+                  ),
                 )),
             ],
           ),
@@ -610,7 +638,11 @@ class _SubmenuLayer extends StatelessWidget {
   }
 }
 
-Widget _itemBody(PanelFlyoutItem entry, {bool hasSubmenu = false}) => Row(
+Widget _itemBody(
+  PanelFlyoutItem entry, {
+  required EditorShortcutBindings? bindings,
+  bool hasSubmenu = false,
+}) => Row(
   children: [
                 if (entry.swatch case final swatch?) ...[
                   // 14 rather than the glyph's 16: the same circle the rail
@@ -638,6 +670,19 @@ Widget _itemBody(PanelFlyoutItem entry, {bool hasSubmenu = false}) => Row(
                     style: TextStyle(fontSize: 12, color: _inkFor(entry)),
                   ),
                 ),
+    // The key at the right end, dim — no dot leaders (I-19-menu-keys).
+    if (shortcutKeys(bindings, entry.shortcuts) case final keys?) ...[
+      const SizedBox(width: 16),
+      Text(
+        keys,
+        style: TextStyle(
+          fontSize: 12,
+          color: entry.enabled
+              ? AppColors.textDim
+              : AppColors.textDim.withValues(alpha: 0.5),
+        ),
+      ),
+    ],
     if (entry.checked ?? false) ...[
       const SizedBox(width: 8),
       Icon(Icons.check, size: 14, color: AppColors.accent),

@@ -34,6 +34,24 @@ SingleActivator? singleActivatorFromJson(Object? json) {
   );
 }
 
+/// Shift, Ctrl, Alt and ⌘ — a key that modifies another rather than being
+/// one. ★One question, two readers: the settings dialog waits past these for
+/// the real trigger, and the playback gate does not count one pressed alone
+/// (유저 2026-09-13, I-19-zoom-key-playback: 「수식키는 혼자선 입력으로 치지
+/// 않는다」).
+bool isModifierKey(LogicalKeyboardKey key) => _modifierKeys.contains(key);
+
+final Set<LogicalKeyboardKey> _modifierKeys = {
+  LogicalKeyboardKey.controlLeft,
+  LogicalKeyboardKey.controlRight,
+  LogicalKeyboardKey.shiftLeft,
+  LogicalKeyboardKey.shiftRight,
+  LogicalKeyboardKey.altLeft,
+  LogicalKeyboardKey.altRight,
+  LogicalKeyboardKey.metaLeft,
+  LogicalKeyboardKey.metaRight,
+};
+
 /// Whether [platform]'s COMMAND modifier is ⌘ rather than Ctrl: macOS, and
 /// iOS — an iPad's hardware keyboard.
 ///

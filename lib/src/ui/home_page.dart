@@ -978,7 +978,6 @@ class _HomePageState extends State<HomePage> {
                                         colorBackground: _colorWheelBackground,
                                         colorPalette: _colorPalette,
                                         onColorPaletteChanged: _setColorPalette,
-                                        shortcuts: _shortcuts,
                                       ),
                                     ),
                                   ),

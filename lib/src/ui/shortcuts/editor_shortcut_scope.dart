@@ -51,16 +51,23 @@ String shortcutTooltip(
   if (actionIds.isEmpty) {
     return label;
   }
-  final bindings = EditorShortcutScope.maybeOf(context);
-  if (bindings == null) {
-    return label;
+  final keys = shortcutKeys(EditorShortcutScope.maybeOf(context), actionIds);
+  return keys == null ? label : '$label ($keys)';
+}
+
+/// The live keys of [actionIds] as one label — 「Ctrl+S」, 「M, L」 — or null
+/// when none of them is bound. ★The ONE spelling a button's tooltip and a
+/// menu row's trailing key both print.
+String? shortcutKeys(EditorShortcutBindings? bindings, List<String> actionIds) {
+  if (bindings == null || actionIds.isEmpty) {
+    return null;
   }
   final keys = [
     for (final actionId in actionIds)
       if (bindings.primaryActivatorFor(actionId) case final activator?)
         singleActivatorLabel(activator),
   ];
-  return keys.isEmpty ? label : '$label (${keys.join(', ')})';
+  return keys.isEmpty ? null : keys.join(', ');
 }
 
 /// A [Tooltip] spelled by [shortcutTooltip], for a control that is not an

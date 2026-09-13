@@ -580,6 +580,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                 keyValue: 'legend-eye-solo',
                 // The registry's name: `=` presses this item (I-19).
                 label: editorActionLabel(EditorActionIds.layerVisibilitySolo),
+                shortcuts: const [EditorActionIds.layerVisibilitySolo],
                 icon: Icons.center_focus_strong_outlined,
                 checked: visibilitySoloEnabled,
                 onSelected: legend.onToggleVisibilitySolo,

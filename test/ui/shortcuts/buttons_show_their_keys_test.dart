@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/panel_finders.dart';
@@ -104,6 +105,51 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(commaTooltip(), endsWith('(Q)'));
+  });
+
+  testWidgets('a menu row that presses a bound action prints the key at its '
+      'right end, dim — 「저장 Ctrl+S」', (tester) async {
+    // 🗣️유저 2026-09-13 (I-19-menu-keys, 1번): 「중간에 점 두는게아니라 저장
+    // Ctrl+S 이런식으로. 단축키 텍스트는 흐린색. 단축키 텍스트 오른쪽정렬」.
+    await _pumpApp(tester);
+    await tester.tap(_button('top-strip-project-button'));
+    await tester.pumpAndSettle();
+
+    Finder inRow(String id, Finder text) => find.descendant(
+      of: find.byKey(ValueKey<String>('menu-$id')),
+      matching: text,
+    );
+    final keys = inRow('file-save', find.text('Ctrl+S'));
+    expect(keys, findsOneWidget, reason: 'the live key, spelled once');
+    expect(
+      tester.widget<Text>(keys).style!.color,
+      AppColors.textDim,
+      reason: '흐린색',
+    );
+    expect(
+      tester.getTopLeft(keys).dx,
+      greaterThan(tester.getTopRight(inRow('file-save', find.text('Save'))).dx),
+      reason: 'after the label — 「저장 Ctrl+S」, no dot leaders between',
+    );
+    final longer = inRow('file-save-as', find.text('Ctrl+Shift+S'));
+    expect(
+      tester.getTopRight(keys).dx,
+      tester.getTopRight(longer).dx,
+      reason: '오른쪽정렬 — two keys of different widths end at one edge',
+    );
+    expect(
+      tester.getTopLeft(keys).dx,
+      isNot(tester.getTopLeft(longer).dx),
+      reason: 'the widths really differ, or the edge above measured nothing',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('menu-file-open')),
+        matching: find.textContaining('Ctrl'),
+      ),
+      findsNothing,
+      reason: 'a row that presses no action prints no key',
+    );
   });
 
   testWidgets('on a Mac the same buttons say ⌘, and Shift keeps its glyph', (

@@ -198,12 +198,14 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-out',
           label: editorActionLabel(EditorActionIds.canvasZoomOut),
+          shortcuts: const [EditorActionIds.canvasZoomOut],
           icon: Icons.zoom_out,
           onSelected: _bar.onZoomOut,
         ),
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-in',
           label: editorActionLabel(EditorActionIds.canvasZoomIn),
+          shortcuts: const [EditorActionIds.canvasZoomIn],
           icon: Icons.zoom_in,
           onSelected: _bar.onZoomIn,
         ),
@@ -371,15 +373,7 @@ class _BottomBarBuild {
   List<Widget> _viewControlsFor(CanvasViewport viewport) {
     final rotationDegrees = _rotationDegreesOf(viewport);
     return <Widget>[
-      if (_bar.onRotateCcw != null)
-        _bar._barIconButton(
-          keyValue: 'canvas-viewport-rotate-ccw',
-          tooltip: AppText.strings.viewRotateLeft,
-          shortcuts: const [EditorActionIds.canvasRotateCcw],
-          icon: const Icon(Icons.rotate_left),
-          onPressed: _bar.onRotateCcw,
-          isSelected: rotationDegrees < 0,
-        ),
+      if (_bar.onRotateCcw != null) _rotateCcwButton(rotationDegrees),
       if (_bar.onRotateByDrag != null)
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
@@ -395,15 +389,7 @@ class _BottomBarBuild {
             }
           },
         ),
-      if (_bar.onRotateCw != null)
-        _bar._barIconButton(
-          keyValue: 'canvas-viewport-rotate-cw',
-          tooltip: AppText.strings.viewRotateRight,
-          shortcuts: const [EditorActionIds.canvasRotateCw],
-          icon: const Icon(Icons.rotate_right),
-          onPressed: _bar.onRotateCw,
-          isSelected: rotationDegrees > 0,
-        ),
+      if (_bar.onRotateCw != null) _rotateCwButton(rotationDegrees),
       if (_bar.onRotateReset != null)
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
@@ -411,15 +397,7 @@ class _BottomBarBuild {
           icon: const Icon(Icons.refresh),
           onPressed: _bar.onRotateReset,
         ),
-      if (_bar.onFlipHorizontal != null)
-        _bar._barIconButton(
-          keyValue: 'canvas-viewport-flip',
-          tooltip: AppText.strings.viewFlipHorizontal,
-          shortcuts: const [EditorActionIds.canvasFlipHorizontal],
-          icon: const Icon(Icons.flip),
-          onPressed: _bar.onFlipHorizontal,
-          isSelected: viewport.flipHorizontal,
-        ),
+      if (_bar.onFlipHorizontal != null) _flipHorizontalButton(viewport),
       if (_bar.onFlipVertical != null)
         _bar._barIconButton(
           keyValue: 'canvas-viewport-flip-vertical',
@@ -430,6 +408,35 @@ class _BottomBarBuild {
         ),
     ];
   }
+
+  // R, Shift+R and H press these three (I-19), so each names its action —
+  // the same one-button-one-method shape as the fit, 1:1 and zoom buttons.
+  Widget _rotateCcwButton(int rotationDegrees) => _bar._barIconButton(
+    keyValue: 'canvas-viewport-rotate-ccw',
+    tooltip: AppText.strings.viewRotateLeft,
+    shortcuts: const [EditorActionIds.canvasRotateCcw],
+    icon: const Icon(Icons.rotate_left),
+    onPressed: _bar.onRotateCcw,
+    isSelected: rotationDegrees < 0,
+  );
+
+  Widget _rotateCwButton(int rotationDegrees) => _bar._barIconButton(
+    keyValue: 'canvas-viewport-rotate-cw',
+    tooltip: AppText.strings.viewRotateRight,
+    shortcuts: const [EditorActionIds.canvasRotateCw],
+    icon: const Icon(Icons.rotate_right),
+    onPressed: _bar.onRotateCw,
+    isSelected: rotationDegrees > 0,
+  );
+
+  Widget _flipHorizontalButton(CanvasViewport viewport) => _bar._barIconButton(
+    keyValue: 'canvas-viewport-flip',
+    tooltip: AppText.strings.viewFlipHorizontal,
+    shortcuts: const [EditorActionIds.canvasFlipHorizontal],
+    icon: const Icon(Icons.flip),
+    onPressed: _bar.onFlipHorizontal,
+    isSelected: viewport.flipHorizontal,
+  );
 
   Widget _fitButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-fit',

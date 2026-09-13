@@ -66,17 +66,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       return KeyEventResult.handled;
     }
     // Modifier presses alone keep waiting for the real trigger.
-    final modifiers = {
-      LogicalKeyboardKey.controlLeft,
-      LogicalKeyboardKey.controlRight,
-      LogicalKeyboardKey.shiftLeft,
-      LogicalKeyboardKey.shiftRight,
-      LogicalKeyboardKey.altLeft,
-      LogicalKeyboardKey.altRight,
-      LogicalKeyboardKey.metaLeft,
-      LogicalKeyboardKey.metaRight,
-    };
-    if (modifiers.contains(key)) {
+    if (isModifierKey(key)) {
       return KeyEventResult.handled;
     }
     final pressed = HardwareKeyboard.instance;

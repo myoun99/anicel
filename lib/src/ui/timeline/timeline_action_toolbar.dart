@@ -598,6 +598,11 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.deleteColour => Icons.format_color_reset,
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
+        // Backspace presses 픽셀 비우기 (I-19); the other three have no key.
+        shortcuts: switch (verb) {
+          CelPixelVerb.clearPixels => const [EditorActionIds.editClearPixels],
+          _ => const <String>[],
+        },
         onSelected: () => session.cells.runPixelVerb(verb),
       ),
   ];
@@ -640,16 +645,17 @@ class TimelineActionToolbar extends StatelessWidget {
     );
   }
 
+  /// [tooltip] is what the tooltip says — its words and the action whose
+  /// live key follows them (I-19), one answer to one question.
   Widget _commaButton({
     required ValueKey<String> key,
     required String label,
-    required String tooltip,
-    required String action,
+    required ({String text, String action}) tooltip,
     required VoidCallback? onPressed,
   }) {
     return ShortcutTooltip(
-      label: tooltip,
-      shortcuts: [action],
+      label: tooltip.text,
+      shortcuts: [tooltip.action],
       // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
       // 봐줘 통일해서**」). These five were the app's only chrome buttons
       // that mounted no claim at all: the ledger that keeps hand-rolled
@@ -1144,16 +1150,18 @@ class TimelineActionToolbar extends StatelessWidget {
               _commaButton(
                 key: ValueKey<String>('set-comma-$comma-button'),
                 label: '$comma',
-                tooltip: AppText.strings.tlSetCommaTemplate.replaceAll(
-                  '{n}',
-                  '$comma',
+                tooltip: (
+                  text: AppText.strings.tlSetCommaTemplate.replaceAll(
+                    '{n}',
+                    '$comma',
+                  ),
+                  action: const [
+                    EditorActionIds.timelineComma1,
+                    EditorActionIds.timelineComma2,
+                    EditorActionIds.timelineComma3,
+                    EditorActionIds.timelineComma4,
+                  ][comma - 1],
                 ),
-                action: const [
-                  EditorActionIds.timelineComma1,
-                  EditorActionIds.timelineComma2,
-                  EditorActionIds.timelineComma3,
-                  EditorActionIds.timelineComma4,
-                ][comma - 1],
                 onPressed: panelContext.canSetComma
                     ? () => panelContext.setComma(comma)
                     : null,
@@ -1162,8 +1170,10 @@ class TimelineActionToolbar extends StatelessWidget {
               builder: (context) => _commaButton(
                 key: const ValueKey<String>('set-comma-n-button'),
                 label: 'N',
-                tooltip: AppText.strings.tlSetCommasN,
-                action: EditorActionIds.timelineCommaN,
+                tooltip: (
+                  text: AppText.strings.tlSetCommasN,
+                  action: EditorActionIds.timelineCommaN,
+                ),
                 onPressed: panelContext.canSetComma
                     ? () => showTimelineCommaCountDialog(
                         context,

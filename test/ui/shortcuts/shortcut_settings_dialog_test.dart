@@ -52,6 +52,31 @@ void main() {
     expect(recordButtons().evaluate().length, all);
   });
 
+  testWidgets('recording waits past a modifier pressed alone, then takes the '
+      'chord it modifies', (tester) async {
+    // The same question the playback gate asks (`isModifierKey`): a key
+    // that modifies another is not one to bind by itself.
+    final bindings = await pump(tester);
+    final id = bindings.definitions.first.id;
+
+    await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('shortcut-recording-hint')),
+      findsOneWidget,
+      reason: 'Ctrl alone is not a key to bind — still recording',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.f9);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    final recorded = bindings.activatorsFor(id).single;
+    expect(recorded.trigger, LogicalKeyboardKey.f9);
+    expect(recorded.control, isTrue);
+  });
+
   testWidgets('record captures the next key, and reset all restores', (
     tester,
   ) async {

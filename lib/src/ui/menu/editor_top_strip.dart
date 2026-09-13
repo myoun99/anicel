@@ -38,7 +38,6 @@ import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
 import '../session/project_file_door.dart' show SaveAsked;
 import '../shortcuts/editor_action_registry.dart';
-import '../shortcuts/editor_shortcut_bindings.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
 import '../theme/app_theme.dart';
@@ -65,7 +64,6 @@ class EditorTopStrip extends StatelessWidget {
     this.colorBackground,
     this.colorPalette,
     this.onColorPaletteChanged,
-    this.shortcuts,
   });
 
   final EditorSessionManager session;
@@ -103,10 +101,6 @@ class EditorTopStrip extends StatelessWidget {
   /// could not say `placed`, so injecting it silently took the DESKTOP
   /// branch and skipped the very ordering F-57 fixed.
 
-  /// The customizable shortcut bindings (P1); null hides the shortcut
-  /// labels and disables the settings entry (focused widget tests).
-  final EditorShortcutBindings? shortcuts;
-
   /// One popover entry. The single funnel every item goes through, so the
   /// key and the wording are decided in one place.
   ///
@@ -118,6 +112,7 @@ class EditorTopStrip extends StatelessWidget {
     VoidCallback? onPressed,
     IconData? icon,
     bool? checked,
+    List<String> shortcuts = const [],
   }) => PanelFlyoutItem(
     keyValue: 'menu-$id',
     // Every entry localizes HERE, by the id it is already keyed with, with
@@ -125,6 +120,7 @@ class EditorTopStrip extends StatelessWidget {
     label: AppText.strings.menuLabel(id, label),
     icon: icon,
     checked: checked,
+    shortcuts: shortcuts,
     enabled: onPressed != null,
     onSelected: onPressed,
   );
@@ -522,12 +518,14 @@ class EditorTopStrip extends StatelessWidget {
     _item(
       id: 'file-save',
       label: editorActionLabel(EditorActionIds.fileSave),
+      shortcuts: const [EditorActionIds.fileSave],
       icon: Icons.save_outlined,
       onPressed: () => unawaited(saveProject(context, session)),
     ),
     _item(
       id: 'file-save-as',
       label: editorActionLabel(EditorActionIds.fileSaveAs),
+      shortcuts: const [EditorActionIds.fileSaveAs],
       icon: Icons.save_as_outlined,
       onPressed: () => unawaited(promptSaveProjectAs(context, session)),
     ),
@@ -598,17 +596,20 @@ class EditorTopStrip extends StatelessWidget {
       id: 'edit-keyboard-shortcuts',
       label: 'Keyboard shortcuts…',
       icon: Icons.keyboard_outlined,
-      onPressed: shortcuts == null
-          ? null
-          : () {
-              unawaited(
-                showDialog<void>(
-                  context: context,
-                  builder: (context) =>
-                      ShortcutSettingsDialog(bindings: shortcuts!),
-                ),
-              );
-            },
+      // The bindings arrive down the ONE scope every key label reads — a
+      // second pipe for the same object is how a menu and its tooltips
+      // would come to disagree. No scope (a bare host) has nothing to edit.
+      onPressed: switch (EditorShortcutScope.peek(context)) {
+        null => null,
+        final bindings => () {
+          unawaited(
+            showDialog<void>(
+              context: context,
+              builder: (context) => ShortcutSettingsDialog(bindings: bindings),
+            ),
+          );
+        },
+      },
     ),
     // SAVE-1: Input/Autosave/Language/Accent collapsed into ONE
     // Preferences window (the per-domain dialogs live on as thin
