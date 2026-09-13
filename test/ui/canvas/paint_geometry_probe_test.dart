@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -27,7 +28,12 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  Future<void> pumpStack(WidgetTester tester, {double zoom = 1}) async {
+  Future<void> pumpStack(
+    WidgetTester tester, {
+    double zoom = 1,
+    double panX = 0,
+    DisplayBufferCache? buffers,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -39,8 +45,9 @@ void main() {
                 nodes: const [],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
-                viewport: CanvasViewport(zoom: zoom),
+                viewport: CanvasViewport(zoom: zoom, panX: panX),
                 paintPaper: true,
+                debugBufferCache: buffers,
               ),
             ),
           ),
@@ -137,6 +144,91 @@ void main() {
         .toList();
     expect(geometry, hasLength(2), reason: 'a new bucket reports once');
     expect(geometry.last, contains('zoom~50%'));
+  });
+
+  /// 🚨THE BUFFER COUNTERS LINE MOVES ON A BUCKET, NOT ON EVERY COMPOSE.
+  /// Keyed raw it emitted a line per full compose and per carry — a pan
+  /// is one of those per paint — and the inspector keeps FIVE notes, so
+  /// the line built to sit beside the geometry line evicted it (this
+  /// file's own bucket test went red on master, 2026-09-13). The counts
+  /// are read off the injected cache so the assertion sits exactly on the
+  /// bucket edge instead of guessing how many composes a pump costs.
+  ///
+  /// ⚠️PINNED ON THE CADENCE KEY FIRST, AND ON THE RING SECOND. The key is
+  /// what the emitter dedupes on, and a raw count in it changes on the very
+  /// next compose. The ring is the thing the user reads, and it is shared:
+  /// every `pumpStack` here builds a fresh painter, and the T12 `stack
+  /// paint` probe used to key on the painter's identity (an interpolation
+  /// without braces — it printed the painter, not the flag), so seven pans
+  /// were seven of those and the ring held nothing else. With that fixed,
+  /// eight pans leave one geometry line, one T12 line and two counter
+  /// lines: four of five, and the geometry line is still there to read.
+  testWidgets('the buffer counters line moves once per bucket of eight full '
+      'composes — a pan does not flood the five-line ring', (tester) async {
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+
+    await pumpStack(tester, buffers: buffers);
+    paintOnce(tester);
+    expect(
+      InputInspector.notes.where((line) => line.startsWith('buf ')),
+      hasLength(1),
+      reason: 'the first compose reports',
+    );
+    final armed = CanvasPaintGeometryProbe.lastCounters;
+    expect(armed, isNotNull);
+
+    // No live surface here, so every moved rect composes whole: one full
+    // compose per pan, and the count climbs by exactly one each time.
+    var pan = 0.0;
+    while (buffers.fullCount < 7) {
+      pan += 1;
+      await pumpStack(tester, panX: pan, buffers: buffers);
+      paintOnce(tester);
+    }
+    expect(
+      CanvasPaintGeometryProbe.lastCounters,
+      armed,
+      reason: 'seven full composes are inside one bucket of eight — the key '
+          'must not have moved, or a pan is a line per paint',
+    );
+
+    while (buffers.fullCount < 8) {
+      pan += 1;
+      await pumpStack(tester, panX: pan, buffers: buffers);
+      paintOnce(tester);
+    }
+    expect(
+      CanvasPaintGeometryProbe.lastCounters,
+      isNot(armed),
+      reason: 'the eighth crosses the bucket',
+    );
+
+    // And the ring the user reads: eight rebuilds later the geometry line
+    // is still in it, beside the two counter lines and ONE T12 line that
+    // says what it was built to say.
+    final ring = InputInspector.notes;
+    expect(
+      ring.where((line) => line.startsWith('geom ')),
+      hasLength(1),
+      reason: 'a pan must not evict the geometry line: $ring',
+    );
+    expect(
+      ring.where((line) => line.startsWith('buf ')),
+      hasLength(2),
+      reason: 'the first compose and the bucket crossing: $ring',
+    );
+    expect(
+      ring.where((line) => line.startsWith('stack paint ')),
+      hasLength(1),
+      reason: 'the T12 line is keyed on what it prints, not on the painter '
+          'object — one line for eight rebuilds: $ring',
+    );
+    expect(
+      ring.singleWhere((line) => line.startsWith('stack paint ')),
+      contains('paper=true'),
+      reason: 'it prints the flag, not the painter',
+    );
   });
 
   testWidgets('the histogram counts paints per bucket', (tester) async {

@@ -1571,6 +1571,10 @@ abstract final class CanvasPaintGeometryProbe {
   static void reset() {
     lastLine = null;
     lastCounters = null;
+    // Every dedupe key the paint pass keeps — the T12 line's too, or a
+    // test that runs after another one sees no T12 line at all: the
+    // probes are static on purpose (a painter is rebuilt every frame).
+    _LayerStackPainter._lastStackProbe = null;
     zoomHistogram.clear();
   }
 }

@@ -114,8 +114,15 @@ class _LayerStackPaintPass {
     // an `assert` for the reason the sibling probe carries — release builds
     // are the ones that get reported. The visibility flag is the guard.
     if (InputInspector.visible.value) {
+      // ⛔`${_painter.paintPaper}`, braces and all. Without them (until
+      // 2026-09-13) this printed the PAINTER — `paper=_LayerStackPainter#
+      // 2445e(…).paintPaper` — so the flag it exists to show was never
+      // shown, and the painter's hash in the key made every rebuild a new
+      // line: a pan or a zoom, which rebuilds per frame, wrote a line per
+      // frame into a five-note ring. Found because that flood evicted the
+      // buffer counters line in `paint_geometry_probe_test`.
       final probe =
-          'stack paint paper=$_painter.paintPaper'
+          'stack paint paper=${_painter.paintPaper}'
           ' alpha=${Color(_painter.paperBackground.argb).a.toStringAsFixed(2)}'
           ' nodes=${_painter.nodes.length}'
           ' rect=${_canvasRect.width.round()}x${_canvasRect.height.round()}';
@@ -272,10 +279,16 @@ class _LayerStackPaintPass {
         // Appended to the geometry line they fell off the inspector's right
         // edge (유저 스샷 2026-09-13: `…capped=` and nothing after), and
         // they refreshed only when the GEOMETRY changed, so a stroke could
-        // not be watched at all — the one thing they exist for. Every 32
-        // patches, plus every full compose and every carry, is dense enough
-        // to follow a stroke (a paint is ~16ms, 32 of them half a second)
-        // and sparse enough not to drown the panel.
+        // not be watched at all — the one thing they exist for.
+        //
+        // ⛔ALL THREE COUNTS ARE BUCKETED, NOT JUST THE PATCHES. Keyed raw,
+        // a pan emitted a line PER PAINT (every paint of a pan carries),
+        // and the inspector keeps only five notes — so the line built to
+        // sit beside the geometry line evicted it (`paint_geometry_probe_test`
+        // went red on master, 2026-09-13). Every 32 patches or carries and
+        // every 8 full composes: a paint is ~16ms, so mid-stroke and
+        // mid-pan the line moves about twice a second, and a zoom that
+        // composes whole a few times does not move it at all.
         //
         // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
         // carrying looks exactly like one that never could, and this line
@@ -289,9 +302,9 @@ class _LayerStackPaintPass {
         // that works. See [DisplayBufferCache.derivedDepth] and
         // [DisplayBufferCache.promotedCount].
         final cadence =
-            'full=${cache.fullCount}'
+            'full~${cache.fullCount ~/ 8}'
             ' patched~${cache.patchedCount ~/ 32}'
-            ' carried=${cache.scrolledCount}';
+            ' carried~${cache.scrolledCount ~/ 32}';
         if (cadence != CanvasPaintGeometryProbe.lastCounters) {
           CanvasPaintGeometryProbe.lastCounters = cadence;
           InputInspector.note(
