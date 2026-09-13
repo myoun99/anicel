@@ -27,9 +27,59 @@ void main() {
   tearDown(() {
     FolderPicker.debugCoordinatedReader = null;
     FolderPicker.debugDownloadRequester = null;
+    FolderPicker.debugCoordinatedInPlaceReader = null;
+    FolderPicker.debugOperatingSystem = null;
     if (temp.existsSync()) {
       temp.deleteSync(recursive: true);
     }
+  });
+
+  /// 🚨★★★THE PROVIDER IS ASKED BEFORE A READABLE FILE IS BELIEVED. A
+  /// materialised File Provider item reads at once — and on 2026-09-13
+  /// what read at once was the copy Drive had cached from the iPad's own
+  /// first save: one cut of twelve, the desktop's revision sitting in the
+  /// cloud. `requestFileDownload` is iCloud's API and Drive ignores it;
+  /// a coordinated read is what a provider answers with its current item.
+  /// It copies nothing — the pick is still the file that opens.
+  test('🎯with a coordinator the provider is ASKED before a readable file '
+      'is believed — the copy it cached may be old', () async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    final path = '${temp.path}${Platform.pathSeparator}drive.anicel';
+    File(path).writeAsBytesSync(const [9, 9]);
+    final asked = <String>[];
+    FolderPicker.debugCoordinatedInPlaceReader = (requested) async {
+      asked.add(requested);
+      return true;
+    };
+    var downloads = 0;
+    FolderPicker.debugDownloadRequester = (_) async => downloads += 1;
+
+    final source = await FolderPicker.materializeOpenedFile(path);
+
+    expect(asked, [path], reason: 'one coordinated read, copying nothing');
+    expect(
+      downloads,
+      0,
+      reason: 'it read at once — the fetch-and-wait is for a placeholder',
+    );
+    expect(source.staged, isFalse);
+    expect(source.path, path, reason: 'the pick is the file that opens');
+  });
+
+  test('without a coordinator nothing is asked — there is nobody to ask',
+      () async {
+    FolderPicker.debugOperatingSystem = 'windows';
+    final path = '${temp.path}${Platform.pathSeparator}local.anicel';
+    File(path).writeAsBytesSync(const [9, 9]);
+    var asked = 0;
+    FolderPicker.debugCoordinatedInPlaceReader = (_) async {
+      asked += 1;
+      return true;
+    };
+
+    await FolderPicker.materializeOpenedFile(path);
+
+    expect(asked, 0);
   });
 
   /// A placeholder to every probe this code makes: an entry that is

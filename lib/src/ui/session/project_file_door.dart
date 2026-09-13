@@ -27,6 +27,7 @@ import '../../services/media/project_media_sources.dart'
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show remapProjectMediaPaths;
+import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/session_scratch.dart';
@@ -45,6 +46,16 @@ import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'live_stroke_landing.dart';
 import 'text_cel_bakes.dart';
+
+/// What every road of a save carries besides its path: the media the
+/// archive stores, the conforms beside them, and the reporter the UI gave
+/// it. Made once per save and handed whole, so the four roads cannot
+/// disagree about what a save is.
+typedef _SaveCarry = ({
+  Map<String, MediaByteSource> mediaToStore,
+  ProjectConforms conforms,
+  void Function(double)? onProgress,
+});
 
 /// Saves the session into a `.anicel` and opens one back.
 /// Who asked for a save — the ONE thing the two entrances disagree about.
@@ -335,62 +346,90 @@ class ProjectFileDoor {
   /// Answers what the staging save could not carry, as the direct save
   /// does — this path used to drop the answer (F-72).
   Future<Set<BrushFrameKey>> _saveViaCoordinatedReplace(
-    String filePath, {
-    required Map<String, MediaByteSource> mediaToStore,
-    required ProjectConforms conforms,
-    void Function(double)? onProgress,
-  }) async {
+    String filePath,
+    _SaveCarry carry,
+  ) async {
     final stagingDirectory = Directory(SessionScratch.stagedFolder())
       ..createSync(recursive: true);
     final staging =
         '${stagingDirectory.path.replaceAll('\\', '/')}'
         '/replace.tmp-${DateTime.now().microsecondsSinceEpoch}';
-    final lost = await _anicelFileService.save(
-      project: _project.repository.requireProject(),
-      brushFrameStore: _renderCaches.brushFrameStore,
-      auxCelStores: _auxCelStores,
-      filePath: staging,
-      mediaToStore: mediaToStore,
-      conforms: conforms,
-      grants: _grants.grantsToStore(),
-      mediaCrcs: _fingerprints.crcsToStore(),
-      onProgress: onProgress,
-    );
-    final replaced = await FolderPicker.replaceFileCoordinated(
-      sourcePath: staging,
-      destinationPath: filePath,
-    );
-    if (!replaced) {
-      throw FileSystemException(
-        'the location refused both a direct write and a coordinated '
-        'replace — this provider cannot be saved to in place',
-        filePath,
-      );
-    }
-    for (final store in [_renderCaches.brushFrameStore, ..._auxCelStores]) {
-      final snapshot = store.bakedSnapshotForSave();
-      final dirtyAgain = store.dirtyCelKeysSinceSave;
-      final moved = <BrushFrameKey, AnicelCelFileRef>{
-        for (final entry in snapshot.fileRefs.entries)
-          if (!dirtyAgain.contains(entry.key) &&
-              entry.value.filePath.replaceAll('\\', '/') == staging)
-            entry.key: AnicelCelFileRef(
-              filePath: filePath,
-              dataOffset: entry.value.dataOffset,
-              length: entry.value.length,
-              canvasSize: entry.value.canvasSize,
-              tileSize: entry.value.tileSize,
-            ),
-      };
-      if (moved.isNotEmpty) {
-        store.adoptSavedFile(moved, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
-      }
-    }
-    // The refs read from [filePath] now — held, as after every adopting save
-    // ([OpenProjectFile.hold]).
-    OpenProjectFile.instance.hold(filePath);
+    final lost = await _saveArchive(staging, carry);
+    await _swapIn(from: staging, to: filePath);
     return lost;
   }
+
+  /// Every save where the platform has a file coordinator: the ordinary
+  /// save — an append in place, or a whole archive — with the coordinator
+  /// told what happened. An append is followed by a coordinated touch; a
+  /// whole write is left BESIDE the file by the service and swapped in
+  /// through the coordinator (`.forReplacing`, a move on the same volume —
+  /// what a plain rename cost), then the refs are repointed.
+  ///
+  /// A location that refuses even the temp beside the file (a file-scoped
+  /// grant reaches the item and nothing next to it) throws out of the
+  /// service, and the staging road takes over — the same swap, from this
+  /// run's own room.
+  Future<Set<BrushFrameKey>> _saveCoordinated(
+    String filePath,
+    _SaveCarry carry, {
+    required bool rewriteWhole,
+  }) async {
+    String? leftBeside;
+    final Set<BrushFrameKey> lost;
+    try {
+      lost = await _saveArchive(
+        filePath,
+        carry,
+        rewriteWhole: rewriteWhole,
+        onFullWriteLeftAt: (tempPath) => leftBeside = tempPath,
+      );
+    } on FileSystemException {
+      return _saveViaCoordinatedReplace(filePath, carry);
+    }
+    final temp = leftBeside;
+    if (temp == null) {
+      // Appended in place: the item's content changed — said through the
+      // coordinator, the one voice a provider hears. Best-effort by nature:
+      // the append has landed whatever the answer, and there is nothing
+      // else to do with a refusal but carry on.
+      await FolderPicker.touchFileCoordinated(filePath);
+      return lost;
+    }
+    await _swapIn(from: temp, to: filePath);
+    return lost;
+  }
+
+  /// THE save call, once. Four sites used to build it — the direct save,
+  /// the staging road, the coordinated road and the door's own writer —
+  /// and the clone gate counted the fourth (2026-09-13). What differs per
+  /// road is the path, whether a Save As forces a whole write, and whether
+  /// the caller takes the swap; everything else is this session's.
+  Future<Set<BrushFrameKey>> _saveArchive(
+    String filePath,
+    _SaveCarry carry, {
+    bool rewriteWhole = false,
+    void Function(String tempPath)? onFullWriteLeftAt,
+  }) => _anicelFileService.save(
+    project: _project.repository.requireProject(),
+    brushFrameStore: _renderCaches.brushFrameStore,
+    auxCelStores: _auxCelStores,
+    filePath: filePath,
+    mediaToStore: carry.mediaToStore,
+    conforms: carry.conforms,
+    grants: _grants.grantsToStore(),
+    mediaCrcs: _fingerprints.crcsToStore(),
+    onProgress: carry.onProgress,
+    rewriteWhole: rewriteWhole,
+    onFullWriteLeftAt: onFullWriteLeftAt,
+  );
+
+  Future<void> _swapIn({required String from, required String to}) =>
+      replaceProjectFileCoordinated(
+        from: from,
+        to: to,
+        stores: [_renderCaches.brushFrameStore, ..._auxCelStores],
+      );
 
   Future<void> _writeProjectToFile(
     String filePath, {
@@ -414,45 +453,55 @@ class ProjectFileDoor {
       mediaEntryNames: _file.mediaEntryNames,
       staging: _staging,
     );
-    final conforms = _file.conformsToStore();
-    try {
-      celsLostToAMissingFile = await _anicelFileService.save(
-        project: _project.repository.requireProject(),
-        brushFrameStore: _renderCaches.brushFrameStore,
-        auxCelStores: _auxCelStores,
-        filePath: filePath,
-        mediaToStore: mediaToStore,
-        conforms: conforms,
-        grants: _grants.grantsToStore(),
-        mediaCrcs: _fingerprints.crcsToStore(),
-        onProgress: onProgress,
-        // 🚨A Save As is「writing somewhere else」and nothing more subtle:
-        // the target is not the file this session has been saving to. 유저
-        // 2026-08-31 asked for it to be a full write every time — 「기존
-        // 파일에 저장 덮어씌우기를 하더라도 고치기위해 풀저장」 — and the
-        // case that was NOT already whole is exactly this one, an overwrite
-        // onto an older copy of the same project.
-        rewriteWhole:
-            previousPath != null &&
-            previousPath.replaceAll(r'\', '/') !=
-                filePath.replaceAll(r'\', '/'),
-      );
-    } on FileSystemException {
-      // 실측 (08-26, iPhone + Google Drive): a File Provider can refuse
-      // plain in-place writes outright. The sanctioned way through is a
-      // COORDINATED replace — write the whole archive app-locally, then
-      // hand it to NSFileCoordinator to swap over the provider file.
-      // Scoped platforms only: a desktop refusal (locked file, dead
-      // drive) has no coordinator to appeal to and must stay loud.
-      if (!FolderPicker.grantsAreScoped) {
-        rethrow;
-      }
-      celsLostToAMissingFile = await _saveViaCoordinatedReplace(
+    final carry = (
+      mediaToStore: mediaToStore,
+      conforms: _file.conformsToStore(),
+      onProgress: onProgress,
+    );
+    // 🚨A Save As is「writing somewhere else」and nothing more subtle: the
+    // target is not the file this session has been saving to. 유저
+    // 2026-08-31 asked for it to be a full write every time — 「기존 파일에
+    // 저장 덮어씌우기를 하더라도 고치기위해 풀저장」 — and the case that was
+    // NOT already whole is exactly this one, an overwrite onto an older copy
+    // of the same project.
+    final saveAs =
+        previousPath != null &&
+        previousPath.replaceAll(r'\', '/') != filePath.replaceAll(r'\', '/');
+    // 🎯ONE LAW FOR A GRANTED PATH: where the platform has a file
+    // coordinator, every write ends in it — an append is followed by a
+    // coordinated touch, a whole write is swapped in through a coordinated
+    // `.forReplacing` move. A rename the provider happens to allow but is
+    // never told about changes the file on disk and uploads nothing: the
+    // iPad's saves「landed」and Drive's modified date never moved (M-1,
+    // 2026-09-11). ⛔Not by what the path is:「provider item or not」was the
+    // first draft and it was two rules for one write (유저 2026-09-13); a
+    // local file pays nothing for coordination, so nothing is asked.
+    if (FolderPicker.hasFileCoordinator) {
+      celsLostToAMissingFile = await _saveCoordinated(
         filePath,
-        mediaToStore: mediaToStore,
-        conforms: conforms,
-        onProgress: onProgress,
+        carry,
+        rewriteWhole: saveAs,
       );
+    } else {
+      try {
+        celsLostToAMissingFile = await _saveArchive(
+          filePath,
+          carry,
+          rewriteWhole: saveAs,
+        );
+      } on FileSystemException {
+        // A scoped platform WITHOUT a coordinator (Android) still reaches
+        // the staging road, where the coordinated replace answers false
+        // and the refusal is reported in full; a desktop refusal (locked
+        // file, dead drive) has nothing to appeal to and stays loud.
+        if (!FolderPicker.grantsAreScoped) {
+          rethrow;
+        }
+        celsLostToAMissingFile = await _saveViaCoordinatedReplace(
+          filePath,
+          carry,
+        );
+      }
     }
     // 🚨The save ABSORBED the staged bytes, so the staged copy stops being
     // anything — 유저 08-27: 「사본 남으면 진짜 용서안할게」. Retired HERE

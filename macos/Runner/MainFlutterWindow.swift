@@ -1,4 +1,5 @@
 import Cocoa
+import FileProvider
 import FlutterMacOS
 import UniformTypeIdentifiers
 
@@ -126,6 +127,12 @@ final class PathGrantHandler {
         result: result)
     case "requestFileDownload":
       PathGrantHandler.requestFileDownload(
+        sourcePath: arguments?["sourcePath"] as? String, result: result)
+    case "readInPlaceCoordinated":
+      PathGrantHandler.readInPlaceCoordinated(
+        sourcePath: arguments?["sourcePath"] as? String, result: result)
+    case "touchFileCoordinated":
+      PathGrantHandler.touchFileCoordinated(
         sourcePath: arguments?["sourcePath"] as? String, result: result)
     default:
       // Only the two folder-grant methods live here. The channel's other
@@ -345,15 +352,32 @@ final class PathGrantHandler {
       let coordinator = NSFileCoordinator(filePresenter: nil)
       var coordinationError: NSError?
       var writeError: Error?
+      // Both items are coordinated: the source is MOVING, the destination
+      // is being REPLACED — which is what tells a provider「the same item,
+      // new content」rather than「one deleted, another created」.
       coordinator.coordinate(
+        writingItemAt: source, options: .forMoving,
         writingItemAt: destination, options: .forReplacing,
         error: &coordinationError
-      ) { url in
+      ) { from, to in
         do {
-          let data = try Data(contentsOf: source, options: .mappedIfSafe)
-          try data.write(to: url, options: .atomic)
+          // A MOVE first. Beside the destination (the save's own temp) it
+          // is the rename a direct save costs — no second copy of the
+          // archive. The copy is the road for a source on another volume
+          // (this run's staging room, under a file-scoped grant), where a
+          // move would be a copy anyway.
+          if FileManager.default.fileExists(atPath: to.path) {
+            _ = try FileManager.default.replaceItemAt(to, withItemAt: from)
+          } else {
+            try FileManager.default.moveItem(at: from, to: to)
+          }
         } catch {
-          writeError = error
+          do {
+            let data = try Data(contentsOf: from, options: .mappedIfSafe)
+            try data.write(to: to, options: .atomic)
+          } catch {
+            writeError = error
+          }
         }
       }
       let failure = coordinationError ?? (writeError as NSError?)
@@ -404,6 +428,80 @@ final class PathGrantHandler {
       try? FileManager.default.startDownloadingUbiquitousItem(at: source)
       DispatchQueue.main.async {
         result(["status": "granted", "items": [["path": sourcePath]]])
+      }
+    }
+  }
+
+  /// The iOS twin's in-place coordinated read, verbatim: the item is
+  /// opened inside a coordinated read and closed again — the ask a File
+  /// Provider actually answers with its current content — and nothing is
+  /// copied. A `~/Library/CloudStorage` document under Drive for desktop
+  /// meets the same provider discipline a sandboxed app meets on iOS.
+  static func readInPlaceCoordinated(
+    sourcePath: String?, result: @escaping FlutterResult
+  ) {
+    guard let sourcePath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let source = URL(fileURLWithPath: sourcePath)
+      try? FileManager.default.startDownloadingUbiquitousItem(at: source)
+      let coordinator = NSFileCoordinator(filePresenter: nil)
+      var coordinationError: NSError?
+      var readError: Error?
+      coordinator.coordinate(
+        readingItemAt: source, options: [],
+        error: &coordinationError
+      ) { url in
+        do {
+          let handle = try FileHandle(forReadingFrom: url)
+          try handle.close()
+        } catch {
+          readError = error
+        }
+      }
+      let failure = coordinationError ?? (readError as NSError?)
+      DispatchQueue.main.async {
+        if let failure {
+          result([
+            "status": "unavailable", "message": failure.localizedDescription,
+          ])
+        } else {
+          result(["status": "granted", "items": [["path": sourcePath]]])
+        }
+      }
+    }
+  }
+
+  /// The iOS twin's coordinated touch, verbatim: a coordinated write whose
+  /// block only sets the modification date, after an append the app made
+  /// in place — the coordination is what a File Provider hears (M-1).
+  static func touchFileCoordinated(
+    sourcePath: String?, result: @escaping FlutterResult
+  ) {
+    guard let sourcePath else {
+      result(["status": "unavailable"])
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let url = URL(fileURLWithPath: sourcePath)
+      let coordinator = NSFileCoordinator(filePresenter: nil)
+      var coordinationError: NSError?
+      coordinator.coordinate(
+        writingItemAt: url, options: [], error: &coordinationError
+      ) { url in
+        try? FileManager.default.setAttributes(
+          [.modificationDate: Date()], ofItemAtPath: url.path)
+      }
+      DispatchQueue.main.async {
+        if let failure = coordinationError {
+          result([
+            "status": "unavailable", "message": failure.localizedDescription,
+          ])
+        } else {
+          result(["status": "granted", "items": [["path": sourcePath]]])
+        }
       }
     }
   }

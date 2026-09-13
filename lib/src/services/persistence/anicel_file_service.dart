@@ -376,6 +376,20 @@ class AnicelFileService {
     /// drops the cold blob on adoption — so ANY write, whole or appended,
     /// has to read it back from there. Rewriting reads MORE, not less.
     bool rewriteWhole = false,
+
+    /// 🎯A CALLER WITH A FILE COORDINATOR SWAPS FOR ITSELF. When set, a
+    /// save that turns out WHOLE is not renamed onto [filePath]: the
+    /// finished archive is left beside it (`<filePath>.tmp-…`), the refs
+    /// adopted point INTO it, and this is told where — the caller then
+    /// replaces through the coordinator and repoints. An append is
+    /// unaffected: it wrote into [filePath] and there is nothing to swap.
+    ///
+    /// Why a callback and not a return: the swap is synchronous below for a
+    /// reason ([_renameWithRetry] — the refs carry the OLD layout until the
+    /// caller adopts), and a coordinated replace is a channel call that
+    /// cannot be. So the caller takes the swap, and with it the shape the
+    /// staging road already had: adopt the temp, replace, repoint.
+    void Function(String tempPath)? onFullWriteLeftAt,
   }) async {
     // Aux stores (the conte sheet ink, R5) ride the same archive: their
     // keys live in their own namespace, so the snapshots merge without
@@ -522,6 +536,7 @@ class AnicelFileService {
       grants: grants,
       mediaCrcs: mediaCrcs,
       onProgress: onProgress,
+      onFullWriteLeftAt: onFullWriteLeftAt,
     );
     adoptEach(adopted);
     return settle(lost(adopted));
@@ -986,6 +1001,7 @@ class AnicelFileService {
     /// entry REMOVED — that is the settings-change sweep.
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
+    void Function(String tempPath)? onFullWriteLeftAt,
   }) async {
     final allKeys = <BrushFrameKey>{
       ...baked.hot.keys,
@@ -1044,7 +1060,10 @@ class AnicelFileService {
     try {
       refs = await _writeArchiveInIsolate(
         tempPath: tempPath,
-        filePath: filePath,
+        // The refs name the file the bytes will be READ from: [filePath]
+        // once the rename below has run, the temp itself when the caller is
+        // taking the swap and the bytes stay there until it does.
+        filePath: onFullWriteLeftAt == null ? filePath : tempPath,
         project: project,
         saveDirectory: saveDirectory,
         works: works,
@@ -1061,6 +1080,14 @@ class AnicelFileService {
       rethrow;
     }
 
+    // The caller with a file coordinator swaps for itself (see `save`):
+    // the archive stays beside the file, the refs already point into it,
+    // and nothing is swept — the temp IS the save until the caller has
+    // moved it, and the caller's next whole write collects strays.
+    if (onFullWriteLeftAt != null) {
+      onFullWriteLeftAt(tempPath);
+      return refs;
+    }
     // SYNC rename: existing refs into the replaced file carry offsets of
     // the OLD layout, so no event may run between the swap and the
     // caller's adoptSavedFile — sync-to-return is microtask-tight.
@@ -1072,7 +1099,7 @@ class AnicelFileService {
     // the temp IN PLACE: it holds the only complete copy of this save,
     // and the sweep on the next successful save collects strays.
     _renameWithRetry(temp, filePath);
-    _sweepStaleSaveTemps(filePath);
+    sweepStaleSaveTemps(filePath);
     return refs;
   }
 
@@ -1111,12 +1138,18 @@ class AnicelFileService {
   /// like the recovery folder — but matching only this project's own temp
   /// prefix: the folder is the user's, so the recovery folder's broader
   /// `.tmp-` sweep must not run here.
-  static void _sweepStaleSaveTemps(String filePath) {
+  /// Deletes the `<filePath>.tmp-…` strays a failed swap left beside the
+  /// file. [except] is the one temp a caller that swaps for itself has
+  /// just moved in — or, when the platform copied instead, the one whose
+  /// bytes keys dirty-again may still be read from; it is the NEXT whole
+  /// write's stray, not this one's.
+  static void sweepStaleSaveTemps(String filePath, {String? except}) {
     try {
       final prefix = '${filePath.replaceAll('\\', '/')}.tmp-';
+      final keep = except?.replaceAll('\\', '/');
       for (final entity in File(filePath).parent.listSync()) {
-        if (entity is File &&
-            entity.path.replaceAll('\\', '/').startsWith(prefix)) {
+        final path = entity.path.replaceAll('\\', '/');
+        if (entity is File && path.startsWith(prefix) && path != keep) {
           entity.deleteSync();
         }
       }

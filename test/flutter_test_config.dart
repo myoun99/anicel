@@ -73,9 +73,22 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   FolderPicker.debugSaveDestinationPicker = null;
   FolderPicker.debugOperatingSystem = null;
   FolderPicker.debugBookmarkResolver = null;
-  FolderPicker.debugCoordinatedReplacer = null;
+  // The native file coordinator does not exist under `flutter test`, and
+  // since 2026-09-13 every save on a platform that has one goes through
+  // it — so a test that fakes an Apple OS needs a stand-in or every whole
+  // write it makes fails at the swap. These doubles do what the native
+  // side does on one volume (a move) and say yes to the rest. A test that
+  // wants to watch, refuse or stage installs its own; one that wants「no
+  // coordinator」fakes a platform without one.
+  FolderPicker.debugCoordinatedReplacer =
+      ({required String sourcePath, required String destinationPath}) async {
+        File(sourcePath).renameSync(destinationPath);
+        return true;
+      };
   FolderPicker.debugCoordinatedReader = null;
   FolderPicker.debugDownloadRequester = null;
+  FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
+  FolderPicker.debugCoordinatedToucher = (_) async => true;
   // Back to the PRODUCTION default, not to false — a reset that quietly
   // put every test on the other shape would hide the one that ships.
   anicelAlwaysZip64 = true;

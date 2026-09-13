@@ -628,14 +628,31 @@ abstract final class FolderPicker {
     }, kind)).first;
   }
 
-  /// The shape both coordinated file calls have: honour the test seam,
-  /// answer false where there is no coordinator, else ask the channel and
-  /// report whether it landed.
+  /// The shape every coordinated call has: honour the test seam, answer
+  /// false where there is no coordinator, else ask the channel and report
+  /// whether it landed.
   ///
   /// ⛔THE SEAM AND THE GUARD ARE THE SAME LAW. Written out per method,
   /// a new coordinated call arrives with a channel invocation and no
   /// `hasFileCoordinator` guard — which on a desktop build is a
-  /// MissingPluginException instead of a false.
+  /// MissingPluginException instead of a false. [override] is the seam
+  /// already bound to its arguments, so one funnel serves a call that
+  /// names two paths and a call that names one.
+  static Future<bool> _askCoordinator(
+    String method,
+    Map<String, Object?> arguments,
+    Future<bool> Function()? override,
+  ) async {
+    if (override != null) {
+      return override();
+    }
+    if (!hasFileCoordinator) {
+      return false;
+    }
+    final answer = await _invoke(method, arguments, GrantKind.file);
+    return answer.first.isGranted;
+  }
+
   static Future<bool> _coordinated(
     String method,
     Future<bool> Function({
@@ -645,18 +662,71 @@ abstract final class FolderPicker {
     override, {
     required String sourcePath,
     required String destinationPath,
-  }) async {
-    if (override != null) {
-      return override(sourcePath: sourcePath, destinationPath: destinationPath);
-    }
-    if (!hasFileCoordinator) {
-      return false;
-    }
-    final answer = await _invoke(method, {
-      'sourcePath': sourcePath,
-      'destinationPath': destinationPath,
-    }, GrantKind.file);
-    return answer.first.isGranted;
+  }) => _askCoordinator(
+    method,
+    {'sourcePath': sourcePath, 'destinationPath': destinationPath},
+    override == null
+        ? null
+        : () =>
+              override(sourcePath: sourcePath, destinationPath: destinationPath),
+  );
+
+  /// Test seam for [readInPlaceCoordinated]. ⚠️Reset in
+  /// `test/flutter_test_config.dart`.
+  static Future<bool> Function(String path)? debugCoordinatedInPlaceReader;
+
+  /// Reads [path] through the platform's file COORDINATION and copies
+  /// NOTHING — the coordinated read the open needed all along.
+  ///
+  /// 🚨★★★A COORDINATED READ IS HOW A FILE PROVIDER IS ASKED FOR THE
+  /// CURRENT ITEM. [requestFileDownload] speaks iCloud's API and every
+  /// other provider ignores it, so on 2026-09-13 an iPad opening a Drive
+  /// project「in place」read the copy Drive had cached from the iPad's own
+  /// first save — one cut of twelve — while the desktop's revision sat in
+  /// the cloud. A plain `dart:io` read never involves the provider;
+  /// coordination does, and it is the only lever an app has (the M-1
+  /// family: an uncoordinated write is one the provider never uploads).
+  /// The native side opens the item inside the coordination block and
+  /// closes it again; the bytes are then read where they lie.
+  static Future<bool> readInPlaceCoordinated(String path) {
+    final override = debugCoordinatedInPlaceReader;
+    return _askCoordinator(
+      'readInPlaceCoordinated',
+      {'sourcePath': path},
+      override == null ? null : () => override(path),
+    );
+  }
+
+  /// Test seam for [touchFileCoordinated]. ⚠️Reset in
+  /// `test/flutter_test_config.dart`.
+  static Future<bool> Function(String path)? debugCoordinatedToucher;
+
+  /// Tells the platform's file COORDINATION that [path]'s content changed
+  /// — a coordinated write whose block writes nothing, after an append the
+  /// app made in place.
+  ///
+  /// 🚨★★★ONE LAW FOR A GRANTED PATH: where the platform has a coordinator,
+  /// every write ends in it. An append is a plain `dart:io` write into the
+  /// item; a File Provider learns of a change through coordination and
+  /// through nothing else, so a save that appended and stopped there was a
+  /// save the provider never uploaded — the strokes were there on reopen
+  /// and Drive's modified date never moved (M-1, 2026-09-11). A local file
+  /// pays nothing here: with no presenter and no provider, the coordinator
+  /// runs the empty block and returns.
+  ///
+  /// ⛔NOT「when the path is a provider item」. That was the first draft —
+  /// a native check of `NSFileProviderManager` choosing the road per file —
+  /// and it was two rules for one write, with a test of which that this
+  /// app has no business inventing (유저 2026-09-13: 「규칙 통합이 아니라
+  /// 두 개 준비하는 걸로 보이는데」). Coordination costs a local file
+  /// nothing, so nothing is asked.
+  static Future<bool> touchFileCoordinated(String path) {
+    final override = debugCoordinatedToucher;
+    return _askCoordinator(
+      'touchFileCoordinated',
+      {'sourcePath': path},
+      override == null ? null : () => override(path),
+    );
   }
 
   /// Test seam for [replaceFileCoordinated] — the channel is unreachable
@@ -773,6 +843,15 @@ abstract final class FolderPicker {
         'within',
         'a wait with no deadline needs a way to be cancelled',
       );
+    }
+    // 🎯THE PROVIDER IS ASKED BEFORE THE FILE IS BELIEVED. A materialised
+    // item reads at once — and it may be the copy the provider cached last
+    // time, not what the cloud holds now (2026-09-13: twelve cuts on the
+    // desktop, one on the iPad, same path). The coordinated read is what
+    // makes the provider bring the current item; it copies nothing, and
+    // where there is no coordinator it is not asked at all.
+    if (hasFileCoordinator) {
+      await readInPlaceCoordinated(path);
     }
     if (await _plainlyReadable(path)) {
       return (path: path, staged: false);

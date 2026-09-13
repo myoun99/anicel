@@ -29,6 +29,7 @@ void main() {
   tearDown(() {
     FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugCoordinatedReplacer = null;
+    FolderPicker.debugCoordinatedToucher = null;
     try {
       folder.deleteSync(recursive: true);
     } on Object {
@@ -98,6 +99,68 @@ void main() {
     Directory(path).createSync();
     return path;
   }
+
+  /// 🚨★★★ONE LAW FOR A GRANTED PATH: where the platform has a coordinator,
+  /// every save ends in it. The first save here is a whole archive — swapped
+  /// in through the coordinated replace from a temp BESIDE the file, so
+  /// the native side can MOVE it (the rename a direct save costs); the
+  /// second is an append in place — followed by a coordinated touch, the
+  /// one voice a provider hears. Nothing is refused and nothing is asked
+  /// about what the path is:「provider item or not」was the first draft,
+  /// and it was two rules for one write (유저 2026-09-13). A local file
+  /// pays nothing for either.
+  test('🎯with a coordinator a whole write is swapped in through it from '
+      'beside the file, and an append is followed by a coordinated touch',
+      () async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    final replacedFrom = <String>[];
+    FolderPicker.debugCoordinatedReplacer = ({
+      required String sourcePath,
+      required String destinationPath,
+    }) async {
+      replacedFrom.add(sourcePath.replaceAll('\\', '/'));
+      // What the native side does on one volume: a move.
+      File(sourcePath).renameSync(destinationPath);
+      return true;
+    };
+    final touched = <String>[];
+    FolderPicker.debugCoordinatedToucher = (path) async {
+      touched.add(path);
+      return true;
+    };
+
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    drawOnCurrentFrame(s);
+    final path = '${folder.path.replaceAll('\\', '/')}/drive.anicel';
+
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+
+    expect(replacedFrom, hasLength(1), reason: 'a whole write is a replace');
+    expect(
+      replacedFrom.single,
+      startsWith('$path.tmp-'),
+      reason: 'written BESIDE the file so the swap is a move — not staged '
+          'in the run\'s room, which would cost a second copy',
+    );
+    expect(touched, isEmpty, reason: 'a replace is not a touch');
+    expect(parseAnicelZipLayoutFile(path).projectEntry(), isNotNull);
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
+    final refPaths = s.renderCaches.brushFrameStore
+        .bakedSnapshotForSave()
+        .fileRefs
+        .values
+        .map((ref) => ref.filePath.replaceAll('\\', '/'))
+        .toSet();
+    expect(refPaths, {path}, reason: 'the refs point at the file, not the temp');
+
+    drawOnCurrentFrame(s);
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+
+    expect(replacedFrom, hasLength(1), reason: 'the second save appended in place');
+    expect(touched, [path], reason: 'and the append was said through the coordinator');
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
+  });
 
   test('🚨 a refused write falls back to the coordinated replace, and the '
       'session carries on as an ordinary save', () async {
