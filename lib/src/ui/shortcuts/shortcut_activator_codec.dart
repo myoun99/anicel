@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -33,20 +34,74 @@ SingleActivator? singleActivatorFromJson(Object? json) {
   );
 }
 
-/// 'Ctrl+Shift+Z' style display label (dialog chips + menu shortcut
-/// labels resolve special keys to readable glyphs).
-String singleActivatorLabel(SingleActivator activator) {
+/// Whether [platform]'s COMMAND modifier is ⌘ rather than Ctrl: macOS, and
+/// iOS — an iPad's hardware keyboard.
+///
+/// 🗣️유저 2026-09-13 (I-19): 「맥은 컨트롤키가 다르다 했던가? 쉬프트도? 그런
+/// 멀티플랫폼부분도 신경써서 해줘」. Shift is the same key everywhere — only
+/// its glyph differs. The key that differs is the one the registry writes as
+/// `control`.
+bool commandIsMeta([TargetPlatform? platform]) =>
+    switch (platform ?? defaultTargetPlatform) {
+      TargetPlatform.macOS || TargetPlatform.iOS => true,
+      _ => false,
+    };
+
+/// A registry default as [platform] presses it.
+///
+/// ★The registry writes the command modifier ONCE, as `control`, and each
+/// platform reads it in its own key: Ctrl on Windows, Linux and Android, ⌘ on
+/// macOS and iOS — Ctrl+Z is ⌘Z on a Mac, the way every Mac app spells undo.
+/// ⛔A key the user RECORDS is stored exactly as it was pressed and never
+/// passes through here.
+SingleActivator platformActivator(
+  SingleActivator activator, [
+  TargetPlatform? platform,
+]) {
+  if (!activator.control || !commandIsMeta(platform)) {
+    return activator;
+  }
+  return SingleActivator(
+    activator.trigger,
+    shift: activator.shift,
+    alt: activator.alt,
+    meta: true,
+    numLock: activator.numLock,
+    includeRepeats: activator.includeRepeats,
+  );
+}
+
+/// How a shortcut is written on [platform]: 'Ctrl+Shift+Z' on Windows and
+/// the rest, '⇧⌘Z' on a Mac or an iPad — the modifier glyphs in the order
+/// Apple's own menus print them (⌃⌥⇧⌘), with no separators. The settings
+/// dialog's chips and every tooltip read this one spelling.
+String singleActivatorLabel(
+  SingleActivator activator, [
+  TargetPlatform? platform,
+]) {
+  if (commandIsMeta(platform)) {
+    return [
+      if (activator.control) '⌃',
+      if (activator.alt) '⌥',
+      if (activator.shift) '⇧',
+      if (activator.meta) '⌘',
+      _triggerLabel(activator.trigger, apple: true),
+    ].join();
+  }
   final parts = <String>[
     if (activator.control) 'Ctrl',
     if (activator.alt) 'Alt',
     if (activator.shift) 'Shift',
-    if (activator.meta) 'Meta',
-    _triggerLabel(activator.trigger),
+    if (activator.meta)
+      (platform ?? defaultTargetPlatform) == TargetPlatform.windows
+          ? 'Win'
+          : 'Meta',
+    _triggerLabel(activator.trigger, apple: false),
   ];
   return parts.join('+');
 }
 
-String _triggerLabel(LogicalKeyboardKey trigger) {
+String _triggerLabel(LogicalKeyboardKey trigger, {required bool apple}) {
   if (trigger == LogicalKeyboardKey.space) {
     return 'Space';
   }
@@ -68,8 +123,27 @@ String _triggerLabel(LogicalKeyboardKey trigger) {
   if (trigger == LogicalKeyboardKey.period) {
     return '.';
   }
+  if (apple) {
+    if (trigger == LogicalKeyboardKey.backspace) {
+      return '⌫';
+    }
+    if (trigger == LogicalKeyboardKey.delete) {
+      return '⌦';
+    }
+    if (trigger == LogicalKeyboardKey.enter) {
+      return '↩';
+    }
+    if (trigger == LogicalKeyboardKey.escape) {
+      return '⎋';
+    }
+  }
   final label = trigger.keyLabel;
-  return label.isEmpty ? trigger.debugName ?? '?' : label.toUpperCase();
+  if (label.isEmpty) {
+    return trigger.debugName ?? '?';
+  }
+  // A letter reads in capitals (Ctrl+Z); a NAMED key keeps its own case —
+  // upper-casing every label printed ENTER and BACKSPACE.
+  return label.length == 1 ? label.toUpperCase() : label;
 }
 
 /// Value equality for activators (SingleActivator has none of its own):

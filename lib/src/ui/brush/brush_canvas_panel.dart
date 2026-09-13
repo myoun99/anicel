@@ -81,6 +81,8 @@ import '../widgets/app_scrollbar.dart';
 import '../widgets/superellipse_clip.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../listenable_rebind.dart';
 import '../repaint_props.dart';
@@ -2537,6 +2539,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required Widget icon,
     required VoidCallback? onPressed,
     bool isSelected = false,
+    List<String> shortcuts = const [],
   }) {
     return AppIconButton(
       keyValue: keyValue,
@@ -2544,6 +2547,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       icon: icon,
       onPressed: onPressed,
       isSelected: isSelected,
+      shortcuts: shortcuts,
     );
   }
 }

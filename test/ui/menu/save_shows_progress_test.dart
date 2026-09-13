@@ -117,6 +117,40 @@ void main() {
     );
   });
 
+  testWidgets('🗣️I-19: THE Save — File menu, Ctrl+S and the exit prompt ask '
+      'one function — goes back to the bound file through the same window', (
+    tester,
+  ) async {
+    // 「법 나뉘어진거있으면 겸사겸사 통일」: the menu's Save and the exit
+    // prompt's Save each asked 「is there a file yet?」 on their own.
+    final s = session();
+    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
+    await runSave(
+      tester,
+      (context) => saveProjectShowingProgress(context, s, path),
+    );
+    expect(s.projectFile.path, isNotNull, reason: 'a save binds the session');
+
+    s.cutVerbs.createCut();
+    expect(s.projectFile.hasUnsavedChanges, isTrue);
+
+    final run = await runSave(tester, (context) async {
+      await saveProject(context, s);
+      return true;
+    });
+
+    expect(run.sawWindow, isTrue, reason: 'the same window as every save');
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'it wrote to the file it is bound to — no picker was asked',
+    );
+    // An edited session schedules work of its own; the binding checks for
+    // stray timers before teardown runs, so it has to go down in the body.
+    s.dispose();
+    await tester.pump();
+  });
+
   testWidgets('🚨 a save that FAILS reports false and leaves no window up', (
     tester,
   ) async {

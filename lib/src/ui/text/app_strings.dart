@@ -141,9 +141,6 @@ enum AppStrings {
   /// 색 변환 — replace the drawing's colour, keeping its alpha.
   String get tlSharedReplaceColour => _s('tlSharedReplaceColour');
 
-  /// 픽셀 비우기 — empty the drawing, keeping the cel and its exposure.
-  String get tlSharedClearPixels => _s('tlSharedClearPixels');
-
   String get tlSharedColourEdit => _s('tlSharedColourEdit');
 
   String get tlSharedDeleteColour => _s('tlSharedDeleteColour');
@@ -728,14 +725,6 @@ enum AppStrings {
   /// 나눠 쓰지 않고 「fx」 하나로 말한다.
   String get tlAttachDropsFxTitle => _s('tlAttachDropsFxTitle');
   String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
-  String get tlSharedCut => _s('tlSharedCut');
-  String get tlSharedCopy => _s('tlSharedCopy');
-  String get tlSharedPasteLinked => _s('tlSharedPasteLinked');
-
-  /// ㉕: the copied cel's content as a cel of its OWN — the paste that does
-  /// NOT link, named for what it makes rather than for what it is not.
-  String get tlSharedPasteIndependent => _s('tlSharedPasteIndependent');
-  String get tlSharedDelete => _s('tlSharedDelete');
 
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
@@ -1148,10 +1137,6 @@ enum AppStrings {
   String get toolFill => _s('toolFill');
   String get toolSelect => _s('toolSelect');
   String get toolMove => _s('toolMove');
-  String get toolBrushTip => _s('toolBrushTip');
-  String get toolEraserTip => _s('toolEraserTip');
-  String get toolEyedropperTip => _s('toolEyedropperTip');
-  String get toolFillTip => _s('toolFillTip');
   String get toolSelectTip => _s('toolSelectTip');
   String get toolMoveTip => _s('toolMoveTip');
   String get toolCutTip => _s('toolCutTip');
@@ -1270,10 +1255,6 @@ enum AppStrings {
   String get commonFill => _s('commonFill');
 
   // --- Canvas view controls ---
-  // The ± buttons are BACK on the floor's pill (유저 확정 2026-08-13, later
-  // the same day), so the two tooltips they wear are back with them.
-  String get viewZoomIn => _s('viewZoomIn');
-  String get viewZoomOut => _s('viewZoomOut');
   String get viewFitToView => _s('viewFitToView');
   String get viewResetView => _s('viewResetView');
   String get viewRotateLeft => _s('viewRotateLeft');
@@ -1295,7 +1276,6 @@ enum AppStrings {
   String get tlAllDisplayedLayers => _s('tlAllDisplayedLayers');
   String get tlShowAll => _s('tlShowAll');
   String get tlHideAll => _s('tlHideAll');
-  String get tlSoloActiveLayer => _s('tlSoloActiveLayer');
   String get tlSoloKind => _s('tlSoloKind');
   String get tlSoloColor => _s('tlSoloColor');
   String get tlSoloFillReferences => _s('tlSoloFillReferences');
@@ -1373,7 +1353,6 @@ enum AppStrings {
     'commonNotice': 'Notice',
     'tlSharedDeselect': 'Deselect',
     'tlSharedReplaceColour': 'Replace Color',
-    'tlSharedClearPixels': 'Clear Pixels',
     'tlSharedColourEdit': 'Color Edit',
     'tlSharedDeleteColour': 'Delete Color',
     'tlSharedKeepColour': 'Keep Color',
@@ -2023,10 +2002,6 @@ enum AppStrings {
     'toolFill': 'Fill',
     'toolSelect': 'Select',
     'toolMove': 'Move / Transform',
-    'toolBrushTip': 'Brush Tool',
-    'toolEraserTip': 'Eraser Tool',
-    'toolEyedropperTip': 'Eyedropper Tool',
-    'toolFillTip': 'Fill Tool',
     'toolSelectTip': 'Select Tool',
     'toolMoveTip': 'Move / Transform Tool',
     'toolCutTip': 'Cut Tool',
@@ -2147,8 +2122,6 @@ enum AppStrings {
     'trMeshRows': 'Rows',
     'commonReset': 'Reset',
     'commonFill': 'Fill',
-    'viewZoomIn': 'Zoom In',
-    'viewZoomOut': 'Zoom Out',
     'viewFitToView': 'Fit to View',
     'viewResetView': 'Reset View (100%)',
     'panelSettings': 'Settings',
@@ -2169,7 +2142,6 @@ enum AppStrings {
     'tlAllDisplayedLayers': 'All displayed layers',
     'tlShowAll': 'Show all',
     'tlHideAll': 'Hide all',
-    'tlSoloActiveLayer': 'Solo active layer',
     'tlSoloKind': 'Solo kind',
     'tlSoloColor': 'Solo color',
     'tlSoloFillReferences': 'Solo fill references',
@@ -2295,11 +2267,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
-    'tlSharedCut': 'Cut',
-    'tlSharedCopy': 'Copy',
-    'tlSharedPasteLinked': 'Paste linked',
-    'tlSharedPasteIndependent': 'Paste independent',
-    'tlSharedDelete': 'Delete',
     'tlSharedEdit': 'Edit',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
@@ -2343,7 +2310,6 @@ enum AppStrings {
     'commonNotice': 'お知らせ',
     'tlSharedDeselect': '選択解除',
     'tlSharedReplaceColour': '色変換',
-    'tlSharedClearPixels': 'ピクセル消去',
     'tlSharedColourEdit': '色編集',
     'tlSharedDeleteColour': '色削除',
     'tlSharedKeepColour': '色残し',
@@ -2514,8 +2480,6 @@ enum AppStrings {
     'menuPlay': '再生',
     'menuPause': '一時停止',
     'menuAction.file-open': '開く…',
-    'menuAction.file-save': '保存',
-    'menuAction.file-save-as': '名前を付けて保存…',
     'menuAction.file-project-background': 'プロジェクトの背景…',
     'menuAction.file-import': '読み込み／配置…',
     'menuAction.file-export': '書き出し…',
@@ -2758,6 +2722,7 @@ enum AppStrings {
     'shortcutCategory.Selection': '選択',
     'shortcutCategory.View': '表示',
     'shortcutCategory.Timeline': 'タイムライン',
+    'shortcutCategory.File': 'ファイル',
     'shortcutAction.frame-previous': '前のフレーム',
     'shortcutAction.frame-next': '次のフレーム',
     'shortcutAction.frame-walk-left': '左へ一歩',
@@ -2798,6 +2763,17 @@ enum AppStrings {
     'shortcutAction.frame-toggle-mark': 'マークを切り替え',
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
+    'shortcutAction.edit-cut': '切り取り',
+    'shortcutAction.edit-copy': 'コピー',
+    'shortcutAction.edit-paste-linked': 'リンクして貼り付け',
+    'shortcutAction.edit-paste-independent': '独立して貼り付け',
+    'shortcutAction.edit-delete': '削除',
+    'shortcutAction.edit-clear-pixels': 'ピクセル消去',
+    'shortcutAction.file-save': '保存',
+    'shortcutAction.file-save-as': '名前を付けて保存…',
+    'shortcutAction.layer-visibility-solo': 'アクティブレイヤーをソロ',
+    'shortcutAction.canvas-zoom-in': 'ズームイン',
+    'shortcutAction.canvas-zoom-out': 'ズームアウト',
     'cutCommands': 'カット操作',
     'cutAddCut': 'カットを追加',
     'cutNewCut': 'カットを新規作成',
@@ -3057,10 +3033,6 @@ enum AppStrings {
     'toolFill': '塗りつぶし',
     'toolSelect': '選択',
     'toolMove': '移動 / 変形',
-    'toolBrushTip': 'ブラシツール',
-    'toolEraserTip': '消しゴムツール',
-    'toolEyedropperTip': 'スポイトツール',
-    'toolFillTip': '塗りつぶしツール',
     'toolSelectTip': '選択ツール',
     'toolMoveTip': '移動 / 変形ツール',
     // TVPaint's own term for this verb in Japanese studios.
@@ -3178,8 +3150,6 @@ enum AppStrings {
     'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
     'commonFill': '塗りつぶし',
-    'viewZoomIn': 'ズームイン',
-    'viewZoomOut': 'ズームアウト',
     'viewFitToView': '画面に合わせる',
     'viewResetView': '表示をリセット（100%）',
     'panelSettings': '設定',
@@ -3200,7 +3170,6 @@ enum AppStrings {
     'tlAllDisplayedLayers': '表示中の全レイヤー',
     'tlShowAll': 'すべて表示',
     'tlHideAll': 'すべて隠す',
-    'tlSoloActiveLayer': 'アクティブレイヤーをソロ',
     'tlSoloKind': '種類をソロ',
     'tlSoloColor': '色をソロ',
     'tlSoloFillReferences': '塗り参照をソロ',
@@ -3355,11 +3324,6 @@ enum AppStrings {
     'tlDetachLayer': '付属を解除',
     'tlAttachDropsFxTitle': '付属すると fx が失われます',
     'tlAttachDropsFxBody': '付属レイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
-    'tlSharedCut': '切り取り',
-    'tlSharedCopy': 'コピー',
-    'tlSharedPasteLinked': 'リンクして貼り付け',
-    'tlSharedPasteIndependent': '独立して貼り付け',
-    'tlSharedDelete': '削除',
     'tlSharedEdit': '編集',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
@@ -3402,7 +3366,6 @@ enum AppStrings {
     'commonNotice': '알림',
     'tlSharedDeselect': '선택 해제',
     'tlSharedReplaceColour': '색 변환',
-    'tlSharedClearPixels': '픽셀 비우기',
     'tlSharedColourEdit': '색 편집',
     'tlSharedDeleteColour': '색 삭제',
     'tlSharedKeepColour': '색 남기기',
@@ -3574,8 +3537,6 @@ enum AppStrings {
     'menuPlay': '재생',
     'menuPause': '일시정지',
     'menuAction.file-open': '열기…',
-    'menuAction.file-save': '저장',
-    'menuAction.file-save-as': '다른 이름으로 저장…',
     'menuAction.file-project-background': '프로젝트 배경…',
     'menuAction.file-import': '가져오기/배치…',
     'menuAction.file-export': '내보내기…',
@@ -3816,6 +3777,7 @@ enum AppStrings {
     'shortcutCategory.Selection': '선택',
     'shortcutCategory.View': '보기',
     'shortcutCategory.Timeline': '타임라인',
+    'shortcutCategory.File': '파일',
     'shortcutAction.frame-previous': '이전 프레임',
     'shortcutAction.frame-next': '다음 프레임',
     'shortcutAction.frame-walk-left': '왼쪽으로 한 걸음',
@@ -3856,6 +3818,17 @@ enum AppStrings {
     'shortcutAction.frame-toggle-mark': '마크 토글',
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
+    'shortcutAction.edit-cut': '잘라내기',
+    'shortcutAction.edit-copy': '복사',
+    'shortcutAction.edit-paste-linked': '링크 붙여넣기',
+    'shortcutAction.edit-paste-independent': '독립 붙여넣기',
+    'shortcutAction.edit-delete': '삭제',
+    'shortcutAction.edit-clear-pixels': '픽셀 비우기',
+    'shortcutAction.file-save': '저장',
+    'shortcutAction.file-save-as': '다른 이름으로 저장…',
+    'shortcutAction.layer-visibility-solo': '활성 레이어 솔로',
+    'shortcutAction.canvas-zoom-in': '확대',
+    'shortcutAction.canvas-zoom-out': '축소',
     'cutCommands': '컷 명령',
     'cutAddCut': '컷 추가',
     'cutNewCut': '새 컷',
@@ -4109,10 +4082,6 @@ enum AppStrings {
     'toolFill': '채우기',
     'toolSelect': '선택',
     'toolMove': '이동 / 변형',
-    'toolBrushTip': '브러시 도구',
-    'toolEraserTip': '지우개 도구',
-    'toolEyedropperTip': '스포이트 도구',
-    'toolFillTip': '채우기 도구',
     'toolSelectTip': '선택 도구',
     'toolMoveTip': '이동 / 변형 도구',
     'toolCutTip': '잘라내기 도구',
@@ -4229,8 +4198,6 @@ enum AppStrings {
     'trMeshRows': '세로 칸',
     'commonReset': '초기화',
     'commonFill': '채우기',
-    'viewZoomIn': '확대',
-    'viewZoomOut': '축소',
     'viewFitToView': '화면에 맞추기',
     'viewResetView': '보기 초기화 (100%)',
     'panelSettings': '설정',
@@ -4251,7 +4218,6 @@ enum AppStrings {
     'tlAllDisplayedLayers': '표시 중인 모든 레이어',
     'tlShowAll': '모두 표시',
     'tlHideAll': '모두 숨기기',
-    'tlSoloActiveLayer': '활성 레이어 솔로',
     'tlSoloKind': '종류 솔로',
     'tlSoloColor': '색 솔로',
     'tlSoloFillReferences': '채색 참조 솔로',
@@ -4408,11 +4374,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
-    'tlSharedCut': '잘라내기',
-    'tlSharedCopy': '복사',
-    'tlSharedPasteLinked': '링크 붙여넣기',
-    'tlSharedPasteIndependent': '독립 붙여넣기',
-    'tlSharedDelete': '삭제',
     'tlSharedEdit': '편집',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
@@ -4455,7 +4416,6 @@ enum AppStrings {
     'commonNotice': 'Avis',
     'tlSharedDeselect': 'Désélectionner',
     'tlSharedReplaceColour': 'Remplacer la couleur',
-    'tlSharedClearPixels': 'Effacer les pixels',
     'tlSharedColourEdit': 'Édition couleur',
     'tlSharedDeleteColour': 'Supprimer la couleur',
     'tlSharedKeepColour': 'Conserver la couleur',
@@ -4633,8 +4593,6 @@ enum AppStrings {
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
     'menuAction.file-open': 'Ouvrir…',
-    'menuAction.file-save': 'Enregistrer',
-    'menuAction.file-save-as': 'Enregistrer sous…',
     'menuAction.file-project-background': 'Arrière-plan du projet…',
     'menuAction.file-import': 'Importer / Placer…',
     'menuAction.file-export': 'Exporter…',
@@ -4889,6 +4847,7 @@ enum AppStrings {
     'shortcutCategory.Selection': 'Sélection',
     'shortcutCategory.View': 'Affichage',
     'shortcutCategory.Timeline': 'Timeline',
+    'shortcutCategory.File': 'Fichier',
     'shortcutAction.frame-previous': 'Image précédente',
     'shortcutAction.frame-next': 'Image suivante',
     'shortcutAction.frame-walk-left': 'Un pas à gauche',
@@ -4932,6 +4891,17 @@ enum AppStrings {
     'shortcutAction.frame-toggle-mark': 'Basculer le repère',
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
+    'shortcutAction.edit-cut': 'Couper',
+    'shortcutAction.edit-copy': 'Copier',
+    'shortcutAction.edit-paste-linked': 'Coller lié',
+    'shortcutAction.edit-paste-independent': 'Coller indépendant',
+    'shortcutAction.edit-delete': 'Supprimer',
+    'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
+    'shortcutAction.file-save': 'Enregistrer',
+    'shortcutAction.file-save-as': 'Enregistrer sous…',
+    'shortcutAction.layer-visibility-solo': 'Solo du calque actif',
+    'shortcutAction.canvas-zoom-in': 'Zoom avant',
+    'shortcutAction.canvas-zoom-out': 'Zoom arrière',
     'cutCommands': 'Commandes de plan',
     'cutAddCut': 'Ajouter un plan',
     'cutNewCut': 'Nouveau plan',
@@ -5206,10 +5176,6 @@ enum AppStrings {
     'toolFill': 'Remplissage',
     'toolSelect': 'Sélection',
     'toolMove': 'Déplacer / Transformer',
-    'toolBrushTip': 'Outil pinceau',
-    'toolEraserTip': 'Outil gomme',
-    'toolEyedropperTip': 'Outil pipette',
-    'toolFillTip': 'Outil remplissage',
     'toolSelectTip': 'Outil sélection',
     'toolMoveTip': 'Outil déplacer / transformer',
     'toolCutTip': 'Outil découpe',
@@ -5326,8 +5292,6 @@ enum AppStrings {
     'brMeshWarp': 'Déformation par grille',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
-    'viewZoomIn': 'Zoom avant',
-    'viewZoomOut': 'Zoom arrière',
     'viewFitToView': 'Ajuster à la fenêtre',
     'viewResetView': 'Réinitialiser la vue (100 %)',
     'panelSettings': 'Paramètres',
@@ -5348,7 +5312,6 @@ enum AppStrings {
     'tlAllDisplayedLayers': 'Tous les calques affichés',
     'tlShowAll': 'Tout afficher',
     'tlHideAll': 'Tout masquer',
-    'tlSoloActiveLayer': 'Solo du calque actif',
     'tlSoloKind': 'Solo par type',
     'tlSoloColor': 'Solo par couleur',
     'tlSoloFillReferences': 'Solo des références de remplissage',
@@ -5491,11 +5454,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
-    'tlSharedCut': 'Couper',
-    'tlSharedCopy': 'Copier',
-    'tlSharedPasteLinked': 'Coller lié',
-    'tlSharedPasteIndependent': 'Coller indépendant',
-    'tlSharedDelete': 'Supprimer',
     'tlSharedEdit': 'Modifier',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -5541,7 +5499,6 @@ enum AppStrings {
     'commonNotice': '提示',
     'tlSharedDeselect': '取消选择',
     'tlSharedReplaceColour': '替换颜色',
-    'tlSharedClearPixels': '清空像素',
     'tlSharedColourEdit': '颜色编辑',
     'tlSharedDeleteColour': '删除颜色',
     'tlSharedKeepColour': '保留颜色',
@@ -5702,8 +5659,6 @@ enum AppStrings {
     'menuPlay': '播放',
     'menuPause': '暂停',
     'menuAction.file-open': '打开…',
-    'menuAction.file-save': '保存',
-    'menuAction.file-save-as': '另存为…',
     'menuAction.file-project-background': '项目背景…',
     'menuAction.file-import': '导入/放置…',
     'menuAction.file-export': '导出…',
@@ -5926,6 +5881,7 @@ enum AppStrings {
     'shortcutCategory.Selection': '选区',
     'shortcutCategory.View': '视图',
     'shortcutCategory.Timeline': '时间轴',
+    'shortcutCategory.File': '文件',
     'shortcutAction.frame-previous': '上一帧',
     'shortcutAction.frame-next': '下一帧',
     'shortcutAction.frame-walk-left': '向左一步',
@@ -5966,6 +5922,17 @@ enum AppStrings {
     'shortcutAction.frame-toggle-mark': '切换标记',
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
+    'shortcutAction.edit-cut': '剪切',
+    'shortcutAction.edit-copy': '复制',
+    'shortcutAction.edit-paste-linked': '粘贴链接',
+    'shortcutAction.edit-paste-independent': '粘贴独立',
+    'shortcutAction.edit-delete': '删除',
+    'shortcutAction.edit-clear-pixels': '清空像素',
+    'shortcutAction.file-save': '保存',
+    'shortcutAction.file-save-as': '另存为…',
+    'shortcutAction.layer-visibility-solo': '独奏当前图层',
+    'shortcutAction.canvas-zoom-in': '放大',
+    'shortcutAction.canvas-zoom-out': '缩小',
     'cutCommands': '镜头命令',
     'cutAddCut': '添加镜头',
     'cutNewCut': '新建镜头',
@@ -6213,10 +6180,6 @@ enum AppStrings {
     'toolFill': '填充',
     'toolSelect': '选择',
     'toolMove': '移动 / 变换',
-    'toolBrushTip': '画笔工具',
-    'toolEraserTip': '橡皮工具',
-    'toolEyedropperTip': '吸管工具',
-    'toolFillTip': '填充工具',
     'toolSelectTip': '选择工具',
     'toolMoveTip': '移动 / 变换工具',
     'toolCutTip': '裁剪工具',
@@ -6328,8 +6291,6 @@ enum AppStrings {
     'trMeshRows': '行数',
     'commonReset': '重置',
     'commonFill': '填充',
-    'viewZoomIn': '放大',
-    'viewZoomOut': '缩小',
     'viewFitToView': '适应窗口',
     'viewResetView': '重置视图（100%）',
     'panelSettings': '设置',
@@ -6350,7 +6311,6 @@ enum AppStrings {
     'tlAllDisplayedLayers': '所有显示的图层',
     'tlShowAll': '全部显示',
     'tlHideAll': '全部隐藏',
-    'tlSoloActiveLayer': '独奏当前图层',
     'tlSoloKind': '按类型独奏',
     'tlSoloColor': '按颜色独奏',
     'tlSoloFillReferences': '独奏填充参考',
@@ -6471,11 +6431,6 @@ enum AppStrings {
     'tlDetachLayer': '解除附属',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
-    'tlSharedCut': '剪切',
-    'tlSharedCopy': '复制',
-    'tlSharedPasteLinked': '粘贴链接',
-    'tlSharedPasteIndependent': '粘贴独立',
-    'tlSharedDelete': '删除',
     'tlSharedEdit': '编辑',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',

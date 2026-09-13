@@ -229,11 +229,11 @@ class _CanvasPanelShellBars {
     _state._rebuild(() => _state._viewportState._viewport = viewport.clamped());
   }
 
-  void _zoomInFromBar() => _state._viewportState._zoomAroundCenter(1.25);
+  void _zoomInFromBar() => _state._viewportState._zoomStep(zoomIn: true);
 
-  void _zoomOutFromBar() => _state._viewportState._zoomAroundCenter(0.8);
+  void _zoomOutFromBar() => _state._viewportState._zoomStep(zoomIn: false);
 
-  /// Absolute-zoom twin of [_state._viewportState._zoomAroundCenter] — the readout's drag is
+  /// Absolute-zoom twin of [_state._viewportState._zoomStep] — the readout's drag is
   /// 1%/px and its double-tap types a percent, and both of those are
   /// absolute.
   void _setZoomFromLabel(double zoom) {

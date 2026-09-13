@@ -58,6 +58,7 @@ import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'shortcuts/editor_action_registry.dart';
+import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';

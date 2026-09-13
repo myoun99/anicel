@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +20,9 @@ void main() {
   Future<int> firesWhile(
     WidgetTester tester, {
     required Widget body,
+    LogicalKeyboardKey key = LogicalKeyboardKey.digit1,
     bool control = false,
+    bool meta = false,
   }) async {
     var fired = 0;
     await tester.pumpWidget(
@@ -27,7 +30,7 @@ void main() {
         home: Shortcuts.manager(
           manager: EditorShortcutManager(
             shortcuts: <ShortcutActivator, Intent>{
-              SingleActivator(LogicalKeyboardKey.digit1, control: control):
+              SingleActivator(key, control: control, meta: meta):
                   VoidCallbackIntent(() => fired += 1),
             },
           ),
@@ -41,16 +44,64 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    if (control) {
-      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    final modifier = meta
+        ? LogicalKeyboardKey.metaLeft
+        : (control ? LogicalKeyboardKey.controlLeft : null);
+    if (modifier != null) {
+      await tester.sendKeyDownEvent(modifier);
     }
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
-    if (control) {
-      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(key);
+    if (modifier != null) {
+      await tester.sendKeyUpEvent(modifier);
     }
     await tester.pumpAndSettle();
     return fired;
   }
+
+  const field = TextField(key: ValueKey<String>('probe-field'), autofocus: true);
+
+  // 🚨I-19 binds Ctrl+C/V/X to the timeline's clipboard. The case below says
+  // a modified key 「the field itself owns (Ctrl+Z)」 is 「consumed below us」
+  // — and that was never how the tree is built: this manager sits BETWEEN
+  // the field and the app's text-editing shortcuts, so it hears the key
+  // first. Measured here, the way the user would meet it: Ctrl+C in a
+  // rename box copying a FRAME.
+  for (final key in const [
+    LogicalKeyboardKey.keyC,
+    LogicalKeyboardKey.keyV,
+    LogicalKeyboardKey.keyX,
+    LogicalKeyboardKey.keyZ,
+  ]) {
+    testWidgets('Ctrl+${key.keyLabel} in a TextField stays the field\'s', (
+      tester,
+    ) async {
+      expect(
+        await firesWhile(tester, body: field, key: key, control: true),
+        0,
+        reason: 'the field\'s own text shortcut binds this key, so the field '
+            'keeps it',
+      );
+    });
+  }
+
+  testWidgets('…and on a Mac the field keeps ⌘C, the key ITS table binds', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      expect(
+        await firesWhile(
+          tester,
+          body: field,
+          key: LogicalKeyboardKey.keyC,
+          meta: true,
+        ),
+        0,
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 
   testWidgets('a digit typed into a TextField runs no shortcut', (
     tester,
@@ -99,8 +150,8 @@ void main() {
         ),
       ),
       1,
-      reason: 'Ctrl+key is not something anyone types INTO a field, and the '
-          'ones the field itself owns (Ctrl+Z) are consumed below us',
+      reason: 'Ctrl+key is not something anyone types INTO a field; only the '
+          'keys the field\'s own text shortcuts bind stay with it (below)',
     );
   });
 }

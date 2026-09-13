@@ -7,7 +7,6 @@ import '../input/control_press_claim.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
-import '../../models/delete_subject.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
@@ -23,6 +22,8 @@ import 'timeline_section_policy.dart';
 import 'toolbar_panel_context.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../theme/app_theme.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../dialogs/app_prompt_dialog.dart';
 
@@ -583,7 +584,11 @@ class TimelineActionToolbar extends StatelessWidget {
         },
         label: switch (verb) {
           CelPixelVerb.replaceColour => AppText.strings.tlSharedReplaceColour,
-          CelPixelVerb.clearPixels => AppText.strings.tlSharedClearPixels,
+          // Backspace presses this one (I-19), so it wears the registry's
+          // name for it.
+          CelPixelVerb.clearPixels => editorActionLabel(
+            EditorActionIds.editClearPixels,
+          ),
           CelPixelVerb.deleteColour => AppText.strings.tlSharedDeleteColour,
           CelPixelVerb.keepColour => AppText.strings.tlSharedKeepColour,
         },
@@ -605,10 +610,12 @@ class TimelineActionToolbar extends StatelessWidget {
     bool accent = false,
     bool danger = false,
     Color? color,
+    List<String> shortcuts = const [],
   }) {
     return AppIconButton(
       keyValue: key.value,
       tooltip: tooltip,
+      shortcuts: shortcuts,
       onPressed: onPressed,
       // 유저 확정: accent는 ＋ 글리프에만, ＋가 있는 모든 곳에 — the law
       // itself is [AppColors.addGlyph], since 「모든 곳」 has to be one
@@ -637,10 +644,12 @@ class TimelineActionToolbar extends StatelessWidget {
     required ValueKey<String> key,
     required String label,
     required String tooltip,
+    required String action,
     required VoidCallback? onPressed,
   }) {
-    return Tooltip(
-      message: tooltip,
+    return ShortcutTooltip(
+      label: tooltip,
+      shortcuts: [action],
       // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
       // 봐줘 통일해서**」). These five were the app's only chrome buttons
       // that mounted no claim at all: the ledger that keeps hand-rolled
@@ -892,17 +901,21 @@ class TimelineActionToolbar extends StatelessWidget {
         // hole. It is the LIFT half of the one splice — the same half a
         // paste-over-a-selection does before it puts the clip down — so it
         // needed no placement rules of its own.
+        // 🗣️I-19: each of these five IS one action's entrance, so it wears
+        // that action's registry name and names the action for its key.
         _iconButton(
           key: const ValueKey<String>('shared-cut-button'),
-          tooltip: AppText.strings.tlSharedCut,
+          tooltip: editorActionLabel(EditorActionIds.editCut),
+          shortcuts: const [EditorActionIds.editCut],
           icon: Icons.content_cut,
-          onPressed: panelContext.canCutRun ? panelContext.cutRun : null,
+          onPressed: panelContext.cutPress,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-copy-button'),
-          tooltip: AppText.strings.tlSharedCopy,
+          tooltip: editorActionLabel(EditorActionIds.editCopy),
+          shortcuts: const [EditorActionIds.editCopy],
           icon: Icons.content_copy,
-          onPressed: panelContext.canCopyFrame ? panelContext.copyFrame : null,
+          onPressed: panelContext.copyPress,
         ),
         // ㉕ 확정 #8: the paste that makes a REAL frame, not a link. Two
         // buttons rather than one with a modifier, because which one you
@@ -911,35 +924,27 @@ class TimelineActionToolbar extends StatelessWidget {
         // watching another cel change.
         _iconButton(
           key: const ValueKey<String>('shared-paste-independent-button'),
-          tooltip: AppText.strings.tlSharedPasteIndependent,
+          tooltip: editorActionLabel(EditorActionIds.editPasteIndependent),
+          shortcuts: const [EditorActionIds.editPasteIndependent],
           icon: Icons.content_paste,
-          onPressed: panelContext.canPasteIndependentFrame
-              ? panelContext.pasteIndependentFrame
-              : null,
+          onPressed: panelContext.pasteIndependentPress,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-paste-linked-button'),
-          tooltip: AppText.strings.tlSharedPasteLinked,
+          tooltip: editorActionLabel(EditorActionIds.editPasteLinked),
+          shortcuts: const [EditorActionIds.editPasteLinked],
           icon: Icons.link,
-          onPressed: panelContext.canPasteLinkedFrame
-              ? panelContext.pasteLinkedFrame
-              : null,
+          onPressed: panelContext.pasteLinkedPress,
         ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
-          tooltip: AppText.strings.tlSharedDelete,
+          tooltip: editorActionLabel(EditorActionIds.editDelete),
+          shortcuts: const [EditorActionIds.editDelete],
           icon: Icons.delete_outline,
           danger: true,
-          // F: the ROWS rung asks first. It inherited that from the loose
-          // layer button this round folded in — a delete that used to
-          // confirm must not stop confirming because its button moved. The
-          // cell rung goes straight through, as it always has.
-          onPressed: switch (panelContext.deleteSubject) {
-            DeleteSubject.nothing => null,
-            DeleteSubject.layers when onDeleteRowSelection != null =>
-              onDeleteRowSelection,
-            _ => panelContext.deleteSelectionSubject,
-          },
+          onPressed: panelContext.deletePress(
+            onDeleteRowSelection: onDeleteRowSelection,
+          ),
         ),
         const PillDivider(),
         // 🚨THE TWO PIXEL VERBS, on THIS pill.
@@ -1008,6 +1013,9 @@ class TimelineActionToolbar extends StatelessWidget {
             _iconButton(
               key: const ValueKey<String>('new-frame-button'),
               tooltip: AppText.strings.tlAdd,
+              // The film verbs ship unbound; naming the action is what shows
+              // a key the day one is recorded for it.
+              shortcuts: const [EditorActionIds.frameNewDrawing],
               icon: Icons.add,
               accent: true,
               onPressed: _canCreateInstance ? onCreateInstance : null,
@@ -1015,6 +1023,7 @@ class TimelineActionToolbar extends StatelessWidget {
             _iconButton(
               key: const ValueKey<String>('blank-exposure-button'),
               tooltip: AppText.strings.tlBlankX,
+              shortcuts: const [EditorActionIds.frameBlankExposure],
               icon: Icons.close,
               onPressed: panelContext.canBlankExposure
                   ? panelContext.blankExposure
@@ -1063,6 +1072,7 @@ class TimelineActionToolbar extends StatelessWidget {
             _iconButton(
               key: const ValueKey<String>('toggle-mark-button'),
               tooltip: AppText.strings.tlMark,
+              shortcuts: const [EditorActionIds.frameToggleMark],
               icon: Icons.circle,
               onPressed: panelContext.canToggleMark
                   ? panelContext.toggleMark
@@ -1138,6 +1148,12 @@ class TimelineActionToolbar extends StatelessWidget {
                   '{n}',
                   '$comma',
                 ),
+                action: const [
+                  EditorActionIds.timelineComma1,
+                  EditorActionIds.timelineComma2,
+                  EditorActionIds.timelineComma3,
+                  EditorActionIds.timelineComma4,
+                ][comma - 1],
                 onPressed: panelContext.canSetComma
                     ? () => panelContext.setComma(comma)
                     : null,
@@ -1147,6 +1163,7 @@ class TimelineActionToolbar extends StatelessWidget {
                 key: const ValueKey<String>('set-comma-n-button'),
                 label: 'N',
                 tooltip: AppText.strings.tlSetCommasN,
+                action: EditorActionIds.timelineCommaN,
                 onPressed: panelContext.canSetComma
                     ? () => showTimelineCommaCountDialog(
                         context,

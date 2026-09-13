@@ -14,6 +14,8 @@ import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../text/vertical_writing_text.dart';
 
@@ -576,7 +578,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
               ),
               PanelFlyoutItem(
                 keyValue: 'legend-eye-solo',
-                label: AppText.strings.tlSoloActiveLayer,
+                // The registry's name: `=` presses this item (I-19).
+                label: editorActionLabel(EditorActionIds.layerVisibilitySolo),
                 icon: Icons.center_focus_strong_outlined,
                 checked: visibilitySoloEnabled,
                 onSelected: legend.onToggleVisibilitySolo,

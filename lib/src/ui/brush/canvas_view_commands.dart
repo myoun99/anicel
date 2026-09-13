@@ -10,6 +10,7 @@ class CanvasViewCommands {
   VoidCallback? _toggleFlipHorizontal;
   VoidCallback? _toggleFlipVertical;
   VoidCallback? _resetRotation;
+  void Function({required bool zoomIn})? _zoomStep;
   Object? _owner;
 
   /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
@@ -20,12 +21,14 @@ class CanvasViewCommands {
     required VoidCallback toggleFlipHorizontal,
     VoidCallback? toggleFlipVertical,
     VoidCallback? resetRotation,
+    void Function({required bool zoomIn})? zoomStep,
   }) {
     _owner = owner;
     _rotateBy = rotateBy;
     _toggleFlipHorizontal = toggleFlipHorizontal;
     _toggleFlipVertical = toggleFlipVertical;
     _resetRotation = resetRotation;
+    _zoomStep = zoomStep;
   }
 
   void unbind(Object owner) {
@@ -37,7 +40,12 @@ class CanvasViewCommands {
     _toggleFlipHorizontal = null;
     _toggleFlipVertical = null;
     _resetRotation = null;
+    _zoomStep = null;
   }
+
+  /// One press of the canvas bar's zoom in / out — the same step the
+  /// buttons take (I-19: Shift+. and Shift+, press them).
+  void zoomStep({required bool zoomIn}) => _zoomStep?.call(zoomIn: zoomIn);
 
   /// Rotates the canvas VIEW by [degrees] (clockwise positive) around the
   /// viewport center.

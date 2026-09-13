@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -178,5 +179,111 @@ void main() {
       singleActivatorLabel(const SingleActivator(LogicalKeyboardKey.arrowLeft)),
       '←',
     );
+    // A NAMED key keeps its own case: upper-casing every label printed
+    // ENTER and BACKSPACE.
+    expect(
+      singleActivatorLabel(const SingleActivator(LogicalKeyboardKey.backspace)),
+      'Backspace',
+    );
+  });
+
+  group('🗣️유저 2026-09-13: 「맥은 컨트롤키가 다르다 했던가? 쉬프트도?」', () {
+    test('the registry\'s Ctrl is the platform\'s COMMAND key — ⌘ on macOS '
+        'and iOS, Ctrl everywhere else — and Shift is Shift', () {
+      const undo = SingleActivator(LogicalKeyboardKey.keyZ, control: true);
+      const redo = SingleActivator(
+        LogicalKeyboardKey.keyZ,
+        control: true,
+        shift: true,
+      );
+      for (final platform in const [TargetPlatform.macOS, TargetPlatform.iOS]) {
+        final onApple = platformActivator(redo, platform);
+        expect(onApple.meta, isTrue, reason: '$platform');
+        expect(onApple.control, isFalse, reason: '$platform');
+        expect(onApple.shift, isTrue, reason: 'Shift is the same key');
+      }
+      for (final platform in const [
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+        TargetPlatform.android,
+      ]) {
+        expect(
+          identical(platformActivator(undo, platform), undo),
+          isTrue,
+          reason: '$platform reads the registry as written',
+        );
+      }
+      const plain = SingleActivator(LogicalKeyboardKey.keyB);
+      expect(
+        identical(platformActivator(plain, TargetPlatform.macOS), plain),
+        isTrue,
+        reason: 'a key with no command modifier is the same key everywhere',
+      );
+    });
+
+    test('each platform WRITES a shortcut its own way', () {
+      const saveAs = SingleActivator(
+        LogicalKeyboardKey.keyS,
+        shift: true,
+        meta: true,
+      );
+      expect(singleActivatorLabel(saveAs, TargetPlatform.macOS), '⇧⌘S');
+      expect(singleActivatorLabel(saveAs, TargetPlatform.iOS), '⇧⌘S');
+      expect(
+        singleActivatorLabel(
+          const SingleActivator(
+            LogicalKeyboardKey.keyS,
+            control: true,
+            shift: true,
+          ),
+          TargetPlatform.windows,
+        ),
+        'Ctrl+Shift+S',
+      );
+      expect(
+        singleActivatorLabel(
+          const SingleActivator(LogicalKeyboardKey.keyE, meta: true),
+          TargetPlatform.windows,
+        ),
+        'Win+E',
+      );
+      expect(
+        singleActivatorLabel(
+          const SingleActivator(LogicalKeyboardKey.backspace),
+          TargetPlatform.macOS,
+        ),
+        '⌫',
+      );
+    });
+
+    test('on a Mac the live bindings, the map and the override store all '
+        'speak ⌘', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        final bindings = EditorShortcutBindings();
+        final undo = bindings.primaryActivatorFor(EditorActionIds.undo)!;
+        expect(undo.meta, isTrue);
+        expect(undo.control, isFalse);
+        expect(
+          bindings.shortcuts.entries.any(
+            (entry) =>
+                entry.key is SingleActivator &&
+                (entry.key as SingleActivator).trigger ==
+                    LogicalKeyboardKey.keyZ &&
+                (entry.key as SingleActivator).control &&
+                !(entry.key as SingleActivator).shift,
+          ),
+          isFalse,
+          reason: 'Ctrl+Z is not undo on a Mac',
+        );
+        // Recording ⌘Z by hand is recording the default, not an override.
+        bindings.setActivators(EditorActionIds.undo, const [
+          SingleActivator(LogicalKeyboardKey.keyZ, meta: true),
+        ]);
+        expect(bindings.isOverridden(EditorActionIds.undo), isFalse);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
   });
 }

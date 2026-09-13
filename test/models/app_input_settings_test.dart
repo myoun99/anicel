@@ -131,6 +131,45 @@ void main() {
     expect(AppInputSettings.defaultBrushSizeSnaps, containsAll([128, 256]));
   });
 
+  group('🗣️I-19: the zoom step walks the snap list 「설정에 줌 스냅 설정한대로」',
+      () {
+    const list = AppInputSettings.defaultZoomSnapPercents;
+    double? step(double value, {required bool up}) =>
+        AppInput.stepThroughList(value, list, up: up);
+
+    test('from an entry it moves to the NEXT one, either way', () {
+      expect(step(100, up: true), 125);
+      expect(step(100, up: false), 75);
+    });
+
+    test('between entries it moves to the nearest one that way', () {
+      expect(step(110, up: true), 125);
+      expect(step(110, up: false), 100);
+      expect(step(37, up: true), 50);
+      expect(step(37, up: false), 25);
+    });
+
+    test('a value that came back through the unit conversions is still ON '
+        'its entry', () {
+      expect(step(100.0000001, up: true), 125);
+      expect(step(99.9999999, up: false), 75);
+    });
+
+    test('past either end there is no step', () {
+      expect(step(400, up: true), isNull);
+      expect(step(10, up: false), isNull);
+      expect(step(1600, up: false), 400);
+      expect(AppInput.stepThroughList(100, const [], up: true), isNull);
+    });
+
+    test('the list is read as a set of rungs, not in its stored order', () {
+      expect(
+        AppInput.stepThroughList(100, const [300, 50, 150, 75], up: true),
+        150,
+      );
+    });
+  });
+
   test('🚨every field is in == and in the round trip — a missing one is a '
       'setting that cannot be changed', () {
     // ⛔THIS IS NOT PEDANTRY, it is the bug I shipped and caught in a test

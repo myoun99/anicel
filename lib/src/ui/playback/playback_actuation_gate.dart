@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart'
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent;
 
+import '../shortcuts/editor_shortcut_scope.dart';
 import 'playback_transport.dart';
 
 /// 🚨★★★ T28-c — WHILE PLAYING, THE FIRST ACTUATION IS STOP, AND ONLY STOP.
@@ -49,22 +50,20 @@ import 'playback_transport.dart';
 /// plain TAP on the canvas picture stops playback — that is
 /// `CanvasPlaybackView`'s own tap handler, awake again now that pointers
 /// reach it (the pre-T28-c stop it always carried). KEYBOARD actuations
-/// keep the stop law everywhere: the hole is pointer navigation only.
+/// keep the stop law everywhere but one: a bound view ZOOM (R6q3, below).
 ///
-/// 🚨R6q3 (2026-08-25) — the sentence above used to end 「bound zoom keys
-/// included」, and there are none. Nothing in [EditorActionIds] zooms the
-/// viewport and nothing in the canvas reads a key for it; zoom is the wheel,
-/// the pinch, the bar buttons and the panbars, all of them POINTER, all of
-/// them already through the D13 hole.
-///
-/// The user's answer to "어디까지 만질 수 있게 할까" was 2번 —
-/// 「키보드 줌도 통과시킨다. 재생 중 줌은 입력 수단과 무관하게 한 법으로」 —
-/// which this already satisfies by having no second case to disagree with.
-/// ⚠️It becomes a real question the day a zoom key is bound: the law is then
-/// "a viewport ZOOM passes whatever the device", and it belongs in this
-/// gate's own two key halves ([_PlaybackActuationGateState._onKey] and
-/// [_PlaybackActuationGateState._eatConsumedKey]), never as a check inside
-/// a zoom action.
+/// 🚨R6q3 (2026-08-25) — the user's answer to "어디까지 만질 수 있게 할까"
+/// was 2번: 「키보드 줌도 통과시킨다. 재생 중 줌은 입력 수단과 무관하게 한
+/// 법으로」. While no key zoomed, having no second case satisfied it — and the
+/// sentence above once claimed zoom keys the registry did not have. I-19
+/// bound two (유저 2026-09-13: 「shift+>(확대) shift+<(축소)」), so the law
+/// has a subject: a viewport ZOOM passes whatever the device, where the
+/// pointer's does — while the canvas run plays. It lives in this gate's key
+/// half ([_PlaybackActuationGateState._onKey]) and in the action funnel, both
+/// asking [viewZoomPassesPlayback]; never as a check inside a zoom action.
+/// ⚠️A modifier's own key-down still stops before a chord like Shift+.
+/// exists — T28-c's 「키 다운 = 입력」 and R6q3 meet there, and which one
+/// gives is on the board (`I-19-zoom-key-playback`).
 ///
 /// ✅유저 확정 — the two questions this had, both answered (⛔재론 금지):
 /// 1. **「입력」 = actuation only**: key DOWN, pointer DOWN, wheel/zoom.
@@ -148,6 +147,18 @@ class PlaybackActuationGate extends StatefulWidget {
   State<PlaybackActuationGate> createState() => _PlaybackActuationGateState();
 }
 
+/// 🚨R6q3 — whether a view ZOOM passes playback: exactly where the pointer's
+/// does, while the canvas run (the run whose picture the D13 hole shows) is
+/// the one playing.
+///
+/// ★ONE predicate for both halves of the pass-through — the gate's key half
+/// and the action funnel's — so a zoom key and a bound touch gesture cannot
+/// answer differently.
+bool viewZoomPassesPlayback({
+  required bool zoomsView,
+  required PlaybackTransport? canvasRun,
+}) => zoomsView && (canvasRun?.isPlaying ?? false);
+
 class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
   /// The absorber's per-event verdict, read by the stop handlers in the
   /// SAME event dispatch (hit test runs first, listeners after — single
@@ -196,6 +207,15 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
       // ⛔Key UP and repeat are not actuations. Eating the up of a key whose
       // down started playback would swallow half of an event the app never
       // saw the beginning of.
+      return false;
+    }
+    // 🚨R6q3: a bound ZOOM key is the key half of the D13 hole — it passes
+    // while the canvas run plays, asked through the one predicate the action
+    // funnel asks too.
+    if (viewZoomPassesPlayback(
+      zoomsView: EditorShortcutScope.peek(context)?.zoomsViewOn(event) ?? false,
+      canvasRun: widget.navigationRegion?.transport,
+    )) {
       return false;
     }
     widget.transports.stopAll();

@@ -2,6 +2,8 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import 'brush_tool_state.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
@@ -123,9 +125,14 @@ class ToolsPanel extends StatelessWidget {
               historyControls!,
               groupDivider(context),
             ],
+            // 🗣️I-19: 「툴버튼도 … 툴팁으로 숏컷 키 보여주도록」. A button
+            // that IS one action's entrance takes that action's registry name
+            // — the shortcut list and the tooltip say one word — and names
+            // the action, so its key comes from the live bindings.
             RailButton(
               keyValue: 'tool-brush-button',
-              tooltip: AppText.strings.toolBrushTip,
+              tooltip: editorActionLabel(EditorActionIds.toolBrush),
+              shortcuts: const [EditorActionIds.toolBrush],
               icon: Icons.brush_outlined,
               selected: tool == CanvasTool.brush,
               onPressed: () => onToolChanged(CanvasTool.brush),
@@ -133,7 +140,8 @@ class ToolsPanel extends StatelessWidget {
             const SizedBox(height: 4),
             RailButton(
               keyValue: 'tool-eraser-button',
-              tooltip: AppText.strings.toolEraserTip,
+              tooltip: editorActionLabel(EditorActionIds.toolEraser),
+              shortcuts: const [EditorActionIds.toolEraser],
               // No dedicated eraser glyph in this icon set; the "magic
               // eraser" wand reads closest.
               icon: Icons.auto_fix_normal,
@@ -143,7 +151,8 @@ class ToolsPanel extends StatelessWidget {
             const SizedBox(height: 4),
             RailButton(
               keyValue: 'tool-eyedropper-button',
-              tooltip: AppText.strings.toolEyedropperTip,
+              tooltip: editorActionLabel(EditorActionIds.toolEyedropper),
+              shortcuts: const [EditorActionIds.toolEyedropper],
               icon: Icons.colorize_outlined,
               selected: tool == CanvasTool.eyedropper,
               onPressed: () => onToolChanged(CanvasTool.eyedropper),
@@ -155,7 +164,8 @@ class ToolsPanel extends StatelessWidget {
             // [groupEntry]).
             RailButton(
               keyValue: 'tool-fill-button',
-              tooltip: AppText.strings.toolFillTip,
+              tooltip: editorActionLabel(EditorActionIds.toolFill),
+              shortcuts: const [EditorActionIds.toolFill],
               icon: Icons.format_color_fill_outlined,
               selected: canvasToolFills(tool),
               onPressed: () => onToolChanged(_entryFor(CanvasTool.fill)),
@@ -180,6 +190,13 @@ class ToolsPanel extends StatelessWidget {
             RailButton(
               keyValue: 'tool-select-button',
               tooltip: AppText.strings.toolSelectTip,
+              // ONE button, TWO actions: M and L both land on this tool (each
+              // with its outline), so the button is the entrance of both and
+              // keeps its own name for the pair.
+              shortcuts: const [
+                EditorActionIds.toolSelectRect,
+                EditorActionIds.toolLasso,
+              ],
               icon: Icons.highlight_alt_outlined,
               selected: tool == CanvasTool.select,
               onPressed: () => onToolChanged(CanvasTool.select),
@@ -188,6 +205,12 @@ class ToolsPanel extends StatelessWidget {
             RailButton(
               keyValue: 'tool-move-button',
               tooltip: AppText.strings.toolMoveTip,
+              // V arms it, and Ctrl+T is not a mode of its own — it arms this
+              // same tool (R26 #17), so both keys press this button.
+              shortcuts: const [
+                EditorActionIds.toolMove,
+                EditorActionIds.selectionFreeTransform,
+              ],
               icon: Icons.open_with,
               selected: tool == CanvasTool.move,
               onPressed: () => onToolChanged(CanvasTool.move),
@@ -242,6 +265,7 @@ class RailButton extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onPressed,
+    this.shortcuts = const [],
   });
 
   final String keyValue;
@@ -252,6 +276,9 @@ class RailButton extends StatelessWidget {
   /// Null disables the button — a tool is always available, but undo and
   /// redo are not, and they wear this same square.
   final VoidCallback? onPressed;
+
+  /// The actions this square presses — [AppIconButton.shortcuts].
+  final List<String> shortcuts;
 
   @override
   Widget build(BuildContext context) {
@@ -270,6 +297,7 @@ class RailButton extends StatelessWidget {
       size: AppIconButtonSize.tool,
       icon: Icon(icon),
       onPressed: onPressed,
+      shortcuts: shortcuts,
     );
   }
 }

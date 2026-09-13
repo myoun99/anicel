@@ -31,12 +31,20 @@ class EditorShortcutBindings extends ChangeNotifier {
     return null;
   }
 
+  /// The registry's defaults as THIS platform presses them: the command
+  /// modifier the registry writes as Ctrl is ⌘ on a Mac or an iPad
+  /// ([platformActivator]).
+  List<SingleActivator> defaultActivatorsFor(String actionId) => [
+    for (final activator
+        in definitionFor(actionId)?.defaultActivators ??
+            const <SingleActivator>[])
+      platformActivator(activator),
+  ];
+
   /// The action's LIVE activators (override or defaults). An override may
   /// be an empty list = the action is deliberately unbound.
   List<SingleActivator> activatorsFor(String actionId) {
-    return _overrides[actionId] ??
-        definitionFor(actionId)?.defaultActivators ??
-        const [];
+    return _overrides[actionId] ?? defaultActivatorsFor(actionId);
   }
 
   /// The first live activator — what menu items show as their shortcut
@@ -44,6 +52,22 @@ class EditorShortcutBindings extends ChangeNotifier {
   SingleActivator? primaryActivatorFor(String actionId) {
     final activators = activatorsFor(actionId);
     return activators.isEmpty ? null : activators.first;
+  }
+
+  /// Whether [event] presses a view-ZOOM action through its live keys —
+  /// the question the playback gate asks for R6q3.
+  bool zoomsViewOn(KeyEvent event) {
+    for (final definition in definitions) {
+      if (!definition.zoomsView) {
+        continue;
+      }
+      for (final activator in activatorsFor(definition.id)) {
+        if (activator.accepts(event, HardwareKeyboard.instance)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   bool isOverridden(String actionId) => _overrides.containsKey(actionId);
@@ -94,7 +118,7 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// Replaces [actionId]'s activators; a value equal to the defaults
   /// clears the override. Persists and notifies.
   void setActivators(String actionId, List<SingleActivator> activators) {
-    final defaults = definitionFor(actionId)?.defaultActivators ?? const [];
+    final defaults = defaultActivatorsFor(actionId);
     final matchesDefaults =
         activators.length == defaults.length &&
         [
@@ -253,10 +277,12 @@ class EditorShortcutBindings extends ChangeNotifier {
   }
 }
 
-/// The app-level ShortcutManager: bare-key shortcuts (no Ctrl/Meta) stand
-/// down while a text field has focus, so typing 'b' into a rename dialog
-/// never switches tools. Modifier shortcuts still resolve — but any the
-/// field itself handles (Ctrl+Z text undo) are consumed below us first.
+/// The app-level ShortcutManager, and what it leaves to a text field.
+///
+/// A focused field keeps two kinds of key: every BARE key (typing 'b' into a
+/// rename dialog never switches tools) and every key the field's own text
+/// shortcuts bind (Ctrl+C, ⌘Z …). Any other modified key still resolves
+/// here while a field has focus — Ctrl+S saves from inside a rename box.
 class EditorShortcutManager extends ShortcutManager {
   EditorShortcutManager({super.shortcuts, this.onHoldKey});
 
@@ -267,9 +293,7 @@ class EditorShortcutManager extends ShortcutManager {
 
   @override
   KeyEventResult handleKeypress(BuildContext context, KeyEvent event) {
-    if (_editableTextHasFocus &&
-        !HardwareKeyboard.instance.isControlPressed &&
-        !HardwareKeyboard.instance.isMetaPressed) {
+    if (_fieldKeeps(event)) {
       return KeyEventResult.ignored;
     }
     final held = onHoldKey?.call(event) ?? KeyEventResult.ignored;
@@ -277,6 +301,44 @@ class EditorShortcutManager extends ShortcutManager {
       return held;
     }
     return super.handleKeypress(context, event);
+  }
+
+  /// Whether the text field that has focus keeps [event] for itself.
+  ///
+  /// 🚨I-19 (2026-09-13). Modified keys used to pass straight through, on
+  /// the premise that 「the ones the field itself owns (Ctrl+Z) are consumed
+  /// below us」. They never were: the platform's text shortcuts are mounted
+  /// by the APP, above this manager, and a key climbs from the field — so it
+  /// reaches this manager first. 🧪Measured: with Ctrl+C bound here, Ctrl+C
+  /// in a focused TextField fired the binding, and so did Ctrl+V, Ctrl+X,
+  /// Ctrl+Z and a Mac's ⌘C. Binding Ctrl+C to the timeline's copy would
+  /// have made a rename box copy a FRAME.
+  ///
+  /// ★So the field's own path is asked: a key that another shortcut table
+  /// between the field and the app binds belongs to that table — the text
+  /// system's, in each platform's own modifier — and stands down here. The
+  /// premise is made true rather than assumed.
+  bool _fieldKeeps(KeyEvent event) {
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext == null || !_isInEditableText(focusContext)) {
+      return false;
+    }
+    final keyboard = HardwareKeyboard.instance;
+    if (!keyboard.isControlPressed && !keyboard.isMetaPressed) {
+      return true;
+    }
+    var bound = false;
+    focusContext.visitAncestorElements((element) {
+      final widget = element.widget;
+      bound =
+          widget is Shortcuts &&
+          !identical(widget.manager, this) &&
+          widget.shortcuts.keys.any(
+            (activator) => activator.accepts(event, keyboard),
+          );
+      return !bound;
+    });
+    return bound;
   }
 
   /// 🚨F-22 (유저 2026-08-24: 「멤버에서 클릭해서 숫자 수동편집시 **1부터
@@ -294,11 +356,7 @@ class EditorShortcutManager extends ShortcutManager {
   /// ★So ask the tree, not the node: the field is an ANCESTOR of the
   /// element holding focus, which is a fact about how `EditableText` is
   /// built rather than about which widget happens to own the node.
-  bool get _editableTextHasFocus {
-    final focusContext = FocusManager.instance.primaryFocus?.context;
-    if (focusContext == null) {
-      return false;
-    }
+  static bool _isInEditableText(BuildContext focusContext) {
     if (focusContext.widget is EditableText) {
       return true;
     }

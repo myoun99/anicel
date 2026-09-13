@@ -24,6 +24,7 @@ class EditorActionDefinition {
     required this.defaultActivators,
     this.defaultTouchGesture,
     this.hold = false,
+    this.zoomsView = false,
   });
 
   final String id;
@@ -41,6 +42,15 @@ class EditorActionDefinition {
   /// with it — the pan on Space. It is not an intent, so it never enters
   /// the Shortcuts map; `EditorKeyHolds` takes it on the same road instead.
   final bool hold;
+
+  /// A viewport ZOOM — I-19's two keys.
+  ///
+  /// 🚨R6q3 (유저 2026-08-25, 답 2번): 「키보드 줌도 통과시킨다. 재생 중 줌은
+  /// 입력 수단과 무관하게 한 법으로」. The playback gate lets these through
+  /// exactly where it lets a pointer zoom through. ⛔This says what the action
+  /// IS; the law that reads it lives in the gate (`viewZoomPassesPlayback`),
+  /// never as a playback check inside the zoom.
+  final bool zoomsView;
 }
 
 /// Registry ids (referenced from dispatch and menu labels).
@@ -93,6 +103,29 @@ abstract final class EditorActionIds {
   static const frameToggleMark = 'frame-toggle-mark';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
+
+  /// 🗣️I-19 (유저 2026-09-12): 「여러 단축키 기존 버튼에 연결. 우선
+  /// 컨트롤c,v는 각각 타임라인 공용알약의 복사/링크붙여넣기로 연결 …
+  /// 컨트롤x는 잘라내기, 컨트롤b는 독립붙여넣기? 백스페이스는 색변환의
+  /// 픽셀비우기, 딜리트는 삭제버튼」 — each one the shared pill's own button.
+  static const editCut = 'edit-cut';
+  static const editCopy = 'edit-copy';
+  static const editPasteLinked = 'edit-paste-linked';
+  static const editPasteIndependent = 'edit-paste-independent';
+  static const editDelete = 'edit-delete';
+  static const editClearPixels = 'edit-clear-pixels';
+
+  /// 「컨트롤s로 저장 로직 연결, 컨트롤쉬프트s로 다른이름저장」.
+  static const fileSave = 'file-save';
+  static const fileSaveAs = 'file-save-as';
+
+  /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
+  static const layerVisibilitySolo = 'layer-visibility-solo';
+
+  /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
+  /// 설정에 줌 스냅 설정한대로」.
+  static const canvasZoomIn = 'canvas-zoom-in';
+  static const canvasZoomOut = 'canvas-zoom-out';
 }
 
 /// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
@@ -222,6 +255,77 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyY, control: true),
     ],
   ),
+  // 🗣️I-19 (유저 2026-09-12): keys for buttons that already exist — the
+  // shared pill's clipboard, its delete and the colour edit's clear. Each
+  // label is the BUTTON's own name, so its tooltip and this list cannot
+  // call one verb two things. ⚠️`control` in every default here is the
+  // platform's COMMAND key: ⌘ on a Mac or an iPad (`platformActivator`).
+  const EditorActionDefinition(
+    id: EditorActionIds.editCut,
+    label: 'Cut',
+    category: 'Edit',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyX, control: true),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editCopy,
+    label: 'Copy',
+    category: 'Edit',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyC, control: true),
+    ],
+  ),
+  // 「컨트롤c,v는 각각 타임라인 공용알약의 복사/링크붙여넣기로」 — V is the
+  // LINKED paste, and the independent one takes B. ㉕: the independent paste
+  // makes the copied cel's content a cel of its OWN — named for what it
+  // makes rather than for what it is not.
+  const EditorActionDefinition(
+    id: EditorActionIds.editPasteLinked,
+    label: 'Paste linked',
+    category: 'Edit',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyV, control: true),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editPasteIndependent,
+    label: 'Paste independent',
+    category: 'Edit',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyB, control: true),
+    ],
+  ),
+  // Bare Delete and Backspace: a focused text field keeps both (bare keys
+  // stand down there), so they never reach a pill while you are typing.
+  const EditorActionDefinition(
+    id: EditorActionIds.editDelete,
+    label: 'Delete',
+    category: 'Edit',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editClearPixels,
+    label: 'Clear Pixels',
+    category: 'Edit',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileSave,
+    label: 'Save',
+    category: 'File',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyS, control: true),
+    ],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileSaveAs,
+    label: 'Save as…',
+    category: 'File',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
+    ],
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.toolBrush,
     label: 'Brush Tool',
@@ -338,6 +442,27 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
   ),
+  // 🗣️I-19: 「shift+>(확대) shift+<(축소)」. Written as the key under the
+  // glyph — `>` is Shift+. on the layouts in use — because the logical key
+  // Flutter reports is the unshifted one.
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasZoomIn,
+    label: 'Zoom In',
+    category: 'View',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.period, shift: true),
+    ],
+    zoomsView: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.canvasZoomOut,
+    label: 'Zoom Out',
+    category: 'View',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.comma, shift: true),
+    ],
+    zoomsView: true,
+  ),
   // The comma set row (UI-R17 #7, TVP-style): 1-4 set the exposure of the
   // current block — or every selected block, packed — outright; 5 opens
   // the N input. Bare digits stand down while text fields have focus.
@@ -406,5 +531,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Pull Blocks',
     category: 'Timeline',
     defaultActivators: [],
+  ),
+  // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」. ⚠️On a JIS keyboard
+  // `=` is Shift+- and this default does not match it — the dialog records
+  // whatever key the hand presses.
+  const EditorActionDefinition(
+    id: EditorActionIds.layerVisibilitySolo,
+    label: 'Solo active layer',
+    category: 'Timeline',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.equal)],
   ),
 ];

@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -209,6 +208,67 @@ void main() {
           reason: '$key must live in the 색 편집 popover',
         );
       }
+    },
+  );
+
+  testWidgets(
+    '🗣️I-19: Backspace is 「픽셀 비우기」 — 「백스페이스는 색변환의 픽셀비우기」',
+    (tester) async {
+      /// One 픽셀 비우기 on the inked cel under the playhead, pressed by
+      /// [press], read back through what the app itself asks afterwards.
+      Future<({bool undoable, bool drawn, bool headLit})> clearBy(
+        Future<void> Function() press,
+      ) async {
+        // A different root first: HomePage pumped again keeps its session,
+        // and the second press would start from the first one's result.
+        await tester.pumpWidget(const SizedBox.shrink());
+        final session = await pump(tester);
+        final row = session.layers.firstWhere(
+          (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+        );
+        session.selectLayer(row.id);
+        session.selectFrameIndex(0);
+        await tester.pumpAndSettle();
+        final key = session.brushFrameKeyForCut(
+          session.requireActiveCut,
+          row.id,
+          row.frames.first.id,
+        );
+        expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
+        expect(session.canUndo, isFalse);
+
+        await press();
+        await tester.pumpAndSettle();
+
+        return (
+          undoable: session.canUndo,
+          drawn: session.renderCaches.brushFrameStore.celHasRenderableContent(
+            key,
+          ),
+          headLit: buttonEnabled(tester, 'shared-colour-edit-button'),
+        );
+      }
+
+      final byItem = await clearBy(() async {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('shared-colour-edit-button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
+        );
+      });
+      expect(
+        byItem.undoable,
+        isTrue,
+        reason: 'the item ran an edit — or the parity below is two no-ops '
+            'agreeing',
+      );
+
+      final byKey = await clearBy(
+        () => tester.sendKeyEvent(LogicalKeyboardKey.backspace),
+      );
+      expect(byKey, byItem, reason: 'the key does what the item does');
     },
   );
 }

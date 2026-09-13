@@ -197,13 +197,13 @@ class _BottomBarBuild {
       if (_bar.onFloor && !fold.showZoomSteps) ...[
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-out',
-          label: AppText.strings.viewZoomOut,
+          label: editorActionLabel(EditorActionIds.canvasZoomOut),
           icon: Icons.zoom_out,
           onSelected: _bar.onZoomOut,
         ),
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-in',
-          label: AppText.strings.viewZoomIn,
+          label: editorActionLabel(EditorActionIds.canvasZoomIn),
           icon: Icons.zoom_in,
           onSelected: _bar.onZoomIn,
         ),
@@ -375,6 +375,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-ccw',
           tooltip: AppText.strings.viewRotateLeft,
+          shortcuts: const [EditorActionIds.canvasRotateCcw],
           icon: const Icon(Icons.rotate_left),
           onPressed: _bar.onRotateCcw,
           isSelected: rotationDegrees < 0,
@@ -398,6 +399,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-cw',
           tooltip: AppText.strings.viewRotateRight,
+          shortcuts: const [EditorActionIds.canvasRotateCw],
           icon: const Icon(Icons.rotate_right),
           onPressed: _bar.onRotateCw,
           isSelected: rotationDegrees > 0,
@@ -413,6 +415,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-flip',
           tooltip: AppText.strings.viewFlipHorizontal,
+          shortcuts: const [EditorActionIds.canvasFlipHorizontal],
           icon: const Icon(Icons.flip),
           onPressed: _bar.onFlipHorizontal,
           isSelected: viewport.flipHorizontal,
@@ -447,14 +450,16 @@ class _BottomBarBuild {
 
   Widget _zoomOutButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-zoom-out',
-    tooltip: AppText.strings.viewZoomOut,
+    tooltip: editorActionLabel(EditorActionIds.canvasZoomOut),
+    shortcuts: const [EditorActionIds.canvasZoomOut],
     icon: const Icon(Icons.zoom_out),
     onPressed: _bar.onZoomOut,
   );
 
   Widget _zoomInButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-zoom-in',
-    tooltip: AppText.strings.viewZoomIn,
+    tooltip: editorActionLabel(EditorActionIds.canvasZoomIn),
+    shortcuts: const [EditorActionIds.canvasZoomIn],
     icon: const Icon(Icons.zoom_in),
     onPressed: _bar.onZoomIn,
   );

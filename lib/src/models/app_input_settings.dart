@@ -640,6 +640,35 @@ abstract final class AppInput {
     return best;
   }
 
+  /// The next entry past [value] in [snaps], [up] or down — null when none
+  /// lies that way, so the ends of the list are where a step stops.
+  ///
+  /// 🗣️I-19 (유저 2026-09-13): the canvas zoom buttons and their keys step
+  /// 「배율은 설정에 줌 스냅 설정한대로」 — the SAME list the modifier-pinch
+  /// snaps to, read as a ladder instead of as magnets.
+  ///
+  /// ⚠️A value sitting ON an entry steps to the next one, and "on" is
+  /// relative: a zoom that was snapped comes back through two unit
+  /// conversions, and 100.0000001% is still 100%.
+  static double? stepThroughList(
+    double value,
+    List<double> snaps, {
+    required bool up,
+  }) {
+    final tolerance = value.abs() * 1e-6;
+    double? next;
+    for (final candidate in snaps) {
+      final beyond = up
+          ? candidate > value + tolerance
+          : candidate < value - tolerance;
+      if (beyond &&
+          (next == null || (up ? candidate < next : candidate > next))) {
+        next = candidate;
+      }
+    }
+    return next;
+  }
+
   /// The pen pressure response curve (PEN-3): output = input^gamma.
   /// Gamma 1 short-circuits so the default path costs nothing.
   static double applyPressureCurve(double pressure) {

@@ -88,7 +88,6 @@ class _WorkspaceRail {
         session.rowSelection,
       ]),
       builder: (context, _) {
-        final strings = AppText.strings;
         final layer = session.activeLayer;
         // Onion is PER LAYER (the per-layer model retired the master
         // switch), so this button is the active row's onion — the same
@@ -100,7 +99,8 @@ class _WorkspaceRail {
           children: [
             RailButton(
               keyValue: 'undo-button',
-              tooltip: strings.shortcutLabel(EditorActionIds.undo, 'Undo'),
+              tooltip: editorActionLabel(EditorActionIds.undo),
+              shortcuts: const [EditorActionIds.undo],
               icon: Icons.undo,
               selected: false,
               onPressed: session.canUndo ? session.undo : null,
@@ -108,7 +108,8 @@ class _WorkspaceRail {
             const SizedBox(height: 4),
             RailButton(
               keyValue: 'redo-button',
-              tooltip: strings.shortcutLabel(EditorActionIds.redo, 'Redo'),
+              tooltip: editorActionLabel(EditorActionIds.redo),
+              shortcuts: const [EditorActionIds.redo],
               icon: Icons.redo,
               selected: false,
               onPressed: session.canRedo ? session.redo : null,
@@ -116,10 +117,8 @@ class _WorkspaceRail {
             const SizedBox(height: 4),
             RailButton(
               keyValue: 'rail-onion-skin-button',
-              tooltip: strings.shortcutLabel(
-                EditorActionIds.onionSkinToggle,
-                'Toggle Onion Skin',
-              ),
+              tooltip: editorActionLabel(EditorActionIds.onionSkinToggle),
+              shortcuts: const [EditorActionIds.onionSkinToggle],
               icon: Icons.filter_none_outlined,
               selected: onionOn,
               onPressed: layer != null ? session.onionSkin.toggleOnionSkin : null,
@@ -136,10 +135,8 @@ class _WorkspaceRail {
               const SizedBox(height: 4),
               RailButton(
                 keyValue: 'rail-deselect-button',
-                tooltip: strings.shortcutLabel(
-                  EditorActionIds.selectionDeselect,
-                  'Deselect',
-                ),
+                tooltip: editorActionLabel(EditorActionIds.selectionDeselect),
+                shortcuts: const [EditorActionIds.selectionDeselect],
                 icon: Icons.deselect,
                 selected: false,
                 // Dimmed with nothing selected rather than hidden: a button

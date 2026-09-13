@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
 import '../input/control_press_claim.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../theme/app_theme.dart';
 
 /// What a button's box measures — a named token, or a box its PARENT
@@ -195,12 +196,20 @@ class AppIconButton extends StatelessWidget {
     this.size = AppIconButtonSize.bar,
     this.outlined = false,
     this.danger = false,
+    this.shortcuts = const [],
   });
 
   /// Stable widget key (the tests' handle). It lands on the
   /// [AppIconButtonFace], which is the box the user sees and presses.
   final String keyValue;
   final String tooltip;
+
+  /// The registry actions this button is the entrance of. Their LIVE keys
+  /// follow [tooltip] — 「Copy (Ctrl+C)」 — read from the bindings by the
+  /// button itself, so re-recording a key re-labels every button that
+  /// presses it, a cached toolbar included (I-19: 「툴팁으로 숏컷 키
+  /// 보여주도록. 낡지않을구조로.」).
+  final List<String> shortcuts;
 
   /// Usually an [Icon]; text glyphs ('1:1') are allowed — they inherit the
   /// same accent/foreground treatment.
@@ -287,7 +296,7 @@ class AppIconButton extends StatelessWidget {
       onPressed: onPressed,
       child: AppIconButtonFace(
         key: ValueKey<String>(keyValue),
-        tooltip: tooltip,
+        tooltip: shortcutTooltip(context, tooltip, shortcuts),
         // ⛔The face keeps a SILENT callback. It decides the enabled look,
         // and it is what the keyboard's Enter/Space reach — silent by
         // 유저's call (2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이

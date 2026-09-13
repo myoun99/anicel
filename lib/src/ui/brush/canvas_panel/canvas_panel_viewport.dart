@@ -140,6 +140,7 @@ class _CanvasPanelViewport {
       toggleFlipHorizontal: _toggleFlipHorizontal,
       toggleFlipVertical: _toggleFlipVertical,
       resetRotation: _resetRotation,
+      zoomStep: _zoomStep,
     );
   }
 
@@ -280,9 +281,25 @@ class _CanvasPanelViewport {
   }
 
   /// One press of the pill's − / +. Back with the buttons themselves
-  /// (유저 확정 2026-08-13: 줌 버튼도 살림).
-  void _zoomAroundCenter(double factor) {
-    _zoomToAroundCenter(_viewport.zoom * factor);
+  /// (유저 확정 2026-08-13: 줌 버튼도 살림) — and Shift+, / Shift+. press
+  /// the same step (I-19).
+  ///
+  /// 🗣️I-19 (유저 2026-09-13): 「배율은 설정에 줌 스냅 설정한대로」. A press
+  /// used to multiply by 1.25 or 0.8; it walks to the next entry of the zoom
+  /// snap list now, in the direction pressed, read in DISPLAY percent — the
+  /// unit that list and the readout are both written in. Past the list's
+  /// last entry there is no next step, so the view stays where it is.
+  void _zoomStep({required bool zoomIn}) {
+    final scale = _state._zoomScale;
+    final next = AppInput.stepThroughList(
+      scale.display(_viewport.zoom) * 100,
+      AppInput.settings.value.zoomSnapPercents,
+      up: zoomIn,
+    );
+    if (next == null) {
+      return;
+    }
+    _zoomToAroundCenter(scale.render(next / 100));
   }
 
   void _zoomToAroundCenter(double nextZoom) {

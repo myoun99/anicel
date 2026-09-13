@@ -103,6 +103,36 @@ abstract class ToolbarPanelContext {
   void deleteSelectionSubject();
 }
 
+/// What each SHARED pill button does when it is pressed — null while it has
+/// nothing to do.
+///
+/// ★ONE ANSWER FOR THE BUTTON AND ITS KEY (I-19). The pill lights from these
+/// and fires them; Ctrl+X/C/V/B and Delete fire the same getters on the
+/// timeline's context, so a key can never do what its button would not.
+extension ToolbarSharedPresses on ToolbarPanelContext {
+  void Function()? get cutPress => canCutRun ? cutRun : null;
+
+  void Function()? get copyPress => canCopyFrame ? copyFrame : null;
+
+  void Function()? get pasteIndependentPress =>
+      canPasteIndependentFrame ? pasteIndependentFrame : null;
+
+  void Function()? get pasteLinkedPress =>
+      canPasteLinkedFrame ? pasteLinkedFrame : null;
+
+  /// F: the ROWS rung asks first. It inherited that from the loose layer
+  /// button this pill folded in — a delete that used to confirm must not
+  /// stop confirming because its button moved, or because a key pressed it.
+  /// The cell rung goes straight through, as it always has.
+  void Function()? deletePress({void Function()? onDeleteRowSelection}) =>
+      switch (deleteSubject) {
+        DeleteSubject.nothing => null,
+        DeleteSubject.layers when onDeleteRowSelection != null =>
+          onDeleteRowSelection,
+        _ => deleteSelectionSubject,
+      };
+}
+
 /// The cut timeline's context: the session's own verbs, verbatim. Every
 /// member is a one-line delegation on purpose — this panel's dispatch is
 /// the baseline B8 pins, so the wrapper must add nothing to it.

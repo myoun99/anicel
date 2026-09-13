@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/timeline_row_address.dart';
 import '../editor_session_manager.dart';
+import '../shortcuts/editor_action_registry.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 
@@ -133,6 +134,7 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
         AppIconButton(
           keyValue: 'push-blocks-button',
           tooltip: AppText.strings.tlPush,
+          shortcuts: const [EditorActionIds.timelinePushBlocks],
           icon: const Icon(Icons.keyboard_tab),
           onPressed: _canPush
               ? () => session.blockShift.pushBlocks(1, currentRow: currentRow)
@@ -141,6 +143,7 @@ class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
         AppIconButton(
           keyValue: 'pull-blocks-button',
           tooltip: AppText.strings.tlPull,
+          shortcuts: const [EditorActionIds.timelinePullBlocks],
           icon: const Icon(Icons.keyboard_backspace),
           onPressed: _canPull
               ? () => session.blockShift.pullBlocks(1, currentRow: currentRow)

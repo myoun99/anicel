@@ -37,7 +37,9 @@ import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
 import '../session/project_file_door.dart' show SaveAsked;
+import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_bindings.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
 import '../theme/app_theme.dart';
 
@@ -365,18 +367,6 @@ class EditorTopStrip extends StatelessWidget {
     }
   }
 
-  Future<void> _saveProjectAs(BuildContext context) =>
-      promptSaveProjectAs(context, session);
-
-  Future<void> _saveProject(BuildContext context) async {
-    final path = session.projectFile.path;
-    if (path == null) {
-      await _saveProjectAs(context);
-      return;
-    }
-    await saveProjectShowingProgress(context, session, path);
-  }
-
   /// PICK-4: the recent projects, or nothing at all.
   ///
   /// Absent rather than empty-and-disabled when there is no history: a
@@ -527,17 +517,19 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.folder_open_outlined,
       onPressed: () => unawaited(_openProject(context)),
     ),
+    // The registry's names: Ctrl+S and Ctrl+Shift+S press these (I-19), and
+    // the shortcut list says the same two words.
     _item(
       id: 'file-save',
-      label: 'Save',
+      label: editorActionLabel(EditorActionIds.fileSave),
       icon: Icons.save_outlined,
-      onPressed: () => unawaited(_saveProject(context)),
+      onPressed: () => unawaited(saveProject(context, session)),
     ),
     _item(
       id: 'file-save-as',
-      label: 'Save as…',
+      label: editorActionLabel(EditorActionIds.fileSaveAs),
       icon: Icons.save_as_outlined,
-      onPressed: () => unawaited(_saveProjectAs(context)),
+      onPressed: () => unawaited(promptSaveProjectAs(context, session)),
     ),
     ..._recentEntries(context),
     const PanelFlyoutDivider(),
@@ -1564,17 +1556,35 @@ Future<bool> ensureUnsavedWorkSettled(
       if (!context.mounted) {
         return false;
       }
-      // The existing File-menu flows do the work (one writer, one
-      // picker); a save that fails or a cancelled picker leaves the
-      // project dirty, so the tear-down is called off.
-      final path = session.projectFile.path;
-      if (choice == UnsavedWorkChoice.saveAs || path == null) {
+      // The File menu's own saves do the work (one writer, one picker); a
+      // save that fails or a cancelled picker leaves the project dirty, so
+      // the tear-down is called off.
+      if (choice == UnsavedWorkChoice.saveAs) {
         await promptSaveProjectAs(context, session);
       } else {
-        await saveProjectShowingProgress(context, session, path);
+        await saveProject(context, session);
       }
       return !session.projectFile.hasUnsavedChanges;
   }
+}
+
+/// 🔑 THE Save: back to the file this session is bound to, or Save As when
+/// it has none yet.
+///
+/// 🗣️I-19 (유저 2026-09-12): 「컨트롤s로 저장 로직 연결 … 법 나뉘어진거
+/// 있으면 겸사겸사 통일」. It was split: the File menu's Save and the exit
+/// prompt's Save each asked 「is there a file yet?」 on their own. One answer
+/// now, and Ctrl+S asks it too.
+Future<void> saveProject(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final path = session.projectFile.path;
+  if (path == null) {
+    await promptSaveProjectAs(context, session);
+    return;
+  }
+  await saveProjectShowingProgress(context, session, path);
 }
 
 /// 🔑 THE ONE WAY a manual save runs: behind a window that shows it

@@ -160,7 +160,12 @@ void main() {
   /// 86 (I-15, 2026-09-11): the English row of the held 「이동」 shortcut
   /// (`canvas-pan-hold`), the registry contract above; its other four
   /// languages are keyed by id.
-  const untranslatedElsewhere = 86;
+  ///
+  /// 94 (I-19, 2026-09-13): the English rows of eleven new registry actions
+  /// (cut, copy, both pastes, delete, clear pixels, save, save as, solo, zoom
+  /// in and out) — the same contract — less what the buttons and menu items
+  /// that now read those names stopped hardcoding.
+  const untranslatedElsewhere = 94;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
