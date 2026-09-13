@@ -22,11 +22,13 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
 /// The cut block has no edge grips of its own any more: a cut edge is always
-/// ON the strip. The first panel's leading edge re-times the cut's LEAD, and
-/// EVERY trailing edge — inner and last alike — is its panel's comma: the
-/// later panels ripple along glued and the cut's length rides the row end
-/// (edge unification; the division verb is gone). One shape of grip; where
-/// it sits decides what it re-times.
+/// ON the strip. EVERY leading edge is a rolling edit with the block in front
+/// of it — the panel before it, or at a cut's first panel the previous cut's
+/// last panel — so the lengths trade and nothing else moves (I-21: one lead
+/// edge law with the frame axis). EVERY trailing edge — inner and last
+/// alike — is its panel's comma: the later panels ripple along glued and the
+/// cut's length rides the row end (edge unification; the division verb is
+/// gone). One shape of grip; where it sits decides what it re-times.
 const _trackId = TrackId('grip-track');
 
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
@@ -143,8 +145,9 @@ void main() {
     // Panels in track order: cut 1's two, then one each for cuts 2 and 3.
     // Panel 1 is INTERIOR to cut 1 and hangs a front grip all the same
     // (user's rule 2026-08-02). It is not the impersonation P5 #8 shipped:
-    // panel 0's BACK grip grows the cut at its tail, panel 1's FRONT grip
-    // shortens the cut at its head. Same boundary, opposite ends give way.
+    // panel 0's BACK grip grows the cut at its tail, and panel 1's FRONT
+    // grip trades frames with panel 0 inside a cut that keeps its length
+    // (I-21). Same boundary, two different edits.
     expect(
       timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard'),
       <String>[
@@ -297,7 +300,15 @@ void main() {
     expect(_cutById(tester, 'cut-1').duration, 10, reason: 'not the active');
   });
 
-  group('the LEAD edge is the frame axis\'s (R10 R4)', () {
+  // ⛔RETIRED 2026-09-12 (`caa29719`, I-21 hands-on ②): the front grip used to
+  // take its frames off the CUT — the grabbed panel shrank, nobody grew, the
+  // cut's head absorbed the difference and a glued predecessor slid
+  // wholesale. That was a law of the storyboard's own, and the user asked
+  // for the other one: 「프레임블록이랑 똑같은 하나의 법으로」 ·
+  // 「첫번째 블록의 앞엣지만 이전 컷, 컷 안에 콘티블록있으면 해당 블록」.
+  // These cases pinned the retired law and outlived it; they are rewritten
+  // to the one that shipped, not deleted.
+  group('the LEAD edge trades with the block in front (I-21)', () {
     testWidgets('the cut loses frames off its front, its END holds, and the '
         'emptiness lands at the head of the film — whether or not the cut '
         'has been drawn on', (tester) async {
@@ -307,8 +318,9 @@ void main() {
 
       await _dragGrip(tester, 'block-edge-grip-start-grip-track-0', 2);
 
-      // Cut 1 is the FIRST cut, so there is no predecessor to slide: the
-      // head is directly in front of it and takes the 2 frames.
+      // Cut 1's first panel is the FIRST block of the film, so there is no
+      // block in front to trade with: the head is directly in front of it
+      // and takes the 2 frames.
       final cut = _cutById(tester, 'cut-1');
       expect(cut.duration, 8);
       expect(cut.leadingGapFrames, 2);
@@ -326,41 +338,40 @@ void main() {
       expect(row.timeline[3]!.length, 5, reason: 'the other one, untouched');
     });
 
-    testWidgets('an INNER panel\'s front grip takes the frames off the same '
-        'panel, and the cut\'s head still absorbs them', (tester) async {
+    testWidgets('an INNER panel\'s front grip trades with the panel in front: '
+        'that one grows, this one shrinks, and the cut keeps its length', (
+      tester,
+    ) async {
       await _openStoryboard(tester);
       expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
 
       await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
 
       final cut = _cutById(tester, 'cut-1');
-      expect(cut.duration, 8);
-      expect(cut.leadingGapFrames, 2);
+      expect(cut.duration, 10, reason: 'a front edge never changes the length');
+      expect(cut.leadingGapFrames, 0);
       final row = storyboardLayerForCut(cut)!;
-      expect(
-        _divisionsOf(tester, 'cut-1'),
-        [0, 5],
-        reason: 'the panels IN FRONT of the grab keep their cut-local keys — '
-            'on screen they translate, because the cut head moved with them',
-      );
-      expect(row.timeline[0]!.length, 5, reason: 'untouched');
-      expect(row.timeline[5]!.length, 3, reason: 'the grabbed panel, 5 -> 3');
+      expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
+      expect(row.timeline[0]!.length, 7, reason: 'the panel in front, 5 -> 7');
+      expect(row.timeline[7]!.length, 3, reason: 'the grabbed panel, 5 -> 3');
       expect(
         _cutById(tester, 'cut-2').leadingGapFrames,
         0,
-        reason: 'the end held, so nothing behind the cut moved',
+        reason: 'nothing behind the cut moved',
       );
     });
 
     testWidgets('the two edges of one boundary are two edits: the back grip '
-        'grows the cut at its TAIL, the front grip shortens it at its HEAD', (
+        'grows the cut at its TAIL, the front grip trades inside it', (
       tester,
     ) async {
       await _openStoryboard(tester);
 
       // Panel 0's trailing edge and panel 1's leading edge sit on the same
-      // boundary. This is the pair R4 called "two handles, one thing" — and
-      // the reason it is not: they move opposite ends of the cut.
+      // boundary, and both move it. They are still two edits: the back grip
+      // is panel 0's comma — the later panels ripple and the cut grows — and
+      // the front grip is a rolling edit between the two panels, so the cut
+      // keeps its length.
       await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
       expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
       expect(_cutById(tester, 'cut-1').duration, 12);
@@ -370,9 +381,9 @@ void main() {
       await tester.pumpAndSettle();
 
       await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
-      expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
-      expect(_cutById(tester, 'cut-1').duration, 8);
-      expect(_cutById(tester, 'cut-1').leadingGapFrames, 2);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
+      expect(_cutById(tester, 'cut-1').duration, 10);
+      expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
     });
 
     testWidgets('ONE undo restores the cut length and the head together', (
@@ -391,25 +402,38 @@ void main() {
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
     });
 
-    testWidgets('on a LATER cut the glued predecessor slides wholesale and '
-        'the head still empties', (tester) async {
+    testWidgets('on a LATER cut the block in front is the previous cut\'s '
+        'LAST panel: it grows, this cut shrinks, and nothing else moves', (
+      tester,
+    ) async {
       await _openStoryboard(tester);
-      final firstDuration = _cutById(tester, 'cut-1').duration;
 
       await _dragGrip(tester, 'block-edge-grip-start-grip-track-2', 2);
 
+      final previous = _cutById(tester, 'cut-1');
+      expect(previous.duration, 12, reason: 'the cut in front GROWS now');
       expect(
-        _cutById(tester, 'cut-1').duration,
-        firstDuration,
-        reason: 'the predecessor MOVES, it does not resize',
+        previous.leadingGapFrames,
+        0,
+        reason: 'the head of the film never empties',
       );
-      expect(_cutById(tester, 'cut-1').leadingGapFrames, 2);
       expect(
-        _cutById(tester, 'cut-2').leadingGapFrames,
+        storyboardLayerForCut(previous)!.timeline[5]!.length,
+        7,
+        reason: 'and the frames land on its last panel, the block in front',
+      );
+      final grabbed = _cutById(tester, 'cut-2');
+      expect(grabbed.duration, 8);
+      expect(
+        grabbed.leadingGapFrames,
         0,
         reason: 'no gap is torn open between the glued neighbours',
       );
-      expect(_cutById(tester, 'cut-2').duration, 8);
+      expect(
+        previous.duration + grabbed.duration,
+        20,
+        reason: 'the grabbed cut\'s END held, so everything after it stayed',
+      );
     });
   });
 
@@ -453,11 +477,9 @@ void main() {
       );
     });
 
-    testWidgets('the storyboard row has NO start grips here (edge '
-        'unification): the row\'s front edge is the cut\'s start on the '
-        'strip, and every inner boundary is a trailing edge', (
-      tester,
-    ) async {
+    testWidgets('the storyboard row\'s inner boundary has a FRONT grip, and '
+        'it trades with the block in front; only the row\'s very front — '
+        'the cut\'s start — has none', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1500, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -466,15 +488,32 @@ void main() {
       await tester.pumpAndSettle();
 
       final ids = timelineRowChromeIds(tester, 'cut-1-sb');
-      // NO start grips at all (edge unification widened feedback #10's
-      // at-zero rule): every boundary on a gapless row belongs to the
-      // trailing edge on its left, so a front grip would only be the same
-      // boundary's second handle — and the block-1 one used to push
-      // block 0 off frame 0 (the ripple defect this removal retires).
+      // ⛔RETIRED with I-21: 「NO start grips at all」 was edge unification
+      // widening feedback #10's at-zero rule, because block 1's front grip
+      // used to RIPPLE — it pushed block 0 off frame 0. A front grip is a
+      // rolling edit now and has nothing to push, so the only one withheld
+      // is frame 0's: a gapless row's front edge is the cut's own start.
       expect(ids, isNot(contains('block-edge-grip-start-cut-1-sb-0')));
-      expect(ids, isNot(contains('block-edge-grip-start-cut-1-sb-1')));
+      expect(ids, contains('block-edge-grip-start-cut-1-sb-1'));
       expect(ids, contains('block-edge-grip-end-cut-1-sb-0'));
       expect(ids, contains('block-edge-grip-end-cut-1-sb-1'));
+
+      await _dragTimelineGrip(
+        tester,
+        'cut-1-sb',
+        'block-edge-grip-start-cut-1-sb-1',
+        2,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+      );
+      await tester.pumpAndSettle();
+
+      final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
+      expect(layer.timeline.keys.toList(), [0, 7]);
+      expect(layer.timeline[0]!.length, 7, reason: 'block 0 kept frame 0');
+      expect(layer.timeline[7]!.length, 3);
+      expect(_cutById(tester, 'cut-1').duration, 10);
     });
   });
 }
