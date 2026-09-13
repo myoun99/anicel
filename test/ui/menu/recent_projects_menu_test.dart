@@ -65,6 +65,35 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Taps a Recent row and lets the open RUN, answering whether the wait
+  /// window was seen on the way.
+  ///
+  /// ⚠️`runAsync` and hand-rolled pumping, NOT `pumpAndSettle`: the window
+  /// holds a turning spinner — an animation that never settles — and the
+  /// read is real IO that only completes in real time. The same harness
+  /// save_shows_progress_test uses, for the same two reasons. Polled until
+  /// the window has come and gone, so a stub that fails to parse in a
+  /// millisecond and a file that takes a second are judged alike.
+  Future<bool> tapRecentAndLetItOpen(WidgetTester tester, String path) async {
+    final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
+    var seen = false;
+    await tester.runAsync(() async {
+      await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (DateTime.now().isBefore(deadline)) {
+        await tester.pump();
+        final up = window.evaluate().isNotEmpty;
+        seen = seen || up;
+        if (seen && !up) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+    await tester.pumpAndSettle();
+    return seen;
+  }
+
   testWidgets('an empty history shows no Recent section at all', (
     tester,
   ) async {
@@ -122,14 +151,41 @@ void main() {
     // `tap` FAILS when the key is absent, so this line is the assertion that
     // matters: deleting `..._recentEntries(context)` from the popover — the
     // mutation that previously survived the whole suite — cannot get past it.
-    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    await tester.pumpAndSettle();
+    await tapRecentAndLetItOpen(tester, path);
 
     // And it took the file-exists branch rather than the reconnect one. The
     // stub is not a real archive so the open itself fails, but WHICH path it
     // walked is the thing worth pinning: the sibling test below proves a
     // missing file lands in the other branch, so the pair separates them.
     expect(AppRecent.projects.value.entries.single.needsReconnect, isFalse);
+  });
+
+  testWidgets('the open stands behind the wait window from its first frame '
+      '— a big project on a cloud drive is not instant (유저 2026-09-13)',
+      (tester) async {
+    // 🪦The window used to wait for a provider to make the open WAIT, and
+    // a local pick stayed silent — so a 74MB project that took seconds
+    // to read showed nothing, and「여는 중인지 아닌지 모르겠어」. The window
+    // is built BEFORE the work starts, which is what makes one frame the
+    // whole proof: it is on screen whether the file takes a second or a
+    // millisecond.
+    final path = writeProject('Cut 12.anicel');
+    seed(const RecentProjects().withOpened(
+      RecentProject(path: path),
+    ));
+
+    await openProjectMenu(tester);
+    expect(
+      await tapRecentAndLetItOpen(tester, path),
+      isTrue,
+      reason: 'an open that says nothing cannot be told from nothing',
+    );
+    // The stub is not an archive, so the open failed and the window came
+    // down with it — what stays is the file error, not the wait.
+    expect(
+      find.byKey(const ValueKey<String>('open-progress-dialog')),
+      findsNothing,
+    );
   });
 
   testWidgets('a remembered project that is gone offers the FILE picker', (
@@ -187,8 +243,7 @@ void main() {
         );
 
     await openProjectMenu(tester);
-    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    await tester.pumpAndSettle();
+    await tapRecentAndLetItOpen(tester, path);
 
     expect(
       AppRecent.projects.value.entries.single.needsReconnect,
@@ -212,8 +267,7 @@ void main() {
         );
 
     await openProjectMenu(tester);
-    await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    await tester.pumpAndSettle();
+    await tapRecentAndLetItOpen(tester, path);
 
     expect(AppRecent.projects.value.entries.single.needsReconnect, isFalse);
   });

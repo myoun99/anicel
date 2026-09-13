@@ -28,7 +28,8 @@ import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show remapProjectMediaPaths;
 import '../../services/persistence/coordinated_project_swap.dart';
-import '../../services/persistence/folder_grant.dart' show FolderPicker;
+import '../../services/persistence/folder_grant.dart'
+    show FolderPicker, MaterializeCancelled;
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
@@ -570,10 +571,21 @@ class ProjectFileDoor {
   /// FormatException that refused an overlay fed through the
   /// whole-archive arm. ⛔The rename is the point: one name was answering
   /// 「which file do I save back to」 and 「is this a recovery」 at once.
-  Future<void> openProjectFromFile(String filePath, {String? bindTo}) async {
+  Future<void> openProjectFromFile(
+    String filePath, {
+    String? bindTo,
+    bool Function()? isCancelled,
+  }) async {
     final result = await _anicelFileService.open(
       filePath: filePath,
     );
+    // The read is the wait, and nothing has been applied yet: a press on
+    // the wait window's Cancel during it is honoured HERE, at the last
+    // moment it still means「nothing changed」— past this line the project
+    // lands. The same answer the materializer gives for the same press.
+    if (isCancelled?.call() ?? false) {
+      throw const MaterializeCancelled();
+    }
     _playbackRig.playback.stop();
     // BEFORE the project lands: a bookmark tracks the file rather than the
     // path, so resolving one is how a referenced movie that was renamed or

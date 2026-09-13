@@ -193,19 +193,14 @@ const Duration appProgressDoneLinger = Duration(milliseconds: 900);
 /// and a delay that skips the fast cases would leave exactly those showing
 /// nothing at all. A quick flash IS the answer: it was pressed, and it took.
 ///
-/// ⚠️[showWhen] buys the opposite trade for a DIFFERENT question, and the
-/// difference is what makes it not an exception. A save is rare, slow and
-/// asked about; an OPEN is constant and usually instant, and a window that
-/// blinks on every local open is noise about a thing nobody doubted.
-///
-/// 🚨It is a FUTURE, not a delay, and that distinction is the whole point:
-/// the work itself says when it has started waiting — a materialiser that
-/// has to sit and ask a provider again — instead of a stopwatch guessing
-/// from outside. A stopwatch is wrong in both directions. It fires for a
-/// local open that merely lost a race against the clock (every widget test
-/// that opens a project went red exactly there, and users would have seen
-/// the same blink on a slow frame), and it says nothing about a file that
-/// is genuinely stuck but has not reached the mark yet.
+/// 🪦It offered `showWhen` — a future the work completed when it started
+/// WAITING on someone else's bytes, so that an open stayed silent unless a
+/// provider made it wait — from 2026-08-27 to 2026-09-13, on the premise
+/// that an open is instant and a window on every local open is noise about
+/// a thing nobody doubted. The premise failed on a 74MB project on a cloud
+/// drive: the open was not instant, said nothing, and the person could not
+/// tell it from nothing (유저: 「로딩창 안 떠서 여는 중인지 아닌지 모르겠어」).
+/// One law now, this one, for every wait window (F-53).
 ///
 /// A throw takes the window down and comes back out, so the caller's own
 /// error path is unchanged by having been wrapped.
@@ -218,52 +213,10 @@ Future<T> runWithAppProgress<T>({
   IconData? titleIcon,
   Key? windowKey,
   Duration doneLinger = appProgressDoneLinger,
-  Future<void>? showWhen,
   ValueListenable<String>? runningStatus,
   VoidCallback? onCancel,
 }) async {
   final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
-  if (showWhen != null) {
-    // Started before the window, and raced against the work's own signal:
-    // work that finishes without ever saying 「I am waiting」 draws nothing
-    // at all. No timer is involved, so nothing is left ticking for a race
-    // that is already over.
-    //
-    // ⚠️The error arm sets `finished` rather than swallowing: the future is
-    // awaited again below, so catching here would either deliver the
-    // failure twice or lose it.
-    final running = task(
-      (fraction) => progress.value = AppProgress.running(fraction),
-    );
-    var finished = false;
-    await Future.any<void>([
-      running.then((_) => finished = true, onError: (_) => finished = true),
-      showWhen,
-    ]);
-    if (finished) {
-      progress.dispose();
-      return running;
-    }
-    if (!context.mounted) {
-      // The screen that asked went away while the work ran. Nothing to
-      // draw on and nothing to close — hand the work back as it is.
-      progress.dispose();
-      return running;
-    }
-    return _awaitBehindWindow(
-      context: context,
-      title: title,
-      titleIcon: titleIcon,
-      runningLabel: runningLabel,
-      doneLabel: doneLabel,
-      windowKey: windowKey,
-      doneLinger: doneLinger,
-      progress: progress,
-      runningStatus: runningStatus,
-      onCancel: onCancel,
-      running: running,
-    );
-  }
   return _awaitBehindWindow(
     context: context,
     title: title,
@@ -287,8 +240,8 @@ Future<T> runWithAppProgress<T>({
   );
 }
 
-/// The window half, shared by both arms: one already-running future to
-/// wait on, or one to start after the first frame.
+/// The window half: the window goes up, and the work starts after the
+/// first frame.
 Future<T> _awaitBehindWindow<T>({
   required BuildContext context,
   required String title,
@@ -300,8 +253,7 @@ Future<T> _awaitBehindWindow<T>({
   required ValueNotifier<AppProgress> progress,
   required ValueListenable<String>? runningStatus,
   required VoidCallback? onCancel,
-  Future<T>? running,
-  Future<T> Function()? start,
+  required Future<T> Function() start,
 }) async {
   BuildContext? windowContext;
   final shown = showDialog<void>(
@@ -327,7 +279,7 @@ Future<T> _awaitBehindWindow<T>({
   );
   await WidgetsBinding.instance.endOfFrame;
   try {
-    final result = await (running ?? start!());
+    final result = await start();
     progress.value = const AppProgress.done();
     await Future<void>.delayed(doneLinger);
     return result;

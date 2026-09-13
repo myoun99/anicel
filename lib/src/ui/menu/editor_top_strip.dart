@@ -168,124 +168,66 @@ class EditorTopStrip extends StatelessWidget {
     if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
       return;
     }
-    final staged = await _stagedCopyForOpen(context, path);
-    if (staged == null || !context.mounted) {
-      return;
-    }
-    await _openRead(context, pick, readPath: staged.path);
-  }
-
-  /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
-  /// several cuts): everything current is replaced, so the same
-  /// unsaved-work gate as any open guards it. No recents entry — the
-  /// result is a NEW unsaved project until its first save.
-  Future<void> _openTvppAsProject(BuildContext context, String path) async {
-    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
-      return;
-    }
-    // Decoding and baking a whole project is a save-sized wait; a frozen
-    // screen before the cuts appear reads as a hang (hands-on, 288's 96
-    // frames × 19 layers).
-    final List<String>? warnings;
-    final wait = _CloudWait();
+    final ({({bool staged}) value})? opened;
     try {
-      warnings = await runWithAppProgress<List<String>?>(
-        context: context,
-        title: AppText.strings.fileOpenTitle,
-        titleIcon: Icons.folder_open_outlined,
-        runningLabel: AppText.strings.openProgressRunning,
-        doneLabel: AppText.strings.openProgressDone,
-        windowKey: const ValueKey<String>('open-progress-dialog'),
-        runningStatus: wait.status,
-        onCancel: wait.cancel,
-        task: (report) => session.tvppDoor.openAsProject(
-          tvppPath: path,
-          onProgress: (fraction) {
-            // Reading has started, so the waiting line has nothing left
-            // to say.
-            wait.arrived();
-            report(fraction);
-          },
-          onWaiting: wait.report,
-          isCancelled: wait.isCancelled,
-        ),
+      opened = await _openBehindWindow<({bool staged})>(
+        context,
+        (wait, _) => _readProject(path, wait),
       );
-    } on MaterializeCancelled {
-      // Not a failure: the user stopped waiting for the file to arrive
-      // and nothing was applied. The door closes without a word.
-      return;
-    } on FileSystemException {
-      // Access, not format — the same file opens once it is readable (a
-      // cloud placeholder mid-download, a provider signed out).
+    } on Object catch (error) {
+      // The archive's own complaint — a file that would not parse.
       if (context.mounted) {
-        showFileError(
-          context,
-          const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
-        );
+        showFileError(context, error);
       }
       return;
-    } finally {
-      wait.dispose();
     }
-    if (!context.mounted) {
+    if (opened == null || !context.mounted) {
       return;
     }
-    if (warnings == null) {
-      showFileError(context, const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'));
-    } else if (warnings.isNotEmpty) {
-      await showAppNotice(
-        context,
-        windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
-        title: AppText.strings.commonNotice,
-        message: warnings.take(6).join('\n'),
-      );
-    }
+    await _afterOpened(context, pick, staged: opened.value.staged);
   }
 
-  /// The path to actually read, once the file has been made readable — or
-  /// null when the user stopped waiting or the read failed.
+  /// The read itself, from wherever the bytes are.
   ///
   /// The same materializer every open uses: a File Provider pick can be a
   /// placeholder a plain read refuses, and the archive reader needs random
   /// access — so an unreadable pick opens from a staged local copy, and the
   /// session is bound back to the real file so saves land there.
-  Future<({String path})?> _stagedCopyForOpen(
+  Future<({bool staged})> _readProject(String path, _CloudWait wait) async {
+    final source = await FolderPicker.materializeOpenedFile(
+      path,
+      within: null,
+      onWaiting: wait.report,
+      isCancelled: wait.isCancelled,
+    );
+    // The bytes are here; the read that follows is the app's own.
+    wait.arrived();
+    await session.projectDoor.openProjectFromFile(
+      source.path,
+      // Only when they differ: binding is what says「saves go back THERE」,
+      // and a session reading its own file has nowhere else.
+      bindTo: source.staged ? path : null,
+      isCancelled: wait.isCancelled,
+    );
+    return (staged: source.staged);
+  }
+
+  /// The three things that follow a SUCCESSFUL open: Recents, the word
+  /// about a staged copy, the word about a legacy assets folder.
+  Future<void> _afterOpened(
     BuildContext context,
-    String path,
-  ) async {
-    final wait = _CloudWait();
-    try {
-      // Behind the SAME window the .tvpp door uses, and behind a short
-      // delay: a local pick is instant and must stay silent, while a file
-      // still coming down says so — 「여는 중」 over a download blames the
-      // app for the provider's work.
-      final source = await runWithAppProgress<({String path, bool staged})>(
-        context: context,
-        title: AppText.strings.fileOpenTitle,
-        titleIcon: Icons.folder_open_outlined,
-        runningLabel: AppText.strings.openProgressRunning,
-        doneLabel: AppText.strings.openProgressDone,
-        windowKey: const ValueKey<String>('open-progress-dialog'),
-        // Raised by the WAIT, not by a clock: a pick that reads
-        // immediately never says it is waiting, so a local open stays
-        // exactly as silent as it was.
-        showWhen: wait.started,
-        doneLinger: Duration.zero,
-        runningStatus: wait.status,
-        onCancel: wait.cancel,
-        task: (_) => FolderPicker.materializeOpenedFile(
-          path,
-          within: null,
-          onWaiting: wait.report,
-          isCancelled: wait.isCancelled,
-        ),
-      );
-      if (!source.staged) {
-        return (path: path);
-      }
-      if (!context.mounted) {
-        return null;
-      }
+    ProjectPick pick, {
+    required bool staged,
+  }) async {
+    final path = pick.path;
+    // Recorded AFTER the open succeeds, not at pick time: a file that
+    // fails to parse has no business sitting at the top of the menu.
+    // `path` rather than the staged copy — reading out of a copy still
+    // means the user opened the project, not the copy.
+    recordRecentProject(
+      RecentProject(path: path, folderBookmark: pick.folderBookmark),
+    );
+    if (staged) {
       // Said out loud on purpose (유저 2026-08-27): the wait is meant to
       // make this road unreachable, so a build that still takes it must be
       // visible rather than quietly slower. A copy also means every cel
@@ -299,9 +241,106 @@ class EditorTopStrip extends StatelessWidget {
             '제자리에서 읽지 못해 임시 사본으로 열었습니다 — '
             '이 문구가 보이면 알려주세요.',
       );
-      return (path: source.path);
+      if (!context.mounted) {
+        return;
+      }
+    }
+    // A project from a build that kept its media in a sibling folder.
+    // Said AFTER the open, because a file that failed to parse has no
+    // media to absorb and the folder is still the only copy.
+    final layout = ProjectAssetLayout(path);
+    if (layout.hasLegacyAssetsDirectory) {
+      final name = layout.assetsDirectory.split('/').last;
+      await showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('legacy-assets-folder-notice'),
+        title: AppText.strings.commonNotice,
+        message: AppText.strings.projectLegacyAssetsFolder.replaceAll(
+          '{name}',
+          name,
+        ),
+      );
+    }
+  }
+
+  /// A TVPaint project opens AS A PROJECT (the user's rule — a .tvpp holds
+  /// several cuts): everything current is replaced, so the same
+  /// unsaved-work gate as any open guards it. No recents entry — the
+  /// result is a NEW unsaved project until its first save.
+  Future<void> _openTvppAsProject(BuildContext context, String path) async {
+    if (!await ensureUnsavedWorkSettled(context, session) || !context.mounted) {
+      return;
+    }
+    // Decoding and baking a whole project is a save-sized wait; a frozen
+    // screen before the cuts appear reads as a hang (hands-on, 288's 96
+    // frames × 19 layers).
+    final opened = await _openBehindWindow<List<String>?>(
+      context,
+      (wait, report) => session.tvppDoor.openAsProject(
+        tvppPath: path,
+        onProgress: (fraction) {
+          // Reading has started, so the waiting line has nothing left
+          // to say.
+          wait.arrived();
+          report(fraction);
+        },
+        onWaiting: wait.report,
+        isCancelled: wait.isCancelled,
+      ),
+    );
+    if (opened == null || !context.mounted) {
+      return;
+    }
+    final warnings = opened.value;
+    if (warnings == null) {
+      showFileError(context, const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'));
+    } else if (warnings.isNotEmpty) {
+      await showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
+        title: AppText.strings.commonNotice,
+        message: warnings.take(6).join('\n'),
+      );
+    }
+  }
+
+  /// The ONE window every open stands behind, up from the first frame, for
+  /// a .anicel and a .tvpp alike.
+  ///
+  /// 🚨IT USED TO COVER ONLY THE WAIT FOR A PROVIDER'S BYTES and stay silent
+  /// for a local pick, on the premise that an open is instant. A 74MB
+  /// project on a cloud drive is not, and the person could not tell an open
+  /// from nothing (유저 2026-09-13: 「로딩창 안 떠서 여는 중인지 아닌지
+  /// 모르겠어」). F-53 had already said what a wait window does — it goes
+  /// up at once — and this is that law with its one exception removed. The
+  /// status line still says whose work a cloud wait is ([_CloudWait]); once
+  /// the bytes are here the rest is the app's own.
+  ///
+  /// The two answers every open can end in are given HERE: the user stopped
+  /// waiting (nothing was applied, the door closes without a word), or the
+  /// file could not be read (access, not format — the same file opens once
+  /// it is readable: a cloud placeholder mid-download, a provider signed
+  /// out). Null is either of those; anything else wraps [task]'s own answer,
+  /// so a task whose answer is itself null is not mistaken for a cancel.
+  Future<({T value})?> _openBehindWindow<T>(
+    BuildContext context,
+    Future<T> Function(_CloudWait wait, void Function(double) report) task,
+  ) async {
+    final wait = _CloudWait();
+    try {
+      final value = await runWithAppProgress<T>(
+        context: context,
+        title: AppText.strings.fileOpenTitle,
+        titleIcon: Icons.folder_open_outlined,
+        runningLabel: AppText.strings.openProgressRunning,
+        doneLabel: AppText.strings.openProgressDone,
+        windowKey: const ValueKey<String>('open-progress-dialog'),
+        runningStatus: wait.status,
+        onCancel: wait.cancel,
+        task: (report) => task(wait, report),
+      );
+      return (value: value);
     } on MaterializeCancelled {
-      // Not a failure: the user stopped waiting, nothing was applied.
       return null;
     } on FileSystemException {
       if (context.mounted) {
@@ -313,53 +352,6 @@ class EditorTopStrip extends StatelessWidget {
       return null;
     } finally {
       wait.dispose();
-    }
-  }
-
-  /// The open itself, and the two things that follow a SUCCESSFUL one.
-  ///
-  /// [readPath] is where the BYTES are — the project's own address, or the
-  /// staged local copy made for a file that would not read in place.
-  Future<void> _openRead(
-    BuildContext context,
-    ProjectPick pick, {
-    required String readPath,
-  }) async {
-    final path = pick.path;
-    try {
-      await session.projectDoor.openProjectFromFile(
-        readPath,
-        // Only when they differ: binding is what says「saves go back
-        // THERE」, and a session reading its own file has nowhere else.
-        bindTo: readPath == path ? null : path,
-      );
-      // Recorded AFTER the open succeeds, not at pick time: a file that
-      // fails to parse has no business sitting at the top of the menu.
-      // `path` rather than [readPath] — reading out of a staged copy still
-      // means the user opened the project, not the copy.
-      recordRecentProject(
-        RecentProject(path: path, folderBookmark: pick.folderBookmark),
-      );
-      // A project from a build that kept its media in a sibling folder.
-      // Said AFTER the open, because a file that failed to parse has no
-      // media to absorb and the folder is still the only copy.
-      final layout = ProjectAssetLayout(path);
-      if (layout.hasLegacyAssetsDirectory && context.mounted) {
-        final name = layout.assetsDirectory.split('/').last;
-        await showAppNotice(
-          context,
-          windowKey: const ValueKey<String>('legacy-assets-folder-notice'),
-          title: AppText.strings.commonNotice,
-          message: AppText.strings.projectLegacyAssetsFolder.replaceAll(
-            '{name}',
-            name,
-          ),
-        );
-      }
-    } on Object catch (error) {
-      if (context.mounted) {
-        showFileError(context, error);
-      }
     }
   }
 

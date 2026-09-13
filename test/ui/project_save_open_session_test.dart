@@ -8,6 +8,8 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart'
+    show MaterializeCancelled;
 import 'package:anicel/src/ui/session/project_file_door.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -27,6 +29,30 @@ void main() {
   });
 
   tearDown(() => directory.delete(recursive: true));
+
+  test('a Cancel pressed during the read is honoured before anything lands '
+      '— the session keeps what it had', () async {
+    // The open stands behind the wait window from its first frame
+    // (2026-09-13), and that window has a Cancel: during the read it must
+    // mean what it says. The read runs to its end — nothing can interrupt
+    // a parse — and the press is honoured at the last moment it still
+    // means「nothing changed」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    final door = s.projectDoor;
+    final path = '${directory.path}/cancel.anicel';
+    await door.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+    final before = s.requireActiveCut;
+
+    await expectLater(
+      door.openProjectFromFile(path, isCancelled: () => true),
+      throwsA(isA<MaterializeCancelled>()),
+    );
+    expect(
+      identical(s.requireActiveCut, before),
+      isTrue,
+      reason: 'the read happened, the press was honoured, nothing landed',
+    );
+  });
 
   test('save → mutate → open restores the saved state; loading clears the '
       'undo stacks and NEW edits undo cleanly (load→edit→undo)', () async {
