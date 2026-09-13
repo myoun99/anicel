@@ -397,7 +397,13 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-      await tester.pumpAndSettle();
+      // Frames, not a settle: the open stands behind the wait window from
+      // its first frame (2026-09-13), and a turning spinner never settles.
+      // Two frames build whatever the tap raised — the window on the first
+      // open, the gate on the second — and the loop below lends the real
+      // loop for the read itself.
+      await tester.pump();
+      await tester.pump();
     }
 
     // The open hops to a background isolate, which the fake clock never
@@ -408,6 +414,21 @@ void main() {
       if (repository?.currentProject?.name == 'Opened From Disk') {
         break;
       }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 25)),
+      );
+    }
+    // The window lingers with its check for `appProgressDoneLinger`, and a
+    // window still up would swallow the next tap. A settle does not end
+    // the linger: once the check is up nothing schedules a frame, so
+    // `pumpAndSettle` returns with the timer still pending. Both clocks
+    // are advanced — the fake one when the open landed on a pump, real
+    // time when it landed under `runAsync` — until the window is gone.
+    final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
+    for (var attempt = 0;
+        attempt < 40 && window.evaluate().isNotEmpty;
+        attempt += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 25)),
       );
