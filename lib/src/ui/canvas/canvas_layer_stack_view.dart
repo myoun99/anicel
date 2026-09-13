@@ -1552,8 +1552,13 @@ class _DisplayBuffer {
 /// a fresh object every frame — tests and a hands-on session need to reach
 /// the histogram, and the dedupe line needs to outlive a frame.
 abstract final class CanvasPaintGeometryProbe {
-  /// The last emitted line — the dedupe key, held across frames.
+  /// The last emitted geometry line — the dedupe key, held across frames.
   static String? lastLine;
+
+  /// The last emitted buffer-counter cadence key (full composes, patches
+  /// in 32s, carries) — the counters line is deduped apart from the
+  /// geometry line so a stroke can be watched without touching the zoom.
+  static String? lastCounters;
 
   /// Paints per zoom bucket (percent, 10% steps), counted while the
   /// inspector is visible. Every byte figure in the composite plan hinges
@@ -1565,6 +1570,7 @@ abstract final class CanvasPaintGeometryProbe {
 
   static void reset() {
     lastLine = null;
+    lastCounters = null;
     zoomHistogram.clear();
   }
 }

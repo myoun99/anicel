@@ -258,31 +258,50 @@ class _LayerStackPaintPass {
           ' capped=$capped';
       if (key != CanvasPaintGeometryProbe.lastLine) {
         CanvasPaintGeometryProbe.lastLine = key;
-        final counts = _painter.bufferCache == null
-            ? ''
-            // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
-            // carrying looks exactly like one that never could, and this
-            // line is what a hands-on report can show.
-            // ⛔`chain` AND `real` BELONG BESIDE THEM FOR THE SAME REASON.
-            // `chain` is how deep the deferred-image chain is NOW — with the
-            // real base landing it should read 0 or 1 mid-stroke; stuck
-            // high it says the snapshots stopped landing and the head is
-            // being derived from under budget. `real` is how many snapshots
-            // became the base — a promotion that never lands looks exactly
-            // like one that works. See [DisplayBufferCache.derivedDepth]
-            // and [DisplayBufferCache.promotedCount].
-            : ' full=${_painter.bufferCache!.fullCount}'
-                  ' patched=${_painter.bufferCache!.patchedCount}'
-                  ' carried=${_painter.bufferCache!.scrolledCount}'
-                  ' chain=${_painter.bufferCache!.derivedDepth}'
-                  ' real=${_painter.bufferCache!.promotedCount}';
         final top =
             (CanvasPaintGeometryProbe.zoomHistogram.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value)))
                 .take(3)
                 .map((entry) => '${entry.key}%:${entry.value}')
                 .join(' ');
-        InputInspector.note('$key$counts hist $top');
+        InputInspector.note('$key hist $top');
+      }
+      final cache = _painter.bufferCache;
+      if (cache != null) {
+        // ⛔THE BUFFER COUNTERS ARE THEIR OWN LINE, ON THEIR OWN CADENCE.
+        // Appended to the geometry line they fell off the inspector's right
+        // edge (유저 스샷 2026-09-13: `…capped=` and nothing after), and
+        // they refreshed only when the GEOMETRY changed, so a stroke could
+        // not be watched at all — the one thing they exist for. Every 32
+        // patches, plus every full compose and every carry, is dense enough
+        // to follow a stroke (a paint is ~16ms, 32 of them half a second)
+        // and sparse enough not to drown the panel.
+        //
+        // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
+        // carrying looks exactly like one that never could, and this line
+        // is what a hands-on report can show.
+        // ⛔`chain` AND `real` BELONG BESIDE THEM FOR THE SAME REASON.
+        // `chain` is how deep the deferred-image chain is NOW — with the
+        // real base landing it should read 0 or 1 mid-stroke; stuck high
+        // it says the snapshots stopped landing and the head is being
+        // derived from under budget. `real` is how many snapshots became
+        // the base — a promotion that never lands looks exactly like one
+        // that works. See [DisplayBufferCache.derivedDepth] and
+        // [DisplayBufferCache.promotedCount].
+        final cadence =
+            'full=${cache.fullCount}'
+            ' patched~${cache.patchedCount ~/ 32}'
+            ' carried=${cache.scrolledCount}';
+        if (cadence != CanvasPaintGeometryProbe.lastCounters) {
+          CanvasPaintGeometryProbe.lastCounters = cadence;
+          InputInspector.note(
+            'buf full=${cache.fullCount}'
+            ' patched=${cache.patchedCount}'
+            ' carried=${cache.scrolledCount}'
+            ' chain=${cache.derivedDepth}'
+            ' real=${cache.promotedCount}',
+          );
+        }
       }
     }
 
