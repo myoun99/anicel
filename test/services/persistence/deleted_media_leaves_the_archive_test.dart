@@ -123,4 +123,49 @@ void main() {
       raf.closeSync();
     }
   });
+
+  /// 🚨THE SAVE THAT DROPS THE BYTES IS THE ONE THAT RECLAIMS THEM. The
+  /// compaction ratio used to be judged on the directory the save FOUND,
+  /// with the dropped media still named in it — so the deleting save
+  /// appended and the file shrank only on the save after (유저 2026-09-13,
+  /// a 157MB PDF: 「삭제하고 저장해도 안 줄어든다 … 두 번째 저장 시
+  /// 줄어드네」). One rule, the ratio, whatever the size: what leaves this
+  /// save is counted before a byte is written.
+  test('the save that drops a carried asset compacts when what leaves '
+      'crosses the ratio — the file shrinks on THAT save, not the next',
+      () async {
+    const service = AnicelFileService();
+    final path = '${directory.path}/project.anicel';
+    final moviePath = '${directory.path.replaceAll('\\', '/')}/big.mp4';
+    final movieBytes = List<int>.filled(64 * 1024, 7);
+    File(moviePath).writeAsBytesSync(movieBytes, flush: true);
+    final entryName = anicelMediaEntryName(moviePath);
+
+    final project = createDefaultProject();
+    final store = BrushFrameStore();
+    store.storeBakedSurface(key('f1'), inked(3));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+      mediaToStore: {moviePath: MediaFileBytes(moviePath)},
+    );
+    expect(File(path).lengthSync(), greaterThan(movieBytes.length));
+
+    // The asset leaves the pool; one cel is edited so this is the ordinary
+    // incremental save — and this save is where the file shrinks.
+    store.storeBakedSurface(key('f1'), inked(5));
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+    );
+    expect(parseAnicelZipLayoutFile(path).entryNamed(entryName), isNull);
+    expect(
+      File(path).lengthSync(),
+      lessThan(movieBytes.length),
+      reason: 'the dropped bytes were most of the file — the deleting save '
+          'must compact, not leave them for the save after',
+    );
+  });
 }

@@ -667,16 +667,32 @@ class AnicelFileService {
     }
   }
 
-  /// The layout of [filePath] when appending onto it is SOUND, or null when
-  /// the caller must rewrite the file whole instead.
+  /// The layout of [filePath] when appending onto it is SOUND — with the
+  /// names this save takes out of its directory — or null when the caller
+  /// must rewrite the file whole instead.
   ///
   /// Three separate ways an append would lose data, asked in the order that
   /// costs the least: a torn tail, refs whose bytes are not where they say,
   /// and a file so full of garbage that appending more is the wrong move.
-  static AnicelZipLayout? _layoutSafeToAppendOnto({
+  ///
+  /// 🚨THE GARBAGE IS JUDGED ON THE DIRECTORY THIS SAVE LEAVES BEHIND, not
+  /// on the one it found. A save that dropped a carried 157MB PDF judged
+  /// the file with the PDF still named — garbage ≈ 0, so it appended — and
+  /// only the NEXT save saw the 157MB it had left unnamed and compacted
+  /// (유저 2026-09-13: 「삭제하고 저장해도 파일 크기 안 줄어든다 … 두 번째
+  /// 저장 시 줄어드네」). What a save REMOVES is known before a byte is
+  /// written, so [namesLeaving] is counted here; what it REPLACES (a
+  /// rewritten cel, the manifest) is not sized until it is written, and
+  /// those old bytes count from the next save on, as they always did. One
+  /// rule — the ratio — for a 157MB movie and a 79KB still alike; size
+  /// only ever enters through the ratio (유저: 「큰 미디어든 아니든 법
+  /// 하나로」).
+  static ({AnicelZipLayout layout, Set<String> leaving})?
+  _layoutSafeToAppendOnto({
     required String filePath,
     required List<(String, int, int)> cleanRefsToVerify,
     required String projectIdValue,
+    required Set<String> Function(AnicelZipLayout layout) namesLeaving,
   }) {
     final AnicelZipLayout layout;
     try {
@@ -721,17 +737,19 @@ class AnicelFileService {
         )) {
       return null;
     }
+    final leaving = namesLeaving(layout);
     if (anicelNeedsCompaction(
       fileLength: File(filePath).lengthSync(),
       entries: [
         for (final entry in layout.entries)
-          (name: entry.name, length: entry.length),
+          if (!leaving.contains(entry.name))
+            (name: entry.name, length: entry.length),
       ],
       garbageRatio: _compactionGarbageRatio,
     )) {
       return null; // Garbage-heavy — compact instead of appending more.
     }
-    return layout;
+    return (layout: layout, leaving: leaving);
   }
 
   /// Appends only the dirty cels (+ a superseding project.json). Returns
@@ -770,14 +788,27 @@ class AnicelFileService {
     return _reportingProgress(
       onProgress,
       (port) => Isolate.run(() {
-        final layout = _layoutSafeToAppendOnto(
+        final sound = _layoutSafeToAppendOnto(
           filePath: filePath,
           cleanRefsToVerify: cleanRefsToVerify,
           projectIdValue: project.id.value,
+          // Everything this save takes out of the directory — cels the
+          // project no longer has, media it no longer carries, conforms
+          // outside the current settings. Computed once: the judgment
+          // above and the append below must agree on what leaves.
+          namesLeaving: (layout) => {
+            ...removedNames,
+            ..._namesToDrop(
+              layout,
+              mediaToStore: mediaToStore,
+              conforms: conforms,
+            ),
+          },
         );
-        if (layout == null) {
+        if (sound == null) {
           return null;
         }
+        final (:layout, :leaving) = sound;
         // Resolved BEFORE the cels so the progress count is complete: a
         // fraction needs its denominator before the first thing it divides.
         final newMedia = _mediaToAppend(layout, mediaToStore);
@@ -808,14 +839,7 @@ class AnicelFileService {
             projectEntry.name: projectEntry.bytes,
             for (final (_, name, blob) in blobs) name: blob.bytes,
           },
-          removeNames: {
-            ...removedNames,
-            ..._namesToDrop(
-              layout,
-              mediaToStore: mediaToStore,
-              conforms: conforms,
-            ),
-          },
+          removeNames: leaving,
           streamedEntries: [
             for (final entry in newMedia) _progressed(entry, progress),
             for (final entry in newConforms) _progressed(entry, progress),
