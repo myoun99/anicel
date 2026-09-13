@@ -93,7 +93,7 @@ void main() {
         'scrolls the list under it', (tester) async {
       final list = await pumpList(
         tester,
-        wrap: (child) => ControlPressClaim(child: child),
+        wrap: (child) => ControlPressClaim(onPressed: null, child: child),
       );
       expect(
         list.position.maxScrollExtent,
@@ -145,6 +145,7 @@ void main() {
     final list = await pumpList(
       tester,
       wrap: (child) => ControlPressClaim(
+        onPressed: null,
         child: Listener(
           onPointerDown: (event) => claimPointerForValueControl(event.pointer),
           onPointerUp: (event) => releasePointerForValueControl(event.pointer),
@@ -246,6 +247,7 @@ void main() {
     addTearDown(outer.dispose);
     addTearDown(rail.dispose);
     Widget claimed(String key) => ControlPressClaim(
+      onPressed: null,
       child: Listener(
         key: ValueKey<String>(key),
         behavior: HitTestBehavior.opaque,

@@ -348,30 +348,28 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: ControlPressClaim(
-          child: PanelFlyoutButton(
-            key: ValueKey<String>(keyValue),
-            axis: axis,
-            label: blendMode.labelFor(language),
-            tooltip: '$subject blend mode',
-            showCaret: false,
-            expand: true,
-            fontSize: 9.5,
-            fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-            labelColor: nonNormal
-                ? AppColors.accent
-                : colorScheme.onSurfaceVariant,
-            padding: vertical
-                ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
-                : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-            entriesBuilder: () => LayerBlendMode.optionsFor(
-              isGroup: isGroup,
-            ).asFlyoutChoices(
-              current: blendMode,
-              keyPrefix: optionKeyPrefix,
-              labelOf: (mode) => mode.labelFor(language),
-              onPicked: onBlendModeSelected,
-            ),
+        child: PanelFlyoutButton(
+          key: ValueKey<String>(keyValue),
+          axis: axis,
+          label: blendMode.labelFor(language),
+          tooltip: '$subject blend mode',
+          showCaret: false,
+          expand: true,
+          fontSize: 9.5,
+          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+          labelColor: nonNormal
+              ? AppColors.accent
+              : colorScheme.onSurfaceVariant,
+          padding: vertical
+              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
+              : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          entriesBuilder: () => LayerBlendMode.optionsFor(
+            isGroup: isGroup,
+          ).asFlyoutChoices(
+            current: blendMode,
+            keyPrefix: optionKeyPrefix,
+            labelOf: (mode) => mode.labelFor(language),
+            onPicked: onBlendModeSelected,
           ),
         ),
       ),
@@ -992,20 +990,18 @@ class LayerMarkChip extends StatelessWidget {
   /// a take is an ORDER, not a kind, and nine colours would fight the
   /// stage's.
   Widget _takeTrigger(BuildContext context) {
-    return ControlPressClaim(
-      child: PanelFlyoutTrigger(
-        key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
-        tooltip: AppText.strings.tlLayerTake,
-        padding: EdgeInsets.zero,
-        entriesBuilder: () => layerTakeFlyoutEntries(
-          selectedTake: mark.take,
-          onSelected: (take) => onMarkSelected(layerId, mark.withTake(take!)),
-        ),
-        child: Semantics(
-          label: AppText.strings.tlLayerTake,
-          button: true,
-          child: LayerTakeText(mark: mark, axis: axis),
-        ),
+    return PanelFlyoutTrigger(
+      key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
+      tooltip: AppText.strings.tlLayerTake,
+      padding: EdgeInsets.zero,
+      entriesBuilder: () => layerTakeFlyoutEntries(
+        selectedTake: mark.take,
+        onSelected: (take) => onMarkSelected(layerId, mark.withTake(take!)),
+      ),
+      child: Semantics(
+        label: AppText.strings.tlLayerTake,
+        button: true,
+        child: LayerTakeText(mark: mark, axis: axis),
       ),
     );
   }
@@ -1015,35 +1011,33 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return ControlPressClaim(
-      child: PanelFlyoutTrigger(
-        key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
-        tooltip: AppText.strings.tlLayerMark,
-        // ZERO, not the trigger's usual 8: the mark sits in a fixed
-        // `layerMarkSlotWidth` rail column, so padding here would not grow a
-        // hit area — it would push every slot after it out of the rail.
-        padding: EdgeInsets.zero,
-        // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
-        // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
-        // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
-        //
-        // ⛔I built this flat once and wrote 「TWO AXES, ONE LIST」 in the
-        // comment. 유저: 「니가 아티팩트로 제시한거랑 이거랑 똑같다고
-        // 생각하냐? … **대체 왜 정한대로 안만드는거야?**」 — the second axis
-        // exists precisely so it is not all on screen at once, and flattening
-        // it turned eight stages into forty-odd rows.
-        //
-        // ⛔The revise list is not copied per process either: [revisesFor]
-        // answers from the ONE [LayerRevise] set, so renaming a revise renames
-        // it everywhere and 원화 can drop 동화검사 without the others noticing.
-        entriesBuilder: () => layerMarkFlyoutEntries(
-          onSelected: (option) => onMarkSelected(layerId, option),
-        ),
-        child: Semantics(
-          label: AppText.strings.tlLayerMark,
-          button: true,
-          child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
-        ),
+    return PanelFlyoutTrigger(
+      key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
+      tooltip: AppText.strings.tlLayerMark,
+      // ZERO, not the trigger's usual 8: the mark sits in a fixed
+      // `layerMarkSlotWidth` rail column, so padding here would not grow a
+      // hit area — it would push every slot after it out of the rail.
+      padding: EdgeInsets.zero,
+      // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
+      // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
+      // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
+      //
+      // ⛔I built this flat once and wrote 「TWO AXES, ONE LIST」 in the
+      // comment. 유저: 「니가 아티팩트로 제시한거랑 이거랑 똑같다고
+      // 생각하냐? … **대체 왜 정한대로 안만드는거야?**」 — the second axis
+      // exists precisely so it is not all on screen at once, and flattening
+      // it turned eight stages into forty-odd rows.
+      //
+      // ⛔The revise list is not copied per process either: [revisesFor]
+      // answers from the ONE [LayerRevise] set, so renaming a revise renames
+      // it everywhere and 원화 can drop 동화검사 without the others noticing.
+      entriesBuilder: () => layerMarkFlyoutEntries(
+        onSelected: (option) => onMarkSelected(layerId, option),
+      ),
+      child: Semantics(
+        label: AppText.strings.tlLayerMark,
+        button: true,
+        child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
       ),
     );
   }

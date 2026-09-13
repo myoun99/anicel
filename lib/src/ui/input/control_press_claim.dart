@@ -139,11 +139,26 @@ VoidCallback? silentPress(VoidCallback? real) => real == null ? null : () {};
 ///  * giving the mouse a drag-scroll this app owns would mean rebuilding
 ///    ballistics, overscroll and nested scrollers.
 class ControlPressClaim extends StatefulWidget {
-  const ControlPressClaim({super.key, this.onPressed, required this.child});
+  const ControlPressClaim({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  });
 
   /// What this control does. Null means it is disabled, and then nothing
   /// fires — but the claim still stands, so a press on a dead button is
   /// still not a scroll.
+  ///
+  /// 🚨★REQUIRED, null included (F-120, 유저 2026-09-13: 「펜으로 … +버튼
+  /// 옆의 생성할 레이어 여는 버튼같은게 작동안함」). It was optional, and a
+  /// claim that was simply not told what to fire looked exactly like one
+  /// that fires: the `＋` caret mounted this and opened its menu from the
+  /// child's TAP instead — the tap this claim's own recognisers reject on
+  /// the first movement, so it opened for a still mouse and never for a
+  /// pen. Five more claims said nothing because a claim inside them
+  /// already fired; they were deleted, not kept. ⇒ A claim now has to SAY
+  /// what it fires, and `null` is a disabled control on purpose, never a
+  /// forgotten argument.
   final VoidCallback? onPressed;
 
   final Widget child;

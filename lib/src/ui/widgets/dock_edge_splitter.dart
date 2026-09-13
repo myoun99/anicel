@@ -1,6 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
-    show DoubleTapGestureRecognizer, DragGestureRecognizer, DragStartBehavior;
+    show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
@@ -199,6 +201,53 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     }
   }
 
+  /// 🚨THE DOUBLE TAP IS READ OFF THE POINTER, like every press in this app
+  /// (F-120's sweep, 유저 2026-09-13: 「그런 커서 위치따라 판정하는거
+  /// 없도록」).
+  ///
+  /// It was a `DoubleTapGestureRecognizer` beside the drag, on the reading
+  /// that a tap 「has nothing to lose by waiting for the arena」. It had
+  /// everything to lose: the drag accepts on the FIRST movement (T30's fix,
+  /// not up for trade), and whatever wins the arena rejects the double tap.
+  /// 🧪Measured: two presses that each moved two pixels reset nothing, on a
+  /// pen, a finger and a mouse alike; held perfectly still, they did.
+  ///
+  /// ⇒ A press that lands on the grip while the previous one's
+  /// [kDoubleTapTimeout] is still running IS the second tap, and its lift
+  /// fires. No distance is compared — a press that wandered is still the
+  /// press it was, the same answer the claim gives a button.
+  Timer? _secondPressWindow;
+  bool _secondPress = false;
+
+  void _pressDown(PointerDownEvent event) {
+    _secondPress = _secondPressWindow?.isActive ?? false;
+    _secondPressWindow?.cancel();
+  }
+
+  void _pressUp(PointerUpEvent event) {
+    final onDoubleTap = widget.onDoubleTap;
+    if (onDoubleTap == null) {
+      return;
+    }
+    if (_secondPress) {
+      _secondPress = false;
+      onDoubleTap();
+      return;
+    }
+    _secondPressWindow = Timer(kDoubleTapTimeout, () {});
+  }
+
+  void _pressCancel(PointerCancelEvent event) {
+    _secondPress = false;
+    _secondPressWindow?.cancel();
+  }
+
+  @override
+  void dispose() {
+    _secondPressWindow?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final vertical = widget.axis == Axis.vertical;
@@ -234,21 +283,17 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
                     () => OwningVerticalDragGestureRecognizer(debugOwner: this),
                     _configureDrag,
                   ),
-            // ⛔The double tap stays a recognizer beside the drag: it is a
-            // TAP, so it has no axis to keep and nothing to lose by waiting
-            // for the arena.
-            DoubleTapGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  DoubleTapGestureRecognizer
-                >(
-                  () => DoubleTapGestureRecognizer(debugOwner: this),
-                  (recognizer) => recognizer.onDoubleTap = widget.onDoubleTap,
-                ),
           },
-          child: SizedBox(
-            width: vertical ? DockEdgeSplitter.thickness : null,
-            height: vertical ? null : DockEdgeSplitter.thickness,
-            child: ColoredBox(color: _lineColor),
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _pressDown,
+            onPointerUp: _pressUp,
+            onPointerCancel: _pressCancel,
+            child: SizedBox(
+              width: vertical ? DockEdgeSplitter.thickness : null,
+              height: vertical ? null : DockEdgeSplitter.thickness,
+              child: ColoredBox(color: _lineColor),
+            ),
           ),
         ),
       ),

@@ -107,7 +107,55 @@ void main() {
     '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
   };
 
-  test('a button that is not wrapped argues for itself', () {
+  /// The control's OWN named arguments, with everything nested inside them
+  /// dropped: `onTap: silentPress(open)` reads `onTap: silentPress()`, and a
+  /// child's `onTap:` further down is not this control's and is not read.
+  /// [column] is just past the control's opening parenthesis.
+  String ownArguments(List<String> lines, int row, int column) {
+    final own = StringBuffer();
+    var depth = 1;
+    for (var r = row; r < lines.length; r++) {
+      final text = lines[r];
+      String? quote;
+      for (var c = r == row ? column : 0; c < text.length; c++) {
+        final char = text[c];
+        if (quote != null) {
+          if (char == r'\') {
+            c++;
+          } else if (char == quote) {
+            quote = null;
+          }
+          continue;
+        }
+        if (char == "'" || char == '"') {
+          quote = char;
+        } else if (char == '/' && text.startsWith('//', c)) {
+          break;
+        } else if ('([{'.contains(char)) {
+          if (depth == 1) {
+            own.write(char);
+          }
+          depth++;
+        } else if (')]}'.contains(char)) {
+          depth--;
+          if (depth == 0) {
+            return own.toString();
+          }
+          if (depth == 1) {
+            own.write(char);
+          }
+        } else if (depth == 1) {
+          own.write(char);
+        }
+      }
+      own.write(' ');
+    }
+    return own.toString();
+  }
+
+  /// Every control the scan counts, the claim that wraps it (null when none
+  /// does) and its own arguments — the ONE walk both scans below read.
+  List<({String site, String? parent, String arguments})> scannedControls() {
     final button = RegExp(
       r'(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector)\(',
     );
@@ -131,7 +179,7 @@ void main() {
     // carries a nine-line explanation of why it is one, so a shorter window
     // read straight past it and called the grid's own surface a bare button.
     final surface = RegExp(r'onTap: \(\) \{\}');
-    final bare = <String>[];
+    final controls = <({String site, String? parent, String arguments})>[];
     for (final path in everyUiFile()) {
       final lines = File(path).readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
@@ -139,7 +187,8 @@ void main() {
         if (line.trimLeft().startsWith('//')) {
           continue;
         }
-        if (!button.hasMatch(line) || line.contains('.styleFrom')) {
+        final control = button.firstMatch(line);
+        if (control == null || line.contains('.styleFrom')) {
           continue;
         }
         final ahead = lines
@@ -157,9 +206,9 @@ void main() {
         // three. The claim is the control's PARENT, so walk back to the
         // first line indented LESS than the control's own: in formatted
         // Dart that is the line that opened the thing enclosing it.
-        var wrapped = claim.hasMatch(line);
+        var parent = claim.firstMatch(line.substring(0, control.start))?[1];
         final indent = line.length - line.trimLeft().length;
-        for (var back = i - 1; back >= 0 && !wrapped; back--) {
+        for (var back = i - 1; back >= 0 && parent == null; back--) {
           final above = lines[back];
           if (above.trim().isEmpty) {
             continue;
@@ -167,14 +216,24 @@ void main() {
           if (above.length - above.trimLeft().length >= indent) {
             continue;
           }
-          wrapped = claim.hasMatch(above);
+          parent = claim.firstMatch(above)?[1];
           break;
         }
-        if (!wrapped) {
-          bare.add('$path:${i + 1}');
-        }
+        controls.add((
+          site: '$path:${i + 1}',
+          parent: parent,
+          arguments: ownArguments(lines, i, control.end),
+        ));
       }
     }
+    return controls;
+  }
+
+  test('a button that is not wrapped argues for itself', () {
+    final bare = [
+      for (final control in scannedControls())
+        if (control.parent == null) control.site,
+    ];
     expect(
       bare,
       isEmpty,
@@ -183,6 +242,43 @@ void main() {
           'ControlPressClaim (or RailSwipeColumnPointer, which adds the '
           'strong claim on top of it). If a drag from here is this widget\'s '
           'OWN verb, say so in notControls instead',
+    );
+  });
+
+  test('🚨a claimed control acts from its claim, never from its own tap', () {
+    // F-120 (유저 2026-09-13): 「펜으로 레이어나 컷이나 +버튼 옆의 생성할
+    // 레이어 여는 버튼같은게 작동안함. 마우스로는 작동함」. The scan above
+    // passed that caret, because a claim WAS its parent. But the claim takes
+    // the arena on the first movement, and that rejects every tap beneath it
+    // — so a control whose verb rides its own `onTap` acts for a still mouse
+    // and never for a pen, which is never still. ⇒ Under a claim, the
+    // control's own callbacks are silent ([silentPress]), empty or null, and
+    // the claim's `onPressed` is the one thing that acts.
+    //
+    // ⚠️A [DragVerbClaim] parent is not read here, and that is the scrub
+    // label's shape: its tap and its drag are both its own verbs, so the
+    // arena between THOSE two is the thing that decides.
+    // ⚠️The spaces go INSIDE the lookahead. Outside it, `\s*` gives back the
+    // space it matched and the lookahead is asked at 「 silentPress(」, which
+    // is not 「silentPress(」 — every silent tap in the app read as live.
+    final live = RegExp(
+      r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed):'
+      r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}))',
+    );
+    final riding = [
+      for (final control in scannedControls())
+        if ((control.parent == 'ControlPressClaim' ||
+                control.parent == 'RailSwipeColumnPointer') &&
+            live.hasMatch(control.arguments))
+          control.site,
+    ];
+    expect(
+      riding,
+      isEmpty,
+      reason:
+          'a claimed control acts from the claim\'s onPressed: a live tap '
+          'beneath it is rejected the moment the hand moves, and on a press '
+          'that does not move it fires a second time',
     );
   });
 

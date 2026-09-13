@@ -68,22 +68,20 @@ class ColorSwatchButton extends StatelessWidget {
     final swatch = Builder(
       // 🚨A swatch is a control: a press that lands here is its own,
       // scroll included ([ControlPressClaim]).
-      builder: (anchorContext) => ControlPressClaim(
-        child: Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: ControlPressClaim(
-            onPressed: () => _open(anchorContext),
-            child: InkWell(
-              key: ValueKey<String>(keyValue),
-              customBorder: const CircleBorder(),
-              onTap: silentPress(() => _open(anchorContext)),
-              child: SizedBox(
-                width: _diameter,
-                height: _diameter,
-                child: CustomPaint(painter: _SwatchPainter(color: color)),
-              ),
+      builder: (anchorContext) => Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: ControlPressClaim(
+          onPressed: () => _open(anchorContext),
+          child: InkWell(
+            key: ValueKey<String>(keyValue),
+            customBorder: const CircleBorder(),
+            onTap: silentPress(() => _open(anchorContext)),
+            child: SizedBox(
+              width: _diameter,
+              height: _diameter,
+              child: CustomPaint(painter: _SwatchPainter(color: color)),
             ),
           ),
         ),

@@ -384,30 +384,43 @@ class _ExpandButton extends StatelessWidget {
       onExit: (_) => onHoverChanged(false),
       // 🚨The caret is a control like the button beside it — the pill bar
       // scrolls, and a press that lands here must not become that scroll.
+      //
+      // 🚨★F-120 (유저 2026-09-13): 「펜으로 레이어나 컷이나 +버튼 옆의 생성할
+      // 레이어 여는 버튼같은게 작동안함. 마우스로는 작동함 … 그런 커서
+      // 위치따라 판정하는거 없도록. 애초에 공용버튼아닌가?」. The claim was
+      // mounted here and said nothing: the menu opened from the
+      // `GestureDetector`'s TAP, and the claim takes the arena on the first
+      // movement — which rejects that very tap. A pen always moves a little
+      // while it is down, so the menu opened for a still mouse and never for
+      // a pen. ⇒ The claim fires the caret, exactly as it fires
+      // [AppIconButton]; the tap is silent and stays only to hold the arena.
       child: ControlPressClaim(
+        onPressed: enabled ? () => onOpen(context) : null,
         child: GestureDetector(
           key: ValueKey<String>(menuKey),
           behavior: HitTestBehavior.opaque,
-          onTapDown: enabled ? (_) => onPressedChanged(true) : null,
-          onTapCancel: () => onPressedChanged(false),
-          onTap: enabled
-              ? () {
-                  onPressedChanged(false);
-                  onOpen(context);
-                }
-              : null,
-          child: SizedBox(
-            width: width,
-            height: CommandPill.height,
-            child: Center(
-              child: Icon(
-                Icons.arrow_drop_down,
-                size: 16,
-                color: GripBand.ink(
-                  nearby: enabled,
-                  hovered: hovered,
-                  active: pressed,
-                  idle: AppColors.hairlineStrong,
+          onTap: silentPress(enabled ? () => onOpen(context) : null),
+          // The pressed shade rides the POINTER for the same reason: a tap's
+          // down/cancel pair went back to looking unpressed on the first
+          // wobble. [AppIconButtonFace] draws its own layer this way.
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: enabled ? (_) => onPressedChanged(true) : null,
+            onPointerUp: (_) => onPressedChanged(false),
+            onPointerCancel: (_) => onPressedChanged(false),
+            child: SizedBox(
+              width: width,
+              height: CommandPill.height,
+              child: Center(
+                child: Icon(
+                  Icons.arrow_drop_down,
+                  size: 16,
+                  color: GripBand.ink(
+                    nearby: enabled,
+                    hovered: hovered,
+                    active: pressed,
+                    idle: AppColors.hairlineStrong,
+                  ),
                 ),
               ),
             ),

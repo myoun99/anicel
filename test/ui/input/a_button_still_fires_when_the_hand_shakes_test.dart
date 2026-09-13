@@ -232,6 +232,7 @@ void main() {
               controller: list,
               children: [
                 const ControlPressClaim(
+                  onPressed: null,
                   child: Listener(
                     key: ValueKey<String>('button'),
                     behavior: HitTestBehavior.opaque,
