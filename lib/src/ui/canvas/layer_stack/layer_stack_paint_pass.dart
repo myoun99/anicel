@@ -1099,8 +1099,6 @@ class _LayerStackPaintPass {
     DisplayBufferCache? cache,
     Object? key,
   ) {
-    final width = rect.width.round();
-    final height = rect.height.round();
     final miss = _planMiss(rect, cache, key);
     final base = miss.base;
     final dirty = miss.dirty;
@@ -1128,37 +1126,62 @@ class _LayerStackPaintPass {
       _paintContent(into, rasterRect: rect, rasterScale: 1);
       derived = false;
     }
-    // 🎯THE SNAPSHOT THAT ENDS THE CHAIN: the same picture, rasterized once
-    // more as a plain image, becomes the base the NEXT paint derives from
-    // — so the deferred image made here is only ever drawn, never drawn
-    // from. Asked of the cache, which knows whether one is still in flight.
+    return _keepMiss(
+      recorder,
+      rect,
+      cache,
+      key,
+      patched: base != null && dirty != null,
+      derived: derived,
+      carried: canScroll,
+      tokens: miss.tokens,
+    );
+  }
+
+  /// Rasters the recorded miss and, when the cache can keep it, stores the
+  /// head and offers its snapshot as the next real base.
+  ///
+  /// 🎯THE SNAPSHOT THAT ENDS THE CHAIN: the same picture, rasterized once
+  /// more as a plain image, becomes the base the NEXT paint derives from —
+  /// so the deferred image made here is only ever drawn, never drawn from.
+  /// Asked of the cache, which knows whether one is still in flight.
+  _DisplayBuffer _keepMiss(
+    ui.PictureRecorder recorder,
+    Rect rect,
+    DisplayBufferCache? cache,
+    Object? key, {
+    required bool patched,
+    required bool derived,
+    required bool carried,
+    required LiveSurfaceTokens? tokens,
+  }) {
     final made = rasterPictureAndSnapshot(
       recorder,
-      width,
-      height,
+      rect.width.round(),
+      rect.height.round(),
       snapshot: cache != null && key != null && cache.wantsPromotion,
     );
     final image = made.deferred;
-    if (cache != null && key != null) {
-      cache.store(
-        key,
-        _painter.compositeKey,
-        rect,
-        image,
-        patched: base != null && dirty != null,
-        derived: derived,
-        tokens: miss.tokens,
-      );
-      if (canScroll) {
-        cache.scrolledCount += 1;
-      }
-      final real = made.real;
-      if (real != null) {
-        cache.promote(real);
-      }
-      return _bufferOf(image, rect, owned: false);
+    if (cache == null || key == null) {
+      return _bufferOf(image, rect, owned: true);
     }
-    return _bufferOf(image, rect, owned: true);
+    cache.store(
+      key,
+      _painter.compositeKey,
+      rect,
+      image,
+      patched: patched,
+      derived: derived,
+      tokens: tokens,
+    );
+    if (carried) {
+      cache.scrolledCount += 1;
+    }
+    final real = made.real;
+    if (real != null) {
+      cache.promote(real);
+    }
+    return _bufferOf(image, rect, owned: false);
   }
 
   /// What a miss can start from: the carried base to patch (with the live
