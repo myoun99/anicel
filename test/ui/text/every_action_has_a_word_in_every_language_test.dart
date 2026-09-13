@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/tool_press.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
 /// 🚨F-37 — EVERY SHORTCUT ACTION HAS A ROW IN EVERY LANGUAGE.
@@ -28,9 +29,24 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 /// French. A language is allowed to agree with English; what it may not do
 /// is stay silent.
 void main() {
+  // ⚠️A shape tile's name is COMPOSED from its verb's template and its
+  // shape's name (`shapeTileLabel`, I-19) — tabling it per tile is the
+  // product `CanvasShapeKind` warns about. Those ids answer through the words
+  // they are composed of, which the key contract reads in every language
+  // (`app_strings_keys_test`), so no table is asked for a row — and a row
+  // for one is reported below as a row nothing reads.
+  final composedIds = {
+    for (final definition in editorActionDefinitions)
+      if (definition.toolPress is ShapeTilePress) definition.id,
+  };
   final registryIds = editorActionDefinitions
       .map((definition) => definition.id)
-      .toSet();
+      .toSet()
+      .difference(composedIds);
+
+  test('⛔fixture premise: some names ARE composed', () {
+    expect(composedIds, isNotEmpty);
+  });
   final registryCategories = editorActionDefinitions
       .map((definition) => definition.category)
       .toSet();

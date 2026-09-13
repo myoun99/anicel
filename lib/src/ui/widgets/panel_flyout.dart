@@ -671,18 +671,11 @@ Widget _itemBody(
                   ),
                 ),
     // The key at the right end, dim — no dot leaders (I-19-menu-keys).
-    if (shortcutKeys(bindings, entry.shortcuts) case final keys?) ...[
-      const SizedBox(width: 16),
-      Text(
-        keys,
-        style: TextStyle(
-          fontSize: 12,
-          color: entry.enabled
-              ? AppColors.textDim
-              : AppColors.textDim.withValues(alpha: 0.5),
-        ),
-      ),
-    ],
+    ShortcutKeysText(
+      actionIds: entry.shortcuts,
+      bindings: bindings,
+      enabled: entry.enabled,
+    ),
     if (entry.checked ?? false) ...[
       const SizedBox(width: 8),
       Icon(Icons.check, size: 14, color: AppColors.accent),

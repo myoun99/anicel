@@ -582,27 +582,18 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.deleteColour => 'shared-delete-colour-button',
           CelPixelVerb.keepColour => 'shared-keep-colour-button',
         },
-        label: switch (verb) {
-          CelPixelVerb.replaceColour => AppText.strings.tlSharedReplaceColour,
-          // Backspace presses this one (I-19), so it wears the registry's
-          // name for it.
-          CelPixelVerb.clearPixels => editorActionLabel(
-            EditorActionIds.editClearPixels,
-          ),
-          CelPixelVerb.deleteColour => AppText.strings.tlSharedDeleteColour,
-          CelPixelVerb.keepColour => AppText.strings.tlSharedKeepColour,
-        },
+        // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그
+        // 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의
+        // 규칙이야」 — every verb here is an action, so every row wears its
+        // action's name and prints its key.
+        label: editorActionLabel(pixelVerbActionIdFor(verb)),
         icon: switch (verb) {
           CelPixelVerb.replaceColour => Icons.format_color_fill,
           CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
           CelPixelVerb.deleteColour => Icons.format_color_reset,
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
-        // Backspace presses 픽셀 비우기 (I-19); the other three have no key.
-        shortcuts: switch (verb) {
-          CelPixelVerb.clearPixels => const [EditorActionIds.editClearPixels],
-          _ => const <String>[],
-        },
+        shortcuts: [pixelVerbActionIdFor(verb)],
         onSelected: () => session.cells.runPixelVerb(verb),
       ),
   ];

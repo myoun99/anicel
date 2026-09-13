@@ -165,7 +165,13 @@ void main() {
   /// (cut, copy, both pastes, delete, clear pixels, save, save as, solo, zoom
   /// in and out) — the same contract — less what the buttons and menu items
   /// that now read those names stopped hardcoding.
-  const untranslatedElsewhere = 94;
+  ///
+  /// 102 (I-19, 2026-09-13, the tools): every rail tool and tile became an
+  /// action and the colour edit's other three verbs joined Clear Pixels —
+  /// twelve English rows by the same contract, less the four retired with
+  /// M, L, V and the old Ctrl+T. The shape tiles add none: their names are
+  /// composed from words the tables already hold.
+  const untranslatedElsewhere = 102;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

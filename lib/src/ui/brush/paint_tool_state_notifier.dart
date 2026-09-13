@@ -50,8 +50,9 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   /// VERB was not.
   ///
   /// 🚨It lives HERE rather than in the workspace because a group has more
-  /// than one entrance: the rail button, and the `G`/`B`/`E` shortcuts the
-  /// shell dispatches. A memory kept beside one of them would have made
+  /// than one entrance: the rail button, and the tool shortcuts the shell
+  /// dispatches — both through `pressTool`. A memory kept beside one of them
+  /// would have made
   /// the other disagree, which is the same complaint one door over. This
   /// setter is the funnel every tool change already goes through, so it
   /// cannot miss one.

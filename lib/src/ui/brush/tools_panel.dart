@@ -2,9 +2,9 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import 'brush_tool_state.dart';
+import 'tool_press.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
-import '../text/app_strings.dart';
 import '../widgets/static_raster.dart';
 import '../layout/device_grid.dart';
 
@@ -18,32 +18,18 @@ class ToolsPanel extends StatelessWidget {
   const ToolsPanel({
     super.key,
     required this.tool,
-    required this.onToolChanged,
-    this.groupEntry,
+    required this.onPress,
     this.historyControls,
   });
 
   final CanvasTool tool;
-  final ValueChanged<CanvasTool> onToolChanged;
 
-  /// Which TILE a rail button re-enters its group on — asked with the
-  /// group's default tile and answered with the one that group was last
-  /// left on.
-  ///
-  /// 유저 2026-08-15: *"필 툴은 아직도 다른 툴 이동하면 모드 선택한게
-  /// 초기화됨. 도대체 왜 다른거랑 공통로직안할까?"* — and the answer was
-  /// that it had no common logic to share. A group with more than one tile
-  /// had only "stay if you are already inside", so leaving the group at all
-  /// threw the choice away and a shape fill came back as the bucket. This
-  /// is the memory that was missing, and it is one rule for every button
-  /// rather than a per-button `if`. CSP and Photoshop both restore the last
-  /// sub-tool the same way.
-  ///
-  /// ⚠️It answers the "already inside" half too — a press must not move a
-  /// hand off the tile it is working on. Null falls back to that half
-  /// alone, which is what a host with no tool memory behind it (focused
-  /// tests) can honestly answer.
-  final CanvasTool Function(CanvasTool group)? groupEntry;
+  /// A rail button's press, applied by the host through [pressTool]. Which
+  /// tile a group re-enters on is the tool notifier's memory
+  /// (`PaintToolStateNotifier.railEntry` — 유저 2026-08-15 「모드 선택한게
+  /// 초기화됨」; CSP and Photoshop restore the last sub-tool the same way),
+  /// asked at press time, so the button never has to be told.
+  final ValueChanged<ToolPress> onPress;
 
   /// Undo / redo / onion — the things a hand reaches for BETWEEN strokes,
   /// which is what the rail is for. They sit above the tools, separated by a
@@ -86,13 +72,29 @@ class ToolsPanel extends StatelessWidget {
     ),
   );
 
-  /// The tool the button for [group] should switch to.
-  CanvasTool _entryFor(CanvasTool group) {
-    final resolve = groupEntry;
-    if (resolve != null) {
-      return resolve(group);
-    }
-    return canvasToolRailGroup(tool) == group ? tool : group;
+  /// A rail button: the entrance of its group's action, pressing what that
+  /// action presses.
+  ///
+  /// 🗣️I-19: 「툴버튼도 … 툴팁으로 숏컷 키 보여주도록」. A button that IS one
+  /// action's entrance takes that action's registry name — the shortcut list
+  /// and the tooltip say one word — and names the action, so its key comes
+  /// from the live bindings.
+  Widget _toolButton({
+    required String keyValue,
+    required CanvasTool group,
+    required IconData icon,
+    required bool selected,
+  }) {
+    final press = RailToolPress(group);
+    final actionId = toolActionIdFor(press);
+    return RailButton(
+      keyValue: keyValue,
+      tooltip: editorActionLabel(actionId),
+      shortcuts: [actionId],
+      icon: icon,
+      selected: selected,
+      onPressed: () => onPress(press),
+    );
   }
 
   @override
@@ -125,60 +127,46 @@ class ToolsPanel extends StatelessWidget {
               historyControls!,
               groupDivider(context),
             ],
-            // 🗣️I-19: 「툴버튼도 … 툴팁으로 숏컷 키 보여주도록」. A button
-            // that IS one action's entrance takes that action's registry name
-            // — the shortcut list and the tooltip say one word — and names
-            // the action, so its key comes from the live bindings.
-            RailButton(
+            _toolButton(
               keyValue: 'tool-brush-button',
-              tooltip: editorActionLabel(EditorActionIds.toolBrush),
-              shortcuts: const [EditorActionIds.toolBrush],
+              group: CanvasTool.brush,
               icon: Icons.brush_outlined,
               selected: tool == CanvasTool.brush,
-              onPressed: () => onToolChanged(CanvasTool.brush),
             ),
             const SizedBox(height: 4),
-            RailButton(
+            _toolButton(
               keyValue: 'tool-eraser-button',
-              tooltip: editorActionLabel(EditorActionIds.toolEraser),
-              shortcuts: const [EditorActionIds.toolEraser],
+              group: CanvasTool.eraser,
               // No dedicated eraser glyph in this icon set; the "magic
               // eraser" wand reads closest.
               icon: Icons.auto_fix_normal,
               selected: tool == CanvasTool.eraser,
-              onPressed: () => onToolChanged(CanvasTool.eraser),
             ),
             const SizedBox(height: 4),
-            RailButton(
+            _toolButton(
               keyValue: 'tool-eyedropper-button',
-              tooltip: editorActionLabel(EditorActionIds.toolEyedropper),
-              shortcuts: const [EditorActionIds.toolEyedropper],
+              group: CanvasTool.eyedropper,
               icon: Icons.colorize_outlined,
               selected: tool == CanvasTool.eyedropper,
-              onPressed: () => onToolChanged(CanvasTool.eyedropper),
             ),
             const SizedBox(height: 4),
             // ONE Fill button for both tiles — the bucket and the shapes.
             // It re-enters on the tile the fill was last left on, which is
-            // the rule every multi-tile button now shares (see
-            // [groupEntry]).
-            RailButton(
+            // the rule every multi-tile button now shares (see [onPress]).
+            _toolButton(
               keyValue: 'tool-fill-button',
-              tooltip: editorActionLabel(EditorActionIds.toolFill),
-              shortcuts: const [EditorActionIds.toolFill],
+              group: CanvasTool.fill,
               icon: Icons.format_color_fill_outlined,
               selected: canvasToolFills(tool),
-              onPressed: () => onToolChanged(_entryFor(CanvasTool.fill)),
             ),
             const SizedBox(height: 4),
-            RailButton(
+            _toolButton(
               keyValue: 'tool-guide-button',
-              tooltip: AppText.strings.toolGuide,
+              group: CanvasTool.guide,
               // A drafting square: the tool sets up the guides, and the
               // guides steer the brush.
               icon: Icons.architecture_outlined,
               selected: tool == CanvasTool.guide,
-              onPressed: () => onToolChanged(CanvasTool.guide),
             ),
             const SizedBox(height: 4),
             // R17-U: ONE selection tool — the rectangle/lasso variant is a
@@ -187,53 +175,38 @@ class ToolsPanel extends StatelessWidget {
             // The button no longer has to be told which variant to restore:
             // the shape lives beside the tool now, so "select" already
             // means "select, with the outline I last used".
-            RailButton(
+            _toolButton(
               keyValue: 'tool-select-button',
-              tooltip: AppText.strings.toolSelectTip,
-              // ONE button, TWO actions: M and L both land on this tool (each
-              // with its outline), so the button is the entrance of both and
-              // keeps its own name for the pair.
-              shortcuts: const [
-                EditorActionIds.toolSelectRect,
-                EditorActionIds.toolLasso,
-              ],
+              group: CanvasTool.select,
               icon: Icons.highlight_alt_outlined,
               selected: tool == CanvasTool.select,
-              onPressed: () => onToolChanged(CanvasTool.select),
             ),
             const SizedBox(height: 4),
-            RailButton(
+            _toolButton(
               keyValue: 'tool-move-button',
-              tooltip: AppText.strings.toolMoveTip,
-              // V arms it, and Ctrl+T is not a mode of its own — it arms this
-              // same tool (R26 #17), so both keys press this button.
-              shortcuts: const [
-                EditorActionIds.toolMove,
-                EditorActionIds.selectionFreeTransform,
-              ],
+              group: CanvasTool.move,
               icon: Icons.open_with,
               selected: tool == CanvasTool.move,
-              onPressed: () => onToolChanged(CanvasTool.move),
             ),
             const SizedBox(height: 4),
             // The CUT tool, one button for three tiles — same shape as the
             // Select button above it. It grabs a COPY of the pixels under
             // the drag and stamps them back elsewhere; the source is never
             // removed.
-            RailButton(
+            //
+            // Pressing it while the stamp is armed leaves the stamp alone;
+            // coming back from another tool lands on the GRAB, because the
+            // stamp is not one of the tiles the memory keeps (유저 확정 —
+            // 찍기는 성질이 다르다). The grab wears whatever outline it last
+            // wore either way, because that memory is the shape's, not this
+            // button's.
+            _toolButton(
               keyValue: 'tool-cut-button',
-              tooltip: AppText.strings.toolCutTip,
+              group: CanvasTool.cut,
               // Scissors: the user's own word for this tool is 잘라내기, and
               // the glyph should say that even though the source survives.
               icon: Icons.content_cut,
               selected: canvasToolUsesCutPiece(tool),
-              // Pressing it while the stamp is armed leaves the stamp
-              // alone; coming back from another tool lands on the GRAB,
-              // because the stamp is not one of the tiles the memory keeps
-              // (유저 확정 — 찍기는 성질이 다르다). The grab wears whatever
-              // outline it last wore either way, because that memory is
-              // the shape's, not this button's.
-              onPressed: () => onToolChanged(_entryFor(CanvasTool.cut)),
             ),
             // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
             // the top strip's colour button IS the swatch, so keeping one here

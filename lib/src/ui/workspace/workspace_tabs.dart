@@ -171,13 +171,9 @@ class _WorkspaceTabs {
                 slice: (state) => state.tool,
                 builder: (context, toolState) => ToolsPanel(
                   tool: toolState.tool,
-                  onToolChanged: (tool) => _state._brushTool.value = _state
-                      ._brushTool
-                      .value
-                      .copyWith(tool: tool),
-                  // Asked at PRESS time, not build time: the memory is the
-                  // notifier's, not state this builder is sliced on.
-                  groupEntry: _state._brushTool.railEntry,
+                  // Applied at PRESS time, not build time: the rail memory is
+                  // the notifier's, not state this builder is sliced on.
+                  onPress: _state._pressTool,
                   // The between-strokes group. Its own listeners, so undoing
                   // does not rebuild the tool column above it.
                   historyControls: _state._rail._railHistoryControls(),
@@ -241,7 +237,7 @@ class _WorkspaceTabs {
                 expandedLaneLayerIds: _state._expandedLaneLayerIds,
                 fillOptions: _state._views._fillOptions,
                 selectionMaskOptions: _state._views._selectionMaskOptions,
-                transformOptions: _state._views._transformOptions,
+                transformOptions: _state._transformOptions,
                 eyedropperSource: _state._views._eyedropperSource,
                 flipHud: _state.widget.flipHud,
               ),
@@ -324,17 +320,11 @@ class _WorkspaceTabs {
                         toolState.activeShapeKind,
                       ),
                       builder: (context) => ToolLibraryPanel(
-                        transformOptions: _state._views._transformOptions,
-                        onTransformOptionsChanged: (options) =>
-                            _state._views._transformOptions.value = options,
+                        transformOptions: _state._transformOptions,
                         tool: toolState.tool,
-                        onToolChanged: (tool) => _state._brushTool.value =
-                            _state._brushTool.value.copyWith(tool: tool),
+                        onPress: _state._pressTool,
                         shapeKind:
                             toolState.activeShapeKind ?? CanvasShapeKind.rect,
-                        onShapeKindChanged: (verb, kind) =>
-                            _state._brushTool.value = _state._brushTool.value
-                                .withShapeKind(kind, forTool: verb),
                         brushLibrary: ListenableBuilder(
                           listenable: _state._presetLibrary,
                           builder: (context, _) => BrushPresetPanel(
@@ -440,7 +430,7 @@ class _WorkspaceTabs {
                     // the kept-alive subtree is thrown away, not when
                     // it rebuilds.
                     builder: (context) => ValueListenableBuilder<TransformToolOptions>(
-                      valueListenable: _state._views._transformOptions,
+                      valueListenable: _state._transformOptions,
                       builder: (context, transformOptions, _) =>
                           ValueListenableBuilder<SelectionMaskOptions>(
                             valueListenable:
@@ -515,9 +505,7 @@ class _WorkspaceTabs {
                                           transformOptions: transformOptions,
                                           onTransformOptionsChanged:
                                               (options) =>
-                                                  _state
-                                                          ._views
-                                                          ._transformOptions
+                                                  _state._transformOptions
                                                           .value =
                                                       options,
                                           selectionCommands: _state

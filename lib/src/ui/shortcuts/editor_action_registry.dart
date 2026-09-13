@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/app_language.dart';
+import '../../models/canvas_shape_kind.dart';
+import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
+import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
+import '../brush/tool_press.dart';
+import '../brush/transform_tool_options.dart' show TransformMode;
+import '../text/app_strings.dart' show AppStrings;
+
 /// The single shortcut intent: every editor action dispatches through ONE
 /// intent type carrying its [actionId], so the app mounts exactly one
 /// Actions handler and the Shortcuts map stays data-driven from the
@@ -25,6 +33,8 @@ class EditorActionDefinition {
     this.defaultTouchGesture,
     this.hold = false,
     this.zoomsView = false,
+    this.toolPress,
+    this.pixelVerb,
   });
 
   final String id;
@@ -34,8 +44,8 @@ class EditorActionDefinition {
 
   /// The multi-finger touch gesture bound by default (R11-⑨); most
   /// actions ship unbound — every action is ASSIGNABLE in the settings
-  /// dialog either way. Stored as the [TouchGesture] enum NAME to keep
-  /// this file free of UI imports.
+  /// dialog either way. Stored as the [TouchGesture] enum NAME, so this
+  /// file does not import the touch layer.
   final String? defaultTouchGesture;
 
   /// A HELD action (I-15): its key is in force while it is down and lets go
@@ -51,7 +61,64 @@ class EditorActionDefinition {
   /// IS; the law that reads it lives in the gate (`viewZoomPassesPlayback`),
   /// never as a playback check inside the zoom.
   final bool zoomsView;
+
+  /// What a TOOL action presses — a rail button or a tile of the tool
+  /// library — or null for every other action.
+  ///
+  /// 🗣️I-19 (유저 2026-09-13): 「툴 자체에 설정할수도있고 툴 내부의 세부툴도
+  /// 설정가능하게」. The row says what it presses, the rail and the library
+  /// build their buttons out of the same presses, and the shell applies one
+  /// through `pressTool` — so the key and the button are one press, and a
+  /// button finds its action by [toolActionIdFor].
+  final ToolPress? toolPress;
+
+  /// The verb a row of the colour edit list runs, or null.
+  ///
+  /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
+  /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
+  final CelPixelVerb? pixelVerb;
 }
+
+/// The action a tool button or tile presses, found by its press — so the
+/// button names its action without spelling an id (I-19).
+String toolActionIdFor(ToolPress press) => _toolActionIds[press]!;
+
+final Map<ToolPress, String> _toolActionIds = {
+  for (final definition in editorActionDefinitions)
+    ?definition.toolPress: definition.id,
+};
+
+/// The action a colour edit row runs, found by its verb.
+String pixelVerbActionIdFor(CelPixelVerb verb) => _pixelVerbActionIds[verb]!;
+
+final Map<CelPixelVerb, String> _pixelVerbActionIds = {
+  for (final definition in editorActionDefinitions)
+    ?definition.pixelVerb: definition.id,
+};
+
+/// The shape tiles of [verb] as actions, one per [CanvasShapeKind].
+///
+/// ★GENERATED from the verb × shape product, never hand-written:
+/// [CanvasShapeKind] warns that the product grows like one, so a new shape
+/// arrives in its tiles and in the shortcut list at once. Their names are
+/// composed (`shapeTileLabel`) — the English one here from the English
+/// table — so no language tables a shape tile twice.
+List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
+  for (final shape in CanvasShapeKind.values)
+    EditorActionDefinition(
+      // Named for the rail tool the tile belongs to — 'tool-select-lasso',
+      // 'tool-fill-rect' — which is the id the rectangle select already had.
+      id: 'tool-${canvasToolRailGroup(verb).name}-${shape.name}',
+      label: shapeTileLabel(verb, shape, AppStrings.of(AppLanguage.en)),
+      category: 'Tools',
+      defaultActivators: [
+        // 「선택도구의 올가미 선택에 w로 두고싶어」.
+        if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
+          const SingleActivator(LogicalKeyboardKey.keyW),
+      ],
+      toolPress: ShapeTilePress(verb, shape),
+    ),
+];
 
 /// Registry ids (referenced from dispatch and menu labels).
 abstract final class EditorActionIds {
@@ -71,17 +138,25 @@ abstract final class EditorActionIds {
   static const voiceRecordToggle = 'voice-record-toggle';
   static const undo = 'edit-undo';
   static const redo = 'edit-redo';
+
+  /// The tools and their tiles (I-19). The shape tiles' ids are generated
+  /// from their verb and shape — see `_shapeTileActions`.
   static const toolBrush = 'tool-brush';
   static const toolEraser = 'tool-eraser';
   static const toolEyedropper = 'tool-eyedropper';
   static const toolFill = 'tool-fill';
-  static const toolSelectRect = 'tool-select-rect';
-  static const toolLasso = 'tool-lasso';
-  static const toolMove = 'tool-move';
+  static const toolFillBucket = 'tool-fill-bucket';
+  static const toolGuide = 'tool-guide';
+  static const toolSelect = 'tool-select';
+  static const toolTransform = 'tool-transform';
+  static const toolTransformNormal = 'tool-transform-normal';
+  static const toolTransformFree = 'tool-transform-free';
+  static const toolTransformMesh = 'tool-transform-mesh';
+  static const toolCut = 'tool-cut';
+  static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
   static const selectionNudgeUp = 'selection-nudge-up';
   static const selectionNudgeDown = 'selection-nudge-down';
-  static const selectionFreeTransform = 'selection-free-transform';
   static const selectionTransformCommit = 'selection-transform-commit';
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
@@ -113,7 +188,13 @@ abstract final class EditorActionIds {
   static const editPasteLinked = 'edit-paste-linked';
   static const editPasteIndependent = 'edit-paste-independent';
   static const editDelete = 'edit-delete';
+
+  /// The colour edit list's four verbs, in its order — every one an action
+  /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
+  static const editReplaceColour = 'edit-replace-colour';
   static const editClearPixels = 'edit-clear-pixels';
+  static const editDeleteColour = 'edit-delete-colour';
+  static const editKeepColour = 'edit-keep-colour';
 
   /// 「컨트롤s로 저장 로직 연결, 컨트롤쉬프트s로 다른이름저장」.
   static const fileSave = 'file-save';
@@ -250,9 +331,11 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     // Procreate's muscle memory: three-finger tap = redo.
     defaultTouchGesture: 'threeFingerTap',
+    // 🪦Ctrl+Y redid as well — a second key on one action, retired
+    // 2026-09-13: 「다시실행 중복할당된거 제거하고 잔재도 제거해」. Ctrl+Y is
+    // 자유 변형 now.
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true),
-      SingleActivator(LogicalKeyboardKey.keyY, control: true),
     ],
   ),
   // 🗣️I-19 (유저 2026-09-12): keys for buttons that already exist — the
@@ -304,11 +387,38 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
   ),
+  // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
+  // 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야.
+  // 버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로 두고
+  // 싶어」 — the colour edit list's four rows, in its order; Backspace is the
+  // one key the list ships with.
+  const EditorActionDefinition(
+    id: EditorActionIds.editReplaceColour,
+    label: 'Replace Color',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelVerb: CelPixelVerb.replaceColour,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.editClearPixels,
     label: 'Clear Pixels',
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
+    pixelVerb: CelPixelVerb.clearPixels,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editDeleteColour,
+    label: 'Delete Color',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelVerb: CelPixelVerb.deleteColour,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editKeepColour,
+    label: 'Keep Color',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelVerb: CelPixelVerb.keepColour,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
@@ -326,48 +436,121 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
     ],
   ),
+  // 🗣️I-19 (유저 2026-09-13): 「툴 내의 세부툴도 숏컷 지정 가능하게 하려고.
+  // 툴 자체에 설정할수도있고 툴 내부의 세부툴도 설정가능하게」. ★Every rail
+  // tool and every tile of the tool library is an action, in rail order, and
+  // each row says what it presses ([EditorActionDefinition.toolPress]).
+  //
+  // 🪦Three keys that had grown up beside the tools are gone. V was the MOVE
+  // tool's (R11-8a, 「PS/CSP muscle memory」) — 「이동툴이라기보단 그냥
+  // 변형툴이잖아. v 삭제하고 v 관련 잔재있으면 삭제」. M and L were the
+  // rectangle and lasso TOOLS from before the outline became a setting
+  // (R17-U) — 「선택 도구도 M이랑 L 있는거 의문이고, 변형툴처럼 법 통일해서
+  // 잔재제거」.
   const EditorActionDefinition(
     id: EditorActionIds.toolBrush,
     label: 'Brush Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyB)],
+    toolPress: RailToolPress(CanvasTool.brush),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolEraser,
     label: 'Eraser Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyE)],
+    toolPress: RailToolPress(CanvasTool.eraser),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.toolEyedropper,
     label: 'Eyedropper Tool',
     category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI)],
+    toolPress: RailToolPress(CanvasTool.eyedropper),
   ),
+  // 「채우기툴을 f로 변경하고」 — it was G.
   const EditorActionDefinition(
     id: EditorActionIds.toolFill,
     label: 'Fill Tool',
     category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyF)],
+    toolPress: RailToolPress(CanvasTool.fill),
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolFillBucket,
+    label: 'Bucket',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: ToolTilePress(CanvasTool.fill),
+  ),
+  ..._shapeTileActions(CanvasTool.fillShape),
+  // 「가이드 툴을 g로 지정」.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolGuide,
+    label: 'Guide Tool',
+    category: 'Tools',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyG)],
+    toolPress: RailToolPress(CanvasTool.guide),
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.toolSelectRect,
-    label: 'Rectangle Select Tool',
+    id: EditorActionIds.toolSelect,
+    label: 'Select Tool',
     category: 'Tools',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyM)],
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.select),
+  ),
+  ..._shapeTileActions(CanvasTool.select),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolTransform,
+    label: 'Transform Tool',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.move),
+  ),
+  // R26 #17: Ctrl+T is not a transform of its own — it arms the transform
+  // TOOL, so one code path (and one set of guards) owns transforming. And it
+  // arms it in a MODE now: 「그냥 변형이 아니라 일반변형에 컨트롤+t로
+  // 연결하고 퍼스변형 이름을 자유변형으로 바꾸고, 자유변형을 컨트롤+y로」.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolTransformNormal,
+    label: 'Normal Transform',
+    category: 'Tools',
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyT, control: true),
+    ],
+    toolPress: TransformModePress(TransformMode.normal),
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.toolLasso,
-    label: 'Lasso Select Tool',
+    id: EditorActionIds.toolTransformFree,
+    label: 'Free Transform',
     category: 'Tools',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyL)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyY, control: true),
+    ],
+    toolPress: TransformModePress(TransformMode.perspective),
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.toolMove,
-    label: 'Move Tool',
+    id: EditorActionIds.toolTransformMesh,
+    label: 'Mesh Warp',
     category: 'Tools',
-    // PS/CSP muscle memory: V = the move tool.
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
+    defaultActivators: [],
+    toolPress: TransformModePress(TransformMode.mesh),
+  ),
+  // 「잘라내기는 잘라내기 툴 자체에 c로 설정」.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCut,
+    label: 'Cut Tool',
+    category: 'Tools',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyC)],
+    toolPress: RailToolPress(CanvasTool.cut),
+  ),
+  ..._shapeTileActions(CanvasTool.cut),
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCutStamp,
+    label: 'Stamp',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.selectionDeselect,
@@ -392,14 +575,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Nudge Selection / Layer Down',
     category: 'Selection',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.selectionFreeTransform,
-    label: 'Free Transform',
-    category: 'Selection',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.keyT, control: true),
-    ],
   ),
   // Enter/Escape only mean commit/cancel while a transform box is open
   // (no-ops otherwise); text fields keep them (bare keys stand down).

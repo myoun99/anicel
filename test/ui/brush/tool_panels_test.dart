@@ -9,7 +9,9 @@ import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
+import 'package:anicel/src/ui/brush/tool_press.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
@@ -22,10 +24,9 @@ void main() {
     testWidgets('painting tools show the brush library', (tester) async {
       await tester.pumpWidget(
         app(
-          ToolLibraryPanel(
+          const ToolLibraryPanel(
             tool: CanvasTool.eraser,
-            onToolChanged: (_) {},
-            brushLibrary: const Text('library-content'),
+            brushLibrary: Text('library-content'),
           ),
         ),
       );
@@ -53,8 +54,7 @@ void main() {
             ToolLibraryPanel(
               key: ValueKey<CanvasTool>(tool),
               tool: tool,
-              onToolChanged: (_) {},
-              onShapeKindChanged: (verb, kind) {},
+              onPress: (_) {},
               shapeKind: fresh.activeShapeKind ?? CanvasShapeKind.rect,
               brushLibrary: const SizedBox.shrink(),
             ),
@@ -70,13 +70,12 @@ void main() {
     testWidgets('the select tool lists its shapes and picks one on tap', (
       tester,
     ) async {
-      final switched = <(CanvasTool, CanvasShapeKind)>[];
+      final pressed = <ToolPress>[];
       await tester.pumpWidget(
         app(
           ToolLibraryPanel(
             tool: CanvasTool.select,
-            onToolChanged: (_) {},
-            onShapeKindChanged: (verb, kind) => switched.add((verb, kind)),
+            onPress: pressed.add,
             brushLibrary: const SizedBox.shrink(),
           ),
         ),
@@ -88,7 +87,9 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey<String>('sub-tool-select-lasso')),
       );
-      expect(switched, [(CanvasTool.select, CanvasShapeKind.lasso)]);
+      expect(pressed, [
+        const ShapeTilePress(CanvasTool.select, CanvasShapeKind.lasso),
+      ]);
     });
 
     testWidgets('every shape gets a tile under every drag-out verb', (
@@ -105,8 +106,7 @@ void main() {
           app(
             ToolLibraryPanel(
               tool: verb,
-              onToolChanged: (_) {},
-              onShapeKindChanged: (_, _) {},
+              onPress: (_) {},
               brushLibrary: const SizedBox.shrink(),
             ),
           ),
@@ -129,8 +129,7 @@ void main() {
           app(
             ToolLibraryPanel(
               tool: verb,
-              onToolChanged: (_) {},
-              onShapeKindChanged: (_, _) {},
+              onPress: (_) {},
               brushLibrary: const SizedBox.shrink(),
             ),
           ),
@@ -151,13 +150,12 @@ void main() {
     });
 
     testWidgets('a fill shape tile enters the shape-fill verb', (tester) async {
-      final picked = <(CanvasTool, CanvasShapeKind)>[];
+      final picked = <ToolPress>[];
       await tester.pumpWidget(
         app(
           ToolLibraryPanel(
             tool: CanvasTool.fill,
-            onToolChanged: (_) {},
-            onShapeKindChanged: (verb, kind) => picked.add((verb, kind)),
+            onPress: picked.add,
             brushLibrary: const SizedBox.shrink(),
           ),
         ),
@@ -165,7 +163,9 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey<String>('sub-tool-fill-ellipse')),
       );
-      expect(picked, [(CanvasTool.fillShape, CanvasShapeKind.ellipse)]);
+      expect(picked, [
+        const ShapeTilePress(CanvasTool.fillShape, CanvasShapeKind.ellipse),
+      ]);
     });
 
     testWidgets('the shape tile settings drop the knobs that read the '
@@ -626,19 +626,24 @@ void main() {
       expect(rect.hashCode == lasso.hashCode, isFalse);
     });
 
-    testWidgets('the transform tool lists 일반/퍼스/메쉬 and picking one '
+    testWidgets('the transform tool lists 일반/자유/메쉬 and picking one '
         'writes the MODE, not the tool', (tester) async {
       final options = ValueNotifier(TransformToolOptions.defaults);
       addTearDown(options.dispose);
-      final switched = <CanvasTool>[];
+      final tool = PaintToolStateNotifier(
+        BrushToolState.defaults.copyWith(tool: CanvasTool.move),
+      );
+      addTearDown(tool.dispose);
+      var toolAnnouncements = 0;
+      tool.addListener(() => toolAnnouncements++);
       await tester.pumpWidget(
         app(
           ToolLibraryPanel(
             tool: CanvasTool.move,
-            onToolChanged: switched.add,
+            onPress: (press) =>
+                pressTool(press, tool: tool, transform: options),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,
-            onTransformOptionsChanged: (value) => options.value = value,
           ),
         ),
       );
@@ -656,11 +661,11 @@ void main() {
       await tester.pump();
       expect(options.value.mode, TransformMode.mesh);
       expect(
-        switched,
-        isEmpty,
+        toolAnnouncements,
+        0,
         reason:
-            'a mode is a setting — routing it through onToolChanged would '
-            'confirm the open box on the way past',
+            'a mode is a setting — a tool change announced on the way past '
+            'would confirm the open box',
       );
     });
   });
@@ -681,7 +686,6 @@ void main() {
             ToolLibraryPanel(
               key: ValueKey<String>('library-$tool'),
               tool: tool,
-              onToolChanged: (_) {},
               brushLibrary: const SizedBox.shrink(),
             ),
           ),

@@ -3,8 +3,9 @@ part of '../editor_workspace.dart';
 /// THE DOCUMENT VIEWS' STATE — what each document panel shows and how:
 /// the timesheet's page, continuity, viewport and ink; the conte's and
 /// the cut envelope's viewport, ink and images; the camera view; and the
-/// tool options the canvas reads (fill, selection mask, transform,
-/// eyedropper source). Notifiers, so the panels subscribe rather than
+/// tool options the canvas reads (fill, selection mask, eyedropper source —
+/// the transform's are the shell's, beside the tool, because a shortcut
+/// presses a transform mode). Notifiers, so the panels subscribe rather than
 /// the workspace rebuilding.
 ///
 /// 🚨A collaborator carved out of `_EditorWorkspaceState` (the audit's SRP
@@ -25,19 +26,6 @@ class _WorkspaceDocumentViews {
   /// feather, edge AA. Defaults keep the lift byte-preserving.
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
-
-  /// P3a: which resampler a transform commit runs through. Session state
-  /// like its three neighbours here, deliberately NOT a [BrushToolState]
-  /// field — everything there other than the tool itself forwards into
-  /// [BrushShape], which is what a saved brush preset serialises, so the
-  /// bit would follow every preset around for no reason.
-  ///
-  /// Blend is the default: smoothing is what a transform is expected to do
-  /// everywhere else in the industry, and the argmax is the deliberate
-  /// choice for two-value work.
-  final ValueNotifier<TransformToolOptions> _transformOptions = ValueNotifier(
-    TransformToolOptions.defaults,
-  );
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
   /// user's default is "pick what you SEE".
@@ -116,7 +104,6 @@ class _WorkspaceDocumentViews {
   void dispose() {
     _fillOptions.dispose();
     _selectionMaskOptions.dispose();
-    _transformOptions.dispose();
     _eyedropperSource.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();

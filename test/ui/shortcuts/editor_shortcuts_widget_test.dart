@@ -9,8 +9,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -117,7 +119,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('I enters the eyedropper (it stays armed, R11-②); G fills', (
+  testWidgets('I enters the eyedropper (it stays armed, R11-②); F fills, G '
+      'guides, C cuts, W lassoes; Ctrl+T and Ctrl+Y transform in a mode', (
     tester,
   ) async {
     await pumpHome(tester);
@@ -138,29 +141,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.eyedropper);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
+    // 🗣️유저 2026-09-13: 「채우기툴을 f로 변경하고, 가이드 툴을 g로 지정」 ·
+    // 「잘라내기는 잘라내기 툴 자체에 c로 설정」.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.fill);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.guide);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.cut);
 
-    // P9: M = rectangle select, L = lasso. Both land on the same VERB now
-    // and differ in the shape — the two keys have to keep meaning what
-    // they meant, which is exactly what the split could have broken.
-    // Read it off the DRAG SURFACE, not off the tool library: the library
-    // lives in a per-tool keep-alive stack, so several instances are
-    // mounted at once and the first one found is whichever tool was
-    // visited first — it would answer "rectangle" forever.
+    // 「선택도구의 올가미 선택에 w로 두고싶어」 — the select tool, tracing the
+    // lasso. Read it off the DRAG SURFACE, not off the tool library: the
+    // library lives in a per-tool keep-alive stack, so several instances are
+    // mounted at once and the first one found is whichever tool was visited
+    // first — it would answer "rectangle" forever.
     CanvasShapeKind shapeOf() => tester
         .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
         .shapeKind;
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
-    await tester.pumpAndSettle();
-    expect(toolOf(), CanvasTool.select);
-    expect(shapeOf(), CanvasShapeKind.rect);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.select);
     expect(shapeOf(), CanvasShapeKind.lasso);
+
+    // 「일반변형에 컨트롤+t로 연결 … 자유변형을 컨트롤+y로」 — the transform
+    // tool, in that mode.
+    TransformMode modeOf() => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .transformOptions!
+        .value
+        .mode;
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyY);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.move);
+    expect(modeOf(), TransformMode.perspective);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(toolOf(), CanvasTool.move);
+    expect(modeOf(), TransformMode.normal);
+
+    // 🪦The keys that had grown up beside the tools press nothing now.
+    for (final retired in [
+      LogicalKeyboardKey.keyV,
+      LogicalKeyboardKey.keyM,
+      LogicalKeyboardKey.keyL,
+    ]) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(retired);
+      await tester.pumpAndSettle();
+      expect(toolOf(), CanvasTool.brush, reason: retired.keyLabel);
+    }
   });
 
   testWidgets('🗣️I-15: holding Alt over the brush IS the eyedropper tool '
@@ -181,7 +218,8 @@ void main() {
     await tester.pump();
     expect(toolOf(), CanvasTool.brush);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    // W: the select tool, tracing its lasso.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
     await tester.pumpAndSettle();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();

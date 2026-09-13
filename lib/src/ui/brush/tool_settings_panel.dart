@@ -744,7 +744,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final onOptions = canEdit ? widget.onOptionsChanged : null;
     return ToolSettingsSection(
       tool: 'move',
-      title: AppText.strings.toolMove,
+      title: AppText.strings.toolTransform,
       children: [
         const SizedBox(height: 8),
         _channel(

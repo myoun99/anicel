@@ -53,6 +53,7 @@ import 'brush/paint_tool_state_notifier.dart';
 import 'brush/brush_canvas_defaults.dart';
 import 'brush/guide_panels.dart';
 import 'brush/tool_library_panel.dart';
+import 'brush/tool_press.dart';
 import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
@@ -179,6 +180,7 @@ class EditorWorkspace extends StatefulWidget {
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
+    this.transformOptions,
     this.colorBackground,
     this.colorPalette,
     this.onColorPaletteChanged,
@@ -193,9 +195,15 @@ class EditorWorkspace extends StatefulWidget {
   final EditorSessionManager session;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
-  /// shortcuts (B/E) and the workspace panels drive one state. Null keeps
-  /// a workspace-local notifier (focused widget tests).
+  /// shortcuts and the workspace panels drive one state. Null keeps a
+  /// workspace-local notifier (focused widget tests).
   final PaintToolStateNotifier? brushTool;
+
+  /// The transform tool's options, owned by the shell beside [brushTool] for
+  /// the same reason: a tool shortcut presses a transform MODE (유저
+  /// 2026-09-13: 「일반변형에 컨트롤+t로 연결 … 자유변형을 컨트롤+y로」).
+  /// Null keeps a workspace-local notifier (focused widget tests).
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// The BACK colour slot and the palette, owned by the shell alongside the
   /// tool state — the colour picker is a rail panel now (유저 확정: 컬러
@@ -721,6 +729,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   /// memory has to be the same one the shell's tool shortcuts read.
   late final PaintToolStateNotifier _brushTool =
       widget.brushTool ?? PaintToolStateNotifier(BrushToolState.defaults);
+
+  /// See [EditorWorkspace.transformOptions].
+  late final ValueNotifier<TransformToolOptions> _transformOptions =
+      widget.transformOptions ?? ValueNotifier(TransformToolOptions.defaults);
+
+  /// What a rail button or a tile presses — the write a tool shortcut makes
+  /// in the shell, through the same [pressTool].
+  void _pressTool(ToolPress press) =>
+      pressTool(press, tool: _brushTool, transform: _transformOptions);
 
   /// The one piece the cut tool is holding.
   ///
@@ -1314,6 +1331,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     request.answer(proceed ?? false);
   }
 
+  /// An injected tool notifier belongs to the shell; only a local fallback
+  /// is ours to dispose — the tool's and the transform options' alike.
+  void _disposeLocalToolNotifiers() {
+    if (widget.brushTool == null) {
+      _brushTool.dispose();
+    }
+    if (widget.transformOptions == null) {
+      _transformOptions.dispose();
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1332,11 +1360,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _cutPieceSlot.removeListener(_brushPresets.armStampOnFreshCut);
     _cutPieceSlot.removeListener(_reportCutPieceBytes);
     widget.session.renderCaches.cutPieceBytes = 0;
-    // An injected tool notifier belongs to the shell; only a local
-    // fallback is ours to dispose.
-    if (widget.brushTool == null) {
-      _brushTool.dispose();
-    }
+    _disposeLocalToolNotifiers();
     _views.dispose();
     _timelineOrientation.dispose();
     _timelinePixelsPerFrame.dispose();

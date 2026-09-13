@@ -328,7 +328,7 @@ void main() {
   ) async {
     await _expectParity(
       tester,
-      ToolsPanel(tool: CanvasTool.brush, onToolChanged: (_) {}),
+      ToolsPanel(tool: CanvasTool.brush, onPress: (_) {}),
       what: 'the tool column',
     );
   });

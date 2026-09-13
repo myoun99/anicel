@@ -2,37 +2,85 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_shape_kind.dart';
-import '../text/app_strings.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import 'brush_tool_state.dart';
+import 'tool_press.dart';
 import 'transform_tool_options.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/settings_prompt_text.dart';
 
-/// One shape tile, in rail order.
+/// The sub-tool tiles the tool library lists for a rail [group], in order,
+/// each with its glyph. Empty for the tools that have none.
+///
+/// ★THE TILES ARE PRESSES: each is the [SubToolPress] its shortcut action
+/// carries, so a tile, its name and its key come from one row (I-19, 유저
+/// 2026-09-13: 「툴 내부의 세부툴도 설정가능하게」) — and a tile added here
+/// without an action fails `every_tool_and_tile_is_an_action_test`.
+List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
+    switch (group) {
+      CanvasTool.select => _shapeTiles(CanvasTool.select),
+      // The CUT tool's tiles: every shape, then the stamp. Same grammar as
+      // the selection tool above — and the stamp tile does more than tidy
+      // the rail: with grabbing and stamping separated, a drag means
+      // exactly one thing inside each, so the tool needs no modifier key
+      // and works on a tablet. That is why the stamp stays a TOOL while
+      // rectangle and lasso became shapes: it is a different verb, not a
+      // different outline.
+      CanvasTool.cut || CanvasTool.cutStamp => [
+        ..._shapeTiles(CanvasTool.cut),
+        (
+          press: const ToolTilePress(CanvasTool.cutStamp),
+          icon: Icons.approval_outlined,
+        ),
+      ],
+      // The FILL tool's tiles: the bucket, then every shape. Same grammar
+      // again — and the bucket stays a TOOL for the same reason the stamp
+      // does. It is a different verb (flood from a tap, respecting the
+      // line art) rather than a different outline, so a tap means exactly
+      // one thing inside each tile and no modifier is needed.
+      CanvasTool.fill || CanvasTool.fillShape => [
+        (
+          press: const ToolTilePress(CanvasTool.fill),
+          icon: Icons.format_color_fill,
+        ),
+        ..._shapeTiles(CanvasTool.fillShape),
+      ],
+      // The transform tool's three tiles, in TVPaint's order with 일반 as
+      // the default. They are not three tools — the mode is a setting, so
+      // that switching one mid-session widens or narrows the OPEN box
+      // instead of confirming it and starting again.
+      CanvasTool.move => const [
+        (press: TransformModePress(TransformMode.normal), icon: Icons.crop_free),
+        (
+          press: TransformModePress(TransformMode.perspective),
+          icon: Icons.transform,
+        ),
+        (press: TransformModePress(TransformMode.mesh), icon: Icons.grid_4x4),
+      ],
+      CanvasTool.brush ||
+      CanvasTool.eraser ||
+      CanvasTool.eyedropper ||
+      CanvasTool.guide => const [],
+    };
+
+/// One shape tile per [CanvasShapeKind], in rail order, for [verb].
 ///
 /// ONE list feeds every drag-out verb, so a new [CanvasShapeKind] shows up
-/// under select and cut (and later fill) from a single entry here rather
-/// than from one hand-written tile per verb.
-const List<({CanvasShapeKind kind, IconData icon})> _shapeTiles = [
-  (kind: CanvasShapeKind.rect, icon: Icons.crop_square),
-  (kind: CanvasShapeKind.ellipse, icon: Icons.circle_outlined),
-  (kind: CanvasShapeKind.lasso, icon: Icons.gesture),
-  (kind: CanvasShapeKind.polygon, icon: Icons.polyline_outlined),
+/// under select, cut and fill from a single entry here rather than from one
+/// hand-written tile per verb.
+List<({SubToolPress press, IconData icon})> _shapeTiles(CanvasTool verb) => [
+  for (final shape in CanvasShapeKind.values)
+    (
+      press: ShapeTilePress(verb, shape),
+      icon: switch (shape) {
+        CanvasShapeKind.rect => Icons.crop_square,
+        CanvasShapeKind.ellipse => Icons.circle_outlined,
+        CanvasShapeKind.lasso => Icons.gesture,
+        CanvasShapeKind.polygon => Icons.polyline_outlined,
+      },
+    ),
 ];
-
-/// A shape's name in the reading language.
-///
-/// ⛔THE LIST ABOVE CANNOT HOLD IT. It is `const`, and a translated string is
-/// read at call time — the same reason the shortcut registry keeps its own
-/// English wording instead of a key. So the icon stays in the const table
-/// and the WORD comes from here, in one place, the way the blend modes and
-/// effect kinds already do it.
-String shapeToolName(CanvasShapeKind kind) => switch (kind) {
-  CanvasShapeKind.rect => AppText.strings.toolShapeRect,
-  CanvasShapeKind.ellipse => AppText.strings.toolShapeEllipse,
-  CanvasShapeKind.lasso => AppText.strings.toolShapeLasso,
-  CanvasShapeKind.polygon => AppText.strings.toolShapePolygon,
-};
 
 /// The TOOL LIBRARY panel (R11-④, CSP's sub-tool palette): its content
 /// follows the active tool. The brush and the eraser show the brush
@@ -44,71 +92,34 @@ class ToolLibraryPanel extends StatelessWidget {
   const ToolLibraryPanel({
     super.key,
     required this.tool,
-    required this.onToolChanged,
     required this.brushLibrary,
+    this.onPress,
     this.shapeKind = CanvasShapeKind.rect,
-    this.onShapeKindChanged,
     this.guideLibrary,
     this.transformOptions,
-    this.onTransformOptionsChanged,
   });
 
   final CanvasTool tool;
-  final ValueChanged<CanvasTool> onToolChanged;
+
+  /// A tile's press, applied by the host through [pressTool] — the press the
+  /// tile's shortcut makes too. A shape tile is also how its verb is
+  /// entered: tapping "Rectangle Cut" while the stamp is armed means both,
+  /// which is why the press carries the verb. Null leaves the tiles inert
+  /// (hosts with no tool state behind them).
+  final ValueChanged<ToolPress>? onPress;
 
   /// The shape the ACTIVE verb is set to trace — which tile reads as
   /// selected. Meaningless for tools that trace nothing.
   final CanvasShapeKind shapeKind;
 
-  /// Picking a shape tile: the VERB the tile belongs to and the outline it
-  /// names. The verb travels with it because a shape tile is also how its
-  /// verb is entered — tapping "Rectangle Cut" while the stamp is armed
-  /// means both, and the host must be able to do it in one write. Null
-  /// leaves the tiles inert (hosts with no tool state behind them).
-  final void Function(CanvasTool verb, CanvasShapeKind kind)?
-  onShapeKindChanged;
-
-  /// The shape tiles for one verb. [labelTemplate] names each tile so the
-  /// lists never read as the same tiles twice, and [keyPrefix] keeps the
-  /// widget keys addressable per verb.
-  ///
-  /// 🚨A TEMPLATE, NOT TWO WORDS GLUED TOGETHER. It used to be
-  /// `'${shape} $verb'`, which is 「Rectangle Select」 in English and
-  /// 「사각형 선택」 in Korean by luck — French puts the verb first
-  /// (「Sélection rectangle」) and gluing would have printed it backwards in
-  /// a language nobody here reads. The order belongs to the translator.
-  List<Widget> _shapeTileWidgets({
-    required CanvasTool verb,
-    required String keyPrefix,
-    required String labelTemplate,
-  }) {
-    return [
-      for (final tile in _shapeTiles)
-        _SubToolTile(
-          keyValue: '$keyPrefix-${tile.kind.name}',
-          icon: tile.icon,
-          label: labelTemplate.replaceAll('{shape}', shapeToolName(tile.kind)),
-          // A shape tile reads as current only while ITS verb is the
-          // active one — with the stamp armed no outline is being traced,
-          // so none of the cut shapes is selected.
-          selected: tool == verb && shapeKind == tile.kind,
-          onTap: onShapeKindChanged == null
-              ? null
-              : () => onShapeKindChanged!(verb, tile.kind),
-        ),
-    ];
-  }
-
   /// The transform tool's settings; its three MODES are the tiles this
-  /// panel lists for [CanvasTool.move]. A null handler shows them
-  /// disabled, the convention every other host-owned setting uses here.
+  /// panel lists for [CanvasTool.move].
   ///
   /// A listenable rather than a value because the host rebuilds this panel
   /// only when the TOOL or its preset changes — picking a mode is neither,
   /// so the tiles subscribe for themselves and nothing else in the library
   /// pays for it.
   final ValueListenable<TransformToolOptions>? transformOptions;
-  final ValueChanged<TransformToolOptions>? onTransformOptionsChanged;
 
   /// The brush preset library content (built by the workspace, which owns
   /// the preset state) — shown for the painting tools.
@@ -130,6 +141,25 @@ class ToolLibraryPanel extends StatelessWidget {
     ),
   );
 
+  /// [group]'s tiles; [options] says which transform mode is current.
+  List<Widget> _tiles(CanvasTool group, {TransformToolOptions? options}) => [
+    for (final tile in subToolTilesOf(group))
+      _SubToolTile(
+        press: tile.press,
+        icon: tile.icon,
+        selected: switch (tile.press) {
+          // A shape tile reads as current only while ITS verb is the
+          // active one — with the stamp armed no outline is being traced,
+          // so none of the cut shapes is selected.
+          ShapeTilePress(:final verb, :final shape) =>
+            tool == verb && shapeKind == shape,
+          ToolTilePress(tool: final armed) => tool == armed,
+          TransformModePress(:final mode) => options?.mode == mode,
+        },
+        onPress: onPress,
+      ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     switch (tool) {
@@ -137,103 +167,19 @@ class ToolLibraryPanel extends StatelessWidget {
       case CanvasTool.eraser:
         return brushLibrary;
       case CanvasTool.select:
-        return _tileList(
-          'tool-library-selection',
-          _shapeTileWidgets(
-            verb: CanvasTool.select,
-            keyPrefix: 'sub-tool-select',
-            labelTemplate: AppText.strings.toolShapeSelectTemplate,
-          ),
-        );
-      // The CUT tool's tiles: every shape, then the stamp. Same grammar as
-      // the selection tool above — and the stamp tile does more than tidy
-      // the rail: with grabbing and stamping separated, a drag means
-      // exactly one thing inside each, so the tool needs no modifier key
-      // and works on a tablet. That is why the stamp stays a TOOL while
-      // rectangle and lasso became shapes: it is a different verb, not a
-      // different outline.
+        return _tileList('tool-library-selection', _tiles(CanvasTool.select));
       case CanvasTool.cut:
       case CanvasTool.cutStamp:
-        return _tileList('tool-library-cut', [
-            ..._shapeTileWidgets(
-              verb: CanvasTool.cut,
-              keyPrefix: 'sub-tool-cut',
-              labelTemplate: AppText.strings.toolShapeCutTemplate,
-            ),
-            _SubToolTile(
-              keyValue: 'sub-tool-cut-stamp',
-              icon: Icons.approval_outlined,
-              label: AppText.strings.toolStamp,
-              selected: tool == CanvasTool.cutStamp,
-              onTap: () => onToolChanged(CanvasTool.cutStamp),
-            ),
-          ],
-        );
-      // The FILL tool's tiles: the bucket, then every shape. Same grammar
-      // again — and the bucket stays a TOOL for the same reason the stamp
-      // does. It is a different verb (flood from a tap, respecting the
-      // line art) rather than a different outline, so a tap means exactly
-      // one thing inside each tile and no modifier is needed.
+        return _tileList('tool-library-cut', _tiles(CanvasTool.cut));
       case CanvasTool.fill:
       case CanvasTool.fillShape:
-        return _tileList('tool-library-fill', [
-            _SubToolTile(
-              keyValue: 'sub-tool-fill-bucket',
-              icon: Icons.format_color_fill,
-              label: AppText.strings.toolBucket,
-              selected: tool == CanvasTool.fill,
-              onTap: () => onToolChanged(CanvasTool.fill),
-            ),
-            ..._shapeTileWidgets(
-              verb: CanvasTool.fillShape,
-              keyPrefix: 'sub-tool-fill',
-              labelTemplate: AppText.strings.toolShapeFillTemplate,
-            ),
-          ],
-        );
-      // The transform tool's three tiles, in TVPaint's order with 일반 as
-      // the default. They are not three tools — the mode is a setting, so
-      // that switching one mid-session widens or narrows the OPEN box
-      // instead of confirming it and starting again.
+        return _tileList('tool-library-fill', _tiles(CanvasTool.fill));
       case CanvasTool.move:
-        final onOptions = onTransformOptionsChanged;
         return ValueListenableBuilder<TransformToolOptions>(
           valueListenable: transformOptions ?? _fallbackTransformOptions,
-          builder: (context, options, _) =>
-              _tileList('tool-library-transform', [
-              _SubToolTile(
-                keyValue: 'sub-tool-transform-normal',
-                icon: Icons.crop_free,
-                label: AppText.strings.trModeNormal,
-                selected: options.mode == TransformMode.normal,
-                onTap: onOptions == null
-                    ? null
-                    : () => onOptions(
-                        options.copyWith(mode: TransformMode.normal),
-                      ),
-              ),
-              _SubToolTile(
-                keyValue: 'sub-tool-transform-perspective',
-                icon: Icons.transform,
-                label: AppText.strings.trModePerspective,
-                selected: options.mode == TransformMode.perspective,
-                onTap: onOptions == null
-                    ? null
-                    : () => onOptions(
-                        options.copyWith(mode: TransformMode.perspective),
-                      ),
-              ),
-              _SubToolTile(
-                keyValue: 'sub-tool-transform-mesh',
-                icon: Icons.grid_4x4,
-                label: AppText.strings.brMeshWarp,
-                selected: options.mode == TransformMode.mesh,
-                onTap: onOptions == null
-                    ? null
-                    : () =>
-                          onOptions(options.copyWith(mode: TransformMode.mesh)),
-              ),
-            ],
+          builder: (context, options, _) => _tileList(
+            'tool-library-transform',
+            _tiles(CanvasTool.move, options: options),
           ),
         );
       case CanvasTool.eyedropper:
@@ -266,45 +212,53 @@ class ToolLibraryPanel extends StatelessWidget {
 final ValueNotifier<TransformToolOptions> _fallbackTransformOptions =
     ValueNotifier(TransformToolOptions.defaults);
 
+/// One sub-tool: its action's entrance. The action's name, its live key at
+/// the row's end — the way a menu row prints one (I-19-menu-keys) — and its
+/// press.
 class _SubToolTile extends StatelessWidget {
   const _SubToolTile({
-    required this.keyValue,
+    required this.press,
     required this.icon,
-    required this.label,
     required this.selected,
-    required this.onTap,
+    required this.onPress,
   });
 
-  final String keyValue;
+  final SubToolPress press;
   final IconData icon;
-  final String label;
   final bool selected;
 
   /// Null disables the tile (ListTile greys itself out) — the host does
   /// not own this setting, or has no tool state to write it back to.
-  final VoidCallback? onTap;
+  final ValueChanged<ToolPress>? onPress;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final actionId = toolActionIdFor(press);
+    final pressed = onPress;
     // Own Material: the dock body paints a background color, and ListTile
     // ink/selection tints render on the nearest Material ancestor.
     return Material(
       type: MaterialType.transparency,
       child: ListTile(
-        key: ValueKey<String>(keyValue),
+        // The action id IS the tile's address: 'sub-tool-select-lasso'.
+        key: ValueKey<String>('sub-$actionId'),
         dense: true,
         leading: Icon(
           icon,
           size: 18,
           color: selected ? colorScheme.primary : colorScheme.onSurfaceVariant,
         ),
-        title: Text(label),
-        // Selection reads from the color alone (no trailing check glyph —
-        // the strip must not jump, per the selection-style rule).
+        title: Text(editorActionLabel(actionId)),
+        trailing: ShortcutKeysText(
+          actionIds: [actionId],
+          enabled: pressed != null,
+        ),
+        // Selection reads from the color alone (no check glyph — the strip
+        // must not jump, per the selection-style rule).
         selected: selected,
         selectedTileColor: colorScheme.surfaceContainerHigh,
-        onTap: onTap,
+        onTap: pressed == null ? null : () => pressed(press),
       ),
     );
   }

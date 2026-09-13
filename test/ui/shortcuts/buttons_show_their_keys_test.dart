@@ -47,8 +47,13 @@ void main() {
       ('tool-brush-button', 'Brush Tool (B)'),
       ('tool-eraser-button', 'Eraser Tool (E)'),
       // One button, two actions: both keys land on it.
-      ('tool-select-button', 'Select Tool (M, L)'),
-      ('tool-move-button', 'Move / Transform Tool (V, Ctrl+T)'),
+      ('tool-fill-button', 'Fill Tool (F)'),
+      ('tool-guide-button', 'Guide Tool (G)'),
+      ('tool-cut-button', 'Cut Tool (C)'),
+      // A tool with no key of its own shows its name alone — M, L and V
+      // are retired (I-19, 2026-09-13).
+      ('tool-select-button', 'Select Tool'),
+      ('tool-move-button', 'Transform Tool'),
       // The film verbs ship unbound, so they show their name alone.
       ('new-frame-button', 'Add'),
     ]) {
@@ -123,8 +128,8 @@ void main() {
     expect(keys, findsOneWidget, reason: 'the live key, spelled once');
     expect(
       tester.widget<Text>(keys).style!.color,
-      AppColors.textDim,
-      reason: '흐린색',
+      AppColors.shortcutKeys,
+      reason: '흐린색 — and 「진짜 흐리게」',
     );
     expect(
       tester.getTopLeft(keys).dx,
@@ -149,6 +154,27 @@ void main() {
       ),
       findsNothing,
       reason: 'a row that presses no action prints no key',
+    );
+  });
+
+  testWidgets('a tool library tile prints its key at the row\'s end the way '
+      'a menu row does — the lasso\'s W', (tester) async {
+    // 🗣️유저 2026-09-13: 「선택도구의 올가미 선택에 w로 두고싶어」.
+    await _pumpApp(tester);
+    await tester.tap(_button('tool-select-button'));
+    await tester.pumpAndSettle();
+
+    final lasso = find.byKey(const ValueKey<String>('sub-tool-select-lasso'));
+    final key = find.descendant(of: lasso, matching: find.text('W'));
+    expect(key, findsOneWidget);
+    expect(tester.widget<Text>(key).style!.color, AppColors.shortcutKeys);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('sub-tool-select-rect')),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+      reason: 'an unbound tile prints its name and nothing else',
     );
   });
 

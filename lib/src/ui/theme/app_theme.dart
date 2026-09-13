@@ -156,6 +156,17 @@ abstract final class AppColors {
   /// colour (116 sites) and it was the least legible one.
   static const Color textDim = Color(0xFF9DA2A6);
 
+  /// A shortcut key printed after a row's own name — 「저장 Ctrl+S」, a tool
+  /// library tile's 「W」 (`ShortcutKeysText`).
+  ///
+  /// 🗣️유저 2026-09-13: 「단축키 색 지금보다 더 불투명도 낮춰서. 진짜
+  /// 흐리게.」 It was [textDim] itself — the colour secondary TEXT reads in —
+  /// and a key beside a name is quieter than that.
+  static final Color shortcutKeys = textDim.withValues(alpha: 0.45);
+
+  /// [shortcutKeys] on a row that cannot be pressed.
+  static final Color shortcutKeysDisabled = textDim.withValues(alpha: 0.22);
+
   /// Muted red for destructive/warning marks (cut-end boundary).
   static const Color danger = Color(0xFFC95C5C);
 

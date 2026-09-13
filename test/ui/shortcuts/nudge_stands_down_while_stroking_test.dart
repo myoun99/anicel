@@ -50,10 +50,11 @@ void main() {
     await pen.up();
     await tester.pumpAndSettle();
 
-    // M: rectangle select mounts the selection layer; the whole canvas is
-    // the region, so the stroke is under it wherever it landed. Single
-    // frames from here: the ants march for as long as the region exists.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    // W: the select tool (its lasso) mounts the selection layer; the whole
+    // canvas is the region, so the stroke is under it wherever it landed.
+    // Single frames from here: the ants march for as long as the region
+    // exists.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
     await tester.pumpAndSettle();
     final canvas = session.activeCutOrNull!.canvasSize;
     commands.applyRegion(

@@ -138,14 +138,7 @@ enum AppStrings {
   /// The shared pill's deselect button — the tablet's Esc.
   String get tlSharedDeselect => _s('tlSharedDeselect');
 
-  /// 색 변환 — replace the drawing's colour, keeping its alpha.
-  String get tlSharedReplaceColour => _s('tlSharedReplaceColour');
-
   String get tlSharedColourEdit => _s('tlSharedColourEdit');
-
-  String get tlSharedDeleteColour => _s('tlSharedDeleteColour');
-
-  String get tlSharedKeepColour => _s('tlSharedKeepColour');
 
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
@@ -320,7 +313,6 @@ enum AppStrings {
   String get convertLinkedCutResizeFirst => _s('convertLinkedCutResizeFirst');
 
   // Drawing guides (symmetry / perspective).
-  String get toolGuide => _s('toolGuide');
   String get guideKindSymmetry => _s('guideKindSymmetry');
   String get guideKindPerspective => _s('guideKindPerspective');
   String get guideAdd => _s('guideAdd');
@@ -1136,10 +1128,7 @@ enum AppStrings {
   String get toolEyedropper => _s('toolEyedropper');
   String get toolFill => _s('toolFill');
   String get toolSelect => _s('toolSelect');
-  String get toolMove => _s('toolMove');
-  String get toolSelectTip => _s('toolSelectTip');
-  String get toolMoveTip => _s('toolMoveTip');
-  String get toolCutTip => _s('toolCutTip');
+  String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
   String get toolCutHint => _s('toolCutHint');
   String get toolCutNothingHeld => _s('toolCutNothingHeld');
@@ -1156,8 +1145,6 @@ enum AppStrings {
   String get toolShapeSelectTemplate => _s('toolShapeSelectTemplate');
   String get toolShapeCutTemplate => _s('toolShapeCutTemplate');
   String get toolShapeFillTemplate => _s('toolShapeFillTemplate');
-  String get toolStamp => _s('toolStamp');
-  String get toolBucket => _s('toolBucket');
   String get brBrushesTitle => _s('brBrushesTitle');
   String get brGroupNameField => _s('brGroupNameField');
   String get brCreate => _s('brCreate');
@@ -1241,9 +1228,6 @@ enum AppStrings {
   String get brExportGroup => _s('brExportGroup');
   String get brExportNothing => _s('brExportNothing');
   String get brExpand => _s('brExpand');
-  String get brMeshWarp => _s('brMeshWarp');
-  String get trModeNormal => _s('trModeNormal');
-  String get trModePerspective => _s('trModePerspective');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
   String get trAnchor => _s('trAnchor');
@@ -1352,10 +1336,7 @@ enum AppStrings {
     'commonAffectedFiles': 'Affected files',
     'commonNotice': 'Notice',
     'tlSharedDeselect': 'Deselect',
-    'tlSharedReplaceColour': 'Replace Color',
     'tlSharedColourEdit': 'Color Edit',
-    'tlSharedDeleteColour': 'Delete Color',
-    'tlSharedKeepColour': 'Keep Color',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
@@ -1472,7 +1453,6 @@ enum AppStrings {
         'These cuts have different canvas sizes. Linked cuts share one '
         'canvas, so this cut will be resized to the origin\'s size. Undo '
         'restores it.',
-    'toolGuide': 'Guide',
     'guideKindSymmetry': 'Symmetry',
     'guideKindPerspective': 'Perspective',
     'guideAdd': 'Add',
@@ -2001,10 +1981,7 @@ enum AppStrings {
     'toolEyedropper': 'Eyedropper',
     'toolFill': 'Fill',
     'toolSelect': 'Select',
-    'toolMove': 'Move / Transform',
-    'toolSelectTip': 'Select Tool',
-    'toolMoveTip': 'Move / Transform Tool',
-    'toolCutTip': 'Cut Tool',
+    'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
     'toolCutHint':
         'Cut copies the pixels under the drag — the original stays.\nPick Stamp to place the piece you are holding.',
@@ -2023,8 +2000,6 @@ enum AppStrings {
     'toolShapeSelectTemplate': '{shape} Select',
     'toolShapeCutTemplate': '{shape} Cut',
     'toolShapeFillTemplate': '{shape} Fill',
-    'toolStamp': 'Stamp',
-    'toolBucket': 'Bucket',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
     'brCreate': 'Create',
@@ -2110,9 +2085,6 @@ enum AppStrings {
     'brExportGroup': 'Export brush group',
     'brExportNothing': 'There is nothing to export here.',
     'brExpand': 'Expand',
-    'brMeshWarp': 'Mesh Warp',
-    'trModeNormal': 'Transform',
-    'trModePerspective': 'Perspective',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
     'trAnchor': 'Anchor',
@@ -2309,10 +2281,7 @@ enum AppStrings {
     'commonAffectedFiles': '該当ファイル',
     'commonNotice': 'お知らせ',
     'tlSharedDeselect': '選択解除',
-    'tlSharedReplaceColour': '色変換',
     'tlSharedColourEdit': '色編集',
-    'tlSharedDeleteColour': '色削除',
-    'tlSharedKeepColour': '色残し',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
@@ -2423,7 +2392,6 @@ enum AppStrings {
     'convertLinkedCutResizeFirst':
         'キャンバスサイズが異なります。兼用カットはキャンバスを共有するため'
         'このカットは元のカットのサイズに変更されます。元に戻すと復元されます。',
-    'toolGuide': 'ガイド',
     'guideKindSymmetry': '対称',
     'guideKindPerspective': 'パース',
     'guideAdd': '追加',
@@ -2740,13 +2708,18 @@ enum AppStrings {
     'shortcutAction.tool-eraser': '消しゴムツール',
     'shortcutAction.tool-eyedropper': 'スポイトツール',
     'shortcutAction.tool-fill': '塗りつぶしツール',
-    'shortcutAction.tool-select-rect': '長方形選択ツール',
-    'shortcutAction.tool-lasso': '投げなわ選択ツール',
-    'shortcutAction.tool-move': '移動ツール',
+    'shortcutAction.tool-fill-bucket': '塗りつぶし',
+    'shortcutAction.tool-guide': 'ガイドツール',
+    'shortcutAction.tool-select': '選択ツール',
+    'shortcutAction.tool-transform': '変形ツール',
+    'shortcutAction.tool-transform-normal': '通常変形',
+    'shortcutAction.tool-transform-free': '自由変形',
+    'shortcutAction.tool-transform-mesh': 'メッシュワープ',
+    'shortcutAction.tool-cut': '切り抜きツール',
+    'shortcutAction.tool-cut-stamp': 'スタンプ',
     'shortcutAction.selection-deselect': '選択解除',
     'shortcutAction.selection-nudge-up': '選択 / レイヤーを上へ微調整',
     'shortcutAction.selection-nudge-down': '選択 / レイヤーを下へ微調整',
-    'shortcutAction.selection-free-transform': '自由変形',
     'shortcutAction.selection-transform-commit': '変形を確定',
     'shortcutAction.selection-transform-cancel': '変形をキャンセル',
     'shortcutAction.onion-skin-toggle': 'オニオンスキンの切り替え',
@@ -2768,7 +2741,10 @@ enum AppStrings {
     'shortcutAction.edit-paste-linked': 'リンクして貼り付け',
     'shortcutAction.edit-paste-independent': '独立して貼り付け',
     'shortcutAction.edit-delete': '削除',
+    'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
+    'shortcutAction.edit-delete-colour': '色削除',
+    'shortcutAction.edit-keep-colour': '色残し',
     'shortcutAction.file-save': '保存',
     'shortcutAction.file-save-as': '名前を付けて保存…',
     'shortcutAction.layer-visibility-solo': 'アクティブレイヤーをソロ',
@@ -3032,11 +3008,8 @@ enum AppStrings {
     'toolEyedropper': 'スポイト',
     'toolFill': '塗りつぶし',
     'toolSelect': '選択',
-    'toolMove': '移動 / 変形',
-    'toolSelectTip': '選択ツール',
-    'toolMoveTip': '移動 / 変形ツール',
+    'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
-    'toolCutTip': '切り抜きツール',
     'toolShapeFill': '図形の塗り',
     'toolCutHint': 'カットはドラッグした範囲のピクセルを複製します — 元は残ります。\n持っている断片を置くにはスタンプを選びます。',
     'toolCutNothingHeld': 'まだ何も持っていません。\nまず矩形か投げ縄のタイルで断片をカットします。',
@@ -3053,8 +3026,6 @@ enum AppStrings {
     'toolShapeSelectTemplate': '{shape}選択',
     'toolShapeCutTemplate': '{shape}カット',
     'toolShapeFillTemplate': '{shape}塗り',
-    'toolStamp': 'スタンプ',
-    'toolBucket': '塗りつぶし',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
     'brCreate': '作成',
@@ -3138,9 +3109,6 @@ enum AppStrings {
     'brExportGroup': 'ブラシグループを書き出し',
     'brExportNothing': '書き出すブラシがありません。',
     'brExpand': '展開',
-    'brMeshWarp': 'メッシュワープ',
-    'trModeNormal': '変形',
-    'trModePerspective': 'パース変形',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
     'trAnchor': '基準点',
@@ -3365,10 +3333,7 @@ enum AppStrings {
     'commonAffectedFiles': '해당 파일들',
     'commonNotice': '알림',
     'tlSharedDeselect': '선택 해제',
-    'tlSharedReplaceColour': '색 변환',
     'tlSharedColourEdit': '색 편집',
-    'tlSharedDeleteColour': '색 삭제',
-    'tlSharedKeepColour': '색 남기기',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
@@ -3480,7 +3445,6 @@ enum AppStrings {
     'convertLinkedCutResizeFirst':
         '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 캔버스를 함께 쓰므로 '
         '이 컷이 원본 컷의 크기로 바뀝니다. 실행 취소하면 되돌아갑니다.',
-    'toolGuide': '가이드',
     'guideKindSymmetry': '대칭',
     'guideKindPerspective': '퍼스',
     'guideAdd': '추가',
@@ -3795,13 +3759,18 @@ enum AppStrings {
     'shortcutAction.tool-eraser': '지우개 도구',
     'shortcutAction.tool-eyedropper': '스포이트 도구',
     'shortcutAction.tool-fill': '채우기 도구',
-    'shortcutAction.tool-select-rect': '사각형 선택 도구',
-    'shortcutAction.tool-lasso': '올가미 선택 도구',
-    'shortcutAction.tool-move': '이동 도구',
+    'shortcutAction.tool-fill-bucket': '채우기',
+    'shortcutAction.tool-guide': '가이드 도구',
+    'shortcutAction.tool-select': '선택 도구',
+    'shortcutAction.tool-transform': '변형 도구',
+    'shortcutAction.tool-transform-normal': '일반 변형',
+    'shortcutAction.tool-transform-free': '자유 변형',
+    'shortcutAction.tool-transform-mesh': '메시 워프',
+    'shortcutAction.tool-cut': '잘라내기 도구',
+    'shortcutAction.tool-cut-stamp': '스탬프',
     'shortcutAction.selection-deselect': '선택 해제',
     'shortcutAction.selection-nudge-up': '선택 / 레이어 위로 미세 이동',
     'shortcutAction.selection-nudge-down': '선택 / 레이어 아래로 미세 이동',
-    'shortcutAction.selection-free-transform': '자유 변형',
     'shortcutAction.selection-transform-commit': '변형 확정',
     'shortcutAction.selection-transform-cancel': '변형 취소',
     'shortcutAction.onion-skin-toggle': '어니언 스킨 켜기/끄기',
@@ -3823,7 +3792,10 @@ enum AppStrings {
     'shortcutAction.edit-paste-linked': '링크 붙여넣기',
     'shortcutAction.edit-paste-independent': '독립 붙여넣기',
     'shortcutAction.edit-delete': '삭제',
+    'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
+    'shortcutAction.edit-delete-colour': '색 삭제',
+    'shortcutAction.edit-keep-colour': '색 남기기',
     'shortcutAction.file-save': '저장',
     'shortcutAction.file-save-as': '다른 이름으로 저장…',
     'shortcutAction.layer-visibility-solo': '활성 레이어 솔로',
@@ -4081,10 +4053,7 @@ enum AppStrings {
     'toolEyedropper': '스포이트',
     'toolFill': '채우기',
     'toolSelect': '선택',
-    'toolMove': '이동 / 변형',
-    'toolSelectTip': '선택 도구',
-    'toolMoveTip': '이동 / 변형 도구',
-    'toolCutTip': '잘라내기 도구',
+    'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
     'toolCutHint':
         '잘라내기는 끈 자리의 픽셀을 복사합니다 — 원본은 남습니다.\n들고 있는 조각을 놓으려면 스탬프를 고르세요.',
@@ -4102,8 +4071,6 @@ enum AppStrings {
     'toolShapeSelectTemplate': '{shape} 선택',
     'toolShapeCutTemplate': '{shape} 잘라내기',
     'toolShapeFillTemplate': '{shape} 채우기',
-    'toolStamp': '스탬프',
-    'toolBucket': '채우기',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
     'brCreate': '만들기',
@@ -4186,9 +4153,6 @@ enum AppStrings {
     'brExportGroup': '브러시 그룹 내보내기',
     'brExportNothing': '내보낼 브러시가 없습니다.',
     'brExpand': '펼치기',
-    'brMeshWarp': '메시 워프',
-    'trModeNormal': '일반 변형',
-    'trModePerspective': '퍼스 변형',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
     'trAnchor': '기준점',
@@ -4415,10 +4379,7 @@ enum AppStrings {
     'commonAffectedFiles': 'Fichiers concernés',
     'commonNotice': 'Avis',
     'tlSharedDeselect': 'Désélectionner',
-    'tlSharedReplaceColour': 'Remplacer la couleur',
     'tlSharedColourEdit': 'Édition couleur',
-    'tlSharedDeleteColour': 'Supprimer la couleur',
-    'tlSharedKeepColour': 'Conserver la couleur',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
@@ -4536,7 +4497,6 @@ enum AppStrings {
         'Ces plans ont des tailles de canevas différentes. Les plans liés '
         'partagent une seule image, donc la taille du plan d\'origine '
         'l\'emporte — il est conseillé d\'harmoniser les tailles d\'abord.',
-    'toolGuide': 'Repère',
     'guideKindSymmetry': 'Symétrie',
     'guideKindPerspective': 'Perspective',
     'guideAdd': 'Ajouter',
@@ -4866,15 +4826,20 @@ enum AppStrings {
     'shortcutAction.tool-eraser': 'Outil gomme',
     'shortcutAction.tool-eyedropper': 'Outil pipette',
     'shortcutAction.tool-fill': 'Outil remplissage',
-    'shortcutAction.tool-select-rect': 'Outil sélection rectangle',
-    'shortcutAction.tool-lasso': 'Outil lasso',
-    'shortcutAction.tool-move': 'Outil déplacement',
+    'shortcutAction.tool-fill-bucket': 'Pot de peinture',
+    'shortcutAction.tool-guide': 'Outil repère',
+    'shortcutAction.tool-select': 'Outil sélection',
+    'shortcutAction.tool-transform': 'Outil transformation',
+    'shortcutAction.tool-transform-normal': 'Transformation normale',
+    'shortcutAction.tool-transform-free': 'Transformation libre',
+    'shortcutAction.tool-transform-mesh': 'Déformation par grille',
+    'shortcutAction.tool-cut': 'Outil découpe',
+    'shortcutAction.tool-cut-stamp': 'Tampon',
     'shortcutAction.selection-deselect': 'Désélectionner',
     'shortcutAction.selection-nudge-up':
         'Décaler la sélection / le calque vers le haut',
     'shortcutAction.selection-nudge-down':
         'Décaler la sélection / le calque vers le bas',
-    'shortcutAction.selection-free-transform': 'Transformation libre',
     'shortcutAction.selection-transform-commit': 'Valider la transformation',
     'shortcutAction.selection-transform-cancel': 'Annuler la transformation',
     'shortcutAction.onion-skin-toggle': "Activer/désactiver la pelure d'oignon",
@@ -4896,7 +4861,10 @@ enum AppStrings {
     'shortcutAction.edit-paste-linked': 'Coller lié',
     'shortcutAction.edit-paste-independent': 'Coller indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
+    'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
+    'shortcutAction.edit-delete-colour': 'Supprimer la couleur',
+    'shortcutAction.edit-keep-colour': 'Conserver la couleur',
     'shortcutAction.file-save': 'Enregistrer',
     'shortcutAction.file-save-as': 'Enregistrer sous…',
     'shortcutAction.layer-visibility-solo': 'Solo du calque actif',
@@ -5175,10 +5143,7 @@ enum AppStrings {
     'toolEyedropper': 'Pipette',
     'toolFill': 'Remplissage',
     'toolSelect': 'Sélection',
-    'toolMove': 'Déplacer / Transformer',
-    'toolSelectTip': 'Outil sélection',
-    'toolMoveTip': 'Outil déplacer / transformer',
-    'toolCutTip': 'Outil découpe',
+    'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
     'toolCutHint':
         'La découpe copie les pixels sous le glissement — l\'original reste.\nChoisissez Tampon pour poser le morceau que vous tenez.',
@@ -5197,8 +5162,6 @@ enum AppStrings {
     'toolShapeSelectTemplate': 'Sélection {shape}',
     'toolShapeCutTemplate': 'Découpe {shape}',
     'toolShapeFillTemplate': 'Remplissage {shape}',
-    'toolStamp': 'Tampon',
-    'toolBucket': 'Pot de peinture',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
     'brCreate': 'Créer',
@@ -5260,8 +5223,6 @@ enum AppStrings {
     'brTransformPreserveColorsHint':
         'Transformer sans créer de couleurs '
         'intermédiaires',
-    'trModeNormal': 'Transformer',
-    'trModePerspective': 'Perspective',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
     'trAnchor': 'Point de référence',
@@ -5289,7 +5250,6 @@ enum AppStrings {
     'brExportGroup': 'Exporter le groupe',
     'brExportNothing': 'Aucune brosse à exporter ici.',
     'brExpand': 'Déplier',
-    'brMeshWarp': 'Déformation par grille',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
     'viewFitToView': 'Ajuster à la fenêtre',
@@ -5498,10 +5458,7 @@ enum AppStrings {
     'commonAffectedFiles': '相关文件',
     'commonNotice': '提示',
     'tlSharedDeselect': '取消选择',
-    'tlSharedReplaceColour': '替换颜色',
     'tlSharedColourEdit': '颜色编辑',
-    'tlSharedDeleteColour': '删除颜色',
-    'tlSharedKeepColour': '保留颜色',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':
@@ -5607,7 +5564,6 @@ enum AppStrings {
     'convertLinkedCutResizeFirst':
         '两个镜头的画布尺寸不同。共用镜头共享同一张画，因此以原镜头的尺寸为准 '
         '— 建议先统一尺寸再进行更改。',
-    'toolGuide': '参考线',
     'guideKindSymmetry': '对称',
     'guideKindPerspective': '透视',
     'guideAdd': '添加',
@@ -5899,13 +5855,18 @@ enum AppStrings {
     'shortcutAction.tool-eraser': '橡皮工具',
     'shortcutAction.tool-eyedropper': '吸管工具',
     'shortcutAction.tool-fill': '填充工具',
-    'shortcutAction.tool-select-rect': '矩形选择工具',
-    'shortcutAction.tool-lasso': '套索选择工具',
-    'shortcutAction.tool-move': '移动工具',
+    'shortcutAction.tool-fill-bucket': '油漆桶',
+    'shortcutAction.tool-guide': '参考线工具',
+    'shortcutAction.tool-select': '选择工具',
+    'shortcutAction.tool-transform': '变换工具',
+    'shortcutAction.tool-transform-normal': '普通变换',
+    'shortcutAction.tool-transform-free': '自由变换',
+    'shortcutAction.tool-transform-mesh': '网格变形',
+    'shortcutAction.tool-cut': '裁剪工具',
+    'shortcutAction.tool-cut-stamp': '图章',
     'shortcutAction.selection-deselect': '取消选择',
     'shortcutAction.selection-nudge-up': '选区 / 图层上移微调',
     'shortcutAction.selection-nudge-down': '选区 / 图层下移微调',
-    'shortcutAction.selection-free-transform': '自由变换',
     'shortcutAction.selection-transform-commit': '确认变换',
     'shortcutAction.selection-transform-cancel': '取消变换',
     'shortcutAction.onion-skin-toggle': '切换洋葱皮',
@@ -5927,7 +5888,10 @@ enum AppStrings {
     'shortcutAction.edit-paste-linked': '粘贴链接',
     'shortcutAction.edit-paste-independent': '粘贴独立',
     'shortcutAction.edit-delete': '删除',
+    'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
+    'shortcutAction.edit-delete-colour': '删除颜色',
+    'shortcutAction.edit-keep-colour': '保留颜色',
     'shortcutAction.file-save': '保存',
     'shortcutAction.file-save-as': '另存为…',
     'shortcutAction.layer-visibility-solo': '独奏当前图层',
@@ -6179,10 +6143,7 @@ enum AppStrings {
     'toolEyedropper': '吸管',
     'toolFill': '填充',
     'toolSelect': '选择',
-    'toolMove': '移动 / 变换',
-    'toolSelectTip': '选择工具',
-    'toolMoveTip': '移动 / 变换工具',
-    'toolCutTip': '裁剪工具',
+    'toolTransform': '变换',
     'toolShapeFill': '形状填充',
     'toolCutHint': '裁切会复制拖动范围内的像素 — 原图仍在。\n选择图章即可放下手中的碎片。',
     'toolCutNothingHeld': '尚未持有任何内容。\n请先用矩形或套索图块裁切一块。',
@@ -6199,8 +6160,6 @@ enum AppStrings {
     'toolShapeSelectTemplate': '{shape}选择',
     'toolShapeCutTemplate': '{shape}裁剪',
     'toolShapeFillTemplate': '{shape}填充',
-    'toolStamp': '图章',
-    'toolBucket': '油漆桶',
     'brBrushesTitle': '笔刷',
     'brGroupNameField': '组名称',
     'brCreate': '创建',
@@ -6279,9 +6238,6 @@ enum AppStrings {
     'brExportGroup': '导出画笔组',
     'brExportNothing': '这里没有可导出的画笔。',
     'brExpand': '展开',
-    'brMeshWarp': '网格变形',
-    'trModeNormal': '变形',
-    'trModePerspective': '透视变形',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
     'trAnchor': '基准点',

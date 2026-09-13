@@ -9,7 +9,6 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import '../controllers/default_project_helpers.dart';
-import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
@@ -27,12 +26,13 @@ import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/autosave_clock.dart';
 import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
-import '../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/temporary_tool.dart';
 import 'brush/paint_tool_state_notifier.dart';
+import 'brush/tool_press.dart';
+import 'brush/transform_tool_options.dart';
 import '../models/app_workspace_colors.dart';
 import 'debug/input_inspector.dart';
 import '../services/input/pencil_interaction_service.dart';
@@ -117,27 +117,29 @@ class _HomePageState extends State<HomePage> {
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
 
-  /// The active canvas tool, hoisted here so the tool shortcuts (B/E) and
-  /// the workspace's tool/brush panels drive one notifier. Paint tools
-  /// keep per-tool settings memory (R11-④: the brush and the eraser each
+  /// The active canvas tool, hoisted here so the tool shortcuts and the
+  /// workspace's tool/brush panels drive one notifier. Paint tools keep
+  /// per-tool settings memory (R11-④: the brush and the eraser each
   /// remember their own preset/settings).
   final PaintToolStateNotifier _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
   );
 
-  /// Arms [group]'s current tile — the shortcut half of the rail button.
+  /// The transform tool's options, hoisted beside [_brushTool] for the same
+  /// reason: a tool shortcut presses a transform MODE (유저 2026-09-13:
+  /// 「그냥 변형이 아니라 일반변형에 컨트롤+t로 연결하고 … 자유변형을
+  /// 컨트롤+y로」), so the notifier lives where the shortcuts land.
   ///
-  /// Every tool shortcut goes through this rather than writing its own
-  /// `copyWith(tool: …)`, so pressing `G` lands where the Fill BUTTON lands
-  /// (유저 2026-08-15: 「모드 선택한게 초기화됨」 — a memory kept beside one
-  /// entrance is a memory the other one disagrees with). For the groups
-  /// with a single tile `railEntry` is the identity, so this costs them
-  /// nothing and cannot be forgotten if one of them grows a second tile.
-  void _armToolGroup(CanvasTool group) {
-    _brushTool.value = _brushTool.value.copyWith(
-      tool: _brushTool.railEntry(group),
-    );
-  }
+  /// P3a (it holds which resampler a transform commit runs through): session
+  /// state, deliberately NOT a [BrushToolState] field — everything there
+  /// other than the tool itself forwards into `BrushShape`, which is what a
+  /// saved brush preset serialises, so the bit would follow every preset
+  /// around for no reason. Blend is the default: smoothing is what a
+  /// transform is expected to do everywhere else in the industry, and the
+  /// argmax is the deliberate choice for two-value work.
+  final ValueNotifier<TransformToolOptions> _transformOptions = ValueNotifier(
+    TransformToolOptions.defaults,
+  );
 
   /// The colour wheel's spare (background) slot; the foreground IS the brush
   /// colour, so it rides [_brushTool] and only the spare needs a home.
@@ -480,6 +482,7 @@ class _HomePageState extends State<HomePage> {
     _session.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
+    _transformOptions.dispose();
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
     _shortcuts.dispose();
@@ -584,11 +587,26 @@ class _HomePageState extends State<HomePage> {
     // 🚨R6q3: a view ZOOM passes while the canvas run plays — the funnel half
     // of the pass-through the gate's key half makes, through the SAME
     // predicate, so a zoom key and a bound touch gesture answer alike.
+    final definition = _shortcuts.definitionFor(actionId);
     final zoomPasses = viewZoomPassesPlayback(
-      zoomsView: _shortcuts.definitionFor(actionId)?.zoomsView ?? false,
+      zoomsView: definition?.zoomsView ?? false,
       canvasRun: _session.playbackRig.playback,
     );
     if (!zoomPasses && _consumedByPlayback()) {
+      return;
+    }
+    // 🗣️I-19 (유저 2026-09-13): 「툴 자체에 설정할수도있고 툴 내부의 세부툴도
+    // 설정가능하게」 — a tool action presses what its rail button or tile
+    // presses, through the one [pressTool]; a colour edit action runs its
+    // row's verb behind the gate that row opens behind.
+    if (definition?.toolPress case final press?) {
+      pressTool(press, tool: _brushTool, transform: _transformOptions);
+      return;
+    }
+    if (definition?.pixelVerb case final verb?) {
+      if (_session.cells.canRunPixelVerb) {
+        _session.cells.runPixelVerb(verb);
+      }
       return;
     }
     switch (actionId) {
@@ -634,14 +652,6 @@ class _HomePageState extends State<HomePage> {
         _undoVertexOrDocument();
       case EditorActionIds.redo:
         _redoVertexOrDocument();
-      case EditorActionIds.toolBrush:
-        _armToolGroup(CanvasTool.brush);
-      case EditorActionIds.toolEraser:
-        _armToolGroup(CanvasTool.eraser);
-      case EditorActionIds.toolEyedropper:
-        _armToolGroup(CanvasTool.eyedropper);
-      case EditorActionIds.toolFill:
-        _armToolGroup(CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
       // The film verbs. Each one guards itself the way the toolbar button
@@ -671,31 +681,12 @@ class _HomePageState extends State<HomePage> {
         _canvasViewCommands.rotateBy(15);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
-      // M and L still mean "rectangle select" and "lasso select" — the two
-      // shortcuts survive the shape/verb split by setting both halves.
-      case EditorActionIds.toolSelectRect:
-        _brushTool.value = _brushTool.value.withShapeKind(
-          CanvasShapeKind.rect,
-          forTool: CanvasTool.select,
-        );
-      case EditorActionIds.toolLasso:
-        _brushTool.value = _brushTool.value.withShapeKind(
-          CanvasShapeKind.lasso,
-          forTool: CanvasTool.select,
-        );
-      case EditorActionIds.toolMove:
-        _armToolGroup(CanvasTool.move);
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       case EditorActionIds.selectionNudgeUp:
         _nudgeOrWalk(0, -1);
       case EditorActionIds.selectionNudgeDown:
         _nudgeOrWalk(0, 1);
-      case EditorActionIds.selectionFreeTransform:
-        // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to
-        // the Move tool, so one code path (and one set of guards) owns
-        // transforming.
-        _armToolGroup(CanvasTool.move);
       case EditorActionIds.selectionTransformCommit:
         _confirmPolygonOrTransform();
       case EditorActionIds.selectionTransformCancel:
@@ -732,10 +723,6 @@ class _HomePageState extends State<HomePage> {
                   unawaited(deleteRowSelectionWithDialog(context, _session)),
             )
             ?.call();
-      case EditorActionIds.editClearPixels:
-        if (_session.cells.canRunPixelVerb) {
-          _session.cells.runPixelVerb(CelPixelVerb.clearPixels);
-        }
       case EditorActionIds.fileSave:
         unawaited(saveProject(context, _session));
       case EditorActionIds.fileSaveAs:
@@ -990,6 +977,7 @@ class _HomePageState extends State<HomePage> {
                                     tipLibraryService: widget.tipLibraryService,
                                     panelsMenu: _panelsMenu,
                                     brushTool: _brushTool,
+                                    transformOptions: _transformOptions,
                                     colorBackground: _colorWheelBackground,
                                     colorPalette: _colorPalette,
                                     onColorPaletteChanged: _setColorPalette,

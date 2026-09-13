@@ -13,6 +13,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import '../helpers/app_icon_button_probe.dart';
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
@@ -206,6 +208,54 @@ void main() {
           find.byKey(ValueKey<String>(key)),
           findsOneWidget,
           reason: '$key must live in the 색 편집 popover',
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'every colour edit row is an action and prints its key — 유저 '
+    '2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록」',
+    (tester) async {
+      final session = await pump(tester);
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      session.selectFrameIndex(0);
+      await tester.pumpAndSettle();
+
+      // Clear Pixels ships Backspace; the other three are bound here the way
+      // the shortcut list binds them.
+      final bindings = tester
+          .widget<EditorShortcutScope>(find.byType(EditorShortcutScope))
+          .notifier!;
+      for (final (id, key) in const [
+        (EditorActionIds.editReplaceColour, LogicalKeyboardKey.digit7),
+        (EditorActionIds.editDeleteColour, LogicalKeyboardKey.digit8),
+        (EditorActionIds.editKeepColour, LogicalKeyboardKey.digit9),
+      ]) {
+        bindings.setActivators(id, [SingleActivator(key)]);
+      }
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('shared-colour-edit-button')),
+      );
+      await tester.pumpAndSettle();
+      for (final (row, keys) in const [
+        ('shared-replace-colour-button', '7'),
+        ('shared-clear-pixels-button', 'Backspace'),
+        ('shared-delete-colour-button', '8'),
+        ('shared-keep-colour-button', '9'),
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(row)),
+            matching: find.text(keys),
+          ),
+          findsOneWidget,
+          reason: row,
         );
       }
     },

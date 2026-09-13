@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../widgets/panel_flyout.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
+import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
@@ -87,7 +88,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// search that only matched the English registry would find nothing in
   /// any other language.
   String _labelOf(EditorActionDefinition definition) =>
-      AppText.strings.shortcutLabel(definition.id, definition.label);
+      editorActionLabel(definition.id);
 
   String _categoryOf(EditorActionDefinition definition) =>
       AppText.strings.shortcutCategory(

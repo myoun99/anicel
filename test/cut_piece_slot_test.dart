@@ -8,6 +8,7 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
+import 'package:anicel/src/ui/brush/tool_press.dart';
 
 /// A 2x2 piece whose four pixels are distinguishable by their red channel,
 /// so a flip is observable as a permutation rather than as "some bytes
@@ -260,8 +261,7 @@ void main() {
     Future<void> pumpLibrary(
       WidgetTester tester,
       CanvasTool tool, {
-      ValueChanged<CanvasTool>? onToolChanged,
-      void Function(CanvasTool verb, CanvasShapeKind kind)? onShapeKindChanged,
+      ValueChanged<ToolPress>? onPress,
       CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     }) {
       return tester.pumpWidget(
@@ -269,9 +269,8 @@ void main() {
           home: Scaffold(
             body: ToolLibraryPanel(
               tool: tool,
-              onToolChanged: onToolChanged ?? (_) {},
+              onPress: onPress ?? (_) {},
               shapeKind: shapeKind,
-              onShapeKindChanged: onShapeKindChanged ?? (_, _) {},
               brushLibrary: const SizedBox.shrink(),
             ),
           ),
@@ -310,27 +309,21 @@ void main() {
     ) async {
       // One write, not two: the tile is also how the grab verb is entered,
       // so it must carry the verb with it.
-      final picked = <(CanvasTool, CanvasShapeKind)>[];
-      await pumpLibrary(
-        tester,
-        CanvasTool.cutStamp,
-        onShapeKindChanged: (verb, kind) => picked.add((verb, kind)),
-      );
+      final picked = <ToolPress>[];
+      await pumpLibrary(tester, CanvasTool.cutStamp, onPress: picked.add);
       await tester.tap(
         find.byKey(const ValueKey<String>('sub-tool-cut-lasso')),
       );
-      expect(picked, [(CanvasTool.cut, CanvasShapeKind.lasso)]);
+      expect(picked, [
+        const ShapeTilePress(CanvasTool.cut, CanvasShapeKind.lasso),
+      ]);
     });
 
     testWidgets('tapping the stamp tile switches the verb', (tester) async {
-      final picked = <CanvasTool>[];
-      await pumpLibrary(
-        tester,
-        CanvasTool.cut,
-        onToolChanged: picked.add,
-      );
+      final picked = <ToolPress>[];
+      await pumpLibrary(tester, CanvasTool.cut, onPress: picked.add);
       await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-stamp')));
-      expect(picked, [CanvasTool.cutStamp]);
+      expect(picked, [const ToolTilePress(CanvasTool.cutStamp)]);
     });
 
     testWidgets('with the stamp armed no cut SHAPE reads as selected', (
