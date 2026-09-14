@@ -133,7 +133,6 @@ class LayerAttachment {
     required this.mode,
     required this.timeline,
     required this.baseFrameLinks,
-    required this.runBehaviors,
   });
 
   /// The base this row rides; null = an ordinary row.
@@ -145,7 +144,6 @@ class LayerAttachment {
   /// exposures are the row's), the baked timing once it detaches.
   final Map<int, TimelineExposure> timeline;
   final Map<FrameId, FrameId> baseFrameLinks;
-  final List<TimelineRunBehavior> runBehaviors;
 
   static LayerAttachment of(Layer layer) => LayerAttachment(
     attachedToLayerId: layer.attachedToLayerId,
@@ -153,7 +151,6 @@ class LayerAttachment {
     mode: layer.attachedMode,
     timeline: layer.timeline,
     baseFrameLinks: layer.baseFrameLinks,
-    runBehaviors: layer.runBehaviors,
   );
 
   Layer applyTo(Layer layer) => layer.copyWith(
@@ -162,7 +159,6 @@ class LayerAttachment {
     attachedMode: mode,
     timeline: timeline,
     baseFrameLinks: baseFrameLinks,
-    runBehaviors: runBehaviors,
   );
 }
 
@@ -173,12 +169,13 @@ class LayerAttachment {
 ///
 /// SYNCED: the derived timeline is BAKED into the row (the mirror cels are
 /// real cels, so the pictures were never derived — only the timing was).
-/// The base's run-edge behaviours come along, restated through the cell
-/// links so they name the row's OWN cels: without that the repeat/hold tail
-/// the user was looking at would vanish on the next edit, which is timing
-/// loss nobody asked for. A behaviour whose anchor has no link drops, and a
-/// pattern anchor without one falls back to the whole run — both are the
-/// model's own self-healing rules, applied here rather than invented.
+/// The base's run-edge properties come along inside the baked blocks, whose
+/// marks mirror with them (F-134): without that the repeat/hold tail the
+/// user was looking at would vanish on the next edit, which is timing loss
+/// nobody asked for. A block with no link is not baked and takes its marks
+/// with it — a carrier without a link drops its property, and a pattern
+/// bound without one reads as the whole run. Both are the model's own
+/// self-healing rules, applied here rather than invented.
 ///
 /// ⚠️Re-mounting SYNCED later cannot restore the timing this row had BEFORE
 /// it was first mounted: that timing was replaced by the base's when the
@@ -199,7 +196,6 @@ Layer detachedLayer({
       baseFrameLinks: const {},
     );
   }
-  final links = attached.baseFrameLinks;
   final baked = <int, TimelineExposure>{};
   attachedDisplayTimeline(attached: attached, base: base).forEach((
     index,
@@ -209,20 +205,11 @@ Layer detachedLayer({
       baked[index] = exposure;
     }
   });
-  // The mount only knows the cels it linked: a behaviour whose anchor has
-  // no link is dropped, and an unlinked pattern anchor reads as "no
-  // pattern". Both answers come out of the LOOKUP, which is what
-  // [TimelineRunBehavior.remapFrameIds] takes.
-  final behaviors = <TimelineRunBehavior>[
-    for (final behavior in base.runBehaviors)
-      ?behavior.remapFrameIds((id) => links[id]),
-  ];
   return rederiveRunBehaviors(
     attached.copyWith(
       attachedToLayerId: null,
       baseFrameLinks: const {},
       timeline: baked,
-      runBehaviors: behaviors,
     ),
     cutFrameCount: cutFrameCount,
   );
@@ -258,7 +245,6 @@ LayerAttachment attachmentForMount({
       mode: AttachedMode.synced,
       timeline: const {},
       baseFrameLinks: links,
-      runBehaviors: const [],
     );
   }
   return LayerAttachment(
@@ -267,7 +253,6 @@ LayerAttachment attachmentForMount({
     mode: AttachedMode.free,
     timeline: standaloneRow.timeline,
     baseFrameLinks: const {},
-    runBehaviors: standaloneRow.runBehaviors,
   );
 }
 

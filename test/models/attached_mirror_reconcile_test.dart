@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -29,8 +30,7 @@ Layer baseLayer(Map<int, (String, int)> blocks, {bool ghostAt1 = false}) {
         1: TimelineExposure.drawing(
           FrameId(blocks.values.first.$1),
           length: 1,
-          ghost: true,
-          ghostOwnerId: 'x:end',
+          ghostOf: endHoldGhost,
         ),
     },
   );

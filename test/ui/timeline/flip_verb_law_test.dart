@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/run_edge_fixtures.dart';
+
 /// F-21 and F-13 — what the FLIP verb does.
 ///
 /// F-21 (유저 2026-08-24): 「1번인덱스에 홀드인 블록하나 있을때 중간인덱스,
@@ -46,8 +48,8 @@ void main() {
             canvasSize: const CanvasSize(width: 64, height: 64),
             layers: [
               // The ghosts are DERIVED, never hand-written: `rederiveRunBehaviors`
-              // is what the repository runs, and a hand-rolled ghost that the
-              // owner lookup cannot resolve is not a hold — it is twelve
+              // is what the repository runs, and a hand-rolled ghost whose
+              // stamp does not say hold is not a hold — it is twelve
               // one-frame columns wearing a hold's clothes.
               rederiveRunBehaviors(
                 Layer(
@@ -60,15 +62,12 @@ void main() {
                       strokes: const [],
                     ),
                   ],
-                  runBehaviors: const [
-                    TimelineRunBehavior(
-                      anchorFrameId: FrameId('cel'),
-                      side: TimelineRunEdgeSide.end,
-                      mode: TimelineRunEdgeMode.hold,
-                    ),
-                  ],
                   timeline: const {
-                    0: TimelineExposure.drawing(FrameId('cel'), length: 1),
+                    0: TimelineExposure.drawing(
+                      FrameId('cel'),
+                      length: 1,
+                      endEdge: holdMark,
+                    ),
                   },
                 ),
                 cutFrameCount: 12,

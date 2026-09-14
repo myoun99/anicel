@@ -5,8 +5,8 @@ import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 
 /// [cut] with every IMAGE layer's stored timeline normalized to the D22
-/// form: ONE real 1-frame block at index 0 plus a FIXED end-side HOLD
-/// ([TimelineRunBehavior]) whose ghosts fill to the cut boundary — 「블록은
+/// form: ONE real 1-frame block at index 0 carrying a FIXED end-side HOLD
+/// ([TimelineRunEdgeMark]) whose ghosts fill to the cut boundary — 「블록은
 /// 1칸 + 성질 hold 고정」 (유저 2026-08-17). One picture simply exists
 /// throughout, and the row SAYS so: a single cell, then the dim hold
 /// dashes every other row uses for the same statement.
@@ -58,11 +58,7 @@ Layer _coveringImageRow(Layer layer, int duration) {
   final celId =
       (firstReal != null && firstReal.isDrawing ? firstReal.frameId : null) ??
       layer.frames.first.id;
-  final holdSpec = TimelineRunBehavior(
-    anchorFrameId: celId,
-    side: TimelineRunEdgeSide.end,
-    mode: TimelineRunEdgeMode.hold,
-  );
+  const holdMark = TimelineRunEdgeMark(mode: TimelineRunEdgeMode.hold);
   var realCount = 0;
   for (final entry in layer.timeline.values) {
     if (!entry.ghost) {
@@ -76,12 +72,12 @@ Layer _coveringImageRow(Layer layer, int duration) {
       !zeroEntry.ghost &&
       zeroEntry.isDrawing &&
       zeroEntry.frameId == celId &&
-      zeroEntry.length == 1;
-  final specced =
-      layer.runBehaviors.length == 1 && layer.runBehaviors.first == holdSpec;
+      zeroEntry.length == 1 &&
+      zeroEntry.startEdge.isNone &&
+      zeroEntry.endEdge == holdMark;
 
   var next = layer;
-  if (!shaped || !specced) {
+  if (!shaped) {
     // Rebuild THROUGH the first real entry when one exists, so its
     // entry-carried metadata (the block memo) survives a reshape.
     // Inbetween dots do NOT survive and cannot: they are offsets INSIDE
@@ -89,9 +85,14 @@ Layer _coveringImageRow(Layer layer, int duration) {
     // no inbetweens to lose. Ghosts are dropped here; the derive below
     // re-synthesizes them from the fixed spec.
     final entry = firstReal != null && firstReal.isDrawing && !firstReal.ghost
-        ? firstReal.copyWith(frameId: celId, length: 1)
-        : TimelineExposure.drawing(celId, length: 1);
-    next = layer.copyWith(timeline: {0: entry}, runBehaviors: [holdSpec]);
+        ? firstReal.copyWith(
+            frameId: celId,
+            length: 1,
+            startEdge: TimelineRunEdgeMark.none,
+            endEdge: holdMark,
+          )
+        : TimelineExposure.drawing(celId, length: 1, endEdge: holdMark);
+    next = layer.copyWith(timeline: {0: entry});
   }
   return rederiveRunBehaviors(next, cutFrameCount: duration);
 }

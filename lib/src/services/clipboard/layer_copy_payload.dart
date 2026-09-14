@@ -10,7 +10,6 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
-import '../../models/timeline_repeat.dart';
 import '../../models/transform_track.dart';
 
 /// What "copy layer" carries: EVERYTHING about the row that a standalone
@@ -44,7 +43,6 @@ class LayerCopyPayload {
     TransformTrack? transformTrack,
     this.transformEnabled = true,
     List<LayerEffect> effects = const [],
-    List<TimelineRunBehavior> runBehaviors = const [],
     this.mark = LayerMark.none,
     this.onTimesheet = true,
     this.isFillReference = false,
@@ -57,8 +55,7 @@ class LayerCopyPayload {
        ),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
-       effects = List.unmodifiable(effects),
-       runBehaviors = List.unmodifiable(runBehaviors);
+       effects = List.unmodifiable(effects);
 
   final String name;
   final LayerKind kind;
@@ -98,11 +95,6 @@ class LayerCopyPayload {
   /// the paste is bypassed exactly as far as the source was.
   final List<LayerEffect> effects;
 
-  /// Run-edge properties. These are addressed by FRAME ID, so the paste
-  /// planner must REMAP their anchors onto the copied frames — carrying
-  /// them verbatim would name blocks the copy does not have.
-  final List<TimelineRunBehavior> runBehaviors;
-
   final LayerMark mark;
   final bool onTimesheet;
 
@@ -125,7 +117,6 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     transformTrack: source.transformTrack,
     transformEnabled: source.transformEnabled,
     effects: source.effects,
-    runBehaviors: source.runBehaviors,
     mark: source.mark,
     onTimesheet: source.onTimesheet,
     isFillReference: source.isFillReference,

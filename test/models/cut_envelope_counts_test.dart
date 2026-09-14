@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -129,8 +130,7 @@ void main() {
             4: const TimelineExposure.drawing(
               FrameId('A1'),
               length: 4,
-              ghost: true,
-              ghostOwnerId: 'run-1',
+              ghostOf: endRepeatGhost,
               breakdownOffsets: [2],
             ),
           },

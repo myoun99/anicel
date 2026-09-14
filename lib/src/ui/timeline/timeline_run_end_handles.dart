@@ -71,7 +71,7 @@ double timelineRunClusterGlyphSize(double frameCellExtent) =>
 
 /// One run edge's affordance cluster, resolved but not yet drawn.
 ///
-/// Identity vs display (UI-R11 #1/#2): [blockStartIndex] and [anchorValue]
+/// Identity vs display (UI-R11 #1/#2): [blockStartIndex] and [runKey]
 /// come from the COMMITTED run (stable across drags — R12-③), while
 /// [edgeOffset] follows the DISPLAY run, so the cluster rides block moves
 /// and live [+] adds.
@@ -79,7 +79,7 @@ class TimelineRunEdgeCluster {
   const TimelineRunEdgeCluster({
     required this.side,
     required this.blockStartIndex,
-    required this.anchorValue,
+    required this.runKey,
     required this.mode,
     required this.hasPattern,
     required this.edgeOffset,
@@ -87,7 +87,13 @@ class TimelineRunEdgeCluster {
 
   final TimelineRunEdgeSide side;
   final int blockStartIndex;
-  final String anchorValue;
+
+  /// The COMMITTED run's key: its start index, which no preview moves.
+  ///
+  /// F-134: this was the frame id of the run's first block, and linked
+  /// blocks share one — two runs opening on the same drawing wore the same
+  /// target ids.
+  final String runKey;
 
   /// The edge's current mode; null = None. Display stays quiet either
   /// way — the letter changes, never an accent (UI-R10 #1).
@@ -112,26 +118,27 @@ class TimelineRunEdgeCluster {
       other is TimelineRunEdgeCluster &&
       other.side == side &&
       other.blockStartIndex == blockStartIndex &&
-      other.anchorValue == anchorValue &&
+      other.runKey == runKey &&
       other.mode == mode &&
       other.hasPattern == hasPattern &&
       other.edgeOffset == edgeOffset;
 
   @override
   int get hashCode =>
-      Object.hash(side, blockStartIndex, anchorValue, mode, hasPattern, edgeOffset);
+      Object.hash(side, blockStartIndex, runKey, mode, hasPattern, edgeOffset);
 }
 
 /// A selection-scoped repeat pattern's span (UI-R10 #5 / UI-R19 #2).
 class TimelineRunPatternSpan {
   const TimelineRunPatternSpan({
-    required this.anchorValue,
+    required this.runKey,
     required this.side,
     required this.mainStart,
     required this.mainExtent,
   });
 
-  final String anchorValue;
+  /// The committed run's key ([TimelineRunEdgeCluster.runKey]).
+  final String runKey;
   final TimelineRunEdgeSide side;
   final double mainStart;
   final double mainExtent;
@@ -139,13 +146,13 @@ class TimelineRunPatternSpan {
   @override
   bool operator ==(Object other) =>
       other is TimelineRunPatternSpan &&
-      other.anchorValue == anchorValue &&
+      other.runKey == runKey &&
       other.side == side &&
       other.mainStart == mainStart &&
       other.mainExtent == mainExtent;
 
   @override
-  int get hashCode => Object.hash(anchorValue, side, mainStart, mainExtent);
+  int get hashCode => Object.hash(runKey, side, mainStart, mainExtent);
 }
 
 /// The run-edge chrome one row shows: a cluster per glued run edge plus any
@@ -186,16 +193,10 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
   final displayRuns = identical(layer, identity)
       ? identityRuns
       : gluedRunsByBlockStart(layer);
-  final displayStartByFrameId = <FrameId, int>{};
-  for (final entry in layer.timeline.entries) {
-    final frameId = entry.value.frameId;
-    if (entry.value.ghost || frameId == null) {
-      continue;
-    }
-    // Lowest non-ghost display start wins (a cross-layer move preview can
-    // leave the block absent entirely — then it simply never lands here).
-    displayStartByFrameId.putIfAbsent(frameId, () => entry.key);
-  }
+  final identityStarts = _startsByFrameId(identity);
+  final displayStarts = identical(layer, identity)
+      ? identityStarts
+      : _startsByFrameId(layer);
 
   double edgeX(int frameIndex) => frameVisibleX(
     frameIndex: frameIndex,
@@ -204,7 +205,21 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
   );
 
-  int? displayStartOf(FrameId frameId) => displayStartByFrameId[frameId];
+  // Where a committed block sits in the DISPLAY row: at the SAME occurrence
+  // of its drawing — the k-th block showing a drawing in the committed row is
+  // the k-th showing it in the preview. Without a preview the two rows are
+  // one and the answer is exact; a cross-layer move preview can leave the
+  // block absent entirely, and then it simply never lands. 🚨F-134: the
+  // lowest occurrence alone sent a linked copy's run to the FIRST run showing
+  // its drawing, so the copy had no [+] or property tag of its own.
+  int? displayStartOf(int identityBlockStart) {
+    final frameId = identity.timeline[identityBlockStart]!.frameId!;
+    final ordinal = identityStarts[frameId]!.indexOf(identityBlockStart);
+    final candidates = displayStarts[frameId];
+    return candidates == null || ordinal >= candidates.length
+        ? null
+        : candidates[ordinal];
+  }
 
   for (final key in identity.timeline.keys) {
     final entry = identity.timeline[key]!;
@@ -217,7 +232,7 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
     }
     // Resolve the LIVE display run for positions/modes: previews shift
     // the anchor block, the glued run containing it is the visual unit.
-    final displayAnchorStart = displayStartOf(baseRun.anchorFrameId);
+    final displayAnchorStart = displayStartOf(baseRun.startIndex);
     if (displayAnchorStart == null) {
       continue;
     }
@@ -234,31 +249,25 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
       run,
       TimelineRunEdgeSide.start,
     );
+    final runKey = '${baseRun.startIndex}';
 
     // A selection-scoped repeat pattern shows its span (UI-R10 #5).
-    for (final behavior in [endBehavior, startBehavior]) {
-      if (behavior == null ||
-          behavior.mode != TimelineRunEdgeMode.repeat ||
-          behavior.patternAnchorFrameId == null) {
+    for (final (side, behavior) in [
+      (TimelineRunEdgeSide.end, endBehavior),
+      (TimelineRunEdgeSide.start, startBehavior),
+    ]) {
+      final bound = behavior?.patternBlockStart;
+      if (bound == null) {
         continue;
       }
-      final anchorStart = displayStartOf(behavior.patternAnchorFrameId!);
-      if (anchorStart == null ||
-          anchorStart < run.startIndex ||
-          anchorStart >= run.endIndexExclusive) {
-        continue;
-      }
-      final (spanStart, spanEnd) = behavior.side == TimelineRunEdgeSide.end
-          ? (anchorStart, run.endIndexExclusive)
-          : (
-              run.startIndex,
-              anchorStart + layer.timeline[anchorStart]!.length!,
-            );
+      final (spanStart, spanEnd) = side == TimelineRunEdgeSide.end
+          ? (bound, run.endIndexExclusive)
+          : (run.startIndex, bound + layer.timeline[bound]!.length!);
       final start = edgeX(spanStart);
       patterns.add(
         TimelineRunPatternSpan(
-          anchorValue: behavior.anchorFrameId.value,
-          side: behavior.side,
+          runKey: runKey,
+          side: side,
           mainStart: start,
           mainExtent: edgeX(spanEnd) - start,
         ),
@@ -270,9 +279,9 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
       TimelineRunEdgeCluster(
         side: TimelineRunEdgeSide.end,
         blockStartIndex: baseRun.startIndex,
-        anchorValue: baseRun.anchorFrameId.value,
+        runKey: runKey,
         mode: endBehavior?.mode,
-        hasPattern: endBehavior?.patternAnchorFrameId != null,
+        hasPattern: endBehavior?.patternBlockStart != null,
         edgeOffset: edgeX(run.endIndexExclusive),
       ),
     );
@@ -283,15 +292,29 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
         TimelineRunEdgeCluster(
           side: TimelineRunEdgeSide.start,
           blockStartIndex: baseRun.startIndex,
-          anchorValue: baseRun.anchorFrameId.value,
+          runKey: runKey,
           mode: startBehavior?.mode,
-          hasPattern: startBehavior?.patternAnchorFrameId != null,
+          hasPattern: startBehavior?.patternBlockStart != null,
           edgeOffset: edgeX(run.startIndex),
         ),
       );
     }
   }
   return TimelineRunEdgeChrome(clusters: clusters, patterns: patterns);
+}
+
+/// Every non-ghost block start of [layer], grouped by the drawing it shows,
+/// in timeline order — the occurrences [timelineRunEdgeChrome] pairs up.
+Map<FrameId, List<int>> _startsByFrameId(Layer layer) {
+  final starts = <FrameId, List<int>>{};
+  for (final entry in layer.timeline.entries) {
+    final frameId = entry.value.frameId;
+    if (entry.value.ghost || frameId == null) {
+      continue;
+    }
+    (starts[frameId] ??= []).add(entry.key);
+  }
+  return starts;
 }
 
 /// The cluster's box in row-local coordinates, given its display edge.

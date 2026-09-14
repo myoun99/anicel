@@ -73,9 +73,8 @@ void main() {
       23,
       reason: '1 real + 23 held = the 24-frame cut, no holes',
     );
-    expect(layer.runBehaviors, hasLength(1));
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
-    expect(layer.runBehaviors.single.side, TimelineRunEdgeSide.end);
+    expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
+    expect(layer.timeline[0]!.startEdge.isNone, isTrue);
 
     final noTimeline = cutWithCoveringImageRows(cutWith(imageLayer()));
     expect(noTimeline.layers.single.timeline[0]!.length, 1);
@@ -85,6 +84,23 @@ void main() {
       isTrue,
       reason: 'no-op writes stay no-ops for dirty tracking',
     );
+  });
+
+  test('a row whose ONE block lost its hold mark gets it back — the shape a '
+      'file saved before F-134 loads in', () {
+    // The hold used to be a spec on the LAYER, which the format no longer
+    // reads: such a row arrives as exactly the 1-frame block at 0 with
+    // nothing on it, and only the mark tells it from a shaped row.
+    final unmarked = cutWith(
+      imageLayer(
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('bg-cel'), length: 1),
+        },
+      ),
+    );
+    final layer = cutWithCoveringImageRows(unmarked).layers.single;
+    expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
+    expect(layer.timeline[1]?.ghost, isTrue, reason: 'and the hold fills');
   });
 
   test('a cel-less image row stays empty; non-image rows are untouched', () {

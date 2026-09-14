@@ -14,12 +14,13 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
-import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/stroke.dart';
 import 'package:anicel/src/models/stroke_id.dart';
 import 'package:anicel/src/models/stroke_point.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+
+import '../helpers/run_edge_fixtures.dart';
 
 /// The refusal has to NAME the map that should have carried the id and
 /// the id that was missing — an ArgumentError that says only "missing" is
@@ -201,6 +202,7 @@ void main() {
                 0: const TimelineExposure.drawing(
                   FrameId('frame-a'),
                   length: 1,
+                  endEdge: holdMark,
                 ),
               },
               folderId: const LayerId('folder'),
@@ -210,13 +212,6 @@ void main() {
               audioGain: 0.4,
               audioPan: -0.6,
               seNameTag: const SeNameTag(),
-              runBehaviors: const [
-                TimelineRunBehavior(
-                  anchorFrameId: FrameId('frame-a'),
-                  side: TimelineRunEdgeSide.end,
-                  mode: TimelineRunEdgeMode.hold,
-                ),
-              ],
               effects: [
                 LayerEffect(
                   id: const EffectId('fx-1'),
@@ -253,13 +248,12 @@ void main() {
         expect(copy.audioPan, -0.6);
         expect(copy.seNameTag, isNotNull);
         expect(copy.effects.single.parameterOf('blurX').value, 7);
-        // Run behaviours are addressed by FRAME ID: carrying them verbatim
-        // would name a block that does not exist in the copy, and the next
-        // rederive would drop the behaviour — the same loss, later.
-        expect(
-          copy.runBehaviors.single.anchorFrameId,
-          const FrameId('frame-copy-a'),
-        );
+        // Run behaviours used to be addressed by FRAME ID and had to be
+        // remapped onto the copy's cels, or the next rederive dropped them.
+        // Since F-134 the mark rides the block itself: the copied block
+        // carries it under its remapped cel, with no anchor left to lose.
+        expect(copy.timeline[0]!.endEdge, holdMark);
+        expect(copy.timeline[0]!.frameId, const FrameId('frame-copy-a'));
         // The structure the folder rules validate must survive too.
         expect(folderStructureProblem(duplicate.layers), isNull);
       },

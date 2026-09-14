@@ -11,6 +11,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/session/drags/drawing_block_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../../helpers/run_edge_fixtures.dart';
+
 /// The drawing-block move drag — nothing named it (the audit's
 /// untested-file pass, 2026-09-05).
 ///
@@ -97,7 +99,7 @@ void main() {
           0: const TimelineExposure.drawing(
             FrameId('a-1'),
             length: 2,
-            ghost: true,
+            ghostOf: endHoldGhost,
           ),
         },
       ),

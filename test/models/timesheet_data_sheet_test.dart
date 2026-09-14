@@ -10,6 +10,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 /// UI-R24 #1: the DATA sheet — the timesheet's export-source view. Ghost
 /// chains render VERBATIM (the per-entry labels XDTS/TDTS write) instead
 /// of the notation shorthand; holds stay holds (labels never tile down
@@ -24,15 +26,12 @@ Layer _repeatLayer() {
     ],
     timeline: const {
       0: TimelineExposure.drawing(FrameId('c1'), length: 2),
-      2: TimelineExposure.drawing(FrameId('c2'), length: 2),
-    },
-    runBehaviors: const [
-      TimelineRunBehavior(
-        anchorFrameId: FrameId('c1'),
-        side: TimelineRunEdgeSide.end,
-        mode: TimelineRunEdgeMode.repeat,
+      2: TimelineExposure.drawing(
+        FrameId('c2'),
+        length: 2,
+        endEdge: repeatMark,
       ),
-    ],
+    },
   );
   return rederiveRunBehaviors(layer, cutFrameCount: 12);
 }
@@ -97,15 +96,12 @@ void main() {
         ),
       ],
       timeline: const {
-        0: TimelineExposure.drawing(FrameId('cel'), length: 2),
-      },
-      runBehaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('cel'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.hold,
+        0: TimelineExposure.drawing(
+          FrameId('cel'),
+          length: 2,
+          endEdge: holdMark,
         ),
-      ],
+      },
     );
     layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
     expect(layer.timeline[2]!.ghost, isTrue);
@@ -145,20 +141,13 @@ void main() {
         ),
       ],
       timeline: const {
-        4: TimelineExposure.drawing(FrameId('cel'), length: 2),
+        4: TimelineExposure.drawing(
+          FrameId('cel'),
+          length: 2,
+          startEdge: holdMark,
+          endEdge: holdMark,
+        ),
       },
-      runBehaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('cel'),
-          side: TimelineRunEdgeSide.start,
-          mode: TimelineRunEdgeMode.hold,
-        ),
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('cel'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.hold,
-        ),
-      ],
     );
     layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
 

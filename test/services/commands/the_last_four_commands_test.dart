@@ -161,7 +161,6 @@ void main() {
       mode: AttachedMode.synced,
       timeline: const {},
       baseFrameLinks: const {},
-      runBehaviors: const [],
     );
 
     test('a row becomes an attach row, and undo makes it ordinary again', () {

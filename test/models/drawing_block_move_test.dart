@@ -8,6 +8,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 /// Whole-block move planning. A SAME-LAYER slide follows the shared rank
 /// rule — free space re-times, a neighbour's midpoint reorders, nothing is
 /// pushed — while a CROSS-LAYER drop carries the cel and shoves the blocks
@@ -112,7 +114,7 @@ void main() {
           2: const TimelineExposure.drawing(
             FrameId('a-f1'),
             length: 2,
-            ghost: true,
+            ghostOf: endHoldGhost,
           ),
         },
         frameIds: ['a-f1'],
@@ -560,13 +562,33 @@ void main() {
           const TimelineExposure.drawing(
             FrameId('a-f1'),
             length: 1,
-            ghost: true,
-            ghostOwnerId: 'a-f1:end',
+            ghostOf: endHoldGhost,
           ),
         ),
         isNotNull,
         reason: 'a ghost on the other lane is derived, never a link',
       );
+    });
+
+    test('F-134: the moved block\'s run edge mark travels with it', () {
+      final source = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 2,
+            endEdge: holdMark,
+          ),
+        },
+        frameIds: ['a-f1'],
+      );
+      final plan = planBlock(
+        source: source,
+        target: layerWith('b', const {}),
+        blockStartIndex: 0,
+        frameDelta: 0,
+      )!;
+      expect(plan.targetAfter!.timeline[0]!.endEdge, holdMark);
     });
   });
 }

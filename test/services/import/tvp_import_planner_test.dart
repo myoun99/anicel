@@ -200,9 +200,15 @@ void main() {
         ),
       );
       final a = result.cut.layers.firstWhere((l) => l.name == 'A');
-      final behavior = a.runBehaviors.single;
-      expect(behavior.mode, TimelineRunEdgeMode.hold);
-      expect(behavior.anchorFrameId, a.timeline[4]!.frameId);
+      expect(
+        [
+          for (final entry in a.timeline.entries)
+            if (entry.value.endEdge.mode != null) entry.key,
+        ],
+        [4],
+        reason: 'the post behaviour sits on the LAST block alone',
+      );
+      expect(a.timeline[4]!.endEdge.mode, TimelineRunEdgeMode.hold);
     });
 
     test('a hold edge arrives with its ghosts already synthesized', () {
@@ -249,10 +255,11 @@ void main() {
         ),
       );
       final a = result.cut.layers.firstWhere((l) => l.name == 'A');
-      final leading = a.runBehaviors
-          .firstWhere((b) => b.side == TimelineRunEdgeSide.start);
-      expect(leading.mode, TimelineRunEdgeMode.repeat);
-      expect(leading.anchorFrameId, a.timeline[3]!.frameId);
+      expect(
+        a.timeline[3]!.startEdge.mode,
+        TimelineRunEdgeMode.repeat,
+        reason: 'the pre behaviour sits on the FIRST block',
+      );
     });
   });
 

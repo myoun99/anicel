@@ -57,7 +57,6 @@ class Layer {
     this.attachedPlacement = AttachedPlacement.above,
     this.attachedMode = AttachedMode.synced,
     Map<FrameId, FrameId> baseFrameLinks = const {},
-    List<TimelineRunBehavior> runBehaviors = const [],
     this.folderId,
   }) : frames = List.unmodifiable(frames),
        timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
@@ -70,8 +69,7 @@ class Layer {
        // result. The composite honours that by taking a raster per key
        // (`resolveCompositeEffectPlan`) instead of reordering the list.
        effects = List.unmodifiable(effects),
-       baseFrameLinks = Map.unmodifiable(baseFrameLinks),
-       runBehaviors = List.unmodifiable(runBehaviors);
+       baseFrameLinks = Map.unmodifiable(baseFrameLinks);
 
   final LayerId id;
   final String name;
@@ -208,12 +206,6 @@ class Layer {
   /// come back with the cel (audio-clip semantics).
   final Map<FrameId, FrameId> baseFrameLinks;
 
-  /// TVP-style run-edge properties (UI-R9 #10 N/H/R): live specs whose
-  /// GHOST exposures are derived from the current timeline by
-  /// [rederiveRunBehaviors] on every edit and cut-duration change — see
-  /// [TimelineRunBehavior].
-  final List<TimelineRunBehavior> runBehaviors;
-
   /// The cel with [id], or null.
   ///
   /// 🚨ONE lookup. Twelve call sites used to spell this loop themselves
@@ -252,7 +244,6 @@ class Layer {
     AttachedPlacement? attachedPlacement,
     AttachedMode? attachedMode,
     Map<FrameId, FrameId>? baseFrameLinks,
-    List<TimelineRunBehavior>? runBehaviors,
     Object? folderId = copyWithSentinel,
     Object? mediaReference = copyWithSentinel,
     Object? seNameTag = copyWithSentinel,
@@ -288,7 +279,6 @@ class Layer {
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       attachedMode: attachedMode ?? this.attachedMode,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
-      runBehaviors: runBehaviors ?? this.runBehaviors,
       // Sentinel: moving a layer OUT of its folder (null) must be
       // expressible.
       folderId: identical(folderId, copyWithSentinel)
@@ -333,8 +323,6 @@ class Layer {
     if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
     if (seNameTag != null) 'seNameTag': seNameTag!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
-    if (runBehaviors.isNotEmpty)
-      'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     // Default true omitted — pre-R8 files read back with their FX applied.
     if (!transformEnabled) 'transformEnabled': false,
@@ -423,14 +411,10 @@ class Layer {
       seNameTag: json['seNameTag'] == null
           ? null
           : SeNameTag.fromJson(json['seNameTag'] as Map<String, dynamic>),
-      // Legacy 'repeatRegions' JSON is ignored (no production data): its
-      // stale ghost entries strip on the first rederive.
-      runBehaviors: json['runBehaviors'] == null
-          ? const []
-          : [
-              for (final behavior in json['runBehaviors'] as List<dynamic>)
-                TimelineRunBehavior.fromJson(behavior as Map<String, dynamic>),
-            ],
+      // Legacy 'repeatRegions' JSON is ignored (no production data), and so
+      // is the 'runBehaviors' spec list F-134 moved into the blocks' own
+      // marks: the stale ghost entries of either drop as the timeline
+      // decodes.
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
@@ -493,7 +477,6 @@ class Layer {
           other.attachedPlacement == attachedPlacement &&
           other.attachedMode == attachedMode &&
           mapEquals(other.baseFrameLinks, baseFrameLinks) &&
-          listEquals(other.runBehaviors, runBehaviors) &&
           other.folderId == folderId;
 
   @override
@@ -528,7 +511,6 @@ class Layer {
         (entry) => Object.hash(entry.key, entry.value),
       ),
     ),
-    Object.hashAll(runBehaviors),
     folderId,
   );
 
@@ -670,8 +652,10 @@ class _RawTimelineItem {
     required this.type,
     this.frameId,
     this.length,
-    this.ghost = false,
-    this.ghostOwnerId,
+    this.ghostOf,
+    this.legacyGhost = false,
+    this.startEdge = TimelineRunEdgeMark.none,
+    this.endEdge = TimelineRunEdgeMark.none,
     this.breakdownOffsets = const [],
     this.memo,
   });
@@ -682,8 +666,12 @@ class _RawTimelineItem {
   final String type;
   final FrameId? frameId;
   final int? length;
-  final bool ghost;
-  final String? ghostOwnerId;
+  final TimelineRunEdgeGhost? ghostOf;
+
+  /// A ghost written before F-134, whose owner was a frame id.
+  final bool legacyGhost;
+  final TimelineRunEdgeMark startEdge;
+  final TimelineRunEdgeMark endEdge;
   final List<int> breakdownOffsets;
 
   /// The block's memo. [TimelineExposure.toJson] writes it, so a decoder
@@ -739,10 +727,11 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
           ? null
           : FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: lengthJson is int && lengthJson >= 1 ? lengthJson : null,
-      ghost: exposureJson['ghost'] == true,
-      ghostOwnerId:
-          (exposureJson['ghostOwner'] ?? exposureJson['repeatRegionId'])
-              as String?,
+      ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(exposureJson['ghostOf']),
+      legacyGhost:
+          exposureJson['ghost'] == true && exposureJson['ghostOf'] == null,
+      startEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['startEdge']),
+      endEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['endEdge']),
       breakdownOffsets: [
         for (final offset
             in exposureJson['breakdown'] as List<dynamic>? ?? const [])
@@ -821,6 +810,42 @@ int _drawingLength(
   return length;
 }
 
+/// The entry one raw DRAWING item decodes to, [length] already resolved —
+/// or null for a ghost saved before F-134.
+TimelineExposure? _exposureFromRawItem(
+  _RawTimelineItem item, {
+  required int length,
+}) {
+  if (item.legacyGhost) {
+    // F-134: a ghost from before the edge properties moved into the
+    // blocks names an owner that no longer exists, and nothing is left
+    // to say what it was — kept, it would read back as an AUTHORED
+    // block. Derived state drops; the next rederive rebuilds whatever
+    // the blocks' own marks still say.
+    return null;
+  }
+  final authored = item.ghostOf == null;
+  var exposure = TimelineExposure.drawing(
+    item.frameId!,
+    length: length,
+    ghostOf: item.ghostOf,
+    // A ghost never carries marks: it is a property's output.
+    startEdge: authored ? item.startEdge : TimelineRunEdgeMark.none,
+    endEdge: authored ? item.endEdge : TimelineRunEdgeMark.none,
+  );
+  if (item.breakdownOffsets.isNotEmpty) {
+    // copyWith normalizes (sorts, dedupes, clamps to the length).
+    exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
+  }
+  // Ghosts never carry a memo ([TimelineExposure]'s contract): they
+  // are rederived on every edit, so a memo there would not survive
+  // the next write anyway.
+  if (item.memo != null && authored) {
+    exposure = exposure.copyWith(memo: () => item.memo);
+  }
+  return exposure;
+}
+
 SplayTreeMap<int, TimelineExposure> _timelineFromJson(
   Object? json, {
   Object? legacyMarksJson,
@@ -846,24 +871,13 @@ SplayTreeMap<int, TimelineExposure> _timelineFromJson(
         // Legacy hold terminator: consumed as the previous block's boundary.
         break;
       case 'drawing':
-        final length = _drawingLength(rawItems, i, frameDurations);
-        var exposure = TimelineExposure.drawing(
-          item.frameId!,
-          length: length,
-          ghost: item.ghost,
-          ghostOwnerId: item.ghostOwnerId,
+        final exposure = _exposureFromRawItem(
+          item,
+          length: _drawingLength(rawItems, i, frameDurations),
         );
-        if (item.breakdownOffsets.isNotEmpty) {
-          // copyWith normalizes (sorts, dedupes, clamps to the length).
-          exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
+        if (exposure != null) {
+          timeline[item.index] = exposure;
         }
-        // Ghosts never carry a memo ([TimelineExposure]'s contract): they
-        // are rederived on every edit, so a memo there would not survive
-        // the next write anyway.
-        if (item.memo != null && !item.ghost) {
-          exposure = exposure.copyWith(memo: () => item.memo);
-        }
-        timeline[item.index] = exposure;
     }
   }
 

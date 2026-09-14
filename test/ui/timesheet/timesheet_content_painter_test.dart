@@ -15,6 +15,8 @@ import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
+import '../../helpers/run_edge_fixtures.dart';
+
 /// UI-R10 #9: the sheet paints in two strata — the CONTENT stratum
 /// substitutes in-flight drag previews per ACTION column (the UI-R9
 /// patch overlay, replaced) — plus the sheet's ghost display rules
@@ -172,13 +174,13 @@ void main() {
       '— never the expanded numbers', () {
     final layer = rederiveRunBehaviors(
       animationLayer('a').copyWith(
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('a-f1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.repeat,
+        timeline: {
+          0: const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 2,
+            endEdge: repeatMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 8,
     );
@@ -216,15 +218,12 @@ void main() {
           ),
         ],
         timeline: {
-          4: const TimelineExposure.drawing(FrameId('fr-f1'), length: 2),
-        },
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('fr-f1'),
-            side: TimelineRunEdgeSide.start,
-            mode: TimelineRunEdgeMode.repeat,
+          4: const TimelineExposure.drawing(
+            FrameId('fr-f1'),
+            length: 2,
+            startEdge: repeatMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 12,
     );
@@ -261,15 +260,12 @@ void main() {
           ),
         ],
         timeline: {
-          4: const TimelineExposure.drawing(FrameId('b-f1'), length: 2),
-        },
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('b-f1'),
-            side: TimelineRunEdgeSide.start,
-            mode: TimelineRunEdgeMode.hold,
+          4: const TimelineExposure.drawing(
+            FrameId('b-f1'),
+            length: 2,
+            startEdge: holdMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 12,
     );
@@ -305,13 +301,13 @@ void main() {
       'UI-R11 #15); multi-block layers do not', () {
     final single = rederiveRunBehaviors(
       animationLayer('a').copyWith(
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('a-f1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
+        timeline: {
+          0: const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 2,
+            endEdge: holdMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 8,
     );
@@ -335,15 +331,12 @@ void main() {
         ],
         timeline: {
           0: const TimelineExposure.drawing(FrameId('m-1'), length: 1),
-          1: const TimelineExposure.drawing(FrameId('m-2'), length: 1),
-        },
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('m-2'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
+          1: const TimelineExposure.drawing(
+            FrameId('m-2'),
+            length: 1,
+            endEdge: holdMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 8,
     );

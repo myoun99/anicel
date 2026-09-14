@@ -11,7 +11,7 @@ import 'package:anicel/src/models/timeline_repeat.dart'
     show
         TimelineRunEdgeMode,
         TimelineRunEdgeSide,
-        runBehaviorOwningGhostAt,
+        runEdgeGhostAt,
         timelineIndexIsGhost;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -208,12 +208,12 @@ void main() {
     s.folders.addAttachedLayer(AttachedPlacement.above);
     final attachId = s.activeLayer!.id;
 
-    // The display clone mirrors the hold ghost WITH its owner id and the
-    // base's runBehaviors, so the cells painter resolves the dash mode.
+    // The display clone mirrors the hold ghost WITH its stamp, so the cells
+    // painter reads the dash mode straight off the mirror row.
     final clone = s.layers.firstWhere((l) => l.id == attachId);
     expect(clone.timeline[1]!.ghost, isTrue);
     expect(
-      runBehaviorOwningGhostAt(clone, 1)?.mode,
+      runEdgeGhostAt(clone, 1)?.mode,
       TimelineRunEdgeMode.hold,
       reason: 'the mirror resolves the base\'s hold mode (the ----- dash)',
     );

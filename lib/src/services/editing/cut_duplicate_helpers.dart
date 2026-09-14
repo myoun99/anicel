@@ -104,14 +104,6 @@ Layer duplicateLayerAsIndependentCopy({
     // duplicated cut keeps its 촬영 work.
     effects: source.effects,
     instructions: source.instructions,
-    // Why the anchors remap at all: see
-    // [TimelineRunBehavior.remapFrameIds]. An id the map does not cover
-    // stays itself, so the anchor is always kept and every behaviour
-    // survives the copy.
-    runBehaviors: [
-      for (final behavior in source.runBehaviors)
-        behavior.remapFrameIds((id) => frameIdMap[id] ?? id)!,
-    ],
     audioClips: [
       for (final clip in source.audioClips)
         clip.copyWith(frameId: frameIdMap[clip.frameId] ?? clip.frameId),

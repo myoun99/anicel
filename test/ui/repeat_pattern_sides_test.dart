@@ -45,10 +45,14 @@ void main() {
       side: TimelineRunEdgeSide.end,
       mode: TimelineRunEdgeMode.repeat,
     );
-    final layer = layerOf(s, layerId);
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.repeat);
+    final end = runEdgeBehaviorAt(
+      layerOf(s, layerId),
+      0,
+      TimelineRunEdgeSide.end,
+    );
+    expect(end?.mode, TimelineRunEdgeMode.repeat);
     expect(
-      layer.runBehaviors.single.patternAnchorFrameId,
+      end!.patternBlockStart,
       isNull,
       reason: 'the selection must START inside the run to scope the pattern',
     );
@@ -57,8 +61,6 @@ void main() {
   test('start side: the pattern runs from the run start to the LAST block '
       'ending by the selection end', () {
     final (s, layerId) = sessionWithBlocksAt([2, 3, 4]);
-    final blocks = layerOf(s, layerId).timeline;
-    final secondFrameId = blocks[3]!.frameId;
     s.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 2,
@@ -70,12 +72,16 @@ void main() {
       side: TimelineRunEdgeSide.start,
       mode: TimelineRunEdgeMode.repeat,
     );
-    final layer = layerOf(s, layerId);
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.repeat);
+    final start = runEdgeBehaviorAt(
+      layerOf(s, layerId),
+      2,
+      TimelineRunEdgeSide.start,
+    );
+    expect(start?.mode, TimelineRunEdgeMode.repeat);
     expect(
-      layer.runBehaviors.single.patternAnchorFrameId,
-      secondFrameId,
-      reason: 'the last block the selection still covers anchors the pattern',
+      start!.patternBlockStart,
+      3,
+      reason: 'the last block the selection still covers bounds the pattern',
     );
   });
 }

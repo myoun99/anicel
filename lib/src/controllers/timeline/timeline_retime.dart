@@ -134,8 +134,14 @@ class _TimelineRetime {
     final commands = <Command>[];
     for (final run in runs) {
       final before = _controller._requireLayer(run.layerId);
+      // 🚨F-134: the splice plans on the GHOST-FREE row, the base every
+      // other planner reads. A ghost split at the insertion point came back
+      // as a REAL block — 「D의 1을 복사하고 10쯤의 인덱스에서 붙혀넣기하면
+      // … 1 뒤에 2가 생김」 — because a split rebuilds its right half as a
+      // plain entry. Ghosts neither move nor obstruct; the command re-derives
+      // them after the splice.
       final nextTimeline = spliceTimeline(
-        timeline: before.timeline,
+        timeline: ghostFreeTimeline(before),
         index: run.index,
         liftCount: run.liftCount,
         clip: run.clip,

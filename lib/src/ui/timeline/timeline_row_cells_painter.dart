@@ -320,9 +320,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // text — UI-R12 #18): the continuing stroke is structure, so it never
     // joins the narrow-cell text suppression below.
     final holdGhost =
-        ghost &&
-        runBehaviorOwningGhostAt(layer, frameIndex)?.mode ==
-            TimelineRunEdgeMode.hold;
+        runEdgeGhostAt(layer, frameIndex)?.mode == TimelineRunEdgeMode.hold;
     String glyph;
     if (holdGhost) {
       glyph = _holdDashGlyph;

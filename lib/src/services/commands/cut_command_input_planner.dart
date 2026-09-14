@@ -165,13 +165,6 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
     isFillReference: payload.isFillReference,
-    // Why the anchors remap at all: see
-    // [TimelineRunBehavior.remapFrameIds]. An id the map does not cover
-    // stays itself, so the anchor is always kept.
-    runBehaviors: [
-      for (final behavior in payload.runBehaviors)
-        behavior.remapFrameIds((id) => frameIdMap[id] ?? id)!,
-    ],
   );
 
   return PasteLayerCommandInputPlan(

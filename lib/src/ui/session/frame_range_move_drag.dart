@@ -1,6 +1,7 @@
-import '../../models/frame_id.dart';
-import '../../models/layer.dart';
+import 'dart:collection';
+
 import '../../models/layer_id.dart';
+import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
 import 'active_cut_controllers.dart';
@@ -180,32 +181,32 @@ class FrameRangeMoveDragVerbs {
       return;
     }
 
-    final patternAnchor = _repeatPatternAnchor(
-      mode,
-      scopeToSelection,
-      layerId,
-      side,
-      run,
-      before,
-    );
+    // Only a Repeat the flyout asked to scope ("Repeat selection", UI-R19
+    // #2) takes its pattern from the selection.
+    final bound = mode == TimelineRunEdgeMode.repeat && scopeToSelection
+        ? _selectionPatternBound(layerId, side, run)
+        : null;
 
-    // The behavior anchors to its EDGE block (UI-R10 #4): the end side to
-    // the run's LAST block, the start side to the FIRST — splitting the
-    // run keeps the property with the fragment that owns that edge.
-    final edgeAnchor = _edgeAnchorOf(run, side, before);
-    final behaviors = [
-      for (final behavior in before.runBehaviors)
-        if (!_behaviorOwnsEdge(behavior, side, run, before)) behavior,
-      if (mode != null)
-        TimelineRunBehavior(
-          anchorFrameId: edgeAnchor,
-          side: side,
-          mode: mode,
-          patternAnchorFrameId: patternAnchor,
+    // The property sits on its EDGE block (UI-R10 #4): the end side on the
+    // run's LAST block, the start side on the FIRST — splitting the run
+    // keeps the property with the fragment that owns that edge. Every other
+    // block of the run gives this side's mark up, so the setting replaces
+    // whatever carried it before (F-134, see [TimelineRunEdgeMark]).
+    final edgeBlock = side == TimelineRunEdgeSide.end
+        ? run.blockStarts.last
+        : run.blockStarts.first;
+    final timeline = SplayTreeMap<int, TimelineExposure>.of(before.timeline);
+    for (final start in run.blockStarts) {
+      timeline[start] = timeline[start]!.withEdgeMark(
+        side,
+        TimelineRunEdgeMark(
+          mode: start == edgeBlock ? mode : null,
+          bound: mode == TimelineRunEdgeMode.repeat && start == bound,
         ),
-    ];
+      );
+    }
     final after = rederiveRunBehaviors(
-      before.copyWith(runBehaviors: behaviors),
+      before.copyWith(timeline: timeline),
       cutFrameCount: _project.activeCutFrameCount,
     );
     if (after == before) {
@@ -219,132 +220,61 @@ class FrameRangeMoveDragVerbs {
     _changes.notifyChanged();
   }
 
-  /// Whether [behavior] already sits on this [side] of [run] — the one a
-  /// new setting replaces.
-  bool _behaviorOwnsEdge(
-    TimelineRunBehavior behavior,
-    TimelineRunEdgeSide side,
-    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
-    Layer before,
-  ) {
-    if (behavior.side != side) {
-      return false;
-    }
-    for (final entry in before.timeline.entries) {
-      if (entry.value.ghost || entry.value.frameId != behavior.anchorFrameId) {
-        continue;
-      }
-      return entry.key >= run.startIndex && entry.key < run.endIndexExclusive;
-    }
-    return false;
-  }
-
-  FrameId _edgeAnchorOf(
-    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
-    TimelineRunEdgeSide side,
-    Layer before,
-  ) {
-    if (side != TimelineRunEdgeSide.end) {
-      return run.anchorFrameId;
-    }
-    return _lastFrameIdIn(before, run.startIndex, run.endIndexExclusive) ??
-        run.anchorFrameId;
-  }
-
-  /// The LAST real (non-ghost) block's frame in `[startIndex,
-  /// endExclusive)` on [before], or null when the window holds none.
-  ///
-  /// The window's end is the whole difference between the three walks
-  /// that ask this — a run's end or a selection's end.
-  FrameId? _lastFrameIdIn(Layer before, int startIndex, int endExclusive) {
-    FrameId? found;
-    for (final entry in before.timeline.entries) {
-      if (entry.value.ghost ||
-          entry.key < startIndex ||
-          entry.key >= endExclusive) {
-        continue;
-      }
-      found = entry.value.frameId ?? found;
-    }
-    return found;
-  }
-
-  /// The FIRST real (non-ghost) block's frame in `[startIndex,
-  /// endExclusive)` on [before], or null when the window holds none.
-  FrameId? _firstFrameIdIn(Layer before, int startIndex, int endExclusive) {
-    for (final entry in before.timeline.entries) {
-      if (entry.value.ghost ||
-          entry.key < startIndex ||
-          entry.key >= endExclusive) {
-        continue;
-      }
-      if (entry.value.frameId case final frameId?) {
-        return frameId;
-      }
-    }
-    return null;
-  }
-
-  /// The pattern anchor a Repeat edge takes from the frame-range selection
-  /// (UI-R19 #2, "Repeat selection"): null unless the mode is Repeat, the
-  /// flyout asked for the selection, and the selection sits on this row and
-  /// covers the run's edge block.
-  FrameId? _repeatPatternAnchor(
-    TimelineRunEdgeMode? mode,
-    bool scopeToSelection,
+  /// The block a Repeat edge's pattern takes from the frame-range selection
+  /// as its bound (UI-R19 #2, "Repeat selection"): null unless the selection
+  /// sits on this row and covers the run's edge block. Whether the mode is a
+  /// Repeat the flyout asked to scope is the caller's question.
+  int? _selectionPatternBound(
     LayerId layerId,
     TimelineRunEdgeSide side,
-    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
-    Layer before,
+    TimelineGluedRun run,
   ) {
-    if (mode != TimelineRunEdgeMode.repeat || !scopeToSelection) {
-      return null;
-    }
     final selection = _selection.frameRangeSelection.value;
     if (selection == null || selection.layerId != layerId) {
       return null;
     }
     return switch (side) {
-      TimelineRunEdgeSide.end => _patternFromSelectionStart(
-        selection,
-        run,
-        before,
-      ),
-      TimelineRunEdgeSide.start => _patternToSelectionEnd(
-        selection,
-        run,
-        before,
-      ),
+      TimelineRunEdgeSide.end => _patternFromSelectionStart(selection, run),
+      TimelineRunEdgeSide.start => _patternToSelectionEnd(selection, run),
     };
   }
 
   /// End side: the pattern runs from the first block at/after the selection
   /// start to the run's end — when the selection covers the run's last
   /// block and starts inside the run.
-  FrameId? _patternFromSelectionStart(
+  int? _patternFromSelectionStart(
     TimelineFrameRangeSelection selection,
-    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
-    Layer before,
+    TimelineGluedRun run,
   ) {
     if (!selection.contains(run.endIndexExclusive - 1) ||
         selection.startIndex <= run.startIndex) {
       return null;
     }
-    return _firstFrameIdIn(before, selection.startIndex, run.endIndexExclusive);
+    for (final start in run.blockStarts) {
+      if (start >= selection.startIndex) {
+        return start;
+      }
+    }
+    return null;
   }
 
   /// Start side: the pattern runs from the run's start to the last block
   /// ending by the selection's end — when the selection covers the run's
   /// first block and ends inside the run.
-  FrameId? _patternToSelectionEnd(
+  int? _patternToSelectionEnd(
     TimelineFrameRangeSelection selection,
-    ({FrameId anchorFrameId, int endIndexExclusive, int startIndex}) run,
-    Layer before,
+    TimelineGluedRun run,
   ) {
     if (!selection.contains(run.startIndex) ||
         selection.endIndexExclusive >= run.endIndexExclusive) {
       return null;
     }
-    return _lastFrameIdIn(before, run.startIndex, selection.endIndexExclusive);
+    int? found;
+    for (final start in run.blockStarts) {
+      if (start < selection.endIndexExclusive) {
+        found = start;
+      }
+    }
+    return found;
   }
 }

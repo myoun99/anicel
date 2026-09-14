@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/storyboard_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -128,7 +129,11 @@ void main() {
     final cells = storyboardCoverageCells(
       timeline: _timeline({
         0: _drawing('a'),
-        4: const TimelineExposure.drawing(FrameId('a'), length: 2, ghost: true),
+        4: const TimelineExposure.drawing(
+          FrameId('a'),
+          length: 2,
+          ghostOf: endRepeatGhost,
+        ),
       }),
       cutDuration: 12,
     );

@@ -9,7 +9,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/timeline_repeat.dart';
+
+import '../helpers/run_edge_fixtures.dart';
 
 /// P3's model half: what a SYNCED mount has to agree on, and what a row
 /// becomes when it stops riding a base.
@@ -21,7 +22,6 @@ Layer _row(
   Map<String, String> links = const {},
   String? attachedTo,
   AttachedMode mode = AttachedMode.synced,
-  List<TimelineRunBehavior> runBehaviors = const [],
 }) {
   final celIds = <String>{for (final block in blocks) block.$3, ...links.values};
   return Layer(
@@ -45,7 +45,6 @@ Layer _row(
       for (final entry in links.entries)
         FrameId(entry.key): FrameId(entry.value),
     },
-    runBehaviors: runBehaviors,
   );
 }
 
@@ -79,8 +78,7 @@ void main() {
           1: const TimelineExposure.drawing(
             FrameId('a'),
             length: 1,
-            ghost: true,
-            ghostOwnerId: 'a:end',
+            ghostOf: endHoldGhost,
           ),
         },
       );
@@ -243,14 +241,12 @@ void main() {
 
     test('the base\'s run-edge behaviour comes along, restated through the '
         'links — the tail the user was looking at survives the next edit', () {
-      final base = baseWith2Blocks().copyWith(
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('b1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
-          ),
-        ],
+      final unmarked = baseWith2Blocks();
+      final base = unmarked.copyWith(
+        timeline: {
+          ...unmarked.timeline,
+          0: unmarked.timeline[0]!.copyWith(endEdge: holdMark),
+        },
       );
       final attached = _row(
         'row',
@@ -264,7 +260,12 @@ void main() {
         cutFrameCount: 8,
       );
 
-      expect(detached.runBehaviors.single.anchorFrameId, const FrameId('r1'));
+      expect(
+        detached.timeline[0]!.endEdge,
+        holdMark,
+        reason: 'the mark rides the baked block, which shows the row\'s r1',
+      );
+      expect(detached.timeline[0]!.frameId, const FrameId('r1'));
       // Rederived on the row's own blocks: the hold fills to the cut end
       // with the row's last cel, so the ghosts are the row's.
       final ghosts = detached.timeline.entries
@@ -272,13 +273,19 @@ void main() {
           .toList();
       expect(ghosts, isNotEmpty);
       expect(ghosts.every((e) => e.value.frameId == const FrameId('r2')), isTrue);
-      // An anchor with no link drops rather than pointing at a foreign cel.
+      // A carrier with no link is not baked, and its property goes with it
+      // rather than landing on a foreign cel.
       final unlinked = detachedLayer(
         attached: _row('row', attachedTo: 'base', links: {'b2': 'r2'}),
         base: base,
         cutFrameCount: 8,
       );
-      expect(unlinked.runBehaviors, isEmpty);
+      expect(
+        unlinked.timeline.values.every(
+          (entry) => entry.endEdge.isNone && !entry.ghost,
+        ),
+        isTrue,
+      );
     });
 
     test('a FREE row only loses the pointer — its timeline was always its '
@@ -358,16 +365,9 @@ void main() {
 
     test('FREE keeps the row\'s timeline and behaviours and stores no links', () {
       final base = _row('base', blocks: [(0, 2, 'b1')]);
-      final row = _row(
-        'row',
-        blocks: [(3, 1, 'r1')],
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('r1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
-          ),
-        ],
+      final bare = _row('row', blocks: [(3, 1, 'r1')]);
+      final row = bare.copyWith(
+        timeline: {3: bare.timeline[3]!.copyWith(endEdge: holdMark)},
       );
 
       final mounted = attachmentForMount(
@@ -381,7 +381,7 @@ void main() {
       expect(mounted.attachedPlacement, AttachedPlacement.below);
       expect(_blocks(mounted), _blocks(row));
       expect(mounted.baseFrameLinks, isEmpty);
-      expect(mounted.runBehaviors, row.runBehaviors);
+      expect(mounted.timeline[3]!.endEdge, holdMark);
     });
 
     test('a SYNCED request whose shapes disagree stands down to FREE rather '

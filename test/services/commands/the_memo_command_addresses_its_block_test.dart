@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -116,7 +117,7 @@ void main() {
       0: const TimelineExposure.drawing(
         FrameId('frame-1'),
         length: 1,
-        ghost: true,
+        ghostOf: endHoldGhost,
       ),
     });
     expect(

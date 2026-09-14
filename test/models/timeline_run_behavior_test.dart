@@ -6,12 +6,13 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 Frame _frame(String id) =>
     Frame(id: FrameId(id), duration: 1, strokes: const []);
 
 Layer _layer({
   required Map<int, TimelineExposure> timeline,
-  List<TimelineRunBehavior> behaviors = const [],
   List<String> frameIds = const ['a', 'b', 'c'],
 }) {
   return Layer(
@@ -19,37 +20,24 @@ Layer _layer({
     name: 'L',
     frames: [for (final id in frameIds) _frame(id)],
     timeline: timeline,
-    runBehaviors: behaviors,
   );
 }
 
-TimelineExposure _draw(String id, int length) =>
-    TimelineExposure.drawing(FrameId(id), length: length);
-
-const _endHold = TimelineRunBehavior(
-  anchorFrameId: FrameId('a'),
-  side: TimelineRunEdgeSide.end,
-  mode: TimelineRunEdgeMode.hold,
-);
-const _endRepeat = TimelineRunBehavior(
-  anchorFrameId: FrameId('a'),
-  side: TimelineRunEdgeSide.end,
-  mode: TimelineRunEdgeMode.repeat,
-);
-const _startHold = TimelineRunBehavior(
-  anchorFrameId: FrameId('a'),
-  side: TimelineRunEdgeSide.start,
-  mode: TimelineRunEdgeMode.hold,
-);
-const _startRepeat = TimelineRunBehavior(
-  anchorFrameId: FrameId('a'),
-  side: TimelineRunEdgeSide.start,
-  mode: TimelineRunEdgeMode.repeat,
+/// A block of drawing [id] carrying [start] and [end] marks.
+TimelineExposure _draw(
+  String id,
+  int length, {
+  TimelineRunEdgeMark start = TimelineRunEdgeMark.none,
+  TimelineRunEdgeMark end = TimelineRunEdgeMark.none,
+}) => TimelineExposure.drawing(
+  FrameId(id),
+  length: length,
+  startEdge: start,
+  endEdge: end,
 );
 
 void main() {
-  group('remapFrameIds', _remapTests);
-  test('no behaviors and no ghosts returns the SAME layer instance', () {
+  test('no marks and no ghosts returns the SAME layer instance', () {
     final layer = _layer(timeline: {0: _draw('a', 3)});
     expect(
       identical(rederiveRunBehaviors(layer, cutFrameCount: 12), layer),
@@ -57,26 +45,25 @@ void main() {
     );
   });
 
-  test('end HOLD fills ONE ghost of the last frameId to the cut end', () {
+  test('end HOLD fills ONE ghost of the last frameId to the cut end — '
+      'whichever block of the run carries it', () {
     final layer = _layer(
-      timeline: {0: _draw('a', 2), 2: _draw('b', 2)},
-      behaviors: const [_endHold],
+      timeline: {0: _draw('a', 2, end: holdMark), 2: _draw('b', 2)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
     final ghost = derived.timeline[4]!;
-    expect(ghost.ghost, isTrue);
+    expect(ghost.ghostOf, endHoldGhost);
     expect(ghost.frameId, const FrameId('b'));
     expect(ghost.length, 6, reason: 'one block filling [4,10)');
     expect(derived.timeline.keys.where((k) => k > 4), isEmpty);
-    expect(derived.runBehaviors, layer.runBehaviors);
+    expect(derived.timeline[0]!.endEdge, holdMark, reason: 'the mark stays');
   });
 
   test('end REPEAT cycles the whole run to the cut end, truncating the '
       'tail', () {
     final layer = _layer(
-      timeline: {0: _draw('a', 2), 2: _draw('b', 1)},
-      behaviors: const [_endRepeat],
+      timeline: {0: _draw('a', 2, end: repeatMark), 2: _draw('b', 1)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
@@ -89,14 +76,13 @@ void main() {
     expect(derived.timeline[9]!.frameId, const FrameId('a'));
     expect(derived.timeline[9]!.length, 1);
     for (final key in derived.timeline.keys.where((k) => k >= 3)) {
-      expect(derived.timeline[key]!.ghost, isTrue, reason: 'key $key');
+      expect(derived.timeline[key]!.ghostOf, endRepeatGhost, reason: 'key $key');
     }
   });
 
   test('end ghosts CLAMP before the next authored block', () {
     final layer = _layer(
-      timeline: {0: _draw('a', 2), 5: _draw('c', 1)},
-      behaviors: const [_endHold],
+      timeline: {0: _draw('a', 2, end: holdMark), 5: _draw('c', 1)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
@@ -105,13 +91,13 @@ void main() {
     expect(derived.timeline[5]!.ghost, isFalse);
   });
 
-  test('a fully occluded behavior keeps its spec (self-restoring)', () {
+  test('a fully occluded side keeps its mark (self-restoring)', () {
     final atCutEnd = rederiveRunBehaviors(
-      _layer(timeline: {0: _draw('a', 2)}, behaviors: const [_endHold]),
+      _layer(timeline: {0: _draw('a', 2, end: holdMark)}),
       cutFrameCount: 2,
     );
     expect(atCutEnd.timeline.values.any((entry) => entry.ghost), isFalse);
-    expect(atCutEnd.runBehaviors, hasLength(1), reason: 'spec survives');
+    expect(atCutEnd.timeline[0]!.endEdge, holdMark, reason: 'mark survives');
 
     // Room opens up again: the tail comes back.
     final reopened = rederiveRunBehaviors(atCutEnd, cutFrameCount: 6);
@@ -119,25 +105,29 @@ void main() {
     expect(reopened.timeline[2]!.length, 4);
   });
 
-  test('a vanished anchor drops the behavior (self-healing)', () {
-    final layer = _layer(
-      timeline: {0: _draw('b', 2)},
-      behaviors: const [_endHold], // Anchored on missing frame a.
+  test('a deleted carrier takes its property with it (self-healing)', () {
+    final held = rederiveRunBehaviors(
+      _layer(timeline: {0: _draw('a', 2), 2: _draw('b', 1, end: holdMark)}),
+      cutFrameCount: 12,
     );
+    expect(held.timeline[3]!.ghost, isTrue, reason: 'LIVENESS — it holds');
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
-    expect(derived.runBehaviors, isEmpty);
+    final withoutCarrier = rederiveRunBehaviors(
+      held.copyWith(timeline: {0: held.timeline[0]!}),
+      cutFrameCount: 12,
+    );
+    expect(withoutCarrier.timeline.keys, [0]);
+    expect(withoutCarrier.timeline[0]!.endEdge.isNone, isTrue);
   });
 
   test('start HOLD fills one ghost of the FIRST frameId back to frame 0', () {
     final layer = _layer(
-      timeline: {4: _draw('a', 2), 6: _draw('b', 1)},
-      behaviors: const [_startHold],
+      timeline: {4: _draw('a', 2, start: holdMark), 6: _draw('b', 1)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
     final ghost = derived.timeline[0]!;
-    expect(ghost.ghost, isTrue);
+    expect(ghost.ghostOf, startHoldGhost);
     expect(ghost.frameId, const FrameId('a'));
     expect(ghost.length, 4);
   });
@@ -145,8 +135,7 @@ void main() {
   test('start REPEAT tiles FLUSH against the run start: the partial '
       'lead-in cycle shows the pattern TAIL', () {
     final layer = _layer(
-      timeline: {5: _draw('a', 2), 7: _draw('b', 1)},
-      behaviors: const [_startRepeat],
+      timeline: {5: _draw('a', 2, start: repeatMark), 7: _draw('b', 1)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
@@ -159,14 +148,17 @@ void main() {
     expect(derived.timeline[0]!.length, 1, reason: 'clipped lead-in');
     expect(derived.timeline[1]!.frameId, const FrameId('b'));
     for (final key in derived.timeline.keys.where((k) => k < 5)) {
-      expect(derived.timeline[key]!.ghost, isTrue, reason: 'key $key');
+      expect(
+        derived.timeline[key]!.ghostOf,
+        startRepeatGhost,
+        reason: 'key $key',
+      );
     }
   });
 
   test('start ghosts clamp against the previous authored block', () {
     final layer = _layer(
-      timeline: {0: _draw('c', 2), 6: _draw('a', 2)},
-      behaviors: const [_startHold],
+      timeline: {0: _draw('c', 2), 6: _draw('a', 2, start: holdMark)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
@@ -175,17 +167,13 @@ void main() {
     expect(derived.timeline[0]!.ghost, isFalse);
   });
 
-  test('the pattern anchor scopes an end repeat to the selection span', () {
+  test('the pattern bound scopes an end repeat to the selection span', () {
     final layer = _layer(
-      timeline: {0: _draw('a', 1), 1: _draw('b', 1), 2: _draw('c', 1)},
-      behaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('a'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.repeat,
-          patternAnchorFrameId: FrameId('b'),
-        ),
-      ],
+      timeline: {
+        0: _draw('a', 1),
+        1: _draw('b', 1, end: boundMark),
+        2: _draw('c', 1, end: repeatMark),
+      },
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 7);
@@ -200,7 +188,7 @@ void main() {
   test('GHOST GLUE: a comma shrink of the source run re-glues the tail '
       'with no gap (the pattern IS the live run)', () {
     final layer = rederiveRunBehaviors(
-      _layer(timeline: {0: _draw('a', 4)}, behaviors: const [_endRepeat]),
+      _layer(timeline: {0: _draw('a', 4, end: repeatMark)}),
       cutFrameCount: 12,
     );
     expect(layer.timeline[4]!.ghost, isTrue);
@@ -234,7 +222,7 @@ void main() {
 
   test('a cut duration change refills the tail (longer AND shorter)', () {
     final layer = rederiveRunBehaviors(
-      _layer(timeline: {0: _draw('a', 2)}, behaviors: const [_endHold]),
+      _layer(timeline: {0: _draw('a', 2, end: holdMark)}),
       cutFrameCount: 6,
     );
     expect(layer.timeline[2]!.length, 4);
@@ -247,16 +235,16 @@ void main() {
   });
 
   test('ghost copies carry the source block dots, clamped to the ghost '
-      'length', () {
+      'length — and never its marks', () {
     final layer = _layer(
       timeline: {
         0: const TimelineExposure.drawing(
           FrameId('a'),
           length: 3,
           breakdownOffsets: [1, 2],
+          endEdge: repeatMark,
         ),
       },
-      behaviors: const [_endRepeat],
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
@@ -264,14 +252,18 @@ void main() {
     // The truncated cycle at 6 keeps only what its length spares.
     expect(derived.timeline[6]!.length, 2);
     expect(derived.timeline[6]!.breakdownOffsets, const [1]);
+    expect(
+      derived.timeline[3]!.endEdge.isNone,
+      isTrue,
+      reason: 'a ghost is a property\'s output, never a carrier',
+    );
   });
 
   test('both edges of one run derive together; holds apply first, and the '
       'end repeat cycles the DISPLAYED run — front hold included '
       '(UI-R13 #5)', () {
     final layer = _layer(
-      timeline: {4: _draw('a', 2)},
-      behaviors: const [_startHold, _endRepeat],
+      timeline: {4: _draw('a', 2, start: holdMark, end: repeatMark)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
@@ -292,19 +284,7 @@ void main() {
   test('a START repeat cycles the displayed run too: the rear-hold tail '
       'joins the pattern (UI-R13 #5 mirror)', () {
     final layer = _layer(
-      timeline: {6: _draw('a', 2)},
-      behaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('a'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.hold,
-        ),
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('a'),
-          side: TimelineRunEdgeSide.start,
-          mode: TimelineRunEdgeMode.repeat,
-        ),
-      ],
+      timeline: {6: _draw('a', 2, start: repeatMark, end: holdMark)},
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
@@ -326,21 +306,17 @@ void main() {
     );
   });
 
-  test('a pattern anchor ON the run\'s first frame is INSIDE the run', () {
-    // ⛔The bound is `>= run start`, not `>`. The first block of the run
-    // is a legal pattern anchor — picking it is how a start repeat says
-    // "cycle just this one frame" — and an off-by-one there silently
-    // falls back to the whole run, which looks plausible on screen.
+  test('a pattern bound ON the run\'s first block is INSIDE the run', () {
+    // ⛔The carrier's OWN bound counts. The first block of the run is a legal
+    // pattern bound — picking it is how a start repeat says "cycle just this
+    // one frame" — and a resolution that looked only past the carrier
+    // silently falls back to the whole run, which looks plausible on screen.
     final layer = _layer(
-      timeline: {5: _draw('a', 1), 6: _draw('b', 1), 7: _draw('c', 1)},
-      behaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('a'),
-          side: TimelineRunEdgeSide.start,
-          mode: TimelineRunEdgeMode.repeat,
-          patternAnchorFrameId: FrameId('a'),
-        ),
-      ],
+      timeline: {
+        5: _draw('a', 1, start: repeatBoundMark),
+        6: _draw('b', 1),
+        7: _draw('c', 1),
+      },
     );
 
     final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
@@ -349,42 +325,134 @@ void main() {
       expect(
         derived.timeline[index]!.frameId,
         const FrameId('a'),
-        reason: 'frame $index cycles the anchor block alone',
+        reason: 'frame $index cycles the bound block alone',
       );
     }
   });
 
-  test('setting the same edge twice: the LAST spec wins the dedupe', () {
-    final layer = _layer(
-      timeline: {0: _draw('a', 2)},
-      behaviors: const [_endRepeat, _endHold],
-    );
+  group('several carriers on one side — two runs glued into one', () {
+    test('the carrier NEAREST the edge wins, and the other gives its mark '
+        'up', () {
+      final layer = _layer(
+        timeline: {
+          0: _draw('a', 2, end: repeatMark),
+          2: _draw('b', 1, end: holdMark),
+        },
+      );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
-    expect(derived.runBehaviors, const [_endHold]);
-    expect(derived.timeline[2]!.length, 6, reason: 'one hold block');
+      final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+      expect(derived.timeline[3]!.ghostOf, endHoldGhost);
+      expect(derived.timeline[3]!.length, 5, reason: 'one hold block');
+      expect(
+        derived.timeline[0]!.endEdge.isNone,
+        isTrue,
+        reason: 'the inner carrier is stripped',
+      );
+      expect(derived.timeline[2]!.endEdge, holdMark);
+    });
+
+    test('the START side mirrors it: the leftmost carrier wins', () {
+      final layer = _layer(
+        timeline: {
+          4: _draw('a', 1, start: repeatMark),
+          5: _draw('b', 1, start: holdMark),
+        },
+      );
+
+      final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+      // The whole run [4,6) tiles flush leftward over [0,4).
+      expect(derived.timeline[0]!.ghostOf, startRepeatGhost);
+      expect(derived.timeline[0]!.frameId, const FrameId('a'));
+      expect(derived.timeline[4]!.startEdge, repeatMark);
+      expect(derived.timeline[5]!.startEdge.isNone, isTrue);
+    });
+
+    test('a bound past ANOTHER carrier is stray: the pattern is the whole '
+        'run, and the bound is stripped', () {
+      final layer = _layer(
+        timeline: {
+          0: _draw('a', 1, end: boundMark),
+          1: _draw('b', 1, end: holdMark),
+          2: _draw('c', 1, end: repeatMark),
+        },
+      );
+
+      final derived = rederiveRunBehaviors(layer, cutFrameCount: 9);
+      // c wins; walking back from it meets b — another carrier — before a's
+      // bound, so the pattern is the whole run [0,3).
+      for (final (index, id) in [(3, 'a'), (4, 'b'), (5, 'c'), (6, 'a')]) {
+        expect(derived.timeline[index]!.frameId, FrameId(id), reason: '$index');
+      }
+      expect(derived.timeline[0]!.endEdge.isNone, isTrue);
+      expect(derived.timeline[1]!.endEdge.isNone, isTrue);
+      expect(derived.timeline[2]!.endEdge, repeatMark);
+    });
+
+    test('a run no carrier speaks for keeps no bound', () {
+      final derived = rederiveRunBehaviors(
+        _layer(timeline: {0: _draw('a', 1, end: boundMark)}),
+        cutFrameCount: 4,
+      );
+      expect(derived.timeline.keys, [0]);
+      expect(derived.timeline[0]!.endEdge.isNone, isTrue);
+    });
   });
 
-  test('run behaviors round-trip through Layer JSON; legacy repeatRegions '
-      'JSON is ignored', () {
-    final layer = _layer(
-      timeline: {0: _draw('a', 2)},
-      behaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('a'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.repeat,
-          patternAnchorFrameId: FrameId('a'),
+  group('F-134: the property belongs to the BLOCK, not to its drawing', () {
+    test('a block showing the carrier\'s drawing EARLIER on the row does not '
+        'take the property', () {
+      // 「붙여넣어진 프레임의 +버튼이나 성질버튼이 없음」 — a spec that named its
+      // run by the drawing settled on the LOWEST block showing it.
+      final layer = _layer(
+        timeline: {
+          0: _draw('b', 1),
+          5: _draw('a', 1),
+          6: _draw('b', 1, end: holdMark),
+        },
+      );
+
+      final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+      expect(
+        derived.timeline[1],
+        isNull,
+        reason: 'the copy at 0 holds nothing',
+      );
+      expect(derived.timeline[7]!.ghostOf, endHoldGhost);
+      expect(derived.timeline[7]!.length, 3);
+    });
+
+    test('changing the drawing under a carrier keeps its property — the '
+        'relink a join by name makes', () {
+      // 「이름바꿔서 링크프레임 작동시키면 성질 사라짐」.
+      final held = rederiveRunBehaviors(
+        _layer(timeline: {0: _draw('a', 1, end: holdMark)}),
+        cutFrameCount: 4,
+      );
+      final relinked = rederiveRunBehaviors(
+        held.copyWith(
+          timeline: {
+            0: held.timeline[0]!.copyWith(frameId: const FrameId('b')),
+          },
         ),
-      ],
+        cutFrameCount: 4,
+      );
+      expect(relinked.timeline[0]!.endEdge, holdMark);
+      expect(relinked.timeline[1]!.ghostOf, endHoldGhost);
+      expect(relinked.timeline[1]!.frameId, const FrameId('b'));
+    });
+  });
+
+  test('run edge marks round-trip through Layer JSON; the retired spec lists '
+      'and the ghosts saved before F-134 are dropped', () {
+    final layer = rederiveRunBehaviors(
+      _layer(timeline: {0: _draw('a', 2, end: repeatBoundMark)}),
+      cutFrameCount: 6,
     );
+    expect(layer.timeline[2]!.ghostOf, endRepeatGhost, reason: 'LIVENESS');
 
     final restored = Layer.fromJson(layer.toJson());
     expect(restored, layer);
-    expect(
-      restored.runBehaviors.single.patternAnchorFrameId,
-      const FrameId('a'),
-    );
+    expect(restored.timeline[0]!.endEdge, repeatBoundMark);
 
     final legacyJson = _layer(timeline: {0: _draw('a', 2)}).toJson();
     legacyJson['repeatRegions'] = [
@@ -395,15 +463,35 @@ void main() {
         'frameCount': 4,
       },
     ];
-    expect(Layer.fromJson(legacyJson).runBehaviors, isEmpty);
+    legacyJson['runBehaviors'] = [
+      {
+        'anchor': {'value': 'a'},
+        'side': 'end',
+        'mode': 'hold',
+      },
+    ];
+    (legacyJson['timeline'] as List).add({
+      'index': 2,
+      'exposure': {
+        'type': 'drawing',
+        'frameId': {'value': 'a'},
+        'length': 4,
+        'ghost': true,
+        'ghostOwner': 'a:end',
+      },
+    });
+    final legacy = Layer.fromJson(legacyJson);
+    expect(
+      legacy.timeline.keys,
+      [0],
+      reason: 'a pre-F-134 ghost must not read back as an AUTHORED block',
+    );
+    expect(legacy.timeline[0]!.endEdge.isNone, isTrue);
   });
 
   test('runEdgeBehaviorAt resolves the edge through the LIVE run', () {
     final layer = rederiveRunBehaviors(
-      _layer(
-        timeline: {0: _draw('a', 2), 2: _draw('b', 1)},
-        behaviors: const [_endHold],
-      ),
+      _layer(timeline: {0: _draw('a', 2), 2: _draw('b', 1, end: holdMark)}),
       cutFrameCount: 8,
     );
 
@@ -417,61 +505,5 @@ void main() {
       TimelineRunEdgeMode.hold,
     );
     expect(runEdgeBehaviorAt(layer, 0, TimelineRunEdgeSide.start), isNull);
-  });
-}
-
-/// remapFrameIds — the anchor-remap the three copy paths share (the copy
-/// of a layer, the paste planner, the attach mount). What an UNMAPPABLE
-/// anchor means is the caller's law, told by what the mapping returns.
-void _remapTests() {
-  const pattern = TimelineRunBehavior(
-    anchorFrameId: FrameId('a'),
-    side: TimelineRunEdgeSide.end,
-    mode: TimelineRunEdgeMode.repeat,
-    patternAnchorFrameId: FrameId('b'),
-  );
-
-  test('both anchors move, and side and mode ride along', () {
-    final remapped = pattern.remapFrameIds(
-      (id) => FrameId('new-${id.value}'),
-    )!;
-    expect(remapped.anchorFrameId, const FrameId('new-a'));
-    expect(remapped.patternAnchorFrameId, const FrameId('new-b'));
-    expect(remapped.side, TimelineRunEdgeSide.end);
-    expect(remapped.mode, TimelineRunEdgeMode.repeat);
-  });
-
-  test('no pattern anchor stays no pattern anchor', () {
-    expect(
-      _endHold.remapFrameIds((id) => FrameId('new-${id.value}'))!
-          .patternAnchorFrameId,
-      isNull,
-    );
-  });
-
-  test('⛔an unmappable ANCHOR answers null — the caller drops the '
-      'behaviour', () {
-    expect(pattern.remapFrameIds((id) => null), isNull);
-  });
-
-  test('an unmappable PATTERN anchor reads as "no pattern", which is the '
-      'whole-run reading — the behaviour survives', () {
-    final remapped = pattern.remapFrameIds(
-      (id) => id == const FrameId('a') ? const FrameId('a2') : null,
-    )!;
-    expect(remapped.anchorFrameId, const FrameId('a2'));
-    expect(remapped.patternAnchorFrameId, isNull);
-  });
-
-  test('a mapping that keeps unknown ids keeps the behaviour whole — what '
-      'the duplicate and the paste pass', () {
-    final map = {const FrameId('a'): const FrameId('a2')};
-    final remapped = pattern.remapFrameIds((id) => map[id] ?? id)!;
-    expect(remapped.anchorFrameId, const FrameId('a2'));
-    expect(
-      remapped.patternAnchorFrameId,
-      const FrameId('b'),
-      reason: 'unmapped means unchanged here, never dropped',
-    );
   });
 }

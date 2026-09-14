@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_empty_gaps.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 /// `AAB.C` → a 2-frame A, a 1-frame B, an empty cell, a 1-frame C; a
 /// lowercase letter is a GHOST exposure of that drawing.
 Layer _row(String cells) {
@@ -28,7 +30,7 @@ Layer _row(String cells) {
     timeline[index] = TimelineExposure.drawing(
       FrameId(symbol.toUpperCase()),
       length: length,
-      ghost: symbol == symbol.toLowerCase(),
+      ghostOf: symbol == symbol.toLowerCase() ? endHoldGhost : null,
     );
     index += length;
   }

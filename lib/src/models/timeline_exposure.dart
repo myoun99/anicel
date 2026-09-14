@@ -2,6 +2,7 @@ import '../core/collection_equality.dart';
 import 'exposure_memo.dart';
 import 'frame_id.dart';
 import 'timeline_exposure_type.dart';
+import 'timeline_run_behavior.dart';
 
 /// One authored timeline entry: a drawing block start (frame + an explicit
 /// hold length in frames).
@@ -21,10 +22,11 @@ class TimelineExposure {
   const TimelineExposure.drawing(
     FrameId this.frameId, {
     required int this.length,
-    this.ghost = false,
-    this.ghostOwnerId,
+    this.ghostOf,
     this.breakdownOffsets = const [],
     this.memo,
+    this.startEdge = TimelineRunEdgeMark.none,
+    this.endEdge = TimelineRunEdgeMark.none,
   }) : type = TimelineExposureType.drawing,
        assert(length >= 1, 'Drawing exposure length must be at least 1.');
 
@@ -40,10 +42,11 @@ class TimelineExposure {
   /// source's frameId (drawing at a ghost index edits the source) and
   /// render dimmed on the timeline cells only; playback and the canvas
   /// treat them as ordinary exposures.
-  final bool ghost;
+  bool get ghost => ghostOf != null;
 
-  /// The owning `TimelineRunBehavior.ghostOwnerId` when [ghost] is true.
-  final String? ghostOwnerId;
+  /// The edge property this ghost was derived from; null on an authored
+  /// entry — the one field says both whether and what.
+  final TimelineRunEdgeGhost? ghostOf;
 
   /// The inbetween DOTS (중간나누기 ●) inside this block, as offsets from
   /// the block start — sorted, unique, each in `1..length-1` (offset 0 is
@@ -60,6 +63,18 @@ class TimelineExposure {
   /// rederived from a run behaviour on every edit, so there is nothing
   /// there to author against.
   final ExposureMemo? memo;
+
+  /// This block's share of its glued run's START-side and END-side edge
+  /// properties (F-134 — see [TimelineRunEdgeMark]). BLOCK-OWNED like
+  /// [breakdownOffsets] and [memo]: moves, copies and relinks carry them.
+  /// Ghost entries never hold one — a ghost is a property's output, not a
+  /// block of the run.
+  final TimelineRunEdgeMark startEdge;
+  final TimelineRunEdgeMark endEdge;
+
+  /// The mark on [side].
+  TimelineRunEdgeMark edgeMark(TimelineRunEdgeSide side) =>
+      side == TimelineRunEdgeSide.start ? startEdge : endEdge;
 
   static List<int> _normalizedOffsets(List<int> offsets, int length) {
     if (offsets.isEmpty) {
@@ -81,13 +96,14 @@ class TimelineExposure {
     int? length,
     List<int>? breakdownOffsets,
     ExposureMemo? Function()? memo,
+    TimelineRunEdgeMark? startEdge,
+    TimelineRunEdgeMark? endEdge,
   }) {
     final nextLength = length ?? this.length!;
     return TimelineExposure.drawing(
       frameId ?? this.frameId!,
       length: nextLength,
-      ghost: ghost,
-      ghostOwnerId: ghostOwnerId,
+      ghostOf: ghostOf,
       // Normalization clamps offsets to the (possibly new) length — a
       // shrink drops what it cut off.
       breakdownOffsets: _normalizedOffsets(
@@ -95,17 +111,28 @@ class TimelineExposure {
         nextLength,
       ),
       memo: memo == null ? this.memo : memo(),
+      startEdge: startEdge ?? this.startEdge,
+      endEdge: endEdge ?? this.endEdge,
     );
   }
+
+  /// This entry with [mark] on [side].
+  TimelineExposure withEdgeMark(
+    TimelineRunEdgeSide side,
+    TimelineRunEdgeMark mark,
+  ) => side == TimelineRunEdgeSide.start
+      ? copyWith(startEdge: mark)
+      : copyWith(endEdge: mark);
 
   Map<String, dynamic> toJson() => {
     'type': type.toJson(),
     if (frameId != null) 'frameId': frameId!.toJson(),
     if (length != null) 'length': length,
-    if (ghost) 'ghost': true,
-    if (ghostOwnerId != null) 'ghostOwner': ghostOwnerId,
+    if (ghostOf != null) 'ghostOf': ghostOf!.toJson(),
     if (breakdownOffsets.isNotEmpty) 'breakdown': breakdownOffsets,
     if (memo != null && !memo!.isEmpty) 'memo': memo!.toJson(),
+    if (!startEdge.isNone) 'startEdge': startEdge.toJson(),
+    if (!endEdge.isNone) 'endEdge': endEdge.toJson(),
   };
 
   /// Decodes the CURRENT format only. Legacy entries (`blank`/`mark`
@@ -130,9 +157,7 @@ class TimelineExposure {
     return TimelineExposure.drawing(
       FrameId.fromJson(frameIdJson as Map<String, dynamic>),
       length: length,
-      ghost: json['ghost'] == true,
-      ghostOwnerId:
-          (json['ghostOwner'] ?? json['repeatRegionId']) as String?,
+      ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(json['ghostOf']),
       breakdownOffsets: _normalizedOffsets([
         for (final offset in (json['breakdown'] as List<dynamic>? ?? const []))
           offset as int,
@@ -140,9 +165,10 @@ class TimelineExposure {
       memo: json['memo'] == null
           ? null
           : ExposureMemo.fromJson(json['memo'] as Map<String, dynamic>),
+      startEdge: TimelineRunEdgeMark.fromJsonOrNone(json['startEdge']),
+      endEdge: TimelineRunEdgeMark.fromJsonOrNone(json['endEdge']),
     );
   }
-
 
   @override
   bool operator ==(Object other) =>
@@ -151,9 +177,10 @@ class TimelineExposure {
           other.type == type &&
           other.frameId == frameId &&
           other.length == length &&
-          other.ghost == ghost &&
-          other.ghostOwnerId == ghostOwnerId &&
+          other.ghostOf == ghostOf &&
           other.memo == memo &&
+          other.startEdge == startEdge &&
+          other.endEdge == endEdge &&
           listEquals(other.breakdownOffsets, breakdownOffsets);
 
   @override
@@ -161,16 +188,19 @@ class TimelineExposure {
     type,
     frameId,
     length,
-    ghost,
-    ghostOwnerId,
+    ghostOf,
     Object.hashAll(breakdownOffsets),
     memo,
+    startEdge,
+    endEdge,
   );
 
   @override
   String toString() =>
       'TimelineExposure(type: $type, frameId: $frameId, length: $length'
-      '${ghost ? ', ghost($ghostOwnerId)' : ''}'
+      '${ghostOf == null ? '' : ', $ghostOf'}'
       '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'}'
-      '${memo == null ? '' : ', memo: $memo'})';
+      '${memo == null ? '' : ', memo: $memo'}'
+      '${startEdge.isNone ? '' : ', start: $startEdge'}'
+      '${endEdge.isNone ? '' : ', end: $endEdge'})';
 }

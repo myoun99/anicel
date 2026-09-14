@@ -112,12 +112,12 @@ void main() {
       'block-edge-grip-end-layer-a-0',
       'block-edge-grip-start-layer-a-1',
       'block-edge-grip-end-layer-a-1',
-      'run-add-end-layer-a-f1',
-      'run-edge-tag-layer-a-f1-end',
-      'run-add-end-layer-a-f2',
-      'run-edge-tag-layer-a-f2-end',
-      'run-add-start-layer-a-f2',
-      'run-edge-tag-layer-a-f2-start',
+      'run-add-end-layer-a-0',
+      'run-edge-tag-layer-a-0-end',
+      'run-add-end-layer-a-4',
+      'run-edge-tag-layer-a-4-end',
+      'run-add-start-layer-a-4',
+      'run-edge-tag-layer-a-4-start',
     ]);
   });
 
@@ -160,7 +160,7 @@ void main() {
 
     // The [+] half of run 0's end cluster: an add, not a seek.
     await tester.tapAt(
-      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-f1'),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-0'),
     );
     await tester.pumpAndSettle();
     expect(addBegins, [(const LayerId('layer-a'), 0, true)]);
@@ -206,10 +206,10 @@ void main() {
 
     // The property tag is a click target, not a resize one.
     await mouse.moveTo(
-      timelineRowChromeCenter(tester, 'layer-a', 'run-edge-tag-layer-a-f1-end'),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-edge-tag-layer-a-0-end'),
     );
     await tester.pump();
-    expect(hovered(), 'run-edge-tag-layer-a-f1-end');
+    expect(hovered(), 'run-edge-tag-layer-a-0-end');
     expect(cursor(), SystemMouseCursors.click);
 
     // Off every affordance the row hands the cursor back to the cells.

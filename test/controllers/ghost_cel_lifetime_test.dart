@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 
 import 'package:anicel/src/controllers/timeline_controller.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -62,8 +63,8 @@ void main() {
     frames: [Frame(id: celId, duration: 1, strokes: const [])],
     timeline: {
       0: const TimelineExposure.drawing(celId, length: 1),
-      1: const TimelineExposure.drawing(celId, length: 1, ghost: true),
-      2: const TimelineExposure.drawing(celId, length: 1, ghost: true),
+      1: const TimelineExposure.drawing(celId, length: 1, ghostOf: endHoldGhost),
+      2: const TimelineExposure.drawing(celId, length: 1, ghostOf: endHoldGhost),
     },
   );
 

@@ -110,8 +110,8 @@ Frame? resolveAttachedFrameAt({
 /// row-wise (the session's synced-row gates + the grip/run-edge kind
 /// gates), not through the ghost flag. Only the base's OWN ghost entries
 /// (repeat/hold run-edge instances) keep [ghost] — derived twice over,
-/// they still print text-only with their [TimelineExposure.ghostOwnerId]
-/// intact (UI-R24 #2), paired with the base's runBehaviors on the clone.
+/// they still print text-only with their [TimelineExposure.ghostOf]
+/// intact (UI-R24 #2), which is all the painter reads.
 SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
   required Layer attached,
   required Layer base,
@@ -131,8 +131,7 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
     timeline[entry.key] = TimelineExposure.drawing(
       linked,
       length: length,
-      ghost: entry.value.ghost,
-      ghostOwnerId: entry.value.ghostOwnerId,
+      ghostOf: entry.value.ghostOf,
       // 🚨F-48 (유저 2026-08-28): 「싱크 어태치레이어에 **동화 중간나누기 점이
       // 반영이안됨. 싱크되도록**」. 이 목록에서 점만 빠져 있었다 — 블록 경계와
       // 길이는 따라오는데 그 안의 나누기만 베이스에 남았다.
@@ -141,6 +140,10 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
       // 계약: 「What stands down is TIMING」). 점은 블록이 자기 안을 어떻게
       // 나누는지에 대한 **표시**이고, 미러 행은 그 블록을 그대로 보여 준다.
       breakdownOffsets: entry.value.breakdownOffsets,
+      // F-134: a block's run edge marks mirror with it, so a bake
+      // ([detachedLayer]) keeps the tail the row was showing.
+      startEdge: entry.value.startEdge,
+      endEdge: entry.value.endEdge,
     );
   }
   return timeline;
@@ -152,13 +155,12 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
 /// resolution) sees the derived exposures, while writes address the REAL
 /// layer through commands.
 ///
-/// The clone carries the BASE's runBehaviors (UI-R24 #2): the mirrored
-/// ghost entries keep their owner ids, so the cells painter resolves the
-/// base's hold/repeat modes on the mirror row and prints the same dashes.
+/// The mirrored ghost entries keep their stamps (UI-R24 #2), so the cells
+/// painter reads the base's hold/repeat modes straight off the mirror row
+/// and prints the same dashes.
 Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
   return attached.copyWith(
     timeline: attachedDisplayTimeline(attached: attached, base: base),
-    runBehaviors: base.runBehaviors,
   );
 }
 

@@ -126,8 +126,10 @@ class _TimelinePaste {
     required int index,
     required int count,
   }) {
+    // F-134: a copy reads the GHOST-FREE row, like the splice it pastes
+    // through — a ghost cut at the range's edge must not come out a block.
     return captureTimelineRun(
-      timeline: _controller._requireLayer(layerId).timeline,
+      timeline: ghostFreeTimeline(_controller._requireLayer(layerId)),
       index: index,
       count: count,
     );

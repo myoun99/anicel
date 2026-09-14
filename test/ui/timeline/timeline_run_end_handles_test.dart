@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
+import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_cell_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -57,14 +58,13 @@ void main() {
       id: const LayerId('layer-r'),
       name: 'R',
       frames: [Frame(id: const FrameId('rf'), duration: 1, strokes: const [])],
-      timeline: {0: const TimelineExposure.drawing(FrameId('rf'), length: 2)},
-      runBehaviors: const [
-        TimelineRunBehavior(
-          anchorFrameId: FrameId('rf'),
-          side: TimelineRunEdgeSide.end,
-          mode: TimelineRunEdgeMode.repeat,
+      timeline: {
+        0: const TimelineExposure.drawing(
+          FrameId('rf'),
+          length: 2,
+          endEdge: repeatMark,
         ),
-      ],
+      },
     ),
     cutFrameCount: 6,
   );
@@ -138,14 +138,16 @@ void main() {
       ),
     );
 
-    // Target ids carry the run ANCHOR frameId, never an index (UI-R9 A1).
+    // Target ids carry the COMMITTED run's start — never the DISPLAY index
+    // a preview moves (UI-R9 A1) — and, since F-134, no longer the anchor
+    // frameId either: linked runs share one.
     final ids = timelineRowChromeIds(tester, 'layer-a');
-    expect(ids, contains('run-add-end-layer-a-f1'));
+    expect(ids, contains('run-add-end-layer-a-0'));
     // The second run (frame 6) has free space before it too.
-    expect(ids, contains('run-add-start-layer-a-f2'));
+    expect(ids, contains('run-add-start-layer-a-6'));
 
     await tester.dragFrom(
-      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-f1'),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-0'),
       const Offset(96, 0),
       kind: PointerDeviceKind.mouse,
     );
@@ -194,7 +196,7 @@ void main() {
     );
 
     final gesture = await tester.startGesture(
-      timelineRowChromeCenter(tester, 'layer-a', 'run-add-start-layer-a-f2'),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-start-layer-a-6'),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 3; step += 1) {
@@ -221,7 +223,7 @@ void main() {
       ),
     );
 
-    const tagId = 'run-edge-tag-layer-a-f1-end';
+    const tagId = 'run-edge-tag-layer-a-0-end';
     final ids = timelineRowChromeIds(tester, 'layer-a');
     expect(
       ids,
@@ -229,7 +231,7 @@ void main() {
       reason: 'the tag shows without hover, N state included',
     );
     // Start tags mirror on the second run.
-    expect(ids, contains('run-edge-tag-layer-a-f2-start'));
+    expect(ids, contains('run-edge-tag-layer-a-6-start'));
 
     // The flyout opens on POINTER DOWN (UI-R10 #2) — before any tap-up.
     final gesture = await tester.startGesture(
@@ -274,7 +276,7 @@ void main() {
       harness(layers: [plainLayer()], runEdit: callbacks),
     );
 
-    const tagId = 'run-edge-tag-layer-a-f1-end';
+    const tagId = 'run-edge-tag-layer-a-0-end';
     const selectionEntry = ValueKey<String>('run-edge-mode-repeat-selection');
 
     // No scopable selection: the entry stays out.
@@ -316,19 +318,19 @@ void main() {
       ),
     );
 
-    const tagId = 'run-edge-tag-layer-r-rf-end';
+    const tagId = 'run-edge-tag-layer-r-0-end';
     final ids = timelineRowChromeIds(tester, 'layer-r');
     expect(ids, contains(tagId));
 
     // The [+] chip stays too: ghost coverage never blocks authored adds.
-    expect(ids, contains('run-add-end-layer-r-rf'));
+    expect(ids, contains('run-add-end-layer-r-0'));
     // Both sit at the run end (frame 2), NOT after the ghost tail (6).
     final edgeLeft = timelineCellGlobalRect(tester, 'layer-r', 2).left;
     expect(
       (timelineRowChromeGlobalRect(
                 tester,
                 'layer-r',
-                'run-add-end-layer-r-rf',
+                'run-add-end-layer-r-0',
               ).left -
               edgeLeft)
           .abs(),
@@ -350,6 +352,50 @@ void main() {
     ));
   });
 
+  testWidgets('F-134: a run opening on the SAME drawing as an earlier run '
+      'wears its own [+] and property tags, at its own edges', (tester) async {
+    // 「프레임 복사/붙혀넣기하면 붙여넣어진 프레임의 +버튼이나 성질버튼이
+    // 없음」: the chrome found a run's display position by its first block's
+    // drawing and settled on the LOWEST block showing it, so a linked
+    // paste's run drew its cluster over the original's and had none.
+    final linked = Layer(
+      id: const LayerId('layer-l'),
+      name: 'L',
+      frames: [Frame(id: const FrameId('lf'), duration: 1, strokes: const [])],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('lf'), length: 1),
+        5: const TimelineExposure.drawing(FrameId('lf'), length: 1),
+      },
+    );
+    await tester.pumpWidget(
+      harness(layers: [linked], runEdit: recordingCallbacks()),
+    );
+
+    expect(
+      timelineRowChromeIds(tester, 'layer-l'),
+      containsAll(<String>[
+        'run-add-end-layer-l-0',
+        'run-edge-tag-layer-l-0-end',
+        'run-add-end-layer-l-5',
+        'run-edge-tag-layer-l-5-end',
+        'run-add-start-layer-l-5',
+        'run-edge-tag-layer-l-5-start',
+      ]),
+    );
+    final copyEnd = timelineCellGlobalRect(tester, 'layer-l', 6).left;
+    expect(
+      (timelineRowChromeGlobalRect(
+                tester,
+                'layer-l',
+                'run-add-end-layer-l-5',
+              ).left -
+              copyEnd)
+          .abs(),
+      lessThan(4),
+      reason: 'the copy\'s end cluster hugs ITS run end, frame 6',
+    );
+  });
+
   testWidgets('ghosts render TEXT-ONLY (UI-R10 #11): repeat ghosts print '
       'cel names on plain cells, hold ghosts string ㅡ dashes', (tester) async {
     final holdLayer = rederiveRunBehaviors(
@@ -359,14 +405,13 @@ void main() {
         frames: [
           Frame(id: const FrameId('hf'), duration: 1, strokes: const []),
         ],
-        timeline: {0: const TimelineExposure.drawing(FrameId('hf'), length: 2)},
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('hf'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
+        timeline: {
+          0: const TimelineExposure.drawing(
+            FrameId('hf'),
+            length: 2,
+            endEdge: holdMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 6,
     );
@@ -414,16 +459,12 @@ void main() {
         ],
         timeline: {
           0: const TimelineExposure.drawing(FrameId('p1'), length: 1),
-          1: const TimelineExposure.drawing(FrameId('p2'), length: 1),
-        },
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('p2'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.repeat,
-            patternAnchorFrameId: FrameId('p2'),
+          1: const TimelineExposure.drawing(
+            FrameId('p2'),
+            length: 1,
+            endEdge: repeatBoundMark,
           ),
-        ],
+        },
       ),
       cutFrameCount: 6,
     );
@@ -507,7 +548,7 @@ void main() {
     );
 
     await tester.tapAt(
-      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-f1'),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-0'),
     );
     await tester.pumpAndSettle();
     expect(begins.single, (const LayerId('layer-a'), 0, true));
@@ -536,7 +577,7 @@ void main() {
     final center = timelineRowChromeCenter(
       tester,
       'layer-a',
-      'run-add-end-layer-a-f1',
+      'run-add-end-layer-a-0',
     );
     await tester.tapAt(center);
     await tester.pumpAndSettle();
@@ -568,7 +609,7 @@ void main() {
         .toList();
     final before = scrollOffsets();
 
-    const tagId = 'run-edge-tag-layer-a-f1-end';
+    const tagId = 'run-edge-tag-layer-a-0-end';
     expect(timelineRowChromeIds(tester, 'layer-a'), contains(tagId));
     final gesture = await tester.startGesture(
       timelineRowChromeCenter(tester, 'layer-a', tagId),

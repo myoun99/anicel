@@ -97,16 +97,12 @@ void main() {
             Frame(id: FrameId('$id-f1'), duration: 1, strokes: const []),
           ],
           timeline: <int, TimelineExposure>{
-            0: TimelineExposure.drawing(FrameId('$id-f1'), length: 2),
-          },
-        ).copyWith(
-          runBehaviors: [
-            TimelineRunBehavior(
-              anchorFrameId: FrameId('$id-f1'),
-              side: TimelineRunEdgeSide.end,
-              mode: mode,
+            0: TimelineExposure.drawing(
+              FrameId('$id-f1'),
+              length: 2,
+              endEdge: TimelineRunEdgeMark(mode: mode),
             ),
-          ],
+          },
         ),
         cutFrameCount: 240,
       );

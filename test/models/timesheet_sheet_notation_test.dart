@@ -13,6 +13,8 @@ import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 TimesheetDocument _document({required List<Layer> layers}) {
   return TimesheetDocument.fromCut(
     cut: Cut(
@@ -87,15 +89,12 @@ void main() {
               ),
             ],
             timeline: {
-              4: const TimelineExposure.drawing(FrameId('se-f'), length: 2),
-            },
-            runBehaviors: const [
-              TimelineRunBehavior(
-                anchorFrameId: FrameId('se-f'),
-                side: TimelineRunEdgeSide.start,
-                mode: TimelineRunEdgeMode.repeat,
+              4: const TimelineExposure.drawing(
+                FrameId('se-f'),
+                length: 2,
+                startEdge: repeatMark,
               ),
-            ],
+            },
           ),
           cutFrameCount: 24,
         ),

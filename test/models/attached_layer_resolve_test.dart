@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/services/editing/cut_duplicate_helpers.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -84,8 +85,7 @@ void main() {
         9: const TimelineExposure.drawing(
           FrameId('b1'),
           length: 2,
-          ghost: true,
-          ghostOwnerId: 'b1',
+          ghostOf: endHoldGhost,
         ),
       },
     );

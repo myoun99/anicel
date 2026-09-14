@@ -9,6 +9,7 @@
 // rederive pass each still holding a copy; the one function lives with the
 // ghost's constructor in timeline_repeat.dart and all four read it.
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -24,7 +25,11 @@ void main() {
       frames: const [],
       timeline: {
         0: const TimelineExposure.drawing(FrameId('a'), length: 2),
-        2: const TimelineExposure.drawing(FrameId('a'), length: 2, ghost: true),
+        2: const TimelineExposure.drawing(
+          FrameId('a'),
+          length: 2,
+          ghostOf: endHoldGhost,
+        ),
         4: const TimelineExposure.drawing(FrameId('b'), length: 1),
       },
     );

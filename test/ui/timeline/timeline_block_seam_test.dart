@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/run_edge_fixtures.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// D32/D38 (2026-08-18): the per-cell block BORDER is gone — the interior
@@ -173,7 +174,7 @@ void main() {
         6: const TimelineExposure.drawing(
           FrameId('f1'),
           length: 4,
-          ghost: true,
+          ghostOf: endHoldGhost,
         ),
       }),
     );

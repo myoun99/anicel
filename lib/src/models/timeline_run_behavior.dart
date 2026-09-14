@@ -1,6 +1,4 @@
-import 'frame_id.dart';
-
-/// Which edge of a glued run a [TimelineRunBehavior] hangs off.
+/// Which edge of a glued run a run-edge property hangs off.
 enum TimelineRunEdgeSide {
   start,
   end;
@@ -15,7 +13,7 @@ enum TimelineRunEdgeSide {
 }
 
 /// What a run edge does with the free space next to it. `None` is the
-/// absence of a behavior — never stored.
+/// absence of a property — never stored.
 enum TimelineRunEdgeMode {
   /// The edge's drawing holds as ONE dim ghost block to the cut boundary.
   hold,
@@ -33,111 +31,132 @@ enum TimelineRunEdgeMode {
   };
 }
 
-/// A run-edge property (UI-R9 #10, TVP-style N/H/R): a persistent LIVE
-/// spec on the layer — one per (run, side), set through the edge tag.
+/// One BLOCK's share of one side of its glued run's edge property (UI-R9
+/// #10, TVP-style N/H/R), stored in the block's own entry.
 ///
-/// The behavior stores no ghost entries and no frame count: it names WHAT
-/// ([anchorFrameId] = identity of a block inside the run; the LIVE glued
-/// run containing it is the unit) and HOW ([mode] + optional
-/// [patternAnchorFrameId] for selection-scoped repeat patterns). The
-/// ghosts always fill to the cut boundary; [rederiveRunBehaviors] wipes
-/// and re-synthesizes them after every timeline edit and every cut
-/// duration change, so the tail/lead-in re-arranges automatically (live
-/// sync, and the ghost-glue guarantee: the pattern IS the current run, a
-/// comma shrink can never open a gap). A vanished anchor drops the
-/// behavior (self-healing).
-class TimelineRunBehavior {
-  const TimelineRunBehavior({
-    required this.anchorFrameId,
-    required this.side,
-    required this.mode,
-    this.patternAnchorFrameId,
-  });
+/// 🚨F-134 (유저 2026-09-14): 「프레임 복사/붙혀넣기하면 붙여넣어진 프레임의
+/// +버튼이나 성질버튼이 없음」 — and 「프레임 생성하고 거기서 이름바꿔서
+/// 링크프레임 작동시키면 성질 사라짐. 애초에 구조적인 문제인듯」 — 「근본/
+/// 구조적으로 해결해줘」. The property used to be a spec on the LAYER that
+/// named its run by the FRAME ID of one of the run's blocks. A frame id names
+/// a DRAWING, and linked blocks share one: every lookup settled on the lowest
+/// block showing that drawing, so a pasted link got no edge chrome of its
+/// own, and a join by name moved the property onto another run or dropped
+/// it with the renamed drawing. A block's own entry is the one address two
+/// blocks never share, and it rides every move, copy, split and relink for
+/// free — the law the inbetween dots (UI-R9 #8) and the memo already follow.
+///
+/// What stays as UI-R9 #10 made it: the mark stores no ghost entries and no
+/// frame count. The ghosts always fill to the cut boundary;
+/// `rederiveRunBehaviors` wipes and re-synthesizes them after every timeline
+/// edit and every cut duration change, so the tail/lead-in re-arranges
+/// automatically (live sync, and the ghost-glue guarantee: the pattern IS the
+/// current run, a comma shrink can never open a gap). A carrier block that is
+/// deleted takes its property with it (self-healing).
+///
+/// [mode]: this block CARRIES the side's property. The setter puts it on the
+/// run's edge block — the end side on the LAST block, the start side on the
+/// FIRST — so splitting the run keeps the property with the fragment that
+/// owns that edge (UI-R10 #4). A carrier anywhere in the run still speaks for
+/// the run's edge, which is what keeps a hold on while frames are glued on
+/// past it. When SEVERAL blocks carry one side (two runs glued into one), the
+/// carrier NEAREST that edge wins and the rederive strips the others: the
+/// edge that survives a merge is the right run's end and the left run's
+/// start. (The layer spec list this replaced kept the most recently set one —
+/// an order nobody chose; it was the list's, 96740d91.)
+///
+/// [bound]: this block BOUNDS the side's selection-scoped repeat pattern
+/// (UI-R19 #2) — on the END side the pattern starts at this block and runs to
+/// the run end; on the START side it runs from the run start through this
+/// block. A bound belongs to the winning carrier when no other carrier stands
+/// between them; any other bound is stripped, and no bound reads as the whole
+/// run.
+class TimelineRunEdgeMark {
+  const TimelineRunEdgeMark({this.mode, this.bound = false});
 
-  /// Identity of the run: a frameId of one of its blocks (the run's first
-  /// block at creation). Resolved to its lowest non-ghost index on
-  /// rederive; the glued run containing that block is the behavior's run.
-  final FrameId anchorFrameId;
+  /// A block that carries nothing on this side — nearly every block.
+  static const none = TimelineRunEdgeMark();
 
-  final TimelineRunEdgeSide side;
-  final TimelineRunEdgeMode mode;
+  final TimelineRunEdgeMode? mode;
+  final bool bound;
 
-  /// Repeat with a selection: the block bounding the pattern span.
-  /// - [TimelineRunEdgeSide.end]: the pattern runs from THIS block's start
-  ///   to the run end (the run's last block is always included).
-  /// - [TimelineRunEdgeSide.start]: the pattern runs from the run start to
-  ///   THIS block's end (the first block is always included).
-  /// Null (or no longer resolvable inside the run) = the whole run.
-  final FrameId? patternAnchorFrameId;
-
-  /// The marker stamped on ghost entries this behavior owns
-  /// ([TimelineExposure.ghostOwnerId]).
-  String get ghostOwnerId => '${anchorFrameId.value}:${side.name}';
-
-  /// This behaviour under a new set of frame ids, or NULL when [map]
-  /// cannot answer for the anchor.
-  ///
-  /// 🚨Run behaviours are addressed by FRAME ID (the anchor block, and the
-  /// pattern block for a ranged repeat), so carrying them verbatim into a
-  /// copy whose frames were all re-minted names blocks that do not exist
-  /// there — `rederiveRunBehaviors` then drops the behaviour on the first
-  /// edit, which is the same loss with extra steps.
-  ///
-  /// ⛔What happens to an UNMAPPABLE anchor is the caller's law, told by
-  /// what [map] returns, not by a flag: a duplicate whose map covers every
-  /// frame passes `(id) => map[id] ?? id` and never sees null; a mount
-  /// that only knows the cels it linked passes the lookup itself and drops
-  /// the behaviour when it comes back null. The pattern anchor follows the
-  /// same answer — unmapped there means "no pattern", which is the
-  /// whole-run reading.
-  TimelineRunBehavior? remapFrameIds(FrameId? Function(FrameId id) map) {
-    final anchor = map(anchorFrameId);
-    if (anchor == null) {
-      return null;
-    }
-    final pattern = patternAnchorFrameId;
-    return TimelineRunBehavior(
-      anchorFrameId: anchor,
-      side: side,
-      mode: mode,
-      patternAnchorFrameId: pattern == null ? null : map(pattern),
-    );
-  }
+  bool get isNone => mode == null && !bound;
 
   Map<String, dynamic> toJson() => {
-    'anchor': anchorFrameId.toJson(),
-    'side': side.toJson(),
-    'mode': mode.toJson(),
-    if (patternAnchorFrameId != null)
-      'patternAnchor': patternAnchorFrameId!.toJson(),
+    if (mode != null) 'mode': mode!.toJson(),
+    if (bound) 'bound': true,
   };
 
-  factory TimelineRunBehavior.fromJson(Map<String, dynamic> json) =>
-      TimelineRunBehavior(
-        anchorFrameId: FrameId.fromJson(json['anchor'] as Map<String, dynamic>),
-        side: TimelineRunEdgeSide.fromJson(json['side']),
-        mode: TimelineRunEdgeMode.fromJson(json['mode']),
-        patternAnchorFrameId: json['patternAnchor'] == null
+  factory TimelineRunEdgeMark.fromJson(Map<String, dynamic> json) =>
+      TimelineRunEdgeMark(
+        mode: json['mode'] == null
             ? null
-            : FrameId.fromJson(json['patternAnchor'] as Map<String, dynamic>),
+            : TimelineRunEdgeMode.fromJson(json['mode']),
+        bound: json['bound'] == true,
       );
+
+  /// The mark a decoder reads from an entry's optional key — [none] when
+  /// the key is absent, which is how the encoder spells [none].
+  static TimelineRunEdgeMark fromJsonOrNone(Object? json) => json == null
+      ? none
+      : TimelineRunEdgeMark.fromJson(json as Map<String, dynamic>);
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TimelineRunBehavior &&
-          other.anchorFrameId == anchorFrameId &&
-          other.side == side &&
+      other is TimelineRunEdgeMark &&
           other.mode == mode &&
-          other.patternAnchorFrameId == patternAnchorFrameId;
+          other.bound == bound;
 
   @override
-  int get hashCode =>
-      Object.hash(anchorFrameId, side, mode, patternAnchorFrameId);
+  int get hashCode => Object.hash(mode, bound);
 
   @override
   String toString() =>
-      'TimelineRunBehavior(anchor: $anchorFrameId, side: ${side.name}, '
-      'mode: ${mode.name}'
-      '${patternAnchorFrameId == null ? '' : ', pattern: $patternAnchorFrameId'})';
+      'TimelineRunEdgeMark(${mode?.name ?? 'none'}${bound ? ', bound' : ''})';
+}
+
+/// What a GHOST exposure is the ghost of: the side and the mode of the run
+/// edge property that derived it.
+///
+/// ⚠️It names no run, and needs to name none. Ghosts are applied holds
+/// first, then repeats, each in run order with the start side before the end
+/// side, and a ghost fill stops at the first occupied index — so ghosts of
+/// two DIFFERENT edges never touch unless their sides differ (a run's end
+/// tail against the next run's start). The rederive's own lead-in and tail
+/// checks, the painter's dashes, the flip's hold columns and the sheet's
+/// chains all read exactly this much.
+class TimelineRunEdgeGhost {
+  const TimelineRunEdgeGhost({required this.side, required this.mode});
+
+  final TimelineRunEdgeSide side;
+  final TimelineRunEdgeMode mode;
+
+  Map<String, dynamic> toJson() => {
+    'side': side.toJson(),
+    'mode': mode.toJson(),
+  };
+
+  factory TimelineRunEdgeGhost.fromJson(Map<String, dynamic> json) =>
+      TimelineRunEdgeGhost(
+        side: TimelineRunEdgeSide.fromJson(json['side']),
+        mode: TimelineRunEdgeMode.fromJson(json['mode']),
+      );
+
+  /// The stamp a decoder reads from an entry's optional key — null (an
+  /// authored entry) when the key is absent.
+  static TimelineRunEdgeGhost? fromJsonOrNull(Object? json) => json == null
+      ? null
+      : TimelineRunEdgeGhost.fromJson(json as Map<String, dynamic>);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TimelineRunEdgeGhost && other.side == side && other.mode == mode;
+
+  @override
+  int get hashCode => Object.hash(side, mode);
+
+  @override
+  String toString() => 'ghost(${side.name} ${mode.name})';
 }

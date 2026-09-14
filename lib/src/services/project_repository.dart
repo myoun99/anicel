@@ -435,8 +435,9 @@ class ProjectRepository {
   /// Every layer of [cut] with its run-edge ghosts derived from [cut]'s
   /// own length.
   ///
-  /// A run behaviour is a SPEC — *this run holds*, *this run repeats* —
-  /// and the cells it covers are ghost exposures synthesized from it by
+  /// A run edge property is a SPEC — *this run holds*, *this run repeats* —
+  /// carried by one of the run's blocks (`TimelineRunEdgeMark`), and the
+  /// cells it covers are ghost exposures synthesized from it by
   /// [rederiveRunBehaviors]. The two are only ever in step because
   /// something re-derives, and every path that EDITS a timeline does.
   ///
@@ -448,7 +449,7 @@ class ProjectRepository {
   /// construction instead of by whoever writes them remembering to ask.
   ///
   /// Free when there is nothing to derive: [rederiveRunBehaviors] returns
-  /// the same layer instance for a layer with no specs and no ghosts, so
+  /// the same layer instance for a layer with no marks and no ghosts, so
   /// the grid's memo gates see no change.
   static Cut _withDerivedRunEdges(Cut cut) => cut.copyWith(
     layers: [

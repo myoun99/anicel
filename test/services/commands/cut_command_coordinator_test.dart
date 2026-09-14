@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -1337,8 +1338,7 @@ void main() {
           1: TimelineExposure.drawing(
             frame.id,
             length: 1,
-            ghost: true,
-            ghostOwnerId: 'hold',
+            ghostOf: endHoldGhost,
           ),
         },
       );

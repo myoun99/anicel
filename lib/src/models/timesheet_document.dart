@@ -775,10 +775,7 @@ class _LayerCellsPass {
       // longer, so its real data is one drawing at the run's first row
       // and held rows after it. Printing the label again per ghost entry
       // made one cel look like two (or three, with a front + end hold).
-      final ghostHold =
-          exposure.ghost &&
-          runBehaviorOwningGhostAt(layer, start)?.mode ==
-              TimelineRunEdgeMode.hold;
+      final ghostHold = exposure.ghostOf?.mode == TimelineRunEdgeMode.hold;
       if (exposure.ghost && (!dataSheet || ghostHold)) {
         index = _writeGhostChain(index);
         continue;
@@ -804,13 +801,14 @@ class _LayerCellsPass {
   int _writeGhostChain(int index) {
     final start = entries[index].key;
     final exposure = entries[index].value;
-    // The contiguous chain the same behavior owns.
-    final ownerId = exposure.ghostOwnerId;
+    // The contiguous chain the same edge owns — two edges' ghosts only
+    // touch when their sides differ (see `TimelineRunEdgeGhost`).
+    final owner = exposure.ghostOf;
     var chainEndExclusive = start + exposure.length!;
     var last = index;
     while (last + 1 < entries.length &&
         entries[last + 1].value.ghost &&
-        entries[last + 1].value.ghostOwnerId == ownerId &&
+        entries[last + 1].value.ghostOf == owner &&
         entries[last + 1].key == chainEndExclusive) {
       last += 1;
       chainEndExclusive = entries[last].key + entries[last].value.length!;
@@ -819,9 +817,8 @@ class _LayerCellsPass {
     for (var row = start; row < rowsEnd; row += 1) {
       covered[row] = true; // Ghost coverage suppresses the X run.
     }
-    final behavior = runBehaviorOwningGhostAt(layer, start);
-    if (behavior?.mode == TimelineRunEdgeMode.hold) {
-      if (behavior!.side == TimelineRunEdgeSide.start) {
+    if (owner?.mode == TimelineRunEdgeMode.hold) {
+      if (owner!.side == TimelineRunEdgeSide.start) {
         _writeFrontHold(
           start,
           exposure,
@@ -833,7 +830,7 @@ class _LayerCellsPass {
       } else if (singleCelDisplay) {
         _writeHoldWord(rowsEnd: rowsEnd);
       }
-    } else if (behavior?.side == TimelineRunEdgeSide.start) {
+    } else if (owner?.side == TimelineRunEdgeSide.start) {
       _writeFrontRepeatFrames(index, last);
     } else {
       _writeRepeatWord(start, exposure, rowsEnd: rowsEnd);

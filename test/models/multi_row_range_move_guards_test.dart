@@ -17,6 +17,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/multi_row_range_move.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 Layer _drawingLayer(String id, Map<int, (String, int)> blocks) {
   final frameIds = <String>{for (final block in blocks.values) block.$1};
   return Layer(
@@ -101,8 +103,7 @@ void main() {
             const TimelineExposure.drawing(
               FrameId('a0'),
               length: 1,
-              ghost: true,
-              ghostOwnerId: 'a0:end',
+              ghostOf: endHoldGhost,
             ),
           ),
         ),

@@ -21,6 +21,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 void main() {
   group('ProjectRepository', () {
     test('starts empty when no initial project is provided', () {
@@ -176,15 +178,14 @@ void main() {
           frames: [for (final cel in cels) _frame(id: cel.value)],
           timeline: {
             for (var i = 0; i < cels.length; i += 1)
-              i: TimelineExposure.drawing(cels[i], length: 1),
+              i: TimelineExposure.drawing(
+                cels[i],
+                length: 1,
+                endEdge: i == cels.length - 1
+                    ? TimelineRunEdgeMark(mode: mode)
+                    : TimelineRunEdgeMark.none,
+              ),
           },
-          runBehaviors: [
-            TimelineRunBehavior(
-              anchorFrameId: cels.last,
-              side: TimelineRunEdgeSide.end,
-              mode: mode,
-            ),
-          ],
         );
       }
 
@@ -956,8 +957,7 @@ void main() {
           1: TimelineExposure.drawing(
             frame.id,
             length: 1,
-            ghost: true,
-            ghostOwnerId: 'hold',
+            ghostOf: endHoldGhost,
           ),
         },
       );
@@ -1273,8 +1273,8 @@ void main() {
         expect(identical(stored.tracks[0].cuts[0], normalCut), isTrue);
         expect(identical(stored.tracks[0].cuts[1], imageCut), isFalse);
         expect(
-          stored.tracks[0].cuts[1].layers.single.runBehaviors,
-          hasLength(1),
+          stored.tracks[0].cuts[1].layers.single.timeline[0]!.endEdge,
+          holdMark,
         );
       });
     });

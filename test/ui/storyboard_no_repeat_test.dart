@@ -23,8 +23,12 @@ void main() {
       mode: TimelineRunEdgeMode.repeat,
     );
     expect(
-      s.layers.firstWhere((layer) => layer.id == animationId).runBehaviors,
-      isNotEmpty,
+      s.layers
+          .firstWhere((layer) => layer.id == animationId)
+          .timeline[0]!
+          .endEdge
+          .mode,
+      TimelineRunEdgeMode.repeat,
     );
 
     // The same call on a storyboard row changes nothing.
@@ -41,7 +45,12 @@ void main() {
     );
 
     final storyboard = s.layers.firstWhere((layer) => layer.id == storyboardId);
-    expect(storyboard.runBehaviors, isEmpty);
+    expect(
+      storyboard.timeline.values.every(
+        (entry) => entry.startEdge.isNone && entry.endEdge.isNone,
+      ),
+      isTrue,
+    );
     expect(storyboard.timeline.values.any((entry) => entry.ghost), isFalse);
   });
 }

@@ -21,7 +21,6 @@ import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/clipboard/layer_copy_payload.dart';
@@ -29,6 +28,8 @@ import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
+
+import '../helpers/run_edge_fixtures.dart';
 
 /// The four decisions the user made after R6 landed (2026-07-30):
 /// copy carries everything, the adjustment shares across 겸용컷, each
@@ -53,7 +54,11 @@ void main() {
             Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
           ],
           timeline: {
-            0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
+            0: const TimelineExposure.drawing(
+              FrameId('f1'),
+              length: 2,
+              endEdge: holdMark,
+            ),
           },
           blendMode: LayerBlendMode.multiply,
           mark: const LayerMark(process: LayerProcess.layout),
@@ -63,13 +68,6 @@ void main() {
             rotation: PropertyTrack<double>().withKey(0, 30),
           ),
           effects: [brightness(25)],
-          runBehaviors: const [
-            TimelineRunBehavior(
-              anchorFrameId: FrameId('f1'),
-              side: TimelineRunEdgeSide.end,
-              mode: TimelineRunEdgeMode.hold,
-            ),
-          ],
         );
         final payload = copyLayerToPayload(source);
         expect(payload.blendMode, LayerBlendMode.multiply);
@@ -78,27 +76,27 @@ void main() {
         expect(payload.isFillReference, isTrue);
         expect(payload.transformTrack.rotation.keyAt(0)!.value, 30);
         expect(payload.effects.single.parameterOf('brightness').value, 25);
-        expect(payload.runBehaviors, hasLength(1));
+        expect(payload.timeline[0]!.endEdge, holdMark);
       },
     );
 
-    test('the paste plan applies it, and REMAPS run-behaviour anchors', () {
+    test('the paste plan applies it, and the run edge mark rides the copied '
+        'block', () {
       final source = Layer(
         id: const LayerId('a'),
         name: 'A',
         frames: [
           Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
         ],
-        timeline: {0: const TimelineExposure.drawing(FrameId('f1'), length: 2)},
+        timeline: {
+          0: const TimelineExposure.drawing(
+            FrameId('f1'),
+            length: 2,
+            endEdge: holdMark,
+          ),
+        },
         blendMode: LayerBlendMode.screen,
         effects: [brightness(25)],
-        runBehaviors: const [
-          TimelineRunBehavior(
-            anchorFrameId: FrameId('f1'),
-            side: TimelineRunEdgeSide.end,
-            mode: TimelineRunEdgeMode.hold,
-          ),
-        ],
       );
       final cut = Cut(
         id: const CutId('cut'),
@@ -119,15 +117,13 @@ void main() {
       );
       expect(plan.layer.blendMode, LayerBlendMode.screen);
       expect(plan.layer.effects.single.parameterOf('brightness').value, 25);
+      expect(plan.layer.timeline[0]!.endEdge, holdMark);
       expect(
-        plan.layer.runBehaviors.single.anchorFrameId,
+        plan.layer.timeline[0]!.frameId,
         plan.layer.frames.single.id,
-        reason: 'the anchor names a block the COPY has',
+        reason: 'the marked block shows a cel the COPY has',
       );
-      expect(
-        plan.layer.runBehaviors.single.anchorFrameId,
-        isNot(const FrameId('f1')),
-      );
+      expect(plan.layer.timeline[0]!.frameId, isNot(const FrameId('f1')));
     });
   });
 

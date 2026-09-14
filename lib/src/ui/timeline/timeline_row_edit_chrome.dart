@@ -298,7 +298,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
           : 'start';
       targets.add(
         TimelineRowRunAddTarget(
-          id: 'run-add-$sideWord-${layer.id}-${cluster.anchorValue}',
+          id: 'run-add-$sideWord-${layer.id}-${cluster.runKey}',
           rect: addRect,
           side: cluster.side,
           blockStartIndex: cluster.blockStartIndex,
@@ -306,7 +306,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       );
       targets.add(
         TimelineRowRunTagTarget(
-          id: 'run-edge-tag-${layer.id}-${cluster.anchorValue}-$sideWord',
+          id: 'run-edge-tag-${layer.id}-${cluster.runKey}-$sideWord',
           rect: tagRect,
           side: cluster.side,
           blockStartIndex: cluster.blockStartIndex,

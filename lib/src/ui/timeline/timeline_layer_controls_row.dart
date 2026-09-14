@@ -53,7 +53,7 @@ const double timelineLayerRowLeadingBorder = 1;
 /// `timeline_rail_row_memo_test.dart` drives one mutation per field.
 ///
 /// Deliberately absent (the row renders none of them): `frames`, `timeline`,
-/// `instructions`, `audioClips`, `baseFrameLinks`, `runBehaviors`,
+/// `instructions`, `audioClips`, `baseFrameLinks`,
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
 /// `audioGain`/`audioPan` (the mixer reads them from the session while it
 /// is open), `attachedMode` and `folderId`.

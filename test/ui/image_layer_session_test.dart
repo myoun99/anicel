@@ -9,7 +9,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_repeat.dart'
-    show TimelineRunEdgeMode, TimelineRunEdgeSide;
+    show TimelineRunEdgeMode;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -45,9 +45,8 @@ void main() {
       covered += exposure.length!;
     }
     expect(covered, duration, reason: 'real + hold ghosts tile the cut');
-    expect(layer.runBehaviors, hasLength(1));
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
-    expect(layer.runBehaviors.single.side, TimelineRunEdgeSide.end);
+    expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
+    expect(layer.timeline[0]!.startEdge.isNone, isTrue);
     expect(
       layer.frames.single.name,
       isNull,

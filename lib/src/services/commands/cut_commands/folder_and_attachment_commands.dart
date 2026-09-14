@@ -205,7 +205,6 @@ class _FolderAndAttachmentCommands {
               mode: row.attachedMode,
               timeline: row.timeline,
               baseFrameLinks: row.baseFrameLinks,
-              runBehaviors: row.runBehaviors,
             ),
             description: description,
           ),

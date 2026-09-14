@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/run_edge_fixtures.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -192,8 +193,7 @@ void main() {
           1: TimelineExposure.drawing(
             cel,
             length: 1,
-            ghost: true,
-            ghostOwnerId: 'hold',
+            ghostOf: endHoldGhost,
           ),
         },
       );

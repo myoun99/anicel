@@ -12,7 +12,7 @@
 /// from carrying duplicate rasters.
 ///
 /// **Edge behaviours become live run behaviours, not baked frames.**
-/// TVPaint's pre/post behaviour and Anicel's [TimelineRunBehavior] are
+/// TVPaint's pre/post behaviour and Anicel's [TimelineRunEdgeMark] are
 /// the same idea — the doc on [TimelineRunEdgeMode] says so outright
 /// ("TVP-style N/H/R") — so a held BOOK layer arrives as one cel plus a
 /// hold edge that refills itself when the cut length changes, not as 150
@@ -164,12 +164,11 @@ TvpImportPlan planTvpImport({
           id: layerId,
           name: source.name,
           frames: frames,
-          timeline: timeline,
+          timeline: _withTvpEdgeMarks(source, timeline),
           isVisible: source.visible,
           opacity: source.opacity,
           blendMode: _blendModeFor(source, warnings),
           kind: LayerKind.animation,
-          runBehaviors: _runBehaviorsFor(source, timeline),
         ),
         cutFrameCount: duration,
       ),
@@ -274,19 +273,18 @@ String? _celNameFor({
 /// end and has no free space to fill: Anicel rederives the ghosts on
 /// every duration change, so keeping it is what makes a held BOOK layer
 /// still hold after the cut is lengthened.
-/// The anchors come from the TIMELINE, not from the mint order: a layer
-/// whose last block re-shows an earlier drawing (a repeat, or a linked
-/// image) ends on a cel that was minted first, so `frames.last` would
-/// name the wrong end of the run.
-List<TimelineRunBehavior> _runBehaviorsFor(
+/// The marks go on the TIMELINE's first and last BLOCKS, not on the mint
+/// order: a layer whose last block re-shows an earlier drawing (a repeat, or
+/// a linked image) ends on a cel that was minted first, so `frames.last`
+/// would name the wrong end of the run. (F-134: and a block is the one
+/// address that cannot also mean an earlier block showing the same drawing.)
+SplayTreeMap<int, TimelineExposure> _withTvpEdgeMarks(
   TvpLayer source,
   SplayTreeMap<int, TimelineExposure> timeline,
 ) {
   if (timeline.isEmpty) {
-    return const [];
+    return timeline;
   }
-  final firstCel = timeline[timeline.firstKey()]!.frameId!;
-  final lastCel = timeline[timeline.lastKey()]!.frameId!;
   TimelineRunEdgeMode? modeFor(TvpEdgeBehavior behavior) => switch (behavior) {
     TvpEdgeBehavior.none => null,
     TvpEdgeBehavior.hold => TimelineRunEdgeMode.hold,
@@ -295,28 +293,22 @@ List<TimelineRunBehavior> _runBehaviorsFor(
       TimelineRunEdgeMode.repeat,
   };
 
-  final behaviors = <TimelineRunBehavior>[];
+  final marked = SplayTreeMap<int, TimelineExposure>.of(timeline);
   final pre = modeFor(source.preBehavior);
   if (pre != null) {
-    behaviors.add(
-      TimelineRunBehavior(
-        anchorFrameId: firstCel,
-        side: TimelineRunEdgeSide.start,
-        mode: pre,
-      ),
+    final first = marked.firstKey()!;
+    marked[first] = marked[first]!.copyWith(
+      startEdge: TimelineRunEdgeMark(mode: pre),
     );
   }
   final post = modeFor(source.postBehavior);
   if (post != null) {
-    behaviors.add(
-      TimelineRunBehavior(
-        anchorFrameId: lastCel,
-        side: TimelineRunEdgeSide.end,
-        mode: post,
-      ),
+    final last = marked.lastKey()!;
+    marked[last] = marked[last]!.copyWith(
+      endEdge: TimelineRunEdgeMark(mode: post),
     );
   }
-  return behaviors;
+  return marked;
 }
 
 /// Deviations a straight line may have before the simplifier keeps the

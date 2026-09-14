@@ -19,6 +19,16 @@ void main() {
   Layer layerOf(EditorSessionManager s, LayerId id) =>
       s.layers.firstWhere((layer) => layer.id == id);
 
+  /// The END-side property of the run starting at [start].
+  TimelineRunEdgeProperty? endOf(Layer layer, [int start = 0]) =>
+      runEdgeBehaviorAt(layer, start, TimelineRunEdgeSide.end);
+
+  /// Every property the row's blocks carry, one per (block, side).
+  List<TimelineRunEdgeMode> carriedModes(Layer layer) => [
+    for (final entry in layer.timeline.values)
+      for (final side in TimelineRunEdgeSide.values) ?entry.edgeMark(side).mode,
+  ];
+
   test('end HOLD fills ghosts to the cut end as ONE undo step', () {
     final (s, layerId) = sessionWithBlock();
     final cutEnd = s.requireActiveCut.duration;
@@ -31,18 +41,18 @@ void main() {
     );
 
     var layer = layerOf(s, layerId);
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+    expect(endOf(layer)?.mode, TimelineRunEdgeMode.hold);
     expect(layer.timeline[1]!.ghost, isTrue);
     expect(layer.timeline[1]!.length, cutEnd - 1);
 
     s.undo();
     layer = layerOf(s, layerId);
-    expect(layer.runBehaviors, isEmpty);
+    expect(endOf(layer), isNull);
     expect(layer.timeline.values.any((entry) => entry.ghost), isFalse);
 
     s.redo();
     layer = layerOf(s, layerId);
-    expect(layer.runBehaviors, hasLength(1));
+    expect(endOf(layer)?.mode, TimelineRunEdgeMode.hold);
     expect(layer.timeline[1]!.ghost, isTrue);
   });
 
@@ -64,7 +74,38 @@ void main() {
     );
 
     final layer = layerOf(s, layerId);
-    expect(layer.runBehaviors, isEmpty);
+    expect(endOf(layer), isNull);
+    expect(carriedModes(layer), isEmpty, reason: 'None leaves no mark behind');
+    expect(layer.timeline.values.any((entry) => entry.ghost), isFalse);
+  });
+
+  test('None clears a carrier that is no longer its run\'s edge block — a '
+      'property set before the run grew', () {
+    final (s, layerId) = sessionWithBlock(); // block at 0
+    s.rangeMove.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 0,
+      side: TimelineRunEdgeSide.end,
+      mode: TimelineRunEdgeMode.hold,
+    );
+    s.selectFrameIndex(1);
+    s.createDrawingAtCurrentFrame(); // glued on past the carrier
+    expect(
+      layerOf(s, layerId).timeline[0]!.endEdge.mode,
+      TimelineRunEdgeMode.hold,
+      reason: 'LIVENESS — the carrier sits inside the run now',
+    );
+    expect(endOf(layerOf(s, layerId))?.mode, TimelineRunEdgeMode.hold);
+
+    s.rangeMove.setRunEdgeBehavior(
+      layerId: layerId,
+      blockStartIndex: 1,
+      side: TimelineRunEdgeSide.end,
+      mode: null,
+    );
+
+    final layer = layerOf(s, layerId);
+    expect(carriedModes(layer), isEmpty, reason: 'every block gives it up');
     expect(layer.timeline.values.any((entry) => entry.ghost), isFalse);
   });
 
@@ -90,8 +131,9 @@ void main() {
     );
 
     final layer = layerOf(s, layerId);
+    expect(endOf(layer)?.mode, TimelineRunEdgeMode.repeat);
     expect(
-      layer.runBehaviors.single.patternAnchorFrameId,
+      endOf(layer)!.patternBlockStart,
       isNull,
       reason: 'the whole run cycles — the selection is deliberately ignored',
     );
@@ -163,7 +205,6 @@ void main() {
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame();
     final blocks = layerOf(s, layerId).timeline;
-    final secondFrameId = blocks[1]!.frameId;
 
     // Select the LAST TWO blocks [1,3) — the pattern for the end repeat.
     s.updateFrameRangeSelectionDrag(
@@ -180,9 +221,9 @@ void main() {
 
     final layer = layerOf(s, layerId);
     expect(
-      layer.runBehaviors.single.patternAnchorFrameId,
-      secondFrameId,
-      reason: 'the selection start block anchors the pattern',
+      endOf(layer)?.patternBlockStart,
+      1,
+      reason: 'the selection start block bounds the pattern',
     );
     // Ghosts cycle the two selected frames, not all three.
     expect(layer.timeline[3]!.frameId, blocks[1]!.frameId);
@@ -197,7 +238,6 @@ void main() {
     s.createDrawingAtCurrentFrame(); // block 2 at 1
     s.selectFrameIndex(2);
     s.createDrawingAtCurrentFrame(); // block 3 at 2 — run {0,1,2}
-    final lastBlockFrameId = layerOf(s, layerId).timeline[2]!.frameId;
 
     s.rangeMove.setRunEdgeBehavior(
       layerId: layerId,
@@ -206,10 +246,11 @@ void main() {
       mode: TimelineRunEdgeMode.repeat,
     );
     expect(
-      layerOf(s, layerId).runBehaviors.single.anchorFrameId,
-      lastBlockFrameId,
-      reason: 'the end edge anchors to the LAST block, not the run start',
+      layerOf(s, layerId).timeline[2]!.endEdge.mode,
+      TimelineRunEdgeMode.repeat,
+      reason: 'the end edge sits on the LAST block, not the run start',
     );
+    expect(layerOf(s, layerId).timeline[0]!.endEdge.isNone, isTrue);
 
     // Move blocks {1,2} away (range move): the repeat follows THEM.
     s.updateFrameRangeSelectionDrag(
@@ -244,8 +285,8 @@ void main() {
     );
 
     final layer = layerOf(s, layerId);
-    expect(layer.runBehaviors, hasLength(1));
-    expect(layer.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+    expect(carriedModes(layer), [TimelineRunEdgeMode.hold]);
+    expect(endOf(layer)?.mode, TimelineRunEdgeMode.hold);
   });
 
   test('start-side hold back-fills to frame 0', () {
@@ -321,7 +362,7 @@ void main() {
       }
     }
     expect(
-      layerOf(s, layerId).runBehaviors,
+      carriedModes(layerOf(s, layerId)),
       hasLength(4),
       reason: 'engagement first: two runs, both edges each',
     );
@@ -333,7 +374,7 @@ void main() {
       side: TimelineRunEdgeSide.end,
       mode: TimelineRunEdgeMode.repeat,
     );
-    final after = layerOf(s, layerId).runBehaviors;
+    final after = carriedModes(layerOf(s, layerId));
     expect(
       after,
       hasLength(4),
@@ -343,12 +384,12 @@ void main() {
           'RUN takes out the other run',
     );
     expect(
-      after.where((b) => b.mode == TimelineRunEdgeMode.repeat),
+      after.where((mode) => mode == TimelineRunEdgeMode.repeat),
       hasLength(1),
       reason: 'exactly the one that was re-set',
     );
     expect(
-      after.where((b) => b.mode == TimelineRunEdgeMode.hold),
+      after.where((mode) => mode == TimelineRunEdgeMode.hold),
       hasLength(3),
     );
   });
@@ -364,7 +405,6 @@ void main() {
     s.selectFrameIndex(5);
     s.createDrawingAtCurrentFrame(); // block at 5 — run {3,4,5}
     final blocks = layerOf(s, layerId).timeline;
-    final secondFrameId = blocks[4]!.frameId;
 
     // Select [3,5): covers the run's FIRST block and ends inside the run.
     s.updateFrameRangeSelectionDrag(
@@ -389,8 +429,12 @@ void main() {
 
     final layer = layerOf(s, layerId);
     expect(
-      layer.runBehaviors.single.patternAnchorFrameId,
-      secondFrameId,
+      runEdgeBehaviorAt(
+        layer,
+        3,
+        TimelineRunEdgeSide.start,
+      )?.patternBlockStart,
+      4,
       reason: 'the pattern ends at the last block inside the selection',
     );
     // Ghosts back-fill by cycling the two selected frames, not all three.
