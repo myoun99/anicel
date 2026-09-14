@@ -54,6 +54,7 @@ class DrawingBlockMoveDragVerbs {
       layerById: _project.layerById,
       isEligibleRow: _internals.blockMoveEligible,
       noticeIneligible: _folders.noticeSyncedAttachRefusal,
+      bankOf: _controllers.timelineController.bankLanesOf,
       cutFrameCount: () => _project.activeCutFrameCount,
       preview: _internals.dragPreview,
       land: _landDrawingBlockMove,

@@ -1126,6 +1126,7 @@ class FrameRangeMoveDrag {
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
         rowDelta: rowDelta,
+        bankOf: _controllers.timelineController.bankLanesOf,
       );
       if (plan == null) {
         // An illegal rigid landing HOLDS the last valid preview (R23 #10).
@@ -1431,6 +1432,7 @@ class FrameRangeMoveDrag {
             rangeStartIndex: selection.startIndex,
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
+            sourceBank: _controllers.timelineController.bankLanesOf(source.id),
             cutFrameCount: _project.activeCutFrameCount,
           );
     if (plan == null) {
@@ -1570,6 +1572,9 @@ class FrameRangeMoveDrag {
         rangeStartIndex: selection.startIndex + source.offset,
         rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
         frameDelta: frameDelta,
+        sourceBank: _controllers.timelineController.bankLanesOf(
+          source.commit.id,
+        ),
         cutFrameCount: _project.activeCutFrameCount,
       );
       if (plan == null) {

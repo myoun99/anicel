@@ -6,6 +6,7 @@ library;
 
 import 'camera_instruction.dart';
 import 'camera_pose.dart';
+import 'cel_bank_lanes.dart';
 import 'drawing_block_move.dart';
 import 'key_range_shift.dart';
 import 'layer.dart';
@@ -163,6 +164,9 @@ const String unionMixedKeyName = '...';
     rangeStartIndex: rangeStartIndex,
     rangeEndIndexExclusive: rangeEndIndexExclusive,
     frameDelta: frameDelta,
+    // An SE row is TRACK-owned, and a track-owned row is never linked
+    // (`UpdateLayerTimelineCommand`), so no other lane shares its bank.
+    sourceBank: CelBankLanes.unshared,
   );
   final targetAfter = plan?.targetAfter;
   if (plan == null || targetAfter == null) {

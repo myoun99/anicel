@@ -1,4 +1,5 @@
 import '../models/attached_layer_resolve.dart';
+import '../models/cel_bank_lanes.dart';
 import '../models/cut.dart';
 import '../models/track_id.dart';
 import '../models/cut_id.dart';
@@ -144,6 +145,29 @@ CutId? cutIdOfLayer(Project project, LayerId layerId) {
     }
   }
   return null;
+}
+
+/// The lanes of every OTHER use of ([cutId], [layerId])'s cel bank — its
+/// 겸용 siblings in other cuts and its link-duplicated twins in its own —
+/// or [CelBankLanes.unshared] when the row is not linked (F-136).
+CelBankLanes celBankLanesOf(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) {
+  final group = project.linkRegistry.groupOf(cutId: cutId, layerId: layerId);
+  if (group == null) {
+    return CelBankLanes.unshared;
+  }
+  return CelBankLanes([
+    for (final member in group.members)
+      if (member.cutId != cutId || member.layerId != layerId)
+        requireLayer(
+          project,
+          cutId: member.cutId,
+          layerId: member.layerId,
+        ).timeline,
+  ]);
 }
 
 /// Returns the layer matching [layerId] anywhere in [project] — cut layers

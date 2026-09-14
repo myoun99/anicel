@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -39,6 +40,7 @@ void main() {
     required int blockStartIndex,
     required int frameDelta,
     int? cutFrameCount,
+    CelBankLanes sourceBank = CelBankLanes.unshared,
   }) => planDrawingRangeMove(
     source: source,
     target: target,
@@ -46,6 +48,7 @@ void main() {
     rangeEndIndexExclusive:
         blockStartIndex + source.timeline[blockStartIndex]!.length!,
     frameDelta: frameDelta,
+    sourceBank: sourceBank,
     cutFrameCount: cutFrameCount,
   );
 
@@ -122,6 +125,7 @@ void main() {
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 4,
           frameDelta: 3,
+          sourceBank: CelBankLanes.unshared,
         ),
         isNull,
         reason: 'a ghost is derived, not a block to move',
@@ -133,6 +137,7 @@ void main() {
           rangeStartIndex: 6,
           rangeEndIndexExclusive: 8,
           frameDelta: 3,
+          sourceBank: CelBankLanes.unshared,
         ),
         isNull,
         reason: 'empty cells are not a block to move',
@@ -518,6 +523,49 @@ void main() {
         ),
         isNull,
         reason: 'moving the cel would break the link at frame 5',
+      );
+    });
+
+    test('F-136: a cel ANOTHER lane of the source\'s bank shows — a 겸용 '
+        'cut\'s row — is linked from outside too', () {
+      final source = layerWith(
+        'a',
+        {0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2)},
+        frameIds: ['a-f1'],
+      );
+      final target = layerWith('b', const {});
+      DrawingBlockMovePlan? moveBeside(TimelineExposure otherLaneBlock) =>
+          planBlock(
+            source: source,
+            target: target,
+            blockStartIndex: 0,
+            frameDelta: 0,
+            sourceBank: CelBankLanes([
+              {4: otherLaneBlock},
+            ]),
+          );
+
+      expect(
+        moveBeside(const TimelineExposure.drawing(FrameId('a-f1'), length: 1)),
+        isNull,
+        reason: 'moving the cel would take it from the other cut\'s row',
+      );
+      expect(
+        moveBeside(const TimelineExposure.drawing(FrameId('a-f9'), length: 1)),
+        isNotNull,
+        reason: 'a different cel on the other lane is no link',
+      );
+      expect(
+        moveBeside(
+          const TimelineExposure.drawing(
+            FrameId('a-f1'),
+            length: 1,
+            ghost: true,
+            ghostOwnerId: 'a-f1:end',
+          ),
+        ),
+        isNotNull,
+        reason: 'a ghost on the other lane is derived, never a link',
       );
     });
   });

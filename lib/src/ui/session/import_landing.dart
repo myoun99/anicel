@@ -7,6 +7,7 @@
 // slip behind a decode.
 
 import '../../models/canvas_size.dart';
+import '../../models/cel_bank_lanes.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/drawing_block_move.dart' show planDrawingRangeMove;
@@ -352,6 +353,8 @@ class ImportLanding {
       rangeStartIndex: blocks.first.startIndex,
       rangeEndIndexExclusive: blocks.last.endIndexExclusive,
       frameDelta: spot.frameIndex - blocks.first.startIndex,
+      // The planned row is this import's own; no lane shows its cels yet.
+      sourceBank: CelBankLanes.unshared,
       cutFrameCount: cutFrameCount,
     )?.targetAfter;
     if (landed == null) {

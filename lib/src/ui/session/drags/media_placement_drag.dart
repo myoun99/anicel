@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../models/cel_bank_lanes.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/frame.dart';
 import '../../../models/frame_id.dart';
@@ -104,6 +105,8 @@ class MediaPlacementDrag {
       // The cells are BUILT where they would land, so the plan moves them
       // nowhere — the same shape `_landIntoRow` hands it after the window.
       frameDelta: 0,
+      // Built cells are in no bank yet, so no other lane can show them.
+      sourceBank: CelBankLanes.unshared,
       cutFrameCount: _cutFrameCount(),
     )?.targetAfter;
     if (after == null) {

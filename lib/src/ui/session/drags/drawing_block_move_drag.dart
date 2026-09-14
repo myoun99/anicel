@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../models/cel_bank_lanes.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
@@ -34,6 +35,7 @@ class DrawingBlockMoveDrag {
     required int blockEndExclusive,
     required Layer? Function(LayerId layerId) layerById,
     required bool Function(LayerId layerId) isEligibleRow,
+    required CelBankLanes sourceBank,
     required int Function() cutFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(DrawingBlockMovePlan plan, Layer source) land,
@@ -42,6 +44,7 @@ class DrawingBlockMoveDrag {
        _blockEndExclusive = blockEndExclusive,
        _layerById = layerById,
        _isEligibleRow = isEligibleRow,
+       _sourceBank = sourceBank,
        _cutFrameCount = cutFrameCount,
        _preview = preview,
        _land = land;
@@ -59,6 +62,10 @@ class DrawingBlockMoveDrag {
 
   final Layer? Function(LayerId layerId) _layerById;
   final bool Function(LayerId layerId) _isEligibleRow;
+
+  /// The source row's OTHER lanes, captured with the before-state (F-136):
+  /// a cross-row landing may not carry off a cel one of them still shows.
+  final CelBankLanes _sourceBank;
 
   /// ⚠️A closure, not a captured int: the cut's length is what run
   /// behaviours are rederived against, and a drag outlives the frame it
@@ -90,6 +97,7 @@ class DrawingBlockMoveDrag {
     required Layer? Function(LayerId layerId) layerById,
     required bool Function(LayerId layerId) isEligibleRow,
     required void Function(LayerId layerId) noticeIneligible,
+    required CelBankLanes Function(LayerId layerId) bankOf,
     required int Function() cutFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(DrawingBlockMovePlan plan, Layer source) land,
@@ -109,6 +117,7 @@ class DrawingBlockMoveDrag {
       blockEndExclusive: blockStartIndex + entry.length!,
       layerById: layerById,
       isEligibleRow: isEligibleRow,
+      sourceBank: bankOf(layerId),
       cutFrameCount: cutFrameCount,
       preview: preview,
       land: land,
@@ -132,6 +141,7 @@ class DrawingBlockMoveDrag {
             rangeStartIndex: _blockStart,
             rangeEndIndexExclusive: _blockEndExclusive,
             frameDelta: frameDelta,
+            sourceBank: _sourceBank,
             cutFrameCount: frames,
           );
     _plan = plan;

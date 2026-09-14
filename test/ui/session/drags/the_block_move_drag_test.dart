@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -56,6 +57,7 @@ void main() {
         layerById: (id) => id == from.id ? from : (id == to.id ? to : null),
         isEligibleRow: (id) => !ineligible.contains(id.value),
         noticeIneligible: notices.add,
+        bankOf: (_) => CelBankLanes.unshared,
         cutFrameCount: () => 12,
         preview: preview,
         land: (plan, source) => landings.add((plan: plan, source: source)),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -42,6 +43,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 0,
       rowDelta: 1,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNotNull);
     // A empties; B receives A's cel; C receives B's cel.
@@ -77,6 +79,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 3,
       rowDelta: 1,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNotNull);
     expect(blockStarts(plan!.layersAfter[const LayerId('b')]!), [3]);
@@ -94,6 +97,7 @@ void main() {
       rangeEndIndexExclusive: 2,
       frameDelta: 0,
       rowDelta: 1,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });
@@ -108,6 +112,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 0,
       rowDelta: 1, // b -> off the bottom
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });
@@ -123,6 +128,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 0,
       rowDelta: 1, // b would map off the bottom — but it carries nothing
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNotNull);
     expect(plan!.layersAfter[const LayerId('a')]!.timeline.keys, isEmpty);
@@ -144,6 +150,7 @@ void main() {
       rangeEndIndexExclusive: 3,
       frameDelta: -5,
       rowDelta: 1,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });
@@ -160,6 +167,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 0,
       rowDelta: 1,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });
@@ -173,6 +181,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 2,
       rowDelta: 0,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });

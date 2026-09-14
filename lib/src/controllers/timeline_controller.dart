@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import '../models/audio_clip.dart';
 import '../models/block_run_lead_edge.dart';
 import '../models/block_run_move.dart';
+import '../models/cel_bank_lanes.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/frame.dart';
@@ -24,6 +25,7 @@ import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_kind_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
+import '../services/project_lookup.dart' show celBankLanesOf;
 import '../services/project_repository.dart';
 
 part 'timeline/timeline_marks.dart';
@@ -638,7 +640,7 @@ class TimelineController {
     }
 
     var nextFrames = before.frames;
-    if (!_timelineReferencesFrame(nextTimeline, sourceFrameId)) {
+    if (!bankLanesOf(layerId).exposes(sourceFrameId, lane: nextTimeline)) {
       nextFrames = before.frames
           .where((frame) => frame.id != sourceFrameId)
           .toList(growable: false);
@@ -722,38 +724,20 @@ class TimelineController {
 
   // --- Shared internals -------------------------------------------------------
 
-  /// Whether an AUTHORED exposure still points at [frameId] — the question
-  /// every cel-lifetime decision in this file is really asking.
+  /// The OTHER lanes [layerId]'s cel bank is exposed through — what every
+  /// cel-lifetime decision here asks beside the edited lane, and what a drag
+  /// that carries cels off the row asks too (F-136, see [CelBankLanes]).
+  /// With no cut, or for a track-owned row, the bank is nobody else's.
   ///
-  /// 🚨⛔`!ghost`, and the filter is the whole fix for a measured defect.
-  /// A ghost is DERIVED: a repeat run recomputes its instances from the
-  /// authored exposure that owns them. Counting one as a reference means
-  /// "keep this cel because something that only exists while the cel's own
-  /// block exists is pointing at it" — circular, and it comes apart the
-  /// moment the block goes. Put an end-hold on an animation row and delete
-  /// the cel and you got `frames=1 / timeline={}`: the ghosts kept the cel
-  /// alive through the delete, then re-derived themselves out of existence
-  /// and left it orphaned.
-  ///
-  /// ⚠️Measured before changing it, because the note that filed this said
-  /// "셀뱅크·undo 파급이라 별도 라운드": there is none. [BrushFrameStore]
-  /// has no removal API at all (it is append-only), so what leaves
-  /// `layer.frames` frees nothing there either way; and all three callers
-  /// build an `after` layer for a command whose undo restores `before`
-  /// wholesale, so the shape of an undo step does not change. The blast
-  /// radius is `layer.frames` and nothing else.
-  ///
-  /// ⛔And no caller wants the other answer. Deletion, splice and relink
-  /// each ask "is this cel still spoken for by something a person wrote";
-  /// a ghost is never that.
-  bool _timelineReferencesFrame(
-    Map<int, TimelineExposure> timeline,
-    FrameId frameId,
-  ) {
-    return timeline.values.any(
-      (exposure) =>
-          exposure.isDrawing && !exposure.ghost && exposure.frameId == frameId,
-    );
+  /// The decision comment on what counts as exposing a cel (never a ghost)
+  /// moved with the predicate to [laneExposesFrame].
+  CelBankLanes bankLanesOf(LayerId layerId) {
+    final project = _repository.currentProject;
+    final cutId = _cutId;
+    if (project == null || cutId == null) {
+      return CelBankLanes.unshared;
+    }
+    return celBankLanesOf(project, cutId: cutId, layerId: layerId);
   }
 
   Frame _requireFrameInLayer({required Layer layer, required FrameId frameId}) {

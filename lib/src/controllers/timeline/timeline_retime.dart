@@ -148,10 +148,14 @@ class _TimelineRetime {
       // cel no exposure points at (drawn, then its block deleted), and
       // "unreferenced after" alone would take those out with it — a splice
       // three rows away silently emptying the bank.
+      //
+      // 🚨F-136: "points at" is asked of EVERY lane of the bank — a 겸용
+      // cut's row still showing the cel keeps it in the bank.
+      final bank = _controller.bankLanesOf(run.layerId);
       final nextFrames = [
         for (final frame in [...before.frames, ...run.bornFrames])
-          if (_controller._timelineReferencesFrame(nextTimeline, frame.id) ||
-              !_controller._timelineReferencesFrame(before.timeline, frame.id))
+          if (bank.exposes(frame.id, lane: nextTimeline) ||
+              !laneExposesFrame(before.timeline, frame.id))
             frame,
       ];
       final after = before.copyWith(

@@ -70,11 +70,11 @@ class _TimelineDelete {
       return null;
     }
     var nextFrames = before.frames;
+    // F-136: a cel another lane of the bank still exposes is not this row's
+    // to take — the same answer the second 「1」 on this row gets.
+    final bank = _controller.bankLanesOf(before.id);
     final unreferenced = removedFrameIds
-        .where(
-          (frameId) =>
-              !_controller._timelineReferencesFrame(nextTimeline, frameId),
-        )
+        .where((frameId) => !bank.exposes(frameId, lane: nextTimeline))
         .toSet();
     if (unreferenced.isNotEmpty) {
       nextFrames = before.frames

@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'cel_bank_lanes.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -41,6 +42,9 @@ class MultiRowRangeMovePlan {
 /// a moved cel is linked from outside the moved set, the range is not
 /// block-snapped on some row, or an incoming block would overlap a block
 /// that STAYS on the target row.
+///
+/// [bankOf] answers a source row's OTHER lanes — outside the moved set too
+/// (F-136, see [CelBankLanes]).
 MultiRowRangeMovePlan? planMultiRowRangeMove({
   required List<Layer> orderedLayers,
   required List<LayerId> sourceLayerIds,
@@ -48,6 +52,7 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
   required int rangeEndIndexExclusive,
   required int frameDelta,
   required int rowDelta,
+  required CelBankLanes Function(LayerId layerId) bankOf,
 }) {
   if (rowDelta == 0 || rangeEndIndexExclusive <= rangeStartIndex) {
     return null;
@@ -58,6 +63,7 @@ MultiRowRangeMovePlan? planMultiRowRangeMove({
     rangeEndIndexExclusive: rangeEndIndexExclusive,
     frameDelta: frameDelta,
     rowDelta: rowDelta,
+    bankOf: bankOf,
   );
   if (!planner.gather(sourceLayerIds)) {
     return null;
@@ -80,6 +86,7 @@ class _MultiRowRangeMovePlanner {
     required this.rangeEndIndexExclusive,
     required this.frameDelta,
     required this.rowDelta,
+    required this.bankOf,
   }) : indexById = <LayerId, int>{
          for (var i = 0; i < orderedLayers.length; i += 1)
            orderedLayers[i].id: i,
@@ -90,6 +97,7 @@ class _MultiRowRangeMovePlanner {
   final int rangeEndIndexExclusive;
   final int frameDelta;
   final int rowDelta;
+  final CelBankLanes Function(LayerId layerId) bankOf;
   final Map<LayerId, int> indexById;
 
   /// Gathered per source row: its selected blocks + travelling cels.
@@ -138,7 +146,7 @@ class _MultiRowRangeMovePlanner {
     }
     sourceIndexes.add(sourceIndex);
     final frameIds = <FrameId>{for (final block in selected) block.frameId};
-    if (_linkedFromOutside(base, selected, frameIds)) {
+    if (_linkedFromOutside(base, selected, frameIds, bankOf(sourceId))) {
       return false;
     }
     final frames = _framesOf(source, frameIds);
@@ -174,20 +182,20 @@ class _MultiRowRangeMovePlanner {
 
   /// A cel referenced from OUTSIDE the moved set stays put (link intact) —
   /// the whole move is rejected rather than splitting the link.
+  ///
+  /// 🚨F-136: outside is every lane of the row's [bank] — its own lane
+  /// without the selected blocks, and each 겸용 sibling's.
   bool _linkedFromOutside(
     SplayTreeMap<int, TimelineExposure> base,
     List<TimelineDrawingBlock> selected,
     Set<FrameId> frameIds,
+    CelBankLanes bank,
   ) {
-    for (final entry in base.entries) {
-      if (selected.any((block) => block.startIndex == entry.key)) {
-        continue;
-      }
-      if (entry.value.isDrawing && frameIds.contains(entry.value.frameId)) {
-        return true;
-      }
-    }
-    return false;
+    final rest = SplayTreeMap<int, TimelineExposure>.of(base)
+      ..removeWhere(
+        (start, _) => selected.any((block) => block.startIndex == start),
+      );
+    return frameIds.any((frameId) => bank.exposes(frameId, lane: rest));
   }
 
   /// The source's frames for [frameIds]; null when one is missing.

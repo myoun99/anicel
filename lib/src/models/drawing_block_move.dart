@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'block_run_move.dart';
+import 'cel_bank_lanes.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -71,7 +72,9 @@ class DrawingBlockMovePlan {
 /// - cross-layer moves take the moved cels along, so a cel that an entry
 ///   OUTSIDE the moved set still references (linked cels) stays put — the
 ///   move is rejected rather than splitting the link; entries linked WITHIN
-///   the range travel together sharing their cel.
+///   the range travel together sharing their cel. OUTSIDE is every lane of
+///   [sourceBank] too (F-136): a 겸용 cut's row showing the cel keeps it
+///   exactly the way a second block on this row does.
 ///
 /// GHOST entries (derived repeat instances) never move and never obstruct:
 /// both timelines are planned ghost-free and the caller re-derives repeats
@@ -82,6 +85,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
+  required CelBankLanes sourceBank,
   int? cutFrameCount,
 }) {
   if (rangeEndIndexExclusive <= rangeStartIndex) {
@@ -146,15 +150,18 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   final movedFrames = <Frame>[];
   final movedFrameIds = <FrameId>[];
   final frameIds = <FrameId>{for (final block in moved) block.frameId};
+  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase);
+  for (final start in movedStarts) {
+    sourceTimeline.remove(start);
+  }
   // Read the ghost-FREE base: derived repeat/hold ghosts share the moved
   // block's frameId but are not real links — counting them here voided
   // every cross-row move of a repeat/hold-edge block (UI-R23 #5).
-  for (final candidate in sourceBase.entries) {
-    if (movedStarts.contains(candidate.key)) {
-      continue;
-    }
-    final entry = candidate.value;
-    if (entry.isDrawing && frameIds.contains(entry.frameId)) {
+  //
+  // 🚨F-136: and read EVERY lane of the source's bank — this row's own
+  // without the moved blocks, and each 겸용 sibling's.
+  for (final frameId in frameIds) {
+    if (sourceBank.exposes(frameId, lane: sourceTimeline)) {
       return null;
     }
   }
@@ -192,10 +199,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   }
 
   final movedFrameIdSet = {for (final id in movedFrameIds) id};
-  final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase);
-  for (final start in movedStarts) {
-    sourceTimeline.remove(start);
-  }
   return DrawingBlockMovePlan(
     sourceAfter: source.copyWith(
       timeline: sourceTimeline,

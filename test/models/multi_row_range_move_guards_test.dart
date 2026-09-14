@@ -9,6 +9,7 @@
 // one cel outside the range each way.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -35,13 +36,17 @@ Layer _drawingLayer(String id, Map<int, (String, int)> blocks) {
   );
 }
 
-MultiRowRangeMovePlan? _moveRowDown(Layer a) => planMultiRowRangeMove(
+MultiRowRangeMovePlan? _moveRowDown(
+  Layer a, {
+  CelBankLanes bank = CelBankLanes.unshared,
+}) => planMultiRowRangeMove(
   orderedLayers: [a, _drawingLayer('b', {})],
   sourceLayerIds: const [LayerId('a')],
   rangeStartIndex: 0,
   rangeEndIndexExclusive: 1,
   frameDelta: 0,
   rowDelta: 1,
+  bankOf: (_) => bank,
 );
 
 void main() {
@@ -53,6 +58,57 @@ void main() {
   test('the same cel exposed again outside the range blocks the move', () {
     final a = _drawingLayer('a', {0: ('a0', 1), 5: ('a0', 1)});
     expect(_moveRowDown(a), isNull);
+  });
+
+  // F-136: a 겸용 cut's row shares the bank, so its lane is outside too.
+  group('ANOTHER lane of the row\'s bank', () {
+    CelBankLanes otherLane(TimelineExposure exposure) => CelBankLanes([
+      {3: exposure},
+    ]);
+
+    test('showing the same cel blocks the move', () {
+      final a = _drawingLayer('a', {0: ('a0', 1)});
+      expect(
+        _moveRowDown(
+          a,
+          bank: otherLane(
+            const TimelineExposure.drawing(FrameId('a0'), length: 1),
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('showing a different cel does not', () {
+      final a = _drawingLayer('a', {0: ('a0', 1)});
+      expect(
+        _moveRowDown(
+          a,
+          bank: otherLane(
+            const TimelineExposure.drawing(FrameId('elsewhere'), length: 1),
+          ),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('a GHOST of the same cel there does not — derived, never a link', () {
+      final a = _drawingLayer('a', {0: ('a0', 1)});
+      expect(
+        _moveRowDown(
+          a,
+          bank: otherLane(
+            const TimelineExposure.drawing(
+              FrameId('a0'),
+              length: 1,
+              ghost: true,
+              ghostOwnerId: 'a0:end',
+            ),
+          ),
+        ),
+        isNotNull,
+      );
+    });
   });
 
   test('a block pointing at a cel the layer does not hold blocks the move', () {
@@ -82,6 +138,7 @@ void main() {
       rangeEndIndexExclusive: 1,
       frameDelta: 0,
       rowDelta: 2,
+      bankOf: (_) => CelBankLanes.unshared,
     );
     expect(plan, isNull);
   });
