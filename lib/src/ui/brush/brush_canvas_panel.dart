@@ -2862,14 +2862,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
       _paintPlane(
         canvas,
         box,
-        _quad(
-          Rect.fromLTWH(
-            0,
-            0,
-            canvasSize.width.toDouble(),
-            canvasSize.height.toDouble(),
-          ),
-        ),
+        _quad(canvasSize.canvasRect),
         (color: const Color(0x00000000), none: true),
       );
     }
