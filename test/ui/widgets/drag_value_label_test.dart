@@ -200,17 +200,31 @@ void main() {
       expect(seen.deltas, isEmpty);
     });
 
-    testWidgets('a scrub that moved the value does not open the field when '
-        'it lifts', (tester) async {
+    testWidgets('a scrub that moved the value does not open the field, even '
+        'when it lifts inside the label', (tester) async {
       final seen = await pumpInList(tester);
+      // ⚠️It has to END INSIDE. A scrub that lifts outside the label never
+      // reaches the claim's release at all, so the refusal under test is not
+      // asked — this case passed with that refusal deleted while it ran 60px
+      // off the label's 64.
+      final label = find.byKey(const ValueKey<String>('zoom'));
+      final pressed = Offset(
+        tester.getTopLeft(label).dx + 6,
+        tester.getCenter(label).dy,
+      );
       final gesture = await tester.startGesture(
-        tester.getCenter(find.text('100%')),
+        pressed,
         kind: PointerDeviceKind.touch,
       );
       for (var step = 0; step < 6; step += 1) {
-        await gesture.moveBy(const Offset(10, 0));
+        await gesture.moveBy(const Offset(8, 0));
         await tester.pump();
       }
+      expect(
+        tester.getRect(label).contains(pressed + const Offset(48, 0)),
+        isTrue,
+        reason: '⛔premise: the scrub lifts inside the label',
+      );
       await gesture.up();
       await tester.pump();
       expect(seen.deltas, isNotEmpty);
