@@ -65,7 +65,7 @@ void main() {
     addTearDown(() => VolatileScratchFiles.ceilingBytes = 0);
     addTearDown(history.dispose);
     final commands = CanvasSelectionCommands();
-    final transformOptions = ValueNotifier(const TransformToolOptions());
+    final transformOptions = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transformOptions.dispose);
 
     // A 400×300 opaque picture in the middle of the cel.
@@ -119,8 +119,10 @@ void main() {
     await settle();
 
     // The picture's own ink box through the layer's region door, Ctrl+T,
-    // the percentage, Enter — no handle has to be on screen.
-    Future<void> scale(double factor) async {
+    // the percentage, Enter — no handle has to be on screen. [landed] runs
+    // the instant the entry is in the history, before the budget's spill —
+    // which runs on its own schedule — can have parked anything.
+    Future<void> scale(double factor, {VoidCallback? landed}) async {
       commands.deselect();
       await tester.pump();
       final bounds = bitmapSurfaceContentBounds(
@@ -152,6 +154,7 @@ void main() {
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
       commands.commitTransform();
+      landed?.call();
       await tester.pump();
       await settle();
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');
@@ -184,12 +187,15 @@ void main() {
           'picture it would undo to — the measurement can see a holder',
     );
 
-    await scale(0.5);
-    final billedBeforeParking = history.retainedBytes;
+    var billedAtTheLanding = 0;
+    await scale(
+      0.5,
+      landed: () => billedAtTheLanding = history.retainedBytes,
+    );
     await tester.runAsync(history.drainSpilling);
     expect(
       history.retainedBytes,
-      lessThan(billedBeforeParking),
+      lessThan(billedAtTheLanding),
       reason: 'control: the budget parked the deep entry',
     );
     await settle();

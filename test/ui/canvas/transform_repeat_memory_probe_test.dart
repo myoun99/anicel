@@ -117,7 +117,7 @@ void main() {
     );
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
-    final transformOptions = ValueNotifier(const TransformToolOptions());
+    final transformOptions = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transformOptions.dispose);
 
     // A 2000×1400 opaque picture centred on the default 2340×1654 canvas.
