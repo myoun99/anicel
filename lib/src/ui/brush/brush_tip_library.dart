@@ -10,6 +10,7 @@ import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
 import 'picked_file.dart';
+import '../text/app_strings.dart';
 
 Future<PickedFile?> _openTipImageDialog() async {
   final file = await openFile(
@@ -39,9 +40,15 @@ class BrushTipLibrary extends ChangeNotifier {
   final BrushTipLibraryService _service;
   final FilePicker _picker;
 
-  List<BrushTipEntry> _tips = List.of(defaultBrushTipEntries);
+  List<BrushTipEntry> _tips = _builtIns();
   var _userSequence = 0;
   bool _disposed = false;
+
+  /// The generated tips, named in the program language — at every launch,
+  /// since they are never stored (brush-preset-names-language-Q1).
+  static List<BrushTipEntry> _builtIns() => namedDefaultBrushTips(
+    (id, english) => AppText.strings.builtinTipName(id, english),
+  );
 
   /// Built-in tips first, then the user's, in index order.
   List<BrushTipEntry> get tips => _tips;
@@ -80,7 +87,7 @@ class BrushTipLibrary extends ChangeNotifier {
     if (_disposed) {
       return;
     }
-    _tips = [...defaultBrushTipEntries, ...indexed];
+    _tips = [..._builtIns(), ...indexed];
     _notify();
 
     if (indexed.isEmpty) {

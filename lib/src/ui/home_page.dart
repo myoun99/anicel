@@ -86,6 +86,7 @@ class HomePage extends StatefulWidget {
     this.layoutStore,
     this.presetFileService,
     this.tipLibraryService,
+    this.languageSettingsStore,
   });
 
   final Project? initialProject;
@@ -107,6 +108,10 @@ class HomePage extends StatefulWidget {
   /// tips by id and load after them, so a test that seeds presets seeds
   /// this too, on its own directory.
   final BrushTipLibraryService? tipLibraryService;
+
+  /// Where the program language is restored from, beside the two services
+  /// above. Null reads the saved file outside tests and nothing inside them.
+  final AppLanguageSettingsStore? languageSettingsStore;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -280,7 +285,9 @@ class _HomePageState extends State<HomePage> {
       // Language + accent settings persist app-side (UI-R10 #7 /
       // UI-R22 #5); FLUTTER_TEST keeps widget tests off the developer's
       // saved files.
-      languageSettingsStore: _unlessTesting(AppLanguageSettingsStore.new),
+      languageSettingsStore:
+          widget.languageSettingsStore ??
+          _unlessTesting(AppLanguageSettingsStore.new),
       accentSettingsStore: _unlessTesting(AppAccentSettingsStore.new),
       inputSettingsStore: _unlessTesting(AppInputSettingsStore.new),
       saveSettingsStore: _unlessTesting(AppSaveSettingsStore.new),

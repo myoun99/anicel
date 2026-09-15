@@ -1097,3 +1097,29 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     ),
   ),
 ]);
+
+/// What a built-in is called when it is made: its id and its English name
+/// in, the stored name out.
+///
+/// 🚨유저 2026-09-15 (brush-preset-names-language-Q1): 「만들 때 그 언어로
+/// 적는다」 — the built-ins are named in the program language at the moment
+/// the library makes them (first run, a new library version, 「기본값으로
+/// 초기화」), and from then on the name is the user's text like any renamed
+/// brush. The words live in the UI's string tables, which this layer may not
+/// import, so whoever makes the library hands its namer in.
+typedef BuiltinBrushName = String Function(String id, String english);
+
+/// The namer that keeps the defaults' own English.
+String keepEnglishName(String id, String english) => english;
+
+/// [defaultBrushGroups], each named by [nameOf].
+List<BrushGroup> namedDefaultBrushGroups(BuiltinBrushName nameOf) => [
+  for (final group in defaultBrushGroups)
+    group.copyWith(name: nameOf(group.id.value, group.name)),
+];
+
+/// [defaultBrushPresets], each named by [nameOf].
+List<BrushPreset> namedDefaultBrushPresets(BuiltinBrushName nameOf) => [
+  for (final preset in defaultBrushPresets)
+    preset.copyWith(name: nameOf(preset.id.value, preset.name)),
+];

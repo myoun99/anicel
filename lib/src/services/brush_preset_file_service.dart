@@ -66,18 +66,23 @@ class BrushPresetFileService {
   /// [resolveTip] turns the tip ids the file stores back into masks. An id it
   /// cannot answer leaves the brush on its parametric round tip — a missing
   /// tip costs a brush its texture, never the editor.
+  ///
+  /// [nameBuiltIn] names each built-in as the defaults are made. The words
+  /// belong to the UI, which this layer may not import, so a caller that
+  /// speaks another language hands them in; the default keeps the English.
   Future<BrushPresetLibraryData> loadOrDefaults({
     BrushTipResolver? resolveTip,
+    BuiltinBrushName nameBuiltIn = keepEnglishName,
   }) async {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
-        return _defaults();
+        return _defaults(nameBuiltIn);
       }
       final decoded =
           jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       if (decoded['version'] != libraryVersion) {
-        return _defaults();
+        return _defaults(nameBuiltIn);
       }
       final entries = decoded['presets'] as List<dynamic>;
       // An empty saved library is a valid user choice (all presets deleted).
@@ -97,13 +102,13 @@ class BrushPresetFileService {
     } on Object catch (_) {
       // A corrupt library must not fail the editor: fall back to the
       // defaults; the file is replaced on the next save.
-      return _defaults();
+      return _defaults(nameBuiltIn);
     }
   }
 
-  static BrushPresetLibraryData _defaults() => (
-    groups: List.of(defaultBrushGroups),
-    presets: List.of(defaultBrushPresets),
+  static BrushPresetLibraryData _defaults(BuiltinBrushName nameOf) => (
+    groups: namedDefaultBrushGroups(nameOf),
+    presets: namedDefaultBrushPresets(nameOf),
   );
 
   /// Preset ids must be unique (they key preset rows and drive

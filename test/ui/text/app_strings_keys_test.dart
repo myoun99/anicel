@@ -592,6 +592,8 @@ void main() {
     'toolShapeFillTemplate': (s) => s.toolShapeFillTemplate,
     'brBrushesTitle': (s) => s.brBrushesTitle,
     'brNewGroup': (s) => s.brNewGroup,
+    'brNewGroupName': (s) => s.brNewGroupName,
+    'brNewPresetName': (s) => s.brNewPresetName,
     'brGroupNameField': (s) => s.brGroupNameField,
     'brCreate': (s) => s.brCreate,
     'brRenameBrush': (s) => s.brRenameBrush,

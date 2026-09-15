@@ -130,9 +130,15 @@ class BrushPresetLibrary extends ChangeNotifier {
     }
   }
 
+  /// The built-ins' namer: the program language's word for each, read the
+  /// moment the defaults are made (brush-preset-names-language-Q1).
+  static String _nameInProgramLanguage(String id, String english) =>
+      AppText.strings.builtinBrushName(id, english);
+
   Future<void> load() async {
     final library = await _fileService.loadOrDefaults(
       resolveTip: _tipLibrary?.maskFor,
+      nameBuiltIn: _nameInProgramLanguage,
     );
     _groups = library.groups;
     _presets = library.presets;
@@ -269,8 +275,8 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   /// Throws the whole library away and re-seeds the built-ins.
   void resetToDefaults() {
-    _groups = List.of(defaultBrushGroups);
-    _presets = List.of(defaultBrushPresets);
+    _groups = namedDefaultBrushGroups(_nameInProgramLanguage);
+    _presets = namedDefaultBrushPresets(_nameInProgramLanguage);
     _notify();
     _persist();
   }
@@ -465,11 +471,13 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   String _nextPresetName() {
     final names = {for (final preset in _presets) preset.name};
+    final template = AppText.strings.brNewPresetName;
+    String nameFor(int index) => template.replaceAll('{n}', '$index');
     var index = _presets.length + 1;
-    while (names.contains('Preset $index')) {
+    while (names.contains(nameFor(index))) {
       index += 1;
     }
-    return 'Preset $index';
+    return nameFor(index);
   }
 
   /// The write in flight, and the snapshot waiting behind it.

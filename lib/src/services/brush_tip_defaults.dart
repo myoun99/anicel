@@ -2,6 +2,7 @@ import '../models/brush_tip_entry.dart';
 import '../models/brush_tip_mask.dart';
 import 'brush_tip_image_codec.dart';
 import 'brush_tip_mask_defaults.dart';
+import 'brush_preset_defaults.dart' show BuiltinBrushName;
 
 /// The tips that ship with the app, as library entries.
 ///
@@ -33,3 +34,10 @@ BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(
   mask: mask,
   builtIn: true,
 );
+
+/// [defaultBrushTipEntries], each named by [nameOf] — made at every launch,
+/// since the tips are generated and never stored.
+List<BrushTipEntry> namedDefaultBrushTips(BuiltinBrushName nameOf) => [
+  for (final entry in defaultBrushTipEntries)
+    entry.copyWith(name: nameOf(entry.id, entry.name)),
+];

@@ -62,7 +62,8 @@ class EditorAppSettings {
   /// Each is fired and not awaited (a missing or corrupt file yields the
   /// defaults), so the session is usable before any of them land.
   void restore() {
-    unawaited(_restoreLanguageSettings());
+    languageRestored = _restoreLanguageSettings();
+    unawaited(languageRestored);
     unawaited(_restoreAccentSettings());
     unawaited(_restoreWorkspaceColors());
     unawaited(_restoreInputSettings());
@@ -132,6 +133,12 @@ class EditorAppSettings {
   /// hold the session.
   AppStrings get uiStrings =>
       AppStrings.of(languageSettings.value.programLanguage);
+
+  /// When the saved program language is back — what anything that WRITES
+  /// words in the program language waits for: the brush libraries name their
+  /// built-ins as they make them (brush-preset-names-language-Q1). A session
+  /// that never restores has nothing to wait for.
+  Future<void> languageRestored = Future<void>.value();
 
   Future<void> _restoreLanguageSettings() async {
     final restored = await _languageSettingsStore?.load();

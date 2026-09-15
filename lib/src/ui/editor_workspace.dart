@@ -1020,8 +1020,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // before the opening brush is taken up, so that brush wears what the
     // hand left on it (H25-again) — read alongside the libraries, not after
     // them, so it adds no wait of its own.
-    _brushPresets.libraryLanded = _tipLibrary
-        .load()
+    // And the saved LANGUAGE before either: the built-ins are named as they
+    // are made (brush-preset-names-language-Q1), so a library made before the
+    // language is back would store them in whatever the app said at launch.
+    _brushPresets.libraryLanded = widget.session.appSettings.languageRestored
+        .then((_) => _tipLibrary.load())
         .then((_) => _presetLibrary.load())
         .then((_) => handSettingsRecalled)
         .then((_) => _brushPresets.selectOpeningPreset());
