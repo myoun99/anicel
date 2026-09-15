@@ -82,8 +82,9 @@ CanvasViewport renderSnappedViewport(
 /// no sixteenth put the residues on the half: every odd-percent zoom from
 /// 101% to 399% — 150 of them at each — kept a column exactly ON a texel
 /// boundary, and an app UI scale on top lost more (225 zooms at
-/// 125% × 110%; 146% itself breaks under any UI scale other than 100% on a
-/// 125–250% monitor — measured 2026-09-15). A finer fixed grid only moves
+/// 125% × 110%; 146% itself breaks at a 125% or 175% monitor under the 90,
+/// 110, 125 and 150% UI stops and at a 150% or 250% monitor under 125%, and
+/// at no monitor under 100% UI — measured 2026-09-15). A finer fixed grid only moves
 /// the cliff, so the phase is read off the denominator itself, and a pinch
 /// that changes the scale every frame pays a few divisions instead of a
 /// sixteen-way search per frame (100,000 calls measured at 13ms).
