@@ -150,6 +150,12 @@ void main() {
       greaterThan(0.01),
     );
     neverWorse(nextToAHalf, 'next to 39/2');
+    // An EXACT fraction whose residues outrun the measured pixels (p > 16,384):
+    // not every residue lands inside them, so the denominator's phase is no
+    // longer the best one and the law has to measure. Taken as exact it kept
+    // half the margin the search found — measured 2026-09-15, 152 of 152
+    // such fractions.
+    neverWorse(16459 / 400, 'p = 16459 past the measured pixels');
     // Wheel notches (×1.1 each) from the zooms a view starts at, at the
     // monitor ratios the app meets.
     for (final ratio in const [1.0, 1.25, 1.5, 1.75, 2.0]) {
