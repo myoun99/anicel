@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/services/import/import_layer_spot.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 /// 🚨EVERY ENTRANCE ANSWERS FOR THE FILE STANDING OVER IT, and the chip wears
 /// the answer (유저 2026-09-11, 미디어 배치 라운드: 「불가능 = 칩의 금지
@@ -81,14 +83,14 @@ void main() {
     return session;
   }
 
-  /// A pool row carrying [path], the timeline beside it, both under one
-  /// verdict channel — as the workspace holds them.
-  Future<ValueNotifier<bool?>> pumpTimeline(
+  /// A pool row carrying [path], [panel] beside it, both under one verdict
+  /// channel — as the workspace holds them.
+  Future<ValueNotifier<bool?>> pumpBeside(
     WidgetTester tester,
     EditorSessionManager s,
-    String path, {
-    TimelineOrientation orientation = TimelineOrientation.horizontal,
-  }) async {
+    String path,
+    Widget Function() panel,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final verdict = ValueNotifier<bool?>(null);
@@ -117,17 +119,7 @@ void main() {
                 Expanded(
                   child: ListenableBuilder(
                     listenable: s,
-                    builder: (context, _) => TimelineTabHost(
-                      session: s,
-                      orientation: orientation,
-                      onOrientationChanged: (_) {},
-                      pixelsPerFrame: 48,
-                      onPixelsPerFrameChanged: (_) {},
-                      showSeconds: false,
-                      onShowSecondsChanged: (_) {},
-                      onPlaceMediaAsset: (_, _, _) {},
-                      onPlaceMediaAssetBetweenLayers: (_, _, _) {},
-                    ),
+                    builder: (context, _) => panel(),
                   ),
                 ),
               ],
@@ -139,6 +131,51 @@ void main() {
     await tester.pumpAndSettle();
     return verdict;
   }
+
+  /// The timeline beside the pool row.
+  Future<ValueNotifier<bool?>> pumpTimeline(
+    WidgetTester tester,
+    EditorSessionManager s,
+    String path, {
+    TimelineOrientation orientation = TimelineOrientation.horizontal,
+  }) => pumpBeside(
+    tester,
+    s,
+    path,
+    () => TimelineTabHost(
+      session: s,
+      orientation: orientation,
+      onOrientationChanged: (_) {},
+      pixelsPerFrame: 48,
+      onPixelsPerFrameChanged: (_) {},
+      showSeconds: false,
+      onShowSecondsChanged: (_) {},
+      onPlaceMediaAsset: (_, _, _) {},
+      onPlaceMediaAssetBetweenLayers: (_, _, _) {},
+    ),
+  );
+
+  /// The storyboard beside the pool row; each place its host would open the
+  /// window for is written to [placed].
+  Future<ValueNotifier<bool?>> pumpStoryboard(
+    WidgetTester tester,
+    EditorSessionManager s,
+    String path,
+    List<ImportLayerSpot> placed,
+  ) => pumpBeside(
+    tester,
+    s,
+    path,
+    () => StoryboardTabHost(
+      session: s,
+      pixelsPerFrame: 8,
+      onPixelsPerFrameChanged: (_) {},
+      showSeconds: false,
+      onShowSecondsChanged: (_) {},
+      thumbnailFor: null,
+      onPlaceMediaAsset: (_, spot) => placed.add(spot),
+    ),
+  );
 
   Future<TestGesture> hover(WidgetTester tester, Offset at) async {
     final gesture = await tester.startGesture(
@@ -290,5 +327,39 @@ void main() {
     expect(verdict.value, isFalse);
     await gesture.up();
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('a track\'s frames on the storyboard say no to a sound, and a '
+      'picture let go there stands on that frame and is a NEW cut there', (
+    tester,
+  ) async {
+    final s = project();
+    final placed = <ImportLayerSpot>[];
+    final lane = find.byKey(
+      const ValueKey<String>('storyboard-track-asset-drop-verdict-track'),
+    );
+    // Past the 12-frame cut: frame 16 of the track, 4 frames into the gap.
+    const pastTheCut = Offset(16 * 8 + 4, 12);
+    var verdict = await pumpStoryboard(tester, s, r'C:\snd\door.wav', placed);
+    var gesture = await hover(tester, tester.getTopLeft(lane) + pastTheCut);
+    expect(verdict.value, isFalse, reason: 'a sound\'s place is the SE rows');
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(placed, isEmpty);
+
+    verdict = await pumpStoryboard(tester, s, r'C:\art\bg.png', placed);
+    gesture = await hover(tester, tester.getTopLeft(lane) + pastTheCut);
+    expect(verdict.value, isTrue);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The warm scheduler arms an idle timer whenever the playhead moves.
+    s.playbackRig.prerenderScheduler.cancel();
+
+    expect(placed, [const NewCutSpot(index: 1, leadingGapFrames: 4)]);
+    expect(
+      s.activeCutOrNull,
+      isNull,
+      reason: 'landing is standing: the drop stood on frame 16, in the gap',
+    );
   });
 }

@@ -1,7 +1,8 @@
 import '../../models/layer_id.dart';
 import 'media_import_planner.dart' show ImportDestination;
 
-/// Where in the ACTIVE cut a placement lands, when a DROP decided it.
+/// Where a placement lands, when a DROP decided it: a place in the ACTIVE
+/// cut, or a NEW cut's place on the track.
 ///
 /// "Where does this go" is two questions. Which cut — the active one or a
 /// new one — is [ImportDestination], and the window asks it. Where in that
@@ -119,4 +120,32 @@ final class LayerSlotSpot extends ImportLayerSpot {
 
   @override
   int get hashCode => Object.hash(LayerSlotSpot, insertionIndex);
+}
+
+/// A NEW cut on the active track, where Create Cut would put one at the
+/// frame the drop stood on — a drop on the storyboard's frame area (유저
+/// 2026-09-12: 「타임라인이랑 같은 법으로 프레임영역에 떨구면 프레임 블록
+/// 만들듯이 컷 만들어지도록」). The place is Create Cut's own arithmetic
+/// asked at that frame (`CutPlacement.cutCreationPlanAt`), not a second rule
+/// for where a cut goes.
+final class NewCutSpot extends ImportLayerSpot {
+  const NewCutSpot({required this.index, required this.leadingGapFrames});
+
+  /// The slot the new cut takes in the track's cut sequence.
+  final int index;
+
+  /// The walk-in distance into the gap the drop stood in — 0 on a cut.
+  final int leadingGapFrames;
+
+  @override
+  ImportDestination? get answeredDestination => ImportDestination.newCut;
+
+  @override
+  bool operator ==(Object other) =>
+      other is NewCutSpot &&
+      other.index == index &&
+      other.leadingGapFrames == leadingGapFrames;
+
+  @override
+  int get hashCode => Object.hash(NewCutSpot, index, leadingGapFrames);
 }

@@ -112,6 +112,7 @@ import '../models/timeline_frame_range.dart'
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, LayerRowAddress, TimelineRowAddress, TrackRowAddress;
 import '../models/track_frame_range.dart';
+import 'media/media_asset_drop_target.dart';
 import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -402,6 +403,8 @@ class StoryboardPanel extends StatefulWidget {
     required this.project,
     required this.activeCutId,
     this.onRowFramePress,
+    this.onDropMediaAssetOnTrack,
+    this.acceptsMediaAssetOnTrack,
     this.activeLayerId,
     this.selectedRow,
     this.onSelectLayer,
@@ -600,6 +603,19 @@ class StoryboardPanel extends StatefulWidget {
   /// cut-selected callback on the V row and a per-BLOCK tap zone on the S
   /// rows, neither of which could answer for an empty cell.
   final StoryboardRowFramePress? onRowFramePress;
+
+  /// A media-browser row let go on a track's frames (the V row). The row
+  /// stands on that frame through [onRowFramePress] first — a drop LANDS,
+  /// and landing is standing (T4) — then hands the drop here. Null leaves
+  /// the row refusing the drag, as the timeline's rows do.
+  final void Function(TrackId trackId, int globalFrame, String path)?
+  onDropMediaAssetOnTrack;
+
+  /// Whether the file at a frame of a track's row can land there — the
+  /// session's answer, which the drag's chip wears (「불가능 = 칩의 금지
+  /// 표시」). Null is yes.
+  final bool Function(TrackId trackId, int globalFrame, String path)?
+  acceptsMediaAssetOnTrack;
 
   /// The session's active layer — the drawing target, and what the S rows'
   /// cut-scoped controls act on. It no longer decides the HIGHLIGHT: see
@@ -4022,6 +4038,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.layoutEntries,
     required this.activeCutId,
     required this.onRowFramePress,
+    required this.onDropMediaAssetOnTrack,
+    required this.acceptsMediaAssetOnTrack,
     required this.laneHeight,
     required this.width,
     required this.stripEdges,
@@ -4067,6 +4085,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
+  final void Function(TrackId trackId, int globalFrame, String path)?
+  onDropMediaAssetOnTrack;
+  final bool Function(TrackId trackId, int globalFrame, String path)?
+  acceptsMediaAssetOnTrack;
 
   /// This row's height — the rail's matching label row reads the same one.
   final double laneHeight;
@@ -4347,6 +4369,16 @@ class _StoryboardTrackRow extends StatelessWidget {
       ? 0
       : (x / timelineScale.pixelsPerFrame).floor();
 
+  /// The frame under a GLOBAL pointer: the drop's offset in this row's own
+  /// coordinates, then the press's conversion ([_frameAtX]).
+  int _frameAtGlobal(BuildContext context, Offset globalPosition) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return 0;
+    }
+    return _frameAtX(box.globalToLocal(globalPosition).dx);
+  }
+
   void _handleHover(PointerHoverEvent event) {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
   }
@@ -4355,6 +4387,8 @@ class _StoryboardTrackRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
+    final dropOnTrack = onDropMediaAssetOnTrack;
+    final acceptsOnTrack = acceptsMediaAssetOnTrack;
     final cellsByCut = _cellsByCut();
     final grips = _stripGrips(cellsByCut);
     // Where the panels are drawn is where their gestures and their EDGES
@@ -4605,6 +4639,32 @@ class _StoryboardTrackRow extends StatelessWidget {
                     onCancel: stripEdges!.onCancel,
                   ),
                   runEdit: null,
+                ),
+              ),
+            // A pool file let go on the row's frames. The row stands on that
+            // frame through its own press first — landing is standing (T4) —
+            // then hands the drop up, where the session names the NEW cut
+            // there. A permanent slot, as the canvas's is: it draws nothing
+            // and absorbs no hit test until a matching drag is in flight.
+            // Last in the stack, so a grip under the file hides no frame.
+            if (dropOnTrack != null)
+              Positioned.fill(
+                child: MediaAssetDropTarget(
+                  key: ValueKey<String>(
+                    'storyboard-track-asset-drop-${track.id.value}',
+                  ),
+                  accepts: acceptsOnTrack == null
+                      ? null
+                      : (data, globalPosition) => acceptsOnTrack(
+                          track.id,
+                          _frameAtGlobal(context, globalPosition),
+                          data.path,
+                        ),
+                  onDrop: (data, globalPosition) {
+                    final frame = _frameAtGlobal(context, globalPosition);
+                    onRowFramePress?.call(TrackRowAddress(track.id), frame);
+                    dropOnTrack(track.id, frame, data.path);
+                  },
                 ),
               ),
           ],

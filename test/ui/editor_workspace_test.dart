@@ -638,8 +638,9 @@ void main() {
     testWidgets('🚨a drop decides where it lands (유저 2026-09-11: 「떨어뜨린 '
         '자리가 곧 답」): the canvas opens the window on a new layer above '
         'the active one, a drawing row on its own frames, an SE row\'s empty '
-        'cell on that cell, the layer area a new layer at the gap — and a '
-        'sound on a drawing row or a picture on an SE row opens nothing', (
+        'cell on that cell, the layer area a new layer at the gap, the '
+        'storyboard\'s track frames a new cut there — and a sound on a '
+        'drawing row or a picture on an SE row opens nothing', (
       tester,
     ) async {
       await _pumpHome(tester);
@@ -738,6 +739,25 @@ void main() {
       );
       await tester.pump();
       expect(openSpot(), isA<LayerSlotSpot>());
+      await close();
+
+      // 「타임라인이랑 같은 법으로」 (유저 2026-09-12): a picture let go on
+      // the storyboard's track frames — a NEW cut, right of the cut under it.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+      );
+      await tester.pumpAndSettle();
+      final track = session.repository.requireProject().tracks.first;
+      final trackTarget = find.byKey(
+        ValueKey<String>('storyboard-track-asset-drop-${track.id.value}'),
+      );
+      drop(
+        trackTarget,
+        'bg.png',
+        tester.getTopLeft(trackTarget) + const Offset(2, 2),
+      );
+      await tester.pump();
+      expect(openSpot(), const NewCutSpot(index: 1, leadingGapFrames: 0));
       await close();
     });
 

@@ -530,6 +530,22 @@ void main() {
       await press(tester, 'into', png);
       expect(anOptionIsOpen(), isFalse);
     });
+
+    testWidgets('the storyboard\'s frames: a new cut, locked — the frame it '
+        'was let go on already said where', (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      final s = session();
+      await open(
+        tester,
+        s,
+        png!,
+        const NewCutSpot(index: 1, leadingGapFrames: 0),
+      );
+
+      expect(word(tester, 'into', png), AppText.strings.imIntoNewCut);
+      await press(tester, 'into', png);
+      expect(anOptionIsOpen(), isFalse);
+    });
   });
 
   group('🚨a new row joins the stack by ONE answer (`newRowPlacement`) — the '

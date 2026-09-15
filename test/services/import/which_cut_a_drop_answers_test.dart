@@ -33,4 +33,12 @@ void main() {
       );
     }
   });
+
+  test('a track\'s frames on the storyboard answer a NEW cut — the drop '
+      'named where on the track it goes', () {
+    expect(
+      const NewCutSpot(index: 1, leadingGapFrames: 4).answeredDestination,
+      ImportDestination.newCut,
+    );
+  });
 }

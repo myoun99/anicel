@@ -314,12 +314,22 @@ class ImportLanding {
       layers: layers,
       duration: duration,
     );
+    // A drop on the storyboard's frames names the new cut's place on the
+    // track ([NewCutSpot]); every other entrance appends, as it always has.
+    final spot = arrival.spot;
+    final at = spot is NewCutSpot ? spot : null;
     _project.historyManager.execute(
       ImportMediaCommand(
         repository: _project.repository,
         editingSession: _timeline.editingSession,
         trackId: _selection.selectedTrackId,
-        newCuts: [cut],
+        newCuts: [
+          if (at == null)
+            cut
+          else
+            cut.copyWith(leadingGapFrames: at.leadingGapFrames),
+        ],
+        newCutIndex: at?.index,
         assetAdditions: assets,
         description: description,
       ),

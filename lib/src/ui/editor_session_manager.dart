@@ -2427,6 +2427,22 @@ class EditorSessionManager extends ChangeNotifier
     return index == null ? null : LayerSlotSpot(index);
   }
 
+  /// Where a file let go on a track's frames in the STORYBOARD, at
+  /// [globalFrame], lands: a NEW cut where Create Cut would put one at that
+  /// frame ([CutPlacement.cutCreationPlanAt]). Null when it lands nowhere —
+  /// only a file with pixels makes a cut there, the question a row's frames
+  /// ask too ([frameDropSpot]); a sound's place is the SE rows.
+  NewCutSpot? storyboardFrameDropSpot(int globalFrame, String path) {
+    if (!importBakeAllowed(kind: mediaAssetKindForPath(path), placing: true)) {
+      return null;
+    }
+    final plan = cutPlacement.cutCreationPlanAt(globalFrame);
+    return NewCutSpot(
+      index: plan.index,
+      leadingGapFrames: plan.leadingGapFrames,
+    );
+  }
+
   // ── the shove: its own object, in its own file ────────────────────────
   //
   // Push and pull, aimed at whatever is selected (session/block_shift.dart):

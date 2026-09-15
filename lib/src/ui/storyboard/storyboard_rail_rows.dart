@@ -1359,6 +1359,8 @@ class _StoryboardRailRows {
           layoutEntries: entries,
           activeCutId: _state.widget.activeCutId,
           onRowFramePress: _state.widget.onRowFramePress,
+          onDropMediaAssetOnTrack: _state.widget.onDropMediaAssetOnTrack,
+          acceptsMediaAssetOnTrack: _state.widget.acceptsMediaAssetOnTrack,
           laneHeight: _state.widget.trackLaneHeight,
           width: width,
           stripEdges: _state.widget.stripEdges,

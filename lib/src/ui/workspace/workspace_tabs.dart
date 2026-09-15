@@ -857,6 +857,13 @@ class _WorkspaceTabs {
             ]),
             builder: (context) => StoryboardTabHost(
               session: _state.widget.session,
+              // A pool row let go on a track's frames: the place window, with
+              // the drop's answer — a NEW cut there — shown locked.
+              onPlaceMediaAsset: (path, spot) => _state._openImportWindow(
+                initialPaths: [path],
+                placeOnly: true,
+                spot: spot,
+              ),
               // R5 #9: ONE filter across the surfaces — the same state the
               // timeline and the sheet read, so a chip set on one is set
               // wherever the legend appears.

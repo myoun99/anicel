@@ -1191,11 +1191,12 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// A drop's answer in words: 「새 레이어」 for the canvas, the row and the
-  /// cell for a row's frames or an SE cell (「A 원화 · 9번 칸」, 「S1 · 6번
-  /// 칸」 — the mockup's words).
+  /// A drop's answer in words: 「새 레이어」 for the canvas, 「새 컷」 for the
+  /// storyboard's frames, the row and the cell for a row's frames or an SE
+  /// cell (「A 원화 · 9번 칸」, 「S1 · 6번 칸」 — the mockup's words).
   String _spotLabel(ImportLayerSpot spot) => switch (spot) {
     AboveActiveLayerSpot() || LayerSlotSpot() => AppText.strings.imIntoNewLayer,
+    NewCutSpot() => importIntoLabel(ImportDestination.newCut),
     RowFramesSpot(:final layerId, :final frameIndex) =>
       AppText.strings.imIntoRowCell(
         widget.session.layerById(layerId)?.name ?? '',

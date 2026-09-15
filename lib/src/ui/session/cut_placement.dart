@@ -70,12 +70,30 @@ class CutPlacement {
     );
   }
 
-  /// The insertion a GLOBAL frame names: in front of the first cut that
-  /// starts past it, with the walk-in distance from the gap's start as
-  /// the new cut's own leading gap. The frame is in a gap by the callers'
-  /// construction, so `gapStart <= globalFrame` always holds.
+  /// The insertion a GLOBAL frame names, in the button's own record
+  /// ([_slotAt] says where).
   ({TrackId trackId, int? index, int leadingGapFrames, int? duration})
   _cutCreationAt(TrackFrameAxis axis, int globalFrame, {int? duration}) {
+    final slot = _slotAt(axis, globalFrame);
+    return (
+      trackId: _selection.selectedTrackId,
+      index: slot.index,
+      leadingGapFrames: slot.leadingGapFrames,
+      duration: duration,
+    );
+  }
+
+  /// The slot a GLOBAL frame names: in front of the first cut that starts
+  /// past it, with the walk-in distance from the gap's start as the new
+  /// cut's own leading gap. The button's frames are in a gap by its
+  /// callers' construction, so `gapStart <= globalFrame` always holds for
+  /// them. A DROP may name a cut's own frame: the count is then still the
+  /// slot right of that cut, but the walk-in is no distance, and
+  /// [cutCreationPlanAt] says 0 there.
+  ({int index, int leadingGapFrames}) _slotAt(
+    TrackFrameAxis axis,
+    int globalFrame,
+  ) {
     var index = 0;
     var gapStart = 0;
     for (final entry in axis.entries) {
@@ -85,12 +103,23 @@ class CutPlacement {
       index += 1;
       gapStart = entry.endFrame;
     }
-    return (
-      trackId: _selection.selectedTrackId,
-      index: index,
-      leadingGapFrames: globalFrame - gapStart,
-      duration: duration,
-    );
+    return (index: index, leadingGapFrames: globalFrame - gapStart);
+  }
+
+  /// Where a new cut lands when a DROP names [globalFrame]: in a gap, the
+  /// walk-in from the gap's start; on a cut, right of THAT cut.
+  ///
+  /// A drop names its frame alone, as the timeline's frame drop names its
+  /// cell (`EditorSessionManager.frameDropSpot`) — a live range does not
+  /// speak, though [cutCreationPlan] asks it first: that ladder is a
+  /// BUTTON's, and a button names no frame (유저 2026-09-12: 「타임라인이랑
+  /// 같은 법으로」; measured 2026-09-15: no import path reads a selection).
+  ({int index, int leadingGapFrames}) cutCreationPlanAt(int globalFrame) {
+    final axis = _timeline.trackFrameAxis();
+    final slot = _slotAt(axis, globalFrame);
+    return axis.isGap(globalFrame)
+        ? slot
+        : (index: slot.index, leadingGapFrames: 0);
   }
 
   /// The pill button reads THIS — the same sentence the verb runs on.
