@@ -55,8 +55,10 @@ class Project {
     this.frameRate = ProjectFrameRate.fps24,
     this.cameraSize = defaultProjectCameraSize,
     this.background = ProjectBackground.defaultBackground,
-    int backdropArgb = defaultProjectBackdropArgb,
+    this.backdropArgb = defaultProjectBackdropArgb,
+    this.backdropNone = false,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
+    this.pasteboardNone = false,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
@@ -68,7 +70,6 @@ class Project {
     ExportProjectOverrides? exportOverrides,
     MediaViewerBookmarks mediaViewerBookmarks = const {},
   }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
-       backdropArgb = 0xFF000000 | backdropArgb,
        tracks = List.unmodifiable(tracks),
        exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
@@ -112,10 +113,18 @@ class Project {
 
   /// The BACKDROP: the panel-wide floor behind everything — what a fade
   /// reveals, and what an opaque export bakes where nothing covers.
-  /// Opaque by contract (it is the stage's final answer; an alpha here
-  /// would only re-ask the question — user 2026-07-29). The constructor
-  /// forces the alpha byte, so no setter path can thin it.
+  ///
+  /// 🚨It was opaque by contract (it is the stage's final answer; an alpha
+  /// here would only re-ask the question — user 2026-07-29), the constructor
+  /// forcing the alpha byte. F-114 (유저 2026-09-15) gave it the opacity the
+  /// paper and the pasteboard have: 「페이스트보드, 백그라운드 설정에도
+  /// 동일적용」. The byte is kept as written.
   final int backdropArgb;
+
+  /// Whether the backdrop is ABSENT (F-114) — a checkerboard where it would
+  /// be, nothing painted for it — rather than thinned. [backdropArgb] stays
+  /// kept for the next pick. The paper's own is [ProjectBackground.none].
+  final bool backdropNone;
 
   /// The PASTEBOARD: the apron around the paper, RGBA — thinning it
   /// reveals the backdrop. PROJECT data now, not app state: a camera
@@ -123,6 +132,10 @@ class Project {
   /// project (R28 #9 reversed by the user, 2026-07-29 — the app-level
   /// value demoted to a new-project default).
   final int pasteboardArgb;
+
+  /// Whether the pasteboard is ABSENT (F-114), as [backdropNone] is for the
+  /// backdrop.
+  final bool pasteboardNone;
 
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
@@ -189,7 +202,9 @@ class Project {
     CanvasSize? cameraSize,
     ProjectBackground? background,
     int? backdropArgb,
+    bool? backdropNone,
     int? pasteboardArgb,
+    bool? pasteboardNone,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
@@ -210,7 +225,9 @@ class Project {
       cameraSize: cameraSize ?? this.cameraSize,
       background: background ?? this.background,
       backdropArgb: backdropArgb ?? this.backdropArgb,
+      backdropNone: backdropNone ?? this.backdropNone,
       pasteboardArgb: pasteboardArgb ?? this.pasteboardArgb,
+      pasteboardNone: pasteboardNone ?? this.pasteboardNone,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
@@ -242,8 +259,10 @@ class Project {
     // Omitted at the defaults: pre-stage projects keep their exact JSON.
     if (backdropArgb != defaultProjectBackdropArgb)
       'backdropArgb': backdropArgb,
+    if (backdropNone) 'backdropNone': true,
     if (pasteboardArgb != defaultProjectPasteboardArgb)
       'pasteboardArgb': pasteboardArgb,
+    if (pasteboardNone) 'pasteboardNone': true,
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
@@ -300,8 +319,10 @@ class Project {
             ),
       backdropArgb:
           (json['backdropArgb'] as int?) ?? defaultProjectBackdropArgb,
+      backdropNone: json['backdropNone'] == true,
       pasteboardArgb:
           (json['pasteboardArgb'] as int?) ?? defaultProjectPasteboardArgb,
+      pasteboardNone: json['pasteboardNone'] == true,
       timesheetInfo: json['timesheetInfo'] == null
           ? TimesheetInfo.empty
           : TimesheetInfo.fromJson(

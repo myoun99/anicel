@@ -58,6 +58,44 @@ void main() {
     expect(repository.requireProject().pasteboardArgb, 0xFF040506);
   });
 
+  test('a none-only edit undoes none and nothing else (F-114)', () {
+    final absent = UpdateProjectStageColorsCommand(
+      repository: repository,
+      backdropNone: true,
+    );
+    absent.execute();
+    expect(repository.requireProject().backdropNone, isTrue);
+
+    // A colour is picked meanwhile; the none's undo must not carry it back.
+    UpdateProjectStageColorsCommand(
+      repository: repository,
+      backdropArgb: 0x80112233,
+    ).execute();
+    absent.undo();
+    expect(repository.requireProject().backdropNone, isFalse);
+    expect(repository.requireProject().backdropArgb, 0x80112233);
+  });
+
+  test('a pick on an absent plane brings it back in the same step, and its '
+      'undo takes it away again', () {
+    final colourBefore = repository.requireProject().pasteboardArgb;
+    UpdateProjectStageColorsCommand(
+      repository: repository,
+      pasteboardNone: true,
+    ).execute();
+    final pick = UpdateProjectStageColorsCommand(
+      repository: repository,
+      pasteboardArgb: 0xFF445566,
+      pasteboardNone: false,
+    );
+    pick.execute();
+    expect(repository.requireProject().pasteboardNone, isFalse);
+    expect(repository.requireProject().pasteboardArgb, 0xFF445566);
+    pick.undo();
+    expect(repository.requireProject().pasteboardNone, isTrue);
+    expect(repository.requireProject().pasteboardArgb, colourBefore);
+  });
+
   test('undo before execute is refused', () {
     expect(
       UpdateProjectStageColorsCommand(

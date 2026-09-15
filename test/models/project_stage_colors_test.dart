@@ -5,16 +5,21 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
 
-/// R3b: the stage's colors on the project — backdrop (opaque by
-/// contract), pasteboard (RGBA), paper (alpha absorbed the old
-/// display-only transparent flag).
+/// R3b: the stage's colors on the project — backdrop, pasteboard and paper,
+/// each an RGBA colour (the backdrop since F-114) and, since F-114, a plane
+/// that can be absent without losing the colour it hides.
 void main() {
   test('stage colors round-trip through JSON and omit the defaults', () {
     final plain = createDefaultProject();
-    expect(plain.toJson().containsKey('backdropArgb'), isFalse);
-    expect(plain.toJson().containsKey('pasteboardArgb'), isFalse);
+    final json = plain.toJson();
+    expect(json.containsKey('backdropArgb'), isFalse);
+    expect(json.containsKey('pasteboardArgb'), isFalse);
+    expect(json.containsKey('backdropNone'), isFalse);
+    expect(json.containsKey('pasteboardNone'), isFalse);
     expect(plain.backdropArgb, defaultProjectBackdropArgb);
     expect(plain.pasteboardArgb, defaultProjectPasteboardArgb);
+    expect(plain.backdropNone, isFalse);
+    expect(plain.pasteboardNone, isFalse);
 
     final colored = plain.copyWith(
       backdropArgb: 0xFF102030,
@@ -23,6 +28,27 @@ void main() {
     final restored = Project.fromJson(colored.toJson());
     expect(restored.backdropArgb, 0xFF102030);
     expect(restored.pasteboardArgb, 0x80445566);
+  });
+
+  test('none round-trips per plane and keeps the colour it hides', () {
+    final absent = createDefaultProject().copyWith(
+      backdropArgb: 0xFF102030,
+      backdropNone: true,
+      pasteboardNone: true,
+    );
+    final restored = Project.fromJson(absent.toJson());
+    expect(restored.backdropNone, isTrue);
+    expect(restored.pasteboardNone, isTrue);
+    expect(
+      restored.backdropArgb,
+      0xFF102030,
+      reason: 'the kept colour is what the next pick or slider brings back',
+    );
+    final back = Project.fromJson(
+      restored.copyWith(backdropNone: false).toJson(),
+    );
+    expect(back.backdropNone, isFalse);
+    expect(back.pasteboardNone, isTrue, reason: 'each plane answers alone');
   });
 
   test('the default stage floor is ONE colour written in three places, and '
@@ -54,24 +80,26 @@ void main() {
     );
   });
 
-  test('the backdrop is opaque by contract — the constructor forces the '
-      'alpha byte, so no path can thin the stage\'s final answer', () {
+  test('🚨the backdrop keeps its alpha — F-114 gave it the opacity the other '
+      'planes have', () {
+    // 유저 2026-09-15: 「페이스트보드, 백그라운드 설정에도 동일적용」. Until then
+    // it was opaque by contract (R3b) and the constructor forced the byte.
     final thinned = createDefaultProject().copyWith(
-      backdropArgb: 0x00102030,
+      backdropArgb: 0x80102030,
     );
-    expect(thinned.backdropArgb, 0xFF102030);
+    expect(thinned.backdropArgb, 0x80102030);
   });
 
-  test('paper alpha rides the argb; the legacy transparent flag reads as '
-      'alpha 0 and never writes back', () {
+  test('paper alpha rides the argb, and none is a second field beside it', () {
     const thin = ProjectBackground.color(0x80FFFFFF);
-    expect(thin.transparent, isFalse);
+    expect(thin.none, isFalse);
+    expect(thin.toJson().containsKey('none'), isFalse);
     expect(ProjectBackground.fromJson(thin.toJson()), thin);
 
-    final legacy = ProjectBackground.fromJson({'transparent': true});
-    expect(legacy.transparent, isTrue);
-    expect(legacy.argb >>> 24, 0);
-    expect(legacy.toJson().containsKey('transparent'), isFalse);
-    expect(ProjectBackground.fromJson(legacy.toJson()), legacy);
+    const absent = ProjectBackground.color(0x80FFFFFF, none: true);
+    expect(absent, isNot(thin), reason: 'none is part of the value');
+    final restored = ProjectBackground.fromJson(absent.toJson());
+    expect(restored, absent);
+    expect(restored.argb, 0x80FFFFFF);
   });
 }

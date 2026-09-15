@@ -39,11 +39,25 @@ class ProjectSettings {
     _internals.appSettings.rememberPasteboardDefault(argb);
   }
 
+  /// One undo step; no-op when already none (F-114): the pasteboard is not
+  /// there. The app remembers a COLOUR for the next project
+  /// ([setPasteboardColor]); the absence stays this project's.
+  void setPasteboardNone() {
+    _project.cutCommandCoordinator.setProjectPasteboardNone();
+    _changes.notifyChanged();
+  }
+
   /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
-  /// opaque floor — what a fade reveals and what an opaque export bakes
-  /// where nothing covers.
+  /// floor — what a fade reveals and what an opaque export bakes where
+  /// nothing covers. Its alpha is real since F-114, like the other planes'.
   void setProjectBackdrop(int argb) {
     _project.cutCommandCoordinator.setProjectBackdrop(argb);
+    _changes.notifyChanged();
+  }
+
+  /// One undo step; no-op when already none (F-114).
+  void setProjectBackdropNone() {
+    _project.cutCommandCoordinator.setProjectBackdropNone();
     _changes.notifyChanged();
   }
 

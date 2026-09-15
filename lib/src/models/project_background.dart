@@ -3,24 +3,30 @@
 /// on the canvas and the bottom covered track's stage in every composed
 /// view.
 ///
-/// The color carries its own ALPHA now (user 2026-07-29): a thinned paper
+/// The color carries its own ALPHA (user 2026-07-29): a thinned paper
 /// reveals the pasteboard and the backdrop behind it, on screen and in
 /// print alike — the old display-only "transparent" flag collapsed into
 /// alpha 0, and the alpha checkerboard moved to the backdrop's
 /// alpha-preview toggle where it says what it means (what an alpha export
 /// leaves open).
+///
+/// 🚨F-114 brings an ABSENCE back, and it is not alpha (유저 2026-09-15):
+/// 「없음버튼은 표시상? 없애서 체크무늬가 되도록 하는거고, 불투명도는 체크무늬는
+/// 안되고 진짜 불투명도를 낮추는행위」. [none] says the plane is not there; the
+/// alpha in [argb] says it is there, thinner. Two questions, two fields — the
+/// same pair the pasteboard and the backdrop carry on the project.
 class ProjectBackground {
-  const ProjectBackground.color(this.argb);
-
-  const ProjectBackground.transparent() : argb = 0x00FFFFFF;
-
-  /// Fully see-through paper (alpha 0) — the old boolean's meaning, kept
-  /// as a getter so the sentence "is the paper transparent" still reads.
-  bool get transparent => argb >>> 24 == 0;
+  const ProjectBackground.color(this.argb, {this.none = false});
 
   /// The ARGB the paper paints with — alpha included, everywhere: canvas,
-  /// playback, bakes. What you see is what exports.
+  /// playback, bakes. What you see is what exports. Kept while [none] is
+  /// set, so the next pick or slider move brings the same colour back.
   final int argb;
+
+  /// 「없음버튼 누르면 없는상태. 즉 해당 용지부분이 체크무늬되도록」 (유저
+  /// 2026-09-15): the paper is absent — a checkerboard on the canvas where
+  /// it would be, and nothing painted for it anywhere.
+  final bool none;
 
   /// The default paper — R28 #9: PURE white.
   ///
@@ -35,28 +41,24 @@ class ProjectBackground {
     defaultPaperArgb,
   );
 
-  static const ProjectBackground white = ProjectBackground.color(0xFFFFFFFF);
-  static const ProjectBackground black = ProjectBackground.color(0xFF000000);
+  Map<String, dynamic> toJson() => {'argb': argb, if (none) 'none': true};
 
-  Map<String, dynamic> toJson() => {'argb': argb};
-
-  factory ProjectBackground.fromJson(Map<String, dynamic> json) {
-    // Legacy shape: the display-only transparent flag → alpha-0 paper.
-    if (json['transparent'] == true) {
-      return const ProjectBackground.transparent();
-    }
-    return ProjectBackground.color(json['argb'] as int? ?? defaultPaperArgb);
-  }
+  factory ProjectBackground.fromJson(Map<String, dynamic> json) =>
+      ProjectBackground.color(
+        json['argb'] as int? ?? defaultPaperArgb,
+        none: json['none'] == true,
+      );
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ProjectBackground && other.argb == argb;
+      other is ProjectBackground && other.argb == argb && other.none == none;
 
   @override
-  int get hashCode => argb.hashCode;
+  int get hashCode => Object.hash(argb, none);
 
   @override
   String toString() =>
-      'ProjectBackground(argb: 0x${argb.toRadixString(16).toUpperCase()})';
+      'ProjectBackground(argb: 0x${argb.toRadixString(16).toUpperCase()}'
+      '${none ? ', none' : ''})';
 }

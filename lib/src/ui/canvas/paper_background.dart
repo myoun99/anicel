@@ -8,6 +8,11 @@ import '../../models/project_background.dart';
 /// alpha checkerboard moved to the backdrop's alpha-preview toggle
 /// ([paintAlphaCheckerboard]); the paper itself never checkers.
 ///
+/// A paper that is NONE (F-114, 유저 2026-09-15: 「없음버튼 누르면 없는상태.
+/// 즉 해당 용지부분이 체크무늬되도록」) paints nothing here, on every route
+/// that paints paper through this function; the checkerboard where it would
+/// be is the stage planes' to draw, never this function's.
+///
 /// [antiAlias] is REQUIRED: on the display the paper's edge is the canvas's
 /// edge, and how it is cut is the display law's answer
 /// (`displayEdgeAntiAliased` in `display_resample.dart` — F-67-paper-edge).
@@ -20,7 +25,7 @@ void paintProjectPaper(
   required bool antiAlias,
 }) {
   final color = Color(background.argb);
-  if (color.a <= 0) {
+  if (background.none || color.a <= 0) {
     return;
   }
   canvas.drawRect(

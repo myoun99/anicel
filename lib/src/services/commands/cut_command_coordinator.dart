@@ -661,8 +661,11 @@ class CutCommandCoordinator {
       _projectSettings.setProjectBackground(background);
   void setProjectBackdrop(int argb) =>
       _projectSettings.setProjectBackdrop(argb);
+  void setProjectBackdropNone() => _projectSettings.setProjectBackdropNone();
   void setProjectPasteboard(int argb) =>
       _projectSettings.setProjectPasteboard(argb);
+  void setProjectPasteboardNone() =>
+      _projectSettings.setProjectPasteboardNone();
 
   /// Executes [command] only when [read] of [subject] does not already
   /// answer [value].

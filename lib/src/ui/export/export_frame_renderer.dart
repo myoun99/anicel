@@ -260,14 +260,13 @@ class ExportFrameRenderer {
     ui.Rect bounds, {
     required bool preserveAlpha,
   }) {
-    if (preserveAlpha) {
+    final project = session.repository.requireProject();
+    // A backdrop that is NONE (F-114) prints nothing, the way an alpha
+    // master leaves it out: the plane is not there.
+    if (preserveAlpha || project.backdropNone) {
       return;
     }
-    canvas.drawRect(
-      bounds,
-      ui.Paint()
-        ..color = ui.Color(session.repository.requireProject().backdropArgb),
-    );
+    canvas.drawRect(bounds, ui.Paint()..color = ui.Color(project.backdropArgb));
   }
 
   /// [renderComposite] with the cut-level pose and fade baked in for VIDEO
@@ -678,8 +677,12 @@ class ExportFrameRenderer {
         paintPaper: isStage,
         // The alpha matrix (user 2026-07-29): alpha masters exclude the
         // backdrop AND the pasteboard — they are compositing sources,
-        // and the paper carries its own alpha.
-        pasteboardColor: isStage && !preserveAlpha
+        // and the paper carries its own alpha. A pasteboard that is NONE
+        // (F-114) prints nothing either: the plane is not there.
+        pasteboardColor:
+            isStage &&
+                !preserveAlpha &&
+                !session.repository.requireProject().pasteboardNone
             ? ui.Color(session.repository.requireProject().pasteboardArgb)
             : null,
         // The output IS the camera frame — there is no outside to

@@ -206,14 +206,22 @@ class ProjectRepository {
     updateProject((project) => project.copyWith(background: background));
   }
 
-  /// R3b: the stage's outer planes — the opaque backdrop and the RGBA
-  /// pasteboard. Null leaves that side untouched (one write serves both, so
-  /// one undo can restore them).
-  void updateProjectStageColors({int? backdropArgb, int? pasteboardArgb}) {
+  /// R3b: the stage's outer planes — the backdrop and the pasteboard, each an
+  /// RGBA colour and (F-114) whether it is there at all. Null leaves that
+  /// field untouched (one write serves all four, so one undo can restore
+  /// them).
+  void updateProjectStageColors({
+    int? backdropArgb,
+    bool? backdropNone,
+    int? pasteboardArgb,
+    bool? pasteboardNone,
+  }) {
     updateProject(
       (project) => project.copyWith(
         backdropArgb: backdropArgb,
+        backdropNone: backdropNone,
         pasteboardArgb: pasteboardArgb,
+        pasteboardNone: pasteboardNone,
       ),
     );
   }
