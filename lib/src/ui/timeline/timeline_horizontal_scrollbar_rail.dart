@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../widgets/app_scrollbar.dart';
 
-/// The timeline's bottom scrollbar rail: rail chrome (background + top
-/// hairline) around the shared [AppControllerScrollbar]. The rail height is
-/// the hit lane; the thumb inside stays visually thin.
+/// The timeline's bottom scrollbar rail: the shared [AppControllerScrollbar]
+/// under a top hairline, on the panel's own surface. The rail height is the
+/// hit lane; the thumb inside stays visually thin.
 class TimelineHorizontalScrollbarRail extends StatelessWidget {
   const TimelineHorizontalScrollbarRail({
     super.key,
@@ -27,8 +27,11 @@ class TimelineHorizontalScrollbarRail extends StatelessWidget {
     return Container(
       key: const ValueKey<String>('timeline-bottom-scrollbar-rail'),
       height: height,
+      // The top hairline separates the rail from the rows above; the fill it
+      // wore went at F-73 ② (유저 2026-09-11: 「타임라인패널의 스크롤바도 배경이
+      // 검정색이니까. 그냥 투명하게 할수는없나?」) — the lane is the panel's own
+      // surface, and the thumb alone marks it.
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLowest,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: AppControllerScrollbar(

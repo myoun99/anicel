@@ -18,9 +18,9 @@ class TimelineVerticalScrollbarSlot extends StatelessWidget {
   }
 }
 
-/// The timeline's right-edge scrollbar rail: rail chrome (background +
-/// side hairlines) around the shared [AppControllerScrollbar]. The rail
-/// width is the hit lane; the thumb inside stays visually thin.
+/// The timeline's right-edge scrollbar rail: the shared
+/// [AppControllerScrollbar] on the panel's own surface. The rail width is the
+/// hit lane; the thumb inside stays visually thin.
 class TimelineVerticalScrollbarRail extends StatelessWidget {
   const TimelineVerticalScrollbarRail({
     super.key = const ValueKey<String>('timeline-vertical-scrollbar'),
@@ -38,22 +38,19 @@ class TimelineVerticalScrollbarRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      // The rail's side hairlines are GONE (UI-R18 #3) — the lane color
-      // alone separates it from the rows, so with one chrome fill it has to
-      // be the level BELOW the rows: a lane is a groove, not a panel.
-      decoration: BoxDecoration(color: colorScheme.surfaceContainerLowest),
-      child: AppControllerScrollbar(
-        controller: controller,
-        axis: Axis.vertical,
-        minThumbExtent: AppScrollbarThumb.minimum,
-        fallbackViewportExtent: viewportHeight,
-        fallbackContentExtent: contentHeight,
-        laneKey: const ValueKey<String>('timeline-vertical-scrollbar-track'),
-        thumbKey: const ValueKey<String>('timeline-vertical-scrollbar-thumb'),
-      ),
+    // The rail's side hairlines went at UI-R18 #3, leaving a fill one level
+    // BELOW the rows to separate it — "a lane is a groove, not a panel". The
+    // fill went at F-73 ② (유저 2026-09-11: 「타임라인패널의 스크롤바도 배경이
+    // 검정색이니까. 그냥 투명하게 할수는없나?」): the rail is the panel's own
+    // surface now, and the thumb alone marks the lane.
+    return AppControllerScrollbar(
+      controller: controller,
+      axis: Axis.vertical,
+      minThumbExtent: AppScrollbarThumb.minimum,
+      fallbackViewportExtent: viewportHeight,
+      fallbackContentExtent: contentHeight,
+      laneKey: const ValueKey<String>('timeline-vertical-scrollbar-track'),
+      thumbKey: const ValueKey<String>('timeline-vertical-scrollbar-thumb'),
     );
   }
 }

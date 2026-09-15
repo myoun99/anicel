@@ -76,16 +76,15 @@ class _ContentScrollbarState extends State<ContentScrollbar> {
           right: 0,
           bottom: 0,
           width: lane,
-          child: DecoratedBox(
-            // The timeline rails' groove: a lane is a level below the content
-            // beside it, not a panel of its own.
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            ),
-            child: AppControllerScrollbar(
-              controller: controller,
-              axis: Axis.vertical,
-            ),
+          // NO FILL of its own (F-73 ②, 유저 2026-09-11: 「공용 스크롤바의
+          // 배경색을 패널색이랑 맞추고싶음 … 그냥 투명하게 할수는없나?」): the
+          // lane is the panel's own surface and the thumb alone marks it. It
+          // used to wear the timeline rails' groove — a level below the
+          // content beside it, not a panel of its own — and the rails let go
+          // of theirs in the same round.
+          child: AppControllerScrollbar(
+            controller: controller,
+            axis: Axis.vertical,
           ),
         ),
       ],

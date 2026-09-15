@@ -628,24 +628,23 @@ class LayerRailScrollbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final horizontal = axis == Axis.horizontal;
     final windowExtent = rail.windowExtent(
       naturalExtent,
       availableExtent: availableExtent,
     );
     final content = math.max(naturalExtent, windowExtent);
-    return Container(
+    return SizedBox(
       key: ValueKey<String>('$keyPrefix-rail-scrollbar'),
       // The bar is exactly as long as the window it drives, so it sits
       // under the rail and stops at the splitter.
       width: horizontal ? windowExtent : laneExtent,
       height: horizontal ? laneExtent : windowExtent,
-      // No hairline anywhere on this lane — the fill alone separates it from
-      // the rail rows, which are the panel surface, so it has to be the level
-      // BELOW them: a lane is a groove, not a panel. Its two siblings, the
-      // frame-axis rails, say the same thing.
-      decoration: BoxDecoration(color: colorScheme.surfaceContainerLowest),
+      // No hairline anywhere on this lane, and no fill either since F-73 ②
+      // (유저 2026-09-11: 「…그냥 투명하게 할수는없나?」). It used to be the
+      // level BELOW the rail rows — "a lane is a groove, not a panel" — and
+      // is the panel's own surface now, the thumb alone marking it. Its two
+      // siblings, the frame-axis rails, say the same thing.
       child: ValueListenableBuilder<double>(
         valueListenable: rail.offset,
         builder: (context, value, _) => AppScrollbar(
