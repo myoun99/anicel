@@ -12,6 +12,7 @@ import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
 import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
+import 'canvas_zoom_scale.dart';
 import 'flip_hud_controller.dart';
 
 /// Viewport pan/zoom input for the canvas panel, independent of what the
@@ -755,10 +756,19 @@ class _CanvasViewportGestureLayerState
   CanvasViewport _pinchZoomed(CanvasViewport startViewport, double distance, double startDistance, bool modifier, AppInputSettings settings, CanvasViewport next, ViewportPoint focalAnchor) {
     var nextZoom = startViewport.zoom * (distance / startDistance);
     if (modifier) {
-      // Constrain: zoom snaps to the user's percent list.
-      nextZoom =
-          AppInput.snapToList(nextZoom * 100, settings.zoomSnapPercents) /
-          100;
+      // Constrain: zoom snaps to the user's percent list — read in DISPLAY
+      // percent, the unit the list is written in and the one the ± buttons
+      // step through (`_zoomStep`). Snapped as the RENDER zoom it is here,
+      // a constrained pinch landed on list × effective ratio: a 150% stop
+      // read 225% on a 150% monitor (audit 2026-09-15).
+      final scale = CanvasZoomScale.of(context);
+      nextZoom = scale.render(
+        AppInput.snapToList(
+              scale.display(nextZoom) * 100,
+              settings.zoomSnapPercents,
+            ) /
+            100,
+      );
     }
     return next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
   }

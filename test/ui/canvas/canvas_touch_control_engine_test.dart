@@ -384,6 +384,13 @@ void main() {
       'CONTINUOUS — never a snap back to the gesture-start scale', (
     tester,
   ) async {
+    // The snap list is written in DISPLAY percent, and this fixture's 2× is
+    // the 200% the list names only at an effective ratio of 1 — the
+    // flutter_tester view reports 3.0. (Until the audit of 2026-09-15 the
+    // constraint snapped the render zoom as if it were the percent, which is
+    // why this fixture never had to say so.)
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
     final probes = await pumpEngine(tester);
 
     // Two fingers pinch OUT to 2×. The harness never rebuilds the layer
