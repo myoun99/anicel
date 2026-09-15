@@ -73,11 +73,22 @@ void main() {
     ),
   );
 
-  ScrollController controllerOf(WidgetTester tester) => tester
-      .widget<SingleChildScrollView>(
-        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+  /// ⛔ASKED OF THE SCROLLABLE, not of the widget that builds it. This was
+  /// `widget<SingleChildScrollView>(…).controller!` and broke the day the
+  /// row axis moved to a sliver viewport (F-4): a test that names the
+  /// widget type is pinning the spelling, not the scroll.
+  ScrollPosition positionOf(WidgetTester tester) => tester
+      .state<ScrollableState>(
+        find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('timeline-vertical-scroll-viewport'),
+              ),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       )
-      .controller!;
+      .position;
 
   double railTop(WidgetTester tester, String id) => tester
       .getRect(find.byKey(ValueKey<String>('timeline-rail-row-$id-row')))
@@ -94,9 +105,9 @@ void main() {
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
 
-    final controller = controllerOf(tester);
+    final position = positionOf(tester);
     expect(
-      controller.position.maxScrollExtent,
+      position.maxScrollExtent,
       greaterThan(0),
       reason: 'the fixture must overflow, or nothing can scroll at all',
     );
@@ -109,16 +120,16 @@ void main() {
       1,
       2,
       13,
-      controller.position.maxScrollExtent / 3,
-      controller.position.maxScrollExtent / 2,
-      controller.position.maxScrollExtent,
+      position.maxScrollExtent / 3,
+      position.maxScrollExtent / 2,
+      position.maxScrollExtent,
     ];
 
     // 🚨A green that compared nothing looks exactly like a green that
     // compared everything. Count the comparisons and demand them.
     var compared = 0;
     for (final offset in offsets) {
-      controller.jumpTo(offset);
+      position.jumpTo(offset);
       await tester.pumpAndSettle();
       for (final row in layers) {
         final id = row.id.value;

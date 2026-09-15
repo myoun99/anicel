@@ -58,6 +58,7 @@ import 'timeline_visible_range.dart';
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart' show AppText;
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_scroll_viewport.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 
@@ -1381,53 +1382,48 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 ).copyWith(
                                                   scrollbars: false,
                                                 ),
-                                            child: SingleChildScrollView(
-                                              key: const ValueKey<String>(
+                                            child: TimelineScrollViewport(
+                                              viewportKey: const ValueKey<String>(
                                                 'timeline-vertical-scroll-viewport',
                                               ),
                                               controller:
                                                   _verticalScrollController,
-                                              child: DeviceGridScrollBody(
-                                                controller:
-                                                    _verticalScrollController,
-                                                axisDirection:
-                                                    AxisDirection.down,
-                                                child: KeyedSubtree(
-                                                  key: const ValueKey<String>(
-                                                    'timeline-scrollable-body',
-                                                  ),
-                                                  child: TimelineLayerFrameBodyLayout(
-                                                    layerAxisScrollbarSlot:
-                                                        SizedBox(
-                                                          width: _metrics
-                                                              .verticalScrollbarWidth,
-                                                          height:
-                                                              verticalContentHeight,
-                                                        ),
-                                                    layerControlsRail:
-                                                        _railRows.buildLayerControlsRail(
-                                                          drawnRows,
-                                                          availableRailExtent,
-                                                          window,
-                                                          swipeColumns,
-                                                        ),
-                                                    railSplitterSlot:
-                                                        const SizedBox(
-                                                          width:
-                                                              LayerRailSplitter
-                                                                  .thickness,
-                                                        ),
-                                                    frameGridArea:
-                                                        _buildFrameGridArea(
-                                                          colorScheme,
-                                                          drawnRows,
-                                                          window,
-                                                          rangeHooks,
-                                                          rangeGesture,
-                                                          laneRange,
-                                                          verticalContentHeight,
-                                                        ),
-                                                  ),
+                                              axis: Axis.vertical,
+                                              child: KeyedSubtree(
+                                                key: const ValueKey<String>(
+                                                  'timeline-scrollable-body',
+                                                ),
+                                                child: TimelineLayerFrameBodyLayout(
+                                                  layerAxisScrollbarSlot:
+                                                      SizedBox(
+                                                        width: _metrics
+                                                            .verticalScrollbarWidth,
+                                                        height:
+                                                            verticalContentHeight,
+                                                      ),
+                                                  layerControlsRail:
+                                                      _railRows.buildLayerControlsRail(
+                                                        drawnRows,
+                                                        availableRailExtent,
+                                                        window,
+                                                        swipeColumns,
+                                                      ),
+                                                  railSplitterSlot:
+                                                      const SizedBox(
+                                                        width:
+                                                            LayerRailSplitter
+                                                                .thickness,
+                                                      ),
+                                                  frameGridArea:
+                                                      _buildFrameGridArea(
+                                                        colorScheme,
+                                                        drawnRows,
+                                                        window,
+                                                        rangeHooks,
+                                                        rangeGesture,
+                                                        laneRange,
+                                                        verticalContentHeight,
+                                                      ),
                                                 ),
                                               ),
                                             ),
