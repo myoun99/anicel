@@ -328,8 +328,9 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
       return true;
     }
     if (_standingOnTransitionRow) {
-      return session.transitions.transitionSpanAt(session.editingGlobalFrame) != null ||
-          session.transitions.canCreateTransitionSpanAtPlayhead;
+      // F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): the ＋
+      // creates; opening a covered span is the Edit button's.
+      return session.transitions.canCreateTransitionSpanAtPlayhead;
     }
     // D28: on the cut row with a storyboard layer, the ＋ divides the
     // panel under the cursor — the same one-resolver pair the dispatch
@@ -446,8 +447,10 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
     switch (session.selectedRow) {
       case LayerRowAddress(:final layerId)
           when session.isTrackTransitionLayerId(layerId):
-        return session.transitions.transitionSpanAt(session.editingGlobalFrame) != null ||
-                session.transitions.canCreateTransitionSpanAtPlayhead
+        // F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): Edit
+        // opens a span covering the playhead; creating is the ＋'s.
+        return session.transitions.transitionSpanAt(session.editingGlobalFrame) !=
+                null
             ? const StoryboardEditTransitionSpan()
             : null;
       case LayerRowAddress(:final layerId):

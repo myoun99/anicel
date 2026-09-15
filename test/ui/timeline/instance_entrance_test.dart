@@ -223,6 +223,12 @@ void main() {
   ///
   /// 🧪The fork's own evidence is the camera and drawing pair above, which
   /// both die when it is off.
+  ///
+  /// ↩️No longer true of the SE row (F-105, 유저 2026-09-12: 「se행만 현재
+  /// 인덱스 비어있을때 편집버튼이 활성화되는데다가, 누르면 프레임이 생김 …
+  /// 기존 로직대로 법 통일하고 삭제」): `_editSeLabel` stopped creating, so the
+  /// double tap's fork is now the SE row's only creator and this case dies
+  /// with it too.
   testWidgets('an EMPTY SE cell double-tap creates the entry, not a dialog', (
     tester,
   ) async {
@@ -445,5 +451,42 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
+  });
+
+  /// 🚨F-105 — EDIT INSTANCE EDITS WHAT THE CELL HOLDS, AND NEVER CREATES.
+  ///
+  /// 유저 2026-09-12: 「se행만 현재 인덱스 비어있을때 편집버튼이 활성화되는데다가,
+  /// 누르면 프레임이 생김. 대체 누가 이딴거 만들라했는지? 기존 로직대로 법
+  /// 통일하고 삭제」. The other rows' Edit went dark on an empty cell; the SE
+  /// row's stayed lit there, and its editor made a one-frame entry. Creating
+  /// is the double tap's fork (I-9, above) and the ＋'s (the Add test above) —
+  /// both stay exactly as they were.
+  testWidgets('toolbar Edit Instance is DARK on an EMPTY SE cell, and a press '
+      'there makes nothing (F-105)', (tester) async {
+    final repository = await _pumpHome(tester);
+    await tapTimelineCell(tester, 'voice', 3);
+    await tester.pumpAndSettle();
+
+    expect(
+      await readCommandEnabled(
+        tester,
+        const ValueKey<String>('shared-edit-button'),
+      ),
+      isFalse,
+      reason: 'an empty cell has nothing to edit',
+    );
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('shared-edit-button'),
+    );
+
+    expect(
+      _cut(
+        repository,
+      ).layers.firstWhere((layer) => layer.kind == LayerKind.se).frames,
+      isEmpty,
+      reason: 'the Edit button made the entry here — creating is the double '
+          'tap\'s and the ＋\'s',
+    );
   });
 }

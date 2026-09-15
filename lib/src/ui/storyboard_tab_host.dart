@@ -273,13 +273,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// 「is there a span here」 itself and returned in silence, so the verb's
   /// own create branch was unreachable from the double tap. The strip asks
   /// unconditionally now, and there is still exactly one copy of the answer.
+  ///
+  /// ↩️The fork moved out of the Edit door into the double tap's own
+  /// ([activateTransitionSpanCell]; F-105, 유저 2026-09-15 「통일 — 편집 버튼은
+  /// 빈 칸에서 꺼진다」): the button edits, the double tap forks, ＋ creates.
   Future<void> _editTransitionSpan(int globalFrame) =>
-      editTransitionSpanInstance(context, _session, globalFrame: globalFrame);
+      activateTransitionSpanCell(context, _session, globalFrame: globalFrame);
 
   /// The S row's double-tap, the transition row's twin — same shape, same
   /// reason, and now the same I-9 fork inside [editSeEntryInstance].
+  ///
+  /// ↩️…inside [activateSeEntryCell] (F-105): [editSeEntryInstance] is the
+  /// Edit button's door and no longer creates.
   Future<void> _editSeEntry(LayerId layerId, int globalFrame) =>
-      editSeEntryInstance(
+      activateSeEntryCell(
         context,
         _session,
         layerId: layerId,
@@ -341,12 +348,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// one: `editTransitionSpanInstance` creates on an empty frame and edits
   /// on a covered one (「그게아니라 인스턴스편집버튼으로 작동하도록」); on
   /// an S row the `＋` authors a fresh entry at the cursor.
+  ///
+  /// ↩️The two verbs are two again (F-105, 유저 2026-09-15 「통일 — 편집
+  /// 버튼은 빈 칸에서 꺼진다」 · 「만약 내가 말했던거라면 철회야」): on the
+  /// transition row the `＋` creates, as it does on every row.
   void _createInstanceHere() {
     if (_session.cellInstances.createInstancesForSelection()) {
       return;
     }
     if (_standingOnTransitionRow) {
-      unawaited(editTransitionSpanInstance(context, _session));
+      _session.transitions.createTransitionSpanAtPlayhead();
       return;
     }
     // D28: on the cut row with a storyboard layer, the ＋ divides the

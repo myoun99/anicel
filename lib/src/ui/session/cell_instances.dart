@@ -324,10 +324,15 @@ class CellInstances {
       // claims the press as cells, and a camera cell's own instance is its
       // key, answered above.
       LayerKind.camera => false,
-      LayerKind.instruction => _cells.hasActiveNonNegativeCell,
-      LayerKind.se =>
-        _selection.selectedFrame != null ||
-            _frameVerbs.canCreateDrawingAtCurrentFrame,
+      // 🚨F-105 (유저 2026-09-12: 「se행만 현재 인덱스 비어있을때 편집버튼이
+      // 활성화되는데다가, 누르면 프레임이 생김. 대체 누가 이딴거
+      // 만들라했는지? 기존 로직대로 법 통일하고 삭제」): the button EDITS what
+      // the cell holds. These two lit on an EMPTY cell — the SE row because a
+      // drawing COULD be created there, the direction row on any cell — and
+      // their editors created. Creating is the double tap's fork (I-9) and
+      // the ＋'s ([createActiveInstance]), never this button's.
+      LayerKind.instruction || LayerKind.se =>
+        _cells.hasActiveNonNegativeCell && activeCellHoldsAnInstance,
       _ => _frameVerbs.canRenameFrameAtCurrentFrame,
     };
   }

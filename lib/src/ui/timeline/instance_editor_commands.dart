@@ -226,16 +226,19 @@ Future<void> editActiveInstance(
 /// SE cells: covered cells edit the covering entry's name/dialogue in the
 /// dialog; EMPTY cells create a default one-frame entry DIRECTLY (UI-R25 #2 —
 /// creation never opens a dialog; edit it afterwards).
+///
+/// ↩️The EMPTY half left this editor (F-105, 유저 2026-09-12: 「se행만 현재
+/// 인덱스 비어있을때 편집버튼이 활성화되는데다가, 누르면 프레임이 생김 … 기존
+/// 로직대로 법 통일하고 삭제」). This is the Edit button's door as well as the
+/// double tap's, and the double tap forks an empty cell to
+/// [createActiveInstance] before it gets here (I-9) — so the only press that
+/// still reached a creation here was the button's.
 Future<void> _editSeLabel(
   BuildContext context,
   EditorSessionManager session,
   Axis previewAxis,
 ) async {
-  final creating = session.selectedFrame == null;
-  if (creating) {
-    if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
-      session.seEntries.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
-    }
+  if (session.selectedFrame == null) {
     return;
   }
 
@@ -258,6 +261,50 @@ Future<void> _editSeLabel(
   );
 }
 
+/// The S row's DOUBLE TAP on the storyboard (I-9: 「빈 칸이면 만들고, 찬 칸이면
+/// 연다」): an empty cell creates an entry at the storyboard cursor, a covered
+/// one opens through the Edit button's own door ([editSeEntryInstance]).
+Future<void> activateSeEntryCell(
+  BuildContext context,
+  EditorSessionManager session, {
+  required LayerId layerId,
+  required int globalFrame,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  final layer = layerAnywhereOrNull(
+    session.repository.requireProject(),
+    layerId,
+  );
+  if (layer == null || layer.kind != LayerKind.se) {
+    return;
+  }
+  if (coveringDrawingBlockAt(layer.timeline, globalFrame) == null) {
+    // 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): an EMPTY cell
+    // CREATES — the sentence [editTransitionSpanInstance] has said since
+    // 2026-08-11, now said of sounds too. The doc above used to end 「COVERED
+    // frames only: creation stays the timeline's cut-scoped entrance」, and
+    // that was the asymmetry the user hit: 「타임라인의 se행이랑
+    // 트랜지션행이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」
+    //
+    // The cursor verb, not these arguments: the first tap of the double
+    // already stood on this row and seeked to this frame, which is the pair
+    // the frame `＋` acts on. Passing them again would be a second address
+    // for one cell.
+    //
+    // ↩️Moved here from [editSeEntryInstance] (F-105): that function is also
+    // the Edit button's door, which never creates.
+    session.storyboardCursor.createSeEntryAtStoryboardCursor();
+    return;
+  }
+  await editSeEntryInstance(
+    context,
+    session,
+    layerId: layerId,
+    globalFrame: globalFrame,
+    previewAxis: previewAxis,
+  );
+}
+
 /// The SE instance editor addressed on the GLOBAL axis — the storyboard's
 /// door (B6 2026-08-17: 「스토리보드 SE 레이어 … 더블클릭 편집창 미동작」).
 ///
@@ -268,6 +315,10 @@ Future<void> _editSeLabel(
 /// said of sounds — and I-9 (2026-08-29) finished that likeness: an EMPTY
 /// cell CREATES here too, through the row's own cursor verb, exactly as the
 /// transition row has done since 2026-08-11.
+///
+/// ↩️…through [activateSeEntryCell] now (F-105, 유저 2026-09-15 「통일 — 편집
+/// 버튼은 빈 칸에서 꺼진다」): this door is the Edit button's as well, so an
+/// empty cell here is nothing to edit.
 Future<void> editSeEntryInstance(
   BuildContext context,
   EditorSessionManager session, {
@@ -284,18 +335,10 @@ Future<void> editSeEntryInstance(
   }
   final block = coveringDrawingBlockAt(layer.timeline, globalFrame);
   if (block == null) {
-    // 🚨★★★I-9 (유저 확정 2026-08-29, I-9-Q2 = `all-kinds`): an EMPTY cell
-    // CREATES — the sentence [editTransitionSpanInstance] has said since
-    // 2026-08-11, now said of sounds too. The doc above used to end 「COVERED
-    // frames only: creation stays the timeline's cut-scoped entrance」, and
-    // that was the asymmetry the user hit: 「타임라인의 se행이랑
-    // 트랜지션행이었는데 통일되서 사라졌을수도? 아무튼 **새로만들자.**」
-    //
-    // The cursor verb, not these arguments: the first tap of the double
-    // already stood on this row and seeked to this frame, which is the pair
-    // the frame `＋` acts on. Passing them again would be a second address
-    // for one cell.
-    session.storyboardCursor.createSeEntryAtStoryboardCursor();
+    // ↩️F-105 (유저 2026-09-15, 「통일 — 편집 버튼은 빈 칸에서 꺼진다」): this is
+    // the Edit button's door, and an empty cell is nothing to edit. The I-9
+    // creation — and its decision note — moved to [activateSeEntryCell], the
+    // double tap's door.
     return;
   }
   Frame? entry;
@@ -433,6 +476,12 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
 /// opens the editor, and the editor's answer either deletes the span or
 /// replaces it with the six fields it hands back.
 ///
+/// ↩️An empty cell creates only when the row hands over a `create` — the
+/// double tap's and the ＋'s doors do; the Edit button's door hands over none,
+/// and an empty cell there is nothing to edit (F-105, 유저 2026-09-12 「기존
+/// 로직대로 법 통일하고 삭제」 · 2026-09-15 「통일 — 편집 버튼은 빈 칸에서
+/// 꺼진다」).
+///
 /// Every difference between the two rows that wear it — which span finder
 /// answers, which set the picker reads, whether the vocabulary editor is
 /// offered, where the length comes from, and the three session verbs — is
@@ -443,7 +492,7 @@ typedef _SpanRow = ({
   MapEntry<int, InstructionEvent>? covering,
   CameraInstructionSet set,
   bool editsSet,
-  void Function() create,
+  void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
   void Function(InstructionEvent event) commit,
@@ -457,7 +506,7 @@ Future<void> _editSpanInstance(
 ) async {
   final covering = row.covering;
   if (covering == null) {
-    row.create();
+    row.create?.call();
     return;
   }
   final result = await _showInstructionEditor(context, session, previewAxis, (
@@ -498,7 +547,9 @@ Future<void> _editInstructionEvent(
   covering: session.instructionVerbs.instructionSpanAt(layerId, frameIndex),
   set: session.camera.cameraInstructionSet,
   editsSet: true,
-  create: session.instructionVerbs.createDefaultInstructionEventAtCurrentFrame,
+  // F-105: this is the Edit button's door too — an empty direction cell is
+  // created by the double tap's fork and the ＋ ([createActiveInstance]).
+  create: null,
   remove: () => session.instructionVerbs.removeInstructionEventAt(layerId, frameIndex),
   // The direction row's events are one frame each; the cell you opened
   // is the span.
@@ -528,6 +579,12 @@ Future<void> _editInstructionEvent(
 /// of the user's 2026-08-11 ask: 「프레임생성하는거 행에 버튼만들어서 넣은거같은데,
 /// 그게아니라 인스턴스편집버튼으로 작동하도록. 삭제나 그런거 다 똑같이」 — one verb
 /// for create, edit and delete, reached from whatever button the rail grows.
+///
+/// ↩️Withdrawn (유저 2026-09-15: 「참고로 내가 그렇게 편집버튼 하나로 만들고
+/// 고친다라고 말했나? … 만약 내가 말했던거라면 철회야」 · 「통일 — 편집 버튼은
+/// 빈 칸에서 꺼진다」). This is the Edit button's door now: a covered span
+/// opens, an empty frame is nothing to edit. The double tap forks through
+/// [activateTransitionSpanCell]; the ＋ creates.
 Future<void> editTransitionSpanInstance(
   BuildContext context,
   EditorSessionManager session, {
@@ -539,13 +596,36 @@ Future<void> editTransitionSpanInstance(
     covering: session.transitions.transitionSpanAt(frame),
     set: session.transitions.transitionInstructionSet,
     editsSet: false,
-    create: session.transitions.createTransitionSpanAtPlayhead,
+    create: null,
     remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick
     // can never resize a span out from under the boundary it fires across.
     length: (covering) => covering.length,
     commit: (event) => session.transitions.replaceTransitionEventAt(frame, event),
   ));
+}
+
+/// The transition row's DOUBLE TAP (I-9: 「빈 칸이면 만들고, 찬 칸이면
+/// 연다」): an empty frame creates the span at the playhead — the first tap of
+/// the double already stood there — and a covered one opens through the Edit
+/// button's own door.
+Future<void> activateTransitionSpanCell(
+  BuildContext context,
+  EditorSessionManager session, {
+  int? globalFrame,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  final frame = globalFrame ?? session.editingGlobalFrame;
+  if (session.transitions.transitionSpanAt(frame) == null) {
+    session.transitions.createTransitionSpanAtPlayhead();
+    return;
+  }
+  await editTransitionSpanInstance(
+    context,
+    session,
+    globalFrame: frame,
+    previewAxis: previewAxis,
+  );
 }
 
 /// Opens the vocabulary editor and commits the edited set immediately (its

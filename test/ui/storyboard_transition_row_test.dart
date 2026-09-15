@@ -82,6 +82,16 @@ Future<bool> _editInstanceEnabled(WidgetTester tester) async {
   );
 }
 
+/// The frame pill's ＋ — the verb that CREATES (F-105). Driven through the
+/// button for the reason [_tapEditInstance] gives.
+Future<void> _tapNew(WidgetTester tester) async {
+  final button = find.byKey(const ValueKey<String>('new-frame-button'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 /// The collaborator the storyboard authors through — named so
 /// `tool/mutation_run.dart` runs this file for it: the cut-view suite that
 /// also names it only READS the row, and creation is where 유저 #17's
@@ -145,8 +155,8 @@ void main() {
       expect(_panel(tester).playheadFrame?.value, 4);
     });
 
-    testWidgets('the row grows NO button of its own — Edit Instance is the '
-        'whole verb', (tester) async {
+    testWidgets('the row grows NO button of its own — the pill\'s ＋ and Edit '
+        'are its verbs', (tester) async {
       await _openStoryboard(tester);
       final trackId = _track(tester).id.value;
 
@@ -154,17 +164,29 @@ void main() {
       // 그게아니라 인스턴스편집버튼으로 작동하도록. 삭제나 그런거 다 똑같이」.
       // The rail's `＋` was the predecessor and it is gone; a second entrance
       // is how "delete works from the dialog but not from the pill" starts.
+      //
+      // ↩️「Edit Instance is the whole verb」 is withdrawn (유저 2026-09-15:
+      // 「만약 내가 말했던거라면 철회야」 · 「통일 — 편집 버튼은 빈 칸에서
+      // 꺼진다」). The row still grows no button: the pill's ＋ creates here as
+      // on every row.
       expect(
         find.byKey(ValueKey<String>('storyboard-transition-add-$trackId')),
         findsNothing,
       );
     });
 
-    testWidgets('Edit Instance on an EMPTY frame makes a one-frame span at the '
-        'playhead, and the strip draws it', (tester) async {
+    testWidgets('↩️on an EMPTY frame Edit Instance is dark and makes nothing — '
+        'the ＋ makes a one-frame span at the playhead, and the strip draws '
+        'it', (tester) async {
+      // ↩️This pinned Edit CREATING here (08-11). 09-15: 「통일 — 편집 버튼은
+      // 빈 칸에서 꺼진다」.
       await _openStoryboard(tester);
       await _standOnTransitionRow(tester, 6);
+      expect(await _editInstanceEnabled(tester), isFalse);
       await _tapEditInstance(tester);
+      expect(_track(tester).transitionLayer.instructions, isEmpty);
+
+      await _tapNew(tester);
 
       final spans = _track(tester).transitionLayer.instructions;
       expect(spans.keys, [6]);
@@ -182,18 +204,18 @@ void main() {
       );
     });
 
-    testWidgets('the same verb EDITS where a span already covers the frame — '
-        'it does not stand down and it does not silently make a second one', (
-      tester,
-    ) async {
+    testWidgets('Edit Instance EDITS where a span covers the frame — it opens '
+        'that span and makes no second one', (tester) async {
       await _openStoryboard(tester);
       await _standOnTransitionRow(tester, 2);
-      await _tapEditInstance(tester);
+      await _tapNew(tester);
       expect(_track(tester).transitionLayer.instructions.keys, [2]);
 
       // Same frame again. The old `＋` went dark here because it could only
       // create; one verb opens the span instead, which is where its term is
       // repicked and where it is deleted.
+      //
+      // ↩️The ＋ made it and Edit opens it (F-105, 유저 2026-09-15).
       await _standOnTransitionRow(tester, 2);
       await _tapEditInstance(tester);
       expect(find.byType(InstructionEventDialog), findsOneWidget);
@@ -205,23 +227,24 @@ void main() {
       );
     });
 
-    testWidgets('the verb stays LIVE right across the row — covered or empty, '
-        'it has something to do', (tester) async {
+    testWidgets('↩️Edit Instance is LIT on a span and DARK one frame off it', (
+      tester,
+    ) async {
+      // ↩️It stayed LIVE right across the row while it also created (08-11:
+      // 「ON the span it edits, one frame off it it creates」); 09-15 unified
+      // it with every other row — 「통일 — 편집 버튼은 빈 칸에서 꺼진다」.
       await _openStoryboard(tester);
       await _standOnTransitionRow(tester, 8);
-      await _tapEditInstance(tester);
+      await _tapNew(tester);
       expect(_track(tester).transitionLayer.instructions.keys, [8]);
 
-      // ON the span it edits, one frame off it it creates. The entry that
-      // went dark on a covered frame belonged to a create-only button.
-      //
       // ⛔No flyout to close any more (①): reading the button's enablement
       // opens nothing, and the old dismissing tap would land on the canvas.
       await _standOnTransitionRow(tester, 8);
       expect(await _editInstanceEnabled(tester), isTrue);
 
       await _standOnTransitionRow(tester, 9);
-      expect(await _editInstanceEnabled(tester), isTrue);
+      expect(await _editInstanceEnabled(tester), isFalse);
     });
   });
 
@@ -583,7 +606,12 @@ void main() {
     });
   });
 
-  /// ③ Create, edit and delete are ONE verb, reached from this panel.
+  /// ③ Edit opens a span from this panel, where it is edited and deleted; on
+  /// an empty frame Edit is dark and makes nothing.
+  ///
+  /// ↩️It was ONE verb that also created (08-11). 유저 2026-09-15: 「통일 —
+  /// 편집 버튼은 빈 칸에서 꺼진다」 and 「만약 내가 말했던거라면 철회야」 — the
+  /// ＋ creates here as on every row.
   ///
   /// 🚨The dispatch had to be the RAIL's standing row, not `activeLayer`: the
   /// storyboard rail's row selection is separate state from the cut's drawing
@@ -651,10 +679,11 @@ void main() {
       );
     });
 
-    testWidgets('CREATES on an empty frame instead of opening anything — one '
-        'verb for both, so the rail needs no creation button of its own', (
-      tester,
-    ) async {
+    testWidgets('↩️is DARK on an empty frame, and its dispatch pressed anyway '
+        'makes nothing — the ＋ is what creates', (tester) async {
+      // ↩️This pinned the verb CREATING here — 「one verb for both, so the
+      // rail needs no creation button of its own」 (08-11). 유저 2026-09-15:
+      // 「통일 — 편집 버튼은 빈 칸에서 꺼진다」.
       await _openStoryboard(tester);
       final session = tester
           .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
@@ -671,11 +700,17 @@ void main() {
       expect(session.activeLayer?.kind, isNot(LayerKind.transition));
       expect(session.editingGlobalFrame, 7);
 
-      editInstance(tester);
+      final toolbar = tester.widget<TimelineActionToolbar>(
+        find.byType(TimelineActionToolbar),
+      );
+      expect(toolbar.panelContext.canEditInstance, isFalse);
+      // The pill is dark, so press its dispatch directly: a gate that only
+      // greyed the button would still create through it.
+      toolbar.onEditInstance!();
       await tester.pumpAndSettle();
 
       expect(find.byType(InstructionEventDialog), findsNothing);
-      expect(session.transitions.transitionSpanAt(7), isNotNull);
+      expect(session.transitions.transitionSpanAt(7), isNull);
     });
   });
 }
