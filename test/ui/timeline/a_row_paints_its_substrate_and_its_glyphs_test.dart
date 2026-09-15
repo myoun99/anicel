@@ -24,10 +24,13 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 void main() {
@@ -156,6 +159,9 @@ void main() {
       // with a store but no fresh tile still paints, rather than coming
       // out blank. Pinning either substrate needs a setup that reaches it;
       // the one that would is still to be found.
+      // ↪️Found 2026-09-15, after the cold-span fallback had in fact been
+      // lost (F-94): the ENGINE has to be on, so the store is live and a
+      // cold span reaches the fallback — the next test.
       expect(
         paintedFraction(bytes),
         greaterThan(0.05),
@@ -167,6 +173,47 @@ void main() {
         coloursInFirstCell(bytes),
         greaterThan(1),
         reason: 'and the foregrounds still go on top of it',
+      );
+    });
+  });
+
+  testWidgets('🚨with the engine on and the store COLD, a span waiting for its '
+      'tile paints the same cells the classic pass paints (F-94)',
+      (tester) async {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    if (dllPath == null) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+    addTearDown(() {
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+      QaNativeEngine.debugForceDartFallback = false;
+      TimelineGridTileStore.instance.clear();
+    });
+    await tester.runAsync(() async {
+      final classic = paintedFraction(await paintBytes(painterFor()));
+      TimelineGridTileStore.instance.clear();
+      // Nothing has rastered yet, so every span asks and gets null — the
+      // tiled pass has to lay the cells down itself while the raster lands
+      // off-frame. That is the zoom step across a span boundary.
+      final cold = paintedFraction(
+        await paintBytes(painterFor(store: TimelineGridTileStore.instance)),
+      );
+      expect(
+        classic,
+        greaterThan(0.5),
+        reason: 'premise: the classic pass fills its cells',
+      );
+      expect(
+        cold,
+        closeTo(classic, 0.01),
+        reason: 'a cold span keeps the classic paint underneath — with the '
+            'fallback gone the strip is the foreground alone (~0.10) and '
+            'every zoom step flashes the blocks away for a frame',
       );
     });
   });

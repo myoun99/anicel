@@ -704,7 +704,14 @@ class TimelineRowCellsPainter extends CustomPainter
       final fallbackStart = math.max(spanStart, window.startIndex);
       final fallbackEnd = math.min(spanEnd, window.endIndexExclusive);
       for (var frame = fallbackStart; frame < fallbackEnd; frame += 1) {
-        /*P4*/
+        // ⛔This call was lost once, silently: `a055c51a`(2026-09-04) — a
+        // commit about the accessibility sentence and the corner radius —
+        // swapped it for an empty `/*P4*/` marker, the shape of a mutant
+        // from that day's mutation campaign committed by accident. Every
+        // zoom step that crossed a span boundary then drew no block paper
+        // for a frame (F-94). `a_row_paints_its_substrate_and_its_glyphs_
+        // test` pins it now, with the engine on and the store cold.
+        _paintCellSubstrate(canvas, frame);
       }
     }
     // PREFETCH one span beyond both window edges (scroll warm-up):
