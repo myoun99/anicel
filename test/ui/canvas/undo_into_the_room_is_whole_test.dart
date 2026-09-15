@@ -132,23 +132,49 @@ void main() {
       'entry keeps its tiles but not their pictures', (tester) async {
     final walk = await _Walk.draw(tester, cels: 8);
     for (var undo = 0; undo < 3; undo += 1) {
+      if (undo > 0) {
+        await walk.settle();
+      }
       walk.press();
       await tester.pump();
-      await walk.settle();
     }
+    // ⚠️Read on the frame the third undo lands, before real time passes: the
+    // warm-up re-makes the next step's pictures right after the pass, so a
+    // pass that wrongly let them go is healed once decodes land. Read after
+    // a settle, three mutants survived here (measured 2026-09-15).
     // Redo puts strokes 4, 5 and 6 back in that order, so 4 is next.
     // ⛔Mutation: the redo stack read as if applied → stroke 4 loses its
-    // pictures and stroke 5 keeps them.
-    expect(
-      _pictured(walk.surfaces[4]),
-      0,
-      reason: 'stroke 5 is past the next redo',
-    );
+    // pictures.
     expect(
       _pictured(walk.surfaces[3]),
       64,
       reason: 'the next redo lands on stroke 4',
     );
+    expect(
+      _pictured(walk.surfaces[4]),
+      0,
+      reason: 'stroke 5 is past the next redo',
+    );
+  });
+
+  testWidgets('🚨stage 2: an undo and its redo leave the next undo holding its '
+      'pictures — and the entry behind it none', (tester) async {
+    final walk = await _Walk.draw(tester, cels: 8);
+    walk.press();
+    await tester.pump();
+    await walk.settle();
+    walk.pictures.step(undo: false, apply: walk.history.redo);
+    expect(walk.history.undoCount, 6, reason: 'the redo landed at the press');
+    // Read on the frame the redo lands, for the reason the case above gives.
+    await tester.pump();
+    // ⛔Mutation: the undo stack read on the wrong half, or its top counted
+    // deep → stroke 5, which the next undo puts back, loses its pictures.
+    expect(
+      _pictured(walk.surfaces[4]),
+      64,
+      reason: 'the next undo lands on stroke 5',
+    );
+    expect(_pictured(walk.surfaces[3]), 0, reason: 'stroke 4 is deep again');
   });
 
   testWidgets('control: with no store to ask, every entry keeps its pictures', (
