@@ -3,16 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_history_policy.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
-import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../helpers/draw_on_current_frame.dart';
 
 /// 실측 (08-26, iPhone + Google Drive): a File Provider can refuse plain
 /// in-place writes outright. The save's fallback writes the whole archive
@@ -50,38 +46,6 @@ void main() {
       }
     }
   });
-
-  void drawOnCurrentFrame(EditorSessionManager s) {
-    s.createDrawingAtCurrentFrame();
-    final selection = s.editingCanvas.activeBrushEditorSelection!;
-    BrushFrameEditingCoordinator(
-      initialFrameKey: s.brushFrameKeyForCut(
-        s.requireActiveCut,
-        selection.layerId,
-        selection.frameId,
-      ),
-      frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: s.requireActiveCut.canvasSize,
-        tileSize: 256,
-      ),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 10, y: 10),
-          color: 0xFF000000,
-          size: 4,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: 0,
-        ),
-      ],
-    );
-  }
 
   /// A path every plain write refuses: a DIRECTORY sits where the file
   /// would go, so the full rewrite's rename-over throws — the observable

@@ -2,16 +2,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_history_policy.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
-import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
+
+import '../helpers/draw_on_current_frame.dart';
 
 /// The Save As staging writer (실측 iPhone+Drive, 08-26): what the export
 /// picker places must already BE the project. A never-saved project used
@@ -43,38 +39,6 @@ void main() {
       // A leaked handle on Windows must not fail the suite.
     }
   });
-
-  void drawOnCurrentFrame(EditorSessionManager s) {
-    s.createDrawingAtCurrentFrame();
-    final selection = s.editingCanvas.activeBrushEditorSelection!;
-    BrushFrameEditingCoordinator(
-      initialFrameKey: s.brushFrameKeyForCut(
-        s.requireActiveCut,
-        selection.layerId,
-        selection.frameId,
-      ),
-      frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: s.requireActiveCut.canvasSize,
-        tileSize: 256,
-      ),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 10, y: 10),
-          color: 0xFF000000,
-          size: 4,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: 0,
-        ),
-      ],
-    );
-  }
 
   test('🚨 a NEVER-saved session stages a complete archive and keeps every '
       'ref to itself — deleting the copy costs nothing', () async {
