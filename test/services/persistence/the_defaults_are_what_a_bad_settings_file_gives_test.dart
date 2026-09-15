@@ -2,12 +2,22 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/cut_lead_edge_plan.dart';
-import 'package:anicel/src/models/cut_move_plan.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 
-/// Two laws the audit pulled out of copies that no test named.
+/// The law the audit pulled out of copies that no test named: a settings
+/// file that cannot be read must not stop the app.
+///
+/// ↩️This file used to pin a second law beside it — a cut lead-edge drag
+/// stated in cuts (`planCutLeadEdge`). That planner lost its last caller
+/// when the lead edge became ONE rule over panels (I-21, 유저 2026-09-12:
+/// the block in front keeps its head and trades frames across the boundary),
+/// and it could not even say what the new rule does — it returned only the
+/// dragged cut's length, while the cut in front now resizes too. Its two
+/// cases pinning the retired rule kept master red from 2026-09-12 on. The
+/// planner and its cases went together; the live rule is pinned where it
+/// lives: `test/models/block_run_lead_edge_test.dart`,
+/// `test/models/storyboard_panel_slots_test.dart` and
+/// `test/ui/storyboard_lead_edge_is_one_law_test.dart`.
 void main() {
   group('a settings file that cannot be read must not stop the app', () {
     late Directory directory;
@@ -135,138 +145,6 @@ void main() {
         loadVersionedSettingsSync(filePath: good, version: 2, fromJson: asIs),
         {'version': 2, 'lane': 'audio'},
       );
-    });
-  });
-
-  group('a cut lead-edge drag is the frame axis, stated in cuts', () {
-    List<CutMoveSlot> slots(List<(String, int, int)> rows) => [
-      for (final (id, gap, duration) in rows)
-        (id: CutId(id), leadingGapFrames: gap, duration: duration),
-    ];
-
-    test('🚨a GLUED predecessor rides the boundary, and the emptiness ends '
-        'up at the HEAD of the film', () {
-      // The documented rule, and the surprising half: two cuts touching,
-      // drag the second one's front edge in, and the FIRST cut moves with
-      // it rather than a hole opening between them.
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 0, 12)]),
-        targetIndex: 1,
-        frameDelta: 3,
-      );
-
-      expect(plan.durations, {const CutId('b'): 9});
-      expect(
-        plan.gaps,
-        {const CutId('a'): 3},
-        reason:
-            'a stayed glued and translated wholesale; the head absorbed '
-            'the difference, and b keeps no gap of its own',
-      );
-    });
-
-    test('a SEPARATED predecessor holds its ground and its own gap absorbs '
-        'the move', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 5, 12)]),
-        targetIndex: 1,
-        frameDelta: 3,
-      );
-
-      expect(plan.durations, {const CutId('b'): 9});
-      expect(plan.gaps, {const CutId('b'): 8});
-    });
-
-    test('the END holds still — that is what makes everything after it hold '
-        'still too, by arithmetic rather than by a rule', () {
-      final before = slots([('a', 0, 12), ('b', 5, 12)]);
-      final plan = planCutLeadEdge(
-        slots: before,
-        targetIndex: 1,
-        frameDelta: 3,
-      );
-
-      const startBefore = 12 + 5;
-      final startAfter = plan.gaps[const CutId('b')]! + 12;
-      expect(
-        startAfter + plan.durations[const CutId('b')]!,
-        startBefore + 12,
-        reason: 'same back boundary, which is the whole point',
-      );
-    });
-
-    test('dragging the front edge OUT grows the cut into the gap ahead of '
-        'it', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 5, 12)]),
-        targetIndex: 1,
-        frameDelta: -3,
-      );
-
-      expect(plan.durations, {const CutId('b'): 15});
-      expect(plan.gaps, {const CutId('b'): 2});
-    });
-
-    test('growing stops at the head of the axis — there is no frame -1', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 5, 12)]),
-        targetIndex: 1,
-        frameDelta: -400,
-      );
-
-      expect(plan.durations, {const CutId('b'): 17});
-      expect(plan.gaps, {const CutId('b'): 0});
-    });
-
-    test('the dragged cut is ALWAYS in durations, even when the clamp left '
-        'it unchanged — a missing key would read as a change', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12)]),
-        targetIndex: 0,
-        frameDelta: 400,
-      );
-
-      expect(plan.durations.keys, [const CutId('a')]);
-      expect(plan.durations[const CutId('a')], 1, reason: 'the minimum');
-    });
-
-    test('minDuration is the floor the drag stops at', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12)]),
-        targetIndex: 0,
-        frameDelta: 400,
-        minDuration: 4,
-      );
-
-      expect(plan.durations[const CutId('a')], 4);
-    });
-
-    test('the gaps map is SPARSE — a cut whose gap did not move stays out '
-        'of it, so a drag does not read as re-timing the track', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 5, 12), ('c', 5, 12)]),
-        targetIndex: 1,
-        frameDelta: 2,
-      );
-
-      expect(plan.gaps.keys, [const CutId('b')]);
-      expect(plan.gaps[const CutId('b')], 7);
-    });
-
-    test('a zero drag plans nothing but the target duration', () {
-      final plan = planCutLeadEdge(
-        slots: slots([('a', 0, 12), ('b', 0, 12)]),
-        targetIndex: 1,
-        frameDelta: 0,
-      );
-
-      expect(plan.gaps, isEmpty);
-      expect(plan.durations, {const CutId('b'): 12});
-      expect(plan.isEmpty, isFalse, reason: 'the target duration is always in');
-    });
-
-    test('an EMPTY plan is empty on both maps', () {
-      expect(const CutLeadEdgePlan(durations: {}, gaps: {}).isEmpty, isTrue);
     });
   });
 }

@@ -19,6 +19,14 @@
 /// watching the back shrink feels wrong", so that surface keeps the
 /// trailing-edge vocabulary and nothing else.
 ///
+/// ↩️I-21 (유저 2026-09-12) reversed both halves. A leading edge follows the
+/// SHARED lead-edge rule on every surface now ([planBlockRunLeadEdge]): the
+/// grabbed panel's end holds, and the block in front keeps its head and
+/// trades frames with it, so the cut's length no longer gives way. And
+/// because a front edge no longer changes the cut's length, the timeline's
+/// conte row hangs front grips again on every block but the first, whose
+/// front edge is the cut's own start and stays on the storyboard strip.
+///
 /// The cells are DERIVED here rather than maintained in the store, so the
 /// invariant cannot be broken by an edit path that forgot about it. Stored
 /// lengths stay real for every shared verb (delete, push/pull, move); this
@@ -156,9 +164,11 @@ List<int> storyboardDivisionKeys({
 /// How far the panel at [panelIndex] may be shortened from its FRONT, or
 /// null when there is no such panel to re-time.
 ///
-/// Growing (a negative delta) is NOT bounded here: what stops it is the
-/// cut axis, where the frames come from ([planCutLeadEdge] clamps against
-/// the slack that actually exists ahead of the cut).
+/// Growing (a negative delta) was NOT bounded here: what stopped it was the
+/// cut axis's own lead-edge planner, which clamped against the slack ahead
+/// of the cut. That planner lost its last caller with this law and was
+/// deleted (2026-09-15); the shared rule bounds growth by how far its edge
+/// may reach ([planBlockRunLeadEdge]).
 int? storyboardPanelLeadMaxShrink({
   required SplayTreeMap<int, TimelineExposure>? timeline,
   required int cutDuration,

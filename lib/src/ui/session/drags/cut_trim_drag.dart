@@ -50,15 +50,19 @@ sealed class CutTrimDrag implements EditorDragSession {
   /// Starts a duration/gap drag on [cutId]'s [edge]; null when the cut is
   /// not on any track's layout — no object, no drag.
   ///
-  /// - the LEAD edge is one verb for every cut (R10 R4): the cut loses
-  ///   frames off its front, its END holds so the cuts behind never move,
-  ///   the cut GLUED in front translates wholesale, and the difference comes
-  ///   to rest at the head of the film ([planCutLeadEdge]). On a cut WITH a
-  ///   conte row the frames come off [panelIndex] — the panel the grip
-  ///   belongs to — and every other panel keeps its commas
-  ///   ([storyboardTimelineWithPanelLeadRetimed], user's rule 2026-08-02).
-  ///   The row is what floors the drag, and it floors the GRABBED panel, not
-  ///   the last one;
+  /// - the LEAD edge is one verb for every cut (R10 R4) and the same rule a
+  ///   drawing block's front edge follows ([planBlockRunLeadEdge], I-21):
+  ///   the track is flattened into panels — a cut without a conte row is
+  ///   one panel — and [panelIndex] names the panel the grip belongs to.
+  ///   That panel's END holds, so nothing behind it moves, and the block in
+  ///   FRONT keeps its head and trades frames across the boundary: the
+  ///   previous panel of this cut, or the previous cut's last panel.
+  ///   Pulled outward, the edge spends the gap in front first and then that
+  ///   block's frames, down to one.
+  ///   ↩️The cut GLUED in front used to translate wholesale with the
+  ///   difference left at the head of the film, and a cut with a conte row
+  ///   used its own law where nobody grew and the cut's length gave way.
+  ///   I-21 (유저 2026-09-12) retired both;
   /// - the TRAILING edge trims the duration, growth eating the following
   ///   gap first. (A cut WITH a storyboard row never reaches this arm on
   ///   that edge — feedback #9 sends it to the row's last comma instead.)
