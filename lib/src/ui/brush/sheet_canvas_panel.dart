@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -79,6 +80,15 @@ class SheetCanvasPanel extends StatelessWidget {
       fitFocusRect: fitFocusRect,
       autoFrame: autoFrame,
       contentStrokeActive: contentStrokeActive,
+      // F-80 ①: a sheet whose drawing is OFF takes no strokes — the host
+      // hands it no stroke gate — so it is a canvas panel with no drawing
+      // mode, and answers as the viewer does (I-14): one finger pans, and so
+      // does a plain primary press that no control on the sheet has taken
+      // (a timesheet head cell, a conte cell).
+      oneFingerAction: contentStrokeActive == null
+          ? CanvasTouchDragAction.navigate
+          : null,
+      primaryPressPans: contentStrokeActive == null,
       contentOverride: (context, rawViewport) => content(
         context,
         renderSnappedViewport(

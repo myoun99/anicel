@@ -199,6 +199,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.cutPieceSlot,
     this.onCutContent,
     this.oneFingerAction,
+    this.primaryPressPans = false,
     this.onStrokeInputActiveChanged,
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
@@ -665,6 +666,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// other tool). A host that lets another tool through asks that tool's
   /// layer the same way.
   final CanvasTouchDragAction? oneFingerAction;
+
+  /// Whether a plain primary press pans this panel
+  /// ([CanvasViewportGestureLayer.primaryPressPans]) — for a host whose
+  /// content takes no strokes. The main canvas and the viewer (whose pen and
+  /// mouse drive the cut, I-14) leave it off.
+  final bool primaryPressPans;
 
   /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
   /// stroke end/cancel — the session holds prerender warming while a

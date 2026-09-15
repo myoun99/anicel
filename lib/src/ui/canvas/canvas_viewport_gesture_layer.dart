@@ -52,6 +52,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.touchLocked = false,
     this.rotationEnabled = true,
     this.oneFingerAction,
+    this.primaryPressPans = false,
     this.onInvokeAction,
     this.onBrushSizeDragStart,
     this.onBrushSizeDragUpdate,
@@ -107,6 +108,17 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
   /// 존재안하니 한손가락 핑거시 팬」 — the media viewer passes navigate.
   final CanvasTouchDragAction? oneFingerAction;
+
+  /// Whether a plain PRIMARY press pans here, as the 「이동」 key's press
+  /// does — for a canvas whose content takes no strokes. A press that a
+  /// control under the pointer has already taken stays that control's (the
+  /// press law, [controlOwnsTap]). False leaves the primary to the tools.
+  ///
+  /// 🗣️F-80 ① (09-15): a sheet with drawing off is a canvas panel with no
+  /// drawing mode, and the viewer's answer for that is already law (I-14,
+  /// the one-finger pan above) — so a sheet with drawing off pans on a click
+  /// as well as on one finger.
+  final bool primaryPressPans;
 
   final Widget child;
 
@@ -218,6 +230,13 @@ class _CanvasViewportGestureLayerState
     }
   }
 
+  /// [CanvasViewportGestureLayer.primaryPressPans]: a primary press that no
+  /// control under the pointer has taken.
+  bool _primaryPressPans(PointerDownEvent event) =>
+      widget.primaryPressPans &&
+      canvasPrimaryDown(event.buttons) &&
+      !controlOwnsTap(event.pointer);
+
   void _handlePointerDown(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch) {
       // The one place touch does NOT get to override a busy canvas. Two
@@ -236,7 +255,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (!canvasPressPans(event.buttons) ||
+    if (!(canvasPressPans(event.buttons) || _primaryPressPans(event)) ||
         _panPointer != null ||
         widget.strokeActive) {
       return;
