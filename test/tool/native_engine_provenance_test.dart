@@ -106,11 +106,17 @@ void main() {
     });
 
     test('where one file ends and the next begins is part of the name', () {
-      // `a` = `b` then `c` = `d`, against one `a` holding all of it — the
-      // second file's name included, down to the separator byte.
+      // `a` = `b` then `c` = `d`, against one `a` whose bytes spell out the
+      // rest: `b`, the frame a one-byte name carries, `c`, `d`. With the
+      // names framed and the bytes not, both read the same.
       writeText(trunk, 'a', 'b');
       writeText(trunk, 'c', 'd');
-      write(lane, 'a', [...'b'.codeUnits, ...'c'.codeUnits, 0, ...'d'.codeUnits]);
+      write(lane, 'a', [
+        ...'b'.codeUnits,
+        1, 0, 0, 0, 0, 0, 0, 0,
+        ...'c'.codeUnits,
+        ...'d'.codeUnits,
+      ]);
       expect(nameOf(lane), isNot(nameOf(trunk)));
     });
 
