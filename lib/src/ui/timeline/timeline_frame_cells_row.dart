@@ -69,7 +69,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.rangeGesture,
     this.runEdit,
     this.baseLayer,
-    this.seSpillsIn = false,
+    this.seSpillInLeadFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
@@ -236,11 +236,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// row-wide and never unmounts mid-preview); null falls back to [layer].
   final Layer? baseLayer;
 
-  /// Track-SE rows whose display clone starts with a block spilling in
-  /// from an earlier cut (UI-R7 #6): the cut start draws the `~`
-  /// continuation and the block's start grip stands down (its real start
-  /// lives in that earlier cut).
-  final bool seSpillsIn;
+  /// How far into its sound the block at frame 0 already is, when this
+  /// track-SE row's display clone starts with a block spilling in from an
+  /// earlier cut — null when nothing spills in. UI-R7 #6: the cut start
+  /// draws the `~` continuation and the block's start grip stands down (its
+  /// real start lives in that earlier cut). F-113: the block's waveform is
+  /// drawn from this far into the file.
+  final int? seSpillInLeadFrames;
 
   @override
   Widget build(BuildContext context) {
@@ -348,7 +350,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // 컷길이 바꾸니까 그거만 없도록」 — that edge lives on the storyboard
     // strip, where it re-times the film rather than the row.
     suppressStartGripAtZero:
-        (seSpillsIn && layerKindUsesSeSheetCells(layer.kind)) ||
+        (seSpillInLeadFrames != null &&
+            layerKindUsesSeSheetCells(layer.kind)) ||
         layer.kind.coversWithoutGaps,
   );
 
@@ -423,6 +426,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           frameRate: projectFrameRate,
           audioPeaksFor: peaksFor,
           color: timelineDrawingInkColor.withValues(alpha: 0.22),
+          leadInAtStart: seSpillInLeadFrames ?? 0,
           keyPrefix: keyPrefix,
         ),
       ...timelineRowSeLabelOverlays(
@@ -446,7 +450,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       ...timelineRowSeContinuationMarks(
         layer: layer,
         cutFrameCount: playbackFrameCount,
-        spillsInAtStart: seSpillsIn,
+        spillsInAtStart: seSpillInLeadFrames != null,
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         keyPrefix: keyPrefix,

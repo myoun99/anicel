@@ -119,7 +119,7 @@ class TimelineGridHooks {
     this.onToggleAttachGroup,
     this.dragPreview,
     this.opacityDragPreview,
-    this.seSpillInLayerIds = const {},
+    this.seSpillInLeadFrames = const {},
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.onLayerBlendModeSelected,
@@ -426,13 +426,11 @@ class TimelineGridHooks {
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
 
-  /// Track-SE rows whose display clone starts with a spill-in block
-  /// (UI-R7 #6: `~` at the cut start, start grip stands down).
-  ///
-  /// (x-sheet) Track-SE layers whose sound spills in from the previous cut (UI-R7 #6):
-  /// their first block shows the `~` continuation mark instead of a start
-  /// grip. Mirrors the horizontal timeline's plumbing.
-  final Set<LayerId> seSpillInLayerIds;
+  /// Track-SE rows whose display clone starts with a spill-in block, each
+  /// with how far into that block the cut starts — both grids read it
+  /// (UI-R7 #6: `~` at the cut start, start grip stands down; F-113: the
+  /// block's waveform starts that far into its sound).
+  final Map<LayerId, int> seSpillInLeadFrames;
 
   /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
   /// grip that end-trims the ACTIVE cut through the session's trim

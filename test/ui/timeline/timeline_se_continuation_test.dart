@@ -32,7 +32,7 @@ void main() {
 
   Widget harness({
     required Layer layer,
-    bool seSpillsIn = false,
+    int? seSpillInLeadFrames,
     TimelineCommaDragCallbacks? commaDrag,
   }) {
     return MaterialApp(
@@ -52,7 +52,7 @@ void main() {
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},
             commaDrag: commaDrag,
-            seSpillsIn: seSpillsIn,
+            seSpillInLeadFrames: seSpillInLeadFrames,
           ),
         ),
       ),
@@ -112,7 +112,7 @@ void main() {
         layer: seLayer({
           0: const TimelineExposure.drawing(FrameId('f0'), length: 3),
         }),
-        seSpillsIn: true,
+        seSpillInLeadFrames: 2,
         commaDrag: commaDrag,
       ),
     );
@@ -129,7 +129,7 @@ void main() {
     );
     expect((targets.single as TimelineRowGripTarget).edge, TimelineBlockEdge.end);
 
-    // Without the spill flag the same geometry keeps BOTH grips.
+    // Without a spill-in the same geometry keeps BOTH grips.
     await tester.pumpWidget(
       harness(
         layer: seLayer({

@@ -58,6 +58,18 @@ class TrackSeWindow {
     return covering;
   }
 
+  /// How far into the spill-in block — and the sound it carries — the
+  /// window's first frame already is, or null when nothing spills in.
+  ///
+  /// 🚨F-113 (2026-09-15): the display clone restarts that block at local 0,
+  /// so nothing read off the clone alone can know this — its waveform was
+  /// drawn from the file's first frame while the storyboard and playback,
+  /// which read the track's own row, placed the sound right.
+  int? spillInLeadFrames(Layer globalLayer) {
+    final spill = spillInBlock(globalLayer);
+    return spill == null ? null : cutStartFrame - spill.startIndex;
+  }
+
   /// Whether the display block starting at [localBlockStart] is the
   /// synthesized spill-in entry (whose start edge is not editable here).
   bool isSpillInStart(Layer globalLayer, int localBlockStart) =>

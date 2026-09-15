@@ -12,6 +12,7 @@ class SeAudioSpan {
     required this.clipIndex,
     required this.startFrame,
     required this.lengthFrames,
+    this.leadInFrames = 0,
   });
 
   final AudioClip clip;
@@ -25,7 +26,17 @@ class SeAudioSpan {
   /// The carrying block's length — the hard playback/display window.
   final int lengthFrames;
 
+  /// How much of the sound already played before [startFrame]: a block a
+  /// cut shows spilling in from an earlier cut starts there with its sound
+  /// that far along (F-113). Zero for every block that starts where it is
+  /// shown.
+  final int leadInFrames;
+
   int get endFrameExclusive => startFrame + lengthFrames;
+
+  /// Frames into the FILE the span's first frame sounds — the clip's own
+  /// offset trim plus [leadInFrames]. What a waveform is drawn from.
+  int get leadingFrames => clip.offsetFrames + leadInFrames;
 }
 
 /// Every audible window of [layer], in block order. A frame exposed by
@@ -33,7 +44,11 @@ class SeAudioSpan {
 /// block; clips whose frame has no block are inert (deleted blocks fall
 /// silent, and return when the frame is exposed again — frame-link
 /// semantics, same as drawings).
-List<SeAudioSpan> seAudioSpans(Layer layer) {
+///
+/// [leadInAtStart] is how far into its sound a block starting at frame 0
+/// already is: a track-SE row's cut-local clone restarts a block that spills
+/// in from an earlier cut there (`TrackSeWindow.spillInLeadFrames`).
+List<SeAudioSpan> seAudioSpans(Layer layer, {int leadInAtStart = 0}) {
   if (layer.audioClips.isEmpty) {
     return const [];
   }
@@ -48,6 +63,7 @@ List<SeAudioSpan> seAudioSpans(Layer layer) {
             clipIndex: index,
             startFrame: block.startIndex,
             lengthFrames: block.endIndexExclusive - block.startIndex,
+            leadInFrames: block.startIndex == 0 ? leadInAtStart : 0,
           ),
         );
       }

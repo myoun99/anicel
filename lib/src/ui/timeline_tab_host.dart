@@ -1075,9 +1075,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,
             // Sounds carrying over from the previous cut (UI-R7 #6): the
-            // cut start draws `~` and the spill block's start grip stands
-            // down.
-            seSpillInLayerIds: _session.trackSe.trackSeSpillInLayerIds,
+            // cut start draws `~`, the spill block's start grip stands
+            // down, and its waveform starts that far into the sound (F-113).
+            seSpillInLeadFrames: _session.trackSe.trackSeSpillInLeadFrames,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.

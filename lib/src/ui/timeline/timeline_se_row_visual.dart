@@ -140,6 +140,10 @@ List<Widget> timelineRowSeContinuationMarks({
 /// shows the waveform from its own start, clipped to the block AND to the
 /// file's length from the extracted peaks; clips whose peaks are still
 /// extracting (or failed) draw nothing until the store notifies.
+///
+/// [leadInAtStart]: how far into its sound the block at frame 0 already is
+/// — the row spills in from an earlier cut (F-113). That block's strip is
+/// drawn from there, where the storyboard and playback place the sound.
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -148,10 +152,11 @@ List<Widget> timelineRowAudioOverlays({
   required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
   required Color color,
+  int leadInAtStart = 0,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
-  for (final span in seAudioSpans(layer)) {
+  for (final span in seAudioSpans(layer, leadInAtStart: leadInAtStart)) {
     // Windowed like every sibling builder: the open-ended SE display
     // clone carries every downstream sound now, and an off-window
     // waveform strip is layout weight nobody can see.
@@ -167,11 +172,12 @@ List<Widget> timelineRowAudioOverlays({
     if (peaks == null) {
       continue;
     }
-    // The offset trim skips into the file, so the audible tail shrinks by
-    // the same amount (a fully skipped-past file falls silent).
+    // The offset trim — and a spill-in's lead — skip into the file, so the
+    // audible tail shrinks by the same amount (a fully skipped-past file
+    // falls silent).
     final audibleFrames = math.min(
       span.lengthFrames,
-      peaks.durationFrames(frameRate) - span.clip.offsetFrames,
+      peaks.durationFrames(frameRate) - span.leadingFrames,
     );
     if (audibleFrames <= 0) {
       continue;
@@ -195,7 +201,7 @@ List<Widget> timelineRowAudioOverlays({
             audibleFrames: audibleFrames,
             axis: axis,
             color: color,
-            leadingFrames: span.clip.offsetFrames,
+            leadingFrames: span.leadingFrames,
             gain: span.clip.gain,
             fadeInFrames: span.clip.fadeInFrames,
             fadeOutFrames: span.clip.fadeOutFrames,

@@ -129,14 +129,21 @@ class TrackSeDisplay {
   }
 
   /// The track SE rows whose display clone starts with a spill-in block —
-  /// a sound carrying over from an earlier cut (UI-R7 #6: the timeline
-  /// draws the `~` continuation at the cut start and drops the start
-  /// grip; the block's real start lives in that earlier cut).
-  Set<LayerId> get trackSeSpillInLayerIds {
+  /// a sound carrying over from an earlier cut — each with how far into
+  /// that block the cut starts.
+  ///
+  /// UI-R7 #6: the timeline draws the `~` continuation at the cut start and
+  /// drops the start grip; the block's real start lives in that earlier cut.
+  /// 🚨F-113 (2026-09-15): the VALUE is how far into its sound the clone's
+  /// frame 0 already is. The storyboard and playback read the track's own
+  /// row and place the sound right; the cut's clone restarts the block at 0,
+  /// so its waveform was drawn from the file's first frame until this said
+  /// where it really is.
+  Map<LayerId, int> get trackSeSpillInLeadFrames {
     final window = trackSeWindow;
     return {
       for (final layer in _selection.activeTrack.seLayers)
-        if (window.spillInBlock(layer) != null) layer.id,
+        layer.id: ?window.spillInLeadFrames(layer),
     };
   }
 

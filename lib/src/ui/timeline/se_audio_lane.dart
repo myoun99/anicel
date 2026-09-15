@@ -196,6 +196,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
     this.onSetClipOffset,
     this.offsetDrag,
     this.onSetClipFades,
+    this.spillInLeadFrames,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
   });
@@ -207,6 +208,10 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
   final ProjectFrameRate frameRate;
+
+  /// How far into its sound the block at frame 0 already is, when the row
+  /// spills in from an earlier cut (F-113) — null when nothing does.
+  final int? spillInLeadFrames;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
   /// Commits a span's dragged offset (one undo); null makes the slide
@@ -267,7 +272,10 @@ class SeAudioLaneFrameRow extends StatelessWidget {
 
   /// One clip span per audio span inside the visible window.
   List<Widget> _spans() => [
-    for (final span in seAudioSpans(layer))
+    for (final span in seAudioSpans(
+      layer,
+      leadInAtStart: spillInLeadFrames ?? 0,
+    ))
       if (_visible(span)) _spanWidget(span),
   ];
 
@@ -582,7 +590,9 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
             // Editing strip: stronger ink than the row's underlay.
             color: timelineDrawingInkColor.withValues(alpha: 0.45),
             axis: widget.axis,
-            leadingFrames: offset,
+            // A spill-in's lead rides on top of the trim (F-113): the strip
+            // starts where the sound already is when the cut begins.
+            leadingFrames: offset + widget.span.leadInFrames,
             gain: widget.span.clip.gain,
             fadeInFrames: fadeIn,
             fadeOutFrames: fadeOut,
