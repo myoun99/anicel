@@ -118,22 +118,31 @@ void main() {
   });
 
   test('an instant answer from the provider is not a wait — nothing is '
-      'reported', () async {
+      'reported, and no tick is waited out', () async {
     FolderPicker.debugOperatingSystem = 'ios';
     final path = '${temp.path}${Platform.pathSeparator}instant.anicel';
     File(path).writeAsBytesSync(const [9, 9]);
     FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
     final seen = <Duration>[];
+    final clock = Stopwatch()..start();
 
+    // ⚠️A LONG tick, and the time measured. Nothing reported is not enough:
+    // a wait that sat out its tick before noticing the answer reports
+    // nothing either — it only opens every local file a tick late.
     await FolderPicker.materializeOpenedFile(
       path,
       within: null,
-      step: const Duration(milliseconds: 50),
+      step: const Duration(seconds: 3),
       onWaiting: seen.add,
       isCancelled: () => false,
     );
 
     expect(seen, isEmpty);
+    expect(
+      clock.elapsed,
+      lessThan(const Duration(seconds: 1)),
+      reason: 'the answer ends the tick, not the tick the answer',
+    );
   });
 
   test('without a coordinator nothing is asked — there is nobody to ask',
