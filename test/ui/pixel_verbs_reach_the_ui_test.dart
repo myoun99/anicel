@@ -277,12 +277,18 @@ void main() {
           (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
         );
         session.selectLayer(row.id);
-        session.selectFrameIndex(0);
+        // ⚠️Frame 1, not 0. The workspace opens frame 0's cel before [pump]
+        // inks the store, so a clear there reads the blank surface the
+        // coordinator already holds and changes nothing — and two presses
+        // that change nothing agree (the trap `pixel_verbs_test`'s
+        // `inkThroughCoordinator` names). A cel first opened AFTER the ink
+        // seeds from it.
+        session.selectFrameIndex(1);
         await tester.pumpAndSettle();
         final key = session.brushFrameKeyForCut(
           session.requireActiveCut,
           row.id,
-          row.frames.first.id,
+          session.selectedFrame!.id,
         );
         expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
         expect(session.canUndo, isFalse);
@@ -313,6 +319,13 @@ void main() {
         isTrue,
         reason: 'the item ran an edit — or the parity below is two no-ops '
             'agreeing',
+      );
+      // ⛔`undoable` alone let two no-ops agree: a clear that found nothing
+      // under it still lands its command. The cel must actually be empty.
+      expect(
+        byItem.drawn,
+        isFalse,
+        reason: 'the item emptied the cel under the playhead',
       );
 
       final byKey = await clearBy(
