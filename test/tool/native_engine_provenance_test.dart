@@ -157,7 +157,14 @@ void main() {
     test('tool/lane.sh asks this tool and writes the stamp where it reads it',
         () {
       final lane = File('tool/lane.sh').readAsStringSync();
-      expect(lane, contains(engineStampPath));
+      // The ASSIGNMENT, not the path: the header comment spells the path
+      // too, and a drifted variable under a correct comment passed a plain
+      // `contains` (mutant, 2026-09-15).
+      final stampVariable = RegExp(
+        '^ENGINE_STAMP=${RegExp.escape(engineStampPath)}\\r?\$',
+        multiLine: true,
+      );
+      expect(lane, matches(stampVariable));
       expect(
         lane,
         matches(RegExp(r'tool/native_engine_provenance\.dart"? check ')),
