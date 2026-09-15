@@ -32,14 +32,9 @@ void main() {
   /// a line only with a reason someone can be named for — 「~는 제외한다」
   /// with no author is a bug (CLAUDE.md).
   const allowed = <String, String>{
-    // The door lives with the rail's group toggles, which the audit's SRP
-    // cut moved out of the workspace State's file (2026-09-02) — the
-    // excuse follows the door, not the file it used to sit in.
-    'lib/src/ui/workspace/workspace_rail.dart':
-        'FOLDING a group whose attach row is active hands the active row to '
-        'the BASE (UI-R24 #4). Nobody stood anywhere — the UI moved the '
-        'cursor out of a room it was closing — so the standing law, which '
-        'is about MOVING somewhere else, does not apply.',
+    // ↩️The attach group fold stood here (UI-R24 #4: the rail itself moved
+    // the active row to the BASE). F-81 moved that hand-off into the
+    // session's fold law, so the door is gone and so is its pass.
   };
 
   test('every door that moves the active row stands through the verb', () {

@@ -129,7 +129,7 @@ class ExportCelLayerRow extends StatelessWidget {
           ),
         ),
         ..._railCells(axis),
-        ?layerRailDepthGuides(axis, depth, color: colorScheme.outlineVariant),
+        ?layerRailDepthGuides(axis, depth, colorScheme: colorScheme),
         Expanded(
           child: Align(
             alignment: Alignment.centerLeft,

@@ -9,6 +9,16 @@ import '../timeline/timeline_row_span_resolver.dart'
 import 'session_roles.dart';
 import 'range_selections.dart';
 
+/// The fold law's one body ([Standing.handOffOnFold]) as a collaborator that
+/// cannot hold the standing takes it: [vanished] names what a fold took off
+/// the screen, [swallower] where the row selection and the row you stand on
+/// go instead.
+typedef FoldHandOff =
+    void Function({
+      required TimelineRowAddress swallower,
+      required bool Function(TimelineRowAddress address) vanished,
+    });
+
 /// The ROW SELECTION — the rows the user swept in the rail, the anchor the
 /// sweep started from, and what folding a group does to it — as its own
 /// object — the NOTIFIER included: it owns the selection now, and the

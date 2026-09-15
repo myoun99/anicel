@@ -434,3 +434,24 @@ LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
   // organizer: there is no attach in it to name a base.
   return sawLeaf ? baseId : null;
 }
+
+/// The base whose attach GROUP [layer] is a row of — the row the group's fold
+/// takes off the screen and whose indent hangs off that base: an attach row
+/// names its base directly, an organizer folder (a nested one included)
+/// names it through its leaves. Null for a row outside every attach group.
+///
+/// 🚨F-81: the display rows asked this inline, and the group fold asked a
+/// narrower question of its own — attach rows alone — so folding while
+/// standing on the organizer folder left you on a row that was gone
+/// (유저 2026-09-11: 「어태치폴더에 서있는 채로 기준레이어의 접기버튼 누르면
+/// 폴더에 서있는채임」).
+LayerId? attachGroupBaseOf(Layer layer, List<Layer> layers) =>
+    layer.attachedToLayerId ?? attachOrganizerBaseOf(layer, layers);
+
+/// How many attach FOLDERS hold [layer] — how deep it sits inside its group's
+/// organizers: 0 for an organizer at the group's top and for an attach row
+/// outside every organizer.
+int attachFolderLevelsAbove(Layer layer, List<Layer> layers) => [
+  for (final folder in layers.ancestryOf(layer.folderId))
+    if (attachOrganizerBaseOf(folder, layers) != null) folder,
+].length;

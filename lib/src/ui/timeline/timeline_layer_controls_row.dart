@@ -606,7 +606,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the name clipped to nothing. The guides say the depth — one hairline per
   /// level, drawn inside the name's own box.
   Widget? _depthGuides(ColorScheme colorScheme) =>
-      layerRailDepthGuides(axis, depth, color: colorScheme.outlineVariant);
+      layerRailDepthGuides(axis, depth, colorScheme: colorScheme);
 
   /// 🚨F-26 (유저 2026-08-24): 「레이어 클릭하고 이름영역 클릭시 **선택되는
   /// 애니메이션같은거 발동**하는데, 없애고 해당영역 클릭시 레이어라벨 빈공간

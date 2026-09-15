@@ -156,10 +156,41 @@ void main() {
       );
       expect(leafName.dx, greaterThan(baseName.dx));
       expect(
-        layerRailDepthGuides(Axis.horizontal, 0, color: Colors.black),
+        layerRailDepthGuides(
+          Axis.horizontal,
+          0,
+          colorScheme: const ColorScheme.dark(),
+        ),
         isNull,
         reason: 'a top-level row draws no guide',
       );
+    });
+
+    testWidgets('F-81: a nesting hairline wears `outline` — brighter than the '
+        '`outlineVariant` it wore (「너무 어두우니 좀 더 밝게」)', (tester) async {
+      // A SEEDED scheme: the legacy `ColorScheme.dark()` const leaves
+      // `outline` and `outlineVariant` the same colour, so the premise
+      // below (brighter than what it wore) could not be read off it.
+      final scheme = ColorScheme.fromSeed(
+        seedColor: const Color(0xFF6750A4),
+        brightness: Brightness.dark,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Row(
+            children: [
+              layerRailDepthGuides(Axis.horizontal, 1, colorScheme: scheme)!,
+            ],
+          ),
+        ),
+      );
+      final hairline = tester.widget<ColoredBox>(
+        find
+            .descendant(of: find.byType(Row), matching: find.byType(ColoredBox))
+            .first,
+      );
+      expect(hairline.color, scheme.outline);
+      expect(scheme.outline, isNot(scheme.outlineVariant));
     });
 
     testWidgets('a row that is not in dims to the rail\'s off alpha; a mixed '

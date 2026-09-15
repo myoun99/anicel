@@ -2,6 +2,7 @@ import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_folder.dart' show attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
@@ -379,24 +380,78 @@ class Standing {
   /// [laneId] is a GROUP header closing, and it swallows its members alone
   /// — the header itself stays on screen and is where you land.
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
-    final row = currentRow;
     if (laneId == null) {
-      _rowSelectionVerbs.foldRowSelection(
+      handOffOnFold(
+        swallower: LayerRowAddress(layerId),
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
-        swallower: LayerRowAddress(layerId),
       );
-      if (row is LaneRowAddress && row.layerId == layerId) {
-        selectLayer(layerId);
-      }
       return;
     }
-    _rowSelectionVerbs.foldRowSelection(
-      vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
+    handOffOnFold(
       swallower: LaneRowAddress(layerId, laneId),
+      vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
     );
-    if (currentRowIsInsideGroup(row, layerId, laneId)) {
-      selectRow(LaneRowAddress(layerId, laneId));
+  }
+
+  /// An ATTACH GROUP folding shut: every row the group holds — the rows
+  /// [attachGroupBaseOf] names its base for — leaves, and the BASE swallows
+  /// them (UI-R24 #4).
+  ///
+  /// 🚨F-81 (유저 2026-09-11): 「어태치폴더에 서있는 채로 기준레이어의 접기버튼
+  /// 누르면 폴더에 서있는채임. 어태치레이어에 서있을때 접으면 제대로 기준 레이어에
+  /// 서있도록 바뀌는데. 이런 규칙 다른거 법 하나로 싹 통일」. The rail asked only
+  /// whether the ACTIVE row was an attach row of the base, so the organizer
+  /// folder — and a nested one — stayed standing after the fold took them off
+  /// the screen.
+  void handOffCurrentRowOnAttachFold(LayerId baseId) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    bool inGroup(LayerId layerId) {
+      final layer = cut.layers.byId(layerId);
+      return layer != null && attachGroupBaseOf(layer, cut.layers) == baseId;
+    }
+
+    handOffOnFold(
+      swallower: LayerRowAddress(baseId),
+      vanished: (address) => switch (address) {
+        LayerRowAddress(:final layerId) => inGroup(layerId),
+        LaneRowAddress(:final layerId) => inGroup(layerId),
+        _ => false,
+      },
+    );
+  }
+
+  /// THE FOLD LAW's one body: the row selection gives what [vanished] names up
+  /// to [swallower] ([RowSelection.foldRowSelection]), and when the fold took
+  /// the row you stand on — or the active layer — that goes to [swallower]
+  /// too.
+  ///
+  /// ↩️「Four folds, one rule, one place」 above was the aim more than the
+  /// code: the folder fold and the attach group fold kept bodies of their own
+  /// until F-81, and the attach one asked a narrower question than the fold it
+  /// answered for.
+  void handOffOnFold({
+    required TimelineRowAddress swallower,
+    required bool Function(TimelineRowAddress address) vanished,
+  }) {
+    _rowSelectionVerbs.foldRowSelection(
+      vanished: vanished,
+      swallower: swallower,
+    );
+    final activeLayerId = _selection.activeLayerId;
+    final standsInside =
+        vanished(currentRow) ||
+        activeLayerId != null && vanished(LayerRowAddress(activeLayerId));
+    if (!standsInside) {
+      return;
+    }
+    if (swallower is LayerRowAddress) {
+      selectLayer(swallower.layerId);
+    } else {
+      selectRow(swallower);
     }
   }
 

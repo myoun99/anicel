@@ -227,7 +227,16 @@ double layerRailNameIndent(int depth) => depth * layerRailGuideWidth;
 /// 🚨ONE DRAWING FOR EVERY SURFACE THAT LISTS THE STACK: the timeline row
 /// and the export window's layer list (유저 2026-09-09: 「폴더는 지금 폴더
 /// 내부 레이어를 ㅣ 로 표현하는데 그런거 전부」).
-Widget? layerRailDepthGuides(Axis axis, int depth, {required Color color}) {
+///
+/// 🚨F-81 (유저 2026-09-11): 「일반 폴더의 내부 레이어에 이름영역 왼쪽에 ㅣ
+/// 아이콘? 있는데 너무 어두우니 좀 더 밝게」. The hairline's colour belongs to
+/// the drawing, so it is picked HERE — `outline`, a step up from the
+/// `outlineVariant` both callers used to pass on their own.
+Widget? layerRailDepthGuides(
+  Axis axis,
+  int depth, {
+  required ColorScheme colorScheme,
+}) {
   if (depth == 0) return null;
   final horizontal = axis == Axis.horizontal;
   return alongBox(
@@ -244,7 +253,7 @@ Widget? layerRailDepthGuides(Axis axis, int depth, {required Color color}) {
               child: SizedBox(
                 width: horizontal ? 1 : double.infinity,
                 height: horizontal ? double.infinity : 1,
-                child: ColoredBox(color: color),
+                child: ColoredBox(color: colorScheme.outline),
               ),
             ),
           ),

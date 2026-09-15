@@ -31,24 +31,24 @@ class FoldersAndAttachments {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required RowSelection rowSelectionVerbs,
     required LayerIdMint layerIds,
     required ActiveCutEdits activeCut,
+    required FoldHandOff handOffOnFold,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _rowSelectionVerbs = rowSelectionVerbs,
        _layerIds = layerIds,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _handOffOnFold = handOffOnFold;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final RowSelection _rowSelectionVerbs;
   final LayerIdMint _layerIds;
   final ActiveCutEdits _activeCut;
+  final FoldHandOff _handOffOnFold;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -265,26 +265,21 @@ class FoldersAndAttachments {
     // The active layer's own hand-off below is the standing-row half of
     // the same law.
     if (!wasCollapsed) {
+      // ↩️Both halves go through the fold law's one body since F-81
+      // ([Standing.handOffOnFold]) — the standing half was
+      // `layerController.selectLayer` here, beside the lane fold's own copy
+      // and the attach fold's.
       bool insideThisFolder(LayerId? id) =>
           id != null &&
           cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
-      _rowSelectionVerbs.foldRowSelection(
+      _handOffOnFold(
+        swallower: LayerRowAddress(layerId),
         vanished: (address) => switch (address) {
           LayerRowAddress(:final layerId) => insideThisFolder(layerId),
           LaneRowAddress(:final layerId) => insideThisFolder(layerId),
           _ => false,
         },
-        swallower: LayerRowAddress(layerId),
       );
-    }
-    final activeId = _selection.activeLayerId;
-    if (!wasCollapsed &&
-        activeId != null &&
-        cut.layers.isInsideFolder(
-          cut.layers.byId(activeId)?.folderId,
-          layerId,
-        )) {
-      _controllers.layerController.selectLayer(layerId);
     }
     _changes.notifyChanged();
   }

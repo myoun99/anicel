@@ -105,7 +105,16 @@ void main() {
   /// printing the cut under the playhead — its document, its playhead row
   /// and its ink — rather than only the open cut. Shrinking any of the
   /// three to fit is a round of its own.
-  const longClasses = 56;
+  ///
+  /// ⚠️56 → 57 on 2026-09-16 — the paragraph above had its ARITHMETIC wrong,
+  /// and this adds no fourth name. Measured when F-81 came back through the
+  /// gate after the 3.47 upgrade: master already stood at 56 with two of the
+  /// three landed (`FrameClipboard` and `TimesheetTabHostState` are both in
+  /// the scan), and `Standing` had not landed. So the base that count started
+  /// from was 54, not 53, and the three named crossings need 57 between them.
+  /// ⛔Nothing was shrunk to fit and nothing new was allowed through: the
+  /// third name is the one already written above.
+  const longClasses = 57;
 
   late CleanCodeScan scan;
   setUpAll(() {

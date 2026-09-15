@@ -16,7 +16,8 @@ import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_folder.dart';
 
-export 'layer_folder.dart' show attachOrganizerBaseOf;
+export 'layer_folder.dart'
+    show attachFolderLevelsAbove, attachGroupBaseOf, attachOrganizerBaseOf;
 import 'layer_id.dart';
 import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
@@ -377,6 +378,11 @@ bool layerHasFxToLose(Layer layer) =>
 ///   below the folder, and the arrow pointed away from the only thing it
 ///   is next to. An arrow says what this row hangs off; inside a folder
 ///   that is the folder.
+///   ↩️F-81 (유저 2026-09-11): 「어태치폴더까지만 어태치 아이콘 생기고, 그 안의
+///   레이어나 폴더들은 어태치 아이콘 안생기도록」. A row INSIDE an attach
+///   folder — a leaf or a nested folder — draws no arrow at all now; the
+///   folder's own arrow says what the group hangs off. What R5 #16 fixed
+///   cannot come back: there is no member arrow left to copy.
 /// - The FOLDER's own direction comes from STACK ORDER against its base:
 ///   above the base is [AttachedPlacement.above], below is `below`. A
 ///   folder never carries `attachedPlacement` — reading it would silently
@@ -390,26 +396,42 @@ bool layerHasFxToLose(Layer layer) =>
 /// `attachArrowPlacementOf`, never the list, so the trap cannot be
 /// re-sprung by a caller that happens to hold the wrong list.
 AttachedPlacement? attachArrowPlacement(Layer layer, List<Layer> layers) {
+  // ⛔THE SILENCING IS ASKED FIRST (F-81, 2026-09-16). A folder NESTED in an
+  // attach folder resolves the GROUP's base through its parent, so asking
+  // [_organizerFolderPlacement] first handed that folder the group's own
+  // arrow — 「그 안의 레이어나 폴더들은 어태치 아이콘 안생기도록」 is exactly
+  // what the order was hiding. The folder that SPEAKS for the group still
+  // answers below: its own walk starts at its parent, and the outermost
+  // attach folder has none.
+  if (_speakingOrganizerAbove(layer, layers)) {
+    return null;
+  }
   final folderPlacement = _organizerFolderPlacement(layer, layers);
   if (folderPlacement != null) {
     return folderPlacement;
   }
-  final base = layer.attachedToLayerId;
-  if (base == null) {
-    return null;
-  }
-  final folder = layers.folderById(layer.folderId);
-  if (folder != null && _organizerFolderPlacement(folder, layers) != null) {
-    // Inside an organizer: measured against the FOLDER, one level in from
-    // the folder's own measurement against the base. Positional, not a
-    // constant — the day a folder sits under its members the arrows turn
-    // over with it, which is the only way this stays true of the picture.
-    final own = _stackPlacement(layers, subject: layer.id, anchor: folder.id);
-    if (own != null) {
-      return own;
+  return layer.attachedToLayerId == null ? null : layer.attachedPlacement;
+}
+
+/// Whether an attach FOLDER above [layer] draws the group's arrow, in which
+/// case the row inside it wears its kind and no arrow at all (유저
+/// 2026-09-11: 「어태치폴더까지만 어태치 아이콘 생기고, 그 안의 레이어나
+/// 폴더들은 어태치 아이콘 안생기도록」).
+///
+/// ⛔It asks whether that folder's arrow can be PLACED, not merely whether a
+/// folder is there. With the base row gone the folder has no side to point
+/// at — and silencing its members off the folder's mere presence left a
+/// dangling group with no arrow anywhere, which is the one state where the
+/// member's own side is all that is left to show.
+bool _speakingOrganizerAbove(Layer layer, List<Layer> layers) {
+  var folder = layers.folderById(layer.folderId);
+  while (folder != null) {
+    if (_organizerFolderPlacement(folder, layers) != null) {
+      return true;
     }
+    folder = layers.folderById(folder.folderId);
   }
-  return layer.attachedPlacement;
+  return false;
 }
 
 /// The stack-order direction of an organizer FOLDER against its base, or

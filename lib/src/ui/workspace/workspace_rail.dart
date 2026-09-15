@@ -198,11 +198,11 @@ class _WorkspaceRail {
       // #4): hand the selection to the BASE so the group actually
       // disappears — the active-attach-stays-visible rule otherwise kept
       // the fold from taking effect until some other row was picked.
-      final session = _state.widget.session;
-      final active = session.activeLayer;
-      if (active != null && active.attachedToLayerId == baseId) {
-        session.selectLayer(baseId);
-      }
+      //
+      // ↩️Through the session's fold law since F-81, which asks what the
+      // group holds — the organizer folder and a nested one too — instead
+      // of 「is the active row an attach row of this base」.
+      _state.widget.session.handOffCurrentRowOnAttachFold(baseId);
     }
     _state._collapsedAttachBaseIds.value = next;
   }

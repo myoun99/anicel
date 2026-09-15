@@ -550,7 +550,7 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
       continue;
     }
-    final attachBaseId = layer.attachedToLayerId ?? organizerBaseId;
+    final attachBaseId = attachGroupBaseOf(layer, modelStack);
     if (attachBaseId != null &&
         layer.id != activeLayerId &&
         collapsedAttachBaseIds.contains(attachBaseId)) {
@@ -590,11 +590,15 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
         // by writing the folder onto the attach row would make the model
         // agree by making it say something that is not true (the row is not
         // a member of the folder; its base is).
-        depth: folders.depthOf(
-          attachBaseId == null
-              ? layer.folderId
-              : (layerById[attachBaseId] ?? layer).folderId,
-        ),
+        //
+        // ↩️F-81 (유저 2026-09-11): 「이 아이콘이 어태치폴더의 내부 레이어에
+        // 안생김. 로직 다른거같은데 통일해서 법 하나로」. A row INSIDE an attach
+        // folder hangs off that folder the way a member hangs off any folder:
+        // one level per attach folder above it, on top of the base's indent.
+        depth: attachBaseId == null
+            ? folders.depthOf(layer.folderId)
+            : folders.depthOf((layerById[attachBaseId] ?? layer).folderId) +
+                  attachFolderLevelsAbove(layer, modelStack),
       ),
     );
     if (!expandedLayerIds.contains(layer.id)) {
