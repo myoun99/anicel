@@ -20,7 +20,13 @@ void main() {
     Size(300, 500),
   ];
 
-  Widget host(Size size, Widget child) => MaterialApp(
+  Widget host(Size size, Widget child, {double textScale = 1}) => MaterialApp(
+    builder: (context, app) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(textScale),
+      ),
+      child: app!,
+    ),
     home: Scaffold(
       body: Center(
         child: SizedBox(width: size.width, height: size.height, child: child),
@@ -109,6 +115,20 @@ void main() {
       await tester.pumpWidget(host(size, mediaPanel()));
       await tester.pump();
       expect(describeException(tester), isNull, reason: 'media panel at $size');
+    }
+  });
+
+  testWidgets('the Media panel never overflows at squeezed sizes with its '
+      'words read at twice the size — a row\'s extension is measured, not '
+      'guessed', (tester) async {
+    for (final size in probeSizes) {
+      await tester.pumpWidget(host(size, mediaPanel(), textScale: 2));
+      await tester.pump();
+      expect(
+        describeException(tester),
+        isNull,
+        reason: 'media panel at $size, words ×2',
+      );
     }
   });
 }

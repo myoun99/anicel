@@ -102,7 +102,7 @@ void main() {
     expect(warnings, isNotNull);
     expect(
       s.mediaPool.mediaAssets.single.name,
-      'BG_a12.psd',
+      'BG_a12',
       reason: 'the stack is baked, and its FILE still registers (유저 '
           '2026-09-11: 「구워도 풀에 남음」)',
     );
@@ -112,7 +112,7 @@ void main() {
     );
     expect(added, hasLength(layersBefore == after.layers.length ? 0 : 4));
 
-    final root = added.firstWhere((layer) => layer.name == 'BG_a12.psd');
+    final root = added.firstWhere((layer) => layer.name == 'BG_a12');
     expect(root.kind, LayerKind.folder);
     final book = added.firstWhere((layer) => layer.name == 'BOOK');
     expect(book.folderId, root.id);
@@ -141,7 +141,7 @@ void main() {
       reason: 'the registration rides the same undo',
     );
     expect(
-      undone.layers.any((layer) => layer.name == 'BG_a12.psd'),
+      undone.layers.any((layer) => layer.name == 'BG_a12'),
       isFalse,
     );
     await tester.pumpAndSettle();
@@ -192,7 +192,7 @@ void main() {
 
     final cuts = s.repository.requireProject().tracks.first.cuts;
     expect(cuts.length, cutsBefore + 1);
-    final cut = cuts.firstWhere((c) => c.name == 'BG_a12.psd');
+    final cut = cuts.firstWhere((c) => c.name == 'BG_a12');
     expect(
       (cut.canvasSize.width, cut.canvasSize.height),
       (8, 8),

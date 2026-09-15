@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
+import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
@@ -168,42 +169,34 @@ class _ImportTableMetrics {
     required List<ImportFileRow> rows,
     required List<ImportColumn<Object?>> columns,
   }) {
-    final style =
-        Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11);
-    final scaler = MediaQuery.textScalerOf(context);
-    final direction = Directionality.of(context);
-    final measured = <String, Size>{};
-    Size measure(String text) => measured.putIfAbsent(text, () {
-      final painter = TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: direction,
-        textScaler: scaler,
-        maxLines: 1,
-      )..layout();
-      final size = painter.size;
-      painter.dispose();
-      return size;
-    });
-    double widest(Iterable<String> texts) =>
-        texts.fold(0, (width, text) => math.max(width, measure(text).width));
+    final text = TextMeasure(
+      context,
+      Theme.of(context).textTheme.labelSmall ?? const TextStyle(fontSize: 11),
+    );
 
-    final chipHeight = measure('Ag').height + 2 * chipPadV + 2 * chipBorder;
+    final chipHeight = text.size('Ag').height + 2 * chipPadV + 2 * chipBorder;
     return _ImportTableMetrics._(
       modifiedWidth:
-          widest([AppText.strings.imModified, for (final row in rows) row.modified]) +
+          text.widest([
+            AppText.strings.imModified,
+            for (final row in rows) row.modified,
+          ]) +
           gap,
       sizeWidth:
-          widest([AppText.strings.imSize, for (final row in rows) row.size]) +
+          text.widest([
+            AppText.strings.imSize,
+            for (final row in rows) row.size,
+          ]) +
           gap,
       columnWidths: [
         for (final column in columns)
           math.max(
-                measure(column.label).width,
+                text.size(column.label).width,
                 column.style == ImportColumnStyle.toggle
                     ? switchWidth +
                           switchGap +
-                          widest(column.values.map(column.labelOf))
-                    : widest(column.values.map(column.labelOf)) +
+                          text.widest(column.values.map(column.labelOf))
+                    : text.widest(column.values.map(column.labelOf)) +
                           2 * chipPadH +
                           2 * chipBorder,
               ) +
@@ -649,24 +642,19 @@ void _openColumnPopup(
   required Object? current,
 }) {
   final rows = column.values;
-  final style = Theme.of(context).textTheme.labelSmall;
-  var widest = 0.0;
-  for (final value in rows) {
-    final painter = TextPainter(
-      text: TextSpan(text: column.labelOf(value), style: style),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      maxLines: 1,
-    )..layout();
-    widest = math.max(widest, painter.width);
-    painter.dispose();
-  }
+  final text = TextMeasure(context, Theme.of(context).textTheme.labelSmall);
+  // A popup row is its word plus its own padding, as a table row is: at a
+  // fixed 24px a larger text scale cut every answer in half.
+  final rowHeight = text.size('Ag').height + 2 * _PopupRow.padV;
   unawaited(
     showAnchoredPopup<void>(
       context,
       label: column.label,
-      width: math.max(132, widest + 2 * _PopupRow.padH + 8),
-      height: 8.0 + rows.length * _PopupRow.height,
+      width: math.max(
+        132,
+        text.widest(rows.map(column.labelOf)) + 2 * _PopupRow.padH + 8,
+      ),
+      height: 8.0 + rows.length * rowHeight,
       builder: (context, close) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -675,6 +663,7 @@ void _openColumnPopup(
             _PopupRow(
               keyValue: 'import-option-${column.id}-${_optionKey(value)}',
               label: column.labelOf(value),
+              height: rowHeight,
               selected: value == current,
               enabled: enabledFor(value),
               onTap: () {
@@ -692,16 +681,18 @@ class _PopupRow extends StatelessWidget {
   const _PopupRow({
     required this.keyValue,
     required this.label,
+    required this.height,
     required this.selected,
     required this.enabled,
     required this.onTap,
   });
 
-  static const double height = 24;
   static const double padH = 8;
+  static const double padV = 4;
 
   final String keyValue;
   final String label;
+  final double height;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;

@@ -64,6 +64,7 @@ void main() {
     List<ImportFileRow>? rows,
     List<ImportColumn<Object?>> extra = const [],
     double? width = 500,
+    double textScale = 1,
   }) async {
     final q = question(onlyOneAnswer: onlyOneAnswer);
     final taps = <String>[];
@@ -71,6 +72,12 @@ void main() {
     final columns = [q.column, ...extra];
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, app) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: app!,
+        ),
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
@@ -104,6 +111,24 @@ void main() {
 
   Finder cell(String id, String file) =>
       find.byKey(ValueKey<String>('import-cell-$id-/in/$file'));
+
+  /// A word is whole when its box is as wide as its one line and as tall as
+  /// that line — a cut is a box smaller than what it holds.
+  void expectWhole(WidgetTester tester, Finder word, String reason) {
+    final render = tester.renderObject<RenderBox>(word);
+    expect(
+      render.size.width,
+      greaterThanOrEqualTo(render.getMaxIntrinsicWidth(double.infinity) - 0.5),
+      reason: '$reason — its width',
+    );
+    expect(
+      render.size.height,
+      greaterThanOrEqualTo(
+        render.getMinIntrinsicHeight(render.size.width) - 0.5,
+      ),
+      reason: '$reason — its height',
+    );
+  }
 
   testWidgets('every file gets a row, and each row shows its OWN answer', (
     tester,
@@ -276,6 +301,56 @@ void main() {
             render.getMinIntrinsicHeight(render.size.width) - 0.5,
           ),
         );
+      }
+    });
+
+    testWidgets('🚨no word is cut — a column, a row and a popup are each '
+        'measured in the words they show, at the size those words are '
+        'read', (tester) async {
+      final long = ImportColumn<Object?>(
+        id: 'long',
+        label: 'A long question',
+        style: ImportColumnStyle.toggle,
+        values: const [false, true],
+        labelOf: (value) => value == true ? 'On' : 'Off',
+        valueOf: (path) => true,
+        appliesTo: (path) => true,
+        enabledFor: (path, value) => true,
+        onPick: (paths, value) {},
+      );
+      for (final scale in const [1.0, 2.0]) {
+        await pumpTable(tester, extra: [long], width: null, textScale: scale);
+
+        for (final word in [
+          AppText.strings.imModified,
+          AppText.strings.imSize,
+          'Mode',
+          'A long question',
+          'carry',
+          'reference',
+          '09-05',
+          '1 MB',
+          'On',
+        ]) {
+          expectWhole(tester, find.text(word).first, '"$word" at ×$scale');
+        }
+
+        await tester.tap(find.text('Mode'));
+        await tester.pumpAndSettle();
+        for (final answer in const ['carry', 'reference', 'skip']) {
+          expectWhole(
+            tester,
+            find.descendant(
+              of: find.byKey(ValueKey<String>('import-option-mode-$answer')),
+              matching: find.text(answer),
+            ),
+            'the popup\'s "$answer" at ×$scale',
+          );
+        }
+        await tester.tap(
+          find.byKey(const ValueKey<String>('import-option-mode-skip')),
+        );
+        await tester.pumpAndSettle();
       }
     });
 

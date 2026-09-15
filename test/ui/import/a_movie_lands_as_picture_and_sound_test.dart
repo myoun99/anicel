@@ -49,8 +49,10 @@ void main() {
     return s;
   }
 
+  // The row a placement makes is named without the file's extension
+  // (pool-name-without-extension).
   Layer movieRow(EditorSessionManager s) => s.requireActiveCut.layers
-      .firstWhere((layer) => layer.name == 'take3.mov');
+      .firstWhere((layer) => layer.name == 'take3');
 
   Future<bool> place(
     WidgetTester tester,
@@ -155,7 +157,8 @@ void main() {
   });
 
   testWidgets('its sound lands with it — same start, same span, the file\'s '
-      'name as the dialogue — and ONE undo takes both', (tester) async {
+      'name without its extension as the dialogue — and ONE undo takes '
+      'both', (tester) async {
     debugVideoDecodeBackend = FakeVideoBackend(frameCount: 24);
     final s = session();
     final start = s.activeCutGlobalStartFrame;
@@ -170,7 +173,7 @@ void main() {
     final block = se.timeline[start]!;
     expect(block.length, 21, reason: 'the picture\'s span');
     final frame = se.frameById(block.frameId!)!;
-    expect((frame.name, frame.seName), ('take3.mov', 'SE'));
+    expect((frame.name, frame.seName), ('take3', 'SE'));
     final clip = se.audioClips.single;
     expect(clip.filePath, normalizedMediaPath(moviePath));
     expect(clip.offsetFrames, 3, reason: 'the sound starts at IN too');
@@ -205,7 +208,7 @@ void main() {
     expect(ok, isTrue);
     expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
     expect(
-      s.requireActiveCut.layers.where((layer) => layer.name == 'take3.mov'),
+      s.requireActiveCut.layers.where((layer) => layer.name == 'take3'),
       isEmpty,
       reason: 'an SE row holds sound only — no picture came with it',
     );

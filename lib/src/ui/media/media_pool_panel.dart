@@ -17,6 +17,7 @@ import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 
 import '../text/app_strings.dart';
+import '../text/text_measure.dart';
 import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart' show AppWindowActionEmphasis;
@@ -357,6 +358,11 @@ class MediaPoolPanel extends StatelessWidget {
   /// Below this width the asset rows' FIXED parts (status icon, link
   /// badge, actions menu) no longer fit — the panel then scrolls
   /// horizontally at this width instead of overflowing (R10-①).
+  ///
+  /// ⚠️PLUS the widest extension the list shows ([_extensionRoom]). Since a
+  /// row's name and its extension stand apart (pool-name-without-extension)
+  /// the extension is a fixed part too — the name is what gets cut short,
+  /// never the extension — and a word's width is measured, not guessed.
   static const double _minBodyWidth = 132;
 
   /// The toolbar row plus its rule — below this the body has no room for
@@ -365,12 +371,26 @@ class MediaPoolPanel extends StatelessWidget {
   /// rail's narrowing reflowed the docks and squeezed this panel).
   static const double _minBodyHeight = 37;
 
+  /// A row's name line — its name and its extension — and what
+  /// [_extensionRoom] measures the extensions in.
+  static const TextStyle _nameLine = TextStyle(fontSize: 12);
+
+  /// The widest extension among [assets], set the way a row's name line
+  /// sets it.
+  double _extensionRoom(BuildContext context) => TextMeasure(
+    context,
+    DefaultTextStyle.of(context).style.merge(_nameLine),
+  ).widest({
+    for (final asset in assets) mediaFileNameParts(asset.path).extension,
+  }).ceilToDouble();
+
   @override
   Widget build(BuildContext context) {
+    final minBodyWidth = _minBodyWidth + _extensionRoom(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final tooNarrow =
-            constraints.hasBoundedWidth && constraints.maxWidth < _minBodyWidth;
+            constraints.hasBoundedWidth && constraints.maxWidth < minBodyWidth;
         final tooShort =
             constraints.hasBoundedHeight &&
             constraints.maxHeight < _minBodyHeight;
@@ -378,7 +398,7 @@ class MediaPoolPanel extends StatelessWidget {
           return _body(context);
         }
         Widget content = SizedBox(
-          width: tooNarrow ? _minBodyWidth : null,
+          width: tooNarrow ? minBodyWidth : null,
           height: tooShort
               ? _minBodyHeight
               : (constraints.hasBoundedHeight ? constraints.maxHeight : null),
@@ -558,14 +578,13 @@ class MediaPoolPanel extends StatelessWidget {
                           asset.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                          style: _nameLine,
                         ),
                       ),
                       Text(
                         mediaFileNameParts(asset.path).extension,
                         maxLines: 1,
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: _nameLine.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
