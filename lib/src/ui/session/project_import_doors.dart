@@ -796,8 +796,10 @@ class ProjectImportDoors {
       displayName: layer.name,
       cutId: cutId,
       // The fit the file was PLACED with, so the cels land exactly where
-      // the reference's pictures stood ([mediaFitModeFor]).
-      fit: mediaFitModeFor(_pool.mediaAssets, reference.assetPath),
+      // the reference's pictures stood (`Project.mediaFitModeFor`).
+      fit: _project.repository.requireProject().mediaFitModeFor(
+        reference.assetPath,
+      ),
       rasterize: true,
       mint: _landing.idMint(),
       assetKind: MediaAssetKind.video,

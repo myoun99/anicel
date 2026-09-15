@@ -55,22 +55,6 @@ enum MediaFitMode {
   }
 }
 
-/// The fit a placed file's picture sits with: the pool entry's own, and
-/// [MediaFitMode.contain] for a path no entry names.
-///
-/// ⚠️ONE ANSWER, because two places must agree about it: a movie kept as a
-/// reference has each decoded frame fitted to the canvas with this, and
-/// RASTERIZING that movie bakes the same frames as cels with it. Were they
-/// to drift, baking would move the picture.
-MediaFitMode mediaFitModeFor(List<MediaAsset> pool, String path) {
-  for (final asset in pool) {
-    if (asset.path == path) {
-      return asset.fitMode;
-    }
-  }
-  return MediaFitMode.contain;
-}
-
 /// One entry of the project's media pool (the Premiere/Resolve-style
 /// browser): a file the project references, under a user-facing display
 /// name.

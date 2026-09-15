@@ -4,7 +4,6 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
-import '../../models/media_asset.dart';
 import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
@@ -190,10 +189,7 @@ class MovieCelHydrator {
       final surface = await rasterizeImageToSurface(
         image: image,
         canvas: canvas,
-        fit: mediaFitModeFor(
-          _project.repository.requireProject().mediaAssets,
-          path,
-        ),
+        fit: _project.repository.requireProject().mediaFitModeFor(path),
       );
       _decoded[at] = WeakReference(surface);
       return surface;

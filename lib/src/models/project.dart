@@ -194,6 +194,16 @@ class Project {
     return null;
   }
 
+  /// The fit a placed file's picture sits with: the pool entry's own, and
+  /// [MediaFitMode.contain] for a path no entry names.
+  ///
+  /// ⚠️ONE ANSWER, because two places must agree about it: a movie kept as a
+  /// reference has each decoded frame fitted to the canvas with this, and
+  /// RASTERIZING that movie bakes the same frames as cels with it. Were they
+  /// to drift, baking would move the picture.
+  MediaFitMode mediaFitModeFor(String path) =>
+      mediaAssetByPath(path)?.fitMode ?? MediaFitMode.contain;
+
   Project copyWith({
     ProjectId? id,
     String? name,
