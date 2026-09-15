@@ -138,7 +138,7 @@ String _dump(CutFolderParseResult result) {
     }
   }
   for (final exclusion in result.excluded) {
-    lines.add('excluded ${exclusion.path}: ${exclusion.reason}');
+    lines.add('excluded ${exclusion.path}: ${exclusion.reason.label}');
   }
   for (final warning in result.warnings) {
     lines.add('warning: $warning');

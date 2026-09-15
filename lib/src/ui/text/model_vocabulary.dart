@@ -5,6 +5,8 @@ import '../../models/layer_effect.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
+import '../../models/import/cut_folder_parse.dart' show ExclusionReason;
+import '../../models/import/import_warning.dart';
 
 /// The names the models own, in a language — I-4's contract
 /// ([AppStrings.layerProcessName]): the enum keeps its English `label` and a
@@ -48,4 +50,18 @@ extension EffectKindWords on EffectKind {
 extension SelectionCombineModeWords on SelectionCombineMode {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).selectionModeName(name, label);
+}
+
+/// An import's warning, said in a language — the same contract the names
+/// above keep: the model owns the English wording and the key, the tables
+/// own every other language ([AppStrings.importWarning]).
+extension ImportWarningWords on ImportWarning {
+  String textFor(AppLanguage language) =>
+      fill(AppStrings.of(language).importWarning(key, template));
+}
+
+/// Why a cut folder's parse dropped a file, in a language.
+extension ExclusionReasonWords on ExclusionReason {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).exclusionReason(name, label);
 }

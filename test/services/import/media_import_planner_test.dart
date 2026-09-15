@@ -196,7 +196,7 @@ void main() {
       mint: mint(),
     );
     expect(
-      plan.warnings.any((w) => w.contains('LO/C')),
+      plan.warnings.any((w) => w.english.contains('LO/C')),
       isTrue,
       reason: 'the skipped archived cels are named',
     );

@@ -41,6 +41,7 @@ import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import '../../models/import/import_warning.dart';
 
 /// WHAT LANDS when a movie is placed, before any of it has landed: where it
 /// arrives, the span it covers on the sound's clock, and the row itself.
@@ -262,7 +263,7 @@ class ProjectImportDoors {
   /// equivalent for, adjustment layers left behind), or null when the
   /// import did not happen — including a FLATTENED document, which has no
   /// stack to expand and which merge reads perfectly.
-  Future<List<String>?> importPsdExpanded({
+  Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
     required bool copyIntoProject,

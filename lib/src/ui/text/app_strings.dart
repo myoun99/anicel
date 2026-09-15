@@ -114,6 +114,17 @@ enum AppStrings {
   String selectionModeName(String name, String fallback) =>
       _values['selectionMode.$name'] ?? fallback;
 
+  /// What an import could not do, by the key the warning carries — the same
+  /// contract as [blendModeName]: the English is the model's own wording and
+  /// lives at the call site, the other languages are here, and a key no
+  /// table answers falls back to that English (F-124, 2026-09-16).
+  String importWarning(String key, String fallback) =>
+      _values['importWarning.$key'] ?? fallback;
+
+  /// Why a cut folder's parse dropped a file, by `ExclusionReason.name`.
+  String exclusionReason(String key, String fallback) =>
+      _values['exclusionReason.$key'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -1269,6 +1280,14 @@ enum AppStrings {
   String get imPsdMerge => _s('imPsdMerge');
   String get imPsdExpand => _s('imPsdExpand');
 
+  /// What the file doors say themselves — the two refusals an open can end
+  /// in, the picture a cel could not read, and the two the .tvpp door adds
+  /// to a converted project's notice.
+  String get imNotTvpp => _s('imNotTvpp');
+  String get imFileUnreadable => _s('imFileUnreadable');
+  String imNotFound(String path) =>
+      _s('imNotFoundTemplate').replaceAll('{path}', path);
+
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
   String imFileCount(int count) =>
@@ -2108,6 +2127,12 @@ enum AppStrings {
     'exFiles': 'Files',
     'exOneImage': 'One image',
     'exOnePerLayer': 'One per layer',
+    'imNotTvpp': 'This file cannot be read as a TVPaint project.',
+    'imFileUnreadable':
+        'The file could not be read — if it is in the cloud, try again in a '
+        'moment.',
+    'imNotFoundTemplate': 'Not found: {path}',
+
     'exFrameCount': '{n} frames',
     'exFrameCountOne': '{n} frame',
     'exPageCount': '{n} pages',
@@ -3250,6 +3275,41 @@ enum AppStrings {
     'exFiles': 'ファイル',
     'exOneImage': '画像1枚',
     'exOnePerLayer': 'レイヤーごとに1枚',
+    'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
+    'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
+    'imNotFoundTemplate': '見つかりません: {path}',
+    'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
+    'importWarning.soundMissing': 'この場所に音声ファイルがありません: {path}',
+    'importWarning.celUnreadable': '{file}: 絵を読めませんでした — {detail}',
+    'importWarning.psdBitDepth': '{depth}ビットのドキュメントを8ビットに落としました。',
+    'importWarning.psdVectorMask': '{name}: ベクターマスクを無視しました。',
+    'importWarning.psdComposite': '合成画像の圧縮形式 {compression} には対応していません — 飛ばしました。',
+    'importWarning.psdExtraChannels': 'ドキュメントの余分なチャンネルを無視しました。',
+    'importWarning.psd32Bit': '32ビットの予測チャンネルデータには対応していません。',
+    'importWarning.psdDuotone': 'ダブルトーンをグレースケールとして読みました。',
+    'importWarning.psdMultichannel': 'マルチチャンネルを最初のチャンネルのグレースケールとして読みました。',
+    'importWarning.psdIndexedNoPalette': 'パレットのないインデックスカラーをグレースケールとして読みました。',
+    'importWarning.psdCmyk': 'CMYKをプロファイルなしでRGBに変換しました — 色が変わります。',
+    'importWarning.psdLab': 'LabをプロファイルなしでRGBに変換しました — 色が変わります。',
+    'importWarning.psdAdjustment': '{name}: 調整レイヤーは適用しませんでした。',
+    'importWarning.psdClipping': '{name}: クリッピングマスクは適用しませんでした。',
+    'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
+    'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
+    'importWarning.folderNoBase': '{process}/{symbol}: 対応する最上位レイヤーがありません — セル{n}枚を飛ばしました。',
+    'importWarning.folderNoOriginal': '{file}: 印のない原本がありません — いちばん古い修正を残しました。',
+    'importWarning.folderMultiCutOff': 'フォルダー名はカット{n}本を指していますが、複数カットのフォルダーはオフです — {first} だけ取り込みます。',
+    'importWarning.folderNoCutNumber': 'フォルダー名にカット番号が見つかりません。',
+    'importWarning.tvpNoFile': '{name}: フレーム{frame}のインスタンスがファイル名を持ちません — そのセルは空のままです。',
+    'importWarning.tvpMuted': '{file}: トラックはミュートでした — 音はそのまま繋いでいます。',
+    'importWarning.tvpBlend': '{name}: 描画モード「{mode}」に相当するものがAnicelにありません — 通常として取り込みました。',
+    'importWarning.tvppHoldNoDrawing': '{name}: フレーム{frame}のホールドが受け継ぐ絵がありません。',
+    'importWarning.tvppChunkBroken': 'クリップ{n}: @{at} でチャンクの連なりが切れました — 以降のデータは捨てます。',
+    'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
+    'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
+    'exclusionReason.unrecognized': '認識できない名前',
+    'exclusionReason.excludedName': '除外する名前',
+    'exclusionReason.memoText': 'メモのテキスト',
+    'exclusionReason.insertionLettersOff': '中割り記号はオフ',
     'exFrameCount': '{n}フレーム',
     'exFrameCountOne': '{n}フレーム',
     'exPageCount': '{n}ページ',
@@ -4482,6 +4542,41 @@ enum AppStrings {
     'exFiles': '파일',
     'exOneImage': '이미지 한 장',
     'exOnePerLayer': '레이어마다 한 장',
+    'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
+    'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
+    'imNotFoundTemplate': '찾을 수 없습니다: {path}',
+    'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
+    'importWarning.soundMissing': '사운드 파일이 이 자리에 없습니다: {path}',
+    'importWarning.celUnreadable': '{file}: 그림을 읽지 못했습니다 — {detail}',
+    'importWarning.psdBitDepth': '{depth}비트 문서를 8비트로 낮췄습니다.',
+    'importWarning.psdVectorMask': '{name}: 벡터 마스크를 무시했습니다.',
+    'importWarning.psdComposite': '합성 이미지의 압축 방식 {compression} 은(는) 지원하지 않습니다 — 건너뛰었습니다.',
+    'importWarning.psdExtraChannels': '문서의 여분 채널을 무시했습니다.',
+    'importWarning.psd32Bit': '32비트 예측 채널 데이터는 지원하지 않습니다.',
+    'importWarning.psdDuotone': '듀오톤을 그레이스케일로 읽었습니다.',
+    'importWarning.psdMultichannel': '멀티채널을 첫 채널의 그레이스케일로 읽었습니다.',
+    'importWarning.psdIndexedNoPalette': '팔레트가 없는 인덱스 컬러를 그레이스케일로 읽었습니다.',
+    'importWarning.psdCmyk': 'CMYK를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
+    'importWarning.psdLab': 'Lab를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
+    'importWarning.psdAdjustment': '{name}: 조정 레이어는 적용하지 않았습니다.',
+    'importWarning.psdClipping': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
+    'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
+    'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
+    'importWarning.folderNoBase': '{process}/{symbol}: 맞는 최상위 레이어가 없습니다 — 셀 {n}장을 건너뛰었습니다.',
+    'importWarning.folderNoOriginal': '{file}: 표시 없는 원본이 없습니다 — 가장 이른 수정본을 남겼습니다.',
+    'importWarning.folderMultiCutOff': '폴더 이름은 컷 {n}개를 가리키지만 멀티컷 폴더가 꺼져 있습니다 — {first} 만 가져옵니다.',
+    'importWarning.folderNoCutNumber': '폴더 이름에서 컷 번호를 찾지 못했습니다.',
+    'importWarning.tvpNoFile': '{name}: {frame}프레임의 인스턴스가 파일 이름을 갖고 있지 않습니다 — 그 셀은 빈 채로 둡니다.',
+    'importWarning.tvpMuted': '{file}: 트랙이 뮤트 상태였습니다 — 소리는 그대로 연결합니다.',
+    'importWarning.tvpBlend': '{name}: 블렌딩 모드 "{mode}" 에 해당하는 것이 Anicel 에 없습니다 — 보통으로 가져왔습니다.',
+    'importWarning.tvppHoldNoDrawing': '{name}: {frame}프레임의 홀드가 이어받을 그림이 없습니다.',
+    'importWarning.tvppChunkBroken': '클립 {n}: @{at} 에서 청크 열이 끊겼습니다 — 이후 데이터는 버립니다.',
+    'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
+    'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
+    'exclusionReason.unrecognized': '알 수 없는 이름',
+    'exclusionReason.excludedName': '제외 이름',
+    'exclusionReason.memoText': '메모 텍스트',
+    'exclusionReason.insertionLettersOff': '중간 삽입 문자 꺼짐',
     'exFrameCount': '{n}프레임',
     'exFrameCountOne': '{n}프레임',
     'exPageCount': '{n}페이지',
@@ -5744,6 +5839,74 @@ enum AppStrings {
     'exFiles': 'Fichiers',
     'exOneImage': 'Une image',
     'exOnePerLayer': 'Une par calque',
+    'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
+    'imFileUnreadable':
+        'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
+        'dans un instant.',
+    'imNotFoundTemplate': 'Introuvable : {path}',
+    'importWarning.stagedCopy':
+        'Ouvert via une copie temporaire, le fichier n\'ayant pas pu être lu '
+        'sur place — signalez-le si vous voyez ce message.',
+    'importWarning.soundMissing':
+        'Le fichier son n\'est pas à cet emplacement : {path}',
+    'importWarning.celUnreadable':
+        '{file} : impossible de lire l\'image — {detail}',
+    'importWarning.psdBitDepth': 'Document {depth} bits ramené à 8 bits.',
+    'importWarning.psdVectorMask': '{name} : masque vectoriel ignoré.',
+    'importWarning.psdComposite':
+        'L\'image composite utilise la compression {compression} — ignorée.',
+    'importWarning.psdExtraChannels':
+        'Canaux supplémentaires du document ignorés.',
+    'importWarning.psd32Bit':
+        'Les données de canal prédites en 32 bits ne sont pas prises en '
+        'charge.',
+    'importWarning.psdDuotone': 'Bichromie lue en niveaux de gris.',
+    'importWarning.psdMultichannel':
+        'Multicanal lu en niveaux de gris de son premier canal.',
+    'importWarning.psdIndexedNoPalette':
+        'Couleurs indexées sans palette lues en niveaux de gris.',
+    'importWarning.psdCmyk':
+        'CMJN converti en RVB sans profil — les couleurs changent.',
+    'importWarning.psdLab':
+        'Lab converti en RVB sans profil — les couleurs changent.',
+    'importWarning.psdAdjustment': '{name} : calque de réglage non appliqué.',
+    'importWarning.psdClipping': '{name} : masque d\'écrêtage non appliqué.',
+    'importWarning.psdBlend':
+        '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent — réglé '
+        'sur normal.',
+    'importWarning.folderNothing':
+        'Ce dossier ne contient ni cellulo ni image importable.',
+    'importWarning.folderNoBase':
+        '{process}/{symbol} : aucun calque racine correspondant — {n} '
+        'cellulo(s) ignoré(s).',
+    'importWarning.folderNoOriginal':
+        '{file} : pas d\'original sans marque — la révision la plus ancienne '
+        'est conservée.',
+    'importWarning.folderMultiCutOff':
+        'Le nom du dossier désigne {n} plans, mais les dossiers multi-plans '
+        'sont désactivés — seul {first} est importé.',
+    'importWarning.folderNoCutNumber':
+        'Aucun numéro de plan dans le nom du dossier.',
+    'importWarning.tvpNoFile':
+        '{name} : l\'instance à l\'image {frame} ne nomme aucun fichier — son '
+        'cellulo reste vide.',
+    'importWarning.tvpMuted':
+        '{file} : la piste était muette — son son est tout de même lié.',
+    'importWarning.tvpBlend':
+        '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent dans '
+        'Anicel — importé en normal.',
+    'importWarning.tvppHoldNoDrawing':
+        '{name} : le maintien à l\'image {frame} n\'a aucun dessin à '
+        'reprendre.',
+    'importWarning.tvppChunkBroken':
+        'Clip {n} : la chaîne de blocs s\'est rompue à @{at} — tout ce qui '
+        'suit est abandonné.',
+    'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
+    'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
+    'exclusionReason.unrecognized': 'non reconnu',
+    'exclusionReason.excludedName': 'nom exclu',
+    'exclusionReason.memoText': 'texte de mémo',
+    'exclusionReason.insertionLettersOff': 'lettres d\'intercalage désactivées',
     'exFrameCount': '{n} images',
     'exFrameCountOne': '{n} image',
     'exPageCount': '{n} pages',
@@ -6936,6 +7099,41 @@ enum AppStrings {
     'exFiles': '文件',
     'exOneImage': '单张图片',
     'exOnePerLayer': '每图层一张',
+    'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
+    'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
+    'imNotFoundTemplate': '未找到：{path}',
+    'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
+    'importWarning.soundMissing': '此位置没有声音文件：{path}',
+    'importWarning.celUnreadable': '{file}：无法读取该画面——{detail}',
+    'importWarning.psdBitDepth': '{depth} 位文档已降为 8 位。',
+    'importWarning.psdVectorMask': '{name}：已忽略矢量蒙版。',
+    'importWarning.psdComposite': '合成图像使用压缩方式 {compression}——已跳过。',
+    'importWarning.psdExtraChannels': '已忽略文档的额外通道。',
+    'importWarning.psd32Bit': '不支持 32 位预测通道数据。',
+    'importWarning.psdDuotone': '双色调按灰度读取。',
+    'importWarning.psdMultichannel': '多通道按其第一个通道的灰度读取。',
+    'importWarning.psdIndexedNoPalette': '无调色板的索引颜色按灰度读取。',
+    'importWarning.psdCmyk': 'CMYK 在无配置文件的情况下转为 RGB——颜色会偏移。',
+    'importWarning.psdLab': 'Lab 在无配置文件的情况下转为 RGB——颜色会偏移。',
+    'importWarning.psdAdjustment': '{name}：未应用调整图层。',
+    'importWarning.psdClipping': '{name}：未应用剪贴蒙版。',
+    'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
+    'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
+    'importWarning.folderNoBase': '{process}/{symbol}：没有匹配的顶层图层——已跳过 {n} 张赛璐珞。',
+    'importWarning.folderNoOriginal': '{file}：没有未标记的原稿——保留了最早的修改稿。',
+    'importWarning.folderMultiCutOff': '文件夹名指向 {n} 个镜头，但多镜头文件夹已关闭——只导入 {first}。',
+    'importWarning.folderNoCutNumber': '文件夹名中找不到镜头编号。',
+    'importWarning.tvpNoFile': '{name}：第 {frame} 帧的实例没有文件名——该赛璐珞保持为空。',
+    'importWarning.tvpMuted': '{file}：该轨道处于静音——声音仍然链接。',
+    'importWarning.tvpBlend': '{name}：混合模式“{mode}”在 Anicel 中没有对应项——按正常导入。',
+    'importWarning.tvppHoldNoDrawing': '{name}：第 {frame} 帧的保持没有可承接的画。',
+    'importWarning.tvppChunkBroken': '片段 {n}：块链在 @{at} 处中断——其后的数据被丢弃。',
+    'exclusionReason.processSubfolder': '工序子文件夹（存档）',
+    'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
+    'exclusionReason.unrecognized': '无法识别',
+    'exclusionReason.excludedName': '被排除的名称',
+    'exclusionReason.memoText': '备注文本',
+    'exclusionReason.insertionLettersOff': '插入字母已关闭',
     'exFrameCount': '{n}帧',
     'exFrameCountOne': '{n}帧',
     'exPageCount': '{n}页',

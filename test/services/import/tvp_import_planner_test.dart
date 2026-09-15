@@ -176,7 +176,7 @@ void main() {
       );
       final a = result.cut.layers.firstWhere((l) => l.name == 'A');
       expect(a.blendMode, LayerBlendMode.normal);
-      expect(result.warnings.single, contains('Weird'));
+      expect(result.warnings.single.english, contains('Weird'));
     });
   });
 

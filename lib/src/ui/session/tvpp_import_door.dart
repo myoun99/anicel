@@ -44,6 +44,7 @@ import 'project_file.dart';
 import 'project_file_door.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import '../../models/import/import_warning.dart';
 
 /// The TVPaint project door.
 class TvppImportDoor {
@@ -182,10 +183,16 @@ class TvppImportDoor {
     Object? decoded, {
     required Cut cut,
     required PlannedCelBake bake,
-    required List<String> warnings,
+    required List<ImportWarning> warnings,
   }) {
     if (decoded is TvppRasterDecodeException) {
-      warnings.add('${bake.sourceFile}: $decoded');
+      warnings.add(
+        ImportWarning(
+          'celUnreadable',
+          '{file}: the picture could not be read — {detail}',
+          {'file': bake.sourceFile, 'detail': '$decoded'},
+        ),
+      );
       return;
     }
     final tiles = decoded as List<TvppCelTile>?;
@@ -238,7 +245,7 @@ class TvppImportDoor {
   /// Every plan's warnings join [warnings] as they are made.
   List<(TvpImportPlan, Map<String, TvppSlot>)> _planTvppClips(
     TvppParseResult parsed, {
-    required List<String> warnings,
+    required List<ImportWarning> warnings,
   }) {
     final mint = _landing.idMint();
     final plans = <(TvpImportPlan, Map<String, TvppSlot>)>[];
@@ -305,7 +312,7 @@ class TvppImportDoor {
   /// Returns the accumulated warnings, or null when the file is not
   /// readable as a TVPaint project. The CALLER gates unsaved work — this
   /// replaces everything.
-  Future<List<String>?> openAsProject({
+  Future<List<ImportWarning>?> openAsProject({
     required String tvppPath,
     void Function(double fraction)? onProgress,
     void Function(Duration waited)? onWaiting,
@@ -351,7 +358,13 @@ class TvppImportDoor {
       // make this road unreachable, so a build that still takes it should
       // be visible rather than quietly slower — and if it never appears
       // in the field, the road comes out.
-      warnings.add('제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.');
+      warnings.add(
+        const ImportWarning(
+          'stagedCopy',
+          'Opened through a temporary copy because the file could not be '
+          'read in place — please report seeing this.',
+        ),
+      );
     }
     final plans = _planTvppClips(parsed, warnings: warnings);
     // ⛔EQUIVALENT to the parser's own refusal today: a structure with no
@@ -470,7 +483,13 @@ class TvppImportDoor {
       _project.historyManager.clear();
       for (final path in audioPaths) {
         if (!File(path).existsSync()) {
-          warnings.add('사운드 파일이 이 자리에 없다: $path');
+          warnings.add(
+            ImportWarning(
+              'soundMissing',
+              'The sound file is not at this address: {path}',
+              {'path': path},
+            ),
+          );
         }
       }
     }

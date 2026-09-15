@@ -13,6 +13,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart'
 import 'package:anicel/src/services/import/psd_layer_plan.dart';
 import 'package:anicel/src/services/photoshop/psd_pixels.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
+import 'package:anicel/src/models/import/import_warning.dart';
 
 /// The EXPAND plan: what a Photoshop stack becomes before a single pixel is
 /// touched. Every rule here is a decision the user made in the round — the
@@ -78,7 +79,7 @@ void main() {
     List<PsdLayer> layers, {
     int width = 4,
     int height = 4,
-    List<String> warnings = const [],
+    List<ImportWarning> warnings = const [],
   }) => PsdDocument(
     width: width,
     height: height,
@@ -207,7 +208,9 @@ void main() {
       final result = plan(document([raster('burnt', blend: 'lbrn')]));
       expect(result.layers.first.blendMode, LayerBlendMode.normal);
       expect(
-        result.warnings.any((w) => w.contains('burnt') && w.contains('lbrn')),
+        result.warnings.any(
+          (w) => w.english.contains('burnt') && w.english.contains('lbrn'),
+        ),
         isTrue,
       );
     });
@@ -231,7 +234,7 @@ void main() {
         ['art', 'BG_a12.psd'],
       );
       expect(
-        result.warnings.any((w) => w.contains('Curves 1')),
+        result.warnings.any((w) => w.english.contains('Curves 1')),
         isTrue,
       );
     });
@@ -240,16 +243,24 @@ void main() {
       final result = plan(document([raster('colour', clipping: true)]));
       expect(result.layers.first.name, 'colour');
       expect(
-        result.warnings.any((w) => w.contains('clipping')),
+        result.warnings.any((w) => w.english.contains('clipping')),
         isTrue,
       );
     });
 
     test('the reader warnings ride along', () {
       final result = plan(
-        document([raster('a')], warnings: ['16-bit document stepped down.']),
+        document(
+          [raster('a')],
+          warnings: const [
+            ImportWarning('psdBitDepth', '16-bit document stepped down.'),
+          ],
+        ),
       );
-      expect(result.warnings, contains('16-bit document stepped down.'));
+      expect(
+        result.warnings.map((w) => w.english),
+        contains('16-bit document stepped down.'),
+      );
     });
 
     test('an empty layer keeps its row and asks for no pixels', () {

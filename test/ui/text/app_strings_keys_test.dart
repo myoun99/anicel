@@ -549,6 +549,9 @@ void main() {
     'exBitrateAuto': (s) => s.exBitrateAuto,
     'exCanvasTemplate': (s) => s.exCanvasTemplate,
     'exCanvasPerCut': (s) => s.exCanvasPerCut,
+    'imNotTvpp': (s) => s.imNotTvpp,
+    'imFileUnreadable': (s) => s.imFileUnreadable,
+
     'imImport': (s) => s.imImport,
     'imPool': (s) => s.imPool,
     'imFile': (s) => s.imFile,

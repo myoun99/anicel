@@ -24,6 +24,7 @@ import 'import_preview.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
+import '../text/model_vocabulary.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
 /// picks, folder drops, OS drag-and-drop all land here, defaults filled
@@ -531,7 +532,9 @@ class _ImportDialogState extends State<ImportDialog> {
       return;
     }
     tally.imported += 1;
-    tally.warnings.addAll(folderWarnings);
+    tally.warnings.addAll(
+      folderWarnings.map((warning) => warning.textFor(AppText.language)),
+    );
   }
 
   /// Places every picked file — a picture where the window says, a sound on
@@ -751,7 +754,9 @@ class _ImportDialogState extends State<ImportDialog> {
       warnings.add(AppText.strings.imPsdNoLayers(mediaFileName(path)));
       return false;
     }
-    warnings.addAll(expanded);
+    warnings.addAll(
+      expanded.map((warning) => warning.textFor(AppText.language)),
+    );
     return true;
   }
 
@@ -1350,11 +1355,15 @@ class _ImportDialogState extends State<ImportDialog> {
       for (final exclusion in parsed.excluded)
         _InterpretationRow(
           leading: strings.imExcluded,
-          body: '${exclusion.path} — ${exclusion.reason}',
+          body: '${exclusion.path} — '
+              '${exclusion.reason.labelFor(AppText.language)}',
           dim: true,
         ),
       for (final warning in parsed.warnings)
-        _InterpretationRow(leading: '⚠', body: warning),
+        _InterpretationRow(
+          leading: '⚠',
+          body: warning.textFor(AppText.language),
+        ),
     ];
   }
 

@@ -156,7 +156,7 @@ Uint8List? decodeTvppSlotRgba({
 Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
   final end = offset + length;
   if (length < 32) {
-    throw const TvppRasterDecodeException('ZCHK 페이로드가 너무 짧다.');
+    throw const TvppRasterDecodeException('The ZCHK payload is too short.');
   }
   final expected =
       ByteData.sublistView(bytes, offset + 4, offset + 8).getUint32(0) + 8;
@@ -184,7 +184,7 @@ Uint8List _reassembleZchk(Uint8List bytes, int offset, int length) {
   final data = out.toBytes();
   if (data.length < expected) {
     throw TvppRasterDecodeException(
-      'ZCHK 재조립 실패: ${data.length}/$expected 바이트.',
+      'ZCHK reassembly failed: ${data.length}/$expected bytes.',
     );
   }
   return Uint8List.sublistView(data, 0, expected);
@@ -206,13 +206,13 @@ class _PackBits {
     var got = 0;
     while (got < count) {
       if (at >= data.length) {
-        throw const TvppRasterDecodeException('레코드가 끝났는데 행이 남았다.');
+        throw const TvppRasterDecodeException('The record ended with rows still to read.');
       }
       final c = data[at];
       if (c >= 0x80) {
         final run = 257 - c;
         if (at + 5 > data.length) {
-          throw const TvppRasterDecodeException('런 레코드가 잘렸다.');
+          throw const TvppRasterDecodeException('A run record is truncated.');
         }
         if (out != null) {
           final v =
@@ -232,7 +232,7 @@ class _PackBits {
       } else {
         final literal = c + 1;
         if (at + 1 + literal * 4 > data.length) {
-          throw const TvppRasterDecodeException('리터럴 레코드가 잘렸다.');
+          throw const TvppRasterDecodeException('A literal record is truncated.');
         }
         if (out != null) {
           for (var k = 0; k < literal && got + k < count; k++) {
@@ -252,14 +252,14 @@ class _PackBits {
       }
     }
     if (got != count) {
-      throw const TvppRasterDecodeException('런이 행 경계를 넘었다.');
+      throw const TvppRasterDecodeException('A run crossed a row boundary.');
     }
   }
 }
 
 Uint32List _decodeRecord(Uint8List record, int width, int height) {
   if (record.length < 8) {
-    throw const TvppRasterDecodeException('레코드가 너무 짧다.');
+    throw const TvppRasterDecodeException('The record is too short.');
   }
   final magic = String.fromCharCodes(record, 0, 4);
   if (magic == 'SRAW' &&
@@ -276,7 +276,7 @@ Uint32List _decodeRecord(Uint8List record, int width, int height) {
   if (magic == 'SRAW') {
     return _decodeTiled(record, width, height);
   }
-  throw TvppRasterDecodeException('알 수 없는 래스터 매직 «$magic».');
+  throw TvppRasterDecodeException('Unknown raster magic «$magic».');
 }
 
 Uint32List _decodeWholeCanvas(Uint8List record, int width, int height) {
@@ -335,7 +335,7 @@ class _TileGrid {
       pb.at += 8;
     }
     if (x < 0) {
-      throw const TvppRasterDecodeException('타일 표가 없다.');
+      throw const TvppRasterDecodeException('The tile table is missing.');
     }
     return x;
   }
@@ -356,7 +356,7 @@ class _TileGrid {
     }
     if (pb.at - from != declaredSize) {
       throw TvppRasterDecodeException(
-        '타일 $t 크기 불일치: ${pb.at - from} ≠ $declaredSize.',
+        'Tile $t size mismatch: ${pb.at - from} ≠ $declaredSize.',
       );
     }
   }
@@ -412,7 +412,7 @@ class _TileGrid {
         }
       }
       if (pb.at + 4 > record.length) {
-        throw const TvppRasterDecodeException('타일 크기 필드가 잘렸다.');
+        throw const TvppRasterDecodeException('The tile size field is truncated.');
       }
       final size = _uint32At(pb.at);
       pb.at += 4;

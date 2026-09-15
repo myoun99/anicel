@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
+import 'import_warning.dart';
 
 /// TVPaint's own project file (.tvpp), read directly — structure only.
 ///
@@ -303,7 +304,7 @@ class TvppParseResult {
   });
 
   final List<TvppClip> clips;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 
   /// The PROJECT's shooting frame (`Camera.Width` / `Camera.Height` in
   /// the file-head property block — 288 shoots 960×430 while its canvas
@@ -398,7 +399,7 @@ TvpEdgeBehavior _edgeBehavior(int wire) => switch (wire) {
 /// Parses the whole file's structure. Throws [TvppParseException] when the
 /// bytes are not a TVPaint project this reader understands.
 TvppParseResult parseTvppStructure(Uint8List bytes) {
-  final warnings = <String>[];
+  final warnings = <ImportWarning>[];
 
   // Clip regions begin at their DLOC chunk (the fixed header chain
   // DLOC..TLNT runs straight into the first LNAM — byte-identical layout
@@ -509,7 +510,7 @@ TvppClip _parseClip(
   int end,
   int nameFrom,
   int clipIndex,
-  List<String> warnings,
+  List<ImportWarning> warnings,
 ) {
   var width = 0;
   var height = 0;
@@ -572,7 +573,14 @@ TvppClip _parseClip(
   var closed = false;
   while (p + 8 <= end && !closed) {
     if (!_isFourCc(bytes, p)) {
-      warnings.add('클립 ${clipIndex + 1}: @$p 에서 청크 열이 끊겼다 — 이후 데이터는 버린다.');
+      warnings.add(
+        ImportWarning(
+          'tvppChunkBroken',
+          'Clip {n}: the chunk chain broke at @{at} — everything after it is '
+          'dropped.',
+          {'n': '${clipIndex + 1}', 'at': '$p'},
+        ),
+      );
       break;
     }
     final chunk = String.fromCharCodes(bytes, p, p + 4);

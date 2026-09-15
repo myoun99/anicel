@@ -193,7 +193,9 @@ void main() {
     );
     expect(defaults.processGroups, isEmpty);
     expect(
-      defaults.excluded.where((e) => e.reason.contains('archive')),
+      defaults.excluded.where(
+        (e) => e.reason == ExclusionReason.processSubfolder,
+      ),
       hasLength(3),
     );
 

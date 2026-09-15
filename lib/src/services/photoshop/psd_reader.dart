@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'photoshop_byte_reader.dart';
 import 'psd_pixels.dart';
+import '../../models/import/import_warning.dart';
 
 /// Reads Photoshop documents — `.psd` and its large sibling `.psb`.
 ///
@@ -124,7 +125,7 @@ class PsdDocument {
 
   /// Everything the import window should say out loud: colour conversions,
   /// blend modes we do not have, adjustments dropped.
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 }
 
 /// The four bytes every Photoshop document starts with.
@@ -185,9 +186,15 @@ PsdDocument readPsdDocument(
   final width = reader.readUint32();
   final depth = reader.readUint16();
   final colorMode = PsdColorMode.fromCode(reader.readUint16());
-  final warnings = <String>[];
+  final warnings = <ImportWarning>[];
   if (depth == 16 || depth == 32) {
-    warnings.add('$depth-bit document stepped down to 8-bit.');
+    warnings.add(
+      ImportWarning(
+        'psdBitDepth',
+        '{depth}-bit document stepped down to 8-bit.',
+        {'depth': '$depth'},
+      ),
+    );
   }
 
   // Colour mode data — the palette lives here and nothing else we want.
@@ -326,7 +333,7 @@ List<PsdLayer> _readLayers(
   required int depth,
   required PsdColorMode colorMode,
   required Uint8List? palette,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final records = <_LayerRecord>[
     for (var i = 0; i < count; i += 1) _readLayerRecord(reader, psb: psb),
@@ -464,7 +471,7 @@ PsdLayer _readLayerPixels(
   required int depth,
   required PsdColorMode colorMode,
   required Uint8List? palette,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final colorPlanes = <int, Uint8List>{};
   Uint8List? alpha;
@@ -483,7 +490,11 @@ PsdLayer _readLayerPixels(
       // filler we do not have; the merged reading is the answer when it
       // matters.
       reader.offset = planeStart + byteLength;
-      warnings.add('${record.name}: vector mask ignored.');
+      warnings.add(
+        ImportWarning('psdVectorMask', '{name}: vector mask ignored.', {
+          'name': record.name,
+        }),
+      );
       continue;
     }
     final plane = readPsdChannelPlane(
@@ -563,7 +574,7 @@ Uint8List? _readComposite(
   required PsdColorMode colorMode,
   required Uint8List? palette,
   required bool mergedAlpha,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   if (width <= 0 || height <= 0 || channelCount <= 0) {
     return null;
@@ -608,7 +619,13 @@ Uint8List? _readComposite(
         );
       }
     default:
-      warnings.add('Composite image uses compression $compression — skipped.');
+      warnings.add(
+        ImportWarning(
+          'psdComposite',
+          'Composite image uses compression {compression} — skipped.',
+          {'compression': '$compression'},
+        ),
+      );
       return null;
   }
 
@@ -618,7 +635,12 @@ Uint8List? _readComposite(
   }
   final hasAlpha = planes.length > colorPlaneCount;
   if (planes.length > colorPlaneCount + 1) {
-    warnings.add('Extra document channels ignored.');
+    warnings.add(
+      const ImportWarning(
+        'psdExtraChannels',
+        'Extra document channels ignored.',
+      ),
+    );
   }
   final rgba = psdPlanesToRgba(
     mode: colorMode,

@@ -14,6 +14,7 @@ import '../../models/timeline_exposure.dart';
 import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'raster_cel_import.dart' show placementRectFor;
+import '../../models/import/import_warning.dart';
 
 /// EXPAND: a Photoshop stack becomes our stack.
 ///
@@ -65,7 +66,7 @@ class PsdExpandPlan {
   final List<Layer> layers;
 
   final List<PsdLayerPlacement> placements;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 }
 
 /// Photoshop's four-character blend codes. Everything absent from this map
@@ -102,7 +103,7 @@ PsdExpandPlan planPsdExpansion({
   required MediaFitMode fit,
   required ImportIdMint mint,
 }) {
-  final warnings = <String>[...document.warnings];
+  final warnings = <ImportWarning>[...document.warnings];
   final held = duration < 1 ? 1 : duration;
 
   // The document's own rectangle carries the fit; every layer sits inside
@@ -155,11 +156,23 @@ PsdExpandPlan planPsdExpansion({
           // maths, and reproducing it would also flatten everything under
           // it. The composite already has it applied — which is why MERGE
           // exists — so this says what was lost and where.
-          warnings.add('${source.name}: adjustment layer not applied.');
+          warnings.add(
+            ImportWarning(
+              'psdAdjustment',
+              '{name}: adjustment layer not applied.',
+              {'name': source.name},
+            ),
+          );
           continue;
         }
         if (source.clipping) {
-          warnings.add('${source.name}: clipping mask not applied.');
+          warnings.add(
+            ImportWarning(
+              'psdClipping',
+              '{name}: clipping mask not applied.',
+              {'name': source.name},
+            ),
+          );
         }
         final layerId = mint.nextLayerId();
         final frameId = mint.nextFrameId(layerId);
@@ -231,14 +244,17 @@ PsdExpandPlan planPsdExpansion({
   );
 }
 
-LayerBlendMode _blendFor(PsdLayer source, List<String> warnings) {
+LayerBlendMode _blendFor(PsdLayer source, List<ImportWarning> warnings) {
   final mapped = psdBlendModes[source.blendKey];
   if (mapped != null) {
     return mapped;
   }
   warnings.add(
-    '${source.name}: blend mode "${source.blendKey.trim()}" has no '
-    'equivalent — set to normal.',
+    ImportWarning(
+      'psdBlend',
+      '{name}: blend mode "{mode}" has no equivalent — set to normal.',
+      {'name': source.name, 'mode': source.blendKey.trim()},
+    ),
   );
   return LayerBlendMode.normal;
 }

@@ -136,7 +136,10 @@ void main() {
         0, 64, 32, 255, //
         255, 128, 16, 255,
       ]);
-      expect(document.warnings, contains('16-bit document stepped down to 8-bit.'));
+      expect(
+        document.warnings.map((warning) => warning.english),
+        contains('16-bit document stepped down to 8-bit.'),
+      );
     });
 
     test('grayscale fills all three channels', () {
@@ -173,7 +176,7 @@ void main() {
       );
       expect(document.composite!.sublist(0, 4), [0, 255, 255, 255]);
       expect(
-        document.warnings.any((warning) => warning.startsWith('CMYK')),
+        document.warnings.any((warning) => warning.english.startsWith('CMYK')),
         isTrue,
       );
     });

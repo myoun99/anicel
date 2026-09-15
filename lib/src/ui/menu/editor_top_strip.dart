@@ -21,6 +21,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
+import '../../models/import/import_warning.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
 import '../widgets/app_window.dart';
@@ -276,7 +277,7 @@ class EditorTopStrip extends StatelessWidget {
     // Decoding and baking a whole project is a save-sized wait; a frozen
     // screen before the cuts appear reads as a hang (hands-on, 288's 96
     // frames × 19 layers).
-    final opened = await _openBehindWindow<List<String>?>(
+    final opened = await _openBehindWindow<List<ImportWarning>?>(
       context,
       (wait, report) => session.tvppDoor.openAsProject(
         tvppPath: path,
@@ -295,13 +296,16 @@ class EditorTopStrip extends StatelessWidget {
     }
     final warnings = opened.value;
     if (warnings == null) {
-      showFileError(context, const FormatException('TVPaint 프로젝트로 읽을 수 없는 파일'));
+      showFileError(context, AppText.strings.imNotTvpp);
     } else if (warnings.isNotEmpty) {
       await showAppNotice(
         context,
         windowKey: const ValueKey<String>('tvpp-import-warnings-notice'),
         title: AppText.strings.commonNotice,
-        message: warnings.take(6).join('\n'),
+        message: warnings
+            .take(6)
+            .map((warning) => warning.textFor(AppText.language))
+            .join('\n'),
       );
     }
   }
@@ -346,10 +350,7 @@ class EditorTopStrip extends StatelessWidget {
       return null;
     } on FileSystemException {
       if (context.mounted) {
-        showFileError(
-          context,
-          const FormatException('파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요'),
-        );
+        showFileError(context, AppText.strings.imFileUnreadable);
       }
       return null;
     } finally {
@@ -452,7 +453,7 @@ class EditorTopStrip extends StatelessWidget {
       bookmark = relinked.folderBookmark;
       if (!File(path).existsSync()) {
         if (context.mounted) {
-          showFileError(context, 'Not found: $path');
+          showFileError(context, AppText.strings.imNotFound(path));
         }
         return;
       }

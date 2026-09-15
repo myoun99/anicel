@@ -18,6 +18,7 @@ library;
 
 import '../../core/collection_equality.dart';
 import '../../core/path_names.dart';
+import 'import_warning.dart';
 
 /// How the folder NAME is read (rule I: studios differ).
 enum CutFolderNameRule {
@@ -272,7 +273,28 @@ class ParsedExclusion {
   const ParsedExclusion({required this.path, required this.reason});
 
   final String path;
-  final String reason;
+  final ExclusionReason reason;
+}
+
+/// Why the parse dropped a file — the stable key the string tables answer,
+/// and the English the UI falls back to.
+///
+/// 🚨The reasons were free strings written at each [ParsedExclusion] until
+/// F-124 (2026-09-16): six sentences no language but English could say, with
+/// nothing to stop a seventh spelling of 「unrecognized」.
+enum ExclusionReason {
+  processSubfolder('process subfolder (archive)'),
+  subfolderNonCel('subfolder non-cel'),
+  unrecognized('unrecognized'),
+  excludedName('excluded name'),
+  memoText('memo text'),
+  insertionLettersOff('insertion letters off');
+
+  const ExclusionReason(this.label);
+
+  /// The English wording, and the fallback for a language that has not
+  /// tabled this reason (`ExclusionReasonWords.labelFor`).
+  final String label;
 }
 
 /// An archived process subfolder's cel set (rule G/M: `LO/`, `GEN/`),
@@ -320,7 +342,7 @@ class CutFolderParseResult {
   final List<ParsedReference> references;
   final List<ParsedProcessGroup> processGroups;
   final List<ParsedExclusion> excluded;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 }
 
 /// Rule N's process vocabulary, LONGEST FIRST (`ss` is 총작감, never
@@ -443,7 +465,7 @@ List<ParsedProcessGroup> _processGroups({
   required Map<String, List<CutFolderEntry>> subfolderFiles,
   required CutFolderParseConfig config,
   required List<ParsedExclusion> excluded,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final processGroups = <ParsedProcessGroup>[];
   for (final entry in subfolderFiles.entries) {
@@ -452,7 +474,7 @@ List<ParsedProcessGroup> _processGroups({
         excluded.add(
           ParsedExclusion(
             path: '${entry.key}/${file.relativePath}',
-            reason: 'process subfolder (archive)',
+            reason: ExclusionReason.processSubfolder,
           ),
         );
       }
@@ -467,7 +489,7 @@ List<ParsedProcessGroup> _processGroups({
         excluded.add(
           ParsedExclusion(
             path: '${entry.key}/${file.relativePath}',
-            reason: 'subfolder non-cel',
+            reason: ExclusionReason.subfolderNonCel,
           ),
         );
         continue;
@@ -478,7 +500,7 @@ List<ParsedProcessGroup> _processGroups({
         excluded.add(
           ParsedExclusion(
             path: '${entry.key}/${file.relativePath}',
-            reason: 'unrecognized',
+            reason: ExclusionReason.unrecognized,
           ),
         );
         continue;
@@ -519,7 +541,7 @@ List<ParsedProcessGroup> _processGroups({
 List<ParsedCelLayer> _buildLayers(
   Map<String, List<ParsedCel>> byCell, {
   required CelRevisionPolicy revisionPolicy,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final bySymbol = <String, List<ParsedCel>>{};
   for (final entry in byCell.entries) {
@@ -553,8 +575,11 @@ List<ParsedCelLayer> _buildLayers(
           // not vanish, with a warning.
           (bySymbol[symbol] ??= []).add(original);
           warnings.add(
-            '${original.file}: no unmarked original — kept the earliest '
-            'revision.',
+            ImportWarning(
+              'folderNoOriginal',
+              '{file}: no unmarked original — kept the earliest revision.',
+              {'file': original.file},
+            ),
           );
         }
     }
@@ -606,7 +631,7 @@ class _EntryBins {
     final topSegment = segments.first;
     if (excludeNames.contains(topSegment.toLowerCase())) {
       excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'excluded name'),
+        ParsedExclusion(path: entry.relativePath, reason: ExclusionReason.excludedName),
       );
       return;
     }
@@ -656,7 +681,7 @@ class _EntryBins {
     }
     if (extension == 'txt') {
       excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'memo text'),
+        ParsedExclusion(path: entry.relativePath, reason: ExclusionReason.memoText),
       );
       return;
     }
@@ -691,7 +716,7 @@ class _EntryBins {
         }
         if (core.isEmpty) {
           excluded.add(
-            ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+            ParsedExclusion(path: entry.relativePath, reason: ExclusionReason.unrecognized),
           );
           return;
         }
@@ -702,7 +727,7 @@ class _EntryBins {
         return;
       }
       excluded.add(
-        ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+        ParsedExclusion(path: entry.relativePath, reason: ExclusionReason.unrecognized),
       );
       return;
     }
@@ -718,7 +743,7 @@ class _EntryBins {
           excluded.add(
             ParsedExclusion(
               path: entry.relativePath,
-              reason: 'insertion letters off',
+              reason: ExclusionReason.insertionLettersOff,
             ),
           );
           return;
@@ -736,7 +761,7 @@ class _EntryBins {
     }
 
     excluded.add(
-      ParsedExclusion(path: entry.relativePath, reason: 'unrecognized'),
+      ParsedExclusion(path: entry.relativePath, reason: ExclusionReason.unrecognized),
     );
   }
 }
@@ -799,7 +824,7 @@ CutFolderNameParts _folderNameParts({
   required String folderName,
   required CutFolderParseConfig config,
   required String? parentFolderName,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   var parts = switch (config.nameRule) {
     CutFolderNameRule.titleEpisodeCut => _walkNameTokens(folderName.split('_')),
@@ -814,8 +839,12 @@ CutFolderNameParts _folderNameParts({
   };
   if (!config.multiCutFolders && parts.cutNumbers.length > 1) {
     warnings.add(
-      'Folder names ${parts.cutNumbers.length} cuts but multi-cut folders '
-      'are off — only ${parts.cutNumbers.first} imports.',
+      ImportWarning(
+        'folderMultiCutOff',
+        'Folder names {n} cuts but multi-cut folders are off — only {first} '
+        'imports.',
+        {'n': '${parts.cutNumbers.length}', 'first': parts.cutNumbers.first},
+      ),
     );
     parts = (
       title: parts.title,
@@ -825,7 +854,12 @@ CutFolderNameParts _folderNameParts({
     );
   }
   if (parts.cutNumbers.isEmpty) {
-    warnings.add('No cut number found in the folder name.');
+    warnings.add(
+      const ImportWarning(
+        'folderNoCutNumber',
+        'No cut number found in the folder name.',
+      ),
+    );
   }
   return parts;
 }
@@ -837,7 +871,7 @@ CutFolderParseResult parseCutFolder({
   CutFolderParseConfig config = const CutFolderParseConfig(),
   String? parentFolderName,
 }) {
-  final warnings = <String>[];
+  final warnings = <ImportWarning>[];
   final excluded = <ParsedExclusion>[];
 
   // --- Folder name --------------------------------------------------------

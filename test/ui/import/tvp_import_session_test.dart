@@ -7,10 +7,13 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderPicker;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/session/tvpp_import_door.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart';
 
 /// An import through the SESSION, which is where the ids come from.
 ///
@@ -88,7 +91,9 @@ void main() {
       );
       expect(warnings, isNotNull, reason: 'the file parses');
       expect(
-        warnings!.where((w) => w.startsWith('사운드 파일이')),
+        warnings!.where(
+          (w) => w.english.startsWith('The sound file is not at this address'),
+        ),
         isNotEmpty,
         reason:
             '🚨the PLANNER\'s warnings reach the caller. The fixture\'s '
@@ -97,7 +102,7 @@ void main() {
             'checks the OTHER warnings are empty.',
       );
       expect(
-        warnings.where((w) => w.contains('뮤트')),
+        warnings.where((w) => w.english.contains('the track was muted')),
         isNotEmpty,
         reason:
             'the muted track is a PLANNER warning — this is the one the '
@@ -107,7 +112,11 @@ void main() {
         // The fixture's rushes path is deliberately absent, and that
         // warning is the flow's own answer to a missing sound — not a
         // decode failure.
-        warnings.where((w) => !w.startsWith('사운드 파일이') && !w.contains('뮤트')),
+        warnings.where(
+          (w) =>
+              !w.english.startsWith('The sound file is not at this address') &&
+              !w.english.contains('the track was muted'),
+        ),
         isEmpty,
         reason:
             '🚨every cel DECODED. The import reads each record out of '
@@ -201,6 +210,43 @@ void main() {
       );
     },
   );
+
+  test('F-124: the warnings an import raises speak the program language', () async {
+    // 🚨THE THREE THAT WERE KOREAN. The planner's muted-track warning and
+    // the door's missing-sound warning were written in Korean, so a
+    // Japanese — or French, or Chinese — reader met Korean in the notice
+    // the import puts up. The English ones were no better: a sentence
+    // built where it is raised can only be said in the language it was
+    // typed in.
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ja,
+    );
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+
+    final warnings = await session.tvppDoor.openAsProject(
+      tvppPath: writeTvpp(),
+    );
+
+    expect(warnings, isNotNull, reason: 'the file parses');
+    expect(
+      warnings!.where(
+        (w) => w.textFor(AppLanguage.ja).contains('ミュート'),
+      ),
+      isNotEmpty,
+      reason: 'the planner says the track was muted, in the app\'s language',
+    );
+    expect(
+      warnings.where(
+        (w) => w.textFor(AppLanguage.ja).contains('音声ファイルがありません'),
+      ),
+      isNotEmpty,
+      reason: 'and the door says the sound file is not where it points',
+    );
+  });
 
   test('🚨the converted project is bound to NO file and is UNSAVED — the '
       'first save has to ask where the .anicel goes', () async {
@@ -322,7 +368,9 @@ void main() {
 
     expect(warnings, isNotNull, reason: 'the STRUCTURE parses');
     expect(
-      warnings!.where((w) => !w.startsWith('사운드 파일이')),
+      warnings!.where(
+        (w) => !w.english.startsWith('The sound file is not at this address'),
+      ),
       isNotEmpty,
       reason: 'a cel the decoder refused has to be said out loud',
     );

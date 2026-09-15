@@ -40,6 +40,7 @@ import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart';
 import 'media_import_planner.dart' show ImportIdMint, PlannedCelBake;
+import '../../models/import/import_warning.dart';
 
 /// One fully-formed cut, the cels to bake into it, and everything the
 /// read could not carry over.
@@ -52,7 +53,7 @@ class TvpImportPlan {
 
   final Cut cut;
   final List<PlannedCelBake> bakes;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 }
 
 /// Builds the cut for [parsed]. [resolveFile] turns a block's file key
@@ -127,8 +128,12 @@ TvpImportPlan planTvpImport({
         );
         if (block.file.isEmpty) {
           warnings.add(
-            '${source.name}: the instance at frame ${block.start + 1} names '
-            'no file — its cel stays empty.',
+            ImportWarning(
+              'tvpNoFile',
+              '{name}: the instance at frame {frame} names no file — its cel '
+              'stays empty.',
+              {'name': source.name, 'frame': '${block.start + 1}'},
+            ),
           );
         } else {
           bakes.add(
@@ -195,7 +200,13 @@ TvpImportPlan planTvpImport({
         .clamp(0, math.max(0, duration - 1))
         .toInt();
     if (track.muted) {
-      warnings.add('${fileNameOfPath(track.filePath)}: 트랙이 뮤트 상태였다 — 소리는 그대로 연결된다.');
+      warnings.add(
+        ImportWarning(
+          'tvpMuted',
+          '{file}: the track was muted — its sound is linked all the same.',
+          {'file': fileNameOfPath(track.filePath)},
+        ),
+      );
     }
     layers.add(
       Layer(
@@ -483,7 +494,7 @@ bool _lineReproduces(
 /// what every layer of every measured file carries. Modes with no
 /// Anicel formula fall back to normal and say so rather than picking a
 /// lookalike.
-LayerBlendMode _blendModeFor(TvpLayer source, List<String> warnings) {
+LayerBlendMode _blendModeFor(TvpLayer source, List<ImportWarning> warnings) {
   final key = source.blendingMode
       .toLowerCase()
       .replaceAll(RegExp(r'[\s_()-]'), '');
@@ -505,8 +516,12 @@ LayerBlendMode _blendModeFor(TvpLayer source, List<String> warnings) {
   };
   if (mode == null) {
     warnings.add(
-      '${source.name}: blending mode "${source.blendingMode}" has no Anicel '
-      'equivalent — imported as normal.',
+      ImportWarning(
+        'tvpBlend',
+        '{name}: blending mode "{mode}" has no Anicel equivalent — imported '
+        'as normal.',
+        {'name': source.name, 'mode': source.blendingMode},
+      ),
     );
     return LayerBlendMode.normal;
   }

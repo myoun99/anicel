@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'photoshop_byte_reader.dart';
+import '../../models/import/import_warning.dart';
 
 /// The pixel half of the document reader: channel planes in, straight RGBA
 /// out. Kept apart from `psd_reader.dart` so the structure parse stays a
@@ -64,7 +65,7 @@ Uint8List readPsdChannelPlane(
   required int depth,
   required bool psb,
   required int payloadLength,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   if (width <= 0 || height <= 0) {
     return Uint8List(0);
@@ -119,7 +120,7 @@ void _undoPrediction(
   required int height,
   required int depth,
   required int bytesPerRow,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   if (depth == 8) {
     for (var y = 0; y < height; y += 1) {
@@ -145,7 +146,12 @@ void _undoPrediction(
   // 32-bit prediction transposes the float bytes before delta-coding them,
   // and no animation PSD has ever arrived that way. Saying so beats
   // guessing: the plane reads as noise otherwise, which looks like our bug.
-  warnings.add('32-bit predicted channel data is not supported.');
+  warnings.add(
+    const ImportWarning(
+      'psd32Bit',
+      '32-bit predicted channel data is not supported.',
+    ),
+  );
 }
 
 Uint8List psdPlaneToEightBit(
@@ -212,7 +218,7 @@ Uint8List psdPlanesToRgba({
   required int width,
   required int height,
   required Uint8List? palette,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final pixelCount = width * height;
   final rgba = Uint8List(pixelCount * 4);
@@ -240,7 +246,9 @@ Uint8List psdPlanesToRgba({
         rgba[i * 4 + 2] = v[i];
       }
       if (mode == PsdColorMode.duotone) {
-        warnings.add('Duotone read as grayscale.');
+        warnings.add(
+          const ImportWarning('psdDuotone', 'Duotone read as grayscale.'),
+        );
       }
     case PsdColorMode.multichannel:
       final v = plane(0);
@@ -249,11 +257,21 @@ Uint8List psdPlanesToRgba({
         rgba[i * 4 + 1] = v[i];
         rgba[i * 4 + 2] = v[i];
       }
-      warnings.add('Multichannel read as grayscale of its first channel.');
+      warnings.add(
+        const ImportWarning(
+          'psdMultichannel',
+          'Multichannel read as grayscale of its first channel.',
+        ),
+      );
     case PsdColorMode.indexed:
       final index = plane(0);
       if (palette == null || palette.length < 768) {
-        warnings.add('Indexed colour without a palette read as grayscale.');
+        warnings.add(
+          const ImportWarning(
+            'psdIndexedNoPalette',
+            'Indexed colour without a palette read as grayscale.',
+          ),
+        );
         for (var i = 0; i < pixelCount; i += 1) {
           rgba[i * 4] = index[i];
           rgba[i * 4 + 1] = index[i];
@@ -279,7 +297,12 @@ Uint8List psdPlanesToRgba({
         rgba[i * 4 + 1] = _clampByte(255 - (255 - m[i]) - ink);
         rgba[i * 4 + 2] = _clampByte(255 - (255 - y[i]) - ink);
       }
-      warnings.add('CMYK converted to RGB without a profile — colour shifts.');
+      warnings.add(
+        const ImportWarning(
+          'psdCmyk',
+          'CMYK converted to RGB without a profile — colour shifts.',
+        ),
+      );
     case PsdColorMode.lab:
       final l = plane(0);
       final a = plane(1);
@@ -290,7 +313,12 @@ Uint8List psdPlanesToRgba({
         rgba[i * 4 + 1] = rgb.$2;
         rgba[i * 4 + 2] = rgb.$3;
       }
-      warnings.add('Lab converted to RGB without a profile — colour shifts.');
+      warnings.add(
+        const ImportWarning(
+          'psdLab',
+          'Lab converted to RGB without a profile — colour shifts.',
+        ),
+      );
   }
 
   if (alphaPlane == null) {

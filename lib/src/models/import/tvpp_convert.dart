@@ -1,6 +1,7 @@
 import 'tvp_import_model.dart';
 import 'tvpp_camera_bake.dart';
 import 'tvpp_parse.dart';
+import 'import_warning.dart';
 
 /// One clip of a .tvpp, translated into the SAME parse-result model the
 /// JSON export produces — so `planTvpImport` builds the cut for both
@@ -38,7 +39,7 @@ TvppClipConversion convertTvppClip(
   TvppClip clip, {
   required int clipIndex,
 }) {
-  final warnings = <String>[];
+  final warnings = <ImportWarning>[];
   final slotsByFile = <String, TvppSlot>{};
 
   // The stream is TOP-first (like the JSON's array); the parse-result
@@ -249,7 +250,7 @@ TvpLayer _rasterLayer(
   required String name,
   required int position,
   required Map<String, TvppSlot> slotsByFile,
-  required List<String> warnings,
+  required List<ImportWarning> warnings,
 }) {
   final blocks = <TvpExposureBlock>[];
   final marksByFrame = <int, List<int>>{};
@@ -299,7 +300,13 @@ TvpLayer _rasterLayer(
     } else {
       final b = open;
       if (b == null) {
-        warnings.add('$name: 프레임 ${frame + 1}의 홀드가 이어받을 그림이 없다.');
+        warnings.add(
+          ImportWarning(
+            'tvppHoldNoDrawing',
+            '{name}: the hold at frame {frame} has no drawing to carry.',
+            {'name': name, 'frame': '${frame + 1}'},
+          ),
+        );
         continue;
       }
       open = TvpExposureBlock(

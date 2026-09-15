@@ -12,6 +12,8 @@
 /// project memory `tvpp-format-notes`).
 library;
 
+import 'import_warning.dart';
+
 enum TvpEdgeBehavior {
   none,
   repeat,
@@ -262,7 +264,7 @@ class TvpImportClip {
   /// Bottom-first — `Cut.layers` order.
   final List<TvpLayer> layers;
 
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 
   /// Sound tracks, as references.
   final List<TvpAudioTrack> audioTracks;

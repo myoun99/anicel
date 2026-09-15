@@ -14,6 +14,7 @@ import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 import 'psd_layer_plan.dart';
 import 'raster_cel_import.dart';
+import '../../models/import/import_warning.dart';
 
 /// The pixel half of EXPAND: read the document, plan the stack, and turn
 /// each layer's own pixels into a cel surface at the place the plan says.
@@ -46,7 +47,7 @@ class PsdExpansion {
   /// Bottom-first, folder rows above their members.
   final List<Layer> layers;
   final List<PsdExpandedCel> cels;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 
   /// The canvas the stack was laid out on — the document's own size when
   /// the stack makes a NEW cut ([readPsdExpansion]'s `canvasFromDocument`).

@@ -140,7 +140,7 @@ void main() {
           isA<TvppRasterDecodeException>().having(
             (error) => error.message,
             'message',
-            contains('크기 불일치'),
+            contains('size mismatch'),
           ),
         ),
       );

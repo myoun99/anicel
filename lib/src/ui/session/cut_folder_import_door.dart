@@ -19,6 +19,7 @@ import '../../services/persistence/media_staging_store.dart';
 import 'import_landing.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
+import '../../models/import/import_warning.dart';
 
 /// The cut-folder import.
 class CutFolderImportDoor {
@@ -56,7 +57,7 @@ class CutFolderImportDoor {
   /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
   /// per extra number (the field 겸용컷; separate undo steps).
   /// Returns the parse-and-plan warnings, or null when nothing imported.
-  Future<List<String>?> importCutFolder({
+  Future<List<ImportWarning>?> importCutFolder({
     required String folderPath,
     required bool copyIntoProject,
     CutFolderParseConfig config = const CutFolderParseConfig(),

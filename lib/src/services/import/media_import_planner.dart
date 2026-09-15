@@ -16,6 +16,7 @@ import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
+import '../../models/import/import_warning.dart';
 
 /// PURE construction of the models an import lands (§6-z21's
 /// interpretation table IS this plan rendered): the session mints ids and
@@ -353,7 +354,7 @@ class CutFolderImportPlan {
   final List<PlannedCelBake> bakes;
   final List<MediaAsset> assets;
   final List<String> extraCutNumbers;
-  final List<String> warnings;
+  final List<ImportWarning> warnings;
 }
 
 CutFolderImportPlan planCutFolderImport({
@@ -489,7 +490,12 @@ CutFolderImportPlan planCutFolderImport({
   }
 
   if (layers.isEmpty) {
-    warnings.add('The folder held no importable cels or pictures.');
+    warnings.add(
+      const ImportWarning(
+        'folderNothing',
+        'The folder held no importable cels or pictures.',
+      ),
+    );
   }
 
   // Nothing exits silently (§6-z21): an archived-process symbol with no
@@ -499,8 +505,16 @@ CutFolderImportPlan planCutFolderImport({
     for (final layer in group.layers) {
       if (!baseSymbols.contains(layer.symbol)) {
         warnings.add(
-          '${group.process}/${layer.symbol}: no matching top-level layer '
-          '— ${layer.cells.length} cel(s) skipped.',
+          ImportWarning(
+            'folderNoBase',
+            '{process}/{symbol}: no matching top-level layer — {n} cel(s) '
+            'skipped.',
+            {
+              'process': group.process,
+              'symbol': layer.symbol,
+              'n': '${layer.cells.length}',
+            },
+          ),
         );
       }
     }
