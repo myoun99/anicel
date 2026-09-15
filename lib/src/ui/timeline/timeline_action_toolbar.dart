@@ -338,7 +338,10 @@ class TimelineActionToolbar extends StatelessWidget {
     // honestly (its rows' chains have no add entrance on this pill yet, and
     // a lit entry would edit a row that panel is not showing).
     final serves = panelContext.servesActiveLayerVerbs;
-    final effects = session.activeLayer?.effects ?? const <LayerEffect>[];
+    // ⛔NO REMOVE ENTRIES (F-87, 유저 2026-09-12: 「fx 헤더 선택범위로 선택한채로
+    // 삭제누르면 해당 fx 삭제. 그리고 fx버튼에 있는 해당 fx 삭제버튼은
+    // 필요없으니 삭제하고 관련로직 싹 제거」): an effect is removed by a range
+    // over its header and the one Delete.
     return [
       PanelFlyoutHeader(AppText.strings.tlEffects),
       // ⛔EVERY KIND IS LISTED, ALWAYS; the ones this row cannot take are
@@ -356,19 +359,6 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.auto_fix_high_outlined,
           enabled: serves && session.effectsAndFx.canAddEffectToActiveLayer,
           onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),
-        ),
-      if (effects.isNotEmpty) const PanelFlyoutDivider(),
-      for (final effect in effects)
-        PanelFlyoutItem(
-          keyValue: 'remove-effect-${effect.id.value}',
-          label: AppText.strings.tlRemoveEffectTemplate.replaceAll(
-            '{name}',
-            effect.kind.labelFor(AppText.language),
-          ),
-          icon: Icons.remove_circle_outline,
-          danger: true,
-          enabled: serves,
-          onSelected: () => session.effectsAndFx.removeEffectFromActiveLayer(effect.id),
         ),
     ];
   }

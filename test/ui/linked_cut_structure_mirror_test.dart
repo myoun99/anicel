@@ -8,7 +8,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
-    show effectLaneId;
+    show effectGroupLaneId, effectLaneId;
 
 /// 겸용컷 STRUCTURE mirroring: layer existence is shared structure, so a
 /// row created in one use site appears in every sibling ("존재는 공유,
@@ -383,7 +383,16 @@ void main() {
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final added = session.activeLayer!;
 
-    session.effectsAndFx.removeEffectFromActiveLayer(added.effects.single.id);
+    // ↩️F-87: removed the way the user removes one now — a range over the fx
+    // header and the one Delete.
+    session.updateLaneRangeSelectionDrag(
+      layerId: added.id,
+      laneId: effectGroupLaneId(added.effects.single.id),
+      anchorIndex: 0,
+      headIndex: 3,
+      spanLaneIds: const [],
+    );
+    session.deleteSelectionSubject(cutsAreThisPanels: false);
 
     expect(counterpartIn(pair.source, added).effects, isEmpty);
   });

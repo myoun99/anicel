@@ -801,7 +801,6 @@ void main() {
     'tlDeleteLayer': (s) => s.tlDeleteLayer,
     'tlEffects': (s) => s.tlEffects,
     'tlAddEffectTemplate': (s) => s.tlAddEffectTemplate,
-    'tlRemoveEffectTemplate': (s) => s.tlRemoveEffectTemplate,
     'tlDropIntoFolderTemplate': (s) => s.tlDropIntoFolderTemplate,
     'tlDropOutOfFolder': (s) => s.tlDropOutOfFolder,
     'tlDropAttachSyncedTemplate': (s) => s.tlDropAttachSyncedTemplate,

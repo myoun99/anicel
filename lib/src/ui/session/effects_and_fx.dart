@@ -10,11 +10,7 @@ import '../../models/track_transform_lane_carrier.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_layer_transform_enabled_command.dart';
 import '../timeline/effect_lane_editing.dart'
-    show
-        effectsWithAdded,
-        effectsWithEnabledToggled,
-        effectsWithGroupReset,
-        effectsWithRemoved;
+    show effectsWithAdded, effectsWithEnabledToggled, effectsWithGroupReset;
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
 
@@ -101,20 +97,6 @@ class EffectsAndFx {
       effectsWithAdded(layer.effects, effect),
       description: 'Add ${kind.label}',
     );
-  }
-
-  /// Removes one effect from the active row (its keys go with it; one undo
-  /// brings both back).
-  void removeEffectFromActiveLayer(EffectId effectId) {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return;
-    }
-    final next = effectsWithRemoved(layer.effects, effectId);
-    if (next == null) {
-      return;
-    }
-    updateLayerEffects(layer.id, next, description: 'Remove effect');
   }
 
   int _effectSequence = 0;
@@ -339,8 +321,8 @@ class EffectsAndFx {
 
   /// Runs one `effectsWith*` transform over [trackId]'s chain and banks it
   /// as one undo step; false when there is no such track, or the transform
-  /// declines (null = nothing would change). The envelope the three track
-  /// verbs each wrote out around effect_lane_editing.dart's transforms.
+  /// declines (null = nothing would change). The envelope the track verbs
+  /// each wrote out around effect_lane_editing.dart's transforms.
   bool _editTrackEffects(
     TrackId trackId, {
     required String description,
@@ -354,13 +336,6 @@ class EffectsAndFx {
     updateTrackEffects(trackId, next, description: description);
     return true;
   }
-
-  void removeEffectFromTrack(TrackId trackId, EffectId effectId) =>
-      _editTrackEffects(
-        trackId,
-        description: 'Remove effect',
-        edit: (fx) => effectsWithRemoved(fx, effectId),
-      );
 
   /// A V-track effect group's RESET (R5) — the track twin of
   /// [_internals.resetLaneGroup]. Track effects have no lane-range selection of their

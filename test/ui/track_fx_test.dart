@@ -284,7 +284,11 @@ void main() {
       expect(chain(s), isEmpty);
     });
 
-    test('remove and the per-effect bypass', () {
+    // ↩️The remove half went with `removeEffectFromTrack` (F-87, 유저
+    // 2026-09-12: 「fx버튼에 있는 해당 fx 삭제버튼은 필요없으니 삭제하고 관련로직
+    // 싹 제거」) — no UI called it; a range over the fx header and the one
+    // Delete remove an effect now.
+    test('the per-effect bypass', () {
       final s = session(effects: [_brightness()]);
       const id = EffectId('fx-1');
 
@@ -298,11 +302,6 @@ void main() {
 
       s.effectsAndFx.toggleTrackEffectEnabled(_track, id);
       expect(chain(s).single.enabled, isTrue);
-
-      s.effectsAndFx.removeEffectFromTrack(_track, id);
-      expect(chain(s), isEmpty);
-      s.undo();
-      expect(chain(s), hasLength(1));
     });
 
     test('the group RESET puts the chain back to its defaults, once', () {
@@ -326,7 +325,6 @@ void main() {
       final s = session();
       const missing = TrackId('nope');
       s.effectsAndFx.addEffectToTrack(missing, EffectKind.blur);
-      s.effectsAndFx.removeEffectFromTrack(missing, const EffectId('fx-1'));
       s.effectsAndFx.toggleTrackEffectEnabled(missing, const EffectId('fx-1'));
       expect(
         s.effectsAndFx.resetTrackEffectGroup(

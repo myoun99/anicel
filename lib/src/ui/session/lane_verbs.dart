@@ -22,7 +22,8 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithLaneKeyToggled,
         effectsWithLaneKeysInterpolated,
         effectsWithLaneRangeNamed,
-        effectsWithLaneValueEdited;
+        effectsWithLaneValueEdited,
+        effectsWithRemoved;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/transform_lane_editing.dart'
@@ -1074,6 +1075,68 @@ class LaneVerbs {
               laneId,
             ).any(lane.contains),
     );
+  }
+
+  /// Whether the one Delete has something to take from [laneVerbRange]: a key
+  /// under it, or — on a live RANGE — an fx header it names (F-87).
+  bool get laneVerbRangeHasSomethingToDelete {
+    final lane = laneVerbRange;
+    return laneVerbRangeHasKeys ||
+        (lane != null && _effectsNamedByHeaderRange(lane).isNotEmpty);
+  }
+
+  /// 🚨F-87 — THE ONE DELETE ON A LANE ROW (유저 2026-09-12: 「공용 삭제버튼을
+  /// 서있는곳 위치에 따라 나누도록. 트랜스폼 헤더에 서있으면 지금처럼 해당 키
+  /// 삭제 그대로 두는데, 키가 없을때 삭제하면 레이어의 프레임이 삭제됨. 이런거
+  /// 없도록. 법 최대한 하나로 통일 / 그리고 fx 헤더 선택범위로 선택한채로
+  /// 삭제누르면 해당 fx 삭제」).
+  ///
+  /// A lane row is the press's subject the way a cell band is. A live RANGE
+  /// over an fx header removes that effect, its keys with it; every other lane
+  /// in the span loses the keys the range covers; with nothing to take the
+  /// press does nothing — never the cel of the layer the lane belongs to.
+  /// Standing on a header is not a range: it takes the keys at the playhead,
+  /// as it always did. One undo for the whole press.
+  void deleteForLaneSelection(TimelineLaneSelection lane) {
+    final removed = _effectsNamedByHeaderRange(lane);
+    if (removed.isEmpty) {
+      removeLaneKeysForSelection(lane);
+      return;
+    }
+    final layer = laneVerbLayerFor(lane.layerId)!;
+    _project.historyManager.runAsOneStep('Delete', () {
+      var effects = layer.effects;
+      for (final effectId in removed) {
+        effects = effectsWithRemoved(effects, effectId) ?? effects;
+      }
+      _commitLaneEffects(layer, effects, description: 'Remove effect');
+      // The removed effects' header lanes resolve to nothing now, so the
+      // same span takes only the keys on the lanes that are left.
+      removeLaneKeysForSelection(lane);
+    });
+  }
+
+  /// The effects a live lane RANGE names by their HEADER rows — none for the
+  /// span of the row being stood on, which is not a range.
+  List<EffectId> _effectsNamedByHeaderRange(TimelineLaneSelection lane) {
+    if (_selection.laneRangeSelection.value == null) {
+      return const [];
+    }
+    final layer = laneVerbLayerFor(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return const [];
+    }
+    final ids = <EffectId>[];
+    for (final laneId in lane.spanLaneIds) {
+      final address = parseEffectLaneId(laneId);
+      if (address == null || address.parameterId != null) {
+        continue;
+      }
+      if (layer.effects.any((effect) => effect.id == address.effectId)) {
+        ids.add(address.effectId);
+      }
+    }
+    return ids;
   }
 
   /// value on every unkeyed frame of the range — one undo.

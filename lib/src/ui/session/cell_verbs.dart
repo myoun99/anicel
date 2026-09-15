@@ -245,7 +245,9 @@ class CellVerbs {
       // row, Delete removes its keys, not a cel. It also closes a gap the
       // other way round: a live LANE span used to fall through to the cell
       // path and delete the active layer's cel instead of the keys under it.
-      _laneVerbs.laneVerbRangeHasKeys ||
+      // F-87: keys, or a live range naming an fx header (which removes the
+      // effect).
+      _laneVerbs.laneVerbRangeHasSomethingToDelete ||
       // A live selection is deletable wherever the playhead stands (UI-R17
       // #2).
       _rangeSelections.selectionBlockStartsByLayer() != null;
@@ -268,6 +270,15 @@ class CellVerbs {
   bool get canDeleteCellAtCurrentFrame {
     if (canDeleteCellForSelection) {
       return true;
+    }
+    // 🚨F-87 (유저 2026-09-12: 「트랜스폼 헤더에 서있으면 … 키가 없을때
+    // 삭제하면 레이어의 프레임이 삭제됨. 이런거 없도록」): a LANE row claims
+    // the press the way a cell band does — with nothing on it this press may
+    // take, the answer is nothing, never the cel of the layer the lane
+    // belongs to (R10 #19 made the row its own subject; this rung had not
+    // heard).
+    if (_laneVerbs.laneVerbRange != null) {
+      return false;
     }
     if (cellSelectionClaimsSubject) {
       return false;
@@ -298,7 +309,11 @@ class CellVerbs {
     // R10 #19: a property row is its own subject — see
     // [canDeleteCellAtCurrentFrame].
     final lane = _laneVerbs.laneVerbRange;
-    if (lane != null && _laneVerbs.removeLaneKeysForSelection(lane)) {
+    // F-87: the lane row takes the whole press — an fx header's range removes
+    // the effect, other lanes lose their keys, and nothing falls through to
+    // the cel below when there is nothing to take.
+    if (lane != null) {
+      _laneVerbs.deleteForLaneSelection(lane);
       return;
     }
     // A live selection routes the delete to EVERY selected block on

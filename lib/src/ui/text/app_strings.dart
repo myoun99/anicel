@@ -695,7 +695,6 @@ enum AppStrings {
   String get tlDeleteLayer => _s('tlDeleteLayer');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
-  String get tlRemoveEffectTemplate => _s('tlRemoveEffectTemplate');
   String get tlDropIntoFolderTemplate => _s('tlDropIntoFolderTemplate');
   String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
   String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
@@ -2215,7 +2214,6 @@ enum AppStrings {
     'tlDeleteLayer': 'Delete layer',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
-    'tlRemoveEffectTemplate': 'Remove {name}',
     'tlDropIntoFolderTemplate': 'into {name}',
     'tlDropOutOfFolder': 'out of the folder',
     'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
@@ -3261,7 +3259,6 @@ enum AppStrings {
     'tlDeleteLayer': 'レイヤーを削除',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
-    'tlRemoveEffectTemplate': '{name}を削除',
     'tlDropIntoFolderTemplate': '{name} の中へ',
     'tlDropOutOfFolder': 'フォルダの外へ',
     'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
@@ -4298,7 +4295,6 @@ enum AppStrings {
     'tlDeleteLayer': '레이어 삭제',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
-    'tlRemoveEffectTemplate': '{name} 제거',
     'tlDropIntoFolderTemplate': '{name} 안으로',
     'tlDropOutOfFolder': '폴더 밖으로',
     'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
@@ -5366,7 +5362,6 @@ enum AppStrings {
     'tlDeleteLayer': 'Supprimer le calque',
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
-    'tlRemoveEffectTemplate': 'Supprimer {name}',
     'tlDropIntoFolderTemplate': 'dans {name}',
     'tlDropOutOfFolder': 'hors du dossier',
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
@@ -6333,7 +6328,6 @@ enum AppStrings {
     'tlDeleteLayer': '删除图层',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',
-    'tlRemoveEffectTemplate': '删除{name}',
     'tlDropIntoFolderTemplate': '移入 {name}',
     'tlDropOutOfFolder': '移出文件夹',
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',

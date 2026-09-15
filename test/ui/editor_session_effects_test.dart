@@ -156,7 +156,16 @@ void main() {
       isTrue,
     );
 
-    effectsOf(session).removeEffectFromActiveLayer(effectId);
+    // ↩️F-87 (유저 2026-09-12): the fx menu's remove entry is gone — an effect
+    // is removed by a RANGE over its header and the one Delete.
+    session.updateLaneRangeSelectionDrag(
+      layerId: layer.id,
+      laneId: effectGroupLaneId(effectId),
+      anchorIndex: 0,
+      headIndex: 3,
+      spanLaneIds: const [],
+    );
+    session.deleteSelectionSubject(cutsAreThisPanels: false);
     expect(session.activeLayer!.effects, isEmpty);
     session.undo();
     final restored = session.activeLayer!.effects.single;
