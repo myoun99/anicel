@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
@@ -470,5 +471,54 @@ void main() {
       find.byKey(const ValueKey<String>('color-picker-wheel')),
       findsNothing,
     );
+  });
+
+  testWidgets('🚨F-114: the BACKDROP swatch has 「없음」 and a real opacity, '
+      'like the two planes beside it', (tester) async {
+    // 유저 2026-09-15: 「페이스트보드, 백그라운드 설정에도 동일적용」 · 「없음버튼
+    // 누르면 없는상태 … 페이스트보드도 백그라운드도 동일하게」. The absent-backdrop
+    // pin above sets the flag on the panel; this one goes through the door
+    // the user actually has.
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final commits = <int>[];
+    var nones = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: BrushCanvasFixture.createCoordinator(
+              frameKeys: frameKeys,
+            ),
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            floorCover: EdgeInsets.zero,
+            backdropArgb: 0xFF102030,
+            onBackdropColorChanged: commits.add,
+            onBackdropNone: () => nones += 1,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tapInViewSettings(tester, 'canvas-backdrop-color-button');
+    final bar = tester.widget<FieldSlider>(
+      find.byKey(const ValueKey<String>('color-picker-opacity')),
+    );
+    expect(bar.onChanged, isNotNull, reason: 'the backdrop keeps a real alpha');
+    bar.onChanged!(0.25);
+    await tester.pump();
+    expect(commits, isNotEmpty);
+    expect(
+      commits.last >>> 24,
+      (0.25 * 255).round(),
+      reason: 'not forced back to opaque on the way out',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('color-picker-none')));
+    await tester.pumpAndSettle();
+    expect(nones, 1, reason: 'the backdrop can be absent');
   });
 }

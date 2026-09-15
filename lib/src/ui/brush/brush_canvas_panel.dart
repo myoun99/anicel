@@ -1244,8 +1244,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _selectionSeat.bindSelectionHistoryRecorder();
     _syncIdleAnts();
+    _followAutoFrame(oldWidget.autoFrame);
+  }
+
+  /// Carries out the host's auto-frame request when it is a NEW one —
+  /// [previous] is the request the last build carried.
+  void _followAutoFrame(CanvasAutoFrameRequest? previous) {
     final request = widget.autoFrame;
-    if (request == null || request.token == oldWidget.autoFrame?.token) {
+    if (request == null || request.token == previous?.token) {
       return;
     }
     // didUpdateWidget runs during the build phase — reframing notifies the
@@ -2845,13 +2851,12 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     // the exception.
     canvas.save();
     canvas.clipRect(box);
-    _paintPlane(canvas, box, null, backdrop, none: backdropNone);
+    _paintPlane(canvas, box, null, (color: backdrop, none: backdropNone));
     _paintPlane(
       canvas,
       box,
       _quad(canvasSize.pasteboardRect),
-      pasteboard,
-      none: pasteboardNone,
+      (color: pasteboard, none: pasteboardNone),
     );
     if (paperNone) {
       _paintPlane(
@@ -2865,8 +2870,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
             canvasSize.height.toDouble(),
           ),
         ),
-        const Color(0x00000000),
-        none: true,
+        (color: const Color(0x00000000), none: true),
       );
     }
     canvas.restore();
@@ -2874,7 +2878,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
 
   /// One plane over [region] — the whole [box] when null: the checkerboard
   /// when the plane is absent, otherwise its colour wherever that has any
-  /// alpha.
+  /// alpha. The plane rides as ONE value, its colour and whether it is there.
   ///
   /// ⚠️The box as a RECT, not a path: the backdrop is the box itself, and
   /// the clip test asks the first recorded path whether it escapes the box
@@ -2883,9 +2887,9 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     Canvas canvas,
     Rect box,
     Path? region,
-    Color color, {
-    required bool none,
-  }) {
+    ({Color color, bool none}) plane,
+  ) {
+    final (:color, :none) = plane;
     if (none) {
       canvas.save();
       if (region != null) {

@@ -123,9 +123,16 @@ class _BottomBarBuild {
           keyValue: 'canvas-backdrop-color-button',
           tooltip: AppText.strings.viewBackdropColor,
           color: _bar.backdropColor,
-          // The backdrop is opaque BY CONTRACT: it is the stage's final
-          // answer, and an alpha there would only re-ask the question.
-          onChanged: (argb) => onBackdrop(0xFF000000 | argb),
+          // ↩️It was opaque BY CONTRACT here — 「the stage's final answer, and
+          // an alpha there would only re-ask the question」 — until F-114 (유저
+          // 2026-09-15): 「페이스트보드, 백그라운드 설정에도 동일적용」, 「없음버튼
+          // 누르면 없는상태 … 페이스트보드도 백그라운드도 동일하게」. The model
+          // stopped forcing the alpha in step (b); this door forced it back.
+          // Like the two planes beside it: absent, and a real alpha.
+          onChanged: onBackdrop,
+          none: _bar.backdropNone,
+          onNone: _bar.onBackdropNone,
+          keepsAlpha: true,
         ),
       ],
     ];
