@@ -321,4 +321,80 @@ void main() {
       expect(byKey, byItem, reason: 'the key does what the item does');
     },
   );
+
+  /// Empties the cel under the playhead the way the user does: the 색 편집
+  /// head, then 픽셀 비우기 inside it.
+  Future<void> clearPixelsFromTheHead(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('shared-colour-edit-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'F-75: a seek from a cel emptied in place to a drawn one lights the 색 '
+    '편집 head again — 유저: 「프레임 1을 색변환의 색삭제 누르고 프레임2로 '
+    '이동하면 색변환버튼이 비활성화 된 상태임」',
+    (tester) async {
+      final session = await pump(tester);
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      // ⚠️Frame 1, not 0. The workspace opens frame 0's cel before [pump]
+      // inks the store, so 픽셀 비우기 there reads the blank surface the
+      // coordinator already holds and changes nothing — the trap
+      // `pixel_verbs_test`'s `inkThroughCoordinator` names. A cel first
+      // opened AFTER the ink seeds from it.
+      session.selectFrameIndex(1);
+      await tester.pumpAndSettle();
+      await clearPixelsFromTheHead(tester);
+      expect(
+        buttonEnabled(tester, 'shared-colour-edit-button'),
+        isFalse,
+        reason: 'the cel under the playhead is empty now',
+      );
+
+      // A COMMITTED seek to the next cel — drawn, and equal to the emptied
+      // one on every other gate the bar shows.
+      session.selectFrameIndex(2);
+      await tester.pumpAndSettle();
+
+      expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
+    },
+  );
+
+  testWidgets(
+    'F-75: the storyboard bar\'s 색 편집 head follows the same seek',
+    (tester) async {
+      final session = await pump(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+      );
+      await tester.pumpAndSettle();
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      // Frame 1 for the timeline case's reason above.
+      session.selectGlobalFrame(1);
+      await tester.pumpAndSettle();
+      expect(
+        buttonEnabled(tester, 'shared-colour-edit-button'),
+        isTrue,
+        reason: 'fixture: the storyboard bar stands on a drawn cel',
+      );
+      await clearPixelsFromTheHead(tester);
+      expect(buttonEnabled(tester, 'shared-colour-edit-button'), isFalse);
+
+      session.selectGlobalFrame(2);
+      await tester.pumpAndSettle();
+
+      expect(buttonEnabled(tester, 'shared-colour-edit-button'), isTrue);
+    },
+  );
 }

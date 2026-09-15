@@ -821,6 +821,15 @@ class TimelineActionToolbar extends StatelessWidget {
       // scrub through the rebuild the session's own notify carries. An
       // addition whose necessity cannot be shown is the shape that put
       // 「갱신된다」 into #1269 with no guard at all.
+      //
+      // ↩️F-75 (유저 2026-09-11): the playhead half WAS a hole — one this
+      // listener could never close. A committed seek is not a session
+      // notify, and the bar around this pill is cached on its host's token,
+      // so a seek between two drawn cels, equal on every other gate, reused
+      // the bar whole and this builder never ran. The answer travels in the
+      // hosts' tokens now (`_SeekGatedTimelineToolbar` and the storyboard's
+      // cursor gate carry `canRunPixelVerb`); this listener stays for the cel
+      // emptied in place.
       session.layerStack.celTintRevision,
     ]),
     builder: (context, _) => _sharedPillBody(),

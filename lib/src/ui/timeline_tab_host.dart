@@ -1168,6 +1168,14 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.exposureVerbs.canDecreaseSelectedExposure,
       session.exposureVerbs.canIncreaseSelectedExposure,
       session.exposureVerbs.canSetCommaForSelectionOrCurrent,
+      // 🚨F-75 (유저 2026-09-11): 「프레임 1을 색변환의 색삭제 누르고
+      // 프레임2로 이동하면 색변환버튼이 비활성화 된 상태임. 다른 인덱스
+      // 이동했다가 돌아오면 해결되있음」. The 색 편집 head asks whether the
+      // cel under the playhead HAS A DRAWING, and two drawn cels answer every
+      // other gate here alike — so a seek from a cel emptied in place to a
+      // drawn one moved nothing this token held, and the cached bar kept
+      // the dark head.
+      session.cells.canRunPixelVerb,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
       // reachable scenario, so the guard test cannot isolate them — they are
