@@ -20,6 +20,13 @@ add_executable(${BINARY_NAME} WIN32
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
 
+# /utf-8: the runner's sources ARE UTF-8 (the F-128 decision comment quotes the
+# user in Korean) - the same law every qa_native target carries (#657). Without
+# it MSVC reads them in the SYSTEM code page, and on a Japanese or Korean
+# Windows (CP932/949) that is C4819, which the standard settings' /WX turns
+# into a failed build rather than noise.
+target_compile_options(${BINARY_NAME} PRIVATE /utf-8)
+
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTTER_VERSION_MAJOR}")
