@@ -1,5 +1,6 @@
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★THE EYE IS ONE WIDGET.
 ///
@@ -15,19 +16,6 @@ import 'package:flutter_test/flutter_test.dart';
 /// ⚠️The ledger below is the point of the test. Every entry names a file
 /// that may say `Icons.visibility` and WHY; a new one has to earn a line.
 void main() {
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    final root = Directory(dir);
-    if (!root.existsSync()) return;
-    for (final entity in root.listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   /// 🚨THE LEDGER. Measured 2026-09-01: four files named the glyph and
   /// exactly one of them was a second eye.
   const allowed = <String, String>{
@@ -45,7 +33,7 @@ void main() {
     final hits = <String>[];
     for (final file in dartFilesUnder('lib')) {
       if (file.readAsStringSync().contains('Icons.visibility')) {
-        hits.add(rel(file));
+        hits.add(libPath(file));
       }
     }
     hits.sort();

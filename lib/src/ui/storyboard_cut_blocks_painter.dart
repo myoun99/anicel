@@ -453,9 +453,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         for (final cell in cells)
           cell.frameId == null
               ? ''
-              : ((frameNames[cell.frameId] ?? '').isEmpty
-                    ? '○'
-                    : frameNames[cell.frameId]!),
+              : celNumberOrMark(frameNames[cell.frameId]),
       ],
       commaLabels: [
         for (final cell in cells)

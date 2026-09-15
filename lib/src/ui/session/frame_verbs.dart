@@ -562,15 +562,13 @@ class FrameVerbs {
       return '-';
     }
     final frameIndex = _controllers.timelineController.currentFrameIndex;
-    final frameName = frame?.name;
+    final celNumber = frame?.celNumber;
     final exposureState = _timeline.exposureStateForLayer(layer, frameIndex);
     return switch (exposureState) {
-      TimelineCellExposureState.drawingStart =>
-        frameName == null || frameName.isEmpty ? '○' : frameName,
-      TimelineCellExposureState.held =>
-        frameName == null || frameName.isEmpty ? '' : frameName,
+      TimelineCellExposureState.drawingStart => celNumberOrMark(frame?.name),
+      TimelineCellExposureState.held => celNumber ?? '',
       TimelineCellExposureState.markHeld =>
-        frameName == null || frameName.isEmpty ? '●' : '$frameName ●',
+        celNumber == null ? '●' : '$celNumber ●',
       TimelineCellExposureState.uncovered => 'X',
       TimelineCellExposureState.markUncovered => '●',
     };

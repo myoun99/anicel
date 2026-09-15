@@ -527,6 +527,13 @@ enum AppStrings {
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
   String get containerTotal => _s('containerTotal');
   String get saveCelsLostTemplate => _s('saveCelsLostTemplate');
+
+  /// The fold over the drawings a save could not carry (C-save-percent) —
+  /// drawings, not the files [commonAffectedFiles] heads.
+  String get saveCelsLostHeading => _s('saveCelsLostHeading');
+
+  /// A line of that fold for a picture the project holds no place for.
+  String get saveCelsLostGone => _s('saveCelsLostGone');
   String get projectFileVanished => _s('projectFileVanished');
 
   // --- Display (R11) ---
@@ -1659,6 +1666,8 @@ enum AppStrings {
     'saveCelsLostTemplate':
         'Saved, but {count} drawing(s) could not be included: the project '
         'file they were stored in was removed while the project was open.',
+    'saveCelsLostHeading': 'Affected drawings',
+    'saveCelsLostGone': 'A drawing the project no longer has',
     'projectFileVanished':
         // 🚨The old wording ended 「…and saving would lose them」. That was a
         // PREDICTION, and it stopped being true on one of the two platforms
@@ -2639,6 +2648,8 @@ enum AppStrings {
     'containerTotal': '合計',
     'saveCelsLostTemplate':
         '保存しましたが、{count} 枚の絵を含められませんでした。それらが入っていたプロジェクトファイルが、開いている間に削除されました。',
+    'saveCelsLostHeading': '該当する絵',
+    'saveCelsLostGone': 'プロジェクトにもう無い絵',
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
@@ -3690,6 +3701,8 @@ enum AppStrings {
     'containerTotal': '합계',
     'saveCelsLostTemplate':
         '저장했지만 그림 {count}장을 담지 못했습니다. 그 그림들이 들어 있던 프로젝트 파일이 열려 있는 동안 삭제되었습니다.',
+    'saveCelsLostHeading': '해당 그림들',
+    'saveCelsLostGone': '프로젝트에 더는 없는 그림',
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
@@ -4754,6 +4767,8 @@ enum AppStrings {
         'Enregistré, mais {count} dessin(s) manquent : le fichier de projet '
         'qui les contenait a été supprimé pendant que le projet était '
         'ouvert.',
+    'saveCelsLostHeading': 'Dessins concernés',
+    'saveCelsLostGone': 'Dessin absent du projet',
     'projectFileVanished':
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
@@ -5788,6 +5803,8 @@ enum AppStrings {
     'containerAreaSessionScratch': '会话暂存区',
     'containerTotal': '合计',
     'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
+    'saveCelsLostHeading': '相关画面',
+    'saveCelsLostGone': '项目中已不存在的画面',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
     'accentTitle': '强调色',

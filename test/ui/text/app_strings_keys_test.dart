@@ -304,6 +304,8 @@ void main() {
     'containerAreaSessionScratch': (s) => s.containerAreaSessionScratch,
     'containerTotal': (s) => s.containerTotal,
     'saveCelsLostTemplate': (s) => s.saveCelsLostTemplate,
+    'saveCelsLostHeading': (s) => s.saveCelsLostHeading,
+    'saveCelsLostGone': (s) => s.saveCelsLostGone,
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'accentTitle': (s) => s.accentTitle,

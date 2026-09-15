@@ -4,6 +4,30 @@ import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
 import 'text_cel_style.dart';
 
+/// What a drawing without a cel number prints where the number would stand
+/// — the in-between division mark (中割), the same on the sheet, the
+/// timeline, the flip HUD, the storyboard and a save's notice.
+const String unnamedDrawingMark = '○';
+
+/// The cel number a drawing named [name] prints: [name] trimmed, or null
+/// when nothing is left of it.
+///
+/// 🚨★★ONE ANSWER TO 「DOES THIS DRAWING HAVE A NAME」 (C-save-percent,
+/// 2026-09-15). The sheet and the cel export asked [Frame.celNumber], where
+/// a blank name is no name; seven places on screen asked again with
+/// `name.isEmpty`, so a name of spaces printed as spaces on the timeline and
+/// as the mark on the sheet. A painter holds a name, not a frame — so the
+/// answer is a function of the name, and the getter asks it too.
+String? celNumberOf(String? name) {
+  final trimmed = name?.trim() ?? '';
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+/// What a drawing named [name] prints where its block starts: its cel
+/// number, or [unnamedDrawingMark].
+String celNumberOrMark(String? name) =>
+    celNumberOf(name) ?? unnamedDrawingMark;
+
 /// One DRAWING in a layer's cel bank.
 ///
 /// Memos are deliberately NOT here: a frame is the picture, and the same
@@ -35,10 +59,7 @@ class Frame {
   /// already printed it that way (R5-④, 「never an invented number」) while
   /// the cel export invented `index + 1`, so one drawing was ○ on the sheet
   /// and `A2.png` on disk. Both ask here now; a blank name is no name.
-  String? get celNumber {
-    final trimmed = name?.trim() ?? '';
-    return trimmed.isEmpty ? null : trimmed;
-  }
+  String? get celNumber => celNumberOf(name);
 
   /// SE rows only: the speaker/effect name shown in the accent box at the
   /// block start. [name] stays the dialogue there (it predates this field,

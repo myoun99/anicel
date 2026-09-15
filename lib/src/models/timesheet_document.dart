@@ -1,5 +1,6 @@
 import 'camera_instruction.dart';
 import 'cut.dart';
+import 'frame.dart' show celNumberOrMark;
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
@@ -709,9 +710,11 @@ class _LayerCellsPass {
        labelsByFrameId = <FrameId, String>{
          // The sheet writes the cel NUMBER verbatim; unnamed cels print the
          // in-between division mark — never an invented number (R5-④, same
-         // glyph the mark rows use). [Frame.celNumber] is the one place that
-         // decides which is which; the cel export reads the same getter.
-         for (final frame in layer.frames) frame.id: frame.celNumber ?? '○',
+         // glyph the mark rows use). [celNumberOf] is the one place that
+         // decides which is which; the cel export reads the same answer
+         // through [Frame.celNumber].
+         for (final frame in layer.frames)
+           frame.id: celNumberOrMark(frame.name),
        },
        seNamesByFrameId = <FrameId, String?>{
          if (includeSeNames)

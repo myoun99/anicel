@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 🚨★★A BOX IS TURNED BY THE AXIS IN ONE PLACE.
 ///
 /// The x-sheet is the timeline turned on its side, so every widget that
@@ -31,17 +33,6 @@ void main() {
   );
   final turnedBox = RegExp(r'^\s*\? (const )?(SizedBox|Positioned)\(');
 
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    for (final entity in Directory(dir).listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   /// Lines where a box is turned by hand.
   List<int> handTurnsIn(File file) {
     final lines = file.readAsLinesSync();
@@ -65,7 +56,7 @@ void main() {
     // A regex that matched nothing would make the ratchet a formality.
     final seen = <String>{
       for (final file in dartFilesUnder('lib'))
-        if (handTurnsIn(file).isNotEmpty) rel(file),
+        if (handTurnsIn(file).isNotEmpty) libPath(file),
     };
     expect(seen, isNotEmpty);
   });
@@ -73,7 +64,7 @@ void main() {
   test('no file outside the ledger turns a box by hand', () {
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
-      final path = rel(file);
+      final path = libPath(file);
       if (path == home || stillByHand.contains(path)) continue;
       for (final line in handTurnsIn(file)) {
         offenders.add('$path:$line');
@@ -157,7 +148,7 @@ void main() {
       'hand', () {
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
-      final path = rel(file);
+      final path = libPath(file);
       if (path == home || pointsStillByHand.contains(path)) continue;
       for (final line in handPainterTurnsIn(file)) {
         offenders.add('$path:$line');

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'frame_window_semantics.dart';
 
+import '../../models/frame.dart' show celNumberOrMark;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -330,7 +331,7 @@ class TimelineRowCellsPainter extends CustomPainter
       // repeat-word convention (UI-R14 #3 rolled the timeline back).
       glyph = switch (exposureState) {
         TimelineCellExposureState.drawingStart =>
-          frameName == null || frameName.isEmpty ? '○' : frameName,
+          celNumberOrMark(frameName),
         TimelineCellExposureState.markHeld ||
         TimelineCellExposureState.markUncovered => '●',
         _ => '',
@@ -357,33 +358,12 @@ class TimelineRowCellsPainter extends CustomPainter
       // re-baking a single tile.
       dimmed: ghost,
       glyph: glyph,
-      semanticsLabel: _semanticsLabel(
+      semanticsLabel: timelineCellSemanticsLabel(
+        layerKind: layer.kind,
         exposureState: exposureState,
         frameName: frameName,
       ),
     );
-  }
-
-  String? _semanticsLabel({
-    required TimelineCellExposureState exposureState,
-    String? frameName,
-  }) {
-    // Instruction spans carry their own semantics on the row overlay.
-    if (layer.kind.bandIsInstructionsOnly) {
-      return null;
-    }
-    return switch (exposureState) {
-      TimelineCellExposureState.uncovered => null,
-      TimelineCellExposureState.drawingStart =>
-        layer.kind == LayerKind.camera
-            ? 'camera keyframe'
-            : frameName == null || frameName.isEmpty
-            ? 'drawing start'
-            : 'drawing start $frameName',
-      TimelineCellExposureState.held => 'held exposure',
-      TimelineCellExposureState.markHeld ||
-      TimelineCellExposureState.markUncovered => 'inbetween mark',
-    };
   }
 
   /// The cell's RESOLVED paint style (dim blends, band tint, block

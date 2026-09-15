@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 🚨★★ONE FOLD TWIRL, ANSWERED ONCE.
 ///
 /// A folder folds its members; an attach base folds its attach rows
@@ -18,17 +20,6 @@ void main() {
     r'(hasGroupFold|groupFoldExpanded|onToggleGroupFold)\s*:[^,]*isFolder',
   );
 
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    for (final entity in Directory(dir).listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   test('premise: the fold has its one home', () {
     expect(
       File(home).readAsStringSync(),
@@ -43,7 +34,7 @@ void main() {
       final text = file.readAsStringSync();
       for (final m in reDerivation.allMatches(text)) {
         final line = text.substring(0, m.start).split('\n').length;
-        offenders.add('${rel(file)}:$line ${m.group(1)}');
+        offenders.add('${libPath(file)}:$line ${m.group(1)}');
       }
     }
     expect(

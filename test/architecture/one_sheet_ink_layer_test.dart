@@ -1,5 +1,6 @@
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★THE SHEETS MOUNT INK THROUGH ONE WIDGET.
 ///
@@ -12,24 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// ⛔SO THIS SCANS SOURCE. A behaviour test says "the envelope mounts ink";
 /// only a scan says "and it does not have its own way of doing it".
 void main() {
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    final root = Directory(dir);
-    if (!root.existsSync()) return;
-    for (final entity in root.listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   test('there is exactly ONE window clipper in the app', () {
     final hits = <String>[];
     for (final file in dartFilesUnder('lib')) {
       if (file.readAsStringSync().contains('extends CustomClipper<Rect>')) {
-        hits.add(rel(file));
+        hits.add(libPath(file));
       }
     }
     expect(
@@ -55,7 +43,7 @@ void main() {
         for (var i = 0; i < lines.length; i++) {
           if (lines[i].contains('InteractiveBrushEditCanvasView(') &&
               !lines[i].trimLeft().startsWith('//')) {
-            offenders.add('${rel(file)}:${i + 1}');
+            offenders.add('${libPath(file)}:${i + 1}');
           }
         }
       }
@@ -72,7 +60,7 @@ void main() {
     final decl = RegExp(r'^class (\w*InkWindow)\b', multiLine: true);
     for (final file in dartFilesUnder('lib')) {
       for (final m in decl.allMatches(file.readAsStringSync())) {
-        hits.add('${rel(file)}:${m.group(1)}');
+        hits.add('${libPath(file)}:${m.group(1)}');
       }
     }
     expect(hits, ['lib/src/ui/sheet/sheet_ink_layer.dart:SheetInkWindow']);

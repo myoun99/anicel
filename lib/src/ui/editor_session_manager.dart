@@ -3309,12 +3309,10 @@ class EditorSessionManager extends ChangeNotifier
 
   @override
   String drawingStartStatusForLayer(Layer layer, int frameIndex) {
-    final frameName = frameVerbs.frameNameForLayer(layer, frameIndex);
-    if (frameName == null || frameName.isEmpty) {
-      return 'Drawing start';
-    }
-
-    return 'Drawing start: $frameName';
+    final celNumber = celNumberOf(
+      frameVerbs.frameNameForLayer(layer, frameIndex),
+    );
+    return celNumber == null ? 'Drawing start' : 'Drawing start: $celNumber';
   }
 
   // --- Canvas selection labels -------------------------------------------

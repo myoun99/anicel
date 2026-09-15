@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart' show celNumberOrMark;
 import '../canvas/flip_hud_model.dart';
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
@@ -447,7 +448,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           ..strokeWidth = covered ? 2 : 1
           ..color = covered ? colorScheme.primary : const Color(0x9EE9E7E2),
       );
-      _label(canvas, rect, run.label.isEmpty ? '○' : run.label);
+      _label(canvas, rect, celNumberOrMark(run.label));
     }
 
     // The `x` markers, and the SELECTION when the cursor is not on a block.

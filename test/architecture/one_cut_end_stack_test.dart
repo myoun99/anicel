@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 🚨★★★WHERE THE FILM STOPS IS STATED BY ONE STACK.
 ///
 /// The out-of-cut wash, the のりしろ mark, the cut-end line and the trim
@@ -22,17 +24,6 @@ void main() {
     'TimelineCutEndDragHandle',
   ];
 
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    for (final entity in Directory(dir).listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   /// `Name(` outside a comment — a construction. The file that DECLARES the
   /// class is skipped: its constructor is `const Name({`, which also matches.
   List<String> constructionsOf(String name, File file) {
@@ -44,7 +35,7 @@ void main() {
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
       if (line.trimLeft().startsWith('//')) continue;
-      if (call.hasMatch(line)) hits.add('${rel(file)}:${i + 1}');
+      if (call.hasMatch(line)) hits.add('${libPath(file)}:${i + 1}');
     }
     return hits;
   }
@@ -65,7 +56,7 @@ void main() {
   test('no other file in lib builds a cut-end overlay', () {
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
-      if (rel(file) == home) continue;
+      if (libPath(file) == home) continue;
       for (final name in overlays) {
         offenders.addAll(constructionsOf(name, file));
       }

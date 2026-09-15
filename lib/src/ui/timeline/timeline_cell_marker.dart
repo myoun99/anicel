@@ -1,3 +1,4 @@
+import '../../models/frame.dart' show celNumberOrMark;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -46,9 +47,7 @@ String timelineCellMarker({
               layer.kind.bandIsInstructionsOnly ||
               layer.kind == LayerKind.camera
           ? ''
-          : frameName == null || frameName.isEmpty
-          ? '○'
-          : frameName,
+          : celNumberOrMark(frameName),
     TimelineCellExposureState.held => '',
     TimelineCellExposureState.markHeld ||
     TimelineCellExposureState.markUncovered => '●',

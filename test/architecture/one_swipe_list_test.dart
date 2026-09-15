@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 import '../helpers/library_source.dart';
 
 /// 🚨★★THE SWEEPABLE COLUMNS ARE ONE LIST.
@@ -24,17 +25,6 @@ void main() {
     'lib/src/ui/storyboard/storyboard_rail_rows.dart',
   };
 
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    for (final entity in Directory(dir).listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   /// Lines that CALL the geometry (not its declaration, not a doc link).
   List<int> callsIn(File file) {
     final lines = file.readAsLinesSync();
@@ -54,7 +44,7 @@ void main() {
   test('no grid builds a swipe list of its own', () {
     final offenders = <String>[];
     for (final file in dartFilesUnder('lib')) {
-      final path = rel(file);
+      final path = libPath(file);
       if (path == home || ledger.contains(path)) continue;
       for (final line in callsIn(file)) {
         offenders.add('$path:$line');

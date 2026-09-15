@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/dart_sources.dart';
+
 /// 🚨★★AN AXIS DRAG NAMES ITS RECOGNISER FAMILY IN ONE PLACE.
 ///
 /// A drag that runs along one axis mounts that axis's recogniser family and
@@ -15,17 +17,6 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const home = 'lib/src/ui/widgets/axis_gesture_detector.dart';
 
-  Iterable<File> dartFilesUnder(String dir) sync* {
-    for (final entity in Directory(dir).listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) yield entity;
-    }
-  }
-
-  String rel(File f) {
-    final p = f.path.replaceAll(r'\', '/');
-    return p.substring(p.indexOf('lib/'));
-  }
-
   bool choosesTheFamily(String text) =>
       text.contains('onHorizontalDragStart:') &&
       text.contains('onVerticalDragStart:');
@@ -37,8 +28,8 @@ void main() {
   test('no other file mounts both drag families', () {
     final offenders = <String>[
       for (final file in dartFilesUnder('lib'))
-        if (rel(file) != home && choosesTheFamily(file.readAsStringSync()))
-          rel(file),
+        if (libPath(file) != home && choosesTheFamily(file.readAsStringSync()))
+          libPath(file),
     ];
     expect(
       offenders,

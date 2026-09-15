@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'timeline_cell_style.dart';
+import '../../models/frame.dart' show celNumberOf;
 import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
 
@@ -96,12 +97,14 @@ String? timelineCellSemanticsLabel({
   }
   return switch (exposureState) {
     TimelineCellExposureState.uncovered => null,
+    TimelineCellExposureState.drawingStart
+        when layerKind == LayerKind.camera =>
+      'camera keyframe',
     TimelineCellExposureState.drawingStart =>
-      layerKind == LayerKind.camera
-          ? 'camera keyframe'
-          : frameName == null || frameName.isEmpty
-          ? 'drawing start'
-          : 'drawing start $frameName',
+      switch (celNumberOf(frameName)) {
+        null => 'drawing start',
+        final celNumber => 'drawing start $celNumber',
+      },
     TimelineCellExposureState.held => 'held exposure',
     TimelineCellExposureState.markHeld ||
     TimelineCellExposureState.markUncovered => 'inbetween mark',

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart' show celNumberOrMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
@@ -599,7 +600,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     _paintGlyph(
       canvas,
       Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height),
-      run.label.isEmpty ? '○' : run.label,
+      celNumberOrMark(run.label),
       color: timelineDrawingInkColor,
       bold: true,
       maxExtent: rect.width,

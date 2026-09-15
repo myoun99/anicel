@@ -201,12 +201,26 @@ Layer? layerAnywhereOrNull(Project project, LayerId layerId) {
 /// finder and the collector read this walk now. [updateLayerAnywhere]
 /// rebuilds the tree and cannot, so its reach is pinned against this walk
 /// by test.
-Iterable<Layer> projectLayersAnywhere(Project project) sync* {
+///
+/// The walk itself is [projectLayersWithOwners]: a caller that also needs
+/// what holds each layer reads that, rather than walking a fourth time.
+Iterable<Layer> projectLayersAnywhere(Project project) =>
+    projectLayersWithOwners(project).map((owned) => owned.layer);
+
+/// [projectLayersAnywhere] with what holds each layer: its track, and its
+/// cut — null for the track's own SE and transition rows.
+Iterable<({Track track, Cut? cut, Layer layer})> projectLayersWithOwners(
+  Project project,
+) sync* {
   for (final track in project.tracks) {
-    yield* track.seLayers;
-    yield track.transitionLayer;
+    for (final layer in track.seLayers) {
+      yield (track: track, cut: null, layer: layer);
+    }
+    yield (track: track, cut: null, layer: track.transitionLayer);
     for (final cut in track.cuts) {
-      yield* cut.layers;
+      for (final layer in cut.layers) {
+        yield (track: track, cut: cut, layer: layer);
+      }
     }
   }
 }

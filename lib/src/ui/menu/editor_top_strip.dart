@@ -7,6 +7,7 @@ import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
+import '../../services/persistence/cel_places.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/recent_projects.dart';
@@ -1645,17 +1646,45 @@ void _tellWhatTheSaveCouldNotCarry(
   if (lost.isEmpty) {
     return;
   }
+  final strings = AppText.strings;
   unawaited(
     showAppNotice(
       context,
-      title: AppText.strings.commonNotice,
-      message: AppText.strings.saveCelsLostTemplate.replaceAll(
+      title: strings.commonNotice,
+      message: strings.saveCelsLostTemplate.replaceAll(
         '{count}',
         '${lost.length}',
       ),
+      // WHICH pictures, not only how many (C-save-percent, 유저 2026-09-11:
+      // 「사라진 그림이 뭔지 이름 리스트로 표시하는게 필요해보임」) — in the
+      // fold every notice has for what its sentence is about.
+      details: [
+        for (final place in celPlacesOf(
+          session.repository.requireProject(),
+          lost,
+        ))
+          _lostCelLine(place),
+      ],
+      detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),
     ),
   );
+}
+
+/// One line of that list: the names the picture is found by, joined the way
+/// the canvas title joins a cut, a layer and a frame.
+String _lostCelLine(CelPlace place) {
+  final strings = AppText.strings;
+  return switch (place) {
+    DrawingCelPlace(:final ownerName, :final layerName, :final celName) =>
+      '$ownerName · $layerName · $celName',
+    ContePageInkPlace(:final pageNumber) =>
+      '${strings.panelConte} · p$pageNumber',
+    ConteRowInkPlace(:final cutName, :final celName) =>
+      '${strings.panelConte} · $cutName · $celName',
+    EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
+    GoneCelPlace() => strings.saveCelsLostGone,
+  };
 }
 
 /// Writes the whole live session to [stagingPath] and answers what it wrote

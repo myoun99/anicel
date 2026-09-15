@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
 
 Layer _layer(LayerKind kind) =>
     Layer(id: const LayerId('l'), name: 'L', frames: const [], kind: kind);
@@ -84,6 +85,26 @@ void main() {
         ),
         '○',
       );
+      expect(
+        _marker(
+          LayerKind.animation,
+          TimelineCellExposureState.drawingStart,
+          frameName: '  ',
+        ),
+        '○',
+        reason: 'a blank name is no name — the sheet prints ○ for it too',
+      );
+    });
+
+    test('says the name it prints — and no name for a blank one', () {
+      String? said(String? frameName) => timelineCellSemanticsLabel(
+        layerKind: LayerKind.animation,
+        exposureState: TimelineCellExposureState.drawingStart,
+        frameName: frameName,
+      );
+      expect(said(' A1 '), 'drawing start A1');
+      expect(said(null), 'drawing start');
+      expect(said('  '), 'drawing start');
     });
 
     test('says nothing on a camera row — its keys ride the lane markers', () {

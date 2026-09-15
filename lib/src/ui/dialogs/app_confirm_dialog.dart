@@ -22,6 +22,7 @@ class AppConfirmDialog extends StatelessWidget {
     this.windowKey,
     this.width,
     this.details = const [],
+    this.detailsHeading,
   });
 
   final String title;
@@ -36,6 +37,10 @@ class AppConfirmDialog extends StatelessWidget {
   /// a sentence that grows with the list pushes the buttons off a small
   /// window, and the count is not what the reader is there for.
   final List<String> details;
+
+  /// What [details] are, on the fold's heading — the affected FILES unless
+  /// the caller's lines are something else (the drawings a save lost).
+  final String? detailsHeading;
 
   /// Left to right; the one that answers 'yes' goes last and carries
   /// [AppWindowActionEmphasis.primary].
@@ -59,7 +64,11 @@ class AppConfirmDialog extends StatelessWidget {
               children: [
                 Text(message, style: Theme.of(context).textTheme.bodyMedium),
                 const SizedBox(height: 8),
-                _DetailsDisclosure(lines: details),
+                _DetailsDisclosure(
+                  heading:
+                      detailsHeading ?? AppText.strings.commonAffectedFiles,
+                  lines: details,
+                ),
               ],
             ),
       actions: actions,
@@ -73,8 +82,9 @@ class AppConfirmDialog extends StatelessWidget {
 /// open when you want to know which ones, and forty paths opening by
 /// themselves would bury the sentence that explains them.
 class _DetailsDisclosure extends StatefulWidget {
-  const _DetailsDisclosure({required this.lines});
+  const _DetailsDisclosure({required this.heading, required this.lines});
 
+  final String heading;
   final List<String> lines;
 
   @override
@@ -102,7 +112,7 @@ class _DetailsDisclosureState extends State<_DetailsDisclosure> {
                 size: 18,
               ),
               Text(
-                '${AppText.strings.commonAffectedFiles} (${widget.lines.length})',
+                '${widget.heading} (${widget.lines.length})',
                 style: theme.textTheme.bodyMedium,
               ),
             ],
@@ -167,6 +177,8 @@ Future<void> showAppNotice(
   required String message,
   /// The lines this notice is ABOUT — see [AppConfirmDialog.details].
   List<String> details = const [],
+  /// What those lines are — see [AppConfirmDialog.detailsHeading].
+  String? detailsHeading,
   Key? windowKey,
 }) {
   return showDialog<void>(
@@ -176,6 +188,7 @@ Future<void> showAppNotice(
       title: title,
       message: message,
       details: details,
+      detailsHeading: detailsHeading,
       actions: [
         AppWindowAction(
           label: AppText.strings.commonClose,
