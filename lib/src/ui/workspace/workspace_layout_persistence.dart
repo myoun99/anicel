@@ -103,12 +103,7 @@ class _WorkspaceLayoutPersistence {
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _state._bottomInsetOverride.value = savedInset.toDouble();
       }
-      final brushPresetView = payload['brushPresetView'];
-      if (brushPresetView is Map) {
-        _state._brushPresetView.value = BrushPresetViewOptions.fromJson(
-          brushPresetView.cast<String, Object?>(),
-        );
-      }
+      _restoreBrushPresetView(payload['brushPresetView']);
       if (openRails is List) {
         // Filtered against the POOL, not taken on trust: a file written by
         // a build with a different pool size would otherwise leave open
@@ -129,6 +124,17 @@ class _WorkspaceLayoutPersistence {
     });
     for (final entry in _state._railExtents.entries) {
       entry.value.value = restored.railExtents[entry.key];
+    }
+  }
+
+  /// The tool library's view toggles as the file kept them (F-73 ①). A file
+  /// written before they were saved has no such key, and whatever the
+  /// workspace holds stands.
+  void _restoreBrushPresetView(Object? saved) {
+    if (saved is Map) {
+      _state._brushPresetView.value = BrushPresetViewOptions.fromJson(
+        saved.cast<String, Object?>(),
+      );
     }
   }
 
