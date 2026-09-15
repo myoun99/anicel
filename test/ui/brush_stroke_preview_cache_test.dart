@@ -1,13 +1,9 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
-import 'package:anicel/src/ui/theme/text_on_ground.dart';
-import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
@@ -235,16 +231,16 @@ void main() {
   group('🚨the bake is ONE job, and it is the isolate\'s', () {
     test('what comes back is the raster, widened — nothing is recomputed on '
         'this side', () {
-      // The expansion and the ink measurement used to run HERE, once per
-      // preset, in the frames the panel was trying to paint. They moved into
-      // the isolate because `Isolate.run` TRANSFERS its result instead of
-      // copying it, so the wider buffer is free on the wire. This pins that
-      // the move changed the address of the work and nothing else.
+      // The expansion used to run HERE, once per preset, in the frames the
+      // panel was trying to paint. It moved into the isolate because
+      // `Isolate.run` TRANSFERS its result instead of copying it, so the
+      // wider buffer is free on the wire. This pins that the move changed the
+      // address of the work and nothing else. (An ink measurement under the
+      // name rode along from H38 again until F-82 retired it.)
       final settings = BrushSettings(hardness: 0.8, flow: 0.9);
       final alpha = rasterizeBrushStrokeSample(settings, 64, 20);
 
-      final bake = bakeBrushStrokeSample(settings, 64, 20);
-      final baked = bake.rgba;
+      final baked = bakeBrushStrokeSample(settings, 64, 20);
 
       expect(baked, hasLength(alpha.length * 4));
       for (var index = 0; index < alpha.length; index += 1) {
@@ -260,11 +256,6 @@ void main() {
           reason: 'premultiplied WHITE: every channel is the coverage',
         );
       }
-      expect(
-        bake.nameColumns,
-        brushStrokeNameColumns(alpha, width: 64, height: 20),
-        reason: 'the ink under the name is measured off the same pass',
-      );
     });
 
     test('🚨the fan-out leaves the UI isolate a core, and stops climbing '
@@ -363,195 +354,6 @@ void main() {
       expect(
         brushStrokePreviewRasterWidth(120, 2),
         brushStrokePreviewRasterWidth(120, 1) * 2,
-      );
-    });
-  });
-
-  group('🚨H38 again: the name writes in the shared slider\'s writing', () {
-    // 유저 2026-09-11: 「브러시 스트로크 프리뷰쪽 이름도 제대로 안보이는데 …
-    // 전엔 텍스트 전체를 바꿨잖아. 그게아니라 슬라이더 공용 텍스트ui 그대로
-    // 재사용」.
-    const width = 64;
-    const height = 32;
-
-    test('the band reads a bare column as 0 and a solid one as 255 — one '
-        'byte a column', () {
-      expect(
-        brushStrokeNameColumns(
-          Uint8List(width * height),
-          width: width,
-          height: height,
-        ),
-        everyElement(0),
-      );
-      final solid = brushStrokeNameColumns(
-        Uint8List(width * height)..fillRange(0, width * height, 255),
-        width: width,
-        height: height,
-      );
-      expect(solid, hasLength(width));
-      expect(solid, everyElement(255));
-    });
-
-    test('⛔it measures the NAME\'s band, not the whole picture', () {
-      // Ink only in the top quarter — above where the name sits.
-      final topOnly = Uint8List(width * height)
-        ..fillRange(0, width * (height ~/ 4), 255);
-
-      expect(
-        brushStrokeNameColumns(topOnly, width: width, height: height),
-        everyElement(0),
-      );
-    });
-
-    test('ink crossing the band lands in ITS columns and only those', () {
-      final stripe = Uint8List(width * height);
-      for (var y = 0; y < height; y += 1) {
-        stripe.fillRange(y * width + 10, y * width + 20, 255);
-      }
-
-      final columns = brushStrokeNameColumns(
-        stripe,
-        width: width,
-        height: height,
-      );
-
-      expect(columns.sublist(10, 20), everyElement(255));
-      expect(
-        [...columns.sublist(0, 10), ...columns.sublist(20)],
-        everyElement(0),
-      );
-    });
-
-    testWidgets('🚨the ink changes where the stroke passes behind the name — '
-        'one Text, dead centre', (tester) async {
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final settings = BrushSettings(hardness: 1, flow: 1, opacity: 1);
-      const rowGround = Color(0xFF202020);
-      final rasterWidth = brushStrokePreviewRasterWidth(120, 1);
-      await tester.runAsync(
-        () => BrushStrokePreviewCache.instance.ensure(
-          settings,
-          rasterWidth,
-          24,
-        ),
-      );
-      final columns = BrushStrokePreviewCache.instance
-          .sampleFor(settings, rasterWidth, 24)!
-          .nameColumns;
-      final strokeInk = ThemeData.dark().colorScheme.onSurface;
-      final expected = groundInkRunsForColumns(
-        columns.length,
-        (column) => textOnColor(
-          Color.lerp(rowGround, strokeInk, columns[column] / 255)!,
-        ),
-      );
-      expect(
-        {for (final run in expected) run.ink},
-        hasLength(2),
-        reason: 'fixture premise: the stroke passes under part of the name '
-            'and not all of it',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData.dark(),
-          home: Center(
-            child: SizedBox(
-              key: const ValueKey<String>('row'),
-              width: 120,
-              height: 24,
-              child: BrushStrokePreview(
-                settings: settings,
-                name: 'Ink Pen',
-                nameGround: rowGround,
-              ),
-            ),
-          ),
-        ),
-      );
-
-      expect(
-        tester.widget<GroundInkWriting>(find.byType(GroundInkWriting)).runs,
-        expected,
-        reason: 'the slider\'s own writing, its runs from the stroke under '
-            'the name',
-      );
-      expect(
-        tester.widget<Text>(find.text('Ink Pen')).style?.foreground?.shader,
-        isNotNull,
-        reason: '「전엔 텍스트 전체를 바꿨잖아」 — one ink for the whole name '
-            'is what this replaces',
-      );
-      expect(
-        tester.getCenter(find.text('Ink Pen')),
-        tester.getCenter(find.byKey(const ValueKey<String>('row'))),
-        reason: 'H38 stands: 「중앙아래가 아니라 완전중앙」',
-      );
-    });
-
-    testWidgets('a rebuild with nothing new under the name keeps its runs — '
-        'a pick rebuilds every row', (tester) async {
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final settings = BrushSettings(hardness: 1, flow: 1, opacity: 1);
-      final rasterWidth = brushStrokePreviewRasterWidth(120, 1);
-      await tester.runAsync(
-        () => BrushStrokePreviewCache.instance.ensure(
-          settings,
-          rasterWidth,
-          24,
-        ),
-      );
-      Widget row(Color ground) => MaterialApp(
-        theme: ThemeData.dark(),
-        home: Center(
-          child: SizedBox(
-            width: 120,
-            height: 24,
-            child: BrushStrokePreview(
-              settings: settings,
-              name: 'Ink Pen',
-              nameGround: ground,
-            ),
-          ),
-        ),
-      );
-      List<GroundInkRun> runs() =>
-          tester.widget<GroundInkWriting>(find.byType(GroundInkWriting)).runs;
-
-      await tester.pumpWidget(row(const Color(0xFF202020)));
-      final first = runs();
-      await tester.pumpWidget(row(const Color(0xFF202020)));
-
-      expect(
-        identical(runs(), first),
-        isTrue,
-        reason: 'the same sample, ground and ink: nothing to work out again',
-      );
-
-      await tester.pumpWidget(row(const Color(0xFFE0E0E0)));
-
-      expect(
-        identical(runs(), first),
-        isFalse,
-        reason: 'a new ground is a new question',
-      );
-    });
-
-    test('a bright stroke and a bare row take OPPOSITE inks', () {
-      const rowGround = Color(0xFF202020);
-      const strokeInk = Color(0xFFF0F0F0);
-
-      expect(
-        textOnColor(Color.lerp(rowGround, strokeInk, 1.0)!),
-        textOnLightGroundColor,
-      );
-      expect(
-        textOnColor(Color.lerp(rowGround, strokeInk, 0.0)!),
-        textOnDarkGroundColor,
-        reason: 'this is why the ink under the name has to be measured',
       );
     });
   });

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/ui/brush/brush_name_label.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
@@ -1498,7 +1499,7 @@ void main() {
     // 유저 2026-09-08 put the name over the stroke 「중앙 살짝아래」 — it used
     // to sit at `centerRight` on a 78%-alpha plate — and 2026-09-11 (H38)
     // moved it: 「텍스트 위치도 중앙아래가 아니라 완전중앙으로 해보자」.
-    // It still rides the stroke; only the height changed.
+    // It still rides the stroke — on its plate again since F-82, centred.
     await _pumpPanel(tester, presets: [_calligraphy()]);
 
     expect(
@@ -1508,11 +1509,21 @@ void main() {
     );
   });
 
-  testWidgets('the row names the ground under its name — the highlight when '
-      'selected, the panel\'s surface when not (H38 again)', (tester) async {
-    // The name's ink is read off the COMPOSITED ground (`textOnColor`), so
-    // a row that did not say what it paints would have its name picked for
-    // the wrong colour.
+  testWidgets('🚨F-82: the name is ONE label in both rows — a plate under it, '
+      'and the row\'s own fixed ink', (tester) async {
+    // 유저 2026-09-11 19:28: 「스트로크 프리뷰에 있는 브러시 이름, 지금도
+    // 보기힘드니까 그냥 예전처럼 텍스트 배경색으로 뭔가 두고, 그 위에 고정색
+    // 텍스트 두도록. 그리고 스트로크 프리뷰 없앨때의 브러시 이름이랑 있을떄의
+    // 이름이랑 텍스트 ui가 다른데 다르지않도록 통일」.
+    Future<void> toggle(String keyValue) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(keyValue)));
+      await tester.pumpAndSettle();
+    }
+
     await _pumpPanel(
       tester,
       presets: [_calligraphy(), _marker()],
@@ -1521,11 +1532,52 @@ void main() {
     final scheme = Theme.of(
       tester.element(find.byType(BrushPresetPanel)),
     ).colorScheme;
-    BrushStrokePreview previewOf(BrushPreset preset) => tester
-        .widgetList<BrushStrokePreview>(find.byType(BrushStrokePreview))
-        .singleWhere((preview) => preview.settings == preset.settings);
+    Finder labelOf(String name) =>
+        find.ancestor(of: find.text(name), matching: find.byType(BrushNameLabel));
+    TextStyle? styleOf(String name) => tester
+        .widget<Text>(
+          find.descendant(of: labelOf(name), matching: find.text(name)),
+        )
+        .style;
 
-    expect(previewOf(_marker()).nameGround, scheme.surfaceContainerHigh);
-    expect(previewOf(_calligraphy()).nameGround, scheme.surface);
+    expect(
+      find.descendant(
+        of: find.byType(BrushStrokePreview),
+        matching: find.byType(BrushNameLabel),
+      ),
+      findsNWidgets(2),
+      reason: 'the name over the stroke is the label',
+    );
+    final overStroke = styleOf('Marker');
+    expect(overStroke?.color, scheme.onSurface, reason: 'the selected row');
+    expect(styleOf('Calligraphy')?.color, scheme.onSurfaceVariant);
+    expect(
+      overStroke?.foreground,
+      isNull,
+      reason: '「고정색」 — one ink, not runs that follow the stroke',
+    );
+    final plate = tester.widget<DecoratedBox>(
+      find
+          .descendant(of: labelOf('Marker'), matching: find.byType(DecoratedBox))
+          .first,
+    );
+    expect(
+      (plate.decoration as ShapeDecoration).color,
+      scheme.surfaceContainerHigh.withValues(alpha: 0.78),
+      reason: '「예전처럼 텍스트 배경색」 — the plate in the row\'s own colour',
+    );
+
+    await toggle('brush-preset-view-stroke-toggle');
+    expect(find.byType(BrushStrokePreview), findsNothing);
+    expect(
+      find.byType(BrushNameLabel),
+      findsNWidgets(2),
+      reason: 'the same label writes the row with no preview',
+    );
+    expect(
+      styleOf('Marker'),
+      overStroke,
+      reason: '「텍스트 ui가 다른데 다르지않도록 통일」',
+    );
   });
 }

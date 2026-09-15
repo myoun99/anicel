@@ -40,6 +40,7 @@ import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
 import 'brush/brush_hand_settings_store.dart';
 import 'brush/brush_preset_panel.dart';
+import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
@@ -1377,6 +1378,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _collapsedAttachBaseIds.dispose();
     _timelineRowFilter.dispose();
     _bottomInsetOverride.dispose();
+    _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {
       controller.dispose();
     }
@@ -1554,6 +1556,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
   final ValueNotifier<double?> _bottomInsetOverride = ValueNotifier<double?>(
     null,
   );
+
+  /// The brush library panel's five view toggles (F-73 ①). Held HERE, not
+  /// in the panel: the Tool Library tab keeps no State once it closes, and
+  /// the workspace file is where panel layout already lives.
+  final ValueNotifier<BrushPresetViewOptions> _brushPresetView =
+      ValueNotifier<BrushPresetViewOptions>(const BrushPresetViewOptions());
 
   /// The UN-detented value a side drag is accumulating.
   ///

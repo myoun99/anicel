@@ -64,6 +64,7 @@ class _WorkspaceLayoutPersistence {
     // Back to "nobody has said", which is the 2/3 default — not to 0,
     // which is now an arrangement rather than the absence of one.
     _state._bottomInsetOverride.value = null;
+    _state._brushPresetView.value = const BrushPresetViewOptions();
     _state._mutatingLayout(() {
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
     });
@@ -101,6 +102,12 @@ class _WorkspaceLayoutPersistence {
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _state._bottomInsetOverride.value = savedInset.toDouble();
+      }
+      final brushPresetView = payload['brushPresetView'];
+      if (brushPresetView is Map) {
+        _state._brushPresetView.value = BrushPresetViewOptions.fromJson(
+          brushPresetView.cast<String, Object?>(),
+        );
       }
       if (openRails is List) {
         // Filtered against the POOL, not taken on trust: a file written by
@@ -165,6 +172,7 @@ class _WorkspaceLayoutPersistence {
                 'bottomInset': _state._bottomInsetOverride.value,
               'openRails': _state._openRails.toList(),
               'regionOnTop': _state._regionOnTop,
+              'brushPresetView': _state._brushPresetView.value.toJson(),
             })
             .catchError((Object _) {}),
       );

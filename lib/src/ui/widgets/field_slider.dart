@@ -261,8 +261,8 @@ class _FieldSliderState extends State<FieldSlider> {
   /// 색바뀌는 텍스트ui 쓰는게아니라 흰색 고정」; the morning of 09-11 (H38)
   /// fixed it black — 「그냥 검정색으로 통일해보자. 흰색 좀 보기힘들어」; and
   /// black vanished over the empty track. The law is back through
-  /// [GroundInkWriting], which a brush row's name shares, without the mask's
-  /// offscreen layer.
+  /// [GroundInkWriting], without the mask's offscreen layer. (A brush row's
+  /// name shared it from H38 again until F-82 put that name on a plate.)
   ///
   /// Label and value stay ONE ink per ground: 09-10 flattened their dim and
   /// bright pair by decision, and that is not what was reversed.

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,8 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../theme/text_on_ground.dart';
-import '../widgets/ground_ink_writing.dart';
 import 'brush_stroke_preview_cache.dart';
 
 /// The raster width LADDER, in logical pixels.
@@ -58,21 +55,13 @@ int brushStrokePreviewRasterWidth(
 /// never a re-raster, which is what un-jams the brush list's scroll. The
 /// image bakes alpha only; the theme color tints it at paint time.
 class BrushStrokePreview extends StatefulWidget {
-  const BrushStrokePreview({
-    super.key,
-    required this.settings,
-    this.name,
-    this.nameGround,
-  });
+  const BrushStrokePreview({super.key, required this.settings, this.overlay});
 
   final BrushSettings settings;
 
-  /// Drawn ON the sample when set — see [_nameOverlay].
-  final String? name;
-
-  /// The colour the row puts behind the sample: what the name is written on
-  /// where no stroke passes. Null = the panel's own surface.
-  final Color? nameGround;
+  /// Laid over the sample: the row's name label (`BrushNameLabel`, F-82),
+  /// placed by the row.
+  final Widget? overlay;
 
   @override
   State<BrushStrokePreview> createState() => _BrushStrokePreviewState();
@@ -138,74 +127,6 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         }));
   }
 
-  /// The runs [_nameOverlay] writes over, kept until the sample, the row's
-  /// ground or the stroke's ink changes. The panel rebuilds every row on a
-  /// pick, and the law over a few hundred columns per row is work a rebuild
-  /// with nothing new under the name must not repeat.
-  List<GroundInkRun>? _inkRuns;
-  Object? _inkRunsFor;
-
-  List<GroundInkRun> _inkRunsOver(
-    Uint8List? columns,
-    Color rowGround,
-    Color strokeInk,
-  ) {
-    final key = (columns, rowGround, strokeInk);
-    final kept = _inkRuns;
-    if (kept != null && _inkRunsFor == key) {
-      return kept;
-    }
-    final runs = columns == null || columns.isEmpty
-        ? [(end: 1.0, ink: textOnColor(rowGround))]
-        : groundInkRunsForColumns(
-            columns.length,
-            (column) => textOnColor(
-              Color.lerp(rowGround, strokeInk, columns[column] / 255)!,
-            ),
-          );
-    _inkRuns = runs;
-    _inkRunsFor = key;
-    return runs;
-  }
-
-  /// The name, written over the sample dead centre — in the SAME writing
-  /// the shared slider uses, its ink following what lies under it column by
-  /// column.
-  ///
-  /// 🚨H38 again (유저 2026-09-11): 「브러시 스트로크 프리뷰쪽 이름도 제대로
-  /// 안보이는데 … 전엔 텍스트 전체를 바꿨잖아. 그게아니라 슬라이더 공용
-  /// 텍스트ui 그대로 재사용」. ↩️The history, so none of it comes back as a
-  /// "fix": 09-08 put the name 「중앙 살짝아래」 over the stroke; 09-10 had it
-  /// pick ONE ink for the whole name from the mean ink under it — the part
-  /// this reverses; H38 (the morning of 09-11) fixed it black and dead
-  /// centre, and black vanished on the bare row. The centre stands:
-  /// 「중앙아래가 아니라 완전중앙」.
-  ///
-  /// ⚠️`textOnColor` needs the COMPOSITED ground: the row's colour with that
-  /// column's share of stroke ink laid over it ([BrushStrokeSample.nameColumns]).
-  ///
-  /// 🚨THE NAME STILL RIDES THE STROKE (유저 2026-09-08: 「스트로크랑 겹치든
-  /// 말든」). ⛔The 78%-alpha plate that once kept the two apart stays gone.
-  Widget _nameOverlay(String name, Color strokeInk, Uint8List? columns) {
-    final rowGround =
-        widget.nameGround ?? Theme.of(context).colorScheme.surface;
-    return GroundInkWriting(
-      runs: _inkRunsOver(columns, rowGround, strokeInk),
-      builder: (context, ink) => Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            name,
-            maxLines: 1,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11).merge(ink),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final devicePixelRatio = EffectiveDevicePixelRatio.of(context);
@@ -235,7 +156,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         final rasterHeight = (height * devicePixelRatio).round();
         _resolve(rasterWidth, rasterHeight);
         final sample = _sample;
-        final name = widget.name;
+        final overlay = widget.overlay;
         // 🚨THE PICTURE WE ALREADY HAVE STAYS UP while the next rung bakes
         // (유저 2026-09-10: 「재로드인가 재계산되던데」 — the blank-then-pop was
         // half of what that looked like). It is the same brush drawn at a
@@ -244,13 +165,13 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         // recycled onto another preset must never show the old brush.
         if (sample == null || _sampleSettings != widget.settings) {
           // The sample pops in when its raster lands; the box holds the
-          // row's layout meanwhile. ⚠️The NAME does not wait for it — a
+          // row's layout meanwhile. ⚠️The OVERLAY does not wait for it — a
           // list of blank rows tells the user nothing about which brush is
-          // which, so it writes on the bare row until the ink arrives.
+          // which, so the name writes on the bare row until the ink arrives.
           return SizedBox(
             width: width.toDouble(),
             height: height.toDouble(),
-            child: name == null ? null : _nameOverlay(name, strokeInk, null),
+            child: overlay,
           );
         }
         // ⛔NOT `ColorFiltered`, which is the same tint at a wildly
@@ -276,16 +197,10 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           color: strokeInk,
           colorBlendMode: BlendMode.srcIn,
         );
-        if (name == null) {
+        if (overlay == null) {
           return picture;
         }
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            picture,
-            _nameOverlay(name, strokeInk, sample.nameColumns),
-          ],
-        );
+        return Stack(fit: StackFit.expand, children: [picture, overlay]);
       },
     );
   }

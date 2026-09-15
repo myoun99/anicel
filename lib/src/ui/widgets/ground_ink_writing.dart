@@ -25,26 +25,6 @@ List<GroundInkRun> groundInkRunsForFill({
   ];
 }
 
-/// The runs for writing laid over a picture, from what the picture holds
-/// under the writing column by column: [inkAt] answers each of [columns]
-/// columns, and neighbours that agree merge into one run.
-List<GroundInkRun> groundInkRunsForColumns(
-  int columns,
-  Color Function(int column) inkAt,
-) {
-  final runs = <GroundInkRun>[];
-  for (var column = 0; column < columns; column += 1) {
-    final ink = inkAt(column);
-    final end = (column + 1) / columns;
-    if (runs.isNotEmpty && runs.last.ink == ink) {
-      runs[runs.length - 1] = (end: end, ink: ink);
-    } else {
-      runs.add((end: end, ink: ink));
-    }
-  }
-  return runs;
-}
-
 /// Writing whose ink follows the ground under it — the text-on-ground law
 /// (`textOnColor`) applied run by run, so one string changes ink PART WAY
 /// THROUGH a word where the ground changes under it.
@@ -52,8 +32,11 @@ List<GroundInkRun> groundInkRunsForColumns(
 /// 🚨ONE WRITING FOR EVERY SURFACE THAT PAINTS BEHIND ITS TEXT (유저
 /// 2026-09-11, H38 again): 「브러시 스트로크 프리뷰쪽 이름도 … 전엔 텍스트
 /// 전체를 바꿨잖아. 그게아니라 슬라이더 공용 텍스트ui 그대로 재사용」. The
-/// bar's fill and a brush row's stroke are two grounds that change along the
-/// writing, and both answer the question the same way — here.
+/// bar's fill and a brush row's stroke were two grounds that change along the
+/// writing, and both answered the question the same way — here. ↩️F-82
+/// (유저 2026-09-11 19:28) took the brush row off it: its name sits on a plate
+/// in a fixed colour now (`BrushNameLabel`), and the column-by-column runs
+/// only that row needed went with it.
 ///
 /// ⛔NOT A `ShaderMask`, which is how the bar did this before (2026-09-08 ~
 /// 09-10): that is an offscreen layer per writing on every frame the app

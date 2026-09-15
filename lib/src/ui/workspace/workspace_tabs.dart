@@ -326,11 +326,21 @@ class _WorkspaceTabs {
                         shapeKind:
                             toolState.activeShapeKind ?? CanvasShapeKind.rect,
                         brushLibrary: ListenableBuilder(
-                          listenable: _state._presetLibrary,
+                          // The view toggles ride in too: a restored or
+                          // reset layout has to reach a panel already open.
+                          listenable: Listenable.merge([
+                            _state._presetLibrary,
+                            _state._brushPresetView,
+                          ]),
                           builder: (context, _) => BrushPresetPanel(
                             presets: _state._presetLibrary.presets,
                             groups: _state._presetLibrary.groups,
                             selectedPresetId: toolState.presetId,
+                            viewOptions: _state._brushPresetView.value,
+                            onViewOptionsChanged: (options) {
+                              _state._brushPresetView.value = options;
+                              _state._layoutPersistence.scheduleLayoutSave();
+                            },
                             onPresetApplied: _state._brushPresets._applyPreset,
                             onPresetSaveRequested:
                                 _state._brushPresets.saveHeldBrushAsPreset,

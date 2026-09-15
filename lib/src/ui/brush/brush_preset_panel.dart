@@ -23,6 +23,8 @@ import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
+import 'brush_preset_view_options.dart';
+import 'brush_name_label.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
 import '../text/app_strings.dart';
@@ -98,6 +100,8 @@ class BrushPresetPanel extends StatefulWidget {
     this.onLibraryReset,
     this.onPresetExported,
     this.onGroupExported,
+    this.viewOptions = const BrushPresetViewOptions(),
+    this.onViewOptionsChanged,
   });
 
   final List<BrushPreset> presets;
@@ -148,6 +152,14 @@ class BrushPresetPanel extends StatefulWidget {
   final ValueChanged<BrushPresetId>? onPresetExported;
   final ValueChanged<BrushGroupId?>? onGroupExported;
 
+  /// How the rows and the rail show — the options menu's five toggles, as
+  /// the host keeps them (F-73 ①: in the workspace file, so a panel closed
+  /// and opened again shows what it showed).
+  final BrushPresetViewOptions viewOptions;
+
+  /// Called with the new options whenever a toggle flips one.
+  final ValueChanged<BrushPresetViewOptions>? onViewOptionsChanged;
+
   /// List height when the panel is laid out somewhere with no height of its
   /// own — a widget test pumping it inside a scroll view. Docked, the
   /// section's height wins and the list takes all of it.
@@ -190,13 +202,18 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   Widget? _railKept;
   Object? _railKeptFor;
 
-  // View options are editor-session UI state local to the panel; they are
-  // deliberately not persisted or project data. The open TAB is the same
-  // kind of thing — on a fresh launch it follows the selected brush, which
-  // is a better answer than whatever was open last time.
-  bool _showTipIcon = true;
-  bool _showStrokePreview = true;
-  bool _showName = true;
+  // View options are UI state, never project data. They were also kept out
+  // of every file — "local to the panel" — and that half F-73 ① reversed
+  // (유저 2026-09-11: 「…해제하고 패널닫고 다시열면 리셋되있음」): the Tool
+  // Library tab keeps no State once it closes, so every close forgot them.
+  // The host keeps them in the workspace file now ([widget.viewOptions]) and
+  // this is its answer, flipped here the moment a toggle is picked. The open
+  // TAB stays session state — on a fresh launch it follows the selected
+  // brush, which is a better answer than whatever was open last time.
+  late BrushPresetViewOptions _viewOptions = widget.viewOptions;
+  bool get _showTipIcon => _viewOptions.showTipIcon;
+  bool get _showStrokePreview => _viewOptions.showStrokePreview;
+  bool get _showName => _viewOptions.showName;
 
   /// The open tab; `null` is the root section (presets in no group). Unset
   /// until the user picks one, so the panel can follow the selection.
@@ -265,20 +282,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   ///
   /// These are view preferences, not library data — a brush library handed
   /// to someone else must not carry how you like your rail. They belong
-  /// with panel layout and shortcuts in the workspace file, and go there
-  /// when that lands; until then they live for the session like the three
-  /// row toggles above.
-  bool _railShowIcon = true;
+  /// with panel layout and shortcuts in the workspace file, and since F-73 ①
+  /// they are there, beside the three row toggles above.
+  bool get _railShowIcon => _viewOptions.railShowIcon;
 
-  /// 🚨NAMES ARE ON BY DEFAULT (유저 2026-09-08: 「그룹쪽은 대신 아이콘
-  /// 버튼이아니라 **아이콘+이름**으로 해서, 이름 넣을수있게 가로로 좀 더
-  /// 길게해주고」).
-  ///
-  /// ⚠️Nothing was built for this — the named rail has existed since
-  /// 2026-07-27 (`_BrushGroupTab.namedWidth`, 96px) and only ever opened
-  /// closed. The toggle stays: 유저 confirmed 「토글은 그대로 남김」, so a
-  /// narrow screen can still trade the names back for 70px of brush list.
-  bool _railShowName = true;
+  /// On by default — [BrushPresetViewOptions.railShowName] says who decided.
+  bool get _railShowName => _viewOptions.railShowName;
 
   bool _canToggleOffRail(bool currentlyVisible) {
     return !currentlyVisible ||
@@ -360,18 +369,27 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     ];
   }
 
+  /// A toggle flipped: shown at once, and handed to the host to keep.
+  void _setViewOptions(BrushPresetViewOptions options) {
+    setState(() => _viewOptions = options);
+    widget.onViewOptionsChanged?.call(options);
+  }
+
   void _onMenuSelected(_BrushPresetMenuAction action) {
+    final view = _viewOptions;
     switch (action) {
       case _BrushPresetMenuAction.toggleIcon:
-        setState(() => _showTipIcon = !_showTipIcon);
+        _setViewOptions(view.copyWith(showTipIcon: !view.showTipIcon));
       case _BrushPresetMenuAction.toggleStroke:
-        setState(() => _showStrokePreview = !_showStrokePreview);
+        _setViewOptions(
+          view.copyWith(showStrokePreview: !view.showStrokePreview),
+        );
       case _BrushPresetMenuAction.toggleName:
-        setState(() => _showName = !_showName);
+        _setViewOptions(view.copyWith(showName: !view.showName));
       case _BrushPresetMenuAction.toggleRailIcon:
-        setState(() => _railShowIcon = !_railShowIcon);
+        _setViewOptions(view.copyWith(railShowIcon: !view.railShowIcon));
       case _BrushPresetMenuAction.toggleRailName:
-        setState(() => _railShowName = !_railShowName);
+        _setViewOptions(view.copyWith(railShowName: !view.railShowName));
       case _BrushPresetMenuAction.newGroup:
         unawaited(_createGroup());
       case _BrushPresetMenuAction.renameGroup:
@@ -661,6 +679,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   void didUpdateWidget(BrushPresetPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     _selection.value = widget.selectedPresetId;
+    // A restored or reset layout reaches an open panel through here; the
+    // panel's own flips come back equal and change nothing.
+    if (widget.viewOptions != oldWidget.viewOptions) {
+      _viewOptions = widget.viewOptions;
+    }
   }
 
   @override
@@ -1449,40 +1472,34 @@ class _BrushPresetRow extends StatelessWidget {
   }
 
   Widget _rowBody(ColorScheme colorScheme, {required bool selected}) {
-    final nameColor = selected
-        ? colorScheme.onSurface
-        : colorScheme.onSurfaceVariant;
+    // 🚨F-82: ONE label in both rows — see [BrushNameLabel] for the plate,
+    // the fixed ink and every shape the name went through before it. What
+    // the row keeps is WHERE: at the start of a row that has nothing else
+    // to say, dead centre over a stroke (H38: 「완전중앙」).
+    final label = showName
+        ? BrushNameLabel(name: preset.name, selected: selected)
+        : null;
     if (!showStrokePreview) {
-      if (!showName) {
+      if (label == null) {
         return const SizedBox.shrink();
       }
       return Align(
         alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 2),
-          child: Text(
-            preset.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: nameColor),
-          ),
-        ),
+        child: Padding(padding: const EdgeInsets.only(left: 2), child: label),
       );
     }
-    // 🚨THE NAME MOVED INTO THE PREVIEW: it rides the stroke (유저
-    // 2026-09-08), dead centre (H38), in the shared slider's writing (H38
-    // again) — see `BrushStrokePreview._nameOverlay`, which owns the
-    // placement, the ink and the ⛔rejected 78%-alpha plate.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: BrushStrokePreview(
         settings: preset.settings,
-        name: showName ? preset.name : null,
-        // The row paints nothing of its own when it is not selected, so the
-        // panel's surface IS the ground under the sample.
-        nameGround: selected
-            ? colorScheme.surfaceContainerHigh
-            : colorScheme.surface,
+        overlay: label == null
+            ? null
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: label,
+                ),
+              ),
       ),
     );
   }

@@ -39,19 +39,6 @@ void main() {
         [(end: 1.0, ink: white)],
       );
     });
-
-    test('columns that agree merge into one run', () {
-      const inks = [white, white, black, black, black, white];
-
-      expect(
-        groundInkRunsForColumns(inks.length, (column) => inks[column]),
-        [
-          (end: 2 / 6, ink: white),
-          (end: 5 / 6, ink: black),
-          (end: 1.0, ink: white),
-        ],
-      );
-    });
   });
 
   testWidgets('one ink over the whole width is a plain colour — no shader', (

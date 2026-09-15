@@ -18,9 +18,10 @@ import 'dart:ui';
 /// ↩️The SLIDER left the law for a day and came back: 09-10 fixed it white
 /// (「흰색 고정으로 하고」), H38 fixed it black, and black vanished over the
 /// empty track — 유저 2026-09-11: 「그냥 저번에 한대로 뒤 색에 따라 하양/검정
-/// 바꾸는거 … 그거대로 하자」. It asks the law through `GroundInkWriting` now,
-/// and so does a brush row's name (「슬라이더 공용 텍스트ui 그대로 재사용」)
-/// — the writing whose ink changes part way through a word.
+/// 바꾸는거 … 그거대로 하자」. It asks the law through `GroundInkWriting` now
+/// — the writing whose ink changes part way through a word. A brush row's
+/// name asked the same way (「슬라이더 공용 텍스트ui 그대로 재사용」) until F-82
+/// (유저 2026-09-11 19:28) put it back on a plate in a fixed colour.
 const Color textOnLightGroundColor = Color(0xFF000000);
 const Color textOnDarkGroundColor = Color(0xFFFFFFFF);
 
