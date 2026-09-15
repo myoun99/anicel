@@ -5,6 +5,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 class _Callbacks {
   int importRequests = 0;
@@ -22,8 +23,9 @@ class _Callbacks {
   final promoted = <String>[];
   bool promoteResult = true;
   final opened = <MediaAsset>[];
-  bool removeResult = true;
-  Set<String> referencedPaths = {};
+
+  /// Where each path is used, one line per use (F-118).
+  Map<String, List<String>> uses = {};
   Set<String> existingPaths = {};
 }
 
@@ -42,17 +44,14 @@ Future<void> _pump(
           width: 260,
           child: MediaPoolPanel(
             assets: assets,
-            isAssetReferenced: callbacks.referencedPaths.contains,
+            usesOf: (path) => callbacks.uses[path] ?? const [],
             onImportRequested: () => callbacks.importRequests += 1,
             onRenameAsset: (path, name) => callbacks.renamed.add((path, name)),
             onRelinkAsset: (oldPath, newPath, grants) {
               callbacks.relinked.add((oldPath, newPath));
               callbacks.relinkGrants.add(grants);
             },
-            onRemoveAsset: (path) {
-              callbacks.removed.add(path);
-              return callbacks.removeResult;
-            },
+            onRemoveAsset: callbacks.removed.add,
             onExportAssetWav: (_) async => true,
             onPromoteAsset: (path) async {
               callbacks.promoted.add(path);
@@ -93,7 +92,9 @@ void main() {
     tester,
   ) async {
     final callbacks = _Callbacks()
-      ..referencedPaths = {foot}
+      ..uses = {
+        foot: ['C1 · walk'],
+      }
       // clap exists on disk; foot is the missing one.
       ..existingPaths = {r'C:\snd\clap.wav'};
     await _pump(
@@ -114,21 +115,33 @@ void main() {
       find.byKey(const ValueKey<String>('media-asset-missing-$foot')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('media-asset-in-use-$foot')),
-      findsOneWidget,
+    AppIconButton mark(String path) => tester.widget<AppIconButton>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AppIconButton &&
+            widget.keyValue == 'media-asset-in-use-$path',
+      ),
     );
-    // The existing, unlinked asset carries neither badge.
+    expect(mark(foot).onPressed, isNotNull);
+    // The existing, unused asset carries no missing badge, and its in-use
+    // mark has nothing to open.
     expect(
       find.byKey(
         const ValueKey<String>(r'media-asset-missing-C:\snd\clap.wav'),
       ),
       findsNothing,
     );
-    expect(
-      find.byKey(const ValueKey<String>(r'media-asset-in-use-C:\snd\clap.wav')),
-      findsNothing,
+    expect(mark(r'C:\snd\clap.wav').onPressed, isNull);
+    // ⛔「없다가 생기는 UI 금지」: the mark keeps its place on a row nothing
+    // uses, so a name does not move when its last use goes.
+    final usedMark = find.byKey(
+      const ValueKey<String>('media-asset-in-use-$foot'),
     );
+    final unusedMark = find.byKey(
+      const ValueKey<String>(r'media-asset-in-use-C:\snd\clap.wav'),
+    );
+    expect(tester.getRect(unusedMark).left, tester.getRect(usedMark).left);
+    expect(tester.getSize(unusedMark), tester.getSize(usedMark));
   });
 
   testWidgets('the row drags its chip from the POINTER', (tester) async {
@@ -240,14 +253,7 @@ void main() {
     expect(callbacks.opened, hasLength(2));
   });
 
-  testWidgets('remove: refused removals explain themselves', (tester) async {
-    final callbacks = _Callbacks()..removeResult = false;
-    await _pump(
-      tester,
-      callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
-    );
-
+  Future<void> pickRemove(WidgetTester tester) async {
     await tester.tap(
       find.byKey(const ValueKey<String>('media-asset-menu-$foot')),
     );
@@ -256,9 +262,89 @@ void main() {
       find.byKey(const ValueKey<String>('media-asset-menu-remove')),
     );
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('remove: a file nothing uses goes without a question', (
+    tester,
+  ) async {
+    final callbacks = _Callbacks();
+    await _pump(
+      tester,
+      callbacks,
+      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    await pickRemove(tester);
 
     expect(callbacks.removed, [foot]);
-    expect(find.textContaining(AppText.strings.mediaStillInUse), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('media-remove-in-use-dialog')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('🚨F-118: removing a file in use ASKS first, with the uses in '
+      'its fold — cancel keeps the file, confirm removes it', (tester) async {
+    final callbacks = _Callbacks()
+      ..uses = {
+        foot: ['C1 · walk', 'Video · S1 · foot.wav'],
+      };
+    await _pump(
+      tester,
+      callbacks,
+      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    await pickRemove(tester);
+    expect(
+      find.byKey(const ValueKey<String>('media-remove-in-use-dialog')),
+      findsOneWidget,
+    );
+    expect(find.text(AppText.strings.mediaRemoveInUse), findsOneWidget);
+    expect(callbacks.removed, isEmpty, reason: 'nothing goes before a yes');
+    expect(find.text('C1 · walk'), findsNothing, reason: 'the fold is shut');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('app-notice-details-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('C1 · walk'), findsOneWidget);
+    expect(find.text('Video · S1 · foot.wav'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-remove-in-use-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(callbacks.removed, isEmpty);
+
+    await pickRemove(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-remove-in-use-confirm-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(callbacks.removed, [foot]);
+  });
+
+  testWidgets('🚨F-118: the in-use mark opens WHERE the file is used — the '
+      'list open, because the list is what was asked for', (tester) async {
+    final callbacks = _Callbacks()
+      ..uses = {
+        foot: ['C1 · walk'],
+      };
+    await _pump(
+      tester,
+      callbacks,
+      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-in-use-$foot')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('media-asset-uses-notice')),
+      findsOneWidget,
+    );
+    expect(find.text('C1 · walk'), findsOneWidget);
   });
 
   // The other half of importing by reference: the row where a user who

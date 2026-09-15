@@ -6,13 +6,20 @@ import 'package:flutter/material.dart';
 import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart' show FolderGrant;
-import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
+import '../dialogs/app_confirm_dialog.dart'
+    show
+        ConfirmChoice,
+        ConfirmQuestion,
+        askConfirm,
+        confirmDialogKeys,
+        showAppNotice;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
 
 import '../text/app_strings.dart';
 import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
+import '../widgets/app_window.dart' show AppWindowActionEmphasis;
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
@@ -44,7 +51,7 @@ class MediaPoolPanel extends StatelessWidget {
   const MediaPoolPanel({
     super.key,
     required this.assets,
-    required this.isAssetReferenced,
+    required this.usesOf,
     required this.onImportRequested,
     required this.onRenameAsset,
     required this.onRelinkAsset,
@@ -64,9 +71,11 @@ class MediaPoolPanel extends StatelessWidget {
 
   final List<MediaAsset> assets;
 
-  /// Whether any clip still references the path (usage badge + remove
-  /// guard messaging).
-  final bool Function(String path) isAssetReferenced;
+  /// Where the project uses each asset, one line per use — empty when
+  /// nothing does (F-118). The row's in-use mark is this list not being
+  /// empty, the window the mark opens shows it, and a remove asks about it:
+  /// ONE answer, so the three cannot disagree.
+  final Iterable<String> Function(String path) usesOf;
 
   /// Opens the import window on the media pool.
   ///
@@ -83,8 +92,9 @@ class MediaPoolPanel extends StatelessWidget {
   final void Function(String oldPath, String newPath, List<FolderGrant> grants)
   onRelinkAsset;
 
-  /// Returns false when the asset is still referenced (kept in the pool).
-  final bool Function(String path) onRemoveAsset;
+  /// Removes the asset and every use of it with it — the panel has asked
+  /// first when [usesOf] names any.
+  final void Function(String path) onRemoveAsset;
 
   /// Marks a referenced file as one the project carries, so the next save
   /// writes its bytes inside the `.anicel`. Nothing on disk moves. False
@@ -299,18 +309,47 @@ class MediaPoolPanel extends StatelessWidget {
     );
   }
 
-  void _remove(BuildContext context, MediaAsset asset) {
-    if (onRemoveAsset(asset.path)) {
-      return;
-    }
-    unawaited(
-      showAppNotice(
+  /// Removes [asset] — asking first when something uses it (F-118, 유저
+  /// 2026-09-12: 「풀에서 그냥 제거버튼 누르면 사용중인데 제거하겠습니까?
+  /// 배치한 레이어/프레임이 삭제됩니다. 라고 표시해서 강제삭제할수있게」). The
+  /// uses ride in the question's fold; a yes removes them with the asset.
+  Future<void> _remove(BuildContext context, MediaAsset asset) async {
+    final uses = usesOf(asset.path).toList();
+    if (uses.isNotEmpty) {
+      final strings = AppText.strings;
+      final remove = await askConfirm(
         context,
-        title: AppText.strings.commonNotice,
-        message: AppText.strings.mediaStillInUse,
-      ),
-    );
+        ConfirmQuestion(
+          keys: confirmDialogKeys('media-remove-in-use'),
+          title: strings.mpInUseOnTimeline,
+          message: strings.mediaRemoveInUse,
+          details: uses,
+          detailsHeading: strings.mediaUsesHeading,
+        ),
+        accept: ConfirmChoice(
+          strings.mediaRemove,
+          emphasis: AppWindowActionEmphasis.danger,
+        ),
+      );
+      if (remove != true) {
+        return;
+      }
+    }
+    onRemoveAsset(asset.path);
   }
+
+  /// The in-use mark's window: where [asset] is used, the list open.
+  void _showUses(BuildContext context, MediaAsset asset) => unawaited(
+    showAppNotice(
+      context,
+      title: AppText.strings.mpInUseOnTimeline,
+      message: asset.name,
+      details: usesOf(asset.path).toList(),
+      detailsHeading: AppText.strings.mediaUsesHeading,
+      detailsOpen: true,
+      windowKey: const ValueKey<String>('media-asset-uses-notice'),
+    ),
+  );
 
   /// Below this width the asset rows' FIXED parts (status icon, link
   /// badge, actions menu) no longer fit — the panel then scrolls
@@ -474,7 +513,7 @@ class MediaPoolPanel extends StatelessWidget {
     MediaAsset asset,
   ) {
     final exists = !missingPaths.contains(asset.path);
-    final referenced = isAssetReferenced(asset.path);
+    final uses = usesOf(asset.path);
     final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -532,16 +571,18 @@ class MediaPoolPanel extends StatelessWidget {
               ),
             ),
           ),
-          if (referenced)
-            Tooltip(
-              message: AppText.strings.mpInUseOnTimeline,
-              child: Icon(
-                key: ValueKey<String>('media-asset-in-use-${asset.path}'),
-                Icons.link,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+          // F-118 — the mark is a way to WHERE: 「해당 버튼 누르면 공용창
+          // 띄워서 어디서 쓰는지 리스트로 표시하도록」. On a row nothing uses
+          // it stays in its place, dimmed with nothing to open (「없다가
+          // 생기는 UI 금지」), so the name does not move when the last use
+          // goes — and its tooltip names what it opens, which is true of both.
+          AppIconButton(
+            keyValue: 'media-asset-in-use-${asset.path}',
+            tooltip: AppText.strings.mediaUsesHeading,
+            icon: const Icon(Icons.link),
+            size: AppIconButtonSize.micro,
+            onPressed: uses.isEmpty ? null : () => _showUses(context, asset),
+          ),
           // R6 #4: the shared flyout. These rows had no `height` at all, so
           // they came out at Material's `kMinInteractiveDimension` — 48px
           // beside the app's 32.

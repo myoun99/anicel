@@ -196,11 +196,11 @@ void main() {
             verdict: verdict,
             child: MediaPoolPanel(
               assets: const [picture, sound],
-              isAssetReferenced: (_) => false,
+              usesOf: (_) => const [],
               onImportRequested: () {},
               onRenameAsset: (_, _) {},
               onRelinkAsset: (_, _, _) {},
-              onRemoveAsset: (_) => false,
+              onRemoveAsset: (_) {},
               onPromoteAsset: (_) async => false,
               onExportAssetWav: (_) async => false,
             ),

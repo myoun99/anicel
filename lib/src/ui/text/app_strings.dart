@@ -795,6 +795,12 @@ enum AppStrings {
   String get mediaRelinkScanning => _s('mediaRelinkScanning');
   String get mediaRelinkScanned => _s('mediaRelinkScanned');
   String get mediaRemove => _s('mediaRemove');
+
+  /// F-118: removing a pool file something still uses — the question, and
+  /// the heading over the list of uses that it and the in-use mark's window
+  /// both show.
+  String get mediaRemoveInUse => _s('mediaRemoveInUse');
+  String get mediaUsesHeading => _s('mediaUsesHeading');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaExportWav => _s('mediaExportWav');
   String get mediaExportWavNoAudio => _s('mediaExportWavNoAudio');
@@ -810,7 +816,6 @@ enum AppStrings {
   /// there, and the media inside it is still the only copy until a save
   /// takes it in.
   String get projectLegacyAssetsFolder => _s('projectLegacyAssetsFolder');
-  String get mediaStillInUse => _s('mediaStillInUse');
   String get mediaOpenInViewer => _s('mediaOpenInViewer');
   String get mediaOpenInSubViewer => _s('mediaOpenInSubViewer');
 
@@ -1726,7 +1731,10 @@ enum AppStrings {
         'This project still has a {name} folder beside it. Nothing writes '
         'there any more — save once and its media moves inside the project '
         'file, and then the folder can go.',
-    'mediaStillInUse': 'In use on the timeline — take it off there first.',
+    'mediaRemoveInUse':
+        'It is in use. Remove it anyway? The layers and frames placed from '
+        'it will be deleted.',
+    'mediaUsesHeading': 'Where it is used',
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
     'mediaViewerEmpty':
@@ -2745,7 +2753,8 @@ enum AppStrings {
         'このプロジェクトの隣にまだ {name} フォルダーがあります。'
         'もう使われません — 一度保存すると中のメディアはプロジェクト'
         'ファイルに入り、そのあとフォルダーは削除できます。',
-    'mediaStillInUse': 'タイムラインで使用中です — 先にそこから外してください。',
+    'mediaRemoveInUse': '使用中です。削除しますか？配置したレイヤー/フレームが削除されます。',
+    'mediaUsesHeading': '使用箇所',
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
     'mediaViewerEmpty':
@@ -3780,7 +3789,8 @@ enum AppStrings {
     'projectLegacyAssetsFolder':
         '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
         '한 번 저장하면 안의 미디어가 프로젝트 파일로 들어가고, 그 뒤엔 폴더를 지워도 됩니다.',
-    'mediaStillInUse': '타임라인에서 쓰는 중입니다 — 먼저 거기서 빼세요.',
+    'mediaRemoveInUse': '사용 중인데 제거하겠습니까? 배치한 레이어/프레임이 삭제됩니다.',
+    'mediaUsesHeading': '쓰는 곳',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
     'mediaViewerEmpty':
@@ -4859,8 +4869,10 @@ enum AppStrings {
     'mediaViewerRegisterAsset': 'Ajouter aux médias',
     'panelMediaViewer': 'Visionneuse',
     'panelMediaViewerSub': 'Visionneuse secondaire',
-    'mediaStillInUse':
-        "Utilisé dans la timeline — retirez-le d'abord de là.",
+    'mediaRemoveInUse':
+        'Ce média est utilisé. Le retirer quand même ? Les calques et '
+        'images placés seront supprimés.',
+    'mediaUsesHeading': 'Utilisations',
     'panelCanvas': 'Canevas',
     'panelColorWheel': 'Roue chromatique',
     'transportIn': 'Entrée',
@@ -5844,7 +5856,8 @@ enum AppStrings {
     'projectLegacyAssetsFolder':
         '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'
         '其中的媒体会进入项目文件，之后即可删除该文件夹。',
-    'mediaStillInUse': '时间线中正在使用 — 请先从那里移除。',
+    'mediaRemoveInUse': '正在使用中。仍要移除吗？放置的图层/帧将被删除。',
+    'mediaUsesHeading': '使用位置',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',
     'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体池中的文件，或用上方按钮打开文件。',

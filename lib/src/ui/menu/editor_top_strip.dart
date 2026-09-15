@@ -21,6 +21,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
+import '../text/place_lines.dart' show celPlaceLine;
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -1648,28 +1649,12 @@ void _tellWhatTheSaveCouldNotCarry(
           session.repository.requireProject(),
           lost,
         ))
-          _lostCelLine(place),
+          celPlaceLine(place),
       ],
       detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),
     ),
   );
-}
-
-/// One line of that list: the names the picture is found by, joined the way
-/// the canvas title joins a cut, a layer and a frame.
-String _lostCelLine(CelPlace place) {
-  final strings = AppText.strings;
-  return switch (place) {
-    DrawingCelPlace(:final ownerName, :final layerName, :final celName) =>
-      '$ownerName · $layerName · $celName',
-    ContePageInkPlace(:final pageNumber) =>
-      '${strings.panelConte} · p$pageNumber',
-    ConteRowInkPlace(:final cutName, :final celName) =>
-      '${strings.panelConte} · $cutName · $celName',
-    EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
-    GoneCelPlace() => strings.saveCelsLostGone,
-  };
 }
 
 /// Writes the whole live session to [stagingPath] and answers what it wrote

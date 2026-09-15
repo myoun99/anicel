@@ -1,11 +1,14 @@
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
+import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
 import '../project_lookup.dart' show projectLayersWithOwners;
 
 /// Where a picture the brush stores keep sits in a project, by the names a
@@ -20,6 +23,14 @@ sealed class CelPlace {
   const CelPlace();
 }
 
+/// What holds a row, by the name a person finds it by: its [cut], or the
+/// [track] for a row the track owns (an SE row).
+///
+/// ONE naming for every list that sends a person to a row — the pictures a
+/// save could not carry, and the uses of a media pool file (F-118).
+String rowOwnerName({required Track track, required Cut? cut}) =>
+    cut?.name ?? track.name;
+
 /// A drawing on a row: named by what holds the row — its cut, or the track
 /// for a row the track owns (an SE row) — the row, and [celName].
 final class DrawingCelPlace extends CelPlace {
@@ -28,6 +39,17 @@ final class DrawingCelPlace extends CelPlace {
     required this.layerName,
     required this.celName,
   });
+
+  /// [frame] on [layer], held by [cut] — or by [track] when the track owns
+  /// the row.
+  DrawingCelPlace.at({
+    required Track track,
+    required Cut? cut,
+    required Layer layer,
+    required Frame frame,
+  }) : ownerName = rowOwnerName(track: track, cut: cut),
+       layerName = layer.name,
+       celName = celNumberOrMark(frame.name);
 
   final String ownerName;
   final String layerName;
@@ -100,21 +122,25 @@ class _CelPlaceIndex {
         );
       }
       for (final frame in owned.layer.frames) {
-        final celName = celNumberOrMark(frame.name);
+        final drawing = DrawingCelPlace.at(
+          track: owned.track,
+          cut: cut,
+          layer: owned.layer,
+          frame: frame,
+        );
         _drawings[(owned.layer.id, frame.id)] = (
           plane: _Plane.drawing,
           position: _drawings.length,
-          place: DrawingCelPlace(
-            ownerName: cut?.name ?? owned.track.name,
-            layerName: owned.layer.name,
-            celName: celName,
-          ),
+          place: drawing,
         );
         if (cut != null) {
           _rows[(cut.id, frame.id)] = (
             plane: _Plane.conteRow,
             position: _rows.length,
-            place: ConteRowInkPlace(cutName: cut.name, celName: celName),
+            place: ConteRowInkPlace(
+              cutName: cut.name,
+              celName: drawing.celName,
+            ),
           );
         }
       }

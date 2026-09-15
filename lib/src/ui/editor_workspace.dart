@@ -139,6 +139,7 @@ import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
+import 'text/place_lines.dart' show mediaAssetUseLine;
 import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';

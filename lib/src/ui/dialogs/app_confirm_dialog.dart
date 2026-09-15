@@ -23,6 +23,7 @@ class AppConfirmDialog extends StatelessWidget {
     this.width,
     this.details = const [],
     this.detailsHeading,
+    this.detailsOpen = false,
   });
 
   final String title;
@@ -41,6 +42,10 @@ class AppConfirmDialog extends StatelessWidget {
   /// What [details] are, on the fold's heading — the affected FILES unless
   /// the caller's lines are something else (the drawings a save lost).
   final String? detailsHeading;
+
+  /// Whether the fold over [details] starts OPEN — for a window whose answer
+  /// IS the list (see [_DetailsDisclosure] for why the others start closed).
+  final bool detailsOpen;
 
   /// Left to right; the one that answers 'yes' goes last and carries
   /// [AppWindowActionEmphasis.primary].
@@ -68,6 +73,7 @@ class AppConfirmDialog extends StatelessWidget {
                   heading:
                       detailsHeading ?? AppText.strings.commonAffectedFiles,
                   lines: details,
+                  startsOpen: detailsOpen,
                 ),
               ],
             ),
@@ -81,18 +87,29 @@ class AppConfirmDialog extends StatelessWidget {
 /// ⛔Starts CLOSED. The notice's job is the sentence; the list is what you
 /// open when you want to know which ones, and forty paths opening by
 /// themselves would bury the sentence that explains them.
+///
+/// ⚠️UNLESS THE LIST IS THE ANSWER (F-118, 유저 2026-09-12: 「해당 버튼
+/// 누르면 공용창 띄워서 어디서 쓰는지 리스트로 표시하도록」). The media
+/// pool's in-use mark opens a window to show where a file is used: there the
+/// list is what was asked for, and a fold to open first would put it behind
+/// one more press. That window says so with [AppConfirmDialog.detailsOpen].
 class _DetailsDisclosure extends StatefulWidget {
-  const _DetailsDisclosure({required this.heading, required this.lines});
+  const _DetailsDisclosure({
+    required this.heading,
+    required this.lines,
+    required this.startsOpen,
+  });
 
   final String heading;
   final List<String> lines;
+  final bool startsOpen;
 
   @override
   State<_DetailsDisclosure> createState() => _DetailsDisclosureState();
 }
 
 class _DetailsDisclosureState extends State<_DetailsDisclosure> {
-  bool _open = false;
+  late bool _open = widget.startsOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -179,6 +196,8 @@ Future<void> showAppNotice(
   List<String> details = const [],
   /// What those lines are — see [AppConfirmDialog.detailsHeading].
   String? detailsHeading,
+  /// Whether they open with the window — see [AppConfirmDialog.detailsOpen].
+  bool detailsOpen = false,
   Key? windowKey,
 }) {
   return showDialog<void>(
@@ -189,6 +208,7 @@ Future<void> showAppNotice(
       message: message,
       details: details,
       detailsHeading: detailsHeading,
+      detailsOpen: detailsOpen,
       actions: [
         AppWindowAction(
           label: AppText.strings.commonClose,
@@ -247,13 +267,15 @@ class ConfirmChoice {
 }
 
 /// What a yes/no window ASKS: the name it wears and the sentence it puts
-/// to the user.
+/// to the user — and the lines that sentence is about, when it has any.
 class ConfirmQuestion {
   const ConfirmQuestion({
     required this.keys,
     required this.title,
     required this.message,
     this.titleIcon,
+    this.details = const [],
+    this.detailsHeading,
   });
 
   /// ⛔THE THREE KEYS ARE ONE NAME (see [confirmDialogKeys]), so they ride
@@ -264,6 +286,13 @@ class ConfirmQuestion {
   final String title;
   final String message;
   final IconData? titleIcon;
+
+  /// See [AppConfirmDialog.details] — the uses a media pool remove would
+  /// take with it, for one (F-118).
+  final List<String> details;
+
+  /// See [AppConfirmDialog.detailsHeading].
+  final String? detailsHeading;
 }
 
 /// Asks a yes/no question in the app's own window and answers what the
@@ -309,6 +338,8 @@ Widget confirmWindow(
   title: question.title,
   titleIcon: question.titleIcon,
   message: question.message,
+  details: question.details,
+  detailsHeading: question.detailsHeading,
   actions: confirmActions(
     context,
     keys: question.keys,

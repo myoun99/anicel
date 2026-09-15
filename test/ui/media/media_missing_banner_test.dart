@@ -27,11 +27,11 @@ void main() {
           height: 400,
           child: MediaPoolPanel(
             assets: assets,
-            isAssetReferenced: (_) => false,
+            usesOf: (_) => const [],
             onImportRequested: () {},
             onRenameAsset: (_, _) {},
             onRelinkAsset: (_, _, _) {},
-            onRemoveAsset: (_) => true,
+            onRemoveAsset: (_) {},
             onPromoteAsset: (_) async => true,
             onExportAssetWav: (_) async => true,
             missingPaths: missingPaths,

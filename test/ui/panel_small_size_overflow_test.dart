@@ -73,11 +73,11 @@ void main() {
         name: 'snare-with-long-name',
       ),
     ],
-    isAssetReferenced: (_) => true,
+    usesOf: (_) => const ['C1 · kick'],
     onImportRequested: () {},
     onRenameAsset: (_, _) {},
     onRelinkAsset: (_, _, _) {},
-    onRemoveAsset: (_) => true,
+    onRemoveAsset: (_) {},
     onPromoteAsset: (_) async => true,
     onExportAssetWav: (_) async => true,
     // RELINK-2: nothing missing is the default now, which is what

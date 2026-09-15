@@ -24,6 +24,10 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/project.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -35,7 +39,7 @@ const _timesheetTabKey = ValueKey<String>('panel-tab-timesheet');
 const _rightDropRailKey = ValueKey<String>('editor-dock-drop-rail-right');
 const _toolRightRailKey = ValueKey<String>('editor-dock-drop-rail-tool-right');
 
-Future<void> _pumpHome(WidgetTester tester) async {
+Future<void> _pumpHome(WidgetTester tester, {Project? project}) async {
   // R26 #31: the left dock ships with TWO stacked sections and the right
   // dock with the timesheet, so the 800×600 default test surface leaves
   // each section too short to lay out its panel (the media pool's
@@ -43,7 +47,9 @@ Future<void> _pumpHome(WidgetTester tester) async {
   // would actually work in.
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(const MaterialApp(home: HomePage()));
+  await tester.pumpWidget(
+    MaterialApp(home: HomePage(initialProject: project)),
+  );
   await tester.pumpAndSettle();
   // Tabs always show [X][lock][name] now, and the test (Ahem) font draws
   // every glyph 12px wide — the three palette tabs need ~480px, far past
@@ -534,6 +540,55 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MediaPoolPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
+    });
+
+    testWidgets('🚨F-118: the pool asks the SESSION where a file is used — '
+        'the list its in-use mark opens is the project\'s own', (
+      tester,
+    ) async {
+      const still = r'C:\media\walk.png';
+      final base = createDefaultProject();
+      final track = base.tracks.first;
+      final cut = track.cuts.first;
+      final row = cut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      await _pumpHome(
+        tester,
+        project: base.copyWith(
+          mediaAssets: const [MediaAsset(path: still, name: 'walk.png')],
+          tracks: [
+            track.copyWith(
+              cuts: [
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      layer.id == row.id
+                          // Hidden, so the canvas never goes looking for it.
+                          ? layer.copyWith(
+                              isVisible: false,
+                              mediaReference: const MediaReference(
+                                assetPath: still,
+                              ),
+                            )
+                          : layer,
+                  ],
+                ),
+                ...track.cuts.skip(1),
+              ],
+            ),
+            ...base.tracks.skip(1),
+          ],
+        ),
+      );
+      await _openMedia(tester);
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+
+      final pool = tester.widget<MediaPoolPanel>(find.byType(MediaPoolPanel));
+      expect(pool.usesOf(still).toList(), ['${cut.name} · ${row.name}']);
     });
   });
 

@@ -152,7 +152,7 @@ void main() {
   // it: an animation row answers false to `canImportAudioToActiveLayer`.
 
   testWidgets('media pool flows: import-to-browse, link-to-block reuse, '
-      'rename, relink, remove guard', (tester) async {
+      'rename, relink, remove', (tester) async {
     const foot = r'C:\snd\foot.wav';
     const moved = r'C:\snd\moved\foot.wav';
     final session = EditorSessionManager(
@@ -216,7 +216,7 @@ void main() {
     await session.mediaPool.addMediaAssets([foot]);
     expect(session.mediaPool.mediaAssets.single.name, 'foot.wav');
     expect(seLayer().audioClips, isEmpty);
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isFalse);
+    expect(session.mediaPool.mediaAssetUses(foot), isEmpty);
 
     // Drag-to-block linking: the same sound lands on both blocks
     // (footsteps reuse); re-dropping on a carrying block is a no-op.
@@ -238,7 +238,7 @@ void main() {
     expect(seLayer().audioClips, hasLength(2));
     expect(seLayer().audioClips[0].frameId, const FrameId('se-f1'));
     expect(seLayer().audioClips[1].frameId, const FrameId('se-f2'));
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isTrue);
+    expect(session.mediaPool.mediaAssetUses(foot), isNotEmpty);
 
     // Dropping on empty runway does nothing (no block, no carrier).
     session.mediaPool.linkMediaAssetToSeBlock(
@@ -258,9 +258,9 @@ void main() {
       everyElement(moved),
     );
 
-    // Remove refuses while referenced, succeeds once the clips are gone,
-    // and undoes back into the pool.
-    expect(session.mediaPool.removeMediaAsset(moved), isFalse);
+    // Remove succeeds once the clips are gone, and undoes back into the
+    // pool. (Removing it while clips still carry it takes them along —
+    // F-118, pinned in removing_a_used_file_takes_its_uses_test.)
     session.audioClips.removeAudioClipAt(_seLayerId, 1);
     session.audioClips.removeAudioClipAt(_seLayerId, 0);
     expect(session.mediaPool.removeMediaAsset(moved), isTrue);
@@ -565,8 +565,7 @@ void main() {
     );
     await _pumpHost(tester, session);
     await session.mediaPool.addMediaAssets([foot]);
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isTrue);
-    expect(session.mediaPool.removeMediaAsset(foot), isFalse);
+    expect(session.mediaPool.mediaAssetUses(foot), isNotEmpty);
 
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
@@ -576,9 +575,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // The frame is gone AND the link went with it — the sound has no
-    // carrier anywhere, so the pool releases the asset.
+    // carrier anywhere, so nothing uses the asset any more.
     expect(seLayer().audioClips, isEmpty);
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isFalse);
+    expect(session.mediaPool.mediaAssetUses(foot), isEmpty);
     expect(session.mediaPool.removeMediaAsset(foot), isTrue);
     expect(session.mediaPool.mediaAssets, isEmpty);
 
@@ -587,7 +586,7 @@ void main() {
     expect(session.mediaPool.mediaAssets.single.path, foot);
     session.undo();
     expect(seLayer().audioClips.single.frameId, const FrameId('prune-f1'));
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isTrue);
+    expect(session.mediaPool.mediaAssetUses(foot), isNotEmpty);
     await tester.pumpAndSettle();
   });
 
@@ -631,7 +630,7 @@ void main() {
     await session.mediaPool.addMediaAssets([foot]);
     // The dangling link is inaudible everywhere — it must not count as a
     // reference, and removal must succeed.
-    expect(session.mediaPool.isMediaAssetReferenced(foot), isFalse);
+    expect(session.mediaPool.mediaAssetUses(foot), isEmpty);
     expect(session.mediaPool.removeMediaAsset(foot), isTrue);
     expect(session.mediaPool.mediaAssets, isEmpty);
     await tester.pumpAndSettle();

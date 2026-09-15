@@ -592,7 +592,11 @@ class _WorkspaceTabs {
             listenable: _state.widget.session,
             builder: (context, _) => MediaPoolPanel(
               assets: _state.widget.session.mediaPool.mediaAssets,
-              isAssetReferenced: _state.widget.session.mediaPool.isMediaAssetReferenced,
+              // F-118: one list per file — the mark, its window and the
+              // remove's question all read the session's answer.
+              usesOf: (path) => _state.widget.session.mediaPool
+                  .mediaAssetUses(path)
+                  .map(mediaAssetUseLine),
               onImportRequested: () => _state._openImportWindow(poolOnly: true),
               onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {

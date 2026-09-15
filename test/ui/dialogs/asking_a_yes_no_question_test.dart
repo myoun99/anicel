@@ -178,4 +178,44 @@ void main() {
     );
     await answerWith(tester, decline);
   });
+
+  testWidgets('F-118: a question carries the lines it is ABOUT in the fold '
+      'every notice has — closed, under the heading it names', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                await askConfirm(
+                  context,
+                  const ConfirmQuestion(
+                    keys: keys,
+                    title: 'Remove it?',
+                    message: 'It is in use.',
+                    details: ['C1 · walk', 'Video · S1 · walk.mp4'],
+                    detailsHeading: 'Where it is used',
+                  ),
+                  accept: const ConfirmChoice('Remove'),
+                );
+              },
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Where it is used (2)'), findsOneWidget);
+    expect(find.text('C1 · walk'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('app-notice-details-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('C1 · walk'), findsOneWidget);
+    expect(find.text('Video · S1 · walk.mp4'), findsOneWidget);
+    await answerWith(tester, find.byKey(keys.decline));
+  });
 }

@@ -20,17 +20,21 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../controllers/timeline_controller.dart' show TimelineController;
 import '../../models/audio_clip.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
-import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/track_id.dart';
 import '../../services/import/media_identity_reader.dart';
+import '../../services/media/media_asset_uses.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show projectArchivedMediaPaths;
+import '../../services/project_lookup.dart'
+    show projectArchivedMediaPaths, requireLayerAnywhere;
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'project_file.dart';
@@ -68,46 +72,11 @@ class MediaPool {
   List<MediaAsset> get mediaAssets =>
       _project.repository.requireProject().mediaAssets;
 
-  /// Whether any clip anywhere still references [path] (remove-guard and
-  /// the browser's usage badge).
-  bool isMediaAssetReferenced(String path) {
-    // Only clips that resolve to a live frame count (REC1-A): a dangling
-    // link is inaudible everywhere, so it must not hold the pool hostage.
-    // A layer's MEDIA REFERENCE (§6-z23) counts too — a referenced still
-    // or sequence keeps its asset in the pool.
-    bool layerReferences(Layer layer) {
-      if (layer.mediaReference?.assetPath == path) {
-        return true;
-      }
-      Set<FrameId>? liveIds;
-      for (final clip in layer.audioClips) {
-        if (clip.filePath != path) {
-          continue;
-        }
-        liveIds ??= {for (final frame in layer.frames) frame.id};
-        if (liveIds.contains(clip.frameId)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    for (final track in _project.repository.requireProject().tracks) {
-      for (final layer in track.seLayers) {
-        if (layerReferences(layer)) {
-          return true;
-        }
-      }
-      for (final cut in track.cuts) {
-        for (final layer in cut.layers) {
-          if (layerReferences(layer)) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
+  /// Every use the project has of the [path] asset — the rows placed from it
+  /// and the frames that carry it ([mediaAssetUsesOf]): what the pool row's
+  /// in-use mark lists, and what removing the asset takes with it (F-118).
+  Iterable<MediaAssetUse> mediaAssetUses(String path) =>
+      mediaAssetUsesOf(_project.repository.requireProject(), path);
 
   /// Adds [paths] to the pool (skipping known ones) without linking them
   /// anywhere — import-to-browse, one undo step.
@@ -167,8 +136,16 @@ class MediaPool {
     _changes.notifyChanged();
   }
 
-  /// Removes the [path] asset from the pool; refuses while any clip still
-  /// references it (returns false). One undo step.
+  /// Removes the [path] asset from the pool, and every use of it with it
+  /// ([mediaAssetUses]) — ONE undo step. False when the pool holds no such
+  /// asset.
+  ///
+  /// 🚨★★★유저 2026-09-12 (F-118): 「풀에서 그냥 제거버튼 누르면 사용중인데
+  /// 제거하겠습니까? 배치한 레이어/프레임이 삭제됩니다. 라고 표시해서
+  /// 강제삭제할수있게」. This REFUSED while anything used the asset, and the
+  /// refusal only said to take it off the timeline first — with no way to
+  /// see where. The question is the pool panel's to ask; this is what a yes
+  /// does.
   ///
   /// ⛔**It does NOT retire the staged copy, and that is deliberate.** This
   /// is UNDOABLE — the description above makes an undo entry — so throwing
@@ -179,19 +156,89 @@ class MediaPool {
   /// after every undo that could have wanted them. Waiting costs a file in
   /// the container until then, and not waiting costs the picture.
   bool removeMediaAsset(String path) {
-    if (isMediaAssetReferenced(path)) {
-      return false;
-    }
     final next = mediaAssets.where((asset) => asset.path != path).toList();
     if (next.length == mediaAssets.length) {
       return false;
     }
-    _project.cutCommandCoordinator.updateMediaAssets(
-      next,
-      description: 'Remove media',
-    );
+    final uses = mediaAssetUses(path).toList();
+    _project.historyManager.runAsOneStep('Remove media', () {
+      _removeUses(path, uses);
+      _project.cutCommandCoordinator.updateMediaAssets(
+        next,
+        description: 'Remove media',
+      );
+    });
+    if (uses.isNotEmpty) {
+      // A row the stack no longer holds may be the one in hand.
+      _changes.refreshAfterCutCommand();
+    }
     _changes.notifyChanged();
     return true;
+  }
+
+  /// Takes [uses] of [path] out of the project through the verbs a person
+  /// uses on each kind: a row is deleted, the blocks that show a frame are
+  /// deleted — which takes the frame and its sound with it (REC1-A) — and a
+  /// link on a frame no block shows is cut.
+  void _removeUses(String path, List<MediaAssetUse> uses) {
+    // A row already gone went with the base it rode: a base's delete takes
+    // its attach rows along.
+    for (final row in uses.whereType<RowMediaUse>()) {
+      final cut = _project.cutById(row.cutId);
+      if (cut == null || !cut.layers.any((layer) => layer.id == row.layerId)) {
+        continue;
+      }
+      _project.cutCommandCoordinator.deleteLayer(
+        cutId: row.cutId,
+        layerId: row.layerId,
+      );
+    }
+    // Blocks through the TIMELINE's own delete, through the lens a person's
+    // own delete would use: a row of a cut through its cut, a row of a track
+    // through the cut in hand when that cut is on the track — the lens the
+    // session's timeline gives it, so a hold on a neighbouring block is
+    // re-derived over the same cut either way.
+    final project = _project.repository.requireProject();
+    final activeCutId = _project.activeCutId;
+    final activeTrackId = activeCutId == null
+        ? null
+        : _project.trackOwningCut(activeCutId)?.id;
+    final blocks = <(TrackId, CutId?), Map<LayerId, List<int>>>{};
+    for (final use in uses.whereType<FrameMediaUse>()) {
+      final lens =
+          use.cutId ?? (use.trackId == activeTrackId ? activeCutId : null);
+      final byLayer = blocks[(use.trackId, lens)] ??= {};
+      (byLayer[use.layerId] ??= []).addAll([
+        for (final exposure
+            in requireLayerAnywhere(project, use.layerId).timeline.entries)
+          if (exposure.value.frameId == use.frameId) exposure.key,
+      ]);
+    }
+    for (final MapEntry(key: (trackId, lens), value: byLayer)
+        in blocks.entries) {
+      TimelineController(
+        repository: _project.repository,
+        historyManager: _project.historyManager,
+        cutId: lens,
+        trackSeLayers: () => _project.trackById(trackId)?.seLayers ?? const [],
+      ).deleteBlocksForLayers(byLayer);
+    }
+    // What no block took along: a link on a frame no block shows.
+    for (final use in mediaAssetUses(path).whereType<FrameMediaUse>()) {
+      final layer = requireLayerAnywhere(
+        _project.repository.requireProject(),
+        use.layerId,
+      );
+      _project.cutCommandCoordinator.updateLayerAudioClips(
+        cutId: use.cutId,
+        layerId: use.layerId,
+        audioClips: [
+          for (final clip in layer.audioClips)
+            if (clip.filePath != path) clip,
+        ],
+        description: 'Remove media',
+      );
+    }
   }
 
   /// Points the [oldPath] asset at [newPath] — the pool entry AND every
