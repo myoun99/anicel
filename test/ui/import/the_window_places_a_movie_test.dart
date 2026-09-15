@@ -156,6 +156,7 @@ void main() {
             kind: MediaAssetKind.video,
             isPsd: false,
             placing: true,
+            hasActiveCut: true,
             spot: spot,
           );
       expect(resolve(cell).sound, isTrue);

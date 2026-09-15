@@ -1,4 +1,5 @@
 import '../../models/layer_id.dart';
+import 'media_import_planner.dart' show ImportDestination;
 
 /// Where in the ACTIVE cut a placement lands, when a DROP decided it.
 ///
@@ -11,6 +12,22 @@ import '../../models/layer_id.dart';
 /// No spot at all is the import menu's answer: a new layer on top.
 sealed class ImportLayerSpot {
   const ImportLayerSpot();
+
+  /// Which cut the drop answered as well as where in it — or null when the
+  /// drop left that question to the window, which then asks it.
+  ///
+  /// The ACTIVE cut for a place only the active cut has — a row's frames, an
+  /// SE row's cell, a gap between its rows — so the window shows the
+  /// destination locked and the settings hold that one answer.
+  ///
+  /// ⚠️Null for the canvas ([AboveActiveLayerSpot]). Its first words were a
+  /// DEFAULT, not an answer (「놓으면 활성 레이어 바로 위를 기본값으로 채운
+  /// 배치 창이 열린다」), and 유저 2026-09-12: 「풀에서 캔버스에 배치시 새
+  /// 레이어 고정이아니라 새 레이어/새 컷 고를수있게. 왜냐하면
+  /// 스토리보드패널에서 캔버스에 떨굴때도 새 레이어 고정으로 되니까. 액티브
+  /// 컷이 없는 상태에서 캔버스 떨구면 새 컷 고정이고, 있으면 새 레이어/새 컷
+  /// 지정가능」.
+  ImportDestination? get answeredDestination;
 }
 
 /// A new layer directly above the active one — a drop on the canvas.
@@ -19,6 +36,9 @@ sealed class ImportLayerSpot {
 /// not a second reading of "above".
 final class AboveActiveLayerSpot extends ImportLayerSpot {
   const AboveActiveLayerSpot();
+
+  @override
+  ImportDestination? get answeredDestination => null;
 
   @override
   bool operator ==(Object other) => other is AboveActiveLayerSpot;
@@ -38,6 +58,10 @@ final class RowFramesSpot extends ImportLayerSpot {
 
   /// The cell the file was dropped on, zero-based.
   final int frameIndex;
+
+  @override
+  ImportDestination? get answeredDestination =>
+      ImportDestination.activeCutLayer;
 
   @override
   bool operator ==(Object other) =>
@@ -62,6 +86,10 @@ final class SeCellSpot extends ImportLayerSpot {
   final int frameIndex;
 
   @override
+  ImportDestination? get answeredDestination =>
+      ImportDestination.activeCutLayer;
+
+  @override
   bool operator ==(Object other) =>
       other is SeCellSpot &&
       other.layerId == layerId &&
@@ -80,6 +108,10 @@ final class LayerSlotSpot extends ImportLayerSpot {
   const LayerSlotSpot(this.insertionIndex);
 
   final int insertionIndex;
+
+  @override
+  ImportDestination? get answeredDestination =>
+      ImportDestination.activeCutLayer;
 
   @override
   bool operator ==(Object other) =>

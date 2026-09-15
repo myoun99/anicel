@@ -555,7 +555,6 @@ void main() {
     'imStatusNothing': (s) => s.imStatusNothing,
     'imFolderGone': (s) => s.imFolderGone,
     'imCutFolderUnreadable': (s) => s.imCutFolderUnreadable,
-    'imNoActiveCut': (s) => s.imNoActiveCut,
     'imKeepExplain': (s) => s.imKeepExplain,
     'imReferenceExplain': (s) => s.imReferenceExplain,
     'imCutFolderBakes': (s) => s.imCutFolderBakes,

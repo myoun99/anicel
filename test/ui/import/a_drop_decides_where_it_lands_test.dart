@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -14,6 +15,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
@@ -457,14 +459,65 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('the canvas: a new layer, locked', (tester) async {
+    testWidgets('🚨the canvas: a new layer by default, and a new cut on '
+        'offer — 「새 레이어/새 컷 고를수있게」 (유저 2026-09-12)', (
+      tester,
+    ) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       final s = session();
       await open(tester, s, png!, const AboveActiveLayerSpot());
 
       expect(word(tester, 'into', png), AppText.strings.imIntoNewLayer);
       await press(tester, 'into', png);
-      expect(anOptionIsOpen(), isFalse);
+      expect(
+        anOptionIsOpen(),
+        isTrue,
+        reason: 'the canvas spot was a default, not an answer about the cut',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-option-into-newCut')),
+      );
+      await tester.pumpAndSettle();
+      expect(word(tester, 'into', png), AppText.strings.imIntoNewCut);
+    });
+
+    testWidgets('the canvas with no cut in hand: a new cut, its one answer '
+        '— 「액티브 컷이 없는 상태에서 캔버스 떨구면 새 컷 고정」', (tester) async {
+      final png = await tester.runAsync(() => writePng('a.png'));
+      // No cut in hand the way the app gets there — the playhead parked in
+      // the gap between two cuts (a session cannot start with no cut at all:
+      // `defaultActiveCutIdFor` refuses one).
+      final base = createDefaultProject();
+      final track = base.tracks.first;
+      final first = track.cuts.first;
+      final s = EditorSessionManager(
+        initialProject: base.copyWith(
+          tracks: [
+            track.copyWith(
+              cuts: [
+                first,
+                createDefaultCut(
+                  cutId: const CutId('after-the-gap'),
+                  name: '2',
+                  layerId: const LayerId('after-the-gap-layer'),
+                ).copyWith(leadingGapFrames: 4),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(s.dispose);
+      s.selectGlobalFrame(first.duration + 2);
+      expect(
+        s.activeCutOrNull,
+        isNull,
+        reason: 'fixture premise: parked in the gap between the two cuts',
+      );
+      await open(tester, s, png!, const AboveActiveLayerSpot());
+
+      expect(word(tester, 'into', png), AppText.strings.imIntoNewCut);
+      await press(tester, 'into', png);
+      expect(anOptionIsOpen(), isFalse, reason: 'one answer is shown locked');
     });
 
     testWidgets('the layer area: a new layer too, locked — the rail\'s '

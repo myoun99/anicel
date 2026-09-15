@@ -238,6 +238,7 @@ ImportFileSettings resolvedImportSettings(
   required MediaAssetKind? kind,
   required bool isPsd,
   required bool placing,
+  required bool hasActiveCut,
   ImportLayerSpot? spot,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
@@ -257,12 +258,21 @@ ImportFileSettings resolvedImportSettings(
       ? settings.mode
       // Carrying is never refused, so a refused pointer lands there.
       : ImportFileMode.keepInside;
-  final fit = importFitLocked(settings, placing: placing)
+  // The destination the settings hold is ONE answer: the drop's, when it
+  // answered the cut (a row it was let go on is in the active cut, whatever
+  // was pressed before); a new cut when there is no cut to put a layer in
+  // (유저 2026-09-12: 「액티브 컷이 없는 상태에서 캔버스 떨구면 새 컷
+  // 고정」); else what the row was answered.
+  final into =
+      spot?.answeredDestination ??
+      (hasActiveCut ? settings.into : ImportDestination.newCut);
+  final fit = importFitLocked(settings.copyWith(into: into), placing: placing)
       ? MediaFitMode.none
       : settings.fit;
   return settings.copyWith(
     mode: mode,
     bake: bake,
+    into: into,
     fit: fit,
     psd: psd,
     sound: importSoundLocked(spot) || settings.sound,

@@ -16,11 +16,13 @@ void main() {
     MediaAssetKind? kind = MediaAssetKind.image,
     bool isPsd = false,
     bool placing = true,
+    bool hasActiveCut = true,
   }) => resolvedImportSettings(
     settings,
     kind: kind,
     isPsd: isPsd,
     placing: placing,
+    hasActiveCut: hasActiveCut,
   );
 
   group('the file column is the POOL\'s question', () {
@@ -143,6 +145,42 @@ void main() {
     });
   });
 
+  group('the destination is ONE answer (pool-drop-picks-layer-or-cut)', () {
+    test('with no cut in hand a placement has one destination — a new cut — '
+        'and a new cut is 1:1 (유저 2026-09-12: 「액티브 컷이 없는 상태에서 '
+        '캔버스 떨구면 새 컷 고정」)', () {
+      final resolved = resolve(defaults, hasActiveCut: false);
+      expect(resolved.into, ImportDestination.newCut);
+      expect(resolved.fit, MediaFitMode.none);
+    });
+
+    test('a drop that answered the cut holds that answer — the row the file '
+        'was let go on is in the active cut, whatever the row was answered '
+        'before', () {
+      final resolved = resolvedImportSettings(
+        const ImportFileSettings(into: ImportDestination.newCut),
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        spot: const LayerSlotSpot(1),
+      );
+      expect(resolved.into, ImportDestination.activeCutLayer);
+    });
+
+    test('the canvas answers no cut — what the row was answered stands', () {
+      final resolved = resolvedImportSettings(
+        const ImportFileSettings(into: ImportDestination.newCut),
+        kind: MediaAssetKind.image,
+        isPsd: false,
+        placing: true,
+        hasActiveCut: true,
+        spot: const AboveActiveLayerSpot(),
+      );
+      expect(resolved.into, ImportDestination.newCut);
+    });
+  });
+
   group('psd', () {
     test('frames dropped on a row lock BAKE on and the PSD to merge — a '
         'row\'s cells are its pixels, and a row takes pictures, not a stack',
@@ -156,6 +194,7 @@ void main() {
         kind: MediaAssetKind.image,
         isPsd: true,
         placing: true,
+        hasActiveCut: true,
         spot: spot,
       );
       expect(resolved.bake, isTrue);

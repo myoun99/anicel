@@ -137,6 +137,7 @@ class _ImportDialogState extends State<ImportDialog> {
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing,
+      hasActiveCut: widget.session.activeCutOrNull != null,
       spot: widget.spot,
     );
     // A file the pool already holds has answered the pool's question: the
@@ -716,10 +717,6 @@ class _ImportDialogState extends State<ImportDialog> {
     if (kind == MediaAssetKind.pdf && PdfRenderService.availability != true) {
       return AppText.strings.imNoPdfRenderer(mediaFileName(path));
     }
-    if (settings.into == ImportDestination.activeCutLayer &&
-        widget.session.activeCutOrNull == null) {
-      return AppText.strings.imNoActiveCut;
-    }
     return AppText.strings.imCouldNotImport(mediaFileName(path));
   }
 
@@ -1159,12 +1156,16 @@ class _ImportDialogState extends State<ImportDialog> {
 
   ImportColumn<Object?> _intoColumn() {
     final spot = widget.spot;
+    // A drop that answered the cut shows that answer locked; the canvas's
+    // spot is a default and leaves the cut to this column
+    // (pool-drop-picks-layer-or-cut, 유저 2026-09-12).
+    final answering = spot?.answeredDestination == null ? null : spot;
     return ImportColumn<Object?>(
       id: 'into',
       label: AppText.strings.imInto,
       // A drop's answer is the ONE value, so the cell shows it and opens
       // nothing — the shape every locked answer in this table has.
-      values: spot == null ? ImportDestination.values : [spot],
+      values: answering == null ? ImportDestination.values : [answering],
       labelOf: (value) => switch (value) {
         final ImportDestination into => importIntoLabel(into),
         final ImportLayerSpot dropped => _spotLabel(dropped),
@@ -1176,7 +1177,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // locked, like every answer the context gave.
       valueOf: (path) => _isSound(path)
           ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
-          : spot ?? _settingsFor(path).into,
+          : answering ?? _settingsFor(path).into,
       appliesTo: (path) => true,
       enabledFor: (path, value) =>
           !_isSound(path) &&

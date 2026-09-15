@@ -1075,7 +1075,6 @@ enum AppStrings {
   String imFolderUnreadable(String reason) =>
       _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
   String get imCutFolderUnreadable => _s('imCutFolderUnreadable');
-  String get imNoActiveCut => _s('imNoActiveCut');
   String imUnreadable(String name) =>
       _s('imUnreadableTemplate').replaceAll('{name}', name);
   String imCorrupt(String name) =>
@@ -1936,7 +1935,6 @@ enum AppStrings {
     'imFolderGone': 'That folder is gone.',
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
-    'imNoActiveCut': 'No active cut — choose New cut.',
     'imUnreadableTemplate': '{name}: could not read the file.',
     'imCorruptTemplate':
         '{name} could not be opened — corrupt or password-locked.',
@@ -2958,7 +2956,6 @@ enum AppStrings {
     'imFolderGone': 'そのフォルダーは見つかりません。',
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
-    'imNoActiveCut': 'アクティブなカットがありません — 新規カットを選んでください。',
     'imUnreadableTemplate': '{name}: ファイルを読めませんでした。',
     'imCorruptTemplate':
         '{name} を開けませんでした — 破損しているか、パスワードで保護されています。',
@@ -4000,7 +3997,6 @@ enum AppStrings {
     'imFolderGone': '그 폴더가 없어졌습니다.',
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
-    'imNoActiveCut': '활성 컷이 없습니다 — 새 컷을 고르세요.',
     'imUnreadableTemplate': '{name}: 파일을 읽지 못했습니다.',
     'imCorruptTemplate': '{name}: 열 수 없습니다 — 손상됐거나 암호로 잠겨 있습니다.',
     'imPagesFailedTemplate': '{name}: {n}쪽을 그리지 못했습니다 — 그 셀은 비어 있습니다.',
@@ -5077,7 +5073,6 @@ enum AppStrings {
     'imFolderGone': 'Ce dossier n’existe plus.',
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
-    'imNoActiveCut': 'Aucun plan actif — choisissez Nouveau plan.',
     'imUnreadableTemplate': '{name} : impossible de lire le fichier.',
     'imCorruptTemplate':
         '{name} n’a pas pu être ouvert — fichier corrompu ou protégé par mot de passe.',
@@ -6078,7 +6073,6 @@ enum AppStrings {
     'imFolderGone': '该文件夹已不存在。',
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',
-    'imNoActiveCut': '没有活动镜头 — 请选择新镜头。',
     'imUnreadableTemplate': '{name}：无法读取文件。',
     'imCorruptTemplate': '无法打开 {name} — 文件已损坏或受密码保护。',
     'imPagesFailedTemplate': '{name}：{n} 页渲染失败 — 这些页保持空白。',
