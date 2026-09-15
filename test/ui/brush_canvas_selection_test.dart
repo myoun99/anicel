@@ -1331,6 +1331,118 @@ void main() {
     expect(offsets[3].y, 0, reason: 'BL likewise');
   });
 
+  group('a transform handle is where the hand and the quad say (F-127, F-42)', () {
+    testWidgets('🚨F-127: a pen pressed just off a scale handle and moved one '
+        'pixel moves the handle about one pixel — it never jumps to the pen', (
+      tester,
+    ) async {
+      // 유저 2026-09-13: 「펜만 변형툴 사용하려고 꼭짓점 클릭시작하면 그 순간
+      // 변형이 커진다거나? … 클릭하면 수치가 바로 바뀜. 마우스는 그냥 클릭해도
+      // 클릭한다고 변형이 바뀌지 않는데. 로직 한번 확인」.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      final before = chromeOnScreen(tester)!;
+
+      // The bottom-right handle, pressed 8px further down and right — inside
+      // the grab radius, off the handle itself.
+      var index = 0;
+      for (var i = 1; i < before.handles.length; i += 1) {
+        final candidate = before.handles[i];
+        final best = before.handles[index];
+        if (candidate.dx + candidate.dy > best.dx + best.dy) {
+          index = i;
+        }
+      }
+      final handle = before.handles[index];
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(
+        origin + handle + const Offset(8, 8),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(1, 0));
+      await tester.pump();
+
+      final after = chromeOnScreen(tester)!;
+      expect(
+        (after.handles[index] - handle).distance,
+        lessThan(2),
+        reason: 'a one-pixel move is a one-pixel move, however far off the '
+            'handle the pen came down',
+      );
+      await gesture.up();
+      await tester.pump();
+    });
+
+    testWidgets('🚨F-42: in 퍼스 an edge handle stands at the middle of the '
+        'quad edge it carries, once a corner has moved', (tester) async {
+      // 유저 2026-08-31: 「작동은 하는데 변형툴 ui의 사각형, 상하좌우 중앙의
+      // 사각형이 따라서 안움직임. 로직통일」.
+      final env = await pumpSelectionPanel(
+        tester,
+        transformMode: TransformMode.perspective,
+      );
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(34, 24));
+      expect(env.commands.transformActive, isTrue, reason: 'fixture premise');
+
+      final chrome = chromeOnScreen(tester)!;
+      expect(chrome.handles, hasLength(8), reason: 'four corners, four edges');
+      const pairs = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0],
+      ];
+      for (var edge = 0; edge < pairs.length; edge += 1) {
+        final middle =
+            (chrome.handles[pairs[edge][0]] + chrome.handles[pairs[edge][1]]) /
+            2;
+        expect(
+          (chrome.handles[4 + edge] - middle).distance,
+          lessThan(0.5),
+          reason: 'edge ${pairs[edge]}',
+        );
+      }
+    });
+
+    testWidgets('🚨F-42: …and it is grabbed where it is drawn', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        transformMode: TransformMode.perspective,
+      );
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(120, 120));
+      await env.setTool(CanvasTool.move);
+      // Far enough that the top edge's middle leaves the affine box's.
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(60, 50));
+      final before = chromeOnScreen(tester)!;
+
+      final topEdge = before.handles[4];
+      await dragOnLayer(tester, topEdge, topEdge + const Offset(0, 10));
+
+      final after = chromeOnScreen(tester)!;
+      for (final corner in [0, 1]) {
+        expect(
+          (after.handles[corner] - before.handles[corner] - const Offset(0, 10))
+              .distance,
+          lessThan(0.5),
+          reason: 'the top edge carries corner $corner',
+        );
+      }
+      for (final corner in [2, 3]) {
+        expect(
+          (after.handles[corner] - before.handles[corner]).distance,
+          lessThan(0.5),
+          reason: 'corner $corner is not on the top edge',
+        );
+      }
+    });
+  });
+
   testWidgets('mode switches carry the box: a 퍼스 warp survives a trip '
       'through 일반 and back', (tester) async {
     final env = await pumpSelectionPanel(

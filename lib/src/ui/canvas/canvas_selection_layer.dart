@@ -2778,6 +2778,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // be reached at all on a tablet). The edge handles and the rotate
     // knob keep their affine meaning underneath, which is where
     // non-uniform scaling lives.
+    //
+    // ↩️「The edge handles … keep their affine meaning」 stopped being true
+    // with F-42-Q1 (an edge carries its two quad corners), and F-42's 08-31
+    // report moved where they STAND too: the middle of their quad edge
+    // ([_scaleHandleViewport]). The rotate knob keeps the affine box's.
     final cornersPlaced = _placedCorners;
     if (cornersPlaced != null) {
       final cornerIndex = _hitTestPlacedPoint(
@@ -2982,14 +2987,45 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case TransformHandle.rightEdge:
       case TransformHandle.bottomEdge:
       case TransformHandle.leftEdge:
+        // 🚨F-127 (유저 2026-09-13): 「펜만 … 꼭짓점 클릭시작하면 그 순간
+        // 변형이 커진다거나? … 마우스는 그냥 클릭해도 클릭한다고 변형이
+        // 바뀌지 않는데」. The handle used to be put UNDER the pointer, so a
+        // press anywhere in the 16px grab radius jumped it there on the first
+        // move — and a pen always moves. The inside drag and the rotate knob
+        // were already deltas; the scale handles are too now.
         setState(
-          () => _transform = _solveScaleDrag(start, drag.handle, pointer),
+          () => _transform = _solveScaleDrag(
+            start,
+            drag.handle,
+            _pressDisplaced(start, drag.handle, drag.startPointer, pointer),
+          ),
         );
     }
   }
 
-  /// Solves the scale drag: the grabbed handle lands under the pointer
-  /// while the ANCHOR stays fixed (its motion folds into the translation).
+  /// Where the grabbed [handle] would be if it moved exactly as far as the
+  /// pointer has since the press — the point [_solveScaleDrag] is handed, so
+  /// a press that landed off the handle moves it by the hand's travel and not
+  /// onto the hand (F-127).
+  CanvasPoint _pressDisplaced(
+    SelectionAffine start,
+    TransformHandle handle,
+    CanvasPoint startPointer,
+    CanvasPoint pointer,
+  ) {
+    final grabbed = handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
+    final atPress = start.apply(
+      CanvasPoint(x: start.pivot.x + grabbed.x, y: start.pivot.y + grabbed.y),
+    );
+    return CanvasPoint(
+      x: atPress.x + pointer.x - startPointer.x,
+      y: atPress.y + pointer.y - startPointer.y,
+    );
+  }
+
+  /// Solves the scale drag: the grabbed handle lands on [pointer] — the
+  /// press-displaced point ([_pressDisplaced]) — while the ANCHOR stays
+  /// fixed (its motion folds into the translation).
   ///
   /// Which point that is comes from the tool's [TransformAnchor] setting,
   /// and Alt inverts it for this one drag. A hold alone could not be the
@@ -3551,6 +3587,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
+  /// Where [handle] stands on screen — the ONE answer the chrome draws and the
+  /// press hits.
+  ///
+  /// 🚨F-42 (유저 2026-08-31): 「작동은 하는데 변형툴 ui의 사각형, 상하좌우
+  /// 중앙의 사각형이 따라서 안움직임. 로직통일」. In 퍼스 an edge handle
+  /// carries its two QUAD corners, but it was drawn and hit at the AFFINE
+  /// box's edge, so once a corner moved the handle stayed behind on a box no
+  /// longer shown. Its place is its quad edge's middle now; every other handle
+  /// keeps the affine box's.
+  Offset _scaleHandleViewport(
+    TransformHandle handle,
+    SelectionAffine affine,
+    double width,
+    double height,
+  ) {
+    final corners = _placedCorners;
+    final pair = _edgeCornerPair(handle);
+    if (corners != null && pair != null) {
+      final a = _mapCanvasToViewportOffset(corners[pair[0]]);
+      final b = _mapCanvasToViewportOffset(corners[pair[1]]);
+      return (a + b) / 2;
+    }
+    return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
+  }
+
   TransformHandle? _hitTestTransformHandle(
     Offset local,
     SelectionAffine affine,
@@ -3559,10 +3620,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return TransformHandle.rotate;
     }
     for (final handle in _scaleHandles) {
-      final position = _mapLocalToViewport(
-        affine,
-        handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!,
-      );
+      final position = _scaleHandleViewport(handle, affine, _baseBoxWidth, _baseBoxHeight);
       if ((local - position).distance <= _handleHitRadius) {
         return handle;
       }
@@ -3931,10 +3989,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final point in placedCorners)
                 _mapCanvasToViewportOffset(point),
               for (final handle in _scaleHandles)
-                _mapLocalToViewport(
-                  chromeAffine,
-                  handleLocal(handle, chromeWidth, chromeHeight)!,
-                ),
+                _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
             knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
           )
@@ -3951,10 +4006,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ],
             handles: [
               for (final handle in _scaleHandles)
-                _mapLocalToViewport(
-                  chromeAffine,
-                  handleLocal(handle, chromeWidth, chromeHeight)!,
-                ),
+                _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
             knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
           );
