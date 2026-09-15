@@ -473,8 +473,12 @@ void main() {
       const Offset(120, 120),
       kind: PointerDeviceKind.mouse,
     );
-    for (var i = 0; i < 6; i++) {
-      await g.moveBy(const Offset(12, 0));
+    // ⚠️ONE PIXEL A STEP, and that is the whole case. A first move past the
+    // verb's own slop lets the deeper recogniser win by depth whether the
+    // surface makes way or not — twelve pixels passed with the make-way
+    // deleted (mutant, 2026-09-15). Under the slop, only making way does.
+    for (var i = 0; i < 12; i++) {
+      await g.moveBy(const Offset(1, 0));
       await tester.pump();
     }
     await g.up();
