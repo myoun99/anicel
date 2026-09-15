@@ -1301,6 +1301,35 @@ class _LayerStackPaintPass {
     );
   }
 
+  /// Recomposes [region] of [rect] over pixels a carry already put in
+  /// [into] — the one step the patch and the scroll carry share.
+  ///
+  /// ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
+  /// and ink that is not fully opaque would blend with its own previous
+  /// frame — a stroke would darken as it was redrawn.
+  ///
+  /// 🚨★★★AND WHERE THE NEW COMPOSITE DRAWS NOTHING, THE OLD PIXELS SIMPLY
+  /// STAY (F-104, 유저 2026-09-12: 「페이스트 보드에 이전 프레임의 그림이
+  /// 남아있음 … 그 위치에 선을 그리면 사라짐」). The patch cleared; the scroll
+  /// carry wrote the same steps out again without the clear, so switching to
+  /// a frame whose extent differed kept the frame before wherever the new
+  /// one had nothing. One step now, so a carry cannot be written without it.
+  ///
+  /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
+  /// carried pixels and leave a seam of its own.
+  void _recomposeOverCarried(Canvas into, Rect rect, List<Rect> region) {
+    final clip = Path();
+    for (final part in region) {
+      clip.addRect(part);
+    }
+    into.save();
+    into.clipPath(clip, doAntiAlias: false);
+    into.drawPaint(Paint()..blendMode = BlendMode.clear);
+    // The canvas-resolution buffer records with a translate only.
+    _paintContent(into, rasterRect: rect, rasterScale: 1);
+    into.restore();
+  }
+
   /// Recomposes only [dirty] over the carried [base]: the old pixels are
   /// blitted 1:1, the dirty rect cleared and repainted.
   void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
@@ -1312,15 +1341,7 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    into.save();
-    into.clipRect(dirty);
-    // ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
-    // and ink that is not fully opaque would blend with its own previous
-    // frame — a stroke would darken as it was redrawn.
-    into.drawRect(dirty, Paint()..blendMode = BlendMode.clear);
-    // The canvas-resolution buffer records with a translate only.
-    _paintContent(into, rasterRect: rect, rasterScale: 1);
-    into.restore();
+    _recomposeOverCarried(into, rect, [dirty]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1344,7 +1365,6 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    into.save();
     // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
     // the old one did not reach — plus the live dirty rect, because the
     // carried pixels are as old as the last composite.
@@ -1366,17 +1386,11 @@ class _LayerStackPaintPass {
       if (dirty != null && !dirty.intersect(overlap).isEmpty)
         dirty.intersect(overlap),
     ];
-    final exposed = Path();
     var area = 0.0;
     for (final band in bands) {
-      exposed.addRect(band);
       area += band.width * band.height;
     }
-    // ⛔NO ANTIALIAS on the clip: a soft edge would blend the band into
-    // the carried pixels and leave a seam of its own.
-    into.clipPath(exposed, doAntiAlias: false);
-    _paintContent(into, rasterRect: rect, rasterScale: 1);
-    into.restore();
+    _recomposeOverCarried(into, rect, bands);
     return area;
   }
 
