@@ -481,4 +481,58 @@ void main() {
       );
     });
   });
+
+  group('the one value lookup every lane and key asks (F-101)', () {
+    // ⛔THE WALK WAS WRITTEN THREE TIMES — a layer's chain, a track's chain
+    // and the storyboard rail's — and each was the same find-the-id-then-
+    // resolve. The value a lane SHOWS and a key FREEZES comes from one
+    // function now, so a fourth surface cannot quietly answer differently.
+    test('it resolves the named parameter, in the chain it is given', () {
+      final effects = [blur(x: 6), hue()];
+      expect(
+        effectParameterValueAt(effects, const EffectId('e1'), 'blurX', 0),
+        6,
+      );
+      expect(
+        effectParameterValueAt(effects, const EffectId('e1'), 'blurX', 999),
+        6,
+        reason: 'an unanimated parameter is the same at every frame',
+      );
+    });
+
+    test('and it answers per FRAME once the parameter is animated', () {
+      final keyed = effectsWithLaneKeyToggled(
+        [blur(x: 6)],
+        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        frameIndex: 4,
+      )!;
+      final animated = effectsWithLaneValueEdited(
+        keyed,
+        laneId: effectLaneId(const EffectId('e1'), 'blurX'),
+        frameIndex: 10,
+        input: '12',
+      )!;
+      expect(
+        effectParameterValueAt(animated, const EffectId('e1'), 'blurX', 4),
+        6,
+      );
+      expect(
+        effectParameterValueAt(animated, const EffectId('e1'), 'blurX', 10),
+        12,
+      );
+    });
+
+    test('an id the chain does not hold answers 0 rather than throwing — a '
+        'lane can outlive the effect it names', () {
+      expect(
+        effectParameterValueAt(
+          [blur(x: 6)],
+          const EffectId('gone'),
+          'blurX',
+          0,
+        ),
+        0,
+      );
+    });
+  });
 }

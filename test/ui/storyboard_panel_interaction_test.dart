@@ -29,8 +29,12 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeHooks;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -911,9 +915,6 @@ void main() {
         Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 2, 2), Paint());
         final picture = recorder.endRecording();
         try {
-          // 🚨AWAITED inside the try: without it the `finally` disposed the
-          // picture while `toImage` was still reading it (3.47's
-          // unawaited_return_in_try_block found this, 2026-09-16).
           return await picture.toImage(2, 2);
         } finally {
           picture.dispose();
@@ -1056,7 +1057,6 @@ void main() {
         Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 4, 2), Paint());
         final picture = recorder.endRecording();
         try {
-          // 🚨AWAITED inside the try — see the note at the 2×2 fixture.
           return await picture.toImage(4, 2);
         } finally {
           picture.dispose();
@@ -1429,9 +1429,10 @@ void main() {
           StoryboardPanel.seRowKey(track, 0),
           StoryboardPanel.seRowKey(track, 1),
         },
+        // An S row's groups key like the timeline's (F-101).
         expandedTransformGroups: {
-          StoryboardPanel.seRowKey(track, 0),
-          StoryboardPanel.seRowKey(track, 1),
+          for (final row in track.seLayers)
+            laneGroupKey(row.id, transformGroupHeaderLane.laneId),
         },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
@@ -1497,6 +1498,7 @@ void main() {
       expect(last.anchorRow, LaneRowAddress(seId, 'position'));
       expect(last.spanRows, [
         LayerRowAddress(seId),
+        LaneRowAddress(seId, seNameTagGroupLaneId),
         LaneRowAddress(seId, transformGroupHeaderLane.laneId),
         LaneRowAddress(seId, 'anchor-point'),
         LaneRowAddress(seId, 'position'),
@@ -1844,7 +1846,13 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         expandedSeAudioRows: {StoryboardPanel.seRowKey(track, 0)},
-        expandedTransformGroups: {StoryboardPanel.seRowKey(track, 0)},
+        // An S row's groups key like the timeline's (F-101).
+        expandedTransformGroups: {
+          laneGroupKey(
+            track.seLayers.single.id,
+            transformGroupHeaderLane.laneId,
+          ),
+        },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
           onSelectUpdate: (_, _, _, _, _, _) {},

@@ -40,12 +40,6 @@ class _StoryboardRailRows {
     );
   }
 
-  /// The shared lane substrate speaks Layer; label-only rows with no real
-  /// layer (an SE slot that is empty) ride a synthetic carrier — its id
-  /// only feeds the widget keys.
-  Layer _vLaneCarrier(String seed) =>
-      Layer(id: LayerId('v-$seed'), name: 'V', frames: const []);
-
   /// One V track's EFFECT lanes, below its Transform group — the same rows a
   /// layer's chain gets, one level up: this chain filters the whole
   /// composited cut (user 2026-08-08). Values resolve at GLOBAL frames, the
@@ -59,14 +53,12 @@ class _StoryboardRailRows {
       isExpanded: (effectId) => _state.widget.expandedTransformGroups.contains(
         _StoryboardPanelState.trackEffectGroupKey(track, effectId),
       ),
-      valueAt: (effectId, parameterId, frameIndex) {
-        for (final effect in track.effects) {
-          if (effect.id == effectId) {
-            return effect.parameterOf(parameterId).resolveAt(frameIndex);
-          }
-        }
-        return 0;
-      },
+      valueAt: (effectId, parameterId, frameIndex) => effectParameterValueAt(
+        track.effects,
+        effectId,
+        parameterId,
+        frameIndex,
+      ),
     );
   }
 
@@ -89,50 +81,32 @@ class _StoryboardRailRows {
     ];
   }
 
-  /// One S row's Transform-group lanes, header first, valued against the
-  /// row's own TRACK-owned layer (the same raw-track resolution the
-  /// timeline's value column uses — fx bypass never touches authoring
-  /// values). No cut is consulted: the row belongs to the track.
-  List<PropertyLaneRow> _seTransformLanes(Track track, int slot, Layer? layer) {
-    final expanded = _state.widget.expandedTransformGroups.contains(
-      StoryboardPanel.seRowKey(track, slot),
+  /// One S row's lanes: THE list an SE row twirls down ([propertyLanesForRow],
+  /// F-101), read on this track's rail — the row itself at the rail's global
+  /// frame (the same raw-track resolution the timeline's value column uses —
+  /// fx bypass never touches authoring values), an unkeyed pose in the middle
+  /// of the camera frame. No cut is consulted: the row belongs to the track.
+  ///
+  /// C5 (2026-08-17) holds by construction: the Audio lane is in the list
+  /// exactly when the timeline's lane law emits one (`seAudioLanesFor` —
+  /// nothing for a row with no sounds imported). The storyboard once mounted
+  /// it off the twirl alone, and an empty S row showed a waveform strip its
+  /// timeline twin never draws.
+  List<PropertyLaneRow> _seLanes(Track track, int slot) {
+    final layer = _trackSeAt(track, slot);
+    if (layer == null) {
+      return const [];
+    }
+    return propertyLanesForRow(
+      layer: layer,
+      rows: track.seLayers,
+      expandedGroupKeys: _state.widget.expandedTransformGroups,
+      valueSourceAt: (frameIndex) => (layer: layer, frame: frameIndex),
+      // The display size comes from the SESSION, exactly as the V row's
+      // lanes take it — never from "the cut that happens to be open", which
+      // made another track's S row show its values as defaults.
+      poseCentre: _state.widget.poseDisplaySize,
     );
-    // The display size comes from the SESSION, exactly as the V row's
-    // lanes take it — never from "the cut that happens to be open", which
-    // made another track's S row show its values as defaults.
-    final displaySize = _state.widget.poseDisplaySize;
-    final lanes = layer == null
-        ? transformPropertyLanes(
-            TransformTrack.empty(),
-            includeAnchorAndOpacity: true,
-          )
-        : transformPropertyLanes(
-            layer.transformTrack,
-            includeAnchorAndOpacity: true,
-            poseAt: displaySize == null
-                ? null
-                : (frame) => layer.transformTrack.resolveAt(
-                    frameIndex: frame,
-                    orElse: () => layerIdentityPose(displaySize),
-                  ),
-            anchorAt: displaySize == null
-                ? null
-                : (frame) =>
-                      resolveAnchorTrackAt(
-                        layer.transformTrack.anchorPoint,
-                        frame,
-                      ) ??
-                      CanvasPoint(
-                        x: displaySize.width / 2,
-                        y: displaySize.height / 2,
-                      ),
-            opacityAt: (frame) =>
-                resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
-          );
-    return [
-      transformGroupHeader(expanded: expanded),
-      if (expanded) ...lanes.where((lane) => !lane.isGroupHeader),
-    ];
   }
 
   /// ㉒ (user, 2026-08-12): the legend's twirl-all — the one control the
@@ -259,36 +233,15 @@ class _StoryboardRailRows {
             fxEnabledFromState(_state.widget.trackFxStateOf?.call(track)),
       );
 
-  /// C5 (2026-08-17): whether the [slot]th S row's twirl-down shows the
-  /// Audio (waveform) lane — the row is twirled open AND the TIMELINE's
-  /// own lane law emits one ([seAudioLanesFor]: an SE row with no sounds
-  /// imported has no Audio lane there, so it has none here either). The
-  /// storyboard used to mount the lane off the twirl alone, which is how
-  /// an empty S row showed a waveform strip this rail's twin never draws.
-  bool _seAudioLaneOpen(Track track, int slot) {
-    if (!_state.widget.expandedSeAudioRows.contains(
-      StoryboardPanel.seRowKey(track, slot),
-    )) {
-      return false;
-    }
-    final layer = _trackSeAt(track, slot);
-    return layer != null && seAudioLanesFor(layer).isNotEmpty;
-  }
-
-  /// How tall ONE S ROW stands on the rail: the row, plus its Audio lane
-  /// and Transform lanes when twirled open. The same construction
-  /// `railRowsForTrack` lays out, read back as a number.
+  /// How tall ONE S ROW stands on the rail: the row, plus its lanes when
+  /// twirled open. The same construction `railRowsForTrack` lays out, read
+  /// back as a number.
   double _seRowGroupExtent(Track track, int slot) {
     var extent = _seRowHeight;
     if (_state.widget.expandedSeAudioRows.contains(
       StoryboardPanel.seRowKey(track, slot),
     )) {
-      if (_seAudioLaneOpen(track, slot)) {
-        extent += _audioLaneHeight;
-      }
-      extent +=
-          _seTransformLanes(track, slot, _trackSeAt(track, slot)).length *
-          _transformLaneHeight;
+      extent += _seLanes(track, slot).length * _laneHeight;
     }
     return extent;
   }
@@ -308,7 +261,7 @@ class _StoryboardRailRows {
       extent += _seRowGroupExtent(track, slot);
     }
     if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
-      extent += _trackOwnLanes(track).length * _transformLaneHeight;
+      extent += _trackOwnLanes(track).length * _laneHeight;
     }
     return extent;
   }
@@ -543,13 +496,7 @@ class _StoryboardRailRows {
     final toggleSeRowLane = _state.widget.onToggleSeRowLane;
     final slot = row.seSlot;
     if (slot != null) {
-      final hasLanes =
-          _seAudioLaneOpen(row.track, slot) ||
-          _seTransformLanes(
-            row.track,
-            slot,
-            _trackSeAt(row.track, slot),
-          ).isNotEmpty;
+      final hasLanes = _seLanes(row.track, slot).isNotEmpty;
       return toggleSeRowLane == null || !hasLanes
           ? null
           : (_state.widget.seRowLaneOpenOf?.call(row.track, slot) ??
@@ -628,42 +575,43 @@ class _StoryboardRailRows {
           _state._rows.seLabelRow(track, slot),
           if (_state.widget.expandedSeAudioRows.contains(
             StoryboardPanel.seRowKey(track, slot),
-          )) ...[
-            // Audio leads the S twirl-down (the row's main tool, timeline
-            // parity); the Transform group sits below, collapsed default.
-            // C5: present exactly when the timeline's lane law emits it.
-            if (_seAudioLaneOpen(track, slot))
-              _StoryboardLaneLabel(
-                laneKey:
-                    'storyboard-lane-label-'
-                    '${track.id.value}'
-                    '-s${slot + 1}-audio',
-                label: AppText.strings.tlAudioLane,
-                icon: Icons.graphic_eq,
-                height: _audioLaneHeight,
-              ),
-            ..._state._rows.transformLaneLabels(
-              carrier:
-                  _trackSeAt(track, slot) ??
-                  _vLaneCarrier('se-${StoryboardPanel.seRowKey(track, slot)}'),
-              groupKey: StoryboardPanel.seRowKey(track, slot),
-              lanes: _seTransformLanes(track, slot, _trackSeAt(track, slot)),
-              laneEdit: _state.widget.layerLaneEdit,
-              // The row exists or it does not; the open cut is not part of
-              // the question (user, 2026-08-09).
-              active: _trackSeAt(track, slot) != null,
-              // An S row's keys are the TRACK's, so its labels read and seek
-              // the GLOBAL playhead, as the V rows' do (R4b). ↩️They read the
-              // ACTIVE cut's local cursor (#844 carried the frame over as it
-              // was): in any cut but the first the value showed at the wrong
-              // frame, and the ◆ keyed there (F-102).
-              frameCursor: _state.widget.playheadFrame,
-              onSelectFrame: _state.widget.onSeekGlobalFrame,
-            ),
-          ],
+          ))
+            ..._seLaneLabels(track, slot),
         ],
     ];
     return seRows;
+  }
+
+  /// One S row's lane labels on the shared substrate, row for row with
+  /// [_seLaneStrips]: its headers answer to the timeline's own switch and
+  /// reset, and every group keys by [laneGroupKey], the timeline's (F-101).
+  List<Widget> _seLaneLabels(Track track, int slot) {
+    final layer = _trackSeAt(track, slot);
+    if (layer == null) {
+      return const [];
+    }
+    final onToggleEnabled = _state.widget.onToggleLaneGroupEnabled;
+    final onReset = _state.widget.onResetLaneGroup;
+    return _state._rows.laneLabels(
+      carrier: layer,
+      groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
+      lanes: _seLanes(track, slot),
+      laneEdit: _state.widget.layerLaneEdit,
+      onToggleGroupEnabled: onToggleEnabled == null
+          ? null
+          : (lane) => onToggleEnabled(layer, lane),
+      onResetGroup: onReset == null ? null : (lane) => onReset(layer, lane),
+      // The row exists or it does not; the open cut is not part of the
+      // question (user, 2026-08-09).
+      active: true,
+      // An S row's keys are the TRACK's, so its labels read and seek the
+      // GLOBAL playhead, as the V rows' do (R4b). ↩️They read the ACTIVE
+      // cut's local cursor (#844 carried the frame over as it was): in any
+      // cut but the first the value showed at the wrong frame, and the ◆
+      // keyed there (F-102).
+      frameCursor: _state.widget.playheadFrame,
+      onSelectFrame: _state.widget.onSeekGlobalFrame,
+    );
   }
 
   /// The V section's rail rows for [track]: the draggable track label
@@ -753,13 +701,12 @@ class _StoryboardRailRows {
         // chain it names).
         ..._state._rows.draggableTrackEffectRows(
           track,
-          _state._rows.transformLaneLabels(
+          _state._rows.laneLabels(
             carrier: Layer(
               id: trackTransformLaneCarrierId(track.id),
               name: 'V',
               frames: const [],
             ),
-            groupKey: track.id.value,
             groupKeyOf: (lane) {
               final parsed = parseEffectLaneId(lane.laneId);
               return parsed == null
@@ -1273,40 +1220,21 @@ class _StoryboardRailRows {
         bandRow: false,
         height: _seRowHeight,
       ));
-      if (_state.widget.expandedSeAudioRows.contains(
-        StoryboardPanel.seRowKey(track, slot),
-      )) {
-        // C5: the audio slot exists exactly when the lane is drawn — a
-        // phantom slot here would shift every row under it.
-        if (_seAudioLaneOpen(track, slot)) {
+      if (layer != null &&
+          _state.widget.expandedSeAudioRows.contains(
+            StoryboardPanel.seRowKey(track, slot),
+          )) {
+        // One slot per lane the rail draws ([_seLanes]) — a phantom or a
+        // missing slot here would shift every row under it (C5). The Audio
+        // lane keeps no lane address, as it had: no key range lands on it.
+        for (final lane in _seLanes(track, slot)) {
+          final audio = laneIsSeAudio(lane);
           slots.add((
             row: null,
-            laneRow: null,
-            bandRow: false,
-            height: _audioLaneHeight,
+            laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
+            bandRow: !audio,
+            height: _laneHeight,
           ));
-        }
-        // The SE transform strips: the group header, plus the property
-        // lanes when twirled open ([_seTransformLaneStrips]'s shape).
-        void seLane(String laneId) => slots.add((
-          row: null,
-          laneRow: layer == null ? null : LaneRowAddress(layer.id, laneId),
-          bandRow: layer != null,
-          height: _transformLaneHeight,
-        ));
-        seLane(transformGroupHeaderLane.laneId);
-        if (_state.widget.expandedTransformGroups.contains(
-          StoryboardPanel.seRowKey(track, slot),
-        )) {
-          for (final laneId in const [
-            'anchor-point',
-            'position',
-            'scale',
-            'rotation',
-            'opacity',
-          ]) {
-            seLane(laneId);
-          }
         }
       }
     }
@@ -1329,7 +1257,7 @@ class _StoryboardRailRows {
           row: null,
           laneRow: LaneRowAddress(carrierId, lane.laneId),
           bandRow: true,
-          height: _transformLaneHeight,
+          height: _laneHeight,
         ));
       }
     }
@@ -1420,6 +1348,7 @@ class _StoryboardRailRows {
       timelineScale: scale,
       projectFrameRate: _state.widget.projectFrameRate,
       audioPeaksFor: _state.widget.audioPeaksFor,
+      seClipMarkerTooltip: _state.widget.seClipMarkerTooltip,
       onRowFramePress: _state.widget.onRowFramePress,
       onDropMediaAsset: _state.widget.onDropMediaAsset,
       acceptsMediaAsset: _state.widget.acceptsMediaAsset,
@@ -1448,49 +1377,11 @@ class _StoryboardRailRows {
         ),
         if (_state.widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
-        )) ...[
-          // C5: the waveform strip exists exactly when the timeline's lane
-          // law emits an Audio lane ([_seAudioLaneOpen]) — never for a row
-          // with nothing imported.
-          if (_seAudioLaneOpen(track, slot))
-            _stripRowLine(
-              _StoryboardAudioLaneRow(
-                trackIndex: index,
-                slot: slot,
-                layer: _state._seDisplayAt(track, slot),
-                layoutEntries: entries,
-                width: width,
-                timelineScale: scale,
-                projectFrameRate: _state.widget.projectFrameRate,
-                audioPeaksFor: _state.widget.audioPeaksFor,
-                seClipMarkerTooltip: _state.widget.seClipMarkerTooltip,
-                activeCutId: _state.widget.activeCutId,
-                onSetAudioClipOffset: _state.widget.onSetAudioClipOffset,
-              ),
-            ),
-          for (final strip in _seTransformLaneStrips(
-            track,
-            index,
-            slot,
-            entries,
-            width,
-            scale,
-          ))
+        ))
+          for (final strip in _seLaneStrips(track, index, slot, width, scale))
             _stripRowLine(strip),
-        ],
       ],
     ];
-  }
-
-  /// Resolves [laneId] against a transform [track] for one strip span.
-  PropertyLaneRow _laneOfTrack(TransformTrack track, String laneId) {
-    if (laneId == transformGroupHeaderLane.laneId) {
-      return transformGroupHeaderLane;
-    }
-    return transformPropertyLanes(
-      track,
-      includeAnchorAndOpacity: true,
-    ).firstWhere((lane) => lane.laneId == laneId);
   }
 
   /// The V track's own strip rows.
@@ -1544,6 +1435,7 @@ class _StoryboardRailRows {
                   lane: lane,
                   width: width,
                   timelineScale: scale,
+                  projectFrameRate: _state.widget.projectFrameRate,
                   laneEdit: laneEdit,
                   laneRange: _laneGestureCallbacksFor(track),
                 ),
@@ -1554,51 +1446,44 @@ class _StoryboardRailRows {
     ];
   }
 
-  /// One S row's Transform strip rows: CONTINUOUS key-marker rows on the
-  /// slot layer's OWN track-global axis (R4b — the per-cut spans emitted
-  /// cut-LOCAL frames into these global layers' lanes: an offset accident
-  /// past the first cut, structurally gone with the spans).
-  List<Widget> _seTransformLaneStrips(
+  /// One S row's lane strips, row for row with [_seLaneLabels]: CONTINUOUS
+  /// rows on the slot layer's OWN track-global axis (R4b — the per-cut spans
+  /// emitted cut-LOCAL frames into these global layers' lanes: an offset
+  /// accident past the first cut, structurally gone with the spans).
+  List<Widget> _seLaneStrips(
     Track track,
     int trackIndex,
     int slot,
-    List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
   ) {
-    final rowKey = StoryboardPanel.seRowKey(track, slot);
-    final expanded = _state.widget.expandedTransformGroups.contains(rowKey);
     final layer = _trackSeAt(track, slot);
-    Widget strip(String laneId) => layer == null
-        ? SizedBox(
-            key: ValueKey<String>(
-              'storyboard-se-lane-row-$trackIndex-${slot + 1}-$laneId',
-            ),
-            width: width,
-            height: _transformLaneHeight,
-          )
-        : _StoryboardLaneStripRow(
-            rowKey: 'storyboard-se-lane-row-$trackIndex-${slot + 1}-$laneId',
-            carrier: layer,
-            lane: _laneOfTrack(layer.transformTrack, laneId),
-            width: width,
-            timelineScale: scale,
-            laneEdit: _state.widget.layerLaneEdit,
-            // The S row's lanes take the range gesture too (R5 ③b). Their
-            // keys are the TRACK's, on the global axis this rail already
-            // draws — so the span is stated where it lives, and the cut
-            // panel is the one that has a window to fit it into.
-            laneRange: _laneGestureCallbacksFor(track),
-          );
+    if (layer == null) {
+      return const [];
+    }
     return [
-      strip(transformGroupHeaderLane.laneId),
-      if (expanded) ...[
-        strip('anchor-point'),
-        strip('position'),
-        strip('scale'),
-        strip('rotation'),
-        strip('opacity'),
-      ],
+      for (final lane in _seLanes(track, slot))
+        _StoryboardLaneStripRow(
+          rowKey:
+              'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
+          // The Audio band draws the in-flight take while one rolls (REC1-C,
+          // `_seDisplayAt`); the list — and so the strip count — stays the
+          // repository row's, in lockstep with the labels.
+          carrier: laneIsSeAudio(lane)
+              ? (_state._seDisplayAt(track, slot) ?? layer)
+              : layer,
+          lane: lane,
+          width: width,
+          timelineScale: scale,
+          projectFrameRate: _state.widget.projectFrameRate,
+          // The S row's lanes take the range gesture too (R5 ③b). Their
+          // keys are the TRACK's, on the global axis this rail already
+          // draws — so the span is stated where it lives, and the cut
+          // panel is the one that has a window to fit it into.
+          laneRange: _laneGestureCallbacksFor(track),
+          audioLane: _state.widget.audioLane,
+          audioPeaksFor: _state.widget.audioPeaksFor,
+        ),
     ];
   }
 

@@ -13,10 +13,10 @@ import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'timeline/session_lane_callbacks.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
-import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/layer_row_drag.dart'
@@ -25,7 +25,6 @@ import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
-import 'timeline/se_audio_lane.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
@@ -37,7 +36,6 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
-import 'timeline/transform_lane_policy.dart';
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
 /// action toolbar and the layer/frame dialogs it triggers. All wiring lives
@@ -280,39 +278,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // now — the carrier IS the folder, so every lane edit below takes the
   // one path.
 
-  PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
-    // The navigator toggles at the playhead, freezing the property's
-    // CURRENT resolved value there (AE behavior).
-    onToggleKeyAt: (layer, lane, frameIndex) =>
-        _session.laneVerbs.toggleLaneKeyAt(
-          layer.id,
-          lane.laneId,
-          frameIndex,
-          frameIsGlobal: false,
-          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
-        ),
-    onSetValue: (layer, lane, frameIndex, input) {
-      // The SE audio lane's value field edits the playhead span's offset
-      // trim instead of a transform property (one undo via the session).
-      if (laneIsSeAudio(lane)) {
-        final offset = parseAudioOffsetInput(input);
-        final span = seAudioSpanForLaneValue(layer, frameIndex);
-        if (offset == null || span == null) {
-          return;
-        }
-        _session.audioClips.setAudioClipOffset(layer.id, span.clipIndex, offset);
-        return;
-      }
-      _session.laneVerbs.setLaneValueAt(
-        layer.id,
-        lane.laneId,
-        frameIndex,
-        input,
-        frameIsGlobal: false,
-        description: 'Set ${lane.label} at frame ${frameIndex + 1}',
-      );
-    },
-  );
+  // ↩️The callbacks' body is [sessionLaneEditCallbacks] (F-101): the
+  // storyboard's S rows take the same one, on their own axis.
+  PropertyLaneEditCallbacks get _laneEdit =>
+      sessionLaneEditCallbacks(_session, frameIsGlobal: false);
 
   // ⛔The two LAYER dialogs left this host (2026-08-10): the layer pill is
   // mounted on the storyboard's bar too now, and nothing in either flow was
@@ -658,23 +627,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLeaveMediaAssetOnLayer: _session.mediaPlacement.clear,
             onDropMediaAssetBetweenLayers:
                 widget.onPlaceMediaAssetBetweenLayers,
-            audioLane: TimelineAudioLaneCallbacks(
-              // Media-browser drops: link the dragged sound to the block.
-              onDropMediaAsset: (layerId, blockStartFrame, path) =>
-                  _session.mediaPool.linkMediaAssetToSeBlock(
-                    layerId: layerId,
-                    blockStartFrame: blockStartFrame,
-                    path: path,
-                  ),
-              onSetClipOffset: _session.audioClips.setAudioClipOffset,
-              onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-                  _session.audioClips.setAudioClipFades(
-                    layerId,
-                    clipIndex,
-                    fadeInFrames: fadeIn,
-                    fadeOutFrames: fadeOut,
-                  ),
-            ),
+            // The SE rows' sound edits — the storyboard's S rows take the same
+            // object (F-101).
+            audioLane: sessionAudioLaneCallbacks(_session),
             onAddLayer: _session.layerStack.addLayer,
             isLayerSoloed: (layerId) =>
                 _session.soloedSeLayerIds.value.contains(layerId),
@@ -969,22 +924,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   ),
             // R6: the per-effect eyeball on an effect's header row. One undo
             // step through the ordinary effect-chain commit.
-            onToggleLaneGroupEnabled: (layer, lane) {
-              // R8: the Transform group's switch is the layer's own field.
-              if (lane.laneId == transformGroupHeaderLane.laneId) {
-                _session.effectsAndFx.toggleLayerTransformFx(layer.id);
-                return;
-              }
-              final effectId = parseEffectLaneId(lane.laneId)?.effectId;
-              if (effectId == null) {
-                return;
-              }
-              _session.laneVerbs.toggleLaneEffectEnabled(
-                layer.id,
-                effectId,
-                description: 'Toggle ${lane.label}',
-              );
-            },
+            // ↩️R8's transform switch and this eyeball are one verb since
+            // F-101 — the storyboard's S rows press it too.
+            onToggleLaneGroupEnabled: (layer, lane) =>
+                _session.laneVerbs.toggleLaneGroupEnabled(
+                  layer.id,
+                  lane.laneId,
+                  description: 'Toggle ${lane.label}',
+                ),
             // R5: AE's group Reset. The session owns the scope rule (the
             // playhead, or a live lane range's keys) so both grids and the
             // storyboard ask the same question.

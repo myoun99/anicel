@@ -672,6 +672,24 @@ PropertyKey<double>? namedEffectKey(
   return null;
 }
 
+/// [effectId]'s [parameterId] in [effects], resolved at [frameIndex] — 0 when
+/// the chain holds no such effect. The value a parameter lane shows and a key
+/// freezes, whichever row's chain it is: a layer's or a track's, on either
+/// panel (F-101 found the loop written three times).
+double effectParameterValueAt(
+  List<LayerEffect> effects,
+  EffectId effectId,
+  String parameterId,
+  int frameIndex,
+) {
+  for (final effect in effects) {
+    if (effect.id == effectId) {
+      return effect.parameterOf(parameterId).resolveAt(frameIndex);
+    }
+  }
+  return 0;
+}
+
 /// [effects] with every key carrying a change's name — in that change's own
 /// parameter — set to its value AND type. The other half of the link.
 List<LayerEffect> effectsWithNamedValues(

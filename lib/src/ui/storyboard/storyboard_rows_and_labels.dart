@@ -46,7 +46,7 @@ class _StoryboardRowsAndLabels {
           return LayerRowDragTarget(
             subject: EffectRowSubject(carrierId, parsed!.effectId),
             slotBefore: slot,
-            rowExtent: _transformLaneHeight,
+            rowExtent: _laneHeight,
             axis: Axis.horizontal,
             hooks: hooks,
             isLastRow: slot == displayEffects.length - 1,
@@ -69,25 +69,27 @@ class _StoryboardRowsAndLabels {
     ];
   }
 
-  /// Transform-lane rail label rows on the shared substrate ([lanes] from
-  /// [_cutTransformLanes]/[_state._railRows._seTransformLanes]): the group header row plus
-  /// the twirled-open member lanes, storyboard-prefixed. [active] gates
-  /// the navigator's frame jumps and value edits to the active cut.
-  List<Widget> transformLaneLabels({
+  /// Lane rail label rows on the shared substrate — an S row's lanes
+  /// ([_StoryboardRailRows._seLanes]) or a V row's fx chain
+  /// ([_StoryboardRailRows._trackEffectLanes]): the group headers plus the
+  /// twirled-open member lanes, storyboard-prefixed. [active] gates the
+  /// navigator's frame jumps and value edits.
+  List<Widget> laneLabels({
     required Layer carrier,
-    required String groupKey,
     required List<PropertyLaneRow> lanes,
     required PropertyLaneEditCallbacks? laneEdit,
     required bool active,
+
+    /// The group each header twirls, per LANE: a list's headers do not share
+    /// one (an S row's groups key by [laneGroupKey], the V row's effect chain
+    /// by effect).
+    required String Function(PropertyLaneRow lane) groupKeyOf,
     ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
 
-    /// Per-LANE group key, for lists whose headers do not share one (the V
-    /// row's effect chain: one group per effect). Null keeps [groupKey].
-    String Function(PropertyLaneRow lane)? groupKeyOf,
-
     /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
-    /// the glyph inert, which is what a Transform header wants here.
+    /// the glyph inert. ↩️「which is what a Transform header wants here」 held
+    /// until F-101 gave the S rows the timeline's switch.
     void Function(PropertyLaneRow lane)? onToggleGroupEnabled,
 
     /// The header's RESET (R5, AE's group Reset). Null hides the button —
@@ -96,7 +98,7 @@ class _StoryboardRowsAndLabels {
   }) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: _state.widget.pixelsPerFrame,
-      layerRowHeight: _transformLaneHeight - 2,
+      layerRowHeight: _laneHeight - 2,
     );
     final onToggleGroup = _state.widget.onToggleTransformGroup;
     Widget row(PropertyLaneRow lane, int frameIndex) => TimelineLaneControlsRow(
@@ -104,7 +106,7 @@ class _StoryboardRowsAndLabels {
       lane: lane,
       metrics: metrics,
       width: StoryboardPanel._trackLabelWidth,
-      height: _transformLaneHeight,
+      height: _laneHeight,
       currentFrameIndex: frameIndex,
       onSelectFrame: active
           ? onSelectFrame
@@ -112,7 +114,7 @@ class _StoryboardRowsAndLabels {
       laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
       onToggleLaneGroup: onToggleGroup == null
           ? null
-          : (_, _) => onToggleGroup(groupKeyOf?.call(lane) ?? groupKey),
+          : (_, _) => onToggleGroup(groupKeyOf(lane)),
       onToggleLaneGroupEnabled: onToggleGroupEnabled == null
           ? null
           : (_, _) => onToggleGroupEnabled(lane),

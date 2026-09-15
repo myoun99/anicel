@@ -491,6 +491,27 @@ class LaneVerbs {
     }
   }
 
+  /// A group header's switch, whichever group the header names: the
+  /// Transform group's is the row's own field (R8), an effect's is that
+  /// effect's eyeball (R6), and a group with no switch does nothing.
+  ///
+  /// One dispatch for every rail that draws a header. The timeline host held
+  /// it alone, so the storyboard's S rows had no switch to press (F-101).
+  void toggleLaneGroupEnabled(
+    LayerId layerId,
+    String headerLaneId, {
+    required String description,
+  }) {
+    if (headerLaneId == transformGroupHeaderLane.laneId) {
+      _effectsAndFx.toggleLayerTransformFx(layerId);
+      return;
+    }
+    final effectId = parseEffectLaneId(headerLaneId)?.effectId;
+    if (effectId != null) {
+      toggleLaneEffectEnabled(layerId, effectId, description: description);
+    }
+  }
+
   /// [track] with [laneId]'s key at [frame] toggled — a new one frozen at
   /// the value [layer] resolves there. What the navigator's ◆ and the range
   /// Create both write.
@@ -1034,7 +1055,14 @@ class LaneVerbs {
     if (headerLaneId != transformGroupHeaderLane.laneId) {
       return false;
     }
-    final canvasSize = _project.requireActiveCut.canvasSize;
+    // A gap has no canvas for the unkeyed pose to sit in the middle of, so
+    // there is nothing for a transform reset to reset TO. The storyboard's S
+    // rows reach this with no cut open since F-101; an effect's reset above
+    // needs no canvas and still runs there.
+    final canvasSize = _project.activeCutOrNull?.canvasSize;
+    if (canvasSize == null) {
+      return false;
+    }
     final next = transformTrackWithGroupReset(
       _laneTransformTrackOf(layer),
       frameIndexes: frames,

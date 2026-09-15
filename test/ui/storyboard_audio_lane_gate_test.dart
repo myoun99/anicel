@@ -125,13 +125,13 @@ void main() {
     await _twirl(tester, 1);
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-2')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-2-se-audio')),
       findsNothing,
       reason: 'no clips, no waveform strip — the timeline\'s own answer',
     );
     expect(
       find.byKey(
-        ValueKey<String>('storyboard-lane-label-${_trackId.value}-s2-audio'),
+        ValueKey<String>('storyboard-lane-label-${_emptyId.value}-se-audio'),
       ),
       findsNothing,
       reason: 'and no Audio label on the rail',
@@ -151,12 +151,12 @@ void main() {
     await _twirl(tester, 0);
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
       findsOneWidget,
     );
     expect(
       find.byKey(
-        ValueKey<String>('storyboard-lane-label-${_trackId.value}-s1-audio'),
+        ValueKey<String>('storyboard-lane-label-${_withSoundId.value}-se-audio'),
       ),
       findsOneWidget,
     );

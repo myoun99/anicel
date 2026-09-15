@@ -6,12 +6,11 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
-import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
-import '../models/layer_effect.dart' show EffectId;
+import '../models/layer_effect.dart' show EffectId, effectParameterValueAt;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -26,9 +25,7 @@ import '../models/timeline_coverage.dart'
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
-import '../models/transform_track.dart';
 import '../services/audio/audio_peaks_extractor.dart';
-import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
@@ -45,14 +42,20 @@ import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
-    show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
+    show
+        PropertyLaneEditCallbacks,
+        PropertyLaneRow,
+        TimelineDisplayRow,
+        laneGroupKey;
+import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_span_resolver.dart'
     show
         laneSpanOverDrawnRows,
         resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,
         resolveLaneSpanEscalationOverAddresses;
-import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow, seAudioLanesFor;
+import 'timeline/se_audio_lane.dart'
+    show SeAudioLaneFrameRow, TimelineAudioLaneCallbacks, laneIsSeAudio;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
 import 'timeline/effect_lane_policy.dart'
@@ -68,11 +71,7 @@ import 'timeline/layer_row_drag.dart'
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
-    show
-        laneSelectionCoversBandRow,
-        transformGroupHeader,
-        transformGroupHeaderLane,
-        transformPropertyLanes;
+    show laneSelectionCoversBandRow, transformGroupHeader;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
@@ -488,9 +487,11 @@ class StoryboardPanel extends StatefulWidget {
     this.onTrackOpacityChangeEnd,
     this.onToggleTrackEffectEnabled,
     this.onResetTrackEffectGroup,
+    this.onToggleLaneGroupEnabled,
+    this.onResetLaneGroup,
     this.seCommaDrag,
     this.seSelect,
-    this.onSetAudioClipOffset,
+    this.audioLane,
     this.transitionDefById,
     this.transitionCrossingTooltip,
     this.transitionPreview,
@@ -765,8 +766,11 @@ class StoryboardPanel extends StatefulWidget {
   /// only — rail controls, commits and undo keep the repository lane.
   final Layer? seLanePreview;
 
-  /// Twirled-down S rows ([seRowKey]): an enlarged read-only waveform lane
-  /// under the row, the timeline Audio lane's storyboard sibling.
+  /// Twirled-down S rows ([seRowKey]): the row's lanes — the list the
+  /// timeline's SE row twirls down ([propertyLanesForRow]). ↩️An enlarged
+  /// read-only waveform lane at first, the timeline Audio lane's storyboard
+  /// sibling, which is where the name comes from; the lanes are the
+  /// timeline's own since F-101.
   final Set<String> expandedSeAudioRows;
   final void Function(Track track, int slot)? onToggleSeRowLane;
 
@@ -776,9 +780,11 @@ class StoryboardPanel extends StatefulWidget {
   final Set<String> expandedTransformTracks;
   final void Function(Track track)? onToggleTrackLane;
 
-  /// Twirled-open Transform GROUP HEADERS (AE group collapse, default
-  /// collapsed): track id values for the V tracks, [seRowKey]s for the S
-  /// rows. One set — the key shapes never collide.
+  /// Twirled-open GROUP HEADERS (AE group collapse, default collapsed): track
+  /// id values for the V tracks, [laneGroupKey]s for the S rows — the
+  /// timeline's own keys, since an S row's groups are the row's groups
+  /// (F-101; ↩️they were [seRowKey]s while the S rows had the Transform group
+  /// alone). One set — the key shapes never collide.
   final Set<String> expandedTransformGroups;
   final void Function(String groupKey)? onToggleTransformGroup;
 
@@ -950,10 +956,16 @@ class StoryboardPanel extends StatefulWidget {
   /// blocks select on tap first). Null hides the grips.
   final TimelineCommaDragCallbacks? seCommaDrag;
 
-  /// The Audio lane's slide edit for the ACTIVE cut's clips (same reused
-  /// timeline lane substrate). Null keeps the lane display-only.
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
+  /// The S rows' sound edits — the Audio lane's offset slide and fade drags —
+  /// the same object the timeline's SE rows take (F-101; ↩️it was the offset
+  /// slide alone). Null keeps the lane display-only.
+  final TimelineAudioLaneCallbacks? audioLane;
+
+  /// An S row's group header switch and reset — the timeline's own verbs
+  /// (F-101). Null leaves the switch inert and hides the reset.
+  final void Function(Layer layer, PropertyLaneRow lane)?
+  onToggleLaneGroupEnabled;
+  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
 
   // The TRANSITION row (O.L / F.I / F.O). This panel is the ONE surface that
   // authors it: the row is track-owned and its spans address the global frame
@@ -2313,11 +2325,13 @@ const double _seRowHeight = 30;
 /// up with the rail's own row pitch.
 const double _transitionRowHeight = 30;
 
-/// Twirl-down lane heights: the enlarged waveform strip and the property lanes
-/// (labels and strips share these — the rail and strips columns must stay
-/// height-synced). The cut-fade envelope's own height went with that row.
-const double _audioLaneHeight = 36;
-const double _transformLaneHeight = 26;
+/// A twirled-down lane's height — every lane, the Audio lane included: the
+/// timeline draws all its rows at one height, and the labels and the strips
+/// share it (the rail and strips columns must stay height-synced).
+/// ↩️The Audio lane stood taller as an enlarged waveform strip until F-101
+/// made it the timeline's own lane; the cut-fade envelope's own height went
+/// with that row before.
+const double _laneHeight = 26;
 
 /// The track's SE row count: SE rows are TRACK-owned (list order is THE
 /// ordering every panel renders — timeline parity by identity).
@@ -2768,55 +2782,6 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   }
 }
 
-/// A twirled-down lane's rail label row (Audio / Opacity), indented under
-/// its owner row like the timeline's lane labels.
-class _StoryboardLaneLabel extends StatelessWidget {
-  const _StoryboardLaneLabel({
-    required this.laneKey,
-    required this.label,
-    required this.icon,
-    required this.height,
-  });
-
-  final String laneKey;
-  final String label;
-  final IconData icon;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      key: ValueKey<String>(laneKey),
-      width: StoryboardPanel._trackLabelWidth,
-      height: height,
-      padding: const EdgeInsets.only(right: 8),
-      decoration: BoxDecoration(
-        color: AppColors.washDown,
-        // Side/bottom borders only (UI-R10 #20), like the timeline rail.
-        border: Border(
-          left: BorderSide(color: colorScheme.outlineVariant),
-          right: BorderSide(color: colorScheme.outlineVariant),
-          bottom: BorderSide(color: colorScheme.outlineVariant),
-        ),
-      ),
-      child: Row(
-        children: [
-          // The rows' section band continues through lane rows (UI-R6 #5).
-          const LayerSectionBandCell(),
-          const SizedBox(width: 18),
-          Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// The TRACK-owned TRANSITION row on the global frame axis: the O.L / F.I /
 /// F.O spans exactly as stored, marks and grips included.
 ///
@@ -3195,6 +3160,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFrameRate,
     this.audioPeaksFor,
+    this.seClipMarkerTooltip,
     this.onRowFramePress,
     this.onDropMediaAsset,
     this.acceptsMediaAsset,
@@ -3229,6 +3195,11 @@ class _StoryboardSeRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// The recorded-take clipping warning (REC1-D): non-null mounts the red
+  /// block-corner marker on clipped spans, where the timeline's SE row
+  /// mounts it. Null hides it (clipping notice setting off).
+  final String? seClipMarkerTooltip;
 
   /// Timeline parity: the row's cells press (row + frame, empty cells
   /// included) and EVERY block carries the comma edge grips (UI-R7 #5 —
@@ -3267,6 +3238,10 @@ class _StoryboardSeRow extends StatelessWidget {
       final blocks = drawingBlocks(layer.timeline);
       spans.addAll(_contentSpans(layer, blocks));
       spans.addAll(_interactionLayers(context, layer, blocks));
+      final clipTooltip = seClipMarkerTooltip;
+      if (clipTooltip != null) {
+        spans.add(_clipMarkerLayer(context, layer, clipTooltip));
+      }
     }
 
     return SizedBox(
@@ -3274,6 +3249,40 @@ class _StoryboardSeRow extends StatelessWidget {
       width: width,
       height: _seRowHeight,
       child: Stack(children: spans),
+    );
+  }
+
+  /// Clipped takes' red corners (REC1-D) on the ROW, where the timeline's SE
+  /// row mounts them. ↩️They rode the twirled-down Audio lane here, so a
+  /// clipped take showed only while its row was open (F-101).
+  Positioned _clipMarkerLayer(
+    BuildContext context,
+    Layer layer,
+    String tooltip,
+  ) {
+    final frames = timelineScale.pixelsPerFrame <= 0
+        ? 0
+        : (width / timelineScale.pixelsPerFrame).ceil();
+    return Positioned.fill(
+      child: TimelineFixedFrameSpanLayer(
+        geometry: TimelineFrameGeometry(
+          frameCellExtent: timelineScale.pixelsPerFrame,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+        ),
+        crossAxisExtent: _seRowHeight,
+        axis: Axis.horizontal,
+        children: timelineRowClipMarkerOverlays(
+          layer: layer,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+          crossAxisExtent: _seRowHeight,
+          axis: Axis.horizontal,
+          tooltip: tooltip,
+          color: Theme.of(context).colorScheme.error,
+          keyPrefix: 'storyboard-${layer.id}',
+        ),
+      ),
     );
   }
 
@@ -3657,130 +3666,14 @@ class _StoryboardSeRow extends StatelessWidget {
   );
 }
 
-/// The twirled-down S row's enlarged waveform strip: the timeline Audio
-/// lane ITSELF, mounted ONCE across the whole track (the layer is
-/// track-owned — its spans sit on the global axis and slide-edit
-/// everywhere; the session's clip edits resolve by layer id).
-class _StoryboardAudioLaneRow extends StatelessWidget {
-  const _StoryboardAudioLaneRow({
-    required this.trackIndex,
-    required this.slot,
-    required this.layer,
-    required this.layoutEntries,
-    required this.width,
-    required this.timelineScale,
-    required this.projectFrameRate,
-    this.audioPeaksFor,
-    this.seClipMarkerTooltip,
-    this.activeCutId,
-    this.onSetAudioClipOffset,
-  });
-
-  final int trackIndex;
-  final int slot;
-
-  /// The track's GLOBAL SE layer behind this lane.
-  final Layer? layer;
-  final List<StoryboardTimelineLayoutEntry> layoutEntries;
-  final double width;
-  final TimelineScale timelineScale;
-  final ProjectFrameRate projectFrameRate;
-  final AudioPeaks? Function(String filePath)? audioPeaksFor;
-  final String? seClipMarkerTooltip;
-  final CutId? activeCutId;
-  final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
-  onSetAudioClipOffset;
-
-  @override
-  Widget build(BuildContext context) {
-    final spans = <Widget>[];
-    final onSetAudioClipOffset = this.onSetAudioClipOffset;
-    final layer = this.layer;
-    // The reused lane renders with timeline metrics: the frame-axis zoom is
-    // the storyboard's pixels-per-frame, the cross extent this lane's
-    // height.
-    final laneMetrics = TimelineGridMetrics(
-      frameCellWidth: timelineScale.pixelsPerFrame,
-      layerRowHeight: _audioLaneHeight - 2,
-    );
-    if (layer != null && layoutEntries.isNotEmpty) {
-      final totalFrames = layoutEntries.last.endFrame;
-      spans.add(
-        Positioned(
-          left: timelineScale.leftForFrame(0),
-          top: 1,
-          width: totalFrames * timelineScale.pixelsPerFrame,
-          height: _audioLaneHeight - 2,
-          child: KeyedSubtree(
-            key: ValueKey<String>('storyboard-audio-lane-span-${layer.id}'),
-            child: SeAudioLaneFrameRow(
-              layer: layer,
-              frameStartIndex: 0,
-              frameEndIndexExclusive: totalFrames,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: laneMetrics,
-              frameRate: projectFrameRate,
-              audioPeaksFor: audioPeaksFor,
-              keyPrefix: 'storyboard-${layer.id}',
-              onSetClipOffset: onSetAudioClipOffset == null
-                  ? null
-                  : (clipIndex, offsetFrames) =>
-                        onSetAudioClipOffset(layer.id, clipIndex, offsetFrames),
-            ),
-          ),
-        ),
-      );
-      // Recorded-take clipping warning (REC1-D): the same red block-corner
-      // marker the timeline and X-sheet mount, over the lane's own frame
-      // extent. The tooltip string doubles as the switch.
-      final clipTooltip = seClipMarkerTooltip;
-      if (clipTooltip != null) {
-        spans.add(
-          Positioned(
-            left: timelineScale.leftForFrame(0),
-            top: 1,
-            width: totalFrames * timelineScale.pixelsPerFrame,
-            height: _audioLaneHeight - 2,
-            child: TimelineFixedFrameSpanLayer(
-              geometry: TimelineFrameGeometry(
-                frameCellExtent: timelineScale.pixelsPerFrame,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: totalFrames,
-              ),
-              crossAxisExtent: _audioLaneHeight - 2,
-              axis: Axis.horizontal,
-              children: timelineRowClipMarkerOverlays(
-                layer: layer,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: totalFrames,
-                crossAxisExtent: _audioLaneHeight - 2,
-                axis: Axis.horizontal,
-                tooltip: clipTooltip,
-                color: Theme.of(context).colorScheme.error,
-                keyPrefix: 'storyboard-${layer.id}',
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    return SizedBox(
-      key: ValueKey<String>(
-        'storyboard-audio-lane-row-$trackIndex-${slot + 1}',
-      ),
-      width: width,
-      height: _audioLaneHeight,
-      child: Stack(children: spans),
-    );
-  }
-}
-
-/// One Transform lane's frame band: the reused timeline lane substrate
-/// rendered PER CUT (the audio lane's remount pattern — each span runs
-/// cut-local frames at the cut's global left). Key markers ride each
-/// cut's own transform track; editing is gated to the ACTIVE cut, like
-/// the audio lane's slide edit.
+/// One lane's frame band on the shared substrate — the timeline grid's own
+/// row for whatever the lane is: the Audio lane's waveform band
+/// ([SeAudioLaneFrameRow]) or a property lane's key markers
+/// ([TimelineLaneFrameRow]), told apart by [laneIsSeAudio] exactly as the
+/// timeline tells them apart (F-101).
+///
+/// ↩️It said 「rendered PER CUT (the audio lane's remount pattern)」, which
+/// R4b had already retired: the band runs the track's global axis in one row.
 class _StoryboardLaneStripRow extends StatelessWidget {
   const _StoryboardLaneStripRow({
     required this.rowKey,
@@ -3788,8 +3681,11 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     required this.lane,
     required this.width,
     required this.timelineScale,
+    required this.projectFrameRate,
     this.laneEdit,
     this.laneRange,
+    this.audioLane,
+    this.audioPeaksFor,
   });
 
   final String rowKey;
@@ -3808,6 +3704,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 
   final double width;
   final TimelineScale timelineScale;
+  final ProjectFrameRate projectFrameRate;
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// Wires the band's range-select/move gesture (the timeline's lane
@@ -3815,32 +3712,66 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   /// display-only (SE lanes, v1).
   final TimelineLaneRangeCallbacks? laneRange;
 
+  /// The Audio band's sound edits and the peaks it draws — what the
+  /// timeline's SE rows take. A property lane reads neither.
+  final TimelineAudioLaneCallbacks? audioLane;
+  final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
   @override
   Widget build(BuildContext context) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: timelineScale.pixelsPerFrame,
-      layerRowHeight: _transformLaneHeight - 2,
+      layerRowHeight: _laneHeight - 2,
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
         : (width / timelineScale.pixelsPerFrame).floor();
+    final onSetClipOffset = audioLane?.onSetClipOffset;
+    final onSetClipFades = audioLane?.onSetClipFades;
     return SizedBox(
       key: ValueKey<String>(rowKey),
       width: width,
-      height: _transformLaneHeight,
+      height: _laneHeight,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
-        child: TimelineLaneFrameRow(
-          layer: carrier,
-          lane: lane,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: frames,
-          leadingFrameSpacerWidth: 0,
-          trailingFrameSpacerWidth: 0,
-          metrics: metrics,
-          laneRange: laneRange,
-          keyPrefix: 'storyboard',
-        ),
+        child: laneIsSeAudio(lane)
+            ? SeAudioLaneFrameRow(
+                layer: carrier,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: frames,
+                leadingFrameSpacerWidth: 0,
+                trailingFrameSpacerWidth: 0,
+                metrics: metrics,
+                frameRate: projectFrameRate,
+                audioPeaksFor: audioPeaksFor,
+                // The span keys ride the row's id, as they did on the Audio
+                // lane this band replaced.
+                keyPrefix: 'storyboard-${carrier.id}',
+                onSetClipOffset: onSetClipOffset == null
+                    ? null
+                    : (clipIndex, offsetFrames) =>
+                          onSetClipOffset(carrier.id, clipIndex, offsetFrames),
+                offsetDrag: audioLane?.offsetDrag,
+                onSetClipFades: onSetClipFades == null
+                    ? null
+                    : (clipIndex, fadeIn, fadeOut) => onSetClipFades(
+                        carrier.id,
+                        clipIndex,
+                        fadeIn,
+                        fadeOut,
+                      ),
+              )
+            : TimelineLaneFrameRow(
+                layer: carrier,
+                lane: lane,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: frames,
+                leadingFrameSpacerWidth: 0,
+                trailingFrameSpacerWidth: 0,
+                metrics: metrics,
+                laneRange: laneRange,
+                keyPrefix: 'storyboard',
+              ),
       ),
     );
   }

@@ -16,6 +16,7 @@ import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
+import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
@@ -244,34 +245,22 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   // anchor — a hand-kept copy of what the panel draws, drifted. The panel
   // resolves the head lane off its own row geometry now.
 
-  /// Lane edit hooks for the S rows' Transform lanes — the verbs the
-  /// timeline's lanes key through, handed this rail's GLOBAL frames (SE
-  /// layers only here; no camera or audio-lane dispatch on these lanes).
+  /// Lane edit hooks for the S rows' lanes — the verbs the timeline's lanes
+  /// key through, handed this rail's GLOBAL frames.
   ///
   /// ↩️This was 「the timeline host's layer-transform editing verbatim」 — a
   /// copy, which keyed the row at whatever frame the label passed, and the S
   /// labels passed the ACTIVE cut's local cursor to a row whose keys are
   /// global (F-102). [LaneVerbs] holds the one body now, and the labels read
   /// the global playhead.
-  PropertyLaneEditCallbacks get _layerLaneEdit => PropertyLaneEditCallbacks(
-    onToggleKeyAt: (layer, lane, frameIndex) =>
-        _session.laneVerbs.toggleLaneKeyAt(
-          layer.id,
-          lane.laneId,
-          frameIndex,
-          frameIsGlobal: true,
-          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
-        ),
-    onSetValue: (layer, lane, frameIndex, input) =>
-        _session.laneVerbs.setLaneValueAt(
-          layer.id,
-          lane.laneId,
-          frameIndex,
-          input,
-          frameIsGlobal: true,
-          description: 'Set ${lane.label} at frame ${frameIndex + 1}',
-        ),
-  );
+  ///
+  /// ↩️「SE layers only here; no camera or audio-lane dispatch on these
+  /// lanes」 stopped being true with F-101: an S row twirls down the
+  /// timeline's own list, Audio lane included, so both hosts take
+  /// [sessionLaneEditCallbacks] and the typed offset goes where the
+  /// timeline's does.
+  PropertyLaneEditCallbacks get _layerLaneEdit =>
+      sessionLaneEditCallbacks(_session, frameIsGlobal: true);
 
   /// The row's double-tap: the SHARED transition instance editor at the tapped
   /// frame. The implementation moved to [editTransitionSpanInstance] so this
@@ -889,6 +878,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // and then refuse to grow.
                     onSeRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
                     layerLaneEdit: _layerLaneEdit,
+                    // An S row's group headers: the timeline's own switch and
+                    // reset (F-101).
+                    onToggleLaneGroupEnabled: (layer, lane) =>
+                        _session.laneVerbs.toggleLaneGroupEnabled(
+                          layer.id,
+                          lane.laneId,
+                          description: 'Toggle ${lane.label}',
+                        ),
+                    onResetLaneGroup: (layer, lane) =>
+                        _session.resetLaneGroup(layer.id, lane.laneId),
                     poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the
@@ -999,8 +998,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onEnd: _session.edgeDrag.endExposureEdgeDrag,
                       onCancel: _session.edgeDrag.cancelExposureEdgeDrag,
                     ),
-                    // The Audio lane's slide edit (active cut).
-                    onSetAudioClipOffset: _session.audioClips.setAudioClipOffset,
+                    // The S rows' sound edits — the timeline's own (F-101).
+                    audioLane: sessionAudioLaneCallbacks(_session),
                     // The TRANSITION row. This panel is its only editor: the
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.

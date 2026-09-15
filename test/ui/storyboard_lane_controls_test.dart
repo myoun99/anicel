@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
+import 'package:anicel/src/ui/timeline/se_audio_lane.dart'
+    show TimelineAudioLaneCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'package:anicel/src/models/project.dart';
@@ -151,7 +153,11 @@ Future<void> _pumpPanel(
             onOpenLayerMixer: onOpenLayerMixer,
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
-            onSetAudioClipOffset: onSetAudioClipOffset,
+            audioLane: onSetAudioClipOffset == null
+                ? null
+                : TimelineAudioLaneCallbacks(
+                    onSetClipOffset: onSetAudioClipOffset,
+                  ),
             cutPictureVisibleOf: cutPictureVisibleOf,
             onToggleCutPictureVisibility: onToggleCutPictureVisibility,
             trackFxStateOf: trackFxStateOf,
@@ -182,7 +188,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
-    const seLane = ValueKey<String>('storyboard-audio-lane-row-0-1');
+    const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
 
     // The V row's own state is read off its chevron: its lanes are its fx
     // chain, and a track with no effects opens onto nothing to find.
@@ -236,7 +242,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
       findsOneWidget,
     );
 
@@ -244,7 +250,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
       findsNothing,
     );
     expect(
@@ -380,7 +386,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
       findsNothing,
     );
 
@@ -391,12 +397,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('storyboard-audio-lane-row-0-1')),
+      find.byKey(const ValueKey<String>('storyboard-se-lane-row-0-1-se-audio')),
       findsOneWidget,
     );
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-lane-label-lane-track-s1-audio'),
+        const ValueKey<String>('storyboard-lane-label-lane-se-se-audio'),
       ),
       findsOneWidget,
     );
@@ -409,6 +415,15 @@ void main() {
         const ValueKey<String>(
           'storyboard-lane-se-audio-lane-span-lane-se-0-b0',
         ),
+      ),
+      findsOneWidget,
+    );
+
+    // F-101: the timeline's own list — the Name Tag group sits between the
+    // Audio lane and the Transform group, collapsed like it.
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-label-lane-se-name-tag-group'),
       ),
       findsOneWidget,
     );

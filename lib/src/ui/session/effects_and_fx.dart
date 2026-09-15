@@ -109,14 +109,7 @@ class EffectsAndFx {
     EffectId effectId,
     String parameterId,
     int frameIndex,
-  ) {
-    for (final effect in layer.effects) {
-      if (effect.id == effectId) {
-        return effect.parameterOf(parameterId).resolveAt(frameIndex);
-      }
-    }
-    return 0;
-  }
+  ) => effectParameterValueAt(layer.effects, effectId, parameterId, frameIndex);
 
   /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
   /// plus every effect's own switch, read as one answer for the layer-label
@@ -368,14 +361,7 @@ class EffectsAndFx {
     EffectId effectId,
     String parameterId,
     int frameIndex,
-  ) {
-    for (final effect in track.effects) {
-      if (effect.id == effectId) {
-        return effect.parameterOf(parameterId).resolveAt(frameIndex);
-      }
-    }
-    return 0;
-  }
+  ) => effectParameterValueAt(track.effects, effectId, parameterId, frameIndex);
 
   /// The V row's fx toggle, one undoable write.
   void toggleTrackFx(TrackId trackId) {

@@ -1,3 +1,19 @@
+/// 🚨THE 30-SECOND DEFAULT IS NOT THIS FILE'S BOUND (2026-09-16).
+///
+/// These cases raster tiles for real and wait for the landing off-frame.
+/// Alone they are slow but green; under load — another lane gating on the
+/// same machine — they cross the test package's DEFAULT 30s and die with a
+/// bare `TimeoutException` that says nothing about what was being waited
+/// for. Three landings lost a cycle to that in one evening (i22a, f95,
+/// f101), each time with the product perfectly green on the re-run.
+///
+/// ⛔This is not 「상한을 올려 숨긴다」. The default was never chosen for a
+/// rasterising test; the real bound is stated here, and the COST itself —
+/// 4m27s for three cases, measured — stays open as its own round
+/// (`tile-count-timeout-under-load`).
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
