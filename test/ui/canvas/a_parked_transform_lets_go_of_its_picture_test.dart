@@ -168,13 +168,7 @@ void main() {
       );
     }
 
-    final picture = [
-      for (final tile in coordinator
-          .currentSurfaceOf(coordinator.activeFrameKey)
-          .tiles
-          .values)
-        WeakReference<BitmapTile>(tile),
-    ];
+    final picture = _weakTilesOfTheActiveCel(coordinator);
     expect(picture, isNotEmpty, reason: 'fixture: the picture made tiles');
     int alive() => picture.where((tile) => tile.target != null).length;
 
@@ -199,7 +193,13 @@ void main() {
       reason: 'control: the budget parked the deep entry',
     );
     await settle();
-    await tester.runAsync(() => collectGarbageUntil(() => alive() == 0));
+    // ⚠️A FEW rounds, not the helper's fifty: when something still holds the
+    // picture the condition never comes true, and fifty rounds of the churn
+    // under a heap that large took one run past ten gigabytes and five
+    // minutes before it could say so (2026-09-15).
+    await tester.runAsync(
+      () => collectGarbageUntil(() => alive() == 0, rounds: 6),
+    );
     expect(
       alive(),
       0,
@@ -208,3 +208,22 @@ void main() {
     );
   });
 }
+
+/// Weak references to every tile of [coordinator]'s active cel.
+///
+/// ⚠️IN A FUNCTION OF ITS OWN, AND THAT IS PART OF THE MEASUREMENT
+/// (2026-09-15). Written as a collection-`for` inside the test body, the
+/// loop's iterator — and through it the surface's tile map — stayed in the
+/// async test frame for the rest of the test: a heap snapshot found all
+/// sixteen tiles alive behind a map and an iterator that nothing in the heap
+/// referred to, after the product had already let go of them. A frame that
+/// has returned cannot pin anything.
+List<WeakReference<BitmapTile>> _weakTilesOfTheActiveCel(
+  BrushFrameEditingCoordinator coordinator,
+) => [
+  for (final tile in coordinator
+      .currentSurfaceOf(coordinator.activeFrameKey)
+      .tiles
+      .values)
+    WeakReference<BitmapTile>(tile),
+];
