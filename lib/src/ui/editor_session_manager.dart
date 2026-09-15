@@ -528,6 +528,7 @@ class EditorSessionManager extends ChangeNotifier
   /// Undo and redo whose first frame is whole — see [HistoryPictures].
   late final HistoryPictures historyPictures = HistoryPictures(
     history: historyManager,
+    store: renderCaches.brushFrameStore,
   );
   @override
   late final CutCommandCoordinator cutCommandCoordinator;

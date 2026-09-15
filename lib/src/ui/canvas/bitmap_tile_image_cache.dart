@@ -255,6 +255,39 @@ class BitmapTileImageCache extends ChangeNotifier {
     _release(provisional);
   }
 
+  /// Lets [tile]'s own picture go while the tile itself lives on — the door
+  /// undo-held-tile-pictures stage 2 needed, where a picture used to live
+  /// exactly as long as its tile. Asked for again, it is made again like the
+  /// picture of any tile that has none.
+  ///
+  /// The caller answers whether anything SHOWS [tile]. This refuses the two
+  /// ways the screen borrows a picture for ANOTHER tile whose own is not
+  /// ready: a successor composing its stand-in from it
+  /// ([TilePredecessors.lends]), and the coordinate fallback, where [tile]
+  /// is filed as the latest picture at [coord] ([latestImageForCoord]).
+  ///
+  /// Detached first, for the reason [_dropProvisional] gives, and retired
+  /// through the deferred disposer like every picture here.
+  void releasePicture(TileCoord coord, BitmapTile tile) {
+    final image = _images[tile];
+    if (image == null || _lent(tile)) {
+      return;
+    }
+    for (final scoped in _latestDecodedByScope.values) {
+      if (identical(scoped[coord], tile)) {
+        return;
+      }
+    }
+    _images[tile] = null;
+    _imageFinalizer.detach(tile);
+    _release(image);
+  }
+
+  bool _lent(BitmapTile tile) => TilePredecessors.instance.lends(
+    tile,
+    hasPicture: (successor) => displayImageFor(successor) != null,
+  );
+
   /// The most recently decoded image at [coord] within [scope] (possibly for
   /// an older tile version), or `null` if nothing decoded there yet.
   ui.Image? latestImageForCoord(TileCoord coord, {Object? scope}) {
@@ -326,7 +359,7 @@ class BitmapTileImageCache extends ChangeNotifier {
       }
       _decodeAsk[tile] = null;
       _images[tile] = image;
-      _imageFinalizer.attach(tile, image);
+      _imageFinalizer.attach(tile, image, detach: tile);
       _hold(image);
       // Truth has landed; the stand-in has nothing left to stand in for,
       // and neither has the predecessor it would have been composed from.
@@ -404,7 +437,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     // 2026-09-09 audit.
     _decodeAsk[tile] = null;
     _images[tile] = image;
-    _imageFinalizer.attach(tile, image);
+    _imageFinalizer.attach(tile, image, detach: tile);
     _hold(image);
     // An adopted picture IS the truth (the overlay decoded exactly these
     // bytes), so it retires a stand-in just as a decode would — and the

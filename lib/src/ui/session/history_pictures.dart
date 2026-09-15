@@ -1,7 +1,12 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../models/bitmap_tile.dart';
+import '../../models/tile_coord.dart';
+import '../../services/brush_frame_store.dart';
+import '../../services/cel_source_effect_pass.dart';
 import '../../services/history_manager.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/shown_cels.dart';
 
 /// Undo and redo whose first frame is whole.
@@ -18,15 +23,32 @@ import '../canvas/shown_cels.dart';
 /// - Where it cannot (Skia: Windows) the step WAITS for its pictures, then
 ///   lands. The model does not move until the screen can show where it
 ///   moved to, so the two never disagree.
+/// - Pictures no step can reach next are let go: an entry deeper than the
+///   next step each way keeps its tiles, not their pictures — a press that
+///   gets there before the warm-up does takes the wait above.
 ///
 /// The plan on the undo-held-tile-pictures card, approved 2026-09-11
 /// (「전부 확인했으니 진행해도되」).
 class HistoryPictures {
-  HistoryPictures({required this.history, ShownCels? shown})
-    : _shown = shown ?? ShownCels.instance;
+  /// [store] says whether a cel still holds a tile an entry holds; without
+  /// one no picture is let go, because a fork could be showing it.
+  HistoryPictures({
+    required this.history,
+    ShownCels? shown,
+    BrushFrameStore? store,
+    BitmapTileImageCache? cache,
+  }) : _shown = shown ?? ShownCels.instance,
+       _store = store,
+       _cache = cache ?? BitmapTileImageCache.instance {
+    if (store != null) {
+      history.addListener(_letDeepPicturesGoAfterTheFrame);
+    }
+  }
 
   final HistoryManager history;
   final ShownCels _shown;
+  final BrushFrameStore? _store;
+  final BitmapTileImageCache _cache;
 
   /// Takes one undo — or, with [undo] false, one redo — through [apply]: at
   /// once when every picture it will show is ready, as soon as they are
@@ -157,10 +179,59 @@ class HistoryPictures {
       ..ensureVisualUpdate();
   }
 
+  bool _releaseScheduled = false;
+
+  /// After anything moves the history — a commit, a step, the budget — the
+  /// pictures of the tiles only a DEEPER entry holds are let go.
+  ///
+  /// ⚠️A tile a cel still holds keeps its picture: a paste, a duplicate and
+  /// an unlink store the same tile objects under a second key, so a tile
+  /// one entry holds alone can be another cel's picture on screen. The ways
+  /// the screen borrows a picture for a tile not ready yet are the cache's
+  /// to refuse ([BitmapTileImageCache.releasePicture]).
+  ///
+  /// After the frame, for the warm's reason: inside the change, the walk
+  /// would hold up the frame that shows it.
+  void _letDeepPicturesGoAfterTheFrame() {
+    // The warm's guard too: nothing on screen, and no binding needed.
+    if (_releaseScheduled || !_shown.anyShown) {
+      return;
+    }
+    _releaseScheduled = true;
+    SchedulerBinding.instance
+      ..addPostFrameCallback((_) {
+        _releaseScheduled = false;
+        final store = _store;
+        if (_disposed || store == null) {
+          return;
+        }
+        history.visitDeepHeldTiles((coord, tile) => _letGo(store, coord, tile));
+      })
+      ..ensureVisualUpdate();
+  }
+
+  /// The pictures of what a canvas paints for [tile] go — the tile's own,
+  /// and on a row drawn through colour keys its keyed copy's, which lives
+  /// exactly as long as the tile does — unless a cel still holds [tile].
+  void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
+    final keyed = keyedCopyOf(tile);
+    final pictured =
+        _cache.imageFor(tile) != null ||
+        (keyed != null && _cache.imageFor(keyed) != null);
+    if (!pictured || store.holdsTile(coord, tile)) {
+      return;
+    }
+    _cache.releasePicture(coord, tile);
+    if (keyed != null && !identical(keyed, tile)) {
+      _cache.releasePicture(coord, keyed);
+    }
+  }
+
   bool _disposed = false;
 
   void dispose() {
     _disposed = true;
     _endWait();
+    history.removeListener(_letDeepPicturesGoAfterTheFrame);
   }
 }

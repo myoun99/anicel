@@ -141,6 +141,13 @@ class CompositeCommand
   void dropReadAhead() => dropReadAheadOf(commands);
 
   @override
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {
+    for (final command in commands.whereType<PictureRestoringCommand>()) {
+      command.visitHeldTiles(visit, undone: undone);
+    }
+  }
+
+  @override
   void execute() {
     for (final command in commands) {
       command.execute();

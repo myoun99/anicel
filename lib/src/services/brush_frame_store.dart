@@ -3,12 +3,14 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
 import '../models/cut_id.dart';
 import '../models/movie_cel.dart';
+import '../models/tile_coord.dart';
 import 'bitmap_surface_geometry.dart';
 import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -635,6 +637,22 @@ class BrushFrameStore {
     _editTicks[key] = ++_editTick;
     _noteCelContent(key);
     _scheduleCooling();
+  }
+
+  /// Whether a cel's HOT surface holds [tile] at [coord] — the question a
+  /// copy-on-write fork makes necessary (undo-held-tile-pictures, stage 2).
+  /// An independent paste or duplicate (`carryBakedPictures`) and an unlink
+  /// (`UnlinkLayerCommand`) store the SAME surface under a second key, so a
+  /// tile one cel's history holds alone can still be another cel's current
+  /// picture. Cold and file cels hold no tile objects, so they cannot hold
+  /// this one.
+  bool holdsTile(TileCoord coord, BitmapTile tile) {
+    for (final surface in _bakedSurfaces.values) {
+      if (identical(surface.tileAt(coord), tile)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Every baked cel for the save payload: hot surfaces (the saver

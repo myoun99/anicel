@@ -406,6 +406,14 @@ final Expando<_Signed<BitmapTile>> _keyedTiles = Expando<_Signed<BitmapTile>>(
   'celSourceEffectTiles',
 );
 
+/// The keyed copy this pass made of [tile] and still holds, through whatever
+/// keys it was last made with — [tile] itself where the keys changed
+/// nothing, null where it was never keyed. A LOOKUP: it keys nothing.
+///
+/// A copy lives exactly as long as its source, so a picture made for the
+/// copy is let go with the source's (undo-held-tile-pictures, stage 2).
+BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles[tile]?.value;
+
 /// Derived render data keyed on the SOURCE surface's identity. Surfaces are
 /// immutable, so identity is a stable key and an edited cel is a different
 /// object that misses and recomputes — the same contract

@@ -50,6 +50,13 @@ class TilePredecessors {
     'bitmapTilePredecessors',
   );
 
+  /// The same records the other way round: the tiles that named a tile as
+  /// what stood before them. WEAKLY — having once replaced a tile must not
+  /// keep a tile alive — and read only by [lends], which sweeps out what
+  /// died or was dropped since.
+  final Expando<List<WeakReference<BitmapTile>>> _successors =
+      Expando<List<WeakReference<BitmapTile>>>('bitmapTileSuccessors');
+
   /// Records, for every coordinate whose tile object differs between
   /// [before] and [after], that the tile in [after] succeeded the tile in
   /// [before] (null where [before] held nothing).
@@ -84,11 +91,49 @@ class TilePredecessors {
       return;
     }
     _byTile[tile] = TilePredecessor(before);
+    if (before != null) {
+      (_successors[before] ??= []).add(WeakReference(tile));
+    }
   }
 
   /// What stood at [tile]'s coordinate before it, if a commit said so and
   /// nothing has dropped it since.
   TilePredecessor? of(BitmapTile tile) => _byTile[tile];
+
+  /// Whether a tile still alive may compose its stand-in from [tile]'s
+  /// picture: it names [tile] as what stood before it, nothing has dropped
+  /// that, and [hasPicture] says it has no picture of its own to draw.
+  ///
+  /// 🚨While one does, [tile]'s picture is owed to the screen even though
+  /// nothing shows [tile] itself — the painter reaches it THROUGH the
+  /// successor. So a picture is not let go while this says so
+  /// (undo-held-tile-pictures, stage 2).
+  ///
+  /// ⚠️A successor WITH a picture borrows nothing — the painter asks for a
+  /// predecessor only when the tile has none — and its record can stand for
+  /// as long as the tile lives, because only a landing picture drops one.
+  /// Counted, such records kept pictures the stage let go of in the pins.
+  bool lends(
+    BitmapTile tile, {
+    required bool Function(BitmapTile successor) hasPicture,
+  }) {
+    final successors = _successors[tile];
+    if (successors == null) {
+      return false;
+    }
+    successors.removeWhere((successor) {
+      final alive = successor.target;
+      return alive == null || !identical(_byTile[alive]?.tile, tile);
+    });
+    if (successors.isEmpty) {
+      _successors[tile] = null;
+      return false;
+    }
+    return successors.any((successor) {
+      final alive = successor.target;
+      return alive != null && !hasPicture(alive);
+    });
+  }
 
   /// Forgets [tile]'s predecessor — the stand-in was composed, or truth
   /// landed; either way nothing is left to compose from.

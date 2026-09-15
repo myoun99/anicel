@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/session/history_pictures.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
@@ -45,8 +46,10 @@ import '../../helpers/device_viewport.dart';
 /// `flutter test --run-skipped --tags benchmark <this file>`.
 ///
 /// Knobs, one axis each: `TRANSFORM_PROBE_ROUNDS` (6), `TRANSFORM_PROBE_ZOOM`
-/// (0.3 — the whole picture on screen) and `TRANSFORM_PROBE_CLEAR_HISTORY=1`
-/// (the history let go after every round — what undo holds, released).
+/// (0.3 — the whole picture on screen), `TRANSFORM_PROBE_CLEAR_HISTORY=1`
+/// (the history let go after every round — what undo holds, released) and
+/// `TRANSFORM_PROBE_RELEASE=0` (the pictures of entries deeper than the next
+/// step kept, as they were before undo-held-tile-pictures stage 2).
 ///
 /// The selection is the picture's own ink box handed to the layer's region
 /// door in CANVAS space, and the scale goes through the NUMERIC channel
@@ -67,6 +70,7 @@ void main() {
   );
   final clearHistory =
       Platform.environment['TRANSFORM_PROBE_CLEAR_HISTORY'] == '1';
+  final release = Platform.environment['TRANSFORM_PROBE_RELEASE'] != '0';
 
   BrushDab square(double x, double y) => BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -113,6 +117,15 @@ void main() {
       historyPolicy: const BrushHistoryPolicy(),
     );
     final history = HistoryManager();
+    // The app's steps go through this, so the probe's do: it is what lets
+    // the pictures of entries deeper than the next step go.
+    final pictures = HistoryPictures(
+      history: history,
+      store: release ? store : null,
+    );
+    addTearDown(pictures.dispose);
+    // ignore: avoid_print
+    print('pictures of deeper entries let go: $release');
     final commands = CanvasSelectionCommands();
     final transformOptions = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transformOptions.dispose);

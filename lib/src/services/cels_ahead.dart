@@ -1,5 +1,7 @@
 import '../models/bitmap_surface.dart';
+import '../models/bitmap_tile.dart';
 import '../models/brush_frame_key.dart';
+import '../models/tile_coord.dart';
 import 'undo_surface_snapshot.dart';
 
 /// Commands whose undo or redo puts a cel's picture back from a SNAPSHOT —
@@ -21,7 +23,16 @@ abstract interface class PictureRestoringCommand {
 
   /// Gives back every read-ahead copy this command holds.
   void dropReadAhead();
+
+  /// Visits every tile this entry alone holds in RAM on the side the cel is
+  /// NOT showing ([undone] read the way `RetainedBytesCommand` reads it) —
+  /// the tiles a picture made for them could only ever be drawn for by
+  /// stepping here (undo-held-tile-pictures, stage 2).
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone});
 }
+
+/// Called with each tile an undo entry holds alone, and where it lies.
+typedef HeldTileVisitor = void Function(TileCoord coord, BitmapTile tile);
 
 /// Gives back every read-ahead copy a RUN of commands holds — a
 /// composite's children and, when the budget runs short, the stacks.

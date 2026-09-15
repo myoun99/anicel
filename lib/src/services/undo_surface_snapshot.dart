@@ -54,6 +54,14 @@ class UndoSurfacePair {
   int residentBytes({required bool undone}) =>
       undone ? after.residentBytes : before.residentBytes;
 
+  /// Visits the tiles of the half the cel is NOT showing — the same half
+  /// [residentBytes] bills, for the same reason: the other half is the
+  /// neighbour's, or the screen's (undo-held-tile-pictures, stage 2).
+  void visitHeldTiles(
+    void Function(TileCoord coord, BitmapTile tile) visit, {
+    required bool undone,
+  }) => (undone ? after : before).visitResidentOwnedTiles(visit);
+
   Future<bool> park() => UndoSurfaceSnapshot.parkAll([before, after]);
 
   void drop() => UndoSurfaceSnapshot.dropAll([before, after]);
@@ -214,6 +222,24 @@ class UndoSurfaceSnapshot {
   int get residentBytes =>
       ((_owned?.length ?? 0) + (_ahead?.owned.length ?? 0)) *
       BitmapTile.bytesFor(_tileSize);
+
+  /// Every tile this snapshot alone holds IN RAM, with its coordinate — the
+  /// same tiles [residentBytes] counts: the owned half, and a read-ahead
+  /// copy's owned half too. Nothing once parked, for a parked snapshot's
+  /// tiles are a file, and a file holds no picture.
+  void visitResidentOwnedTiles(
+    void Function(TileCoord coord, BitmapTile tile) visit,
+  ) {
+    for (final entry in (_owned ?? const <TileCoord, BitmapTile>{}).entries) {
+      visit(entry.key, entry.value);
+    }
+    final ahead = _ahead;
+    if (ahead != null) {
+      for (final entry in ahead.owned.entries) {
+        visit(entry.key, entry.value);
+      }
+    }
+  }
 
   /// The surface, read back from the room if it is parked — or NULL when
   /// the payload will not come back.

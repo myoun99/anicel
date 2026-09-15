@@ -110,6 +110,15 @@ class ResizeCutCanvasCommand
     }
   }
 
+  /// ⛔[undone] changes nothing here, for the reason [estimatedRetainedBytes]
+  /// gives: the entry holds the PRE-resize surfaces and nothing else.
+  @override
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {
+    for (final snapshot in _snapshots) {
+      snapshot.visitResidentOwnedTiles(visit);
+    }
+  }
+
   Iterable<UndoSurfaceSnapshot> get _snapshots => [
     for (final surfaces in _previousBaked.values) ...surfaces.values,
   ];

@@ -475,6 +475,32 @@ class HistoryManager extends ChangeNotifier {
     return cels.cels;
   }
 
+  /// Every tile an entry DEEPER than the next step holds alone, with where
+  /// it lies (undo-held-tile-pictures, stage 2): the pictures worth keeping
+  /// are the screen's and the next step's each way, and each stack's top IS
+  /// that next step, so it is left out.
+  void visitDeepHeldTiles(HeldTileVisitor visit) {
+    for (var i = 0; i < _undoStack.length - 1; i += 1) {
+      final command = _undoStack[i];
+      // ⚠️The cast is not ceremony — see [_parkDeepEnd].
+      if (command is PictureRestoringCommand) {
+        (command as PictureRestoringCommand).visitHeldTiles(
+          visit,
+          undone: false,
+        );
+      }
+    }
+    for (var i = 0; i < _redoStack.length - 1; i += 1) {
+      final command = _redoStack[i];
+      if (command is PictureRestoringCommand) {
+        (command as PictureRestoringCommand).visitHeldTiles(
+          visit,
+          undone: true,
+        );
+      }
+    }
+  }
+
   void undo() => _step(
     from: _undoStack,
     to: _redoStack,

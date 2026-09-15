@@ -360,6 +360,9 @@ class _PutsBack implements Command, PictureRestoringCommand {
 
   @override
   void dropReadAhead() => _snapshot.dropReadAhead();
+
+  @override
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) {}
 }
 
 class _Nothing implements Command {

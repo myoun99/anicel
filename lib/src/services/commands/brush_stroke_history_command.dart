@@ -82,6 +82,10 @@ class BrushStrokeHistoryCommand
   void dropReadAhead() => _surfaces?.dropReadAhead();
 
   @override
+  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) =>
+      _surfaces?.visitHeldTiles(visit, undone: undone);
+
+  @override
   String get description => 'Brush stroke';
 
   @override
