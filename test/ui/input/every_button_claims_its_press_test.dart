@@ -111,6 +111,54 @@ void main() {
     '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
   };
 
+  /// The four names the scan read first. A bare one of these fails outright.
+  const firstFourFamilies = {
+    'IconButton',
+    'TextButton',
+    'InkWell',
+    'GestureDetector',
+  };
+
+  /// 🚨THE MATERIAL PRESS FAMILIES, counted and not yet claimed.
+  ///
+  /// The scan read the four names above and nothing else, so a press
+  /// control built from any other Material widget was never asked
+  /// (press-law-material-controls, found by F-120's survey). 유저 2026-08-30
+  /// had already drawn the line: 「**그 외 버튼도 싹 다 확인이야**」. The
+  /// families are read now, and the controls they built bare are held HERE,
+  /// one count per file, until each is claimed.
+  ///
+  /// ⛔A LEDGER, NOT AN ALLOWLIST: every count must match exactly. Claiming
+  /// one lowers its file's number in the same change, and a new bare control
+  /// fails wherever it is. Files are counted rather than lines because a
+  /// line number drifts the first time anything above it is edited.
+  ///
+  /// ⚠️Five of these files close with other sessions' rounds:
+  /// `tool_settings_panel`, `brush_settings_panel` and `guide_panels`
+  /// (brush and rendering), `export_dialog` and `import_dialog` (import,
+  /// export and saving).
+  const bareMaterialControls = <String, int>{
+    'lib/src/ui/brush/brush_settings_panel.dart': 2,
+    'lib/src/ui/brush/guide_panels.dart': 1,
+    'lib/src/ui/brush/tool_settings_panel.dart': 16,
+    'lib/src/ui/dialogs/audio_settings_section.dart': 7,
+    'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
+    'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
+    'lib/src/ui/dialogs/convert_to_linked_cut_dialog.dart': 1,
+    'lib/src/ui/dialogs/input_settings_dialog.dart': 5,
+    'lib/src/ui/dialogs/instruction_event_dialog.dart': 1,
+    'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
+    'lib/src/ui/dialogs/language_settings_dialog.dart': 1,
+    'lib/src/ui/dialogs/timesheet_info_dialog.dart': 2,
+    'lib/src/ui/export/export_dialog.dart': 1,
+    'lib/src/ui/import/import_dialog.dart': 2,
+    'lib/src/ui/widgets/app_window.dart': 1,
+    'lib/src/ui/widgets/compact_switch.dart': 1,
+    'lib/src/ui/widgets/panel_flyout.dart': 1,
+    'lib/src/ui/widgets/settings_rows.dart': 1,
+    'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
+  };
+
   /// The control's OWN named arguments, with everything nested inside them
   /// dropped: `onTap: silentPress(open)` reads `onTap: silentPress()`, and a
   /// child's `onTap:` further down is not this control's and is not read.
@@ -159,9 +207,15 @@ void main() {
 
   /// Every control the scan counts, the claim that wraps it (null when none
   /// does) and its own arguments — the ONE walk both scans below read.
-  List<({String site, String? parent, String arguments})> scannedControls() {
+  List<({String site, String family, String? parent, String arguments})>
+  scannedControls() {
     final button = RegExp(
-      r'(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector)\(',
+      '(^|[^A-Za-z])(IconButton|TextButton|InkWell|GestureDetector|'
+      r'FilledButton\.tonal|FilledButton|OutlinedButton|ElevatedButton|'
+      'SwitchListTile|CheckboxListTile|RadioListTile|Switch|Checkbox|Radio|'
+      'DropdownButtonFormField|DropdownButton|SegmentedButton|ChoiceChip|'
+      'FilterChip|ActionChip|ListTile|PopupMenuItem|MenuItemButton)'
+      r'(<[^>(]*>)?\(',
     );
     // A [GestureDetector] is only a BUTTON when it has an `onTap` — the
     // other twenty-odd are pans, scales and long-presses whose drag IS the
@@ -183,7 +237,8 @@ void main() {
     // carries a nine-line explanation of why it is one, so a shorter window
     // read straight past it and called the grid's own surface a bare button.
     final surface = RegExp(r'onTap: \(\) \{\}');
-    final controls = <({String site, String? parent, String arguments})>[];
+    final controls =
+        <({String site, String family, String? parent, String arguments})>[];
     for (final path in everyUiFile()) {
       final lines = File(path).readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
@@ -198,7 +253,18 @@ void main() {
         final ahead = lines
             .sublist(i, (i + 16).clamp(0, lines.length))
             .join(' ');
-        if (line.contains('GestureDetector(') && !tappable.hasMatch(ahead)) {
+        // A ListTile is a row rather than a button unless it takes a tap —
+        // the question the GestureDetector rule above already asks.
+        final family = control[2]!;
+        if ((family == 'GestureDetector' || family == 'ListTile') &&
+            !tappable.hasMatch(ahead)) {
+          continue;
+        }
+        // A menu entry with `enabled: false` is a label or a row of knobs —
+        // pressing it picks nothing, so it is not a button either. Its OWN
+        // arguments only: a knob inside it is read as a control of its own.
+        final arguments = ownArguments(lines, i, control.end);
+        if (family == 'PopupMenuItem' && arguments.contains('enabled: false')) {
           continue;
         }
         if (surface.hasMatch(ahead) || notControls.keys.any(ahead.contains)) {
@@ -225,8 +291,9 @@ void main() {
         }
         controls.add((
           site: '$path:${i + 1}',
+          family: family,
           parent: parent,
-          arguments: ownArguments(lines, i, control.end),
+          arguments: arguments,
         ));
       }
     }
@@ -236,7 +303,9 @@ void main() {
   test('a button that is not wrapped argues for itself', () {
     final bare = [
       for (final control in scannedControls())
-        if (control.parent == null) control.site,
+        if (control.parent == null &&
+            firstFourFamilies.contains(control.family))
+          control.site,
     ];
     expect(
       bare,
@@ -246,6 +315,25 @@ void main() {
           'ControlPressClaim (or RailSwipeColumnPointer, which adds the '
           'strong claim on top of it). If a drag from here is this widget\'s '
           'OWN verb, say so in notControls instead',
+    );
+  });
+
+  test('the Material press families hold at the ledger, file by file', () {
+    final counted = <String, int>{};
+    for (final control in scannedControls()) {
+      if (control.parent == null &&
+          !firstFourFamilies.contains(control.family)) {
+        final path = control.site.substring(0, control.site.lastIndexOf(':'));
+        counted[path] = (counted[path] ?? 0) + 1;
+      }
+    }
+    expect(
+      counted,
+      bareMaterialControls,
+      reason:
+          'a bare Material press control is held in bareMaterialControls '
+          'until it is claimed: claiming one lowers its file\'s count there, '
+          'and a new one anywhere is a press that can scroll instead',
     );
   });
 
@@ -268,9 +356,13 @@ void main() {
     // ⚠️The spaces go INSIDE the lookahead. Outside it, `\s*` gives back the
     // space it matched and the lookahead is asked at 「 silentPress(」, which
     // is not 「silentPress(」 — every silent tap in the app read as live.
+    // ↩️press-law-material-controls: the Material families act through
+    // `onChanged`, `onSelected` and `onSelectionChanged`, so those are a
+    // live callback under a claim too, and `(_) {}` is as silent as `() {}`.
     final live = RegExp(
-      r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed):'
-      r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}))',
+      r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'
+      'SelectionChanged):'
+      r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}|\(_\)\s*\{\s*\}))',
     );
     final riding = [
       for (final control in scannedControls())
