@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'export_job.dart';
 import 'export_preset_rail.dart' show ExportPresetRail;
+import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 
@@ -43,7 +44,7 @@ class ExportQueueColumn extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'RENDER QUEUE',
+                      AppText.strings.exRenderQueue.toUpperCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(
@@ -75,7 +76,7 @@ class ExportQueueColumn extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          'Render All',
+                          AppText.strings.exRenderAll,
                           style: theme.textTheme.labelSmall?.copyWith(
                             fontSize: 9,
                             color: onRenderAll != null
@@ -137,11 +138,11 @@ class _JobCard extends StatelessWidget {
   final ValueChanged<ExportJob>? onRestore;
 
   String get _statusLabel => switch (job.status) {
-    ExportJobStatus.queued => 'Queued',
+    ExportJobStatus.queued => AppText.strings.exJobQueued,
     ExportJobStatus.running => '${job.completed}/${job.total}',
-    ExportJobStatus.succeeded => 'Done',
-    ExportJobStatus.failed => 'Failed',
-    ExportJobStatus.cancelled => 'Cancelled',
+    ExportJobStatus.succeeded => AppText.strings.exJobDone,
+    ExportJobStatus.failed => AppText.strings.exJobFailed,
+    ExportJobStatus.cancelled => AppText.strings.exJobCancelled,
   };
 
   @override
@@ -173,7 +174,10 @@ class _JobCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Job ${job.id} · ${ExportPresetRail.tabLabel(job.tab)}',
+                      AppText.strings.exJob(
+                        job.id,
+                        ExportPresetRail.tabLabel(job.tab),
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(

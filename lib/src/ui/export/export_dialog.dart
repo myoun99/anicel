@@ -1161,24 +1161,20 @@ class ExportDialogState extends State<ExportDialog> {
     return '${naming.baseName}_$number.$extension';
   }
 
-  String _plural(int count, String noun) => count == 1 ? noun : '${noun}s';
-
   /// The two sentences EVERY export ends with. Six routines wrote the
   /// cancelled one out and four the finished one, which is how one of them
   /// came to count files while it named frames — so the wording, and the
   /// pluralisation that goes with it, lives here once.
-  String _exportCancelled(int written, String noun, {String tail = ''}) =>
-      'Export cancelled after $written ${_plural(written, noun)}$tail.';
+  ///
+  /// ↩️The wording lives in the string tables now (F-124, 2026-09-16), and a
+  /// count arrives already said with its noun: the `_plural` that stood here
+  /// glued an English `s` onto every noun, which no other language can say.
+  String _exportCancelled(String kept) =>
+      AppText.strings.exCancelledAfter(kept);
 
-  String _exportDone(
-    int written,
-    String noun, {
-    String? kind,
-    int skipped = 0,
-  }) =>
-      'Exported $written ${kind == null ? '' : '$kind '}'
-      '${_plural(written, noun)}'
-      '${skipped > 0 ? ' ($skipped empty skipped)' : ''}.';
+  String _exportDone(String written, {int skipped = 0}) => skipped > 0
+      ? AppText.strings.exDoneSkipped(written, skipped)
+      : AppText.strings.exDone(written);
 
   // --- preview (EX3) --------------------------------------------------------
 
@@ -1549,15 +1545,23 @@ class ExportDialogState extends State<ExportDialog> {
         final position = _sequencePosition.clamp(0, axis.length - 1);
         final cutName = axis[position].cut.name;
         if (inOut == null) {
-          return 'Invalid in/out · F${position + 1} · $cutName';
+          return AppText.strings.exInvalidInOut(
+            frame: position + 1,
+            cut: cutName,
+          );
         }
         final kept = KeptSpan(
           length: axis.length,
           inFrame: inOut.$1,
           outFrame: inOut.$2,
         );
-        return 'in ${kept.first + 1} – out ${kept.last + 1} '
-            '(${kept.count}f) · F${position + 1} · $cutName';
+        return AppText.strings.exInOut(
+          inFrame: kept.first + 1,
+          outFrame: kept.last + 1,
+          count: kept.count,
+          frame: position + 1,
+          cut: cutName,
+        );
       case ExportTab.image:
         return 'F${_currentImageFrame() + 1} / '
             '${math.max(1, _activeCut.duration)} · ${_activeCut.name}';
@@ -1577,8 +1581,8 @@ class ExportDialogState extends State<ExportDialog> {
         }
         final task = plan[_sheetPosition.clamp(0, plan.length - 1)];
         return 'CUT${task.cutLabel} · p${task.pageIndex + 1}/'
-            '${task.pageCount} · ${plan.length} '
-            '${_plural(plan.length, 'page')}';
+            '${task.pageCount} · '
+            '${AppText.strings.exPageCount(plan.length)}';
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
         if (pages.isEmpty) {
@@ -1586,7 +1590,7 @@ class ExportDialogState extends State<ExportDialog> {
         }
         final position = _contePosition.clamp(0, pages.length - 1);
         return 'p${position + 1} / ${pages.length} · '
-            '${pages.length} ${_plural(pages.length, 'page')}';
+            '${AppText.strings.exPageCount(pages.length)}';
       case ExportTab.envelope:
         final plan = _envelopePlan();
         if (plan.isEmpty) {
@@ -1595,7 +1599,7 @@ class ExportDialogState extends State<ExportDialog> {
         final position = _envelopePosition.clamp(0, plan.length - 1);
         final files = _envelopeFilePlan().length;
         return 'CUT${plan[position].owner.name} · ${position + 1} / '
-            '${plan.length} · $files ${_plural(files, 'file')}';
+            '${plan.length} · ${AppText.strings.exFileCount(files)}';
     }
   }
 
@@ -1617,74 +1621,84 @@ class ExportDialogState extends State<ExportDialog> {
   String _sequenceHeadline() {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: spec.format.isVideo);
+    final strings = AppText.strings;
     if (plan == null) {
-      final duration = math.max(1, _activeCut.duration);
-      return 'Enter a valid in/out range (1–$duration).';
+      return strings.exInvalidRange(math.max(1, _activeCut.duration));
     }
-    final frames = '${plan.length} ${_plural(plan.length, 'frame')}';
+    final frames = strings.exFrameCount(plan.length);
     if (spec.sizeMode == ExportSizeMode.camera) {
       final size = _session.camera.cameraFrameSize;
-      return '$frames at ${size.width}×${size.height} through the camera.';
+      return strings.exSequenceCamera(frames, size.width, size.height);
     }
     final sizes = _scopeCanvasSizes(spec.scope);
     if (sizes.length == 1) {
       final size = sizes.first;
-      return '$frames at ${size.width}×${size.height} (raw canvas).';
+      return strings.exSequenceCanvas(frames, size.width, size.height);
     }
-    return "$frames at each cut's own canvas size.";
+    return strings.exSequencePerCut(frames);
   }
 
   String _imageHeadline() {
     final size = _specs.image.sizeMode == ExportSizeMode.camera
         ? _session.camera.cameraFrameSize
         : _activeCut.canvasSize;
-    return 'Frame ${_currentImageFrame() + 1} of ${_activeCut.name} at '
-        '${size.width}×${size.height}.';
+    return AppText.strings.exImageHeadline(
+      frame: _currentImageFrame() + 1,
+      cut: _activeCut.name,
+      width: size.width,
+      height: size.height,
+    );
   }
 
   String _celsHeadline() {
     final plan = _celGroupPlan();
     final labels = {for (final task in plan.cels) task.baseLayer.id}.length;
-    final background = _specs.cels.format.wantsAlpha ? 'transparent' : 'opaque';
-    return '$labels ${_plural(labels, 'label')} · ${plan.length} '
-        '${_plural(plan.length, 'file')} as $background '
-        '${_specs.cels.format.stillFormat.label} '
-        '(기준+어태치 composited per cel).';
+    final strings = AppText.strings;
+    return strings.exCelsHeadline(
+      labels: strings.exLabelCount(labels),
+      files: strings.exFileCount(plan.length),
+      background: _specs.cels.format.wantsAlpha
+          ? strings.exTransparent
+          : strings.exOpaque,
+      format: _specs.cels.format.stillFormat.label,
+    );
   }
 
   String _timesheetHeadline() {
     if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
-      final pages = _timesheetPagePlan().length;
-      return '$pages sheet ${_plural(pages, 'page')} as B4 PNG — the '
-          "panel's own paper, offscreen.";
+      return AppText.strings.exSheetImageHeadline(
+        AppText.strings.exSheetPageCount(_timesheetPagePlan().length),
+      );
     }
-    final count = _timesheetCuts().length;
-    return '$count XDTS ${_plural(count, 'sheet')} '
-        '(cels + serifu + camerawork columns).';
+    return AppText.strings.exXdtsHeadline(
+      AppText.strings.exXdtsSheetCount(_timesheetCuts().length),
+    );
   }
 
   String _conteHeadline() {
     final (_, pages) = _conteSheet();
+    final counted = AppText.strings.exContePageCount(pages.length);
     if (_specs.conte.format == ExportConteFormat.pdf) {
-      return '${pages.length} conte ${_plural(pages.length, 'page')} as '
-          'ONE vector PDF — rules and text as vectors, pictures embedded.';
+      return AppText.strings.exContePdfHeadline(counted);
     }
-    return '${pages.length} conte ${_plural(pages.length, 'page')} as '
-        "A4 PNG — the panel's own paper, offscreen.";
+    return AppText.strings.exContePngHeadline(counted);
   }
 
   String _envelopeHeadline() {
     final spec = _specs.envelope;
     final sheets = _envelopePlan().length;
     final files = _envelopeFilePlan().length;
-    final paper = spec.paperMode == CutEnvelopePaperMode.cut
-        ? "the CUT's own pixels — drops into a working file as a layer"
-        : '${spec.sheetWidth}px wide — the real 봉투, for printing';
-    final layered = spec.separateLayerFiles
-        ? ' · one PNG per layer (${spec.orderedLayers.length})'
-        : '';
-    return '$sheets ${_plural(sheets, 'envelope')} as '
-        '$files ${_plural(files, 'PNG')} at $paper$layered.';
+    final strings = AppText.strings;
+    return strings.exEnvelopeHeadline(
+      sheets: strings.exEnvelopeCount(sheets),
+      files: strings.exPngCount(files),
+      paper: spec.paperMode == CutEnvelopePaperMode.cut
+          ? strings.exEnvelopePaperCut
+          : strings.exEnvelopePaperSheet(spec.sheetWidth),
+      layered: spec.separateLayerFiles
+          ? strings.exEnvelopeLayered(spec.orderedLayers.length)
+          : '',
+    );
   }
 
   String _outputLine() {
@@ -1917,7 +1931,7 @@ class ExportDialogState extends State<ExportDialog> {
     if (mounted) {
       setState(() {
         _progress = (completed, total);
-        _statusMessage = 'Exporting… $completed/$total';
+        _statusMessage = AppText.strings.exExportingProgress(completed, total);
       });
     }
     final jobId = _activeJobId;
@@ -1933,7 +1947,7 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
-      _statusMessage = 'Exporting…';
+      _statusMessage = AppText.strings.exExporting;
     });
     try {
       final message = await run();
@@ -1942,7 +1956,7 @@ class ExportDialogState extends State<ExportDialog> {
       }
     } on Object catch (error) {
       if (mounted) {
-        setState(() => _statusMessage = 'Export failed: $error');
+        setState(() => _statusMessage = AppText.strings.exFailed(error));
       }
     } finally {
       if (mounted) {
@@ -2080,7 +2094,7 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
-      _statusMessage = 'Rendering the queue…';
+      _statusMessage = AppText.strings.exRenderingQueue;
     });
     var succeeded = 0;
     var failed = 0;
@@ -2157,9 +2171,11 @@ class ExportDialogState extends State<ExportDialog> {
   /// What the status bar says when the queue rests: how many jobs are done,
   /// how many failed (부분 실패), and whether Cancel left any queued.
   String _queueRestSentence(int succeeded, int failed) =>
-      'Queue: $succeeded ${_plural(succeeded, 'job')} done'
-      '${failed > 0 ? ', $failed failed' : ''}'
-      '${_queue.nextQueued != null ? ', rest kept' : ''}.';
+      AppText.strings.exQueueRest(
+        AppText.strings.exJobCount(succeeded),
+        failed: failed,
+        kept: _queue.nextQueued != null,
+      );
 
   /// Runs an image export over [count] items and reports it the one way:
   /// cancelled when fewer landed than were asked for, done otherwise.
@@ -2176,7 +2192,7 @@ class ExportDialogState extends State<ExportDialog> {
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
-    required ({String noun, String? kind}) says,
+    required _Tally says,
     Future<List<int>?> Function(ui.Image image)? encode,
   }) async {
     final summary = await _exportService.exportImages(
@@ -2188,13 +2204,12 @@ class ExportDialogState extends State<ExportDialog> {
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
     );
+    final strings = AppText.strings;
     if (summary.processed < count) {
-      return _exportCancelled(summary.written, says.noun);
+      return _exportCancelled(says.kept(strings, summary.written));
     }
     return _exportDone(
-      summary.written,
-      says.noun,
-      kind: says.kind,
+      says.done(strings, summary.written),
       skipped: summary.processed - summary.written,
     );
   }
@@ -2217,7 +2232,7 @@ class ExportDialogState extends State<ExportDialog> {
         );
       },
       fileNameFor: (index) => plan[index].fileName,
-      says: (noun: 'page', kind: 'sheet'),
+      says: _Tally.sheetPages,
     );
   }
 
@@ -2238,7 +2253,7 @@ class ExportDialogState extends State<ExportDialog> {
       },
       fileNameFor: (index) =>
           _envelopeFileName(files[index].$1, files[index].$2),
-      says: (noun: 'file', kind: 'envelope'),
+      says: _Tally.envelopeFiles,
     );
   }
 
@@ -2259,7 +2274,7 @@ class ExportDialogState extends State<ExportDialog> {
           scale: spec.sheetScale.toDouble(),
         ),
         fileNameFor: (index) => _contePageFileName(index, pages.length),
-        says: (noun: 'page', kind: 'conte'),
+        says: _Tally.contePages,
       );
     }
     // Vector PDF: one document, the layout's own points as page geometry.
@@ -2286,7 +2301,7 @@ class ExportDialogState extends State<ExportDialog> {
       },
     );
     if (_cancelRequested) {
-      return 'Export cancelled.';
+      return AppText.strings.exCancelled;
     }
     // The sheet ink (R5): compose per window, convert to raw bytes, free
     // the ui.Images — the same lifecycle the cell pictures follow.
@@ -2317,8 +2332,9 @@ class ExportDialogState extends State<ExportDialog> {
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: true);
     _reportProgress(pages.length + 1, pages.length + 1);
-    return 'Exported conte.pdf (${pages.length} '
-        '${_plural(pages.length, 'page')}).';
+    return AppText.strings.exDoneContePdf(
+      AppText.strings.exPageCount(pages.length),
+    );
   }
 
   Future<String> _exportVideo() async {
@@ -2357,15 +2373,14 @@ class ExportDialogState extends State<ExportDialog> {
       );
       if (summary.processed < plan.length) {
         return summary.written == 0
-            ? 'Export cancelled.'
-            : _exportCancelled(
-                summary.written,
-                'frame',
-                tail: ' (partial video kept)',
+            ? AppText.strings.exCancelled
+            : AppText.strings.exCancelledVideo(
+                AppText.strings.exFrameCount(summary.written),
               );
       }
-      return 'Exported video (${summary.written} '
-          '${_plural(summary.written, 'frame')}).';
+      return AppText.strings.exDoneVideo(
+        AppText.strings.exFrameCount(summary.written),
+      );
     } finally {
       if (audioMixPath != null) {
         try {
@@ -2390,7 +2405,7 @@ class ExportDialogState extends State<ExportDialog> {
           renderer.renderComposite(plan[index], spec.sizeMode),
       fileNameFor: _sequenceFileNameFor,
       encode: _stillEncodeFor(spec.format),
-      says: (noun: 'frame', kind: null),
+      says: _Tally.frames,
     );
   }
 
@@ -2418,8 +2433,8 @@ class ExportDialogState extends State<ExportDialog> {
       onProgress: _reportProgress,
     );
     return summary.written == 1
-        ? 'Exported $fileName.'
-        : 'Nothing to export (empty frame).';
+        ? AppText.strings.exDoneFile(fileName)
+        : AppText.strings.exNothingInFrame;
   }
 
   Future<String> _exportCels() {
@@ -2462,7 +2477,7 @@ class ExportDialogState extends State<ExportDialog> {
         _ => 'cel_$index.png',
       },
       encode: _stillEncodeFor(spec.format),
-      says: (noun: 'cel', kind: null),
+      says: _Tally.cels,
     );
   }
 
@@ -2488,7 +2503,7 @@ class ExportDialogState extends State<ExportDialog> {
       written += 1;
       _reportProgress(written, cuts.length);
     }
-    return 'Exported $written XDTS ${_plural(written, 'sheet')}.';
+    return _exportDone(AppText.strings.exXdtsSheetCount(written));
   }
 
   /// Renders the SE mix to a temp WAV through the same mixer playback
@@ -2804,7 +2819,9 @@ class ExportDialogState extends State<ExportDialog> {
       child: Row(
         children: [
           Text(
-            singleFile ? 'File' : 'Pattern',
+            singleFile
+                ? AppText.strings.exFileLabel
+                : AppText.strings.exPatternLabel,
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -2840,7 +2857,7 @@ class ExportDialogState extends State<ExportDialog> {
             ),
           const SizedBox(width: 14),
           Text(
-            'Location',
+            AppText.strings.exLocationLabel,
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -2848,7 +2865,7 @@ class ExportDialogState extends State<ExportDialog> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _location ?? 'Choose a folder…',
+              _location ?? AppText.strings.exChooseFolder,
               key: const ValueKey<String>('export-location-label'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -3194,8 +3211,10 @@ class ExportDialogState extends State<ExportDialog> {
         ExportAccordion(
           title: AppText.strings.exAudio,
           summary: spec.includeAudio
-              ? 'SE muxed · ${spec.format.videoCodec.isProRes ? 'PCM' : 'AAC'}'
-              : 'Off',
+              ? AppText.strings.exSeMuxed(
+                  spec.format.videoCodec.isProRes ? 'PCM' : 'AAC',
+                )
+              : AppText.strings.commonOff,
           expansion: _expansion('audio'),
           child: _specToggle(
             keyValue: 'export-audio-toggle',
@@ -3748,7 +3767,7 @@ class ExportDialogState extends State<ExportDialog> {
       ExportAccordion(
         title: AppText.strings.exFormat,
         summary: spec.format == ExportTimesheetFormat.sheetImage
-            ? 'Sheet PNG · ${spec.sheetScale}x'
+            ? '${AppText.strings.exSheetPng} · ${spec.sheetScale}x'
             : 'XDTS',
         expansion: _expansion('format', open: true),
         child: Column(
@@ -3810,8 +3829,8 @@ class ExportDialogState extends State<ExportDialog> {
       ExportAccordion(
         title: AppText.strings.exFormat,
         summary: spec.format == ExportConteFormat.pdf
-            ? 'Vector PDF'
-            : 'Page PNG · ${spec.sheetScale}x',
+            ? AppText.strings.exVectorPdf
+            : '${AppText.strings.exPagePng} · ${spec.sheetScale}x',
         expansion: _expansion('format', open: true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3927,7 +3946,7 @@ class ExportDialogState extends State<ExportDialog> {
     required void Function(bool applyLayerFx) onChanged,
   }) => ExportAccordion(
     title: AppText.strings.exOptions,
-    summary: applyLayerFx ? 'FX on' : 'FX off',
+    summary: applyLayerFx ? AppText.strings.exFxOn : AppText.strings.exFxOff,
     expansion: _expansion('options'),
     child: ExportToggleRow(
       widgetKey: ValueKey<String>(keyValue),
@@ -4045,7 +4064,9 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       ExportAccordion(
         title: AppText.strings.exPaperLabel,
-        summary: cutPaper ? 'Cut size' : 'Sheet · ${spec.sheetWidth}px',
+        summary: cutPaper
+            ? AppText.strings.exCutSize
+            : AppText.strings.exSheetWidth(spec.sheetWidth),
         expansion: _expansion('envelope-paper', open: true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -4107,8 +4128,8 @@ class ExportDialogState extends State<ExportDialog> {
       ExportAccordion(
         title: AppText.strings.exSheetLayers,
         summary: spec.separateLayerFiles
-            ? '${spec.orderedLayers.length} separate PNGs'
-            : '${spec.orderedLayers.length} of 4, flat',
+            ? AppText.strings.exSeparatePngs(spec.orderedLayers.length)
+            : AppText.strings.exFlatLayers(spec.orderedLayers.length),
         expansion: _expansion('envelope-layers', open: true),
         reset: (
           enabled:
@@ -4237,4 +4258,30 @@ class ExportDialogState extends State<ExportDialog> {
       ],
     );
   }
+}
+
+/// What an image export counts, said in the program language: the finished
+/// sentence names the kind (「3 sheet pages」), the stopped one only the noun
+/// (「after 3 pages」) — the two shapes the English sentences already had.
+enum _Tally {
+  frames,
+  cels,
+  sheetPages,
+  contePages,
+  envelopeFiles;
+
+  String kept(AppStrings strings, int count) => switch (this) {
+    _Tally.frames => strings.exFrameCount(count),
+    _Tally.cels => strings.exCelCount(count),
+    _Tally.sheetPages || _Tally.contePages => strings.exPageCount(count),
+    _Tally.envelopeFiles => strings.exFileCount(count),
+  };
+
+  String done(AppStrings strings, int count) => switch (this) {
+    _Tally.frames => strings.exFrameCount(count),
+    _Tally.cels => strings.exCelCount(count),
+    _Tally.sheetPages => strings.exSheetPageCount(count),
+    _Tally.contePages => strings.exContePageCount(count),
+    _Tally.envelopeFiles => strings.exEnvelopeFileCount(count),
+  };
 }

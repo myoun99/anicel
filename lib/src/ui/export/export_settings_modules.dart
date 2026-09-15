@@ -146,7 +146,7 @@ class _ResetChip extends StatelessWidget {
             ),
           ),
           child: Text(
-            'Reset',
+            AppText.strings.commonReset,
             style: theme.textTheme.labelSmall?.copyWith(color: color),
           ),
         ),
@@ -580,7 +580,7 @@ class ExportFormatModule extends StatelessWidget {
                   : null,
               tooltip: capabilities.isStillEnabled(still)
                   ? null
-                  : 'Not available in this build yet.',
+                  : AppText.strings.exNotInThisBuild,
             ),
         ],
       ),
@@ -615,7 +615,7 @@ class ExportFormatModule extends StatelessWidget {
   /// Zero is AUTO — the encoder picks — so the bar's low end is a word,
   /// not a number.
   static String _bitrateText(double mbps, String derived) =>
-      mbps <= 0 ? 'Auto' : derived;
+      mbps <= 0 ? AppText.strings.exBitrateAuto : derived;
 
   Widget _bitrateRow() => ExportModuleRow(
     label: AppText.strings.exBitrate,
@@ -732,7 +732,9 @@ class ExportScopeModule extends StatelessWidget {
   final Widget? child;
 
   static String summarize(ExportScopeKind scope) =>
-      scope == ExportScopeKind.cut ? 'Cut' : 'Project';
+      scope == ExportScopeKind.cut
+      ? AppText.strings.exCut
+      : AppText.strings.exProject;
 
   @override
   Widget build(BuildContext context) {
@@ -783,13 +785,18 @@ class ExportSizeModule extends StatelessWidget {
   final ValueChanged<ExportSizeMode> onChanged;
 
   static String summarize(ExportSizeMode mode) =>
-      mode == ExportSizeMode.camera ? 'Camera' : 'Canvas';
+      mode == ExportSizeMode.camera
+      ? AppText.strings.exSizeCamera
+      : AppText.strings.exSizeCanvas;
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     final canvasLabel = canvasSizes.length == 1
-        ? 'Canvas ${canvasSizes.first.width}×${canvasSizes.first.height}'
-        : 'Canvas (per cut)';
+        ? strings.exCanvasTemplate
+              .replaceAll('{w}', '${canvasSizes.first.width}')
+              .replaceAll('{h}', '${canvasSizes.first.height}')
+        : strings.exCanvasPerCut;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -797,7 +804,9 @@ class ExportSizeModule extends StatelessWidget {
           items: [
             ExportPillItem(
               keyValue: 'export-size-camera',
-              label: 'Camera ${cameraSize.width}×${cameraSize.height}',
+              label: strings.exCameraTemplate
+                  .replaceAll('{w}', '${cameraSize.width}')
+                  .replaceAll('{h}', '${cameraSize.height}'),
               selected: sizeMode == ExportSizeMode.camera,
               onTap: enabled ? () => onChanged(ExportSizeMode.camera) : null,
             ),

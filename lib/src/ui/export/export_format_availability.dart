@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/export_format_selection.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../native/qa_video_encoder.dart';
+import '../text/app_strings.dart';
 import 'video_export_service.dart' show ExportVideoCodecAbi, ExportVideoContainerAbi;
 
 /// What THIS machine can write (EX4): the OS encoder's probe per
@@ -92,8 +93,8 @@ class ExportFormatAvailability extends ChangeNotifier {
       return null;
     }
     return ffmpegKnown
-        ? 'Needs FFmpeg on PATH on this machine.'
-        : 'Checking this machine’s encoders…';
+        ? AppText.strings.exNeedsFfmpeg
+        : AppText.strings.exCheckingEncoders;
   }
 
   bool stillAllowed(ExportStillFormat format) => switch (format) {

@@ -171,7 +171,13 @@ void main() {
   /// twelve English rows by the same contract, less the four retired with
   /// M, L, V and the old Ctrl+T. The shape tiles add none: their names are
   /// composed from words the tables already hold.
-  const untranslatedElsewhere = 102;
+  /// 95 (F-124, 2026-09-16, the export window): the file bar's words, the
+  /// render queue's header and job states, the cut grid's All and the format
+  /// availability's two reasons went into the tables. ⚠️Most of that window's
+  /// English never showed here at all — it lives in interpolations and
+  /// ternaries this scan cannot see (「Exported 2 frames.」), which is why
+  /// seven is all a 84-string round moves the number.
+  const untranslatedElsewhere = 95;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

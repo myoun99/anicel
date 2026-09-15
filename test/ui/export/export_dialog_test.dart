@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/native_engine_path.dart';
 import 'fake_ffmpeg_process.dart';
@@ -485,6 +487,185 @@ void main() {
       await tester.tap(canvasChip);
       await tester.pump();
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.canvas);
+    });
+  });
+
+  group('F-124: the window speaks the program language', () {
+    // The English rows are the tests above; these read the same runs in
+    // Korean. Every expectation is the Korean table's sentence spelled out,
+    // so a surface that goes back to hardcoding English turns one red.
+    setUp(
+      () => AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      ),
+    );
+    tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+    testWidgets('sequence stills: the file bar, the plan, the presets and the '
+        'finished sentence', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      // The tab opens on video — one file, so the bar names a file; the
+      // still format numbers them, and the bar names the pattern instead.
+      expect(find.text('파일'), findsOneWidget);
+      expect(find.text('위치'), findsOneWidget);
+      expect(find.text('폴더 선택…'), findsOneWidget);
+      expect(find.text('프리셋 · 시퀀스'), findsOneWidget);
+      final headline = tester.widget<Text>(
+        find.byKey(const ValueKey<String>('export-plan-headline')),
+      );
+      expect(headline.data, '카메라를 거쳐 32×18로 2프레임.');
+
+      await browseTo(tester);
+      await pickStillPng(tester);
+      expect(find.text('패턴'), findsOneWidget);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(statusText(tester), '2프레임 내보냈습니다.');
+    });
+
+    testWidgets('image tab: the file label, the size pills and the file '
+        'sentence', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'image');
+      expect(find.text('파일'), findsOneWidget);
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('export-size-canvas')),
+      );
+      expect(find.textContaining('캔버스 8×8'), findsOneWidget);
+      expect(find.textContaining('카메라 32×18'), findsOneWidget);
+
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(statusText(tester), 'Project.png 내보냈습니다.');
+    });
+
+    testWidgets('the sheet image counts sheet pages', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(statusText(tester), '시트 1페이지 내보냈습니다.');
+    });
+
+    testWidgets('XDTS counts its sheets', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await browseTo(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-tsformat-xdts')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+      );
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(statusText(tester), 'XDTS 시트 2장 내보냈습니다.');
+    });
+
+    testWidgets('video: the audio summary and the finished sentence', (
+      tester,
+    ) async {
+      final fake = FakeFfmpegProcess();
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async => fake,
+        ),
+      );
+      expect(find.textContaining('SE 먹싱 · AAC'), findsOneWidget);
+
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(statusText(tester), '영상을 내보냈습니다(2프레임).');
+    });
+
+    testWidgets('a stopped video says how much it kept', (tester) async {
+      late ExportDialogState state;
+      final fake = FakeFfmpegProcess(
+        onFrame: (framesSoFar) {
+          if (framesSoFar >= 2) {
+            state.cancelExport();
+          }
+        },
+      );
+      state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+        videoExportService: VideoExportService(
+          processStarter: (executable, arguments) async => fake,
+        ),
+      );
+      // The project's five frames, so stopping after two leaves work undone.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+      );
+      await tester.pump();
+      await browseTo(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(
+        statusText(tester),
+        '2프레임 내보낸 뒤 취소했습니다(중간까지의 영상은 남겼습니다).',
+      );
+    });
+
+    testWidgets('the render queue: its header, a job, the job states and the '
+        'resting sentence', (tester) async {
+      final state = await pumpDialog(
+        tester,
+        exportSession(),
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await browseTo(tester);
+      await pickStillPng(tester);
+      expect(find.text('렌더 대기열'), findsOneWidget);
+      expect(find.text('모두 렌더'), findsOneWidget);
+
+      // Job 1 aims inside a FILE, so its write fails; job 2 lands.
+      final blocker = File('${temp.path}/blocker')..createSync();
+      state.debugSetLocationForTests('${blocker.path}/nested');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-queue-add-button')),
+      );
+      await tester.pump();
+      expect(find.text('작업 1 · 시퀀스'), findsOneWidget);
+      state.debugSetLocationForTests(temp.path);
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-queue-add-button')),
+      );
+      await tester.pump();
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+      expect(find.text('실패'), findsOneWidget);
+      expect(find.text('완료'), findsOneWidget);
+      expect(statusText(tester), '대기열: 작업 1개 완료, 1개 실패.');
     });
   });
 

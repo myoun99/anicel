@@ -990,9 +990,7 @@ enum AppStrings {
   String get exNameParts => _s('exNameParts');
   String get exTarget => _s('exTarget');
   String get exLayer => _s('exLayer');
-  String exCelCount(int count) =>
-      (count == 1 ? exCelCountOne : _s('exCelCount'))
-          .replaceFirst('{n}', '$count');
+  String exCelCount(int count) => _count('exCelCount', count);
 
   /// [exCelCount]'s singular: one picture is the reference popover's
   /// commonest count, and 「1 cels」 is what it would have said.
@@ -1021,6 +1019,196 @@ enum AppStrings {
   String get exFiles => _s('exFiles');
   String get exOneImage => _s('exOneImage');
   String get exOnePerLayer => _s('exOnePerLayer');
+
+  /// A count said with its noun: `<key>One` at one, `<key>` otherwise — a
+  /// language whose noun does not change simply says the same word twice.
+  ///
+  /// ⛔ONE RULE FOR EVERY COUNT (F-124, 2026-09-16). The export window glued
+  /// an English `s` onto nine nouns through its own `_plural`, which no other
+  /// language can use, while [exCelCount] had written the table's version out
+  /// on its own.
+  String _count(String key, int count) =>
+      (count == 1 ? _s('${key}One') : _s(key)).replaceFirst('{n}', '$count');
+
+  /// The export window's counts. The noun carries the export's kind where the
+  /// finished sentence names one — 「3 sheet pages」, not 「3 pages」.
+  String exFrameCount(int count) => _count('exFrameCount', count);
+  String exPageCount(int count) => _count('exPageCount', count);
+  String exFileCount(int count) => _count('exFileCount', count);
+  String exLabelCount(int count) => _count('exLabelCount', count);
+  String exJobCount(int count) => _count('exJobCount', count);
+  String exLayerCount(int count) => _count('exLayerCount', count);
+  String exPngCount(int count) => _count('exPngCount', count);
+  String exXdtsSheetCount(int count) => _count('exXdtsSheetCount', count);
+  String exSheetPageCount(int count) => _count('exSheetPageCount', count);
+  String exContePageCount(int count) => _count('exContePageCount', count);
+  String exEnvelopeCount(int count) => _count('exEnvelopeCount', count);
+  String exEnvelopeFileCount(int count) =>
+      _count('exEnvelopeFileCount', count);
+
+  /// How an export ends — the status line's sentences, each taking a count
+  /// already said with its noun. ⚠️A name or a cut goes in LAST: it is the
+  /// user's text, and a brace in it must not be read as a placeholder.
+  String exCancelledAfter(String count) =>
+      _s('exCancelledAfterTemplate').replaceAll('{count}', count);
+  String exCancelledVideo(String count) =>
+      _s('exCancelledVideoTemplate').replaceAll('{count}', count);
+  String get exCancelled => _s('exCancelled');
+  String exDone(String count) =>
+      _s('exDoneTemplate').replaceAll('{count}', count);
+  String exDoneSkipped(String count, int skipped) => _s(
+    'exDoneSkippedTemplate',
+  ).replaceAll('{skipped}', '$skipped').replaceAll('{count}', count);
+  String exDoneFile(String name) =>
+      _s('exDoneFileTemplate').replaceAll('{name}', name);
+  String exDoneVideo(String count) =>
+      _s('exDoneVideoTemplate').replaceAll('{count}', count);
+  String exDoneContePdf(String count) =>
+      _s('exDoneContePdfTemplate').replaceAll('{count}', count);
+  String get exNothingInFrame => _s('exNothingInFrame');
+  String get exExporting => _s('exExporting');
+  String exExportingProgress(int done, int total) => _s(
+    'exExportingProgressTemplate',
+  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
+  String exFailed(Object error) =>
+      _s('exFailedTemplate').replaceAll('{error}', '$error');
+  String get exRenderingQueue => _s('exRenderingQueue');
+  String exQueueRest(String count, {required int failed, required bool kept}) =>
+      _s('exQueueRestTemplate')
+          .replaceAll(
+            '{failed}',
+            failed > 0
+                ? _s('exQueueFailedTemplate').replaceAll('{n}', '$failed')
+                : '',
+          )
+          .replaceAll('{rest}', kept ? _s('exQueueRestKept') : '')
+          .replaceAll('{count}', count);
+
+  /// The preview's position line and the sentence under it: what the tab
+  /// would write, in that tab's own terms.
+  String exInvalidInOut({required int frame, required String cut}) =>
+      _s(
+        'exInvalidInOutTemplate',
+      ).replaceAll('{frame}', '$frame').replaceAll('{cut}', cut);
+  String exInOut({
+    required int inFrame,
+    required int outFrame,
+    required int count,
+    required int frame,
+    required String cut,
+  }) => _s('exInOutTemplate')
+      .replaceAll('{in}', '$inFrame')
+      .replaceAll('{out}', '$outFrame')
+      .replaceAll('{count}', '$count')
+      .replaceAll('{frame}', '$frame')
+      .replaceAll('{cut}', cut);
+  String exInvalidRange(int duration) =>
+      _s('exInvalidRangeTemplate').replaceAll('{duration}', '$duration');
+  String exSequenceCamera(String frames, int width, int height) =>
+      _s('exSequenceCameraTemplate')
+          .replaceAll('{w}', '$width')
+          .replaceAll('{h}', '$height')
+          .replaceAll('{frames}', frames);
+  String exSequenceCanvas(String frames, int width, int height) =>
+      _s('exSequenceCanvasTemplate')
+          .replaceAll('{w}', '$width')
+          .replaceAll('{h}', '$height')
+          .replaceAll('{frames}', frames);
+  String exSequencePerCut(String frames) =>
+      _s('exSequencePerCutTemplate').replaceAll('{frames}', frames);
+  String exImageHeadline({
+    required int frame,
+    required String cut,
+    required int width,
+    required int height,
+  }) => _s('exImageHeadlineTemplate')
+      .replaceAll('{frame}', '$frame')
+      .replaceAll('{w}', '$width')
+      .replaceAll('{h}', '$height')
+      .replaceAll('{cut}', cut);
+  String exCelsHeadline({
+    required String labels,
+    required String files,
+    required String background,
+    required String format,
+  }) => _s('exCelsHeadlineTemplate')
+      .replaceAll('{labels}', labels)
+      .replaceAll('{files}', files)
+      .replaceAll('{background}', background)
+      .replaceAll('{format}', format);
+  String get exTransparent => _s('exTransparent');
+  String get exOpaque => _s('exOpaque');
+  String exSheetImageHeadline(String pages) =>
+      _s('exSheetImageHeadlineTemplate').replaceAll('{pages}', pages);
+  String exXdtsHeadline(String sheets) =>
+      _s('exXdtsHeadlineTemplate').replaceAll('{sheets}', sheets);
+  String exContePdfHeadline(String pages) =>
+      _s('exContePdfHeadlineTemplate').replaceAll('{pages}', pages);
+  String exContePngHeadline(String pages) =>
+      _s('exContePngHeadlineTemplate').replaceAll('{pages}', pages);
+  String exEnvelopeHeadline({
+    required String sheets,
+    required String files,
+    required String paper,
+    required String layered,
+  }) => _s('exEnvelopeHeadlineTemplate')
+      .replaceAll('{sheets}', sheets)
+      .replaceAll('{files}', files)
+      .replaceAll('{layered}', layered)
+      .replaceAll('{paper}', paper);
+  String get exEnvelopePaperCut => _s('exEnvelopePaperCut');
+  String exEnvelopePaperSheet(int width) =>
+      _s('exEnvelopePaperSheetTemplate').replaceAll('{w}', '$width');
+  String exEnvelopeLayered(int count) =>
+      _s('exEnvelopeLayeredTemplate').replaceAll('{n}', '$count');
+
+  /// The file bar's words and the modules' one-line summaries.
+  String get exFileLabel => _s('exFileLabel');
+  String get exPatternLabel => _s('exPatternLabel');
+  String get exLocationLabel => _s('exLocationLabel');
+  String get exChooseFolder => _s('exChooseFolder');
+  String exSeMuxed(String codec) =>
+      _s('exSeMuxedTemplate').replaceAll('{codec}', codec);
+  String get exVectorPdf => _s('exVectorPdf');
+  String get exPagePng => _s('exPagePng');
+  String get exFxOn => _s('exFxOn');
+  String get exFxOff => _s('exFxOff');
+  String exSheetWidth(int width) =>
+      _s('exSheetWidthTemplate').replaceAll('{w}', '$width');
+  String exSeparatePngs(int count) =>
+      _s('exSeparatePngsTemplate').replaceAll('{n}', '$count');
+  String exFlatLayers(int count) =>
+      _s('exFlatLayersTemplate').replaceAll('{n}', '$count');
+
+  /// The rails: the tab names the presets say, the render queue and its jobs,
+  /// the cut grid, and why a format cannot be picked here.
+  String get exTabSequence => _s('exTabSequence');
+  String get exSizeCamera => _s('exSizeCamera');
+  String get exSizeCanvas => _s('exSizeCanvas');
+  String get exSheetImage => _s('exSheetImage');
+  String get exPageImage => _s('exPageImage');
+  String get exSaveCurrent => _s('exSaveCurrent');
+  String get exRenderQueue => _s('exRenderQueue');
+  String get exRenderAll => _s('exRenderAll');
+  String get exJobQueued => _s('exJobQueued');
+  String get exJobDone => _s('exJobDone');
+  String get exJobFailed => _s('exJobFailed');
+  String get exJobCancelled => _s('exJobCancelled');
+  String exJob(int id, String tab) =>
+      _s('exJobTemplate').replaceAll('{id}', '$id').replaceAll('{tab}', tab);
+  String get exIncludeAll => _s('exIncludeAll');
+  String exCutsIncluded(int included, int total) => _s(
+    'exCutsIncludedTemplate',
+  ).replaceAll('{n}', '$included').replaceAll('{total}', '$total');
+  String get exNeedsFfmpeg => _s('exNeedsFfmpeg');
+  String get exCheckingEncoders => _s('exCheckingEncoders');
+  String get exNotInThisBuild => _s('exNotInThisBuild');
+  String get exBitrateAuto => _s('exBitrateAuto');
+
+  /// The size pills' canvas row, filled at the call site the way
+  /// [exCameraTemplate] beside it is.
+  String get exCanvasTemplate => _s('exCanvasTemplate');
+  String get exCanvasPerCut => _s('exCanvasPerCut');
 
   /// The import window's own words. ⚠️Cancel · Resize · Name · Timeline are
   /// NOT here — they are `commonCancel`, `commonResize`, `commonNameField`
@@ -1920,6 +2108,103 @@ enum AppStrings {
     'exFiles': 'Files',
     'exOneImage': 'One image',
     'exOnePerLayer': 'One per layer',
+    'exFrameCount': '{n} frames',
+    'exFrameCountOne': '{n} frame',
+    'exPageCount': '{n} pages',
+    'exPageCountOne': '{n} page',
+    'exFileCount': '{n} files',
+    'exFileCountOne': '{n} file',
+    'exLabelCount': '{n} labels',
+    'exLabelCountOne': '{n} label',
+    'exJobCount': '{n} jobs',
+    'exJobCountOne': '{n} job',
+    'exLayerCount': '{n} layers',
+    'exLayerCountOne': '{n} layer',
+    'exPngCount': '{n} PNGs',
+    'exPngCountOne': '{n} PNG',
+    'exXdtsSheetCount': '{n} XDTS sheets',
+    'exXdtsSheetCountOne': '{n} XDTS sheet',
+    'exSheetPageCount': '{n} sheet pages',
+    'exSheetPageCountOne': '{n} sheet page',
+    'exContePageCount': '{n} conte pages',
+    'exContePageCountOne': '{n} conte page',
+    'exEnvelopeCount': '{n} envelopes',
+    'exEnvelopeCountOne': '{n} envelope',
+    'exEnvelopeFileCount': '{n} envelope files',
+    'exEnvelopeFileCountOne': '{n} envelope file',
+    'exCancelledAfterTemplate': 'Export cancelled after {count}.',
+    'exCancelledVideoTemplate':
+        'Export cancelled after {count} (partial video kept).',
+    'exCancelled': 'Export cancelled.',
+    'exDoneTemplate': 'Exported {count}.',
+    'exDoneSkippedTemplate': 'Exported {count} ({skipped} empty skipped).',
+    'exDoneFileTemplate': 'Exported {name}.',
+    'exDoneVideoTemplate': 'Exported video ({count}).',
+    'exDoneContePdfTemplate': 'Exported conte.pdf ({count}).',
+    'exNothingInFrame': 'Nothing to export (empty frame).',
+    'exExporting': 'Exporting…',
+    'exExportingProgressTemplate': 'Exporting… {done}/{total}',
+    'exFailedTemplate': 'Export failed: {error}',
+    'exRenderingQueue': 'Rendering the queue…',
+    'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
+    'exQueueFailedTemplate': ', {n} failed',
+    'exQueueRestKept': ', rest kept',
+    'exInvalidInOutTemplate': 'Invalid in/out · F{frame} · {cut}',
+    'exInOutTemplate': 'in {in} – out {out} ({count}f) · F{frame} · {cut}',
+    'exInvalidRangeTemplate': 'Enter a valid in/out range (1–{duration}).',
+    'exSequenceCameraTemplate': '{frames} at {w}×{h} through the camera.',
+    'exSequenceCanvasTemplate': '{frames} at {w}×{h} (raw canvas).',
+    'exSequencePerCutTemplate': '{frames} at each cut\'s own canvas size.',
+    'exImageHeadlineTemplate': 'Frame {frame} of {cut} at {w}×{h}.',
+    'exCelsHeadlineTemplate':
+        '{labels} · {files} as {background} {format} (기준+어태치 composited per cel).',
+    'exTransparent': 'transparent',
+    'exOpaque': 'opaque',
+    'exSheetImageHeadlineTemplate':
+        '{pages} as B4 PNG — the panel\'s own paper, offscreen.',
+    'exXdtsHeadlineTemplate': '{sheets} (cels + serifu + camerawork columns).',
+    'exContePdfHeadlineTemplate':
+        '{pages} as ONE vector PDF — rules and text as vectors, pictures embedded.',
+    'exContePngHeadlineTemplate':
+        '{pages} as A4 PNG — the panel\'s own paper, offscreen.',
+    'exEnvelopeHeadlineTemplate': '{sheets} as {files} at {paper}{layered}.',
+    'exEnvelopePaperCut':
+        'the CUT\'s own pixels — drops into a working file as a layer',
+    'exEnvelopePaperSheetTemplate': '{w}px wide — the real 봉투, for printing',
+    'exEnvelopeLayeredTemplate': ' · one PNG per layer ({n})',
+    'exFileLabel': 'File',
+    'exPatternLabel': 'Pattern',
+    'exLocationLabel': 'Location',
+    'exChooseFolder': 'Choose a folder…',
+    'exSeMuxedTemplate': 'SE muxed · {codec}',
+    'exVectorPdf': 'Vector PDF',
+    'exPagePng': 'Page PNG',
+    'exFxOn': 'FX on',
+    'exFxOff': 'FX off',
+    'exSheetWidthTemplate': 'Sheet · {w}px',
+    'exSeparatePngsTemplate': '{n} separate PNGs',
+    'exFlatLayersTemplate': '{n} of 4, flat',
+    'exTabSequence': 'Sequence',
+    'exSizeCamera': 'Camera',
+    'exSizeCanvas': 'Canvas',
+    'exSheetImage': 'Sheet image',
+    'exPageImage': 'Page image',
+    'exSaveCurrent': '+ Save current…',
+    'exRenderQueue': 'Render queue',
+    'exRenderAll': 'Render All',
+    'exJobQueued': 'Queued',
+    'exJobDone': 'Done',
+    'exJobFailed': 'Failed',
+    'exJobCancelled': 'Cancelled',
+    'exJobTemplate': 'Job {id} · {tab}',
+    'exIncludeAll': 'All',
+    'exCutsIncludedTemplate': '{n} / {total} cuts',
+    'exNeedsFfmpeg': 'Needs FFmpeg on PATH on this machine.',
+    'exCheckingEncoders': 'Checking this machine’s encoders…',
+    'exNotInThisBuild': 'Not available in this build yet.',
+    'exBitrateAuto': 'Auto',
+    'exCanvasTemplate': 'Canvas {w}×{h}',
+    'exCanvasPerCut': 'Canvas (per cut)',
     'imImport': 'Import',
     'imPool': 'Pool',
     'imFile': 'File',
@@ -2965,6 +3250,97 @@ enum AppStrings {
     'exFiles': 'ファイル',
     'exOneImage': '画像1枚',
     'exOnePerLayer': 'レイヤーごとに1枚',
+    'exFrameCount': '{n}フレーム',
+    'exFrameCountOne': '{n}フレーム',
+    'exPageCount': '{n}ページ',
+    'exPageCountOne': '{n}ページ',
+    'exFileCount': '{n}ファイル',
+    'exFileCountOne': '{n}ファイル',
+    'exLabelCount': 'ラベル{n}個',
+    'exLabelCountOne': 'ラベル{n}個',
+    'exJobCount': 'ジョブ{n}件',
+    'exJobCountOne': 'ジョブ{n}件',
+    'exLayerCount': 'レイヤー{n}枚',
+    'exLayerCountOne': 'レイヤー{n}枚',
+    'exPngCount': 'PNG{n}枚',
+    'exPngCountOne': 'PNG{n}枚',
+    'exXdtsSheetCount': 'XDTSシート{n}枚',
+    'exXdtsSheetCountOne': 'XDTSシート{n}枚',
+    'exSheetPageCount': 'シート{n}ページ',
+    'exSheetPageCountOne': 'シート{n}ページ',
+    'exContePageCount': 'コンテ{n}ページ',
+    'exContePageCountOne': 'コンテ{n}ページ',
+    'exEnvelopeCount': 'エンベロープ{n}枚',
+    'exEnvelopeCountOne': 'エンベロープ{n}枚',
+    'exEnvelopeFileCount': 'エンベロープ{n}ファイル',
+    'exEnvelopeFileCountOne': 'エンベロープ{n}ファイル',
+    'exCancelledAfterTemplate': '{count}を書き出したところで中止しました。',
+    'exCancelledVideoTemplate': '{count}を書き出したところで中止しました（途中までの動画は残しています）。',
+    'exCancelled': '書き出しを中止しました。',
+    'exDoneTemplate': '{count}を書き出しました。',
+    'exDoneSkippedTemplate': '{count}を書き出しました（空の{skipped}件は飛ばしました）。',
+    'exDoneFileTemplate': '{name}を書き出しました。',
+    'exDoneVideoTemplate': '動画を書き出しました（{count}）。',
+    'exDoneContePdfTemplate': 'conte.pdfを書き出しました（{count}）。',
+    'exNothingInFrame': '書き出すものがありません（空のフレーム）。',
+    'exExporting': '書き出し中…',
+    'exExportingProgressTemplate': '書き出し中… {done}/{total}',
+    'exFailedTemplate': '書き出しに失敗しました: {error}',
+    'exRenderingQueue': 'キューを書き出し中…',
+    'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
+    'exQueueFailedTemplate': '、{n}件失敗',
+    'exQueueRestKept': '、残りは保持',
+    'exInvalidInOutTemplate': 'イン/アウトが不正 · F{frame} · {cut}',
+    'exInOutTemplate': 'イン {in} – アウト {out}（{count}f） · F{frame} · {cut}',
+    'exInvalidRangeTemplate': '有効なイン/アウト範囲を入力してください（1–{duration}）。',
+    'exSequenceCameraTemplate': 'カメラを通して{w}×{h}で{frames}。',
+    'exSequenceCanvasTemplate': '{w}×{h}で{frames}（キャンバスそのまま）。',
+    'exSequencePerCutTemplate': 'カットごとのキャンバスサイズで{frames}。',
+    'exImageHeadlineTemplate': '{cut}のフレーム{frame}、{w}×{h}。',
+    'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+付属を合成）。',
+    'exTransparent': '透過',
+    'exOpaque': '不透明',
+    'exSheetImageHeadlineTemplate': '{pages}をB4 PNGで — パネルの用紙のまま、画面外で描画。',
+    'exXdtsHeadlineTemplate': '{sheets}（セル + セリフ + カメラワーク列）。',
+    'exContePdfHeadlineTemplate': '{pages}を1つのベクターPDFに — 罫線と文字はベクター、絵は埋め込み。',
+    'exContePngHeadlineTemplate': '{pages}をA4 PNGで — パネルの用紙のまま、画面外で描画。',
+    'exEnvelopeHeadlineTemplate': '{sheets}を{files}で、{paper}{layered}。',
+    'exEnvelopePaperCut': 'カットそのままの画素 — 作業ファイルにレイヤーとして置ける',
+    'exEnvelopePaperSheetTemplate': '幅{w}px — 印刷用の実寸エンベロープ',
+    'exEnvelopeLayeredTemplate': ' · レイヤーごとにPNG1枚（{n}）',
+    'exFileLabel': 'ファイル',
+    'exPatternLabel': 'パターン',
+    'exLocationLabel': '保存先',
+    'exChooseFolder': 'フォルダを選択…',
+    'exSeMuxedTemplate': 'SE多重化 · {codec}',
+    'exVectorPdf': 'ベクターPDF',
+    'exPagePng': 'ページPNG',
+    'exFxOn': 'FXオン',
+    'exFxOff': 'FXオフ',
+    'exSheetWidthTemplate': '用紙 · {w}px',
+    'exSeparatePngsTemplate': '個別PNG {n}枚',
+    'exFlatLayersTemplate': '4枚中{n}枚、統合',
+    'exTabSequence': '連番',
+    'exSizeCamera': 'カメラ',
+    'exSizeCanvas': 'キャンバス',
+    'exSheetImage': 'シート画像',
+    'exPageImage': 'ページ画像',
+    'exSaveCurrent': '+ 現在の設定を保存…',
+    'exRenderQueue': 'レンダーキュー',
+    'exRenderAll': 'すべてレンダー',
+    'exJobQueued': '待機中',
+    'exJobDone': '完了',
+    'exJobFailed': '失敗',
+    'exJobCancelled': '中止',
+    'exJobTemplate': 'ジョブ{id} · {tab}',
+    'exIncludeAll': 'すべて',
+    'exCutsIncludedTemplate': '{n} / {total} カット',
+    'exNeedsFfmpeg': 'このマシンのPATHにFFmpegが必要です。',
+    'exCheckingEncoders': 'このマシンのエンコーダーを確認中…',
+    'exNotInThisBuild': 'このビルドではまだ使えません。',
+    'exBitrateAuto': '自動',
+    'exCanvasTemplate': 'キャンバス {w}×{h}',
+    'exCanvasPerCut': 'キャンバス（カットごと）',
     'imImport': 'インポート',
     'imPool': 'プール',
     'imFile': 'ファイル',
@@ -4106,6 +4482,97 @@ enum AppStrings {
     'exFiles': '파일',
     'exOneImage': '이미지 한 장',
     'exOnePerLayer': '레이어마다 한 장',
+    'exFrameCount': '{n}프레임',
+    'exFrameCountOne': '{n}프레임',
+    'exPageCount': '{n}페이지',
+    'exPageCountOne': '{n}페이지',
+    'exFileCount': '파일 {n}개',
+    'exFileCountOne': '파일 {n}개',
+    'exLabelCount': '라벨 {n}개',
+    'exLabelCountOne': '라벨 {n}개',
+    'exJobCount': '작업 {n}개',
+    'exJobCountOne': '작업 {n}개',
+    'exLayerCount': '레이어 {n}개',
+    'exLayerCountOne': '레이어 {n}개',
+    'exPngCount': 'PNG {n}장',
+    'exPngCountOne': 'PNG {n}장',
+    'exXdtsSheetCount': 'XDTS 시트 {n}장',
+    'exXdtsSheetCountOne': 'XDTS 시트 {n}장',
+    'exSheetPageCount': '시트 {n}페이지',
+    'exSheetPageCountOne': '시트 {n}페이지',
+    'exContePageCount': '콘티 {n}페이지',
+    'exContePageCountOne': '콘티 {n}페이지',
+    'exEnvelopeCount': '엔벨로프 {n}장',
+    'exEnvelopeCountOne': '엔벨로프 {n}장',
+    'exEnvelopeFileCount': '엔벨로프 파일 {n}개',
+    'exEnvelopeFileCountOne': '엔벨로프 파일 {n}개',
+    'exCancelledAfterTemplate': '{count} 내보낸 뒤 취소했습니다.',
+    'exCancelledVideoTemplate': '{count} 내보낸 뒤 취소했습니다(중간까지의 영상은 남겼습니다).',
+    'exCancelled': '내보내기를 취소했습니다.',
+    'exDoneTemplate': '{count} 내보냈습니다.',
+    'exDoneSkippedTemplate': '{count} 내보냈습니다(빈 것 {skipped}개는 건너뜀).',
+    'exDoneFileTemplate': '{name} 내보냈습니다.',
+    'exDoneVideoTemplate': '영상을 내보냈습니다({count}).',
+    'exDoneContePdfTemplate': 'conte.pdf를 내보냈습니다({count}).',
+    'exNothingInFrame': '내보낼 것이 없습니다(빈 프레임).',
+    'exExporting': '내보내는 중…',
+    'exExportingProgressTemplate': '내보내는 중… {done}/{total}',
+    'exFailedTemplate': '내보내기 실패: {error}',
+    'exRenderingQueue': '대기열을 렌더링하는 중…',
+    'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
+    'exQueueFailedTemplate': ', {n}개 실패',
+    'exQueueRestKept': ', 나머지는 남겨 둠',
+    'exInvalidInOutTemplate': '인/아웃이 올바르지 않음 · F{frame} · {cut}',
+    'exInOutTemplate': '인 {in} – 아웃 {out} ({count}f) · F{frame} · {cut}',
+    'exInvalidRangeTemplate': '올바른 인/아웃 범위를 입력하세요(1–{duration}).',
+    'exSequenceCameraTemplate': '카메라를 거쳐 {w}×{h}로 {frames}.',
+    'exSequenceCanvasTemplate': '{w}×{h}로 {frames}(캔버스 그대로).',
+    'exSequencePerCutTemplate': '컷마다 제 캔버스 크기로 {frames}.',
+    'exImageHeadlineTemplate': '{cut}의 {frame}프레임, {w}×{h}.',
+    'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+부속 합성).',
+    'exTransparent': '투명',
+    'exOpaque': '불투명',
+    'exSheetImageHeadlineTemplate': '{pages}를 B4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
+    'exXdtsHeadlineTemplate': '{sheets}(셀 + 대사 + 카메라워크 열).',
+    'exContePdfHeadlineTemplate': '{pages}를 벡터 PDF 하나로 — 선과 글자는 벡터, 그림은 포함.',
+    'exContePngHeadlineTemplate': '{pages}를 A4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
+    'exEnvelopeHeadlineTemplate': '{sheets}를 {files}로, {paper}{layered}.',
+    'exEnvelopePaperCut': '컷 그대로의 픽셀 — 작업 파일에 레이어로 넣을 수 있음',
+    'exEnvelopePaperSheetTemplate': '너비 {w}px — 인쇄용 실제 봉투',
+    'exEnvelopeLayeredTemplate': ' · 레이어마다 PNG 한 장({n})',
+    'exFileLabel': '파일',
+    'exPatternLabel': '패턴',
+    'exLocationLabel': '위치',
+    'exChooseFolder': '폴더 선택…',
+    'exSeMuxedTemplate': 'SE 먹싱 · {codec}',
+    'exVectorPdf': '벡터 PDF',
+    'exPagePng': '페이지 PNG',
+    'exFxOn': 'FX 켬',
+    'exFxOff': 'FX 끔',
+    'exSheetWidthTemplate': '용지 · {w}px',
+    'exSeparatePngsTemplate': '개별 PNG {n}장',
+    'exFlatLayersTemplate': '4개 중 {n}개, 합침',
+    'exTabSequence': '시퀀스',
+    'exSizeCamera': '카메라',
+    'exSizeCanvas': '캔버스',
+    'exSheetImage': '시트 이미지',
+    'exPageImage': '페이지 이미지',
+    'exSaveCurrent': '+ 현재 설정 저장…',
+    'exRenderQueue': '렌더 대기열',
+    'exRenderAll': '모두 렌더',
+    'exJobQueued': '대기 중',
+    'exJobDone': '완료',
+    'exJobFailed': '실패',
+    'exJobCancelled': '취소됨',
+    'exJobTemplate': '작업 {id} · {tab}',
+    'exIncludeAll': '전부',
+    'exCutsIncludedTemplate': '{n} / {total} 컷',
+    'exNeedsFfmpeg': '이 컴퓨터의 PATH에 FFmpeg가 필요합니다.',
+    'exCheckingEncoders': '이 컴퓨터의 인코더를 확인하는 중…',
+    'exNotInThisBuild': '이 빌드에서는 아직 쓸 수 없습니다.',
+    'exBitrateAuto': '자동',
+    'exCanvasTemplate': '캔버스 {w}×{h}',
+    'exCanvasPerCut': '캔버스(컷마다)',
     'imImport': '임포트',
     'imPool': '풀',
     'imFile': '파일',
@@ -5277,6 +5744,97 @@ enum AppStrings {
     'exFiles': 'Fichiers',
     'exOneImage': 'Une image',
     'exOnePerLayer': 'Une par calque',
+    'exFrameCount': '{n} images',
+    'exFrameCountOne': '{n} image',
+    'exPageCount': '{n} pages',
+    'exPageCountOne': '{n} page',
+    'exFileCount': '{n} fichiers',
+    'exFileCountOne': '{n} fichier',
+    'exLabelCount': '{n} étiquettes',
+    'exLabelCountOne': '{n} étiquette',
+    'exJobCount': '{n} tâches',
+    'exJobCountOne': '{n} tâche',
+    'exLayerCount': '{n} calques',
+    'exLayerCountOne': '{n} calque',
+    'exPngCount': '{n} PNG',
+    'exPngCountOne': '{n} PNG',
+    'exXdtsSheetCount': '{n} feuilles XDTS',
+    'exXdtsSheetCountOne': '{n} feuille XDTS',
+    'exSheetPageCount': '{n} pages de feuille',
+    'exSheetPageCountOne': '{n} page de feuille',
+    'exContePageCount': '{n} pages de conte',
+    'exContePageCountOne': '{n} page de conte',
+    'exEnvelopeCount': '{n} enveloppes',
+    'exEnvelopeCountOne': '{n} enveloppe',
+    'exEnvelopeFileCount': '{n} fichiers d\'enveloppe',
+    'exEnvelopeFileCountOne': '{n} fichier d\'enveloppe',
+    'exCancelledAfterTemplate': 'Export annulé après {count}.',
+    'exCancelledVideoTemplate': 'Export annulé après {count} (vidéo partielle conservée).',
+    'exCancelled': 'Export annulé.',
+    'exDoneTemplate': 'Exporté : {count}.',
+    'exDoneSkippedTemplate': 'Exporté : {count} ({skipped} vides ignorés).',
+    'exDoneFileTemplate': 'Exporté : {name}.',
+    'exDoneVideoTemplate': 'Vidéo exportée ({count}).',
+    'exDoneContePdfTemplate': 'conte.pdf exporté ({count}).',
+    'exNothingInFrame': 'Rien à exporter (image vide).',
+    'exExporting': 'Export en cours…',
+    'exExportingProgressTemplate': 'Export en cours… {done}/{total}',
+    'exFailedTemplate': 'Échec de l\'export : {error}',
+    'exRenderingQueue': 'Rendu de la file en cours…',
+    'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
+    'exQueueFailedTemplate': ', {n} en échec',
+    'exQueueRestKept': ', le reste est conservé',
+    'exInvalidInOutTemplate': 'Entrée/sortie invalide · F{frame} · {cut}',
+    'exInOutTemplate': 'entrée {in} – sortie {out} ({count}f) · F{frame} · {cut}',
+    'exInvalidRangeTemplate': 'Saisissez une plage entrée/sortie valide (1–{duration}).',
+    'exSequenceCameraTemplate': '{frames} en {w}×{h} à travers la caméra.',
+    'exSequenceCanvasTemplate': '{frames} en {w}×{h} (canevas brut).',
+    'exSequencePerCutTemplate': '{frames} à la taille de canevas de chaque plan.',
+    'exImageHeadlineTemplate': 'Image {frame} de {cut} en {w}×{h}.',
+    'exCelsHeadlineTemplate': '{labels} · {files} en {format} {background} (base + attaches composées par cellulo).',
+    'exTransparent': 'transparent',
+    'exOpaque': 'opaque',
+    'exSheetImageHeadlineTemplate': '{pages} en PNG B4 — le papier du panneau, rendu hors écran.',
+    'exXdtsHeadlineTemplate': '{sheets} (colonnes cellulos + dialogues + caméra).',
+    'exContePdfHeadlineTemplate': '{pages} en UN seul PDF vectoriel — traits et texte vectoriels, images intégrées.',
+    'exContePngHeadlineTemplate': '{pages} en PNG A4 — le papier du panneau, rendu hors écran.',
+    'exEnvelopeHeadlineTemplate': '{sheets} en {files} à {paper}{layered}.',
+    'exEnvelopePaperCut': 'les pixels du plan — se dépose dans un fichier de travail comme calque',
+    'exEnvelopePaperSheetTemplate': '{w} px de large — la vraie enveloppe, pour l\'impression',
+    'exEnvelopeLayeredTemplate': ' · un PNG par calque ({n})',
+    'exFileLabel': 'Fichier',
+    'exPatternLabel': 'Modèle',
+    'exLocationLabel': 'Emplacement',
+    'exChooseFolder': 'Choisir un dossier…',
+    'exSeMuxedTemplate': 'SE intégré · {codec}',
+    'exVectorPdf': 'PDF vectoriel',
+    'exPagePng': 'Page PNG',
+    'exFxOn': 'FX activés',
+    'exFxOff': 'FX désactivés',
+    'exSheetWidthTemplate': 'Feuille · {w} px',
+    'exSeparatePngsTemplate': '{n} PNG séparés',
+    'exFlatLayersTemplate': '{n} sur 4, fusionnés',
+    'exTabSequence': 'Séquence',
+    'exSizeCamera': 'Caméra',
+    'exSizeCanvas': 'Canevas',
+    'exSheetImage': 'Image de feuille',
+    'exPageImage': 'Image de page',
+    'exSaveCurrent': '+ Enregistrer l\'actuel…',
+    'exRenderQueue': 'File de rendu',
+    'exRenderAll': 'Tout rendre',
+    'exJobQueued': 'En attente',
+    'exJobDone': 'Terminé',
+    'exJobFailed': 'Échec',
+    'exJobCancelled': 'Annulé',
+    'exJobTemplate': 'Tâche {id} · {tab}',
+    'exIncludeAll': 'Tous',
+    'exCutsIncludedTemplate': '{n} / {total} plans',
+    'exNeedsFfmpeg': 'Nécessite FFmpeg dans le PATH de cette machine.',
+    'exCheckingEncoders': 'Vérification des encodeurs de cette machine…',
+    'exNotInThisBuild': 'Pas encore disponible dans cette version.',
+    'exBitrateAuto': 'Auto',
+    'exCanvasTemplate': 'Canevas {w}×{h}',
+    'exCanvasPerCut': 'Canevas (par plan)',
     'imImport': 'Importer',
     'imPool': 'Réserve',
     'imFile': 'Fichier',
@@ -6378,6 +6936,97 @@ enum AppStrings {
     'exFiles': '文件',
     'exOneImage': '单张图片',
     'exOnePerLayer': '每图层一张',
+    'exFrameCount': '{n}帧',
+    'exFrameCountOne': '{n}帧',
+    'exPageCount': '{n}页',
+    'exPageCountOne': '{n}页',
+    'exFileCount': '{n}个文件',
+    'exFileCountOne': '{n}个文件',
+    'exLabelCount': '{n}个标签',
+    'exLabelCountOne': '{n}个标签',
+    'exJobCount': '{n}个任务',
+    'exJobCountOne': '{n}个任务',
+    'exLayerCount': '{n}个图层',
+    'exLayerCountOne': '{n}个图层',
+    'exPngCount': '{n}张 PNG',
+    'exPngCountOne': '{n}张 PNG',
+    'exXdtsSheetCount': '{n}张 XDTS 摄影表',
+    'exXdtsSheetCountOne': '{n}张 XDTS 摄影表',
+    'exSheetPageCount': '摄影表{n}页',
+    'exSheetPageCountOne': '摄影表{n}页',
+    'exContePageCount': '分镜稿{n}页',
+    'exContePageCountOne': '分镜稿{n}页',
+    'exEnvelopeCount': '{n}个包络',
+    'exEnvelopeCountOne': '{n}个包络',
+    'exEnvelopeFileCount': '{n}个包络文件',
+    'exEnvelopeFileCountOne': '{n}个包络文件',
+    'exCancelledAfterTemplate': '导出{count}后已取消。',
+    'exCancelledVideoTemplate': '导出{count}后已取消（已保留部分视频）。',
+    'exCancelled': '导出已取消。',
+    'exDoneTemplate': '已导出{count}。',
+    'exDoneSkippedTemplate': '已导出{count}（跳过{skipped}个空白）。',
+    'exDoneFileTemplate': '已导出 {name}。',
+    'exDoneVideoTemplate': '已导出视频（{count}）。',
+    'exDoneContePdfTemplate': '已导出 conte.pdf（{count}）。',
+    'exNothingInFrame': '没有可导出的内容（空帧）。',
+    'exExporting': '正在导出…',
+    'exExportingProgressTemplate': '正在导出… {done}/{total}',
+    'exFailedTemplate': '导出失败：{error}',
+    'exRenderingQueue': '正在渲染队列…',
+    'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',
+    'exQueueFailedTemplate': '，{n}个失败',
+    'exQueueRestKept': '，其余保留',
+    'exInvalidInOutTemplate': '入点/出点无效 · F{frame} · {cut}',
+    'exInOutTemplate': '入点 {in} – 出点 {out}（{count}f） · F{frame} · {cut}',
+    'exInvalidRangeTemplate': '请输入有效的入点/出点范围（1–{duration}）。',
+    'exSequenceCameraTemplate': '通过摄影机以 {w}×{h} 输出{frames}。',
+    'exSequenceCanvasTemplate': '以 {w}×{h} 输出{frames}（原始画布）。',
+    'exSequencePerCutTemplate': '按各镜头自身的画布尺寸输出{frames}。',
+    'exImageHeadlineTemplate': '{cut} 的第 {frame} 帧，{w}×{h}。',
+    'exCelsHeadlineTemplate': '{labels} · 以{background} {format} 输出{files}（每张赛璐珞合成基准+附属）。',
+    'exTransparent': '透明',
+    'exOpaque': '不透明',
+    'exSheetImageHeadlineTemplate': '{pages}，B4 PNG——使用面板自身的纸张，离屏渲染。',
+    'exXdtsHeadlineTemplate': '{sheets}（赛璐珞 + 台词 + 摄影栏）。',
+    'exContePdfHeadlineTemplate': '{pages}合成一个矢量 PDF——线条与文字为矢量，图片嵌入。',
+    'exContePngHeadlineTemplate': '{pages}，A4 PNG——使用面板自身的纸张，离屏渲染。',
+    'exEnvelopeHeadlineTemplate': '{sheets}输出为{files}，{paper}{layered}。',
+    'exEnvelopePaperCut': '镜头自身的像素——可作为图层放入工作文件',
+    'exEnvelopePaperSheetTemplate': '宽 {w}px——用于打印的实际包络',
+    'exEnvelopeLayeredTemplate': ' · 每图层一张 PNG（{n}）',
+    'exFileLabel': '文件',
+    'exPatternLabel': '命名模式',
+    'exLocationLabel': '位置',
+    'exChooseFolder': '选择文件夹…',
+    'exSeMuxedTemplate': 'SE 已封装 · {codec}',
+    'exVectorPdf': '矢量 PDF',
+    'exPagePng': '页面 PNG',
+    'exFxOn': 'FX 开',
+    'exFxOff': 'FX 关',
+    'exSheetWidthTemplate': '纸张 · {w}px',
+    'exSeparatePngsTemplate': '{n}张独立 PNG',
+    'exFlatLayersTemplate': '4 层中 {n} 层，合并',
+    'exTabSequence': '序列',
+    'exSizeCamera': '摄影机',
+    'exSizeCanvas': '画布',
+    'exSheetImage': '摄影表图像',
+    'exPageImage': '页面图像',
+    'exSaveCurrent': '+ 保存当前设置…',
+    'exRenderQueue': '渲染队列',
+    'exRenderAll': '全部渲染',
+    'exJobQueued': '排队中',
+    'exJobDone': '完成',
+    'exJobFailed': '失败',
+    'exJobCancelled': '已取消',
+    'exJobTemplate': '任务 {id} · {tab}',
+    'exIncludeAll': '全部',
+    'exCutsIncludedTemplate': '{n} / {total} 个镜头',
+    'exNeedsFfmpeg': '需要本机 PATH 中有 FFmpeg。',
+    'exCheckingEncoders': '正在检查本机的编码器…',
+    'exNotInThisBuild': '此版本尚不可用。',
+    'exBitrateAuto': '自动',
+    'exCanvasTemplate': '画布 {w}×{h}',
+    'exCanvasPerCut': '画布（按镜头）',
     'imImport': '导入',
     'imPool': '素材池',
     'imFile': '文件',

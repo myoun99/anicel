@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../repaint_props.dart';
 
@@ -112,7 +113,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                     ),
                   ),
                   child: Text(
-                    'All',
+                    AppText.strings.exIncludeAll,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: anyExcluded
                           ? theme.colorScheme.onSurface
@@ -125,7 +126,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                '$included / ${widget.cuts.length} cuts',
+                AppText.strings.exCutsIncluded(included, widget.cuts.length),
                 key: const ValueKey<String>('export-cut-grid-count'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

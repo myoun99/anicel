@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/envelope/cut_envelope_paper.dart';
 import '../../models/export_preset.dart';
-import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
@@ -34,36 +33,42 @@ class ExportPresetRail extends StatelessWidget {
   final ValueChanged<ExportPreset> onDelete;
 
   static String tabLabel(ExportTab tab) => switch (tab) {
-    ExportTab.sequence => 'Sequence',
+    ExportTab.sequence => AppText.strings.exTabSequence,
     ExportTab.image => AppText.strings.exImage,
     ExportTab.cels => AppText.strings.exCels,
-    ExportTab.timesheet => 'Timesheet',
-    ExportTab.conte => 'Conte',
-    ExportTab.envelope => 'Envelope',
+    ExportTab.timesheet => AppText.strings.panelTimesheet,
+    ExportTab.conte => AppText.strings.panelConte,
+    ExportTab.envelope => AppText.strings.panelEnvelope,
   };
 
   /// One-line rule summary under the preset name.
   static String describe(ExportTabSpec spec) => switch (spec) {
     SequenceExportSpec() =>
       '${ExportFormatModule.summarize(spec.format)} · '
-          '${spec.sizeMode == ExportSizeMode.camera ? 'Camera' : 'Canvas'}',
+          '${ExportSizeModule.summarize(spec.sizeMode)}',
     ImageExportSpec() => ExportFormatModule.summarize(spec.format),
     CelsExportSpec() =>
       '${ExportFormatModule.summarize(spec.format)} · '
           '${exportCelLabelText(spec.label)} · '
           '${exportCelFilterSummary(spec)}',
     TimesheetExportSpec() => switch (spec.format) {
-      ExportTimesheetFormat.sheetImage => 'Sheet image',
+      ExportTimesheetFormat.sheetImage => AppText.strings.exSheetImage,
       ExportTimesheetFormat.xdts => 'XDTS',
     },
     ConteExportSpec() => switch (spec.format) {
-      ExportConteFormat.pdf => 'Vector PDF',
-      ExportConteFormat.pageImage => 'Page image',
+      ExportConteFormat.pdf => AppText.strings.exVectorPdf,
+      ExportConteFormat.pageImage => AppText.strings.exPageImage,
     },
-    EnvelopeExportSpec() =>
-      '${spec.paperMode == CutEnvelopePaperMode.cut ? 'Cut size' : 'Real sheet'}'
-          ' · ${spec.orderedLayers.length} '
-          '${spec.separateLayerFiles ? 'PNGs' : 'layers'}',
+    EnvelopeExportSpec() => [
+      if (spec.paperMode == CutEnvelopePaperMode.cut)
+        AppText.strings.exCutSize
+      else
+        AppText.strings.exRealSheet,
+      if (spec.separateLayerFiles)
+        AppText.strings.exPngCount(spec.orderedLayers.length)
+      else
+        AppText.strings.exLayerCount(spec.orderedLayers.length),
+    ].join(' · '),
   };
 
   @override
@@ -75,7 +80,8 @@ class ExportPresetRail extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
           child: Text(
-            'PRESETS · ${tabLabel(tab).toUpperCase()}',
+            '${AppText.strings.exPresets.toUpperCase()} · '
+            '${tabLabel(tab).toUpperCase()}',
             style: theme.textTheme.labelSmall?.copyWith(
               fontSize: 9,
               letterSpacing: 1.1,
@@ -114,7 +120,7 @@ class ExportPresetRail extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      '+ Save current…',
+                      AppText.strings.exSaveCurrent,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: enabled
                             ? theme.colorScheme.onSurfaceVariant
