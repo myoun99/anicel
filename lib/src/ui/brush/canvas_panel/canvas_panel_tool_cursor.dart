@@ -111,7 +111,7 @@ class _CanvasPanelToolCursor {
           : '(${position.dx.round()},${position.dy.round()})';
       InputInspector.note(
         'aim $source -> $where'
-        ' held=$_state._tap.aimIsHeld touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
+        ' held=${_state._tap.aimIsHeld} touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
         ' draws=${AppInput.touchDraws}',
       );
     }
