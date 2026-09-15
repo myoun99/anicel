@@ -106,6 +106,41 @@ void main() {
     });
   });
 
+  testWidgets('🚨a backdrop that is NONE prints nothing where it would have '
+      'been baked (F-114)', (tester) async {
+    // 유저 2026-09-15: 「없음버튼 누르면 없는상태」 — the plane is not there. The
+    // leading-gap frame is the ground alone, so its corner is the backdrop.
+    await tester.runAsync(() async {
+      final manager = session();
+      final gap = ExportFrameTask(
+        cut: manager.requireActiveCut,
+        frameIndex: -1,
+      );
+      final renderer = ExportFrameRenderer(
+        session: manager,
+        background: const ui.Color(0x00000000),
+      );
+      final there = await renderer.renderCompositeForVideo(
+        gap,
+        ExportSizeMode.camera,
+      );
+      expect(
+        await cornerAlpha(there),
+        255,
+        reason: 'control: the backdrop bakes the ground',
+      );
+      there.dispose();
+
+      manager.projectSettings.setProjectBackdropNone();
+      final absent = await renderer.renderCompositeForVideo(
+        gap,
+        ExportSizeMode.camera,
+      );
+      expect(await cornerAlpha(absent), 0);
+      absent.dispose();
+    });
+  });
+
   testWidgets('a selected-track gap COVERED by another track bakes that '
       'track\'s stage (R3a): the stack replaces the background-only frame, '
       'so an alpha master carries the covering track\'s opaque paper',

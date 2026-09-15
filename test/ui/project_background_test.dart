@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -57,5 +58,30 @@ void main() {
     expect(s.projectSettings.projectBackground.none, isTrue);
     s.undo();
     expect(s.projectSettings.projectBackground, black);
+  });
+
+  test('🚨the outer planes: none takes a plane away, and a pick — even of '
+      'the kept colour — brings it back in the same undo step (F-114)', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    Project project() => s.repository.requireProject();
+    final keptBackdrop = project().backdropArgb;
+    final keptPasteboard = project().pasteboardArgb;
+
+    s.projectSettings.setProjectBackdropNone();
+    s.projectSettings.setPasteboardNone();
+    expect(project().backdropNone, isTrue);
+    expect(project().pasteboardNone, isTrue);
+    expect(project().backdropArgb, keptBackdrop, reason: 'the colour stays');
+
+    // The kept colour itself: nothing about the argb changes, and the plane
+    // still has to come back.
+    s.projectSettings.setProjectBackdrop(keptBackdrop);
+    s.projectSettings.setPasteboardColor(keptPasteboard);
+    expect(project().backdropNone, isFalse);
+    expect(project().pasteboardNone, isFalse);
+
+    s.undo();
+    expect(project().pasteboardNone, isTrue, reason: 'one step, undone alone');
+    expect(project().backdropNone, isFalse);
   });
 }

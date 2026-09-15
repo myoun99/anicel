@@ -26,7 +26,11 @@ void main() {
   // A colour no backdrop or default paper shares.
   const paperArgb = 0xFF3366CC;
 
-  Future<CustomPainter> pump(WidgetTester tester, {required bool paper}) async {
+  Future<CustomPainter> pump(
+    WidgetTester tester, {
+    required bool paper,
+    bool none = false,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -39,7 +43,7 @@ void main() {
               canvasSize: canvasSize,
               viewport: CanvasViewport(zoom: 1, panX: 0, panY: 0),
               paintPaper: paper,
-              paperBackground: const ProjectBackground.color(paperArgb),
+              paperBackground: ProjectBackground.color(paperArgb, none: none),
             ),
           ),
         ),
@@ -93,6 +97,16 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final painter = await pump(tester, paper: false);
+    expect(await paperPixels(tester, painter), 0);
+  });
+
+  testWidgets('🚨a paper that is NONE leaves the backdrop bare even when the '
+      'view asks for paper (F-114)', (tester) async {
+    // 유저 2026-09-15: 「없음버튼 누르면 없는상태」 — the colour is kept for the
+    // next pick, and nothing of it is painted.
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final painter = await pump(tester, paper: true, none: true);
     expect(await paperPixels(tester, painter), 0);
   });
 }
