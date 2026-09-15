@@ -25,6 +25,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
@@ -53,8 +54,7 @@ import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/cut_piece_stamp.dart';
 import 'cut_piece_preview.dart';
-import '../../models/project.dart'
-    show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
+import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter, alphaPreviewEnabled;
@@ -173,7 +173,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
     this.pasteboardColor,
-    this.pasteboardMargin,
     this.onPasteboardColorChanged,
     this.backdropArgb,
     this.onBackdropColorChanged,
@@ -555,10 +554,6 @@ class BrushCanvasPanel extends StatefulWidget {
   final int? pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
 
-  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
-  /// and heights ([Project.pasteboardMargin]). null = from the scope.
-  final double? pasteboardMargin;
-
   /// The BACKDROP behind the pasteboard (R3b): the stage's opaque floor,
   /// or the alpha checkerboard while the preview toggle is on. It is what
   /// lies BEYOND the pasteboard now, not merely under it. null = from the
@@ -749,7 +744,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// hook, not an arbitrary call site.
   late int _stageBackdropArgb;
   late int _stagePasteboardArgb;
-  late double _stagePasteboardMargin;
 
   /// Whether this panel is the one LYING ON THE FLOOR — which decides
   /// whether its pill lays its whole vocabulary out or keeps it folded
@@ -1192,8 +1186,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
     if (oldWidget.backdropArgb != widget.backdropArgb ||
-        oldWidget.pasteboardColor != widget.pasteboardColor ||
-        oldWidget.pasteboardMargin != widget.pasteboardMargin) {
+        oldWidget.pasteboardColor != widget.pasteboardColor) {
       _shellBars.readStageColors();
     }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
@@ -2688,11 +2681,21 @@ class _CanvasViewportPanbar extends StatelessWidget {
 /// changing the pasteboard repainted what they meant by "the background".
 /// The pasteboard is now drawn only where the pasteboard IS, and the
 /// backdrop is what lies beyond it.
+///
+/// 🚨★★★WHERE IT IS = THE DRAWING BOUND, [PasteboardBounds] (F-114, 유저
+/// 2026-09-12: 「3x에서만 그려지는데 배경 색 설정하면 페이스트보드가 5x크기로
+/// 보이고 … 그려지는건 제대로 3x인데. 법 나뉘어져있는거같으니 통일」). It
+/// was a SHOWING number of its own — `Project.pasteboardMargin`, default 2.0
+/// canvases per side, set in the project background window — kept apart on
+/// the argument that at the drawing bound the backdrop only showed below
+/// about 20% zoom. The bound became 3×3 at H2 (2026-08-22) while that number
+/// stayed at five, so the plane showed a pasteboard two canvases wider than
+/// anything could be drawn on. One wall now: the plane stops exactly where
+/// ink stops.
 class _StagePlanes extends StatelessWidget {
   const _StagePlanes({
     required this.backdropArgb,
     required this.pasteboardArgb,
-    required this.pasteboardMargin,
     required this.canvasSize,
     required this.viewport,
     required this.child,
@@ -2700,11 +2703,6 @@ class _StagePlanes extends StatelessWidget {
 
   final int backdropArgb;
   final int pasteboardArgb;
-
-  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
-  /// and heights. Its own number rather than the drawing bound's, because
-  /// the two answer different questions — see [Project.pasteboardMargin].
-  final double pasteboardMargin;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final Widget child;
@@ -2719,7 +2717,6 @@ class _StagePlanes extends StatelessWidget {
               painter: _StagePlanesPainter(
                 backdrop: Color(backdropArgb),
                 pasteboard: Color(pasteboardArgb),
-                margin: pasteboardMargin,
                 canvasSize: canvasSize,
                 viewport: viewport,
               ),
@@ -2736,14 +2733,12 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   const _StagePlanesPainter({
     required this.backdrop,
     required this.pasteboard,
-    required this.margin,
     required this.canvasSize,
     required this.viewport,
   });
 
   final Color backdrop;
   final Color pasteboard;
-  final double margin;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
 
@@ -2752,8 +2747,9 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     final box = Offset.zero & size;
     // 🚨 Clip to our own box, because the quad below is built in VIEWPORT
     // coordinates and therefore reaches as far as the pasteboard does —
-    // five canvas widths and heights, which is 11700 x 8270 units at the
-    // default cut size. A `CustomPaint` clips nothing on its own, so the
+    // three canvas widths and heights, 7020 x 4962 units at the default cut
+    // size (it was five, 11700 x 8270, when the figures below were
+    // measured — the showing margin F-114 retired). A `CustomPaint` clips nothing on its own, so the
     // display list's BOUNDS became that whole quad, and the engine sizes
     // a raster cache entry from the bounds times the transform:
     //
@@ -2785,16 +2781,15 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     canvas.save();
     canvas.clipRect(box);
     canvas.drawRect(box, Paint()..color = backdrop);
-    if (pasteboard.a <= 0 || margin < 0) {
+    if (pasteboard.a <= 0) {
       canvas.restore();
       return;
     }
-    final width = canvasSize.width.toDouble();
-    final height = canvasSize.height.toDouble();
-    final left = -margin * width;
-    final top = -margin * height;
-    final right = width + margin * width;
-    final bottom = height + margin * height;
+    final wall = canvasSize.pasteboardRect;
+    final left = wall.left;
+    final top = wall.top;
+    final right = wall.right;
+    final bottom = wall.bottom;
     // The four corners through the view transform, as a PATH: under
     // rotation the pasteboard is a quad, and a Rect would silently square
     // it back up.
@@ -2814,7 +2809,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props => (backdrop, pasteboard, margin, canvasSize, viewport);
+  Object get props => (backdrop, pasteboard, canvasSize, viewport);
 }
 
 /// Which of the pill's foldable groups are OUT at a given width — the fold

@@ -123,7 +123,6 @@ class CanvasStageColors extends InheritedWidget {
     super.key,
     required this.backdropArgb,
     required this.pasteboardArgb,
-    required this.pasteboardMargin,
     required super.child,
   });
 
@@ -134,18 +133,13 @@ class CanvasStageColors extends InheritedWidget {
   /// backdrop.
   final int pasteboardArgb;
 
-  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
-  /// and heights.
-  final double pasteboardMargin;
-
   static CanvasStageColors? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasStageColors>();
 
   @override
   bool updateShouldNotify(CanvasStageColors oldWidget) =>
       oldWidget.backdropArgb != backdropArgb ||
-      oldWidget.pasteboardArgb != pasteboardArgb ||
-      oldWidget.pasteboardMargin != pasteboardMargin;
+      oldWidget.pasteboardArgb != pasteboardArgb;
 }
 
 /// Whether [band] overlaps the vertical range [top]..[bottom].

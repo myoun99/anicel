@@ -23,8 +23,9 @@ import '../helpers/panel_finders.dart';
 /// drawn on, against the pass-through baseline.
 ///
 /// The buffer's bounds are the VISIBLE canvas rect, not the pasteboard
-/// (5×5 canvases = 25× the area) — that clamp is the difference between a
-/// buffer costing about what it draws and costing 25× that.
+/// (3×3 canvases = 9× the area; 5×5 and 25× until H2) — that clamp is the
+/// difference between a buffer costing about what it draws and costing 9×
+/// that.
 void main() {
   testWidgets('move-pump cost: pass-through folder vs BUFFERING folder '
       'around the layer being drawn on', (tester) async {

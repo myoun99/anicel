@@ -83,9 +83,13 @@ void main() {
       expect(surfacePixelRgba(surface, -1, 0), 0,
           reason: 'off-canvas but on the pasteboard = transparent, not null');
       expect(surfacePixelRgba(surface, 8, 0), 0);
-      // The 8×8 stage's 5x5 pasteboard: x,y ∈ [-16, 24).
-      expect(surfacePixelRgba(surface, -17, 0), isNull);
-      expect(surfacePixelRgba(surface, 24, 0), isNull);
+      // The 8×8 stage's 3×3 pasteboard: x,y ∈ [-8, 16). ⚠️These probes sat
+      // at -17 and 24 while the pasteboard was 5×5 — still null after H2,
+      // but eight pixels past the wall they were meant to stand on.
+      expect(surfacePixelRgba(surface, -8, 0), 0);
+      expect(surfacePixelRgba(surface, -9, 0), isNull);
+      expect(surfacePixelRgba(surface, 15, 0), 0);
+      expect(surfacePixelRgba(surface, 16, 0), isNull);
     });
 
     test('reads OFF-canvas pixels through negative tiles (floorDiv — the '

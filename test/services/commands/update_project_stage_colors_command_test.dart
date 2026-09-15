@@ -3,8 +3,8 @@
 // No test named this command file (audit 2026-09-04); the settings dialog
 // reached it through the session. These pins drive it directly: a
 // backdrop-only command restores the backdrop and leaves a pasteboard
-// changed in between alone, all three fields round-trip together, and
-// undo before execute is refused.
+// changed in between alone, both fields round-trip together, and undo
+// before execute is refused.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -39,26 +39,23 @@ void main() {
     expect(repository.requireProject().pasteboardArgb, 0xFF445566);
   });
 
-  test('all three fields round-trip together', () {
+  test('both fields round-trip together', () {
     final before = repository.requireProject();
     final command = UpdateProjectStageColorsCommand(
       repository: repository,
       backdropArgb: 0xFF010203,
       pasteboardArgb: 0xFF040506,
-      pasteboardMargin: 42,
     );
     command.execute();
     final after = repository.requireProject();
     expect(after.backdropArgb, 0xFF010203);
     expect(after.pasteboardArgb, 0xFF040506);
-    expect(after.pasteboardMargin, 42);
     command.undo();
     final restored = repository.requireProject();
     expect(restored.backdropArgb, before.backdropArgb);
     expect(restored.pasteboardArgb, before.pasteboardArgb);
-    expect(restored.pasteboardMargin, before.pasteboardMargin);
     command.execute();
-    expect(repository.requireProject().pasteboardMargin, 42);
+    expect(repository.requireProject().pasteboardArgb, 0xFF040506);
   });
 
   test('undo before execute is refused', () {

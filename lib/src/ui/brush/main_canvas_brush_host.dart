@@ -71,7 +71,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
     this.pasteboardColor,
-    this.pasteboardMargin,
     this.onPasteboardColorChanged,
     this.backdropArgb,
     this.onBackdropColorChanged,
@@ -215,10 +214,6 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// canvas panel (유저, R4 #2). Same contract as on [BrushCanvasPanel];
   /// this host only carries it through.
   final int? pasteboardColor;
-
-  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights ([Project.pasteboardMargin]). null = from the scope.
-  final double? pasteboardMargin;
   final ValueChanged<int>? onPasteboardColorChanged;
 
   /// The BACKDROP behind the pasteboard (R3b). null = from the scope.
@@ -516,7 +511,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       paperColor: widget.paperColor,
       onPaperColorChanged: widget.onPaperColorChanged,
       pasteboardColor: widget.pasteboardColor,
-      pasteboardMargin: widget.pasteboardMargin,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       backdropArgb: widget.backdropArgb,
       onBackdropColorChanged: widget.onBackdropColorChanged,

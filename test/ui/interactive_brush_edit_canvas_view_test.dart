@@ -995,7 +995,7 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single.map((dab) => dab.center.x).toList(), [12, 13, 14]);
 
-      // Beyond the wall (x ≥ 24 for the 8×8 stage, 5x5 pasteboard):
+      // Beyond the wall (x ≥ 16 for the 8×8 stage's 3×3 pasteboard):
       // nothing.
       results.clear();
       final beyond = await tester.startGesture(

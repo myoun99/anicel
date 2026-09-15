@@ -226,10 +226,6 @@ void main() {
     );
     banksOnce('setProjectBackdrop', (c) => c.setProjectBackdrop(0xFF102030));
     banksOnce('setProjectPasteboard', (c) => c.setProjectPasteboard(0x80112233));
-    banksOnce(
-      'setProjectPasteboardMargin',
-      (c) => c.setProjectPasteboardMargin(0.75),
-    );
     // Also a FIXED value: appending to what is there would grow the set on
     // every call and bank every time for the right reason.
     final grownSet = CameraInstructionSet(

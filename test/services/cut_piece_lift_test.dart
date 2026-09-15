@@ -145,7 +145,7 @@ void main() {
   test('a fully off-pasteboard outline yields no piece', () {
     final surface = paintedSurface();
     final piece = buildCutPiece(
-      // Far outside the 5x5 pasteboard footprint on the negative side.
+      // Far outside the 3×3 pasteboard footprint on the negative side.
       region: rect(left: -400, top: -400, right: -390, bottom: -390),
       surface: surface,
       pieceId: 'cut-1',

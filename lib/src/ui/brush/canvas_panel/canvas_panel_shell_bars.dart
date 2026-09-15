@@ -22,10 +22,6 @@ class _CanvasPanelShellBars {
         _state.widget.pasteboardColor ??
         scope?.pasteboardArgb ??
         AppWorkspaceColors.defaultPasteboardArgb;
-    _state._stagePasteboardMargin =
-        _state.widget.pasteboardMargin ??
-        scope?.pasteboardMargin ??
-        defaultProjectPasteboardMargin;
   }
 
   /// R13-3 shell memo: the panbars/zoom-rotate bar are a Material button

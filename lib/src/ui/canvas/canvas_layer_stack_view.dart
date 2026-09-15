@@ -1704,7 +1704,7 @@ class _LayerStackPainter extends CustomPainter {
   /// The largest buffer side worth allocating, in canvas pixels.
   ///
   /// Not a quality setting — a floor under "is this still a good idea". A
-  /// viewport zoomed far out over a 5×5 pasteboard asks for a buffer many
+  /// viewport zoomed far out over the 3×3 pasteboard asks for a buffer many
   /// times the screen, and rasterising that to resample it back down is
   /// strictly worse than letting each layer draw itself. The direct walk is
   /// always correct, so falling back to it costs only the sampling law, and

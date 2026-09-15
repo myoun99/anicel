@@ -47,14 +47,6 @@ class ProjectSettings {
     _changes.notifyChanged();
   }
 
-  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights — where the pasteboard stops and the backdrop begins. One undo
-  /// step; no-op when unchanged.
-  void setProjectPasteboardMargin(double margin) {
-    _project.cutCommandCoordinator.setProjectPasteboardMargin(margin);
-    _changes.notifyChanged();
-  }
-
   /// The exact rate, for the surfaces that convert frames to REAL TIME
   /// (playback clock, audio placement, export). Everything that merely
   /// COUNTS frames wants [projectFps] instead.

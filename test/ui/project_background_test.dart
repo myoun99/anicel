@@ -179,27 +179,6 @@ void main() {
       expect(find.text('100%'), findsNothing);
     });
 
-    testWidgets('🚨the pasteboard extent reads as the MULTIPLE of the canvas '
-        'it reaches, not as the margin it stores', (tester) async {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject(),
-      );
-      await openBackgroundDialog(tester, session);
-
-      final extent = barAt(tester, 'background-pasteboard-extent');
-      expect(
-        extent.valueTextBuilder!(0, '0.0'),
-        '×1.0',
-        reason: 'no margin is the canvas itself',
-      );
-      expect(
-        extent.valueTextBuilder!(0.5, '0.5'),
-        '×2.0',
-        reason: 'half a canvas on EACH side is twice the canvas',
-      );
-      expect(extent.valueTextBuilder!(2, '2.0'), '×5.0');
-    });
-
     testWidgets('⛔the stage bars are FieldSliders like every other bar in '
         'the app — a Material Slider here would not obey the press-claim '
         'law inside this scrollable dialog', (tester) async {
@@ -209,7 +188,7 @@ void main() {
       await openBackgroundDialog(tester, session);
 
       expect(find.byType(Slider), findsNothing);
-      expect(find.byType(FieldSlider), findsNWidgets(3));
+      expect(find.byType(FieldSlider), findsNWidgets(2));
     });
   });
 }

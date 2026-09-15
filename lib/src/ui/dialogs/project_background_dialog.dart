@@ -30,11 +30,6 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
   late double _paperAlpha;
   late final TextEditingController _pasteboardHexController;
   late double _pasteboardAlpha;
-
-  /// Where the pasteboard stops and the backdrop begins, in canvas widths
-  /// and heights past each edge. It is what makes the three planes three
-  /// PLACES rather than three layers of one wash.
-  late double _pasteboardMargin;
   late final TextEditingController _backdropHexController;
 
   @override
@@ -57,7 +52,6 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
       text: _rgbText(project.pasteboardArgb),
     );
     _pasteboardAlpha = (project.pasteboardArgb >>> 24).toDouble();
-    _pasteboardMargin = project.pasteboardMargin;
     _backdropHexController = TextEditingController(
       text: _rgbText(project.backdropArgb),
     );
@@ -114,9 +108,6 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
     final pasteboard = (_pasteboardAlpha.round() << 24) | pasteboardRgb;
     if (pasteboard != project.pasteboardArgb) {
       session.projectSettings.setPasteboardColor(pasteboard);
-    }
-    if (_pasteboardMargin != project.pasteboardMargin) {
-      session.projectSettings.setProjectPasteboardMargin(_pasteboardMargin);
     }
     final backdrop = 0xFF000000 | backdropRgb;
     if (backdrop != project.backdropArgb) {
@@ -206,11 +197,6 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
       ),
     ],
   );
-
-  /// The pasteboard's extent as the MULTIPLE of the canvas it reaches:
-  /// a margin of 0.5 on each side is a stage twice the canvas wide.
-  static String _extentText(double margin) =>
-      '×${(1 + 2 * margin).toStringAsFixed(1)}';
 
   @override
   Widget build(BuildContext context) {
@@ -308,34 +294,6 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
               value: _pasteboardAlpha,
               onChanged: (next) => _pasteboardAlpha = next,
               key: const ValueKey<String>('background-pasteboard-alpha'),
-            ),
-            // WHERE the pasteboard stops. The drawing bound (two canvas
-            // sizes out, `PasteboardBounds`) is a separate promise about
-            // where ink may land and is not up for editing here; this only
-            // says where one colour ends and the next begins.
-            Row(
-              children: [
-                Text(
-                  strings.stagePasteboardExtent,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FieldSlider(
-                    key: const ValueKey<String>('background-pasteboard-extent'),
-                    value: _pasteboardMargin.clamp(0.0, 2.0),
-                    min: 0,
-                    max: 2,
-                    divisions: 40,
-                    // ⚠️An exception: the number on the bar is not the
-                    // value but what the value REACHES — a margin of 0.5
-                    // per side is a stage twice the canvas wide.
-                    valueTextBuilder: (margin, _) => _extentText(margin),
-                    onChanged: (next) =>
-                        setState(() => _pasteboardMargin = next),
-                  ),
-                ),
-              ],
             ),
             _sectionHeader(
               strings.stageBackdropSection,

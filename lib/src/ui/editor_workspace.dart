@@ -17,11 +17,7 @@ import '../native/qa_native_engine.dart';
 import '../models/cut.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
-    show
-        Project,
-        defaultProjectBackdropArgb,
-        defaultProjectPasteboardArgb,
-        defaultProjectPasteboardMargin;
+    show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
@@ -1750,8 +1746,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             backdropArgb: project?.backdropArgb ?? defaultProjectBackdropArgb,
             pasteboardArgb:
                 project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
-            pasteboardMargin:
-                project?.pasteboardMargin ?? defaultProjectPasteboardMargin,
             child: child!,
           );
         },

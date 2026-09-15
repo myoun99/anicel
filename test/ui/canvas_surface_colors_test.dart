@@ -66,10 +66,8 @@ void main() {
               floorCover: EdgeInsets.zero,
               backdropArgb: backdrop,
               pasteboardColor: pasteboard,
-              // A quarter of a canvas out on every side, and zoomed out —
-              // so the panel shows the apron AND what lies beyond it,
-              // which is the whole point of the number.
-              pasteboardMargin: 0.25,
+              // Zoomed out far enough that the panel shows the apron AND
+              // what lies beyond it.
               viewport: seedFromRender(
                 tester,
                 CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
@@ -96,9 +94,9 @@ void main() {
       return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
     }
 
-    // The corners of a 900×600 panel at 5% zoom are far outside a
-    // quarter-canvas apron — that is the BACKDROP, and it used to be
-    // unreachable because the pasteboard was painted over the whole box.
+    // The corners of a 900×600 panel at 5% zoom are far outside the
+    // apron — that is the BACKDROP, and it used to be unreachable because
+    // the pasteboard was painted over the whole box.
     expect(rgbAt(2, 2), backdrop & 0xFFFFFF, reason: 'top-left corner');
     expect(rgbAt(897, 597), backdrop & 0xFFFFFF, reason: 'bottom-right');
     // Just outside the paper, still inside the apron: the PASTEBOARD.
@@ -106,6 +104,22 @@ void main() {
       rgbAt(450 - 12, 300 - 12),
       pasteboard & 0xFFFFFF,
       reason: 'the apron around the paper',
+    );
+    // 🚨F-114 (유저 2026-09-12: 「3x에서만 그려지는데 배경 색 설정하면
+    // 페이스트보드가 5x크기로 보이고 … 법 나뉘어져있는거같으니 통일」): the
+    // apron stops at the DRAWING bound. The 2340-wide cut canvas at 5% is 117
+    // px, the page's left edge sits at 450, so one canvas out is x = 333 —
+    // a showing margin of two canvases put the edge at 216 instead.
+    expect(
+      rgbAt(336, 300),
+      pasteboard & 0xFFFFFF,
+      reason: 'just inside the drawing bound is still pasteboard',
+    );
+    expect(
+      rgbAt(329, 300),
+      backdrop & 0xFFFFFF,
+      reason: 'just past the drawing bound is backdrop — the pasteboard '
+          'shows exactly where ink can go, not two canvases wider',
     );
   });
 
@@ -137,7 +151,6 @@ void main() {
           body: CanvasStageColors(
             backdropArgb: backdrop,
             pasteboardArgb: pasteboard,
-            pasteboardMargin: 0.25,
             child: RepaintBoundary(
               key: const ValueKey<String>('scoped-stage-capture'),
               child: BrushCanvasPanel(
@@ -179,7 +192,7 @@ void main() {
     expect(
       rgbAt(450 - 12, 300 - 12),
       pasteboard & 0xFFFFFF,
-      reason: 'pasteboard AND its margin from the scope',
+      reason: 'the pasteboard from the scope',
     );
   });
 
@@ -198,7 +211,6 @@ void main() {
           body: CanvasStageColors(
             backdropArgb: scoped,
             pasteboardArgb: scoped,
-            pasteboardMargin: 0.25,
             child: RepaintBoundary(
               key: const ValueKey<String>('override-stage-capture'),
               child: BrushCanvasPanel(

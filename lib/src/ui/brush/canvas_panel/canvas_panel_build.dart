@@ -400,7 +400,6 @@ class _PanelBuild {
                 child: _StagePlanes(
                   backdropArgb: _state._stageBackdropArgb,
                   pasteboardArgb: _state._stagePasteboardArgb,
-                  pasteboardMargin: _state._stagePasteboardMargin,
                   canvasSize: _state.widget.canvasSize,
                   viewport: _state._viewportState._viewport,
                   // R27 #17: a passive census of where the pointer

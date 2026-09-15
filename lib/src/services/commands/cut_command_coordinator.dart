@@ -663,8 +663,6 @@ class CutCommandCoordinator {
       _projectSettings.setProjectBackdrop(argb);
   void setProjectPasteboard(int argb) =>
       _projectSettings.setProjectPasteboard(argb);
-  void setProjectPasteboardMargin(double margin) =>
-      _projectSettings.setProjectPasteboardMargin(margin);
 
   /// Executes [command] only when [read] of [subject] does not already
   /// answer [value].

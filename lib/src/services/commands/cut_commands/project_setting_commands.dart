@@ -66,17 +66,4 @@ class _ProjectSettingCommands {
       pasteboardArgb: argb,
     ),
   );
-
-  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights. One undo step; no-op when unchanged.
-  void setProjectPasteboardMargin(double margin) =>
-      _coordinator._executeIfChanged(
-        subject: _project,
-        value: margin,
-        read: (project) => project.pasteboardMargin,
-        command: (_) => UpdateProjectStageColorsCommand(
-          repository: _coordinator.repository,
-          pasteboardMargin: margin,
-        ),
-      );
 }

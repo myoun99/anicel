@@ -1,25 +1,22 @@
 import '../command.dart';
 import '../project_repository.dart';
 
-/// One stage change (R3b: the backdrop, the pasteboard, and how far the
-/// pasteboard shows) as one undo step. Null leaves that plane untouched;
-/// undo restores exactly the planes this command wrote.
+/// One stage change (R3b: the backdrop and the pasteboard) as one undo step.
+/// Null leaves that plane untouched; undo restores exactly the planes this
+/// command wrote.
 class UpdateProjectStageColorsCommand implements Command {
   UpdateProjectStageColorsCommand({
     required this.repository,
     this.backdropArgb,
     this.pasteboardArgb,
-    this.pasteboardMargin,
   });
 
   final ProjectRepository repository;
   final int? backdropArgb;
   final int? pasteboardArgb;
-  final double? pasteboardMargin;
 
   int? _previousBackdrop;
   int? _previousPasteboard;
-  double? _previousMargin;
   bool _hasExecuted = false;
 
   @override
@@ -34,13 +31,9 @@ class UpdateProjectStageColorsCommand implements Command {
     if (pasteboardArgb != null) {
       _previousPasteboard ??= project.pasteboardArgb;
     }
-    if (pasteboardMargin != null) {
-      _previousMargin ??= project.pasteboardMargin;
-    }
     repository.updateProjectStageColors(
       backdropArgb: backdropArgb,
       pasteboardArgb: pasteboardArgb,
-      pasteboardMargin: pasteboardMargin,
     );
     _hasExecuted = true;
   }
@@ -53,7 +46,6 @@ class UpdateProjectStageColorsCommand implements Command {
     repository.updateProjectStageColors(
       backdropArgb: _previousBackdrop,
       pasteboardArgb: _previousPasteboard,
-      pasteboardMargin: _previousMargin,
     );
   }
 }
