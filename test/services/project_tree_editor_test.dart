@@ -17,6 +17,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_tree_editor.dart';
 
 void main() {
@@ -24,6 +25,38 @@ void main() {
 
   setUp(() {
     project = createDefaultProject();
+  });
+
+  test('🚨updateLayerAnywhere reaches EVERY layer the one walk yields — the '
+      'editor and the walk cannot disagree about where layers live (F-131)',
+      () {
+    // Finding a layer by id and collecting the ids in use read
+    // `projectLayersAnywhere`; the editor rebuilds the tree and cannot. So
+    // the editor's reach is pinned against the walk here: the collector
+    // once walked cut layers only, and a mint then handed out an SE row's
+    // id.
+    final layers = projectLayersAnywhere(project).toList();
+    expect(
+      layers.map((layer) => layer.id).toSet(),
+      hasLength(layers.length),
+      reason: 'premise: the default project holds no duplicate ids',
+    );
+    expect(
+      project.tracks.first.seLayers,
+      isNotEmpty,
+      reason: 'premise: the fixture has track SE rows to reach',
+    );
+    for (final layer in layers) {
+      expect(
+        updateLayerAnywhere(
+          project,
+          layer.id,
+          (found) => found.copyWith(name: 'Reached'),
+        ),
+        isNotNull,
+        reason: '${layer.id} is in the walk but the editor cannot find it',
+      );
+    }
   });
 
   test('updateTrackById edits the one track and refuses an unknown id', () {

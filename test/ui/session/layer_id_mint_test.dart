@@ -92,6 +92,73 @@ void main() {
     expect(taken.map((id) => id.value), isNot(contains(fresh.value)));
   });
 
+  group('🚨the scan is the WHOLE project — track rows hold ids too (F-131)', () {
+    // A track SE row and the transition row take their ids from the same
+    // `default-layer-N` counter as a cut layer, and the counter restarts
+    // every session. The scan used to walk cut layers only, so a reopened
+    // file could mint a new row the id of S3 — and the lookup, which checks
+    // track rows first, then wrote that row's frames and attach arrow onto
+    // the SE row (「가끔 … S3 에도 프레임이 생기고 어태치 아이콘」).
+    ProjectRepository holdingTrackRows({
+      List<LayerId> seIds = const [],
+      LayerId? transitionId,
+    }) => ProjectRepository(
+      initialProject: Project(
+        id: const ProjectId('p'),
+        name: 'P',
+        createdAt: DateTime.utc(2026, 9, 15),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'T',
+            cuts: [
+              Cut(
+                id: const CutId('c'),
+                name: '1',
+                duration: 4,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+                layers: const [],
+              ),
+            ],
+            seLayers: [
+              for (final id in seIds)
+                Layer(
+                  id: id,
+                  name: id.value,
+                  frames: const [],
+                  timeline: const {},
+                ),
+            ],
+            transitionLayer: transitionId == null
+                ? null
+                : Layer(
+                    id: transitionId,
+                    name: 'O',
+                    frames: const [],
+                    timeline: const {},
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    test('an id a track SE row holds is never minted onto', () {
+      final naive = mintOver(repositoryHolding(const [])).mint();
+      final mint = mintOver(holdingTrackRows(seIds: [naive]));
+      expect(
+        mint.mint().value,
+        isNot(naive.value),
+        reason: 'the SE row is a layer of this project — two rows, one id',
+      );
+    });
+
+    test('an id the transition row holds is never minted onto', () {
+      final naive = mintOver(repositoryHolding(const [])).mint();
+      final mint = mintOver(holdingTrackRows(transitionId: naive));
+      expect(mint.mint().value, isNot(naive.value));
+    });
+  });
+
   test('🚨usedIds REPLACES the scan, so a batch pays for it once', () {
     // No project at all: `requireProject` throws. The mint still answers,
     // which is the proof that the caller's set was used INSTEAD of a

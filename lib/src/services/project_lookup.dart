@@ -179,24 +179,36 @@ CelBankLanes celBankLanesOf(
 /// read paths (the storyboard's row-addressed editors) where a stale id is
 /// a no-op, not a crash.
 Layer? layerAnywhereOrNull(Project project, LayerId layerId) {
-  for (final track in project.tracks) {
-    for (final layer in track.seLayers) {
-      if (layer.id == layerId) {
-        return layer;
-      }
-    }
-    if (track.transitionLayer.id == layerId) {
-      return track.transitionLayer;
-    }
-    for (final cut in track.cuts) {
-      for (final layer in cut.layers) {
-        if (layer.id == layerId) {
-          return layer;
-        }
-      }
+  for (final layer in projectLayersAnywhere(project)) {
+    if (layer.id == layerId) {
+      return layer;
     }
   }
   return null;
+}
+
+/// Every layer [project] holds, wherever it lives: each track's own SE
+/// rows, its transition row, then every cut's layers — in that order, which
+/// is the order [layerAnywhereOrNull] finds by.
+///
+/// 🚨★★★ONE WALK FOR 「every layer in the project」 (F-131, 2026-09-15). It
+/// was written out three times — finding a layer by id, collecting the ids
+/// in use, editing a layer by id — and the collecting one walked CUT layers
+/// only. So a new row could be minted the id of a track SE row (both come
+/// from the same `default-layer-N` counter, which restarts every session),
+/// and the finder, which checks SE rows first, then sent the new row's
+/// writes to the SE row: frames and an attach arrow appeared on S3. The
+/// finder and the collector read this walk now. [updateLayerAnywhere]
+/// rebuilds the tree and cannot, so its reach is pinned against this walk
+/// by test.
+Iterable<Layer> projectLayersAnywhere(Project project) sync* {
+  for (final track in project.tracks) {
+    yield* track.seLayers;
+    yield track.transitionLayer;
+    for (final cut in track.cuts) {
+      yield* cut.layers;
+    }
+  }
 }
 
 Layer requireLayerAnywhere(Project project, LayerId layerId) {
@@ -314,8 +326,10 @@ Set<String> projectArchivedMediaPaths(Project project) => {
 /// "is this id free?", because the project can arrive from disk holding
 /// ids the counter never issued. One walk, handed to a caller minting
 /// many ids so it does not re-walk per id.
+///
+/// ⚠️The walk is [projectLayersAnywhere] — the tracks' SE and transition
+/// rows included. Until F-131 this set held cut layers only, and a mint
+/// checked against it could hand out an SE row's id.
 Set<String> projectLayerIdValues(Project project) => {
-  for (final track in project.tracks)
-    for (final cut in track.cuts)
-      for (final layer in cut.layers) layer.id.value,
+  for (final layer in projectLayersAnywhere(project)) layer.id.value,
 };
