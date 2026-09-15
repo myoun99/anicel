@@ -90,10 +90,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// survives tab switches.
   final StoryboardThumbnailResolver? thumbnailFor;
 
-  /// A media-browser row let go on a track's frames — the host opens the
-  /// place window with the drop's answer, a NEW cut there ([NewCutSpot]).
-  /// Null leaves the rows refusing the drag, which is what a surface with
-  /// nowhere to open a window should do.
+  /// A media-browser row let go on the storyboard — the host opens the place
+  /// window with the drop's answer: a NEW cut on a track's frames
+  /// ([NewCutSpot]), a new block on an SE row's empty cell ([SeCellSpot]),
+  /// or the SE rows' rule on the rail. Null leaves the rows and the rail
+  /// refusing the drag, which is what a surface with nowhere to open a
+  /// window should do.
   final void Function(String path, ImportLayerSpot spot)? onPlaceMediaAsset;
 
   // ⛔The camera-view notifier is no longer this host's business. R28 #1 put
@@ -511,14 +513,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         ? _session.playbackRig.playback.position?.cutId ??
                               _session.activeCutId
                         : _session.activeCutId,
-                    // A pool row let go on a track's frames (the row has
-                    // already stood there through its press below): the place
-                    // window opens on the NEW cut the session names at that
-                    // frame. The chip and the drop read that one answer (T25).
-                    onDropMediaAssetOnTrack: widget.onPlaceMediaAsset == null
+                    // A pool row let go on a row's frames (the row has already
+                    // stood there through its press below): the place window
+                    // opens on what the session names there — a NEW cut on a
+                    // track's frames, a new block on an SE row's empty cell.
+                    // The chip and the drop read that one answer (T25).
+                    onDropMediaAsset: widget.onPlaceMediaAsset == null
                         ? null
-                        : (_, globalFrame, path) {
-                            final spot = _session.storyboardFrameDropSpot(
+                        : (row, globalFrame, path) {
+                            final spot = _session.storyboardDropSpotFor(
+                              row,
                               globalFrame,
                               path,
                             );
@@ -526,9 +530,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               widget.onPlaceMediaAsset?.call(path, spot);
                             }
                           },
-                    acceptsMediaAssetOnTrack: (_, globalFrame, path) =>
-                        _session.storyboardFrameDropSpot(globalFrame, path) !=
+                    acceptsMediaAsset: (row, globalFrame, path) =>
+                        _session.storyboardDropSpotFor(row, globalFrame, path) !=
                         null,
+                    // …and on the rail, by the layer area's law. Nothing is
+                    // stood on: a rail names no row, and the timeline's drop
+                    // between rows stands on nothing either.
+                    onDropMediaAssetOnRail: widget.onPlaceMediaAsset == null
+                        ? null
+                        : (path) {
+                            final spot = _session.storyboardRailDropSpotFor(
+                              path,
+                            );
+                            if (spot != null) {
+                              widget.onPlaceMediaAsset?.call(path, spot);
+                            }
+                          },
+                    acceptsMediaAssetOnRail: (path) =>
+                        _session.storyboardRailDropSpotFor(path) != null,
                     // THE cells' press (the timeline's cell contract): pick the
                     // row, then seek to the frame under the pointer. The seek
                     // is the ruler's own, so a press in a GAP parks there — an

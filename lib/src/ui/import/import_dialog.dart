@@ -1202,14 +1202,14 @@ class _ImportDialogState extends State<ImportDialog> {
         widget.session.layerById(layerId)?.name ?? '',
         frameIndex + 1,
       ),
-    SeCellSpot(:final layerId, :final frameIndex) =>
+    SeCellSpot(:final layerId, :final shownCell) =>
       AppText.strings.imIntoRowCell(
         widget.session.activeTrack.seLayers
                 .where((layer) => layer.id == layerId)
                 .firstOrNull
                 ?.name ??
             '',
-        frameIndex + 1,
+        shownCell + 1,
       ),
   };
 

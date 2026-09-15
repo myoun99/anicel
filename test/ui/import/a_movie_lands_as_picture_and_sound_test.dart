@@ -201,7 +201,11 @@ void main() {
       () => s.importDoors.importSoundFile(
         path: moviePath,
         copyIntoProject: false,
-        spot: SeCellSpot(layerId: seRow.id, frameIndex: 0),
+        spot: SeCellSpot(
+          layerId: seRow.id,
+          trackFrame: s.activeCutGlobalStartFrame,
+          shownCell: 0,
+        ),
       ),
     );
 

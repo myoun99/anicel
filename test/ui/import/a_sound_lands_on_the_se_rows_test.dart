@@ -17,8 +17,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show createDefaultCut;
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
-import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -292,7 +292,11 @@ void main() {
 
       expect(
         s.dropSpotFor(se.id, 5, 'door.wav'),
-        SeCellSpot(layerId: se.id, frameIndex: 5),
+        SeCellSpot(
+          layerId: se.id,
+          trackFrame: s.activeCutGlobalStartFrame + 5,
+          shownCell: 5,
+        ),
       );
       expect(s.dropSpotFor(se.id, 5, 'a.png'), isNull);
       expect(
@@ -314,7 +318,11 @@ void main() {
         return s.importDoors.importSoundFile(
           path: path,
           copyIntoProject: false,
-          spot: SeCellSpot(layerId: s2.id, frameIndex: 5),
+          spot: SeCellSpot(
+            layerId: s2.id,
+            trackFrame: start + 5,
+            shownCell: 5,
+          ),
         );
       });
 
@@ -341,7 +349,11 @@ void main() {
         return s.importDoors.importSoundFile(
           path: path,
           copyIntoProject: false,
-          spot: SeCellSpot(layerId: s1.id, frameIndex: 4),
+          spot: SeCellSpot(
+            layerId: s1.id,
+            trackFrame: start + 4,
+            shownCell: 4,
+          ),
         );
       });
 
@@ -374,7 +386,9 @@ void main() {
         return s.importDoors.importSoundFile(
           path: path,
           copyIntoProject: false,
-          spot: SeCellSpot(layerId: s1.id, frameIndex: 3),
+          // The cut-local cell becomes a track frame where the spot is
+          // made — the timeline's own drop verb, not a hand-built spot.
+          spot: s.dropSpotFor(s1.id, 3, path),
         );
       });
 
@@ -402,7 +416,7 @@ void main() {
               session: s,
               initialPaths: [path!],
               placeOnly: true,
-              spot: SeCellSpot(layerId: s2.id, frameIndex: 5),
+              spot: SeCellSpot(layerId: s2.id, trackFrame: 5, shownCell: 5),
             ),
           ),
         ),
@@ -426,21 +440,91 @@ void main() {
       final s1 = s.activeTrack.seLayers.first;
 
       expect(
-        s.importLanding.arriveAt(
-          ImportDestination.activeCutLayer,
+        s.importLanding.arriveOnSeRows(
           path: 'door.wav',
-          spot: const SeCellSpot(layerId: LayerId('elsewhere'), frameIndex: 0),
+          spot: const SeCellSpot(
+            layerId: LayerId('elsewhere'),
+            trackFrame: 0,
+            shownCell: 0,
+          ),
         ),
         isNull,
       );
       expect(
-        s.importLanding.arriveAt(
-          ImportDestination.activeCutLayer,
+        s.importLanding.arriveOnSeRows(
           path: 'door.wav',
-          spot: SeCellSpot(layerId: s1.id, frameIndex: 0),
+          spot: SeCellSpot(layerId: s1.id, trackFrame: 0, shownCell: 0),
         ),
         isNotNull,
       );
+    });
+  });
+
+  group('on the STORYBOARD an SE row\'s empty cell is the track\'s — between '
+      'cuts too (유저 2026-09-12: 「타임라인이랑 같은 법으로」)', () {
+    /// Two cuts with a 20-frame gap between them, the playhead parked in it.
+    EditorSessionManager gapped() {
+      final s = session();
+      final first = s.requireActiveCut;
+      s.repository.insertCut(
+        trackId: s.activeTrack.id,
+        cut: createDefaultCut(
+          cutId: const CutId('after-the-gap'),
+          name: '2',
+          layerId: const LayerId('after-the-gap-layer'),
+          canvasSize: first.canvasSize,
+        ).copyWith(leadingGapFrames: 20),
+      );
+      s.selectGlobalFrame(first.duration + 5);
+      expect(
+        s.activeCutOrNull,
+        isNull,
+        reason: 'fixture premise: parked in the gap',
+      );
+      return s;
+    }
+
+    int gapFrameOf(EditorSessionManager s) =>
+        s.repository.requireProject().tracks.first.cuts.first.duration + 5;
+
+    testWidgets('the storyboard names the cell by its track frame, and only a '
+        'sound lands there', (tester) async {
+      final s = gapped();
+      final s1 = s.activeTrack.seLayers.first;
+      final frame = gapFrameOf(s);
+      s.playbackRig.prerenderScheduler.cancel();
+
+      expect(
+        s.storyboardDropSpotFor(LayerRowAddress(s1.id), frame, 'door.wav'),
+        SeCellSpot(layerId: s1.id, trackFrame: frame, shownCell: frame),
+      );
+      expect(
+        s.storyboardDropSpotFor(LayerRowAddress(s1.id), frame, 'a.png'),
+        isNull,
+      );
+    });
+
+    testWidgets('a sound let go there lands with no cut in hand', (
+      tester,
+    ) async {
+      final s = gapped();
+      final s1 = s.activeTrack.seLayers.first;
+      final frame = gapFrameOf(s);
+
+      final landed = await tester.runAsync(() async {
+        final path = await writeSound('door.wav', 1);
+        return s.importDoors.importSoundFile(
+          path: path,
+          copyIntoProject: false,
+          spot: s.storyboardDropSpotFor(LayerRowAddress(s1.id), frame, path),
+        );
+      });
+      s.playbackRig.prerenderScheduler.cancel();
+
+      expect(landed, isTrue);
+      expect(s.activeTrack.seLayers.first.timeline[frame], isNotNull);
+      expect(s.activeCutOrNull, isNull, reason: 'nothing moved the playhead');
+      await tester.pumpAndSettle();
     });
   });
 }

@@ -147,7 +147,11 @@ void main() {
 
     test('on an SE row\'s cell the sound is the PLACE\'s answer, locked on '
         '(「SE 행 드롭은 켬으로 잠김」)', () {
-      const cell = SeCellSpot(layerId: LayerId('se'), frameIndex: 0);
+      const cell = SeCellSpot(
+        layerId: LayerId('se'),
+        trackFrame: 0,
+        shownCell: 0,
+      );
       expect(importSoundLocked(cell), isTrue);
       expect(importSoundLocked(null), isFalse);
       ImportFileSettings resolve(ImportLayerSpot? spot) =>

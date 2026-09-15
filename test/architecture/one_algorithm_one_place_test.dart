@@ -120,8 +120,29 @@ import '../../tool/refactor/clone_scan.dart';
 /// and the name/type write — so the rule of three merged them into one
 /// fold (`_foldedEdits` in `lane_verbs.dart`), and the older Create/Delete
 /// pair (63 tokens) went with it.
+///
+/// 89 → 90 (2026-09-16, storyboard-drop — a sound let go on an SE row's
+/// empty cell on the storyboard). The new pair is named:
+///
+///     44 tokens
+///       lib/src/ui/storyboard_panel.dart
+///         _StoryboardSeRow._cellDropLayer
+///       lib/src/ui/timeline/timeline_frame_cells_row.dart
+///         TimelineFrameCellsRow._seCellDropTargets
+///
+/// The reading CONFIRMS it: a drop place over each empty gap of an SE row,
+/// laid on the row's span layer — the timeline's law (「SE 행의 빈 칸 → 새
+/// 블록」) asked on the storyboard's axis. The gaps are already one answer
+/// ([emptyGapsBetween]); what is spelled twice is laying a place over each.
+/// ⛔It is not merged: it is the SECOND. Each walks the range it owns — the
+/// timeline its visible window, the storyboard up to its row's last block
+/// with one gap after it — and each lays its own place (the timeline's
+/// hover-and-caret target, the storyboard's press-then-drop), so a shared
+/// layer would take both as arguments for a shape seen twice.
+/// 🔜**The third surface that lays a place over each empty gap merges all
+/// three**, and this comes back down.
 void main() {
-  const ceiling = 89;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

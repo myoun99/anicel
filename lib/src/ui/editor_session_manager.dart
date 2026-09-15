@@ -2385,12 +2385,39 @@ class EditorSessionManager extends ChangeNotifier
   /// 블록」). Null when it lands nowhere, and the drop does nothing.
   ImportLayerSpot? dropSpotFor(LayerId layerId, int frameIndex, String path) {
     if (isTrackSeLayerId(layerId)) {
-      return _mayCarrySound(path)
-          ? SeCellSpot(layerId: layerId, frameIndex: frameIndex)
-          : null;
+      final cut = activeCutOrNull;
+      return cut == null
+          ? null
+          : _seCellSpotFor(
+              layerId,
+              // The ONE converter between the cut's frames and the track's:
+              // the timeline's rows show the active cut's window.
+              trackFrame: TrackSeWindow(
+                cutStartFrame: activeCutGlobalStartFrame,
+                cutDurationFrames: cut.duration,
+              ).toGlobalFrame(frameIndex),
+              shownCell: frameIndex,
+              path: path,
+            );
     }
     return frameDropSpot(layerId, frameIndex, path);
   }
+
+  /// A SOUND on an SE row's empty cell, wherever the row showed it — the
+  /// timeline's rows in the active cut's frames, the storyboard's in the
+  /// track's.
+  SeCellSpot? _seCellSpotFor(
+    LayerId layerId, {
+    required int trackFrame,
+    required int shownCell,
+    required String path,
+  }) => _mayCarrySound(path)
+      ? SeCellSpot(
+          layerId: layerId,
+          trackFrame: trackFrame,
+          shownCell: shownCell,
+        )
+      : null;
 
   /// Whether [path] can put a SOUND on an SE row: a sound, or a movie the
   /// conform has not found silent (「소리 없는 영상이면 칩이 금지로
@@ -2406,15 +2433,16 @@ class EditorSessionManager extends ChangeNotifier
   /// Where a file let go on the LAYER AREA lands: a new row at the gap the
   /// rail's caret showed ([newRowInsertionForSlot]), 「레이어 영역(가로선) →
   /// 새 레이어」. A sound takes the SE rows' rule whichever way it came in
-  /// (round 6), and the canvas's spot is the one that already says so. Null
-  /// where no new row may go, and the drop does nothing.
+  /// ([_soundOnALayerArea]). Null where no new row may go, and the drop does
+  /// nothing.
   ImportLayerSpot? layerSlotSpotFor(
     List<Layer> displayLayers,
     int slot,
     String path,
   ) {
-    if (mediaAssetKindForPath(path) == MediaAssetKind.audio) {
-      return const AboveActiveLayerSpot();
+    final sound = _soundOnALayerArea(path);
+    if (sound != null) {
+      return sound;
     }
     final cut = activeCutOrNull;
     final index = cut == null
@@ -2427,12 +2455,41 @@ class EditorSessionManager extends ChangeNotifier
     return index == null ? null : LayerSlotSpot(index);
   }
 
-  /// Where a file let go on a track's frames in the STORYBOARD, at
-  /// [globalFrame], lands: a NEW cut where Create Cut would put one at that
-  /// frame ([CutPlacement.cutCreationPlanAt]). Null when it lands nowhere —
-  /// only a file with pixels makes a cut there, the question a row's frames
-  /// ask too ([frameDropSpot]); a sound's place is the SE rows.
-  NewCutSpot? storyboardFrameDropSpot(int globalFrame, String path) {
+  /// A SOUND let go on a LAYER AREA — the timeline's rail or the
+  /// storyboard's — lands by the SE rows' rule whichever way it came in
+  /// (round 6), and the canvas's spot is the one that already says so.
+  ImportLayerSpot? _soundOnALayerArea(String path) =>
+      mediaAssetKindForPath(path) == MediaAssetKind.audio
+      ? const AboveActiveLayerSpot()
+      : null;
+
+  /// Where a file let go on a STORYBOARD row lands, at [globalFrame] — the
+  /// storyboard's [dropSpotFor], asked in the track frames that panel
+  /// draws: a picture on a track's frames is a NEW cut where Create Cut
+  /// would put one there, a sound on an SE row's empty cell a new block
+  /// from that cell — between cuts too (유저 2026-09-12: 「타임라인이랑 같은
+  /// 법으로」). Null where it lands nowhere, and the drop does nothing.
+  ImportLayerSpot? storyboardDropSpotFor(
+    TimelineRowAddress row,
+    int globalFrame,
+    String path,
+  ) => switch (row) {
+    TrackRowAddress() => _newCutSpotAt(globalFrame, path),
+    LayerRowAddress(:final layerId) when isTrackSeLayerId(layerId) =>
+      _seCellSpotFor(
+        layerId,
+        trackFrame: globalFrame,
+        shownCell: globalFrame,
+        path: path,
+      ),
+    _ => null,
+  };
+
+  /// A NEW cut where Create Cut would put one at [globalFrame]
+  /// ([CutPlacement.cutCreationPlanAt]). Only a file with pixels makes a cut
+  /// there, the question a row's frames ask too ([frameDropSpot]); a sound's
+  /// place is the SE rows.
+  NewCutSpot? _newCutSpotAt(int globalFrame, String path) {
     if (!importBakeAllowed(kind: mediaAssetKindForPath(path), placing: true)) {
       return null;
     }
@@ -2442,6 +2499,15 @@ class EditorSessionManager extends ChangeNotifier
       leadingGapFrames: plan.leadingGapFrames,
     );
   }
+
+  /// Where a file let go on the STORYBOARD's rail lands: a sound by the SE
+  /// rows' rule, as on the timeline's rail. A picture lands nowhere — the
+  /// layer area's answer for one is a new row at a gap of the active cut's
+  /// stack, and no row of that stack is on this rail (유저 2026-09-12:
+  /// 「레이어 영역쪽은 se 레이어를 늘리는거 말곤 할게없으니 … 법 최대한
+  /// 유지하면서」).
+  ImportLayerSpot? storyboardRailDropSpotFor(String path) =>
+      _soundOnALayerArea(path);
 
   // ── the shove: its own object, in its own file ────────────────────────
   //

@@ -947,11 +947,7 @@ class ProjectImportDoors {
     int? outFrame,
     ImportLayerSpot? spot,
   }) async {
-    final gate = _landing.arriveAt(
-      ImportDestination.activeCutLayer,
-      path: path,
-      spot: spot,
-    );
+    final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
       return false;
     }

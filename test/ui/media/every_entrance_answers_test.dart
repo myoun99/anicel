@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_drop_verdict.dart';
@@ -361,5 +362,120 @@ void main() {
       isNull,
       reason: 'landing is standing: the drop stood on frame 16, in the gap',
     );
+  });
+
+  /// The same track with its SE row where the storyboard draws SE rows: on
+  /// the TRACK. [project]'s S1 sits in the cut's own layers, which only the
+  /// timeline shows.
+  EditorSessionManager trackSeProject() {
+    final session = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('verdict-project'),
+        name: 'Verdict Project',
+        createdAt: DateTime.utc(2026, 9, 12),
+        tracks: [
+          Track(
+            id: const TrackId('verdict-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('verdict-cut'),
+                name: 'Verdict Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  Layer(
+                    id: drawingId,
+                    name: 'A',
+                    frames: const [],
+                    timeline: const {},
+                  ),
+                ],
+              ),
+            ],
+            seLayers: [
+              Layer(
+                id: seId,
+                name: 'S1',
+                kind: LayerKind.se,
+                frames: [
+                  Frame(
+                    id: const FrameId('verdict-f1'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+                timeline: {
+                  2: const TimelineExposure.drawing(
+                    FrameId('verdict-f1'),
+                    length: 4,
+                  ),
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    return session;
+  }
+
+  testWidgets('an SE row\'s empty cell on the storyboard says no to a picture, '
+      'and a sound let go there stands on that cell and is a new block there', (
+    tester,
+  ) async {
+    final s = trackSeProject();
+    final placed = <ImportLayerSpot>[];
+    final gap = find.byKey(
+      const ValueKey<String>('storyboard-se-cell-drop-verdict-se-6'),
+    );
+    // Two frames into the gap that starts after the block at 2..5: frame 8.
+    const intoTheGap = Offset(2 * 8 + 4, 12);
+    var verdict = await pumpStoryboard(tester, s, r'C:\art\bg.png', placed);
+    var gesture = await hover(tester, tester.getTopLeft(gap) + intoTheGap);
+    expect(verdict.value, isFalse, reason: 'an SE row holds sounds');
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(placed, isEmpty);
+
+    verdict = await pumpStoryboard(tester, s, r'C:\snd\door.wav', placed);
+    gesture = await hover(tester, tester.getTopLeft(gap) + intoTheGap);
+    expect(verdict.value, isTrue);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
+
+    expect(placed, [
+      const SeCellSpot(layerId: seId, trackFrame: 8, shownCell: 8),
+    ]);
+    expect(
+      s.selectedRow,
+      const LayerRowAddress(seId),
+      reason: 'landing is standing: the drop stood on the row it named',
+    );
+  });
+
+  testWidgets('the storyboard\'s rail says no to a picture — no row of the '
+      'cut\'s stack is on it — and a sound let go there takes the SE rows\' '
+      'rule, as on the timeline\'s rail', (tester) async {
+    final s = project();
+    final placed = <ImportLayerSpot>[];
+    final rail = find.byKey(
+      const ValueKey<String>('storyboard-rail-placement-entrance'),
+    );
+    var verdict = await pumpStoryboard(tester, s, r'C:\art\bg.png', placed);
+    var gesture = await hover(tester, tester.getCenter(rail));
+    expect(verdict.value, isFalse);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(placed, isEmpty);
+
+    verdict = await pumpStoryboard(tester, s, r'C:\snd\door.wav', placed);
+    gesture = await hover(tester, tester.getCenter(rail));
+    expect(verdict.value, isTrue);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(placed, [const AboveActiveLayerSpot()]);
   });
 }

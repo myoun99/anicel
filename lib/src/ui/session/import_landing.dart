@@ -60,6 +60,11 @@ class ImportArrival {
   /// so a non-null cut here IS that destination and a null one is the new
   /// cut. One field, one question — the destination used to be carried
   /// alongside and the two had to agree.
+  ///
+  /// A SOUND let go on an SE cell is the one arrival that asked for
+  /// neither: its place is the track's SE rows
+  /// ([ImportLanding.arriveOnSeRows]), and nothing that reads this field
+  /// makes a cut for it.
   final Cut? targetCut;
   final CanvasSize canvasSize;
   final ImportIdMint mint;
@@ -173,14 +178,41 @@ class ImportLanding {
         return null;
       }
     }
-    // A sound let go on an SE cell needs that row on this track.
-    if (spot is SeCellSpot &&
-        (targetCut == null ||
-            !_selection.activeTrack.seLayers.any(
-              (layer) => layer.id == spot.layerId,
-            ))) {
-      return null;
+    return _arrival(targetCut: targetCut, path: path, spot: spot);
+  }
+
+  /// A SOUND's gate. Its place is the track's SE rows: let go on an SE row's
+  /// cell ([SeCellSpot]) it needs that row on this track and no cut at all —
+  /// the storyboard's SE rows have cells between cuts as well, and the
+  /// timeline's law for an empty cell is the same law on that axis (유저
+  /// 2026-09-12: 「기존 로직 최대한 재사용해서 법 늘리지 않으면서」).
+  /// Anywhere else a sound starts at the active cut's first frame, so it
+  /// asks for that cut as every placement does.
+  ImportArrival? arriveOnSeRows({
+    required String path,
+    ImportLayerSpot? spot,
+  }) {
+    if (spot is! SeCellSpot) {
+      return arriveAt(
+        ImportDestination.activeCutLayer,
+        path: path,
+        spot: spot,
+      );
     }
+    final onThisTrack = _selection.activeTrack.seLayers.any(
+      (layer) => layer.id == spot.layerId,
+    );
+    return onThisTrack
+        ? _arrival(targetCut: null, path: path, spot: spot)
+        : null;
+  }
+
+  /// Everything a door needs about the file once its gate let it through.
+  ImportArrival _arrival({
+    required Cut? targetCut,
+    required String path,
+    required ImportLayerSpot? spot,
+  }) {
     final source = normalizedMediaPath(path);
     return ImportArrival(
       targetCut: targetCut,
@@ -417,24 +449,19 @@ class ImportLanding {
     required int lengthFrames,
     List<MediaAsset> assets = const [],
   }) {
-    final cut = arrival.targetCut;
-    if (cut == null || lengthFrames < 1) {
+    if (lengthFrames < 1) {
       return false;
     }
     final track = _selection.activeTrack;
-    // The ONE converter between the cut's frames and the track's.
-    final window = TrackSeWindow(
-      cutStartFrame: _project.activeCutGlobalStartFrame,
-      cutDurationFrames: cut.duration,
-    );
     final Layer? free;
     final int start;
     var length = lengthFrames;
     if (arrival.spot case final SeCellSpot cell) {
       // The row and the cell it was let go on (「SE 행의 빈 칸 → 새
       // 블록」); the next block bounds its length, as it bounds any entry
-      // written onto a row.
-      start = window.toGlobalFrame(cell.frameIndex);
+      // written onto a row. The spot already names the TRACK frame, so a
+      // cell between cuts lands with no cut in hand.
+      start = cell.trackFrame;
       free = track.seLayers
           .where((layer) => layer.id == cell.layerId)
           .firstOrNull;
@@ -446,6 +473,15 @@ class ImportLanding {
       }
       length = gaps.first.length;
     } else {
+      final cut = arrival.targetCut;
+      if (cut == null) {
+        return false;
+      }
+      // The ONE converter between the cut's frames and the track's.
+      final window = TrackSeWindow(
+        cutStartFrame: _project.activeCutGlobalStartFrame,
+        cutDurationFrames: cut.duration,
+      );
       // A movie's sound starts where its picture starts (「같은 시작 · 같은
       // 구간」): the cell a picture row's frames were dropped on, the cut's
       // first frame wherever a new row came in.

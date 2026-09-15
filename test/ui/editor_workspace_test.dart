@@ -717,7 +717,14 @@ void main() {
       final cellStart = tester.getTopLeft(cellTarget) + const Offset(2, 2);
       drop(cellTarget, 'door.wav', cellStart);
       await tester.pump();
-      expect(openSpot(), SeCellSpot(layerId: se.id, frameIndex: 0));
+      expect(
+        openSpot(),
+        SeCellSpot(
+          layerId: se.id,
+          trackFrame: session.activeCutGlobalStartFrame,
+          shownCell: 0,
+        ),
+      );
       await close();
 
       drop(cellTarget, 'bg.png', cellStart);

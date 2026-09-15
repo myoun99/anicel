@@ -113,8 +113,12 @@ import '../models/timeline_row_address.dart'
     show LaneRowAddress, LayerRowAddress, TimelineRowAddress, TrackRowAddress;
 import '../models/track_frame_range.dart';
 import 'media/media_asset_drop_target.dart';
+import '../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import 'timeline/timeline_frame_span_layout.dart'
-    show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
+    show
+        TimelineFixedFrameSpanLayer,
+        TimelineFrameSpan,
+        TimelineFrameSpanPlacement;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
@@ -397,14 +401,27 @@ class StoryboardRangeMoveCallbacks {
 typedef StoryboardRowFramePress =
     void Function(TimelineRowAddress row, int globalFrame);
 
+/// A media-browser row let go on a storyboard row, at a track frame — the
+/// row and the frame as the press names them ([StoryboardRowFramePress]).
+typedef StoryboardMediaDrop =
+    void Function(TimelineRowAddress row, int globalFrame, String path);
+
+/// Whether the file standing on a storyboard row at a track frame can land
+/// there — the session's answer, which the drag's chip wears (「불가능 = 칩의
+/// 금지 표시」).
+typedef StoryboardMediaDropAccepts =
+    bool Function(TimelineRowAddress row, int globalFrame, String path);
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
     required this.project,
     required this.activeCutId,
     this.onRowFramePress,
-    this.onDropMediaAssetOnTrack,
-    this.acceptsMediaAssetOnTrack,
+    this.onDropMediaAsset,
+    this.acceptsMediaAsset,
+    this.onDropMediaAssetOnRail,
+    this.acceptsMediaAssetOnRail,
     this.activeLayerId,
     this.selectedRow,
     this.onSelectLayer,
@@ -604,18 +621,23 @@ class StoryboardPanel extends StatefulWidget {
   /// rows, neither of which could answer for an empty cell.
   final StoryboardRowFramePress? onRowFramePress;
 
-  /// A media-browser row let go on a track's frames (the V row). The row
-  /// stands on that frame through [onRowFramePress] first — a drop LANDS,
-  /// and landing is standing (T4) — then hands the drop here. Null leaves
-  /// the row refusing the drag, as the timeline's rows do.
-  final void Function(TrackId trackId, int globalFrame, String path)?
-  onDropMediaAssetOnTrack;
+  /// A media-browser row let go on a row's frames — a track's (the V row) or
+  /// an SE row's empty cell. The row stands on that frame through
+  /// [onRowFramePress] first — a drop LANDS, and landing is standing (T4) —
+  /// then hands the drop here. Null leaves the rows refusing the drag, as
+  /// the timeline's rows do.
+  final StoryboardMediaDrop? onDropMediaAsset;
 
-  /// Whether the file at a frame of a track's row can land there — the
-  /// session's answer, which the drag's chip wears (「불가능 = 칩의 금지
-  /// 표시」). Null is yes.
-  final bool Function(TrackId trackId, int globalFrame, String path)?
-  acceptsMediaAssetOnTrack;
+  /// See [StoryboardMediaDropAccepts]. Null is yes.
+  final StoryboardMediaDropAccepts? acceptsMediaAsset;
+
+  /// A media-browser row let go on the RAIL, which names no row and no
+  /// frame. Null leaves the rail refusing the drag.
+  final void Function(String path)? onDropMediaAssetOnRail;
+
+  /// Whether that file can land on the rail — the chip's answer; null is
+  /// yes.
+  final bool Function(String path)? acceptsMediaAssetOnRail;
 
   /// The session's active layer — the drawing target, and what the S rows'
   /// cut-scoped controls act on. It no longer decides the HIGHLIGHT: see
@@ -1588,29 +1610,53 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                             // the reason for that was measured and
                             // found invented — see
                             // [RailSwipeColumnPointer].
-                            child: RailColumnSwipe<StoryboardRailRow>(
-                              axis: Axis.vertical,
-                              columns: _railRows._railSwipeColumns(),
-                              rowsIn: _railRows.railRowsIn,
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  // Track groups in TIMELINE order (R6 B3): the
-                                  // S rows sit ABOVE their V track, slots
-                                  // bottom-up like the timeline (top-down
-                                  // S2, S1, V — R7-④).
-                                  for (
-                                    var index = 0;
-                                    index < frame.project.tracks.length;
-                                    index++
-                                  )
-                                    ..._railRows.railRowsForTrack(
-                                      frame.project.tracks[index],
-                                      index,
+                            child: Stack(
+                              children: [
+                                RailColumnSwipe<StoryboardRailRow>(
+                                  axis: Axis.vertical,
+                                  columns: _railRows._railSwipeColumns(),
+                                  rowsIn: _railRows.railRowsIn,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Track groups in TIMELINE order (R6 B3): the
+                                      // S rows sit ABOVE their V track, slots
+                                      // bottom-up like the timeline (top-down
+                                      // S2, S1, V — R7-④).
+                                      for (
+                                        var index = 0;
+                                        index < frame.project.tracks.length;
+                                        index++
+                                      )
+                                        ..._railRows.railRowsForTrack(
+                                          frame.project.tracks[index],
+                                          index,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                // A pool file let go on the rail: the layer
+                                // area's law — a sound by the SE rows' rule, a
+                                // picture nowhere (no row of the cut's stack is
+                                // on this rail). Last, a permanent slot that
+                                // takes no pointer until a drag is in flight.
+                                if (widget.onDropMediaAssetOnRail
+                                    case final onDrop?)
+                                  Positioned.fill(
+                                    child: MediaAssetDropTarget(
+                                      key: const ValueKey<String>(
+                                        'storyboard-rail-placement-entrance',
+                                      ),
+                                      accepts: (data, _) =>
+                                          widget.acceptsMediaAssetOnRail?.call(
+                                            data.path,
+                                          ) ??
+                                          true,
+                                      onDrop: (data, _) => onDrop(data.path),
                                     ),
-                                ],
-                              ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
@@ -2820,6 +2866,48 @@ Positioned _storyboardRowPressLayer({
   );
 }
 
+/// A storyboard row's drop place: the frame under the pointer by the row's
+/// own press conversion ([frameAtX], in the row's box), the row stood on
+/// through [onRowFramePress] first — a drop LANDS, and landing is standing
+/// (T4) — then the drop handed to [drop]. ONE place for the V row and the SE
+/// rows, as [_storyboardRowPressLayer] is one press.
+///
+/// A permanent slot, as the canvas's is: it draws nothing and absorbs no
+/// hit test until a matching drag is in flight.
+MediaAssetDropTarget _storyboardRowDropTarget({
+  required Key key,
+  required BuildContext rowContext,
+  required TimelineRowAddress row,
+  required int? Function(double rowX) frameAtX,
+  required StoryboardRowFramePress? onRowFramePress,
+  required StoryboardMediaDrop drop,
+  required StoryboardMediaDropAccepts? accepts,
+}) {
+  int? frameAt(Offset globalPosition) {
+    final box = rowContext.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    return frameAtX(box.globalToLocal(globalPosition).dx);
+  }
+
+  return MediaAssetDropTarget(
+    key: key,
+    accepts: (data, globalPosition) {
+      final frame = frameAt(globalPosition);
+      return frame != null && (accepts?.call(row, frame, data.path) ?? true);
+    },
+    onDrop: (data, globalPosition) {
+      final frame = frameAt(globalPosition);
+      if (frame == null) {
+        return;
+      }
+      onRowFramePress?.call(row, frame);
+      drop(row, frame, data.path);
+    },
+  );
+}
+
 /// A storyboard row's range-select layer, wired to [select]; [rows] are
 /// the rows a block move from this row may land on.
 TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
@@ -3088,6 +3176,8 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.projectFrameRate,
     this.audioPeaksFor,
     this.onRowFramePress,
+    this.onDropMediaAsset,
+    this.acceptsMediaAsset,
     this.onEditSeEntry,
     this.seCommaDrag,
     this.seSelect,
@@ -3125,6 +3215,11 @@ class _StoryboardSeRow extends StatelessWidget {
   /// global starts, any cut).
   final StoryboardRowFramePress? onRowFramePress;
 
+  /// A media-browser row let go on one of this row's EMPTY cells — see
+  /// [StoryboardPanel.onDropMediaAsset]. Null mounts no drop place.
+  final StoryboardMediaDrop? onDropMediaAsset;
+  final StoryboardMediaDropAccepts? acceptsMediaAsset;
+
   /// B6 (2026-08-17): double-tapping the SAME cell of a sound block opens
   /// its instance editor — the timeline SE row's entrance, gated by the
   /// frame blocks' shared [TimelineCellDoubleTapGate]. Global frames,
@@ -3151,7 +3246,7 @@ class _StoryboardSeRow extends StatelessWidget {
     if (layer != null) {
       final blocks = drawingBlocks(layer.timeline);
       spans.addAll(_contentSpans(layer, blocks));
-      spans.addAll(_interactionLayers(layer, blocks));
+      spans.addAll(_interactionLayers(context, layer, blocks));
     }
 
     return SizedBox(
@@ -3220,6 +3315,7 @@ class _StoryboardSeRow extends StatelessWidget {
   /// What the row answers to: the selection wash, the press layer, the
   /// range gesture, and the comma grips on each block's edges.
   List<Widget> _interactionLayers(
+    BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
   ) {
@@ -3245,11 +3341,8 @@ class _StoryboardSeRow extends StatelessWidget {
     }
     if (onRowFramePress != null || onEditSeEntry != null) {
       final onEditSeEntry = this.onEditSeEntry;
-      int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
-          ? null
-          : (local.dx / timelineScale.pixelsPerFrame).floor();
       spans.add(
-        _pressLayer(layer, frameAt, onEditSeEntry),
+        _pressLayer(layer, (local) => _frameAtX(local.dx), onEditSeEntry),
       );
     }
     // THE range gesture — the timeline's, the same one the cut row
@@ -3288,22 +3381,95 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
     }
+    // A sound let go on an EMPTY cell: a new block from that cell. Last,
+    // like every drop place — it takes no pointer until a drag is in flight.
+    final drop = onDropMediaAsset;
+    if (drop != null) {
+      final cells = _cellDropLayer(context, layer, blocks, drop);
+      if (cells != null) {
+        spans.add(cells);
+      }
+    }
     return spans;
   }
+
+  /// The press's conversion: this row's frame 0 sits at its left edge.
+  int? _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
+      ? null
+      : (x / timelineScale.pixelsPerFrame).floor();
+
+  /// The row's cells, as its grips and its drop places are laid out on.
+  TimelineFrameGeometry get _rowFrames => TimelineFrameGeometry(
+    frameCellExtent: timelineScale.pixelsPerFrame,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
+        ? 0
+        : (width / timelineScale.pixelsPerFrame).ceil(),
+  );
 
   Positioned _gripLayer(List<Widget> grips) {
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
-        geometry: TimelineFrameGeometry(
-          frameCellExtent: timelineScale.pixelsPerFrame,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
-              ? 0
-              : (width / timelineScale.pixelsPerFrame).ceil(),
-        ),
+        geometry: _rowFrames,
         crossAxisExtent: _seRowHeight,
         axis: Axis.horizontal,
         children: grips,
+      ),
+    );
+  }
+
+  /// One drop place per EMPTY gap of this row — the timeline's SE row law
+  /// (「SE 행의 빈 칸 → 새 블록」) on the track axis this row draws. Over the
+  /// gaps only, as the timeline's are, so a block is never the place to
+  /// start another; the gaps are [emptyGapsBetween]'s, the one free-span
+  /// answer.
+  Positioned? _cellDropLayer(
+    BuildContext context,
+    Layer layer,
+    List<TimelineDrawingBlock> blocks,
+    StoryboardMediaDrop drop,
+  ) {
+    final frames = _rowFrames;
+    final end = frames.frameEndIndexExclusive;
+    // The walk asks cell by cell, and a track runs to thousands of frames.
+    // Past the row's last block nothing covers a cell, so the walk stops
+    // there and the rest is one gap — the answer inside it is still
+    // [emptyGapsBetween]'s.
+    final walked = blocks.isEmpty
+        ? 0
+        : math.min(blocks.last.endIndexExclusive, end);
+    final gaps = [
+      ...emptyGapsBetween(layer, 0, walked),
+      if (walked < end) (startIndex: walked, length: end - walked),
+    ];
+    if (gaps.isEmpty) {
+      return null;
+    }
+    return Positioned.fill(
+      child: TimelineFixedFrameSpanLayer(
+        geometry: frames,
+        crossAxisExtent: _seRowHeight,
+        axis: Axis.horizontal,
+        children: [
+          for (final gap in gaps)
+            TimelineFrameSpan(
+              placement: TimelineFrameSpanPlacement(
+                startIndex: gap.startIndex,
+                endIndexExclusive: gap.startIndex + gap.length,
+              ),
+              child: _storyboardRowDropTarget(
+                key: ValueKey<String>(
+                  'storyboard-se-cell-drop-${layer.id}-${gap.startIndex}',
+                ),
+                rowContext: context,
+                row: LayerRowAddress(layer.id),
+                frameAtX: _frameAtX,
+                onRowFramePress: onRowFramePress,
+                drop: drop,
+                accepts: acceptsMediaAsset,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -4038,8 +4204,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.layoutEntries,
     required this.activeCutId,
     required this.onRowFramePress,
-    required this.onDropMediaAssetOnTrack,
-    required this.acceptsMediaAssetOnTrack,
+    required this.onDropMediaAsset,
+    required this.acceptsMediaAsset,
     required this.laneHeight,
     required this.width,
     required this.stripEdges,
@@ -4085,10 +4251,8 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
-  final void Function(TrackId trackId, int globalFrame, String path)?
-  onDropMediaAssetOnTrack;
-  final bool Function(TrackId trackId, int globalFrame, String path)?
-  acceptsMediaAssetOnTrack;
+  final StoryboardMediaDrop? onDropMediaAsset;
+  final StoryboardMediaDropAccepts? acceptsMediaAsset;
 
   /// This row's height — the rail's matching label row reads the same one.
   final double laneHeight;
@@ -4369,16 +4533,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       ? 0
       : (x / timelineScale.pixelsPerFrame).floor();
 
-  /// The frame under a GLOBAL pointer: the drop's offset in this row's own
-  /// coordinates, then the press's conversion ([_frameAtX]).
-  int _frameAtGlobal(BuildContext context, Offset globalPosition) {
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return 0;
-    }
-    return _frameAtX(box.globalToLocal(globalPosition).dx);
-  }
-
   void _handleHover(PointerHoverEvent event) {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
   }
@@ -4387,8 +4541,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
-    final dropOnTrack = onDropMediaAssetOnTrack;
-    final acceptsOnTrack = acceptsMediaAssetOnTrack;
+    final drop = onDropMediaAsset;
     final cellsByCut = _cellsByCut();
     final grips = _stripGrips(cellsByCut);
     // Where the panels are drawn is where their gestures and their EDGES
@@ -4647,24 +4800,18 @@ class _StoryboardTrackRow extends StatelessWidget {
             // there. A permanent slot, as the canvas's is: it draws nothing
             // and absorbs no hit test until a matching drag is in flight.
             // Last in the stack, so a grip under the file hides no frame.
-            if (dropOnTrack != null)
+            if (drop != null)
               Positioned.fill(
-                child: MediaAssetDropTarget(
+                child: _storyboardRowDropTarget(
                   key: ValueKey<String>(
                     'storyboard-track-asset-drop-${track.id.value}',
                   ),
-                  accepts: acceptsOnTrack == null
-                      ? null
-                      : (data, globalPosition) => acceptsOnTrack(
-                          track.id,
-                          _frameAtGlobal(context, globalPosition),
-                          data.path,
-                        ),
-                  onDrop: (data, globalPosition) {
-                    final frame = _frameAtGlobal(context, globalPosition);
-                    onRowFramePress?.call(TrackRowAddress(track.id), frame);
-                    dropOnTrack(track.id, frame, data.path);
-                  },
+                  rowContext: context,
+                  row: TrackRowAddress(track.id),
+                  frameAtX: _frameAtX,
+                  onRowFramePress: onRowFramePress,
+                  drop: drop,
+                  accepts: acceptsMediaAsset,
                 ),
               ),
           ],

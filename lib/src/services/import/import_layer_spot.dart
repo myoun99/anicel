@@ -17,8 +17,11 @@ sealed class ImportLayerSpot {
   /// Which cut the drop answered as well as where in it — or null when the
   /// drop left that question to the window, which then asks it.
   ///
-  /// The ACTIVE cut for a place only the active cut has — a row's frames, an
-  /// SE row's cell, a gap between its rows — so the window shows the
+  /// The ACTIVE cut for a place in the active cut's rows — a row's frames, a
+  /// gap between its rows — and for an SE row's cell, whose sound lands on
+  /// the track's SE rows and reads no destination at all (the answer there
+  /// only keeps the window's Into column locked). A NEW cut for a place on
+  /// the track's own frames ([NewCutSpot]). Either way the window shows the
   /// destination locked and the settings hold that one answer.
   ///
   /// ⚠️Null for the canvas ([AboveActiveLayerSpot]). Its first words were a
@@ -75,16 +78,30 @@ final class RowFramesSpot extends ImportLayerSpot {
 }
 
 /// A SOUND let go on an SE row's empty cell: a new block on [layerId] from
-/// [frameIndex] on, as long as the sound or up to the row's next block
-/// (유저 2026-09-11, 미디어 배치 라운드: 「SE 행의 빈 칸 → 새 블록」).
+/// [trackFrame] on, as long as the sound or up to the row's next block
+/// (유저 2026-09-11, 미디어 배치 라운드: 「SE 행의 빈 칸 → 새 블록」) — on
+/// the timeline's SE rows and on the storyboard's, between cuts too.
 final class SeCellSpot extends ImportLayerSpot {
-  const SeCellSpot({required this.layerId, required this.frameIndex});
+  const SeCellSpot({
+    required this.layerId,
+    required this.trackFrame,
+    required this.shownCell,
+  });
 
   final LayerId layerId;
 
-  /// The cell the sound was let go on, in the CUT's frames — as the row
-  /// showed it. The track's frame is [TrackSeWindow]'s to work out.
-  final int frameIndex;
+  /// Where on the TRACK the block starts. The timeline works it out through
+  /// the active cut's `TrackSeWindow` when it builds the spot; the
+  /// storyboard's SE rows already speak track frames.
+  final int trackFrame;
+
+  /// The cell as the row showed it, zero-based — cut-local on the timeline,
+  /// the track's own on the storyboard. The window's words read this.
+  ///
+  /// ⚠️Two fields because they are two questions. One `frameIndex` used to
+  /// answer both, with the landing adding the active cut's start — which a
+  /// cell between cuts has no cut to add.
+  final int shownCell;
 
   @override
   ImportDestination? get answeredDestination =>
@@ -94,10 +111,11 @@ final class SeCellSpot extends ImportLayerSpot {
   bool operator ==(Object other) =>
       other is SeCellSpot &&
       other.layerId == layerId &&
-      other.frameIndex == frameIndex;
+      other.trackFrame == trackFrame &&
+      other.shownCell == shownCell;
 
   @override
-  int get hashCode => Object.hash(SeCellSpot, layerId, frameIndex);
+  int get hashCode => Object.hash(SeCellSpot, layerId, trackFrame, shownCell);
 }
 
 /// A new layer at a gap between two rows of the layer area — where the

@@ -18,11 +18,12 @@ void main() {
     expect(const AboveActiveLayerSpot().answeredDestination, isNull);
   });
 
-  test('a row\'s frames, an SE row\'s cell and a gap between rows answer the '
-      'ACTIVE cut — each is a place only the active cut has', () {
+  test('a row\'s frames, a gap between rows and an SE row\'s cell answer the '
+      'ACTIVE cut — the SE cell only to keep the window\'s Into locked, since '
+      'its sound reads no destination', () {
     const spots = <ImportLayerSpot>[
       RowFramesSpot(layerId: LayerId('a'), frameIndex: 0),
-      SeCellSpot(layerId: LayerId('s'), frameIndex: 0),
+      SeCellSpot(layerId: LayerId('s'), trackFrame: 0, shownCell: 0),
       LayerSlotSpot(1),
     ];
     for (final spot in spots) {
