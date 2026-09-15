@@ -36,6 +36,7 @@ class _LinkCommands {
             CutCommandCoordinator.nextCutNameAfter(project, sourceCut.name),
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
+        coveringFrameIdBySource: plan.coveringFrameIdBySource,
       ),
     );
   }
@@ -135,6 +136,7 @@ class _LinkCommands {
         targetCutId: targetCutId,
         unionLayerIdMap: plan.unionLayerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
+        coveringFrameIdBySource: plan.coveringFrameIdBySource,
       ),
     ];
 

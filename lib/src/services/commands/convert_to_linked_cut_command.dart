@@ -12,6 +12,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/track_id.dart';
 import '../brush_frame_store.dart';
 import '../command.dart';
+import '../editing/default_layer_helpers.dart';
 import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
@@ -36,6 +37,7 @@ class ConvertToLinkedCutCommand implements Command {
     required this.targetCutId,
     required this.unionLayerIdMap,
     required this.newGroupIdBySource,
+    required this.coveringFrameIdBySource,
   });
 
   final ProjectRepository repository;
@@ -51,6 +53,10 @@ class ConvertToLinkedCutCommand implements Command {
   /// Planned registry group ids for pairs/unions not linked yet, keyed by
   /// the origin-side (or origin-only / target-only) source layer id.
   final Map<LayerId, String> newGroupIdBySource;
+
+  /// The planned fresh panel of each union copy born covering the cut it
+  /// lands in (F-99), keyed like [unionLayerIdMap].
+  final Map<(CutId, LayerId), FrameId> coveringFrameIdBySource;
 
   LayerLinkRegistry? _registryBefore;
   final List<(BrushFrameKey, BrushFrameKey)> _rekeys = [];
@@ -155,14 +161,25 @@ class ConvertToLinkedCutCommand implements Command {
 
     // 2. Union: a layer on ONE side only gets a linked copy on the other
     //    (empty timeline — the bank is shared, the rhythm is fresh).
+    //
+    // ↩️F-99 (유저 2026-09-12): 「콘티레이어 생성시 기본적으로 프레임
+    // 생성되는데 그 법 그대로 재사용/통일」 — a row that cannot stand empty,
+    // the conte row, is born covering the cut it lands in with a fresh panel
+    // instead, and the panel joins the bank of the row it came from
+    // (`_unionCopyOf`).
     for (final originLayerId in plan.originOnlyLayerIds) {
-      final origin = originLayers.firstWhere(
+      final index = originLayers.indexWhere(
         (layer) => layer.id == originLayerId,
       );
-      final copyId = unionLayerIdMap[(originCutId, originLayerId)]!;
-      targetLayers.add(
-        origin.copyWith(id: copyId, timeline: const {}, folderId: null),
+      final union = _unionCopyOf(
+        originLayers[index],
+        copyId: unionLayerIdMap[(originCutId, originLayerId)]!,
+        panel: coveringFrameIdBySource[(originCutId, originLayerId)],
+        cutDuration: targetCut.duration,
       );
+      originLayers[index] = union.source;
+      targetLayers.add(union.copy);
+      final copyId = union.copy.id;
       groups = linkGroupsJoined(
         groups,
         origin: LayerLinkMember(
@@ -179,13 +196,18 @@ class ConvertToLinkedCutCommand implements Command {
       );
     }
     for (final targetLayerId in plan.targetOnlyLayerIds) {
-      final target = targetLayers.firstWhere(
+      final index = targetLayers.indexWhere(
         (layer) => layer.id == targetLayerId,
       );
-      final copyId = unionLayerIdMap[(targetCutId, targetLayerId)]!;
-      originLayers.add(
-        target.copyWith(id: copyId, timeline: const {}, folderId: null),
+      final union = _unionCopyOf(
+        targetLayers[index],
+        copyId: unionLayerIdMap[(targetCutId, targetLayerId)]!,
+        panel: coveringFrameIdBySource[(targetCutId, targetLayerId)],
+        cutDuration: originCut.duration,
       );
+      targetLayers[index] = union.source;
+      originLayers.add(union.copy);
+      final copyId = union.copy.id;
       groups = linkGroupsJoined(
         groups,
         // The TARGET side is canonical for a target-only layer (it holds
@@ -274,6 +296,32 @@ class ConvertToLinkedCutCommand implements Command {
     }
     final replacement = retargets[frameId];
     return replacement == null ? exposure : exposure.copyWith(frameId: replacement);
+  }
+
+  /// [source]'s union copy with [copyId] — an EMPTY timeline, the bank
+  /// shared — and [source] itself. A row that cannot stand empty is born
+  /// over its new cut's [cutDuration] frames with [panel] instead, and the
+  /// panel joins [source]'s bank too (F-99).
+  ({Layer source, Layer copy}) _unionCopyOf(
+    Layer source, {
+    required LayerId copyId,
+    required FrameId? panel,
+    required int cutDuration,
+  }) {
+    final copy = source.copyWith(
+      id: copyId,
+      timeline: const {},
+      folderId: null,
+    );
+    if (panel == null) {
+      return (source: source, copy: copy);
+    }
+    final cel = coveringCelFor(frameId: panel, cutDuration: cutDuration);
+    final bank = [...source.frames, cel.frame];
+    return (
+      source: source.copyWith(frames: bank),
+      copy: copy.copyWith(frames: bank, timeline: cel.timeline),
+    );
   }
 
   BrushFrameKey _celKey(

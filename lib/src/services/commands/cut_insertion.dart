@@ -2,6 +2,7 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../editing/cut_insertion_room.dart';
 import '../project_repository.dart';
 
 /// A cut put INTO a track — at [index], or after the track's last cut — and
@@ -25,6 +26,13 @@ import '../project_repository.dart';
 /// moves; creation takes them back out of that same gap, and only what
 /// the gap could not cover becomes a push. Empty gap, no room, the
 /// followers move exactly as far as they always did.
+///
+/// ↩️F-97 (유저 2026-09-12): 「근데 이런거 애초에 프레임블록 로직이랑
+/// 똑같이 법 통일」. The room came out of the NEXT cut's gap alone, so a
+/// push that gap could not hold moved every cut behind it, gaps or no
+/// gaps. The push now travels the frame axis's way — each gap ahead
+/// spent before it reaches the cut behind — and a 겸용 cut lands by the
+/// same answer ([followerGapsAfterInsert]).
 final class CutInsertion {
   CutInsertion({required this.trackId, required this.cut, this.index});
 
@@ -36,52 +44,39 @@ final class CutInsertion {
 
   int? _resolvedIndex;
 
-  /// The follower's leading gap before this cut took room out of it, kept so
-  /// [revert] can hand the room back. Null when there is no follower.
-  CutId? _absorbedFromCutId;
-  late int _absorbedGapBefore;
+  /// The leading gaps of the cuts this one took room from, as they were —
+  /// kept so [revert] can hand the room back.
+  Map<CutId, int> _gapsBefore = const {};
 
   void apply(ProjectRepository repository) {
-    _resolvedIndex ??= index ?? _track(repository).cuts.length;
-    final follower = _followerOrNull(repository);
-    _absorbedFromCutId = follower?.id;
-    if (follower != null) {
-      _absorbedGapBefore = follower.leadingGapFrames;
-    }
+    final cuts = _track(repository).cuts;
+    _resolvedIndex ??= index ?? cuts.length;
+    final gaps = followerGapsAfterInsert(
+      cuts,
+      index: _resolvedIndex!,
+      leadingGap: cut.leadingGapFrames,
+      duration: cut.duration,
+    );
+    _gapsBefore = {
+      for (final follower in cuts)
+        if (gaps.containsKey(follower.id))
+          follower.id: follower.leadingGapFrames,
+    };
 
     repository.insertCut(trackId: trackId, cut: cut, index: _resolvedIndex);
-
-    final absorbedFrom = _absorbedFromCutId;
-    if (absorbedFrom != null) {
-      final footprint = cut.leadingGapFrames + cut.duration;
-      final remaining = _absorbedGapBefore - footprint;
-      repository.updateCutLeadingGap(
-        cutId: absorbedFrom,
-        leadingGapFrames: remaining < 0 ? 0 : remaining,
-      );
+    for (final MapEntry(key: cutId, value: gap) in gaps.entries) {
+      repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: gap);
     }
   }
 
   void revert(ProjectRepository repository) {
     repository.removeCut(cutId: cut.id);
-    // ⛔Back to the RECORDED number rather than gap+footprint: the follower
+    // ⛔Back to the RECORDED numbers rather than gap+footprint: a follower
     // may have had less room than this cut took, and adding the footprint
     // back would invent frames that were never there.
-    final absorbedFrom = _absorbedFromCutId;
-    if (absorbedFrom != null) {
-      repository.updateCutLeadingGap(
-        cutId: absorbedFrom,
-        leadingGapFrames: _absorbedGapBefore,
-      );
+    for (final MapEntry(key: cutId, value: gap) in _gapsBefore.entries) {
+      repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: gap);
     }
-  }
-
-  /// The cut this one lands in FRONT of — the one whose leading gap is the
-  /// free space the new cut is entitled to use. Null when appending.
-  Cut? _followerOrNull(ProjectRepository repository) {
-    final cuts = _track(repository).cuts;
-    final at = _resolvedIndex!;
-    return at < cuts.length ? cuts[at] : null;
   }
 
   Track _track(ProjectRepository repository) {

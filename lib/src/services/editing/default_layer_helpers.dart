@@ -75,12 +75,26 @@ Layer createCoveringLayer({
   LayerKind kind = LayerKind.storyboard,
 }) {
   assert(kind.coversWithoutGaps);
-  final duration = cut.duration < 1 ? 1 : cut.duration;
+  final cel = coveringCelFor(frameId: frameId, cutDuration: cut.duration);
   return Layer(
     id: layerId,
     name: nextCelLayerNameForCut(cut),
     kind: kind,
-    frames: [Frame(id: frameId, duration: duration, strokes: const [])],
+    frames: [cel.frame],
+    timeline: cel.timeline,
+  );
+}
+
+/// The one cel a COVERING row is born with over a cut of [cutDuration]
+/// frames, and its exposure edge to edge — what [createCoveringLayer] makes
+/// a row of, and what a 겸용 cut's conte row is born with (F-99).
+({Frame frame, Map<int, TimelineExposure> timeline}) coveringCelFor({
+  required FrameId frameId,
+  required int cutDuration,
+}) {
+  final duration = cutDuration < 1 ? 1 : cutDuration;
+  return (
+    frame: Frame(id: frameId, duration: duration, strokes: const []),
     timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
   );
 }

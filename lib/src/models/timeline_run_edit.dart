@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'block_run_move.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
@@ -45,16 +46,18 @@ import 'timeline_repeat.dart';
         next[index] = entry;
       }
     });
-    // Downstream drawings overlap-push (gaps absorb).
-    var frontier = insertStart + count;
-    for (final index in base.keys) {
-      if (index < insertStart) {
-        continue;
-      }
-      final entry = base[index]!;
-      final newStart = math.max(index, frontier);
-      frontier = newStart + entry.length!;
-      next[newStart] = entry;
+    // Downstream drawings overlap-push (gaps absorb) — the push every
+    // insertion on either axis makes ([startsClearingFrontier]).
+    final downstream = [
+      for (final index in base.keys)
+        if (index >= insertStart) index,
+    ];
+    final starts = startsClearingFrontier([
+      for (final index in downstream)
+        (start: index, length: base[index]!.length!),
+    ], frontier: insertStart + count);
+    for (final (position, index) in downstream.indexed) {
+      next[starts[position]] = base[index]!;
     }
     final ids = <FrameId>[];
     for (var i = 0; i < count; i += 1) {

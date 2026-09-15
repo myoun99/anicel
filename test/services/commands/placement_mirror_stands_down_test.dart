@@ -47,6 +47,9 @@ void main() {
       newName: 'Linked',
       layerIdMap: {sourceLayer.id: linkedLayerId},
       newGroupIdBySource: {sourceLayer.id: 'link-group'},
+      // F-99: this case gives the copy no covering panel — the folder it
+      // checks is the subject, not the room the cut takes.
+      coveringFrameIdBySource: const {},
     ).execute();
     // The folder exists on the SOURCE cut only: the sibling never got one.
     CreateFolderCommand(

@@ -65,6 +65,32 @@ List<int> leadingGapsOf({
   return gaps;
 }
 
+/// Where each of [blocks] starts once everything from [frontier] on has to
+/// clear it — THE push an insertion makes, on either axis.
+///
+/// A block the frontier has not reached keeps its start. One it has reached
+/// moves just past it, and the frontier travels on from that block's new
+/// end, so the empty space between blocks absorbs the push before it
+/// reaches the next one. The frame axis wrote this twice (a cross-layer
+/// drop, "+ add frames" at a run's end) and the cut axis took its room
+/// from one gap only — F-97 (유저 2026-09-12): 「이런거 애초에 프레임블록
+/// 로직이랑 똑같이 법 통일」.
+///
+/// [blocks] run in order along the axis.
+List<int> startsClearingFrontier(
+  Iterable<({int start, int length})> blocks, {
+  required int frontier,
+}) {
+  final starts = <int>[];
+  var reach = frontier;
+  for (final block in blocks) {
+    final start = block.start < reach ? reach : block.start;
+    starts.add(start);
+    reach = start + block.length;
+  }
+  return starts;
+}
+
 /// Where every slot sits after the move.
 class BlockRunMoveLayout {
   BlockRunMoveLayout({
