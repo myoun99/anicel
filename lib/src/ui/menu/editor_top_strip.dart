@@ -30,7 +30,6 @@ import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../widgets/static_raster.dart';
-import '../dialogs/project_background_dialog.dart';
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
@@ -523,20 +522,6 @@ class EditorTopStrip extends StatelessWidget {
       onPressed: () => unawaited(promptSaveProjectAs(context, session)),
     ),
     ..._recentEntries(context),
-    const PanelFlyoutDivider(),
-    _item(
-      id: 'file-project-background',
-      label: 'Project background…',
-      icon: Icons.gradient_outlined,
-      onPressed: () {
-        unawaited(
-          showDialog<void>(
-            context: context,
-            builder: (context) => ProjectBackgroundDialog(session: session),
-          ),
-        );
-      },
-    ),
     const PanelFlyoutDivider(),
     _item(
       id: 'file-import',

@@ -430,19 +430,7 @@ enum AppStrings {
   String get canvasPresetDefault => _s('canvasPresetDefault');
   String get commonResize => _s('commonResize');
 
-  // --- Project background ---
-  String get backgroundTitle => _s('backgroundTitle');
-  String get backgroundPaper => _s('backgroundPaper');
-  String get backgroundWhite => _s('backgroundWhite');
-  String get backgroundBlack => _s('backgroundBlack');
-  String get backgroundTransparent => _s('backgroundTransparent');
-  String get backgroundCustom => _s('backgroundCustom');
-  String get backgroundHelp => _s('backgroundHelp');
-  String get stagePaperSection => _s('stagePaperSection');
-  String get stagePasteboardSection => _s('stagePasteboardSection');
-  String get stagePasteboardExtent => _s('stagePasteboardExtent');
-  String get stageBackdropSection => _s('stageBackdropSection');
-  String get stageAlphaLabel => _s('stageAlphaLabel');
+  // --- Alpha preview ---
   String get menuAlphaPreview => _s('menuAlphaPreview');
 
   // --- Input settings ---
@@ -1554,23 +1542,6 @@ enum AppStrings {
         'kept and reappear if the canvas grows again. ({min}–{max} px)',
     'canvasPresetDefault': 'Default',
     'commonResize': 'Resize',
-    'backgroundTitle': 'Project background',
-    'backgroundPaper': 'Paper (default)',
-    'backgroundWhite': 'White',
-    'backgroundBlack': 'Black',
-    'backgroundTransparent': 'Transparent',
-    'backgroundCustom': 'Custom',
-    'backgroundHelp':
-        'The stage is four planes: backdrop, pasteboard, paper, pictures. '
-        'Paper and pasteboard carry alpha — thinning them reveals the '
-        'planes behind, on screen and in exports alike. The backdrop is '
-        'opaque: it is what fades reveal, what empty frames print, and '
-        'what lies beyond the pasteboard on screen.',
-    'stagePaperSection': 'Paper',
-    'stagePasteboardSection': 'Pasteboard',
-    'stagePasteboardExtent': 'Shown out to (× canvas)',
-    'stageBackdropSection': 'Backdrop',
-    'stageAlphaLabel': 'Alpha',
     'menuAlphaPreview': 'Alpha preview',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
@@ -2457,7 +2428,6 @@ enum AppStrings {
     'menuPlay': '再生',
     'menuPause': '一時停止',
     'menuAction.file-open': '開く…',
-    'menuAction.file-project-background': 'プロジェクトの背景…',
     'menuAction.file-import': '読み込み／配置…',
     'menuAction.file-export': '書き出し…',
     'menuAction.edit-undo': '元に戻す',
@@ -2540,23 +2510,7 @@ enum AppStrings {
         'カンバスを広げれば再び現れます。（{min}〜{max} px）',
     'canvasPresetDefault': '既定',
     'commonResize': 'サイズ変更',
-    'backgroundTitle': 'プロジェクトの背景',
-    'backgroundPaper': '紙（既定）',
-    'backgroundWhite': '白',
-    'backgroundBlack': '黒',
-    'backgroundTransparent': '透明',
-    'backgroundCustom': 'カスタム',
-    'stagePaperSection': '紙',
-    'stagePasteboardSection': 'ペーストボード',
-    'stagePasteboardExtent': '表示範囲（キャンバス倍）',
-    'stageBackdropSection': '背景',
-    'stageAlphaLabel': '不透明度',
     'menuAlphaPreview': 'アルファプレビュー',
-    'backgroundHelp':
-        'ステージは背景・ペーストボード・紙・絵の4層です。紙とペースト'
-        'ボードは不透明度を持ち、薄くすると背後の層が画面でも書き出し'
-        'でも透けます。背景は不透明の最終面で、フェードや空きフレーム'
-        'が行き着く色です。',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
     'inputPressureSoftHard': '柔らかい ↔ 硬い',
@@ -3512,7 +3466,6 @@ enum AppStrings {
     'menuPlay': '재생',
     'menuPause': '일시정지',
     'menuAction.file-open': '열기…',
-    'menuAction.file-project-background': '프로젝트 배경…',
     'menuAction.file-import': '가져오기/배치…',
     'menuAction.file-export': '내보내기…',
     'menuAction.edit-undo': '실행 취소',
@@ -3595,23 +3548,7 @@ enum AppStrings {
         '다시 넓히면 되살아납니다. ({min}~{max} px)',
     'canvasPresetDefault': '기본',
     'commonResize': '크기 변경',
-    'backgroundTitle': '프로젝트 배경',
-    'backgroundPaper': '종이 (기본)',
-    'backgroundWhite': '흰색',
-    'backgroundBlack': '검정',
-    'backgroundTransparent': '투명',
-    'backgroundCustom': '사용자 지정',
-    'stagePaperSection': '종이',
-    'stagePasteboardSection': '페이스트보드',
-    'stagePasteboardExtent': '표시 범위 (캔버스 배수)',
-    'stageBackdropSection': '배경',
-    'stageAlphaLabel': '불투명도',
     'menuAlphaPreview': '알파 미리보기',
-    'backgroundHelp':
-        '무대는 배경·페이스트보드·종이·그림의 4층입니다. 종이와 '
-        '페이스트보드는 불투명도를 가지며, 낮추면 화면에서도 출력에서도 '
-        '뒤 층이 비칩니다. 배경은 불투명한 최종 면으로, 페이드와 빈 '
-        '프레임이 도달하는 색입니다.',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
     'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
@@ -4566,7 +4503,6 @@ enum AppStrings {
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
     'menuAction.file-open': 'Ouvrir…',
-    'menuAction.file-project-background': 'Arrière-plan du projet…',
     'menuAction.file-import': 'Importer / Placer…',
     'menuAction.file-export': 'Exporter…',
     'menuAction.edit-undo': 'Annuler',
@@ -4654,24 +4590,7 @@ enum AppStrings {
         '({min}–{max} px)',
     'canvasPresetDefault': 'Par défaut',
     'commonResize': 'Redimensionner',
-    'backgroundTitle': 'Arrière-plan du projet',
-    'backgroundPaper': 'Papier (par défaut)',
-    'backgroundWhite': 'Blanc',
-    'backgroundBlack': 'Noir',
-    'backgroundTransparent': 'Transparent',
-    'backgroundCustom': 'Personnalisé',
-    'stagePaperSection': 'Papier',
-    'stagePasteboardSection': 'Table de montage',
-    'stagePasteboardExtent': 'Affichée jusqu\'à (× canevas)',
-    'stageBackdropSection': 'Fond',
-    'stageAlphaLabel': 'Alpha',
     'menuAlphaPreview': 'Aperçu alpha',
-    'backgroundHelp':
-        'La scène a quatre plans : fond, table de montage, papier, images. '
-        'Le papier et la table portent un alpha — les amincir révèle les '
-        "plans derrière, à l'écran comme à l'export. Le fond est opaque : "
-        "c'est ce que révèlent les fondus et ce qu'impriment les images "
-        'vides.',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
     'inputPressureSoftHard': 'Doux ↔ Dur',
@@ -5630,7 +5549,6 @@ enum AppStrings {
     'menuPlay': '播放',
     'menuPause': '暂停',
     'menuAction.file-open': '打开…',
-    'menuAction.file-project-background': '项目背景…',
     'menuAction.file-import': '导入/放置…',
     'menuAction.file-export': '导出…',
     'menuAction.edit-undo': '撤销',
@@ -5710,22 +5628,7 @@ enum AppStrings {
         '（{min}–{max} px）',
     'canvasPresetDefault': '默认',
     'commonResize': '调整尺寸',
-    'backgroundTitle': '项目背景',
-    'backgroundPaper': '纸（默认）',
-    'backgroundWhite': '白色',
-    'backgroundBlack': '黑色',
-    'backgroundTransparent': '透明',
-    'backgroundCustom': '自定义',
-    'stagePaperSection': '纸',
-    'stagePasteboardSection': '粘贴板',
-    'stagePasteboardExtent': '显示范围（画布倍数）',
-    'stageBackdropSection': '背景',
-    'stageAlphaLabel': '不透明度',
     'menuAlphaPreview': '透明度预览',
-    'backgroundHelp':
-        '舞台由四层组成：背景、粘贴板、纸、图画。纸和粘贴板带有透明度 — '
-        '调低后，屏幕和导出都会透出后面的层。背景是不透明的最终面：'
-        '淡出与空帧最终落在这个颜色上。',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',
     'inputPressureSoftHard': '软 ↔ 硬',
