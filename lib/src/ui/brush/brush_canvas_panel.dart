@@ -1813,7 +1813,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final piece = buildCutPiece(
       region: CanvasSelectionRegion.shape(shape),
       surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      pieceId: 'cut-${_cutPieceSequence += 1}',
     );
     // Null = the outline covered no paint. Leave the slot alone rather
     // than blanking it: it survives frames, cuts and projects, so one
@@ -1822,8 +1821,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       slot.hold(piece);
     }
   }
-
-  int _cutPieceSequence = 0;
 
   /// TS7: the tap layer's press verb, continued while the pointer is held.
   ///

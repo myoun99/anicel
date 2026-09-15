@@ -304,4 +304,23 @@ void main() {
     expect(held.isNotEmpty, isTrue);
     expect(session.renderCaches.viewerRasterBytes, resting);
   });
+
+  testWidgets('🐛F-112: a cut after the viewer remounts is a NEW piece to its '
+      'readers — the id does not start again', (tester) async {
+    await pumpViewer(tester);
+    await cutDrag(tester);
+    final first = held.piece!.image.id;
+
+    // The panel is taken down and put back: a new State, as closing the
+    // viewer and opening it again makes one.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pumpViewer(tester);
+    await cutDrag(tester);
+
+    expect(
+      held.piece!.image.id,
+      isNot(first),
+      reason: 'the stamp and the settings preview read a new id as new pixels',
+    );
+  });
 }

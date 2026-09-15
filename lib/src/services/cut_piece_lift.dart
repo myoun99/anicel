@@ -30,7 +30,6 @@ import 'canvas_selection_region.dart';
 CutPiece? buildCutPiece({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
-  required String pieceId,
 }) {
   final canvasSize = surface.canvasSize;
   final box = cutPieceBox(
@@ -77,7 +76,7 @@ CutPiece? buildCutPiece({
 
   return CutPiece(
     image: BrushStampImage(
-      id: pieceId,
+      id: _nextCutPieceId(),
       width: width,
       height: height,
       rgba: gathered.rgba,
@@ -86,6 +85,32 @@ CutPiece? buildCutPiece({
     originTop: top,
   );
 }
+
+/// The id a NEW piece's pixels go by — minted here, where a piece is made,
+/// and nowhere else.
+///
+/// 🚨F-112 (유저 2026-09-12: 「뷰어 패널에서 잘라내기툴로 pdf 그림
+/// 잘라냈는데, 스탬프로 바로 안바뀌는 버그. 간헐적임 … 툴설정의 프리뷰에는
+/// 잘라내기 전, 이전 기록의 그림이 있음」). The id is the PIXELS' identity to
+/// both of its readers: the stamp arms only on a fresh one
+/// (`armStampOnFreshCut`) and the settings preview decodes again only on a
+/// new one (`CutPieceImageHost`). It used to be minted by whoever called — a
+/// counter per State, one in the canvas and one in each viewer — and a State
+/// that remounts counted from 1 again, so a NEW piece arrived under an OLD id:
+/// no stamp, and the old picture in the preview. Intermittent, because only a
+/// remount repeats. Until F-103 a neighbour panel opening or closing
+/// remounted the viewer; a panel taken down and put back still makes a new
+/// State.
+///
+/// ⛔Unique for the whole run, and across runs: the clock stamp is taken once
+/// per launch, as the other stamps' ids are clock-stamped (`fill-…`,
+/// `lift-…`), and the counter never restarts inside a run. The counter is
+/// what keeps two cuts apart within one clock tick — a clock alone would
+/// repeat the id for two quick cuts, which is this bug again.
+String _nextCutPieceId() => 'cut-$_cutPieceRun-${_cutPieceSequence += 1}';
+
+final String _cutPieceRun = '${DateTime.now().microsecondsSinceEpoch}';
+var _cutPieceSequence = 0;
 
 /// The pixel box a cut over [region] reads: the outline's coverage, inside
 /// the half-open clip — null when the two do not meet.
@@ -125,8 +150,8 @@ CutPiece? buildCutPiece({
 /// [region] is in the picture's own pixels, and [readRgba] hands back the
 /// straight RGBA of the box [cutPieceBox] chose, at that size — so the piece
 /// holds the SOURCE's pixels, whatever zoom the drag was made at. The laws
-/// are [buildCutPiece]'s: a hard mask, and no blank piece for an empty drag
-/// (the slot outlives frames, cuts and projects).
+/// are [buildCutPiece]'s: a hard mask, no blank piece for an empty drag
+/// (the slot outlives frames, cuts and projects), and its id minted here.
 ///
 /// The origin is the box's place on the PICTURE, which is what paste at
 /// origin reads: a reference the canvas's size lands where it was.
@@ -137,7 +162,6 @@ Future<CutPiece?> buildCutPieceFromPicture({
     ({int left, int top, int width, int height}) box,
   )
   readRgba,
-  required String pieceId,
 }) async {
   final box = cutPieceBox(
     region,
@@ -179,7 +203,7 @@ Future<CutPiece?> buildCutPieceFromPicture({
   }
   return CutPiece(
     image: BrushStampImage(
-      id: pieceId,
+      id: _nextCutPieceId(),
       width: box.width,
       height: box.height,
       rgba: rgba,

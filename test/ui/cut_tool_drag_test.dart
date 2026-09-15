@@ -785,4 +785,24 @@ void main() {
     await dragOnLayer(tester, const Offset(10, 200), const Offset(60, 250));
     expect(env.slot.piece, same(piece));
   });
+
+  testWidgets('🐛F-112: a cut after the canvas remounts is a new piece too', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
+    final first = env.slot.piece!.image.id;
+
+    // `setTool` pumps the whole panel again, so after the shrink it is a
+    // new panel State.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await env.setTool(CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(80, 60));
+
+    expect(
+      env.slot.piece!.image.id,
+      isNot(first),
+      reason: 'the stamp and the settings preview read a new id as new pixels',
+    );
+  });
 }

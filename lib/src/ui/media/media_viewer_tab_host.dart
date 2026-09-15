@@ -362,8 +362,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// the budget.
   Future<void> _cuts = Future<void>.value();
 
-  int _cutSequence = 0;
-
   /// Drops cached pages, farthest from the one on screen first, until the
   /// cache fits [ViewerRasterBudget.byteBudget].
   ///
@@ -1272,7 +1270,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         region: CanvasSelectionRegion.shape(shape),
         picture: pixels,
         readRgba: (box) => document.readRegionRgba(pageIndex, box),
-        pieceId: '${widget.viewerId}-cut-${_cutSequence += 1}',
       );
     } on Object {
       if (mounted && generation == _generation) {

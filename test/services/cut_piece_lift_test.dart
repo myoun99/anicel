@@ -104,7 +104,6 @@ void main() {
     final piece = buildCutPiece(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
-      pieceId: 'cut-1',
     );
     expect(piece, isNotNull);
     expect(snapshot(surface), before);
@@ -115,7 +114,6 @@ void main() {
     final piece = buildCutPiece(
       region: rect(left: 2, top: 2, right: 6, bottom: 6),
       surface: surface,
-      pieceId: 'cut-1',
     )!;
     // Origin is where the piece came FROM, in cel space — this is what
     // "paste at the original position" anchors to, and it is deliberately
@@ -137,7 +135,6 @@ void main() {
     final piece = buildCutPiece(
       region: rect(left: 10, top: 10, right: 14, bottom: 14),
       surface: surface,
-      pieceId: 'cut-1',
     );
     expect(piece, isNull);
   });
@@ -148,7 +145,6 @@ void main() {
       // Far outside the 3×3 pasteboard footprint on the negative side.
       region: rect(left: -400, top: -400, right: -390, bottom: -390),
       surface: surface,
-      pieceId: 'cut-1',
     );
     expect(piece, isNull);
   });
@@ -161,7 +157,6 @@ void main() {
     final piece = buildCutPiece(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
-      pieceId: 'cut-1',
     )!;
     final rgba = piece.image.rgba;
     for (var index = 0; index < rgba.length; index += 4) {
@@ -186,7 +181,6 @@ void main() {
         ]),
       ),
       surface: surface,
-      pieceId: 'cut-1',
     )!;
     final rgba = piece.image.rgba;
     var opaque = 0;
@@ -208,7 +202,6 @@ void main() {
     final piece = buildCutPiece(
       region: rect(left: -7, top: 1, right: -1, bottom: 7),
       surface: surface,
-      pieceId: 'cut-1',
     );
     expect(piece, isNotNull);
     expect(piece!.originLeft, lessThan(0));
@@ -221,15 +214,18 @@ void main() {
     final first = buildCutPiece(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
-      pieceId: 'cut-1',
     )!;
     final second = buildCutPiece(
       region: rect(left: 1, top: 1, right: 7, bottom: 7),
       surface: surface,
-      pieceId: 'cut-2',
     )!;
     expect(identical(first.image.rgba, second.image.rgba), isFalse);
     expect(first.image.rgba, second.image.rgba);
+    expect(
+      second.image.id,
+      isNot(first.image.id),
+      reason: 'a new piece is new pixels to its readers (F-112)',
+    );
   });
 
   group('from a picture that is not a cel (I-14 — the media viewer)', () {
@@ -262,7 +258,6 @@ void main() {
         region: rect(left: 3, top: 2, right: 7, bottom: 5),
         picture: (width: 20, height: 10),
         readRgba: picture(asked),
-        pieceId: 'viewer-cut-1',
       ))!;
       // The box a cel's cut would take ([cutPieceBox]): the coverage, one
       // pixel wider for the edge the pixel centres decide.
@@ -275,6 +270,20 @@ void main() {
       expect(piece.image.rgba.sublist(4 * 4, 4 * 4 + 4), [0, 0, 0, 0]);
     });
 
+    test('two cuts from one picture are two pieces to their readers — the '
+        'id is minted where the piece is made (F-112)', () async {
+      final ids = <String>[];
+      for (var cut = 0; cut < 2; cut += 1) {
+        final piece = await buildCutPieceFromPicture(
+          region: rect(left: 3, top: 2, right: 7, bottom: 5),
+          picture: (width: 20, height: 10),
+          readRgba: picture(<({int left, int top, int width, int height})>[]),
+        );
+        ids.add(piece!.image.id);
+      }
+      expect(ids.last, isNot(ids.first));
+    });
+
     test('it is clipped to the picture — nothing past the edge is asked '
         'for', () async {
       final asked = <({int left, int top, int width, int height})>[];
@@ -282,7 +291,6 @@ void main() {
         region: rect(left: -5, top: -3, right: 4, bottom: 3),
         picture: (width: 20, height: 10),
         readRgba: picture(asked),
-        pieceId: 'viewer-cut-1',
       );
       expect(asked, [(left: 0, top: 0, width: 5, height: 4)]);
       expect((piece!.originLeft, piece.originTop), (0, 0));
@@ -295,7 +303,6 @@ void main() {
         region: rect(left: 15, top: 7, right: 25, bottom: 13),
         picture: (width: 20, height: 10),
         readRgba: picture(asked),
-        pieceId: 'viewer-cut-1',
       );
       expect(asked, [(left: 15, top: 7, width: 5, height: 3)]);
     });
@@ -312,7 +319,6 @@ void main() {
         ),
         picture: (width: 20, height: 10),
         readRgba: picture(asked),
-        pieceId: 'viewer-cut-1',
       ))!;
       int alphaAt(int x, int y) =>
           piece.image.rgba[((y - piece.originTop) * piece.image.width +
@@ -330,7 +336,6 @@ void main() {
         region: rect(left: 3, top: 2, right: 7, bottom: 5),
         picture: (width: 20, height: 10),
         readRgba: picture(asked, transparentAt: (x, y) => true),
-        pieceId: 'viewer-cut-1',
       );
       expect(piece, isNull);
     });
@@ -341,7 +346,6 @@ void main() {
         region: rect(left: 30, top: 20, right: 40, bottom: 30),
         picture: (width: 20, height: 10),
         readRgba: picture(asked),
-        pieceId: 'viewer-cut-1',
       );
       expect(piece, isNull);
       expect(asked, isEmpty);
