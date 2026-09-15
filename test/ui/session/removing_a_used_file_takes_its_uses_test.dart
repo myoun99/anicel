@@ -13,6 +13,7 @@ import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_repeat.dart'
     show rederiveRunBehaviors;
 import 'package:anicel/src/models/timeline_run_behavior.dart';
@@ -187,6 +188,11 @@ void main() {
       reason: 'fixture premise: the clap block holds to the end of the cut',
     );
     session.selectLayer(const LayerId('walk'));
+    session.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('walk'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
     final before = session.repository.requireProject().toJson();
 
     expect(session.mediaPool.removeMediaAsset(_movie), isTrue);
@@ -225,12 +231,15 @@ void main() {
     expect(layer('t2-s1')!.frames, isEmpty);
     expect(layer('t2-s1')!.audioClips, isEmpty);
 
-    // The rows in hand follow the stack: the deleted row is not held.
+    // The rows in hand follow the stack: the deleted row is not held, and
+    // what stood on it is let go — the range over it is gone, as after any
+    // row delete.
     expect(
       [for (final row in session.layers) row.id],
       isNot(contains(const LayerId('walk'))),
     );
     expect(session.activeLayerId, isNot(const LayerId('walk')));
+    expect(session.frameRangeSelection.value, isNull);
 
     session.undo();
     expect(session.repository.requireProject().toJson(), before);
