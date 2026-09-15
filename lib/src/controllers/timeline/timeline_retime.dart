@@ -17,17 +17,25 @@ class _TimelineRetime {
   /// contact rules: glued blocks STAY glued (so shrinking a selected run
   /// packs it — 1--2--3-- set to 1콤마 reads 123, the TVP compaction),
   /// separated blocks keep their own start unless overlapped. Blocks
-  /// before the first retimed one never move. Ghost entries cannot be
-  /// retimed (derived); returns null when nothing changes.
+  /// before the first retimed one never move. Returns null when nothing
+  /// changes.
+  ///
+  /// 🚨F-137 (유저 2026-09-14): 「홀드나 리피트등 고스트프레임은 제대로 빈 칸
+  /// 처리가 되도록」 — the layout is the GHOST-FREE row, the base every other
+  /// planner reads ([ghostFreeTimeline]). A hold's ghosts, glued to the run
+  /// they derive from, used to ride the retime as blocks and push the next
+  /// real one (「프레임 1의 콤마를 조절하면 프레임 2가 밀려버림」). Ghosts
+  /// neither move nor obstruct, cannot be retimed, and come back from the
+  /// rederive below.
   Layer? retimedLayerForBlocks({
     required Layer layer,
     required Map<int, int> newLengthByStart,
   }) {
-    final layout = _BlockLayout.of(layer.timeline);
+    final layout = _BlockLayout.of(ghostFreeTimeline(layer));
     var firstRetimed = -1;
     for (var i = 0; i < layout.blocks.length; i += 1) {
       final requested = newLengthByStart[layout.blocks[i].startIndex];
-      if (requested == null || layout.blocks[i].entry.ghost) {
+      if (requested == null) {
         continue;
       }
       layout.lengths[i] = math.max(1, requested);
@@ -41,11 +49,7 @@ class _TimelineRetime {
 
     layout.relayAfter(firstRetimed);
 
-    final after = rederiveRunBehaviors(
-      layer.copyWith(timeline: layout.toTimeline()),
-      cutFrameCount: _controller._cutFrameCount(),
-    );
-    return after == layer ? null : after;
+    return _controller._withGhostsRederived(layer, layout.toTimeline());
   }
 
   /// Commits [retimedLayerForBlocks] as one undo step (the 1/2/3/4/N

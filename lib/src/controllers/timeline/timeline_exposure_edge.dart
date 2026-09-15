@@ -41,7 +41,8 @@ class _TimelineExposureEdge {
     required int delta,
   }) {
     final entry = layer.timeline[blockStartIndex];
-    if (entry == null || !entry.isDrawing || delta == 0) {
+    // A ghost is derived: it has no comma edge of its own (F-137).
+    if (entry == null || !entry.isDrawing || entry.ghost || delta == 0) {
       return 0;
     }
     final length = entry.length!;
@@ -64,7 +65,7 @@ class _TimelineExposureEdge {
         // re-derived (I-21). A movie's head is additionally capped by the
         // frames of the file before its in point ([_referenceAfterEdge]).
         final room = _leadEdgeRoomInFront(
-          layer.timeline,
+          ghostFreeTimeline(layer),
           blockStartIndex: blockStartIndex,
         );
         final maxGrow = isMovieReference(layer)
@@ -94,19 +95,20 @@ class _TimelineExposureEdge {
       return null;
     }
 
+    // F-137: laid out on the ghost-free row — a ghost is an empty cell to a
+    // comma edge — and the rederive below puts the ghosts back.
     final nextTimeline = _shiftEdgeTimeline(
-      layer.timeline,
+      ghostFreeTimeline(layer),
       blockStartIndex: blockStartIndex,
       edge: edge,
       delta: clampedDelta,
     );
     // Live preview keeps the ghosts following the dragged run (UI-R8).
-    return rederiveRunBehaviors(
+    return _controller._withGhostsRederived(
       layer.copyWith(
-        timeline: nextTimeline,
         mediaReference: _referenceAfterEdge(layer, edge, clampedDelta),
       ),
-      cutFrameCount: _controller._cutFrameCount(),
+      nextTimeline,
     );
   }
 
@@ -208,7 +210,7 @@ class _TimelineExposureEdge {
     required int delta,
     int reach = 1,
   }) {
-    final layout = _BlockLayout.of(layer.timeline);
+    final layout = _BlockLayout.of(ghostFreeTimeline(layer));
     final targetIndex = layout.blocks.indexWhere(
       (block) => block.startIndex == blockStartIndex,
     );
@@ -216,8 +218,9 @@ class _TimelineExposureEdge {
       return null;
     }
     _applyLeadEdge(layout, targetIndex: targetIndex, delta: delta, reach: reach);
-    final next = layer.copyWith(timeline: layout.toTimeline());
-    return next == layer ? null : next;
+    // F-137: the bulk's lead edge reads the row the single grip reads — the
+    // ghost-free one — and puts the ghosts back the same way.
+    return _controller._withGhostsRederived(layer, layout.toTimeline());
   }
 
   /// How far this block's lead edge can travel forward, by the shared

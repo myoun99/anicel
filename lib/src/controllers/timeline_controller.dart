@@ -760,6 +760,25 @@ class TimelineController {
     );
   }
 
+  /// [layer] with [timeline] laid back in and its ghosts derived again from
+  /// it, or null when that changes nothing — the closing step of every
+  /// planner that edits the GHOST-FREE row (F-137: a ghost is derived, so it
+  /// neither moves nor obstructs a plan, and the rederive puts it back).
+  ///
+  /// 🚨ONE closing step for three planners — the comma edge drag, a
+  /// selection's lead edge and the comma buttons — which each wrote it out;
+  /// the clone scan named two of them the round the third joined.
+  Layer? _withGhostsRederived(
+    Layer layer,
+    SplayTreeMap<int, TimelineExposure> timeline,
+  ) {
+    final next = rederiveRunBehaviors(
+      layer.copyWith(timeline: timeline),
+      cutFrameCount: _cutFrameCount(),
+    );
+    return next == layer ? null : next;
+  }
+
   void _applyLayerEdit({required Layer before, required Layer after}) =>
       _runCommand(_layerEditCommand(before: before, after: after));
 
