@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/input/pen_friendly_scroll_controller.dart';
 import 'package:anicel/src/ui/panels/editor_panel_body.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// The contract behind "a new panel is light without its author doing
@@ -194,4 +197,220 @@ void main() {
       reason: 'the standing report has to say WHICH panel it is talking about',
     );
   });
+
+  testWidgets('🐛F-103: a panel keeps its State when its dock crosses the '
+      'floor and back, or folds — a neighbour opening or closing must not '
+      'remount it', (tester) async {
+    Widget tabsAt(Size size, {required bool keepAlive, required bool folded}) =>
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: size.width,
+              height: size.height,
+              child: EditorPanelTabs(
+                collapsed: folded,
+                tabs: <EditorPanelTab>[
+                  EditorPanelTab(
+                    id: 'probe',
+                    label: 'Probe',
+                    icon: Icons.circle,
+                    minContentWidth: 400,
+                    minContentHeight: 250,
+                    collapsedExtent: 40,
+                    keepAlive: keepAlive,
+                    builder: (context) => const _StateProbe(),
+                  ),
+                ],
+                activeTabId: 'probe',
+                onTabSelected: (_) {},
+              ),
+            ),
+          ),
+        );
+    Map<Axis, double> reach() => {
+      for (final scroller in tester.stateList<ScrollableState>(
+        find.ancestor(
+          of: find.byType(_StateProbe),
+          matching: find.byType(Scrollable),
+        ),
+      ))
+        axisDirectionToAxis(scroller.axisDirection):
+            scroller.position.maxScrollExtent,
+    };
+
+    for (final keepAlive in const [false, true]) {
+      await tester.pumpWidget(const SizedBox());
+      final states = <State>{};
+      final reaches = <(Size, bool, Map<Axis, double>)>[];
+      for (final (size, folded) in const [
+        (Size(600, 400), false),
+        (Size(200, 400), false),
+        (Size(600, 400), false),
+        (Size(600, 150), false),
+        (Size(200, 150), false),
+        (Size(200, 150), true),
+        (Size(600, 400), true),
+        (Size(600, 400), false),
+      ]) {
+        await tester.pumpWidget(
+          tabsAt(size, keepAlive: keepAlive, folded: folded),
+        );
+        await tester.pump();
+        states.add(tester.state(find.byType(_StateProbe)));
+        reaches.add((size, folded, reach()));
+      }
+      expect(
+        states,
+        hasLength(1),
+        reason:
+            'keepAlive: $keepAlive — fits, over on x, over on y, over on '
+            'both, folded — one State throughout',
+      );
+      for (final (size, folded, reached) in reaches) {
+        final step = '$size${folded ? ' folded' : ''}, keepAlive: $keepAlive';
+        expect(
+          reached[Axis.horizontal],
+          !folded && size.width < 400 ? greaterThan(0) : 0,
+          reason: '$step — sideways, only under the floor and never folded',
+        );
+        expect(
+          reached[Axis.vertical],
+          !folded && size.height < 250 ? greaterThan(0) : 0,
+          reason: '$step — up and down, only under the floor and never folded',
+        );
+      }
+    }
+  });
+
+  testWidgets('two kept tabs with floors in one group each scroll on their '
+      'own — the shown one still says so with its bar after the dock moves, '
+      'and a pen still reaches through its coast', (tester) async {
+    Widget groupShowing(String active, double height) => MaterialApp(
+      scrollBehavior: const AppScrollBehavior(),
+      home: Scaffold(
+        body: SizedBox(
+          width: 300,
+          height: height,
+          child: EditorPanelTabs(
+            tabs: <EditorPanelTab>[
+              for (final id in const ['a', 'b'])
+                EditorPanelTab(
+                  id: id,
+                  label: id,
+                  icon: Icons.circle,
+                  keepAlive: true,
+                  minContentHeight: 600,
+                  builder: (context) =>
+                      _StateProbe(key: ValueKey<String>('probe-$id')),
+                ),
+            ],
+            activeTabId: active,
+            onTabSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+    Iterable<ScrollableState> scrollersOf(String id) =>
+        tester.stateList<ScrollableState>(
+          find.ancestor(
+            of: find.byKey(ValueKey<String>('probe-$id'), skipOffstage: false),
+            matching: find.byType(Scrollable, skipOffstage: false),
+          ),
+        );
+    ScrollPosition verticalOf(String id) => scrollersOf(id)
+        .firstWhere((state) => state.axisDirection == AxisDirection.down)
+        .position;
+
+    // Both kept tabs are built by the third step. The fourth moves the dock,
+    // which is what makes a bar read its controller again — a bar that is
+    // never rebuilt keeps whatever it last drew.
+    for (final (active, height) in const [
+      ('a', 300.0),
+      ('b', 300.0),
+      ('a', 300.0),
+      ('a', 280.0),
+    ]) {
+      await tester.pumpWidget(groupShowing(active, height));
+      // The bar follows scroll metrics, which schedule its rebuild for the
+      // next frame.
+      await tester.pump();
+      await tester.pump();
+      expect(tester.takeException(), isNull, reason: 'showing $active');
+    }
+    expect(verticalOf('a').maxScrollExtent, greaterThan(0));
+    expect(verticalOf('b').maxScrollExtent, greaterThan(0));
+    expect(
+      find.byType(AppControllerScrollbar),
+      findsOneWidget,
+      reason:
+          'the shown tab overflows and says so; a controller shared with the '
+          'kept tab offstage has two positions, and the bar reads neither',
+    );
+    for (final scroller in [...scrollersOf('a'), ...scrollersOf('b')]) {
+      expect(
+        scroller.position,
+        isA<PenFriendlyScrollPosition>(),
+        reason: 'PEN-10: a pen still reaches the panel through a coast',
+      );
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('a drag on a panel that FITS scrolls nothing — a scroller with '
+      'nothing to scroll starts no scroll, on either axis', (tester) async {
+    final started = <Axis>[];
+    var heard = Offset.zero;
+    await tester.pumpWidget(
+      _host(
+        NotificationListener<ScrollStartNotification>(
+          onNotification: (notification) {
+            started.add(notification.metrics.axis);
+            return false;
+          },
+          child: EditorPanelTabs(
+            tabs: <EditorPanelTab>[
+              EditorPanelTab(
+                id: 'probe',
+                label: 'Probe',
+                icon: Icons.circle,
+                minContentWidth: 100,
+                minContentHeight: 100,
+                // Reads raw pointers and claims nothing, so the only
+                // recognizer that could take the drag is a scroller's.
+                builder: (context) => Listener(
+                  key: const ValueKey<String>('drag-probe'),
+                  behavior: HitTestBehavior.opaque,
+                  onPointerMove: (event) => heard += event.delta,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ],
+            activeTabId: 'probe',
+            onTabSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+    final probe = find.byKey(const ValueKey<String>('drag-probe'));
+    await tester.drag(probe, const Offset(0, 80));
+    await tester.drag(probe, const Offset(80, 0));
+    await tester.pumpAndSettle();
+
+    expect(heard.dy, greaterThan(40), reason: 'the vertical drag reached it');
+    expect(heard.dx, greaterThan(40), reason: 'the sideways drag reached it');
+    expect(started, isEmpty, reason: 'nothing to scroll, so nothing scrolled');
+  });
+}
+
+/// A panel whose State identity is the measurement: a remount makes a new
+/// one.
+class _StateProbe extends StatefulWidget {
+  const _StateProbe({super.key});
+
+  @override
+  State<_StateProbe> createState() => _StateProbeState();
+}
+
+class _StateProbeState extends State<_StateProbe> {
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
 }

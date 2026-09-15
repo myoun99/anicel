@@ -38,6 +38,7 @@ void main() {
     required bool collapsed,
     double tabCollapsedExtent = collapsedExtent,
     double? minContentHeight = 200,
+    bool keepAlive = false,
   }) {
     final height =
         EditorPanelTabs.stripHeight +
@@ -62,6 +63,7 @@ void main() {
                     icon: Icons.abc,
                     minContentHeight: minContentHeight,
                     collapsedExtent: tabCollapsedExtent,
+                    keepAlive: keepAlive,
                     staticRaster: false,
                     builder: panel,
                   ),
@@ -72,6 +74,14 @@ void main() {
         ),
       ),
     );
+  }
+
+  /// How far the body's vertical scroller reaches; null when it has none.
+  double? verticalReach(WidgetTester tester) {
+    final vertical = tester
+        .stateList<ScrollableState>(find.byType(Scrollable))
+        .where((state) => state.axisDirection == AxisDirection.down);
+    return vertical.isEmpty ? null : vertical.first.position.maxScrollExtent;
   }
 
   testWidgets('expanded: the panel gets its whole body', (tester) async {
@@ -92,14 +102,16 @@ void main() {
     );
   });
 
-  testWidgets('collapsed: NO overflow scroller, so nothing is cropped', (
+  testWidgets('collapsed: the floor stands down, so nothing is cropped', (
     tester,
   ) async {
     // The whole bug in one assertion. The tab declares a 200px floor and is
     // handed 36; before the contract that put it in a `SingleChildScrollView`
-    // at 200 and showed the top 36 of it.
+    // at 200 and showed the top 36 of it. The scrollers stay mounted now
+    // (F-103) and it is the floor that a fold drops, so there is nowhere to
+    // scroll to.
     await pumpGroup(tester, collapsed: true);
-    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(verticalReach(tester), 0);
 
     final bar = tester.getRect(find.text('BAR'));
     final strip = tester.getRect(find.byType(EditorPanelTabs));
@@ -116,7 +128,40 @@ void main() {
     // The overflow branch is not deleted — it is right for a frame panel
     // squeezed into a side rail. It is only wrong for a fold.
     await pumpGroup(tester, collapsed: false, minContentHeight: 900);
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(
+      verticalReach(tester),
+      greaterThan(0),
+      reason:
+          'under its floor the body scrolls to what it holds — the scroller '
+          'is always mounted now (F-103), so its reach is the claim',
+    );
+  });
+
+  testWidgets('a KEEP-ALIVE panel with a floor folds without a crop and '
+      'opens to its floor, whichever way it was first built', (tester) async {
+    // A kept tab's content is built on its first visit and served from the
+    // cache after, so a fold decided where the content is built held the
+    // first visit's answer: built open, it folded into a crop; built folded,
+    // it opened under its floor with nothing to scroll. The fold is read
+    // below the cache, through the scope.
+    for (final firstFolded in const [false, true]) {
+      await tester.pumpWidget(const SizedBox());
+      for (final collapsed in [firstFolded, !firstFolded, firstFolded]) {
+        await pumpGroup(
+          tester,
+          collapsed: collapsed,
+          minContentHeight: 400,
+          keepAlive: true,
+        );
+        final first = firstFolded ? 'folded' : 'open';
+        final now = collapsed ? 'folded' : 'open';
+        expect(
+          verticalReach(tester),
+          collapsed ? 0 : greaterThan(0),
+          reason: 'first built $first, now $now',
+        );
+      }
+    }
   });
 
   testWidgets('a tab that declares no collapsed form shows NOTHING', (

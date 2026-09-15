@@ -235,24 +235,6 @@ class EditorPanelTabs extends StatefulWidget {
 
 class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// Keep-alive tabs that have been activated at least once: they stay
-  /// 🚨★★★THE OVERFLOW SCROLLERS ARE PEN-FRIENDLY, for the dock's reason.
-  ///
-  /// A `ScrollPosition` ignore-pointers its viewport's CHILDREN for the life
-  /// of any scroll activity, and the children here are the panel itself. So
-  /// while one of these coasts, a pen or finger landing on the panel reaches
-  /// nothing and the press falls through to the canvas behind.
-  ///
-  /// ⚠️It is not the timesheet's problem, and that is the point: 유저
-  /// 2026-08-29 「어차피 같은상황에서 **타임라인을 옆 패널로 둬도 문제
-  /// 발생**했단얘기니까」. Whatever panel is squeezed gets it, so the fix
-  /// belongs to the thing that squeezes them.
-  ///
-  /// One per axis, kept for the state's life: they exist only while the
-  /// branch that mounts them does, and a controller with no clients is
-  /// inert.
-  final ScrollController _verticalOverflow = PenFriendlyScrollController();
-  final ScrollController _horizontalOverflow = PenFriendlyScrollController();
-
   /// mounted offstage so switching back is instant (R10-②).
   final Set<String> _builtTabIds = <String>{};
 
@@ -285,8 +267,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
 
   @override
   void dispose() {
-    _verticalOverflow.dispose();
-    _horizontalOverflow.dispose();
     _panelHovered.dispose();
     super.dispose();
   }
@@ -678,47 +658,28 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   }
 
   Widget _buildTabInterior(EditorPanelTab tab) {
-    // ★A COLLAPSED panel never meets the minimum-size scroller. That branch
-    // is what turned folding into cropping: it takes "the dock is smaller
-    // than my floor" and answers "then lay out at the floor and let them
-    // scroll", which is right for a frame panel squeezed into a side rail
-    // and exactly wrong here — the panel has already been told to render a
-    // form that fits, and putting that form in a scroller would give it back
-    // a height it did not ask for.
-    if (widget.collapsed ||
-        (tab.minContentWidth == null && tab.minContentHeight == null)) {
+    if (tab.minContentWidth == null && tab.minContentHeight == null) {
       return _bake(tab, Builder(builder: tab.builder));
     }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = math.max(tab.minContentWidth ?? 0, constraints.maxWidth);
-        final height = math.max(
-          tab.minContentHeight ?? 0,
-          constraints.maxHeight,
-        );
-        if (width <= constraints.maxWidth && height <= constraints.maxHeight) {
-          return _bake(tab, Builder(builder: tab.builder));
-        }
-        Widget content = SizedBox(
-          width: width,
-          height: height,
-          child: _bake(tab, Builder(builder: tab.builder)),
-        );
-        if (height > constraints.maxHeight) {
-          content = SingleChildScrollView(
-            controller: _verticalOverflow,
-            child: content,
-          );
-        }
-        if (width > constraints.maxWidth) {
-          content = SingleChildScrollView(
-            controller: _horizontalOverflow,
-            scrollDirection: Axis.horizontal,
-            child: content,
-          );
-        }
-        return content;
-      },
+    // 🚨ONE TREE SHAPE whether the dock fits the panel or not, open or folded
+    // (F-103, 유저:
+    // 「뷰어패널 파일 연 상태에서, 해당 띠의 다른 패널 열거나 닫거나 하면 …
+    // 보이던 그림같은게 사라졌다가 생김 … 뷰어패널이 아니라 다른 패널을
+    // 열고닫는게 뷰어패널에 영향있다는뜻」). The scrollers used to be
+    // mounted only on the axis that overflowed, so a neighbour opening or
+    // closing — which moves the dock across the panel's floor — changed the
+    // parent chain and the panel's State was new: the viewer read its file
+    // again. A fold did the same from its own bare branch. Both scrollers
+    // are always there now, around a box that is the larger of the floor
+    // and the dock ([_OverflowScrollers], which drops the floor for a fold),
+    // so crossing the floor or folding changes how far they scroll, never
+    // what the panel sits in. With nothing to scroll they take no drag and
+    // no wheel (the platform physics accept no user offset at zero extent)
+    // and draw no bar. The bake stays innermost ([_bake]).
+    return _OverflowScrollers(
+      minWidth: tab.minContentWidth ?? 0,
+      minHeight: tab.minContentHeight ?? 0,
+      child: _bake(tab, Builder(builder: tab.builder)),
     );
   }
 
@@ -754,6 +715,89 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       onDropped: (dropped, after) =>
           widget.onTabMoved!(dropped, after ? index + 1 : index),
       child: button,
+    );
+  }
+}
+
+/// A floored panel body's two overflow scrollers (F-103), both always
+/// mounted around a box that is the larger of the panel's floor and its dock
+/// — see [_EditorPanelTabsState._buildTabInterior] for why the shape never
+/// changes.
+///
+/// 🚨★★★THE OVERFLOW SCROLLERS ARE PEN-FRIENDLY, for the dock's reason.
+///
+/// A `ScrollPosition` ignore-pointers its viewport's CHILDREN for the life
+/// of any scroll activity, and the children here are the panel itself. So
+/// while one of these coasts, a pen or finger landing on the panel reaches
+/// nothing and the press falls through to the canvas behind.
+///
+/// ⚠️It is not the timesheet's problem, and that is the point: 유저
+/// 2026-08-29 「어차피 같은상황에서 **타임라인을 옆 패널로 둬도 문제
+/// 발생**했단얘기니까」. Whatever panel is squeezed gets it, so the fix
+/// belongs to the thing that squeezes them.
+///
+/// The controllers are THIS State's (F-103), so they live exactly as long as
+/// the scroll views they drive. They used to be one pair for the whole
+/// group, and a keep-alive tab stays built offstage with its scrollers — so
+/// two kept tabs that both overflowed put one controller on two views, and
+/// `PanelScrollbar`, which reads a controller only while it has exactly one
+/// position, stood the shown tab's bar down the next time the dock moved.
+class _OverflowScrollers extends StatefulWidget {
+  const _OverflowScrollers({
+    required this.minWidth,
+    required this.minHeight,
+    required this.child,
+  });
+
+  final double minWidth;
+  final double minHeight;
+  final Widget child;
+
+  @override
+  State<_OverflowScrollers> createState() => _OverflowScrollersState();
+}
+
+class _OverflowScrollersState extends State<_OverflowScrollers> {
+  final ScrollController _vertical = PenFriendlyScrollController();
+  final ScrollController _horizontal = PenFriendlyScrollController();
+
+  @override
+  void dispose() {
+    _vertical.dispose();
+    _horizontal.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ★A COLLAPSED panel never meets its floor. The floor is what turned
+    // folding into cropping: it takes "the dock is smaller than my floor"
+    // and answers "then lay out at the floor and let them scroll", which is
+    // right for a frame panel squeezed into a side rail and exactly wrong
+    // here — the panel has already been told to render a form that fits,
+    // and laying that form out at the floor would give it back a height it
+    // did not ask for.
+    //
+    // The fold is read HERE, through the scope, and not where the tab's
+    // content is built: a keep-alive tab's content is built once and
+    // cached, so a fold decided there held whatever its first build saw
+    // (F-103).
+    final folded = PanelCollapsedScope.of(context);
+    final minWidth = folded ? 0.0 : widget.minWidth;
+    final minHeight = folded ? 0.0 : widget.minHeight;
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        controller: _horizontal,
+        scrollDirection: Axis.horizontal,
+        child: SingleChildScrollView(
+          controller: _vertical,
+          child: SizedBox(
+            width: math.max(minWidth, constraints.maxWidth),
+            height: math.max(minHeight, constraints.maxHeight),
+            child: widget.child,
+          ),
+        ),
+      ),
     );
   }
 }
