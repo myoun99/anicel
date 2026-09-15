@@ -118,39 +118,60 @@ class TvppImportDoor {
   /// (zlib + PackBits per cel; on 288 about 30s single-threaded), and it
   /// is pure, so it fans out. A cel that will not decode comes back as
   /// its exception rather than throwing the wave away.
-  static Future<List<Object?>> _decodeWave(
+  @visibleForTesting
+  static Future<List<Object?>> decodeWave(
     List<(TvpImportPlan, Cut, PlannedCelBake, TvppSlot)> wave,
     List<Uint8List> windows,
   ) => Future.wait([
     for (var w = 0; w < wave.length; w++)
-      () {
-        final (plan, _, _, slot) = wave[w];
-        final window = windows[w];
-        // The record's offsets count from the record, so a window
-        // rebased to zero is the same input by a different name.
-        final windowSlot = TvppSlot(
-          kind: slot.kind,
-          chunkOffset: 0,
-          chunkLength: slot.chunkLength,
-          compressed: slot.compressed,
-          v10WholeCanvas: slot.v10WholeCanvas,
-        );
-        final width = plan.cut.canvasSize.width;
-        final height = plan.cut.canvasSize.height;
-        return Isolate.run(() {
-          try {
-            return decodeTvppSlotTiles(
-              recordBytes: window,
-              slot: windowSlot,
-              width: width,
-              height: height,
-            );
-          } on TvppRasterDecodeException catch (error) {
-            return error;
-          }
-        });
-      }(),
+      _decodeOnWorker(
+        windows[w],
+        slot: wave[w].$4,
+        canvasSize: wave[w].$1.cut.canvasSize,
+      ),
   ]);
+
+  /// One record decoded on a worker isolate of its own.
+  ///
+  /// 🚨ITS OWN FUNCTION, so the worker is built where nothing but its
+  /// inputs is in scope. `Isolate.run` copies the closure's whole context
+  /// chain, not only the names the closure reads. Until 2026-09-16 the
+  /// closure was built inside the wave's loop: it read four values, yet
+  /// its chain held the wave and every window in it, so each cel's message
+  /// carried the other workers' records and every plan and cut the wave
+  /// held. Measured by putting an object no message may carry in a slot no
+  /// worker read: the send refused, JIT and AOT alike. The arguments are
+  /// the only way in, and `a_cel_worker_is_sent_only_its_own_record_test`
+  /// fails the moment anything else rides along.
+  static Future<Object?> _decodeOnWorker(
+    Uint8List window, {
+    required TvppSlot slot,
+    required CanvasSize canvasSize,
+  }) {
+    // The record's offsets count from the record, so a window rebased to
+    // zero is the same input by a different name.
+    final windowSlot = TvppSlot(
+      kind: slot.kind,
+      chunkOffset: 0,
+      chunkLength: slot.chunkLength,
+      compressed: slot.compressed,
+      v10WholeCanvas: slot.v10WholeCanvas,
+    );
+    final width = canvasSize.width;
+    final height = canvasSize.height;
+    return Isolate.run(() {
+      try {
+        return decodeTvppSlotTiles(
+          recordBytes: window,
+          slot: windowSlot,
+          width: width,
+          height: height,
+        );
+      } on TvppRasterDecodeException catch (error) {
+        return error;
+      }
+    });
+  }
 
   /// Lands one decoded cel, or says why it could not be landed.
   ///
@@ -410,7 +431,7 @@ class TvppImportDoor {
     try {
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
-        final decoded = await _decodeWave(
+        final decoded = await decodeWave(
           wave,
           await _readWaveWindows(reader, wave),
         );
