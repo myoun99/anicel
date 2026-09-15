@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
 import '../models/layer.dart';
-import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
@@ -14,15 +13,9 @@ import 'timeline/se_layer_mixer.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
-import '../models/transform_track.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
-import '../models/se_name_tag.dart' show SeNameTag;
-import 'timeline/se_name_tag_lane_policy.dart' show laneIsSeNameTag;
-import 'timeline/se_name_tag_lane_editing.dart'
-    show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
-import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
@@ -44,7 +37,6 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
-import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
@@ -272,40 +264,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     expandedGroupKeys: widget.expandedLaneGroupKeys,
   );
 
-  /// The track a layer's transform lanes edit: the camera rides the cut's
-  /// camera track, every other kind its own layer track.
-  TransformTrack _laneTrackOf(Layer layer) => layer.kind == LayerKind.camera
-      ? _session.requireActiveCut.camera.track
-      : layer.transformTrack;
-
-  /// Commits an edited transform track as one undo step, dispatched by
-  /// kind (camera → cut camera, drawing layers → the layer's own track).
-  void _commitLaneEdit(Layer layer, TransformTrack? next, String description) {
-    if (next == null) {
-      return;
-    }
-    // Track-owned SE rows edit a cut-LOCAL clone of a GLOBAL layer, so the
-    // edited track goes back through the window before it lands (R5 #8).
-    // This used to stand down entirely — the row showed lanes and refused
-    // every key, which is the bug the user reported.
-    if (_session.isTrackSeLayerId(layer.id)) {
-      _session.updateLayerTransformTrack(
-        layer.id,
-        _session.trackSeWindow.globalTransformTrack(next),
-        description: description,
-      );
-      return;
-    }
-    if (layer.kind == LayerKind.camera) {
-      _session.updateActiveCutCameraTrack(next, description: description);
-      return;
-    }
-    _session.updateLayerTransformTrack(
-      layer.id,
-      next,
-      description: description,
-    );
-  }
+  // ⛔THE HOST'S LANE-EDIT BODIES ARE GONE (F-102, 2026-09-15). The key
+  // toggle, the typed value and the effect eyeball are [LaneVerbs]' now, for
+  // this panel and the storyboard alike. They read the row the host was
+  // SHOWN — for a track-SE row, the cut-local clone — and put the edit back
+  // through the cut window (R5 #8, which is still why an SE row keys at all:
+  // it once showed lanes and refused every key). The clone had dropped every
+  // key made in an earlier cut, so keying S1 in cut 2 erased cut 1's key.
+  // The verbs read the row the project holds, at the frame on its own axis.
 
   // A folder's FX lanes used to need their own routing here: the lane id
   // carried a `folder-fx:<folderId>` ADDRESS because the carrier layer on
@@ -314,105 +280,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // now — the carrier IS the folder, so every lane edit below takes the
   // one path.
 
-  /// Commits an edited EFFECT CHAIN as one undo step (R6).
-  ///
-  /// A NAME TAG lane edit (R5 #7) — one undo, through the session's own
-  /// verb so the cut-window conversion happens in exactly one place.
-  void _commitSeNameTagLaneEdit(
-    Layer layer,
-    SeNameTag? next,
-    String description,
-  ) {
-    if (next == null) {
-      return;
-    }
-    _session.seEntries.setSeNameTagForLayer(layer.id, next);
-  }
-
-  /// Track-owned SE rows convert through the cut window for the same
-  /// reason their transform lanes do (R5 #8) — the chain the row showed is
-  /// cut-local, and the layer it lands on is global.
-  void _commitEffectLaneEdit(
-    Layer layer,
-    List<LayerEffect>? next,
-    String description,
-  ) {
-    if (next == null) {
-      return;
-    }
-    _session.effectsAndFx.updateLayerEffects(
-      layer.id,
-      _session.isTrackSeLayerId(layer.id)
-          ? _session.trackSeWindow.globalEffects(next)
-          : next,
-      description: description,
-    );
-  }
-
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
-    onToggleKeyAt: (layer, lane, frameIndex) {
-      // R5 #7: the name tag is a fixed FIELD on the row, so it commits
-      // through its own verb — not the transform track, not the chain.
-      if (laneIsSeNameTag(lane.laneId)) {
-        _commitSeNameTagLaneEdit(
-          layer,
-          seNameTagWithLaneKeyToggled(
-            layer.seNameTag ?? const SeNameTag(),
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-          ),
-          '${lane.label} keyframe at frame ${frameIndex + 1}',
-        );
-        return;
-      }
-      if (laneIsEffectLane(lane)) {
-        _commitEffectLaneEdit(
-          layer,
-          effectsWithLaneKeyToggled(
-            layer.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-          ),
-          '${lane.label} keyframe at frame ${frameIndex + 1}',
-        );
-        return;
-      }
-      final isCamera = layer.kind == LayerKind.camera;
-      _commitLaneEdit(
-        layer,
-        transformTrackWithLaneKeyToggled(
-          _laneTrackOf(layer),
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-          // The navigator toggles at the playhead: freeze the property's
-          // CURRENT resolved value there (AE behavior).
-          resolvedPose: isCamera
-              ? _session.camera.cameraPoseAtCurrentFrame
-              : _session.layerPoseAtFrame(layer, frameIndex),
-          resolvedAnchorPoint: isCamera
-              ? null
-              : _session.layerAnchorPointAtFrame(layer, frameIndex),
-          resolvedOpacity: isCamera
-              ? 1
-              : _session.layerOpacityAtFrame(layer, frameIndex),
+    // The navigator toggles at the playhead, freezing the property's
+    // CURRENT resolved value there (AE behavior).
+    onToggleKeyAt: (layer, lane, frameIndex) =>
+        _session.laneVerbs.toggleLaneKeyAt(
+          layer.id,
+          lane.laneId,
+          frameIndex,
+          frameIsGlobal: false,
+          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
         ),
-        '${lane.label} keyframe at frame ${frameIndex + 1}',
-      );
-    },
     onSetValue: (layer, lane, frameIndex, input) {
-      if (laneIsSeNameTag(lane.laneId)) {
-        _commitSeNameTagLaneEdit(
-          layer,
-          seNameTagWithLaneValueEdited(
-            layer.seNameTag ?? const SeNameTag(),
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-            input: input,
-          ),
-          'Set ${lane.label} at frame ${frameIndex + 1}',
-        );
-        return;
-      }
       // The SE audio lane's value field edits the playhead span's offset
       // trim instead of a transform property (one undo via the session).
       if (laneIsSeAudio(lane)) {
@@ -424,29 +303,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         _session.audioClips.setAudioClipOffset(layer.id, span.clipIndex, offset);
         return;
       }
-      final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
-      if (laneIsEffectLane(lane)) {
-        _commitEffectLaneEdit(
-          layer,
-          effectsWithLaneValueEdited(
-            layer.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-            input: input,
-          ),
-          description,
-        );
-        return;
-      }
-      _commitLaneEdit(
-        layer,
-        transformTrackWithLaneValueEdited(
-          _laneTrackOf(layer),
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-          input: input,
-        ),
-        description,
+      _session.laneVerbs.setLaneValueAt(
+        layer.id,
+        lane.laneId,
+        frameIndex,
+        input,
+        frameIsGlobal: false,
+        description: 'Set ${lane.label} at frame ${frameIndex + 1}',
       );
     },
   );
@@ -1116,10 +979,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               if (effectId == null) {
                 return;
               }
-              _commitEffectLaneEdit(
-                layer,
-                effectsWithEnabledToggled(layer.effects, effectId),
-                'Toggle ${lane.label}',
+              _session.laneVerbs.toggleLaneEffectEnabled(
+                layer.id,
+                effectId,
+                description: 'Toggle ${lane.label}',
               );
             },
             // R5: AE's group Reset. The session owns the scope rule (the

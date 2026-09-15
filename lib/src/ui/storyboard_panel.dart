@@ -441,8 +441,6 @@ class StoryboardPanel extends StatefulWidget {
     this.rowDragHooks,
     this.onSeRowSelectionSpan,
     this.layerLaneEdit,
-    this.activeCutFrameCursor,
-    this.onSelectFrameIndex,
     this.poseDisplaySize,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
@@ -680,9 +678,10 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Track-global frame the playhead line sits on (playback position while
   /// playing, the active cut's playhead otherwise) — a LISTENABLE, the
-  /// cursor-layer pattern (W4): only the playhead overlay and the ruler
-  /// subscribe, so scrub moves and playback ticks never rebuild the
-  /// panel's strips/blocks/rails. Null (or a null value) hides the line.
+  /// cursor-layer pattern (W4): only the playhead overlay, the ruler and the
+  /// track rows' lane labels (V and S — their keys are the track's)
+  /// subscribe, so scrub moves and playback ticks never rebuild the panel's
+  /// strips/blocks/rails. Null (or a null value) hides the line.
   final ValueListenable<int?>? playheadFrame;
 
   /// R5: the session's "bring the selection back into view" tick.
@@ -775,24 +774,17 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onSeRowSelectionSpan;
 
-  /// Lane edit hooks for the S rows' Transform lanes — the timeline's
-  /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
+  /// Lane edit hooks for the S rows' Transform lanes — the lane verbs on
+  /// the TRACK's S rows, handed [playheadFrame]'s global frames. Null =
   /// display-only.
   final PropertyLaneEditCallbacks? layerLaneEdit;
 
-  /// The ACTIVE cut's playhead (cut-local): the lane labels' value column
-  /// and keyframe navigator read here.
-  ///
-  /// A CHANNEL, not a number — the timeline's rail and the X-sheet's lane
-  /// headers already take the cursor this way ("lane labels show the value
-  /// AT the cursor: subscribe here so a tick rebuilds only these small
-  /// cells"). Passing an `int` was the last place a storyboard surface kept
-  /// the RAW value where the others had unified the channel, and it cost a
-  /// whole-panel rebuild per committed seek to keep it fresh.
-  final ValueListenable<int>? activeCutFrameCursor;
-
-  /// Key-navigator jumps (◀ ▶) select this cut-local frame on the session.
-  final ValueChanged<int>? onSelectFrameIndex;
+  // ⛔`activeCutFrameCursor` and `onSelectFrameIndex` are GONE (F-102,
+  // 2026-09-15): the S rows' lane labels were their one reader, and they
+  // read and seek [playheadFrame] now — an S row's keys are the track's.
+  // The channel rule the cursor carried (「lane labels show the value AT the
+  // cursor: subscribe here so a tick rebuilds only these small cells」,
+  // #844) is [playheadFrame]'s too.
 
   /// The display space the CUT pose resolves over for the value column
   /// (the camera's output frame — the same space playback and the MP4

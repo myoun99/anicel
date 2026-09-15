@@ -107,7 +107,7 @@ class _StoryboardRowsAndLabels {
       height: _transformLaneHeight,
       currentFrameIndex: frameIndex,
       onSelectFrame: active
-          ? (onSelectFrame ?? _state.widget.onSelectFrameIndex)
+          ? onSelectFrame
           : null,
       laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
       onToggleLaneGroup: onToggleGroup == null
@@ -124,10 +124,12 @@ class _StoryboardRowsAndLabels {
       currentRowHooks: _state.widget.currentRowHooks,
     );
 
-    // Cut-owned rows speak the ACTIVE cut's local frames; the V track's
-    // rows pass the GLOBAL playhead instead (R4b) — either way the row
-    // SUBSCRIBES, so a committed seek rebuilds these label cells and
-    // nothing else (the timeline rail's own line).
+    // The track's rows — V and S alike, their keys are the track's — pass the
+    // GLOBAL playhead (R4b). ↩️The S rows passed the ACTIVE cut's local cursor
+    // until F-102, which put their values and keys at the wrong frame in any
+    // cut but the first. Either way the row SUBSCRIBES, so a committed seek
+    // rebuilds these label cells and nothing else (the timeline rail's own
+    // line).
     return [
       for (final lane in lanes)
         if (frameCursor == null)

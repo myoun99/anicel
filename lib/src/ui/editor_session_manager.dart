@@ -1023,7 +1023,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, trackSe: trackSe, frameVerbs: frameVerbs);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1537,6 +1537,7 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     effectsAndFx: effectsAndFx,
     internals: this,
+    changes: this,
   );
 
   @override

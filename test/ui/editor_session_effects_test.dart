@@ -455,6 +455,24 @@ void main() {
       before,
     );
   });
+
+  test('🚨the effect header\'s eyeball switches the effect off and back as one '
+      'undo, read off the row the project holds (F-102)', () {
+    effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
+    final layerId = session.activeLayer!.id;
+    final effect = session.activeLayer!.effects.single;
+    expect(effect.enabled, isTrue, reason: 'fixture premise: a fresh effect');
+
+    session.laneVerbs.toggleLaneEffectEnabled(
+      layerId,
+      effect.id,
+      description: 'Toggle Blur',
+    );
+    expect(session.activeLayer!.effects.single.enabled, isFalse);
+
+    session.undo();
+    expect(session.activeLayer!.effects.single.enabled, isTrue);
+  });
 }
 
 /// The collaborator that owns the laws above, under its OWN name.

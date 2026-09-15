@@ -7,7 +7,8 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
-import '../models/transform_track.dart';
+import '../models/track_transform_lane_carrier.dart'
+    show trackTransformLaneCarrierId;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
@@ -19,9 +20,6 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
-import '../models/layer_effect.dart' show LayerEffect;
-import 'timeline/effect_lane_editing.dart'
-    show effectsWithLaneKeyToggled, effectsWithLaneValueEdited;
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
@@ -35,7 +33,6 @@ import '../models/storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
-import 'timeline/transform_lane_editing.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -117,13 +114,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// rails, waveforms) never rebuilds on a tick.
   final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
 
-  /// The ACTIVE cut's LOCAL playhead, as a channel (timeline parity with
-  /// [_TimelineTabHostState]'s `_frameCursor`): the rail's lane labels read
-  /// the value at the cursor and subscribe to THIS, so a committed seek
-  /// repaints those cells instead of rebuilding the panel.
-  late final ValueNotifier<int> _activeCutFrameCursor = ValueNotifier<int>(
-    _session.currentFrameIndex,
-  );
+  // ⛔The ACTIVE cut's local cursor channel is GONE (F-102, 2026-09-15): its
+  // one reader was the S rows' lane labels, and an S row's keys are the
+  // track's — they read [_playheadGlobalFrame] now, as the V rows' labels
+  // do. #844's point survives on that channel: the labels subscribe, and a
+  // committed seek repaints those cells instead of rebuilding the panel.
 
   /// Whatever can change a frame's cached-ness — warm progress AND pixel
   /// edits (composites self-validate by signature, so an edit raises no
@@ -153,7 +148,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       _session,
       layout: _activeTrackLayout(),
     );
-    _activeCutFrameCursor.value = _session.currentFrameIndex;
   }
 
   // ⛔"To start" (REC1-B) is a free function now
@@ -186,7 +180,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       _refreshPlayheadGlobalFrame,
     );
     _playheadGlobalFrame.dispose();
-    _activeCutFrameCursor.dispose();
     super.dispose();
   }
 
@@ -201,44 +194,36 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// Lane edit hooks for the V TRACK's own lanes — its EFFECT chain, which is
   /// all a track row has since the transform teardown
   /// ([timelineRowOwnsTransform]). Keys land on the GLOBAL axis and commit as
-  /// ONE undo through the session, exactly as a layer effect's do.
+  /// ONE undo through [LaneVerbs], exactly as a layer effect's do.
   ///
   /// A transform lane cannot reach here any more: the rail builds none for a
   /// track row, so the dispatch is effects or nothing.
   PropertyLaneEditCallbacks _trackLaneEditFor(Track track) {
-    void commitEffects(List<LayerEffect>? next, String description) {
-      if (next == null) {
-        return;
-      }
-      _session.effectsAndFx.updateTrackEffects(track.id, next, description: description);
-    }
-
+    final carrierId = trackTransformLaneCarrierId(track.id);
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) {
         if (!laneIsEffectLane(lane)) {
           return;
         }
-        commitEffects(
-          effectsWithLaneKeyToggled(
-            track.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-          ),
-          '${lane.label} keyframe at frame ${frameIndex + 1}',
+        _session.laneVerbs.toggleLaneKeyAt(
+          carrierId,
+          lane.laneId,
+          frameIndex,
+          frameIsGlobal: true,
+          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
         );
       },
       onSetValue: (_, lane, frameIndex, input) {
         if (!laneIsEffectLane(lane)) {
           return;
         }
-        commitEffects(
-          effectsWithLaneValueEdited(
-            track.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-            input: input,
-          ),
-          'Set ${lane.label} at frame ${frameIndex + 1}',
+        _session.laneVerbs.setLaneValueAt(
+          carrierId,
+          lane.laneId,
+          frameIndex,
+          input,
+          frameIsGlobal: true,
+          description: 'Set ${lane.label} at frame ${frameIndex + 1}',
         );
       },
     );
@@ -249,47 +234,34 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   // anchor — a hand-kept copy of what the panel draws, drifted. The panel
   // resolves the head lane off its own row geometry now.
 
-  /// Lane edit hooks for the S rows' Transform lanes — the timeline
-  /// host's layer-transform editing verbatim (SE layers only here; no
-  /// camera or audio-lane dispatch on these lanes).
+  /// Lane edit hooks for the S rows' Transform lanes — the verbs the
+  /// timeline's lanes key through, handed this rail's GLOBAL frames (SE
+  /// layers only here; no camera or audio-lane dispatch on these lanes).
+  ///
+  /// ↩️This was 「the timeline host's layer-transform editing verbatim」 — a
+  /// copy, which keyed the row at whatever frame the label passed, and the S
+  /// labels passed the ACTIVE cut's local cursor to a row whose keys are
+  /// global (F-102). [LaneVerbs] holds the one body now, and the labels read
+  /// the global playhead.
   PropertyLaneEditCallbacks get _layerLaneEdit => PropertyLaneEditCallbacks(
-    onToggleKeyAt: (layer, lane, frameIndex) => _commitLayerLaneEdit(
-      layer.id,
-      transformTrackWithLaneKeyToggled(
-        layer.transformTrack,
-        laneId: lane.laneId,
-        frameIndex: frameIndex,
-        resolvedPose: _session.layerPoseAtFrame(layer, frameIndex),
-        resolvedAnchorPoint: _session.layerAnchorPointAtFrame(
-          layer,
+    onToggleKeyAt: (layer, lane, frameIndex) =>
+        _session.laneVerbs.toggleLaneKeyAt(
+          layer.id,
+          lane.laneId,
           frameIndex,
+          frameIsGlobal: true,
+          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
         ),
-        resolvedOpacity: _session.layerOpacityAtFrame(layer, frameIndex),
-      ),
-      '${lane.label} keyframe at frame ${frameIndex + 1}',
-    ),
-    onSetValue: (layer, lane, frameIndex, input) => _commitLayerLaneEdit(
-      layer.id,
-      transformTrackWithLaneValueEdited(
-        layer.transformTrack,
-        laneId: lane.laneId,
-        frameIndex: frameIndex,
-        input: input,
-      ),
-      'Set ${lane.label} at frame ${frameIndex + 1}',
-    ),
+    onSetValue: (layer, lane, frameIndex, input) =>
+        _session.laneVerbs.setLaneValueAt(
+          layer.id,
+          lane.laneId,
+          frameIndex,
+          input,
+          frameIsGlobal: true,
+          description: 'Set ${lane.label} at frame ${frameIndex + 1}',
+        ),
   );
-
-  void _commitLayerLaneEdit(
-    LayerId layerId,
-    TransformTrack? next,
-    String description,
-  ) {
-    if (next == null) {
-      return;
-    }
-    _session.updateLayerTransformTrack(layerId, next, description: description);
-  }
 
   /// The row's double-tap: the SHARED transition instance editor at the tapped
   /// frame. The implementation moved to [editTransitionSpanInstance] so this
@@ -861,8 +833,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // and then refuse to grow.
                     onSeRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
                     layerLaneEdit: _layerLaneEdit,
-                    activeCutFrameCursor: _activeCutFrameCursor,
-                    onSelectFrameIndex: _session.selectFrameIndex,
                     poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the

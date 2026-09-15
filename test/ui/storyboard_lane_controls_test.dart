@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -96,6 +97,7 @@ Future<void> _pumpPanel(
   onSetAudioClipOffset,
   PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
+  ValueListenable<int?>? playheadFrame,
   bool Function(CutId cutId)? cutPictureVisibleOf,
   ValueChanged<CutId>? onToggleCutPictureVisibility,
   LayerFxState Function(Track track)? trackFxStateOf,
@@ -140,6 +142,7 @@ Future<void> _pumpPanel(
             }),
             trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
+            playheadFrame: playheadFrame,
             currentRowHooks: currentRowHooks,
             rowDragHooks: rowDragHooks,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
@@ -482,6 +485,48 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(toggles, [('lane-se', 'position', 0)]);
+  });
+
+  testWidgets('🚨the S-row lane labels read the GLOBAL playhead — an S row\'s '
+      'keys are the track\'s, so its ◆ keys at the frame the track stands on '
+      '(F-102)', (tester) async {
+    // ↩️They read the ACTIVE cut's local cursor, so in any cut but the first
+    // the value showed at the wrong frame and the ◆ keyed there.
+    final toggles = <(String, String, int)>[];
+    final playhead = ValueNotifier<int?>(7);
+    addTearDown(playhead.dispose);
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      playheadFrame: playhead,
+      layerLaneEdit: PropertyLaneEditCallbacks(
+        onToggleKeyAt: (layer, lane, frame) =>
+            toggles.add((layer.id.value, lane.laneId, frame)),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-group-toggle-lane-se-transform-group',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('storyboard-lane-key-toggle-lane-se-position'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(toggles, [('lane-se', 'position', 7)]);
   });
 
   testWidgets('track groups run in TIMELINE order (R6 B3): the S rows sit '

@@ -83,6 +83,14 @@ List<PropertyLaneRow> timelineLanesForLayer({
     ];
   }
 
+  /// Where a lane on this row reads its VALUE at a frame: for a track-SE
+  /// row, the track's row at the global frame — the cut shows a projection
+  /// of it (F-102, 유저 「글로벌트랙은 fx든뭐던 로컬에선 글로벌을 투영해서
+  /// 보여주도록」). The KEYS each lane marks still come from [layer], which is
+  /// what this rail shows.
+  ({Layer layer, int frame}) valueSourceAt(int frameIndex) =>
+      session.laneVerbs.laneValueSourceAt(layer, frameIndex);
+
   /// The full AE Transform group — Anchor Point / Position / Scale /
   /// Rotation / Opacity — identical on EVERY layer-track kind (R6-④:
   /// SE/instruction match the drawing layers exactly; unified feel is the
@@ -90,10 +98,18 @@ List<PropertyLaneRow> timelineLanesForLayer({
   List<PropertyLaneRow> layerTransformLanes() => transformPropertyLanes(
     layer.transformTrack,
     includeAnchorAndOpacity: true,
-    poseAt: (frameIndex) => session.layerPoseAtFrame(layer, frameIndex),
-    anchorAt: (frameIndex) =>
-        session.layerAnchorPointAtFrame(layer, frameIndex),
-    opacityAt: (frameIndex) => session.layerOpacityAtFrame(layer, frameIndex),
+    poseAt: (frameIndex) {
+      final at = valueSourceAt(frameIndex);
+      return session.layerPoseAtFrame(at.layer, at.frame);
+    },
+    anchorAt: (frameIndex) {
+      final at = valueSourceAt(frameIndex);
+      return session.layerAnchorPointAtFrame(at.layer, at.frame);
+    },
+    opacityAt: (frameIndex) {
+      final at = valueSourceAt(frameIndex);
+      return session.layerOpacityAtFrame(at.layer, at.frame);
+    },
   );
 
   /// The row's EFFECT lanes (R6), below its Transform group: one
@@ -109,8 +125,15 @@ List<PropertyLaneRow> timelineLanesForLayer({
       isExpanded: (effectId) => expandedGroupKeys.contains(
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),
-      valueAt: (effectId, parameterId, frameIndex) => session
-          .effectsAndFx.layerEffectParameterAtFrame(layer, effectId, parameterId, frameIndex),
+      valueAt: (effectId, parameterId, frameIndex) {
+        final at = valueSourceAt(frameIndex);
+        return session.effectsAndFx.layerEffectParameterAtFrame(
+          at.layer,
+          effectId,
+          parameterId,
+          at.frame,
+        );
+      },
     );
   }
 
@@ -159,7 +182,12 @@ List<PropertyLaneRow> timelineLanesForLayer({
           expanded: expandedGroupKeys.contains(
             laneGroupKey(layer.id, seNameTagGroupLaneId),
           ),
-          resolveAt: nameTag.resolveAt,
+          resolveAt: (frameIndex) {
+            final at = valueSourceAt(frameIndex);
+            return (at.layer.seNameTag ?? const SeNameTag()).resolveAt(
+              at.frame,
+            );
+          },
         ),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];

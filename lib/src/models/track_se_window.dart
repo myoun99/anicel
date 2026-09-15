@@ -86,16 +86,28 @@ class TrackSeWindow {
     return toGlobalFrame(localBlockStart);
   }
 
-  /// The cut-local display clone. The transform track and effect chain are
-  /// REBASED onto the local axis (R5 #8) rather than stripped: their keys
-  /// are global, so showing them raw would draw diamonds at wrong local
-  /// frames — but dropping them left the row with lanes nothing could
-  /// key, which is the bug the user reported.
+  /// The cut-local display clone. The transform track, the effect chain and
+  /// the name tag's keys are REBASED onto the local axis (R5 #8) rather than
+  /// stripped: their keys are global, so showing them raw would draw
+  /// diamonds at wrong local frames — but dropping them left the row with
+  /// lanes nothing could key, which is the bug the user reported.
   ///
-  /// The trip back out is [globalTransformTrack] / [globalEffects]: an
-  /// edit arrives against THIS clone and must be converted before it
-  /// touches the track-owned original, or a cut-local frame lands on the
-  /// global axis.
+  /// 🚨★★★The clone is what the cut's RAIL shows — the keys INSIDE the cut —
+  /// and nothing more (F-102, 2026-09-15). A key an earlier cut made has no
+  /// frame here (a key index is never negative: `nonNegativeIndexedCopy`),
+  /// yet it still holds the value into this cut. So a VALUE is never read
+  /// off this clone: it is read off the track's row at the global frame
+  /// (`LaneVerbs.laneValueSourceAt`). Reading it here is why cut 2 showed
+  /// S1's position at its default — 유저 「컷1에서 se의 트랜스폼으로 포지션
+  /// 조정했는데, 그게 다른 컷2에서 값이 안바뀌어 있고 초기값인 상태로 보임」.
+  ///
+  /// ⛔THE TRIP BACK OUT IS GONE (F-102). `globalTransformTrack`,
+  /// `globalEffects` and `globalSeNameTagTrack` put an edit made against this
+  /// clone back through the window, and the keys the clone had dropped never
+  /// came back: keying S1 in cut 2 erased the key cut 1 made. Every edit
+  /// writes the row the project holds, at the frame on its own axis
+  /// (`LaneVerbs.laneVerbLayerFor`) — the clone is never written back, which
+  /// is what this class always said.
   ///
   /// Open-ended on the right (SE globalization): keys at or beyond the
   /// cut end ride too, so the runway shows the neighbours' sounds. The
@@ -119,94 +131,58 @@ class TrackSeWindow {
     }
     return globalLayer.copyWith(
       timeline: local,
-      transformTrack: _rebasedTrack(globalLayer.transformTrack, toLocal: true),
-      effects: _rebasedEffects(globalLayer.effects, toLocal: true),
+      transformTrack: _rebasedTrack(globalLayer.transformTrack),
+      effects: _rebasedEffects(globalLayer.effects),
       seNameTag: globalLayer.seNameTag?.track == null
           ? globalLayer.seNameTag
           : globalLayer.seNameTag!.copyWith(
-              track: _rebasedNameTag(
-                globalLayer.seNameTag!.track!,
-                toLocal: true,
-              ),
+              track: _rebasedNameTag(globalLayer.seNameTag!.track!),
             ),
     );
   }
 
-  /// [localTrack] — edited against [displayLayer] — put back on the global
-  /// axis, ready to commit onto the track-owned layer (R5 #8).
-  TransformTrack globalTransformTrack(TransformTrack localTrack) =>
-      _rebasedTrack(localTrack, toLocal: false);
-
-  /// The effect-chain twin of [globalTransformTrack].
-  List<LayerEffect> globalEffects(List<LayerEffect> localEffects) =>
-      _rebasedEffects(localEffects, toLocal: false);
-
-  /// Every key of [track] shifted by one cut start, in either direction.
+  /// ONE lane's keys moved onto the local axis — the primitive every rebase
+  /// below is made of.
   ///
-  /// Keys landing BEFORE local 0 are dropped on the way in: they belong to
-  /// an earlier cut and have no row here to sit on. Nothing is dropped on
-  /// the way out — the caller only ever hands back what it was shown, so a
-  /// negative would mean the local axis itself was wrong.
-  /// ONE lane's keys shifted by a cut start, in either direction — the
-  /// primitive every rebase below is made of.
-  PropertyTrack<T> _shift<T>(PropertyTrack<T> lane, {required bool toLocal}) {
-    final moved = <int, PropertyKey<T>>{};
-    for (final entry in lane.keys.entries) {
-      final frame = toLocal
-          ? toLocalFrame(entry.key)
-          : toGlobalFrame(entry.key);
-      if (toLocal && frame < 0) {
-        continue;
-      }
-      moved[frame] = entry.value;
-    }
-    return PropertyTrack<T>(keys: moved);
-  }
+  /// Keys landing BEFORE local 0 are dropped: they belong to an earlier cut
+  /// and have no frame on this rail. The value such a key holds into the cut
+  /// is read off the track's row, never off this clone — see [displayLayer].
+  PropertyTrack<T> _shift<T>(PropertyTrack<T> lane) => PropertyTrack<T>(
+    keys: {
+      for (final entry in lane.keys.entries)
+        if (entry.key >= cutStartFrame) toLocalFrame(entry.key): entry.value,
+    },
+  );
 
-  /// The NAME TAG twin of [globalTransformTrack] (R5 #7): its members key
-  /// on the same global axis and its lanes are read off the same cut-local
-  /// clone, so it takes the same trip.
-  SeNameTagTrack globalSeNameTagTrack(SeNameTagTrack localTrack) =>
-      _rebasedNameTag(localTrack, toLocal: false);
-
-  SeNameTagTrack _rebasedNameTag(
-    SeNameTagTrack track, {
-    required bool toLocal,
-  }) {
+  SeNameTagTrack _rebasedNameTag(SeNameTagTrack track) {
     if (cutStartFrame == 0) {
       return track;
     }
     return SeNameTagTrack(
-      fontSize: _shift(track.fontSize, toLocal: toLocal),
-      letterSpacing: _shift(track.letterSpacing, toLocal: toLocal),
-      bold: _shift(track.bold, toLocal: toLocal),
-      nameInk: _shift(track.nameInk, toLocal: toLocal),
-      boxColor: _shift(track.boxColor, toLocal: toLocal),
-      lineInk: _shift(track.lineInk, toLocal: toLocal),
-      showLine: _shift(track.showLine, toLocal: toLocal),
+      fontSize: _shift(track.fontSize),
+      letterSpacing: _shift(track.letterSpacing),
+      bold: _shift(track.bold),
+      nameInk: _shift(track.nameInk),
+      boxColor: _shift(track.boxColor),
+      lineInk: _shift(track.lineInk),
+      showLine: _shift(track.showLine),
     );
   }
 
-  TransformTrack _rebasedTrack(TransformTrack track, {required bool toLocal}) {
+  TransformTrack _rebasedTrack(TransformTrack track) {
     if (cutStartFrame == 0) {
       return track;
     }
-    PropertyTrack<T> shift<T>(PropertyTrack<T> lane) =>
-        _shift(lane, toLocal: toLocal);
-
     return track.copyWith(
-      anchorPoint: shift(track.anchorPoint),
-      position: shift(track.position),
-      scale: shift(track.scale),
-      rotation: shift(track.rotation),
-      opacity: shift(track.opacity),
+      anchorPoint: _shift(track.anchorPoint),
+      position: _shift(track.position),
+      scale: _shift(track.scale),
+      rotation: _shift(track.rotation),
+      opacity: _shift(track.opacity),
     );
   }
 
-  List<LayerEffect> _rebasedEffects(
-    List<LayerEffect> effects, {
-    required bool toLocal,
-  }) {
+  List<LayerEffect> _rebasedEffects(List<LayerEffect> effects) {
     if (cutStartFrame == 0 || effects.isEmpty) {
       return effects;
     }
@@ -216,7 +192,7 @@ class TrackSeWindow {
           parameters: {
             for (final entry in effect.parameters.entries)
               entry.key: entry.value.copyWith(
-                track: _shift(entry.value.track, toLocal: toLocal),
+                track: _shift(entry.value.track),
               ),
           },
         ),

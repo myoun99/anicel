@@ -652,25 +652,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     Layer activeLayer,
     CanvasViewport viewport,
   ) {
+    // The handle stands where the row's value IS: for a track-SE row that is
+    // the track's row at the global frame, not the cut's clone (F-102).
+    final at = session.laneVerbs.laneValueSourceAt(
+      activeLayer,
+      session.currentFrameIndex,
+    );
     return Positioned.fill(
       // Unwrapped like the position handle, for the same
       // reason.
       child: CanvasPointGizmo(
         glyph: HandleGlyph.anchor,
-        point: session.layerAnchorPointAtFrame(
-          activeLayer,
-          session.currentFrameIndex,
-        ),
+        point: session.layerAnchorPointAtFrame(at.layer, at.frame),
         viewport: viewport,
-        onCommitted: (anchorPoint) => session.updateLayerTransformTrack(
-          activeLayer.id,
-          transformTrackWithAnchorDragged(
-            activeLayer.transformTrack,
-            frameIndex: session.currentFrameIndex,
-            anchorPoint: anchorPoint,
-          ),
-          description: 'Anchor ${activeLayer.name}',
-        ),
+        onCommitted: (anchorPoint) =>
+            session.laneVerbs.editLayerTransformAtPlayhead(
+              activeLayer.id,
+              (track, frameIndex) => transformTrackWithAnchorDragged(
+                track,
+                frameIndex: frameIndex,
+                anchorPoint: anchorPoint,
+              ),
+              description: 'Anchor ${activeLayer.name}',
+            ),
       ),
     );
   }
@@ -680,6 +684,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     Layer activeLayer,
     CanvasViewport viewport,
   ) {
+    final at = session.laneVerbs.laneValueSourceAt(
+      activeLayer,
+      session.currentFrameIndex,
+    );
     return Positioned.fill(
       // No cut-pose wrap: the V row's transform is gone,
       // so the crosshair sits directly on the layer's own
@@ -687,21 +695,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // un-posing.
       child: CanvasPointGizmo(
         glyph: HandleGlyph.crosshair,
-        point: session
-            .layerPoseAtFrame(activeLayer, session.currentFrameIndex)
-            .center,
+        point: session.layerPoseAtFrame(at.layer, at.frame).center,
         viewport: viewport,
         // ONE key at the playhead per drag (AE rule,
-        // one undo).
-        onCommitted: (position) => session.updateLayerTransformTrack(
-          activeLayer.id,
-          transformTrackWithPositionDragged(
-            activeLayer.transformTrack,
-            frameIndex: session.currentFrameIndex,
-            position: position,
-          ),
-          description: 'Move ${activeLayer.name}',
-        ),
+        // one undo) — on the row the project holds, at
+        // the playhead on its own axis. ⚠️Not on
+        // [activeLayer] as found: a track-SE row's is its
+        // cut-local clone, and writing that back erased
+        // the keys of earlier cuts (F-102).
+        onCommitted: (position) =>
+            session.laneVerbs.editLayerTransformAtPlayhead(
+              activeLayer.id,
+              (track, frameIndex) => transformTrackWithPositionDragged(
+                track,
+                frameIndex: frameIndex,
+                position: position,
+              ),
+              description: 'Move ${activeLayer.name}',
+            ),
       ),
     );
   }
@@ -713,6 +724,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasSize canvasSize,
     CanvasViewport viewport,
   ) {
+    final at = session.laneVerbs.laneValueSourceAt(
+      activeLayer,
+      session.currentFrameIndex,
+    );
     return Positioned.fill(
       // R5 #10: the box frames the PICTURE, and its
       // corners scale while its rotate handle turns —
@@ -720,31 +735,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // more: the V row's transform is gone.
       child: LayerTransformBox(
         bounds: transformBoxBounds,
-        pose: session.layerPoseAtFrame(activeLayer, session.currentFrameIndex),
-        anchorPoint: session.layerAnchorPointAtFrame(
-          activeLayer,
-          session.currentFrameIndex,
-        ),
+        pose: session.layerPoseAtFrame(at.layer, at.frame),
+        anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
         canvasSize: canvasSize,
         viewport: viewport,
-        onScaleCommitted: (zoom) => session.updateLayerTransformTrack(
-          activeLayer.id,
-          transformTrackWithScaleDragged(
-            activeLayer.transformTrack,
-            frameIndex: session.currentFrameIndex,
-            zoom: zoom,
-          ),
-          description: 'Scale ${activeLayer.name}',
-        ),
-        onRotationCommitted: (degrees) => session.updateLayerTransformTrack(
-          activeLayer.id,
-          transformTrackWithRotationDragged(
-            activeLayer.transformTrack,
-            frameIndex: session.currentFrameIndex,
-            rotationDegrees: degrees,
-          ),
-          description: 'Rotate ${activeLayer.name}',
-        ),
+        onScaleCommitted: (zoom) =>
+            session.laneVerbs.editLayerTransformAtPlayhead(
+              activeLayer.id,
+              (track, frameIndex) => transformTrackWithScaleDragged(
+                track,
+                frameIndex: frameIndex,
+                zoom: zoom,
+              ),
+              description: 'Scale ${activeLayer.name}',
+            ),
+        onRotationCommitted: (degrees) =>
+            session.laneVerbs.editLayerTransformAtPlayhead(
+              activeLayer.id,
+              (track, frameIndex) => transformTrackWithRotationDragged(
+                track,
+                frameIndex: frameIndex,
+                rotationDegrees: degrees,
+              ),
+              description: 'Rotate ${activeLayer.name}',
+            ),
       ),
     );
   }

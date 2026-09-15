@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart'
     show PropertyKey, PropertyKeyInterpolation;
+import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -15,11 +16,13 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../timeline/effect_lane_editing.dart'
     show
         effectLaneKeyFrames,
+        effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
         effectsWithLaneKeysInterpolated,
-        effectsWithLaneRangeNamed;
+        effectsWithLaneRangeNamed,
+        effectsWithLaneValueEdited;
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/transform_lane_editing.dart'
@@ -29,11 +32,16 @@ import '../timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneKeysInterpolated,
-        transformTrackWithLaneRangeNamed;
+        transformTrackWithLaneRangeNamed,
+        transformTrackWithLaneValueEdited;
+import '../timeline/se_name_tag_lane_editing.dart'
+    show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
 import '../timeline/se_name_tag_lane_policy.dart'
-    show seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
+    show laneIsSeNameTag, seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
+import '../timeline/timeline_drag_preview.dart'
+    show timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
@@ -42,6 +50,15 @@ import 'effects_and_fx.dart';
 /// targets, the range, the layer and frame behind a lane row), the keys it
 /// creates, names, links and removes for the selection, and the commits
 /// that write a lane back — as their own object.
+///
+/// 🚨★★★ONE PROJECTION, BOTH WAYS (F-102, 2026-09-15). 유저: 「글로벌트랙은
+/// fx든뭐던 로컬에선 글로벌을 투영해서 보여주도록? 물론 로컬에서도 조작은
+/// 가능하지만. 그걸 바탕으로 근본 구조적으로 해결해줘」. A row the TRACK owns
+/// is shown in a cut as a projection of the track's row: every write to its
+/// keys — the lane navigator's ◆, a typed value, a canvas handle's drag, from
+/// either panel — lands on the row the project holds ([laneVerbLayerFor],
+/// [_laneVerbFrameAt]), and every value the cut shows is read off that same
+/// row at that same frame ([laneValueSourceAt]).
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no field of its own and eighteen
@@ -54,14 +71,17 @@ class LaneVerbs {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required EffectsAndFx effectsAndFx,
+    required ChangeSink changes,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
        _controllers = controllers,
        _internals = internals,
-       _effectsAndFx = effectsAndFx;
+       _effectsAndFx = effectsAndFx,
+       _changes = changes;
 
   final EffectsAndFx _effectsAndFx;
+  final ChangeSink _changes;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -264,13 +284,255 @@ class LaneVerbs {
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
-  /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
+  /// [laneVerbLayerFor]. A track-SE row is on the global axis, so the
   /// cut-local cursor has to be translated before it can name a key.
-  int _laneVerbFrameFor(LayerId layerId) =>
-      _controllers.timelineController.currentFrameIndex +
-      (_project.isTrackSeLayerId(layerId)
+  int _laneVerbFrameFor(LayerId layerId) => _laneVerbFrameAt(
+    layerId,
+    _controllers.timelineController.currentFrameIndex,
+    frameIsGlobal: false,
+  );
+
+  /// [frameIndex] as [layerId]'s own lanes key it. [frameIsGlobal] names
+  /// the axis the caller holds: the timeline panel's rails and playhead
+  /// speak CUT-LOCAL frames, the storyboard's rails global ones — and only
+  /// a track-SE row, whose keys live on the global axis, tells the two
+  /// apart.
+  int _laneVerbFrameAt(
+    LayerId layerId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+  }) =>
+      frameIndex +
+      (!frameIsGlobal && _project.isTrackSeLayerId(layerId)
           ? _project.activeCutGlobalStartFrame
           : 0);
+
+  /// The READ half of the projection: the row a lane on [shown] resolves
+  /// its VALUES against, and the frame [frameIndex] — on [shown]'s own rail —
+  /// names there.
+  ///
+  /// A track-SE row's rail shows the cut-local clone, and the clone holds
+  /// only the keys inside the cut (a key index is never negative), so its
+  /// value at a cut frame is read off the TRACK's row at the global frame —
+  /// where a key an earlier cut made still holds it. A drag in flight is read
+  /// in its global form, so the value column follows the hand. Every other
+  /// row resolves against [shown] itself, which may be a preview, on its own
+  /// frames.
+  ({Layer layer, int frame}) laneValueSourceAt(Layer shown, int frameIndex) {
+    final global = _project.isTrackSeLayerId(shown.id)
+        ? timelineDragPreviewGlobalLayerFor(
+                _internals.dragPreview.value,
+                shown.id,
+              ) ??
+              _project.trackSeGlobalLayerById(shown.id)
+        : null;
+    if (global == null) {
+      return (layer: shown, frame: frameIndex);
+    }
+    return (
+      layer: global,
+      frame: _laneVerbFrameAt(shown.id, frameIndex, frameIsGlobal: false),
+    );
+  }
+
+  /// The lane navigator's ◆ on [laneId] of [layerId] at [frameIndex]: a key
+  /// frozen at the value the lane resolves there, or the key there taken
+  /// away — one undo. [frameIsGlobal]: see [_laneVerbFrameAt].
+  ///
+  /// 🚨★★★F-102 (2026-09-15): both panels keyed through copies of this body
+  /// in their hosts, and the timeline's read the row it was SHOWN. For a
+  /// track-SE row that is the cut-local clone, which had dropped every key
+  /// made in an earlier cut — so keying S1 in cut 2 froze the default and,
+  /// written back through the cut window, erased cut 1's key (유저 09-12:
+  /// 「컷1에서 se의 트랜스폼으로 포지션 조정했는데, 그게 다른 컷2에서 값이
+  /// 안바뀌어 있고 초기값인 상태로 보임」). [laneVerbLayerFor] reads the row
+  /// the project holds, so there is nothing to put back.
+  void toggleLaneKeyAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+    required String description,
+  }) => _editLaneAt(
+    layerId,
+    laneId,
+    frameIndex,
+    frameIsGlobal: frameIsGlobal,
+    description: description,
+    nameTag: (tag, frame) =>
+        seNameTagWithLaneKeyToggled(tag, laneId: laneId, frameIndex: frame),
+    effects: (effects, frame) =>
+        effectsWithLaneKeyToggled(effects, laneId: laneId, frameIndex: frame),
+    transform: (layer, track, frame) =>
+        _transformTrackWithKeyToggled(layer, track, laneId, frame),
+  );
+
+  /// A value typed or scrubbed into [laneId] of [layerId] at [frameIndex] —
+  /// one undo, on the row and at the frame [toggleLaneKeyAt] takes.
+  void setLaneValueAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex,
+    String input, {
+    required bool frameIsGlobal,
+    required String description,
+  }) => _editLaneAt(
+    layerId,
+    laneId,
+    frameIndex,
+    frameIsGlobal: frameIsGlobal,
+    description: description,
+    nameTag: (tag, frame) => seNameTagWithLaneValueEdited(
+      tag,
+      laneId: laneId,
+      frameIndex: frame,
+      input: input,
+    ),
+    effects: (effects, frame) => effectsWithLaneValueEdited(
+      effects,
+      laneId: laneId,
+      frameIndex: frame,
+      input: input,
+    ),
+    transform: (layer, track, frame) => transformTrackWithLaneValueEdited(
+      track,
+      laneId: laneId,
+      frameIndex: frame,
+      input: input,
+    ),
+  );
+
+  /// The ONE dispatch behind [toggleLaneKeyAt] and [setLaneValueAt]: which
+  /// of a row's three keyed families [laneId] names, the row and frame to
+  /// edit it on, and the funnel that family commits through.
+  void _editLaneAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+    required String description,
+    required SeNameTag? Function(SeNameTag tag, int frame) nameTag,
+    required List<LayerEffect>? Function(List<LayerEffect> effects, int frame)
+    effects,
+    required TransformTrack? Function(
+      Layer layer,
+      TransformTrack track,
+      int frame,
+    )
+    transform,
+  }) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    final frame = _laneVerbFrameAt(
+      layerId,
+      frameIndex,
+      frameIsGlobal: frameIsGlobal,
+    );
+    // R5 #7: the name tag is a fixed FIELD on the row, so it commits
+    // through its own funnel — not the transform track, not the chain.
+    if (laneIsSeNameTag(laneId)) {
+      final next = nameTag(layer.seNameTag ?? const SeNameTag(), frame);
+      if (next != null) {
+        _commitLaneSeNameTag(layer, next, description: description);
+      }
+      return;
+    }
+    if (parseEffectLaneId(laneId) != null) {
+      final next = effects(layer.effects, frame);
+      if (next != null) {
+        _commitLaneEffects(layer, next, description: description);
+      }
+      return;
+    }
+    final next = transform(layer, _laneTransformTrackOf(layer), frame);
+    if (next != null) {
+      _commitLaneTransformTrack(layer, next, description: description);
+    }
+  }
+
+  /// A canvas handle's drag landing on [layerId]'s transform: [edit] writes
+  /// ONE key at the playhead (the AE rule), committed as one undo.
+  ///
+  /// 🚨F-102: the handles wrote the ACTIVE row back as they found it, and a
+  /// track-SE row's active row is its cut-local clone — so in any cut but
+  /// the first, a drag put cut-local keys on the global axis and erased the
+  /// keys of earlier cuts. [edit] is handed the track the project holds and
+  /// the playhead on that track's own axis.
+  void editLayerTransformAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required String description,
+  }) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    _commitLaneTransformTrack(
+      layer,
+      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
+      description: description,
+    );
+  }
+
+  /// An effect header's eyeball (R6): [effectId] switched on or off in
+  /// [layerId]'s chain, one undo — read off the row the project holds, like
+  /// every other write to the chain.
+  void toggleLaneEffectEnabled(
+    LayerId layerId,
+    EffectId effectId, {
+    required String description,
+  }) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    final next = effectsWithEnabledToggled(layer.effects, effectId);
+    if (next != null) {
+      _commitLaneEffects(layer, next, description: description);
+    }
+  }
+
+  /// [track] with [laneId]'s key at [frame] toggled — a new one frozen at
+  /// the value [layer] resolves there. What the navigator's ◆ and the range
+  /// Create both write.
+  TransformTrack? _transformTrackWithKeyToggled(
+    Layer layer,
+    TransformTrack track,
+    String laneId,
+    int frame,
+  ) {
+    final isCamera = layer.kind == LayerKind.camera;
+    return transformTrackWithLaneKeyToggled(
+      track,
+      laneId: laneId,
+      frameIndex: frame,
+      resolvedPose: _laneResolvedPose(layer, frame),
+      resolvedAnchorPoint: isCamera
+          ? null
+          : _internals.layerAnchorPointAtFrame(layer, frame),
+      resolvedOpacity: isCamera
+          ? 1
+          : _internals.layerOpacityAtFrame(layer, frame),
+    );
+  }
+
+  /// The lane path's NAME TAG commit — the third funnel, beside
+  /// [_commitLaneTransformTrack] and [_commitLaneEffects]. The coordinator
+  /// finds an SE row wherever it lives, so the tag goes home as it is.
+  void _commitLaneSeNameTag(
+    Layer layer,
+    SeNameTag tag, {
+    required String description,
+  }) {
+    _project.cutCommandCoordinator.setSeNameTag(
+      layerId: layer.id,
+      seNameTag: tag,
+      description: description,
+    );
+    _changes.notifyChanged();
+  }
 
   void _commitLaneTransformTrack(
     Layer layer,
@@ -855,7 +1117,6 @@ class LaneVerbs {
       );
       return;
     }
-    final isCamera = layer.kind == LayerKind.camera;
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
     // still one undo.
     _commitLaneFold(
@@ -866,18 +1127,7 @@ class LaneVerbs {
         frames,
         (value, frame) => transformLaneKeyFrames(value, laneId).contains(frame)
             ? null
-            : transformTrackWithLaneKeyToggled(
-                value,
-                laneId: laneId,
-                frameIndex: frame,
-                resolvedPose: _laneResolvedPose(layer, frame),
-                resolvedAnchorPoint: isCamera
-                    ? null
-                    : _internals.layerAnchorPointAtFrame(layer, frame),
-                resolvedOpacity: isCamera
-                    ? 1
-                    : _internals.layerOpacityAtFrame(layer, frame),
-              ),
+            : _transformTrackWithKeyToggled(layer, value, laneId, frame),
       ),
       commit: (track) =>
           _commitLaneTransformTrack(layer, track, description: 'Create keys'),

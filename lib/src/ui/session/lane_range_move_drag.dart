@@ -100,9 +100,11 @@ class LaneRangeMoveDragVerbs {
       // The name-tag arm (C①): armed only on SE rows (the commit verb
       // throws elsewhere). The subject layer is GLOBAL for track-SE rows
       // ([LaneVerbs.laneVerbLayerFor]), so the commit goes to the coordinator
-      // DIRECTLY — setSeNameTagForLayer window-converts on the way in,
-      // and routing through it would shift track-SE keys twice (the
-      // double-conversion trap the transform commit already names).
+      // as it is.
+      // ↩️It had to go there DIRECTLY: `setSeNameTagForLayer` converted
+      // cut-local input on the way in, and routing through it would have
+      // shifted track-SE keys twice. F-102 retired that verb — nothing
+      // converts on the way in any more.
       seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
       commitSeNameTag: isSe
           ? (next) {

@@ -117,6 +117,11 @@ void main() {
     });
   });
 
+  // ↩️The fixtures below wrote their tags through
+  // `SeEntries.setSeNameTagForLayer`, which took cut-local keys and converted
+  // them on the way in. F-102 retired it with the rest of the trip through
+  // the cut window, so they write the row directly — on the GLOBAL axis the
+  // row's keys live on (the same numbers in the first cut, which starts at 0).
   group('the lane-move machine, third arm (session)', () {
     test('a member-span drag moves exactly the ranged keys as ONE undo, '
         'and the selection rides to the landed span', () {
@@ -131,9 +136,9 @@ void main() {
         reason: 'fixture premise: the row is TRACK-owned, which is what puts '
             'its tag keys on the global axis',
       );
-      session.seEntries.setSeNameTagForLayer(
-        se.id,
-        SeNameTag(
+      session.cutCommandCoordinator.setSeNameTag(
+        layerId: se.id,
+        seNameTag: SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
               keys: {2: const PropertyKey(20.0), 3: const PropertyKey(24.0)},
@@ -176,9 +181,9 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
-      session.seEntries.setSeNameTagForLayer(
-        se.id,
-        SeNameTag(
+      session.cutCommandCoordinator.setSeNameTag(
+        layerId: se.id,
+        seNameTag: SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(keys: {2: const PropertyKey(20.0)}),
             bold: PropertyTrack(keys: {3: const PropertyKey(true)}),
@@ -227,9 +232,9 @@ void main() {
       );
       addTearDown(session.dispose);
       final se = session.activeTrack.seLayers.first;
-      session.seEntries.setSeNameTagForLayer(
-        se.id,
-        SeNameTag(
+      session.cutCommandCoordinator.setSeNameTag(
+        layerId: se.id,
+        seNameTag: SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
               keys: {
@@ -265,7 +270,7 @@ void main() {
     });
 
     test('🚨track-SE axis: the commit lands on the GLOBAL axis exactly '
-        'ONCE — never through the window-converting host verb', () {
+        'ONCE — the drag shifts the keys by its delta alone', () {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -282,14 +287,16 @@ void main() {
           .first
           .duration;
       final se = session.activeTrack.seLayers.first;
-      // The host verb converts cut-local input → global on the way IN:
-      // input 2,3 becomes global first+2, first+3.
-      session.seEntries.setSeNameTagForLayer(
-        se.id,
-        SeNameTag(
+      // The keys sit on the row's GLOBAL axis, just inside the active cut.
+      session.cutCommandCoordinator.setSeNameTag(
+        layerId: se.id,
+        seNameTag: SeNameTag(
           track: SeNameTagTrack(
             fontSize: PropertyTrack(
-              keys: {2: const PropertyKey(20.0), 3: const PropertyKey(24.0)},
+              keys: {
+                firstDuration + 2: const PropertyKey(20.0),
+                firstDuration + 3: const PropertyKey(24.0),
+              },
             ),
           ),
         ),

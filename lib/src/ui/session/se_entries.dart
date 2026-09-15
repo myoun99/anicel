@@ -3,17 +3,23 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/se_name_tag.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
 import 'frame_verbs.dart';
-import 'track_se_display.dart';
 
 /// The SE ENTRIES AND NAME TAGS — creating and updating an SE entry, and
-/// the name tag an SE row carries at a frame — as their own object.
+/// the name tags an SE row puts on the canvas at a frame — as their own
+/// object.
+///
+/// ⛔The name tag SETTERS are gone (F-102, 2026-09-15). `setSeNameTagForLayer`
+/// took a tag edited against the cut-local clone and converted its keys
+/// through the cut window, which lost every key the clone had dropped — a
+/// lane edit writes the tag through `LaneVerbs` now, on the row the project
+/// holds. `setActiveSeNameTag` and `canEditActiveSeNameTag` had no caller
+/// left in the app.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: nothing of its own; the rest
@@ -27,65 +33,22 @@ class SeEntries {
     required ActiveCutControllers controllers,
     required Camera camera,
     required FrameVerbs frameVerbs,
-    required TrackSeDisplay trackSe,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
        _camera = camera,
-       _frameVerbs = frameVerbs,
-       _trackSe = trackSe;
+       _frameVerbs = frameVerbs;
 
   final Camera _camera;
   final FrameVerbs _frameVerbs;
-  final TrackSeDisplay _trackSe;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-
-  /// Whether the active row can carry an on-canvas name tag (R5b): the
-  /// SE rows, and only while a cut gives the canvas its geometry.
-  bool get canEditActiveSeNameTag =>
-      _selection.activeLayer?.kind == LayerKind.se &&
-      _project.activeCutOrNull != null;
-
-  /// Sets (or with null resets) the active SE row's name tag — one undo,
-  /// reaching the TRACK-owned row through the anywhere seam.
-  void setActiveSeNameTag(SeNameTag? tag) {
-    final layer = _selection.activeLayer;
-    if (layer == null || layer.kind != LayerKind.se) {
-      return;
-    }
-    _project.cutCommandCoordinator.setSeNameTag(
-      layerId: layer.id,
-      seNameTag: tag,
-    );
-    _changes.notifyChanged();
-  }
-
-  /// A NAME TAG lane edit landing on [layerId] (R5 #7) — one undo.
-  ///
-  /// The tag's keys sit on the track-owned row's GLOBAL axis while the lane
-  /// was read off a cut-local clone, so the frames convert on the way out,
-  /// exactly as the transform track's do (#8). The lane helpers key at
-  /// whatever frame the caller hands them, so the conversion belongs HERE —
-  /// after the edit, before the commit.
-  void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) {
-    final keys = tag?.track;
-    _project.cutCommandCoordinator.setSeNameTag(
-      layerId: layerId,
-      seNameTag: keys == null || !_project.isTrackSeLayerId(layerId)
-          ? tag
-          : tag!.copyWith(
-              track: _trackSe.trackSeWindow.globalSeNameTagTrack(keys),
-            ),
-    );
-    _changes.notifyChanged();
-  }
 
   /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
   /// one resolution every drawing surface asks (editing canvas, playback,

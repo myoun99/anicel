@@ -10,7 +10,14 @@ import 'package:anicel/src/ui/session/se_entries.dart';
 /// (one speaker), the rows are TRACK-owned, and the write must reach them
 /// through the anywhere seam with one undo — the cut-scoped path throws
 /// for track rows, which is the trap this pins.
-/// The collaborator that owns the name tag — named so
+///
+/// ↩️The writes here went through `SeEntries.setActiveSeNameTag`, which
+/// nothing in the app had called since its session forwarder went
+/// (588a8e58), and which wrote the tag raw off the row the timeline SHOWS —
+/// for a track-SE row, its cut-local clone. F-102 retired it with the rest of
+/// the trip through the cut window; the anywhere write it wrapped is what
+/// these tests pin now, the one the lane verbs commit through.
+/// The collaborator that resolves the tags every surface draws — named so
 /// `tool/mutation_run.dart` has a suite to run for it.
 SeEntries seEntriesOf(EditorSessionManager session) => session.seEntries;
 
@@ -21,9 +28,6 @@ void main() {
     addTearDown(s.dispose);
 
     final seRow = s.activeTrack.seLayers.first;
-    s.selectLayer(seRow.id);
-    final entries = seEntriesOf(s);
-    expect(entries.canEditActiveSeNameTag, isTrue);
 
     // R5 #7: a tag has no position of its own — nothing to seed, and
     // nothing written until a STYLE is set.
@@ -32,7 +36,10 @@ void main() {
     const configured = SeNameTag(
       style: TextCelStyle(fontSize: 48, color: 0xFFFFFFFF),
     );
-    entries.setActiveSeNameTag(configured);
+    s.cutCommandCoordinator.setSeNameTag(
+      layerId: seRow.id,
+      seNameTag: configured,
+    );
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
 
     s.undo();
@@ -46,23 +53,22 @@ void main() {
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
 
     // Reset: the null contract.
-    s.seEntries.setActiveSeNameTag(null);
+    s.cutCommandCoordinator.setSeNameTag(layerId: seRow.id, seNameTag: null);
     expect(s.activeTrack.seLayers.first.seNameTag, isNull);
     s.undo();
     expect(s.activeTrack.seLayers.first.seNameTag, configured);
   });
 
-  test('an unchanged apply costs no history entry, and non-SE rows refuse '
-      'the verb outright', () {
+  test('an unchanged apply costs no history entry, and a non-SE row refuses '
+      'the write outright', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
 
     final seRow = s.activeTrack.seLayers.first;
-    s.selectLayer(seRow.id);
     const tag = SeNameTag(style: TextCelStyle(fontSize: 11));
-    s.seEntries.setActiveSeNameTag(tag);
+    s.cutCommandCoordinator.setSeNameTag(layerId: seRow.id, seNameTag: tag);
     final undoDepthAfterFirst = s.canUndo;
-    s.seEntries.setActiveSeNameTag(tag);
+    s.cutCommandCoordinator.setSeNameTag(layerId: seRow.id, seNameTag: tag);
     s.undo();
     expect(undoDepthAfterFirst, isTrue);
     expect(
@@ -75,9 +81,13 @@ void main() {
     final drawing = s.requireActiveCut.layers.firstWhere(
       (layer) => layer.kind == LayerKind.animation,
     );
-    s.selectLayer(drawing.id);
-    expect(s.seEntries.canEditActiveSeNameTag, isFalse);
-    s.seEntries.setActiveSeNameTag(const SeNameTag(style: TextCelStyle(fontSize: 9)));
+    expect(
+      () => s.cutCommandCoordinator.setSeNameTag(
+        layerId: drawing.id,
+        seNameTag: const SeNameTag(style: TextCelStyle(fontSize: 9)),
+      ),
+      throwsStateError,
+    );
     expect(
       s.requireActiveCut.layers.firstWhere((l) => l.id == drawing.id).seNameTag,
       isNull,
@@ -172,9 +182,11 @@ void main() {
     addTearDown(s.dispose);
 
     final seRow = s.activeTrack.seLayers.first;
-    s.selectLayer(seRow.id);
-    s.seEntries.setActiveSeNameTag(
-      const SeNameTag(style: TextCelStyle(fontSize: 20, color: 0xFF202020)),
+    s.cutCommandCoordinator.setSeNameTag(
+      layerId: seRow.id,
+      seNameTag: const SeNameTag(
+        style: TextCelStyle(fontSize: 20, color: 0xFF202020),
+      ),
     );
     final stored = s.activeTrack.seLayers.first.seNameTag!;
     expect(stored.style.fontSize, 20);

@@ -34,7 +34,19 @@ void main() {
   /// and whether it is a PSD, whether anything is placed, and the drop. The
   /// two landing verbs that grew with it went back under by reading the drop
   /// off the arrival, where "where does this land" already lived.
-  const wideSignatures = 381;
+  ///
+  /// ⚠️381 → 383 on 2026-09-15: F-102 added three (the tree stood at 380),
+  /// named as the rule above asks. An SE row is one row on its track and a
+  /// cut shows a projection of it, so a key or a typed value from either
+  /// panel now lands through ONE pair of verbs on `LaneVerbs` instead of
+  /// each host's copy. `toggleLaneKeyAt` (five) and `setLaneValueAt` (six,
+  /// with the typed input) take the lane cell — row, lane, frame — the axis
+  /// that frame was pressed on (the storyboard presses global frames, the
+  /// timeline cut-local ones) and the undo label the host words.
+  /// `_editLaneAt` (eight) is the one dispatch both run through: the same
+  /// five, plus the edit each keyed family — the name tag, the effect chain,
+  /// the transform track — makes.
+  const wideSignatures = 383;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

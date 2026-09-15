@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
@@ -206,9 +207,9 @@ void main() {
   });
 
   // R5 #8: the row showed transform lanes and refused every key, because
-  // the display clone dropped the track outright. It rebases now, and the
-  // edit rebases back.
-  group('the display clone rebases the transform track, both ways', () {
+  // the display clone dropped the track outright. It rebases now; an edit
+  // no longer comes back through it (F-102).
+  group('the display clone rebases the transform track onto the cut', () {
     const window = TrackSeWindow(cutStartFrame: 12, cutDurationFrames: 24);
 
     Layer withRotation(Map<int, double> keys) => Layer(
@@ -239,6 +240,9 @@ void main() {
       );
     });
 
+    // The clone is what the RAIL shows. The value an earlier cut's key holds
+    // into this cut is read off the track's row instead (F-102) — pinned in
+    // test/ui/session/se_row_keys_live_on_the_track_in_every_cut_test.dart.
     test('a key from an EARLIER cut is dropped, not folded onto frame 0', () {
       final local = window
           .displayLayer(withRotation({4: 99, 12: 10}))
@@ -252,28 +256,21 @@ void main() {
       );
     });
 
-    test('an edit made against the clone lands back on the global axis — '
-        'this is the round trip the commit path takes', () {
-      final local = window
-          .displayLayer(withRotation({12: 10}))
-          .transformTrack
-          .rotation;
-      // Key frame 5 LOCALLY, as the lane verbs do.
-      final edited = TransformTrack.empty().copyWith(
-        rotation: local.withKey(5, 45),
-      );
-      final global = window.globalTransformTrack(edited).rotation;
-      expect(global.keys.keys.toList(), [12, 17]);
-      expect(global.keyAt(17)!.value, 45);
-    });
+    // ⛔The round trip is GONE (F-102): an edit no longer comes back through
+    // this window — it reads the row the project holds. That law is pinned
+    // where it lives, in
+    // test/ui/session/se_row_keys_live_on_the_track_in_every_cut_test.dart.
 
     test('a window at the track start is the identity — no needless copy',
         () {
       const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
-      final track = withRotation({0: 10, 6: 20}).transformTrack;
+      final layer = withRotation({0: 10, 6: 20});
       expect(
-        first.globalTransformTrack(track).rotation.keys.keys.toList(),
-        [0, 6],
+        identical(
+          first.displayLayer(layer).transformTrack,
+          layer.transformTrack,
+        ),
+        isTrue,
       );
     });
   });
@@ -282,7 +279,7 @@ void main() {
   // transform lanes and take the same trip — but nothing measured it, so
   // the effect rebase could have shifted the wrong way (or not at all)
   // with every test above still green.
-  group('the display clone rebases EFFECT parameter lanes, both ways', () {
+  group('the display clone rebases EFFECT parameter lanes onto the cut', () {
     const window = TrackSeWindow(cutStartFrame: 20, cutDurationFrames: 12);
 
     LayerEffect blurWith(Map<int, double> keys) => LayerEffect(
@@ -330,25 +327,48 @@ void main() {
       );
     });
 
-    test('an edit made against the clone lands back on the global axis', () {
-      final local = blurXOf(
-        window.displayLayer(withEffect(blurWith({20: 3}))).effects,
-      );
-      final edited = blurWith({}).copyWith(
-        parameters: {'blurX': EffectParameter(track: local.withKey(5, 9))},
-      );
-      final global = blurXOf(window.globalEffects([edited]));
-      expect(global.keys.keys.toList(), [20, 25]);
-      expect(global.keyAt(25)!.value, 9);
-    });
-
     test('a window at the track start is the identity', () {
       const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
+      final layer = withEffect(blurWith({0: 1, 6: 2}));
       expect(
-        blurXOf(first.globalEffects([blurWith({0: 1, 6: 2})])).keys.keys
-            .toList(),
+        blurXOf(first.displayLayer(layer).effects).keys.keys.toList(),
         [0, 6],
       );
+    });
+  });
+
+  // R5 #7: the name tag's members key on the same axis and are read off the
+  // same clone.
+  group('the display clone rebases NAME TAG members onto the cut', () {
+    const window = TrackSeWindow(cutStartFrame: 12, cutDurationFrames: 24);
+
+    Layer withTagSizes(Map<int, double> sizes) => Layer(
+      id: const LayerId('se-1'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      seNameTag: SeNameTag(
+        track: SeNameTagTrack(
+          fontSize: PropertyTrack(
+            keys: {
+              for (final entry in sizes.entries)
+                entry.key: PropertyKey(entry.value),
+            },
+          ),
+        ),
+      ),
+    );
+
+    test('member keys arrive on the cut-local axis, and an EARLIER cut\'s is '
+        'dropped like every other lane\'s', () {
+      final sizes = window
+          .displayLayer(withTagSizes({4: 30, 20: 40}))
+          .seNameTag!
+          .track!
+          .fontSize;
+      expect(sizes.keys.keys.toList(), [8]);
+      expect(sizes.keyAt(8)!.value, 40);
     });
   });
 }

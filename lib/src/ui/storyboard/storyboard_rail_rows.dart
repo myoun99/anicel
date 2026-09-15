@@ -652,7 +652,13 @@ class _StoryboardRailRows {
               // The row exists or it does not; the open cut is not part of
               // the question (user, 2026-08-09).
               active: _trackSeAt(track, slot) != null,
-              frameCursor: _state.widget.activeCutFrameCursor,
+              // An S row's keys are the TRACK's, so its labels read and seek
+              // the GLOBAL playhead, as the V rows' do (R4b). ↩️They read the
+              // ACTIVE cut's local cursor (#844 carried the frame over as it
+              // was): in any cut but the first the value showed at the wrong
+              // frame, and the ◆ keyed there (F-102).
+              frameCursor: _state.widget.playheadFrame,
+              onSelectFrame: _state.widget.onSeekGlobalFrame,
             ),
           ],
         ],
