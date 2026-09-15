@@ -119,12 +119,7 @@ Future<BitmapSurface> rasterizeImageToSurface({
     fit: fit,
   );
   // The pasteboard wall (tiles beyond it are refused by the surface).
-  final wall = ui.Rect.fromLTRB(
-    canvas.pasteboardLeft.toDouble(),
-    canvas.pasteboardTop.toDouble(),
-    canvas.pasteboardRightExclusive.toDouble(),
-    canvas.pasteboardBottomExclusive.toDouble(),
-  );
+  final wall = canvas.pasteboardRect;
   final clipped = placement.intersect(wall);
   if (clipped.isEmpty) {
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);

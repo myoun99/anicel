@@ -21,6 +21,7 @@ import 'bitmap_tile_image_cache.dart';
 import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
 import 'tile_predecessors.dart';
+import 'tiled_surface_compose.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
@@ -115,12 +116,48 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   /// The pasteboard rect in canvas space — the clip this painter works
   /// within (artwork past the canvas edge stays visible while editing).
-  Rect get pasteboardRect => Rect.fromLTRB(
-    surface.canvasSize.pasteboardLeft.toDouble(),
-    surface.canvasSize.pasteboardTop.toDouble(),
-    surface.canvasSize.pasteboardRightExclusive.toDouble(),
-    surface.canvasSize.pasteboardBottomExclusive.toDouble(),
-  );
+  Rect get pasteboardRect => surface.canvasSize.pasteboardRect;
+
+  /// 🚨★★★EVERYTHING THIS PAINTER DRAWS, in canvas space — its surface's
+  /// content and whatever it draws over that surface this frame: the stroke
+  /// in flight, a fill's stamp, the stamp ghost.
+  ///
+  /// F-85 (유저 2026-09-11): 「펜 그리는 도중, 페이스트보드의 일부?까지
+  /// 그려지는데 정확히 페이스트보드 끝까지 그림 그려지지않음. 그 상태에서 손
+  /// 떼면 정상적으로 페이스트보드에 그림 남아있음」. The merged stack sizes its
+  /// one display buffer by what each row covers, and it asked this painter's
+  /// SURFACE ([surfaceContentWorldRect]) — so every draw past the ink that had
+  /// already landed was cut at that ink's edge until a commit put tiles
+  /// there.
+  ///
+  /// ⛔Whoever sizes a buffer around this painter reads THIS, never the
+  /// surface alone — and a draw added to [paintContentInto] without its rect
+  /// here is the same defect again. The surface's own rect stays the base,
+  /// so an idle layer covers exactly what its cached twin covers.
+  Rect get drawnWorldRect {
+    var drawn = surfaceContentWorldRect(surface);
+    final overlay = overlayModel;
+    if (overlay != null) {
+      final extent = overlay.tileSize.toDouble();
+      for (final coord in overlay.tileImages.keys) {
+        drawn = drawn.expandToInclude(
+          Rect.fromLTWH(coord.x * extent, coord.y * extent, extent, extent),
+        );
+      }
+      final stamp = overlay.stampImage;
+      if (stamp != null) {
+        drawn = drawn.expandToInclude(
+          overlay.stampOffset &
+              Size(stamp.width.toDouble(), stamp.height.toDouble()),
+        );
+      }
+    }
+    final ghost = stampPreview?.value;
+    if (ghost != null && ghost.image != null) {
+      drawn = drawn.expandToInclude(ghost.canvasRect);
+    }
+    return drawn;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {

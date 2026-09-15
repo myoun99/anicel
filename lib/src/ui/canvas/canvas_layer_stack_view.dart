@@ -1389,33 +1389,6 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
     Object.hash(mix, Object.hashAll(effects), _treeSignature(children)),
 };
 
-/// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
-///
-/// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
-///
-/// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
-/// far enough and that rect spans the whole pasteboard — 5×5 canvases,
-/// 11700×8270 on a 2340×1654 page — which blows past [_maxBufferSide] and
-/// drops the paint onto the SCREEN-resolution fallback. That fallback is
-/// how the editing canvas stopped compositing the way playback, the camera
-/// and the export do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
-/// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
-/// the only tool on the table).
-///
-/// ★Content is not the pasteboard. It is [surfaceContentWorldRect]'s answer
-/// — the canvas rect unioned with the tiles that actually exist — so an
-/// ordinary page bounds to 2340×1654 and never reaches the cap. The
-/// fallback stops being reachable, and one resolution serves every zoom.
-///
-/// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
-/// high-water mark of everything you had done — the "sticky / containment
-/// 매칭 버퍼 rect" the composite plan rejects by name.
-/// [draw] with [layer]'s opacity/blend/colour chain folded in, or [draw]
-/// unchanged when a buffer is carrying the layer instead.
-///
-/// ⛔The draw keeps its OWN sampling. A layer paint says how the layer
-/// composites, never how a picture is resampled — writing `filterQuality`
-/// from it would be one paint answering two questions.
 /// Whether the live layer's last paint handed its opacity/blend to the
 /// individual draws instead of opening a buffer around them.
 ///
@@ -1461,6 +1434,12 @@ enum ActiveSlotDraw {
   tiles,
 }
 
+/// [draw] with [layer]'s opacity/blend/colour chain folded in, or [draw]
+/// unchanged when a buffer is carrying the layer instead.
+///
+/// ⛔The draw keeps its OWN sampling. A layer paint says how the layer
+/// composites, never how a picture is resampled — writing `filterQuality`
+/// from it would be one paint answering two questions.
 Paint _withLayerPaint(Paint draw, Paint? layer) {
   if (layer == null) {
     return draw;
@@ -1472,6 +1451,32 @@ Paint _withLayerPaint(Paint draw, Paint? layer) {
     ..imageFilter = layer.imageFilter;
 }
 
+/// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
+///
+/// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
+///
+/// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
+/// far enough and that rect spans the whole pasteboard — 5×5 canvases then,
+/// 11700×8270 on a 2340×1654 page — which blew past [_maxBufferSide] and
+/// dropped the paint onto the SCREEN-resolution fallback (since H2's 3×3,
+/// 2026-08-22, that page's pasteboard is 7020×4962 and fits; a page more
+/// than 2730 on a side still does not). That fallback is how the editing
+/// canvas stopped compositing the way playback, the camera and the export
+/// do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
+/// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
+/// the only tool on the table).
+///
+/// ★Content is not the pasteboard. For a cached row it is
+/// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
+/// tiles that actually exist — so an ordinary page bounds to 2340×1654 and
+/// never reaches the cap. The fallback stops being reachable, and one
+/// resolution serves every zoom. For the ACTIVE row it is everything the
+/// slot draws ([activeSurfaceExtent]) — its committed surface alone cut
+/// every live draw at the edge of the ink already landed (F-85).
+///
+/// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
+/// high-water mark of everything you had done — the "sticky / containment
+/// 매칭 버퍼 rect" the composite plan rejects by name.
 Rect _paintNodeExtent(
   CompositeNode<_PaintRow> node, {
   required CanvasSize canvasSize,

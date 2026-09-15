@@ -59,6 +59,36 @@ class SelectionFloatPaint {
 
   bool get isEmpty => surface == null && image == null;
 
+  /// Everything this float draws, in canvas space — what a buffer holding it
+  /// has to cover — or [Rect.zero] when nothing floats.
+  ///
+  /// 🚨F-85 (유저 2026-09-11): 「변형시 캔버스 밖, 페이스트보드에서 그림이
+  /// 사라짐」 — the composite sized the active slot by its committed surface
+  /// alone, and a float carried past that surface's ink was cut at the edge.
+  /// The same two draws [paintInto] makes, in the same order, under the same
+  /// clip.
+  Rect get drawnWorldRect {
+    final image = this.image;
+    final surface = this.surface;
+    final Rect drawn;
+    if (image != null) {
+      drawn = Rect.fromLTWH(
+        imageLeft,
+        imageTop,
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
+    } else if (surface != null) {
+      drawn = surface.drawnWorldRect.shift(
+        Offset(surfaceOffset.x, surfaceOffset.y),
+      );
+    } else {
+      return Rect.zero;
+    }
+    final bounds = clip;
+    return bounds == null ? drawn : drawn.intersect(bounds);
+  }
+
   void paintInto(Canvas canvas) {
     if (isEmpty) {
       return;

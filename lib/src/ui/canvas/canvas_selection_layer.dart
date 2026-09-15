@@ -2429,12 +2429,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required BitmapSurface? floatSurface,
     required SelectionAffine? transform,
   }) {
-    final pasteboard = Rect.fromLTRB(
-      widget.canvasSize.pasteboardLeft.toDouble(),
-      widget.canvasSize.pasteboardTop.toDouble(),
-      widget.canvasSize.pasteboardRightExclusive.toDouble(),
-      widget.canvasSize.pasteboardBottomExclusive.toDouble(),
-    );
+    final pasteboard = widget.canvasSize.pasteboardRect;
     if (resampledImage != null && resampledDab != null) {
       return SelectionFloatPaint(
         image: resampledImage,

@@ -90,12 +90,7 @@ final Paint _tilePaint = Paint()
   // well — ink past the edge would show for a frame and then vanish when
   // the real decode landed without it.
   final canvasSize = postSurface.canvasSize;
-  final pasteboard = Rect.fromLTRB(
-    canvasSize.pasteboardLeft.toDouble(),
-    canvasSize.pasteboardTop.toDouble(),
-    canvasSize.pasteboardRightExclusive.toDouble(),
-    canvasSize.pasteboardBottomExclusive.toDouble(),
-  );
+  final pasteboard = canvasSize.pasteboardRect;
   var seeded = 0;
   var adopted = 0;
   var skipped = 0;
@@ -239,12 +234,7 @@ ProvisionalInkPainter inkFromSurface(
 }) {
   final images = cache ?? BitmapTileImageCache.instance;
   final floatCanvas = surface.canvasSize;
-  final floatPasteboard = Rect.fromLTRB(
-    floatCanvas.pasteboardLeft.toDouble(),
-    floatCanvas.pasteboardTop.toDouble(),
-    floatCanvas.pasteboardRightExclusive.toDouble(),
-    floatCanvas.pasteboardBottomExclusive.toDouble(),
-  );
+  final floatPasteboard = floatCanvas.pasteboardRect;
   return (canvas, region) {
     // The region read in the float's OWN coordinates.
     final local = region.shift(-canvasDelta);

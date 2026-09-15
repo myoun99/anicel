@@ -196,12 +196,7 @@ Future<({ui.Image image, ui.Rect placement})> renderTextCelImage({
   await ensureConteFontsLoaded();
   final layout = layoutTextCel(content: content, canvas: canvas);
   try {
-    final wall = ui.Rect.fromLTRB(
-      canvas.pasteboardLeft.toDouble(),
-      canvas.pasteboardTop.toDouble(),
-      canvas.pasteboardRightExclusive.toDouble(),
-      canvas.pasteboardBottomExclusive.toDouble(),
-    );
+    final wall = canvas.pasteboardRect;
     var bounds = layout.inkBounds.intersect(wall);
     if (bounds.isEmpty) {
       // Fully outside even the pasteboard: an empty 1px placement bakes

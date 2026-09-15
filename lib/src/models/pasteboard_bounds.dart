@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import '../core/floor_math.dart';
 import 'canvas_size.dart';
 import 'dirty_region.dart';
@@ -58,6 +60,21 @@ extension PasteboardBounds on CanvasSize {
     top: pasteboardTop,
     rightExclusive: pasteboardRightExclusive,
     bottomExclusive: pasteboardBottomExclusive,
+  );
+
+  /// The same wall as a canvas-space [ui.Rect], for everything that clips
+  /// or bounds in doubles: a painter's clip, the display extent, a float's
+  /// preview, a text or raster placement.
+  ///
+  /// ⛔ONE CONVERSION (F-85, 2026-09-15). This rect was typed out from the
+  /// four getters above in seven places, and an eighth — the active layer's
+  /// flat projection — typed the 3×3 NUMBERS instead, so it would have kept
+  /// the old wall the day [pasteboardCanvasesPerEdge] moves.
+  ui.Rect get pasteboardRect => ui.Rect.fromLTRB(
+    pasteboardLeft.toDouble(),
+    pasteboardTop.toDouble(),
+    pasteboardRightExclusive.toDouble(),
+    pasteboardBottomExclusive.toDouble(),
   );
 
   bool containsPasteboardPixel({required int x, required int y}) {

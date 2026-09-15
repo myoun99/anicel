@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -239,8 +240,8 @@ abstract final class ActiveLayerFlatProjection {
   }
 
   /// The ink's tile-aligned bounds, clipped at the pasteboard wall
-  /// (canvas plus one canvas size in every direction — the same wall the
-  /// painter clips to). Null when there is no ink at all.
+  /// ([PasteboardBounds.pasteboardRect] — the same wall the painter clips
+  /// to). Null when there is no ink at all.
   static ui.Rect? _worldRectOf(Iterable<TileCoord> coords, BitmapSurface surface) {
     ui.Rect? union;
     final tileSize = surface.tileSize.toDouble();
@@ -256,15 +257,7 @@ abstract final class ActiveLayerFlatProjection {
     if (union == null) {
       return null;
     }
-    final width = surface.canvasSize.width.toDouble();
-    final height = surface.canvasSize.height.toDouble();
-    final pasteboard = ui.Rect.fromLTRB(
-      -width,
-      -height,
-      width * 2,
-      height * 2,
-    );
-    final clipped = union.intersect(pasteboard);
+    final clipped = union.intersect(surface.canvasSize.pasteboardRect);
     if (clipped.isEmpty) {
       return null;
     }

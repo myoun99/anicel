@@ -132,11 +132,12 @@ class _LayerStackPaintPass {
       }
     }
     // The group buffer's bounds are a SIZE HINT to the engine: it
-    // allocates an offscreen that big. The pasteboard is 5×5 canvases —
-    // 25× the area — so handing it over verbatim would make every folder
-    // buffer 25× more expensive than the picture it holds. Only what is
-    // ON SCREEN can matter, so intersect with the visible canvas-space
-    // rect (the same rect the surface painter uses to prioritise decodes).
+    // allocates an offscreen that big. The pasteboard is 3×3 canvases —
+    // 9× the area (5×5 and 25× until H2, 2026-08-22) — so handing it over
+    // verbatim would make every folder buffer 9× more expensive than the
+    // picture it holds. Only what is ON SCREEN can matter, so intersect
+    // with the visible canvas-space rect (the same rect the surface painter
+    // uses to prioritise decodes).
     final visibleRect = MatrixUtils.transformRect(
       // The inverse of the transform APPLIED above — the SNAPPED one.
       // Pulled back through the raw viewport, the coverage rect could stop
@@ -147,20 +148,15 @@ class _LayerStackPaintPass {
       ),
       Offset.zero & size,
     );
-    final pasteboardRect = Rect.fromLTRB(
-      _painter.canvasSize.pasteboardLeft.toDouble(),
-      _painter.canvasSize.pasteboardTop.toDouble(),
-      _painter.canvasSize.pasteboardRightExclusive.toDouble(),
-      _painter.canvasSize.pasteboardBottomExclusive.toDouble(),
-    );
+    final pasteboardRect = _painter.canvasSize.pasteboardRect;
     // Hole ① of the clamp plan: NOT ON SCREEN means NOT PAINTED, and one
     // law covers both ways off-screen happens — a degenerate view
     // (collapsed panel: empty visibleRect, which used to substitute the
-    // WHOLE 25× pasteboard) and a parked-away viewport (huge visibleRect
-    // that misses the pasteboard entirely, which used to walk the full
-    // stack into a clip that discards every op). The intersection is
-    // empty in both, nothing intersects the screen, and drawing nothing
-    // is pixel-identical on it.
+    // WHOLE pasteboard, 25× the page then) and a parked-away viewport
+    // (huge visibleRect that misses the pasteboard entirely, which used to
+    // walk the full stack into a clip that discards every op). The
+    // intersection is empty in both, nothing intersects the screen, and
+    // drawing nothing is pixel-identical on it.
     _visibleCanvasRect = pasteboardRect.intersect(visibleRect);
     if (_visibleCanvasRect.isEmpty) {
       canvas.restore();
@@ -409,10 +405,10 @@ class _LayerStackPaintPass {
     // no layer is ever asked what it is.
     //
     // 📐The buffer is the VISIBLE canvas-space rect, not the pasteboard —
-    // the pasteboard is 5×5 canvases and rasterising all of it would cost
-    // 25× what is on screen. It is not the canvas rect either: artwork
-    // parked on the pasteboard is visible and must composite with the rest
-    // (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
+    // the pasteboard is 3×3 canvases (5×5 until H2) and rasterising all of
+    // it would cost 9× what is on screen. It is not the canvas rect either:
+    // artwork parked on the pasteboard is visible and must composite with
+    // the rest (유저 2026-08-15, 「페이스트보드도 룰러할때 보이게」).
     final buffer = _composeDisplayBuffer(_contentExtent);
     if (buffer == null) {
       _paintContent(
@@ -450,11 +446,24 @@ class _LayerStackPaintPass {
     canvas.restore();
   }
 
+  /// 🚨★★★WHAT THE ACTIVE SLOT DRAWS, not what its surface holds (F-85,
+  /// 2026-09-15): the painter's own answer, and the float drawn into the
+  /// same slot. Read off the committed surface alone, a stroke in flight, a
+  /// fill's stamp, the stamp ghost and a transform's float were all cut at
+  /// the edge of the ink that had already landed — and came back the moment
+  /// a commit put tiles there.
   Rect _activeSurfaceExtent() =>
       _memoActiveExtent ??= switch (_painter.activeSurfacePainter) {
         null => Rect.zero,
-        final painter => surfaceContentWorldRect(painter.surface),
+        final painter => _withTheFloat(painter.drawnWorldRect),
       };
+
+  Rect _withTheFloat(Rect drawn) {
+    final float = _painter.floatOverlay?.value?.drawnWorldRect;
+    return float == null || float.isEmpty
+        ? drawn
+        : drawn.expandToInclude(float);
+  }
 
   Rect _bufferBoundsFor(CompositeNode<_PaintRow> node) =>
       _visibleCanvasRect.intersect(
