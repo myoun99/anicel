@@ -7,6 +7,8 @@ import '../../models/timeline_coverage.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import 'active_cut_controllers.dart';
 import 'cell_verbs.dart';
+import 'drags/exposure_edge_drag.dart'
+    show CutSyncCapture, commitWithCutSync, cutSyncResizeFor, cutSyncSnapshotFor, ridesCutLength;
 import 'range_selections.dart';
 import 'session_roles.dart';
 import 'camera.dart';
@@ -23,12 +25,14 @@ import 'camera.dart';
 class ExposureVerbs {
   ExposureVerbs({
     required SelectionAccess selection,
+    required ProjectAccess project,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required Camera camera,
     required RangeSelections rangeSelections,
     required CellVerbs cells,
   }) : _selection = selection,
+       _project = project,
        _changes = changes,
        _controllers = controllers,
        _camera = camera,
@@ -38,6 +42,7 @@ class ExposureVerbs {
   final Camera _camera;
 
   final SelectionAccess _selection;
+  final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final RangeSelections _rangeSelections;
@@ -236,7 +241,7 @@ class ExposureVerbs {
     if (selection != null &&
         selectionTargets != null &&
         selectionTargets.isNotEmpty) {
-      _controllers.timelineController.retimeBlocksForLayers({
+      _retimeKeepingTheCutOnItsRow({
         for (final entry in selectionTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
       });
@@ -265,11 +270,63 @@ class ExposureVerbs {
     if (block == null || block.entry.ghost) {
       return;
     }
-    _controllers.timelineController.retimeBlocksForLayer(
-      layerId: layer.id,
-      newLengthByStart: {block.startIndex: comma},
-    );
+    _retimeKeepingTheCutOnItsRow({
+      layer.id: {block.startIndex: comma},
+    });
     _changes.warmActiveCut();
     _changes.notifyChanged();
+  }
+
+  /// The comma buttons' retime, keeping the cut on its storyboard row.
+  ///
+  /// 🚨F-91 (유저 2026-09-12): 「스토리보드레이어의 마지막 프레임 블록에 대한
+  /// 코마 편집이 안먹힘. 컷길이 바뀌는걸 원하는게 맞으니까 법 나누지말고
+  /// 작동하도록」 · F-100: 「노출 편집 버튼, 1,2,3,4,n 을 통해 콘티레이어
+  /// 편집하면 컷길이랑 어긋남. 근본/구조적으로 어긋나지 않도록」. The buttons
+  /// retimed the row alone; the storyboard's write normalization then re-tiled
+  /// a shortened last panel back out to the cut's end, or left a row pushed
+  /// past it standing apart from the cut. Only the comma DRAG moved the cut
+  /// with its row, so the buttons now commit by the drag's own law.
+  void _retimeKeepingTheCutOnItsRow(
+    Map<LayerId, Map<int, int>> newLengthsByLayer,
+  ) {
+    final controller = _controllers.timelineController;
+    final cut = _project.activeCutOrNull;
+    final edits = <({Layer before, Layer after})>[];
+    CutSyncCapture? sync;
+    Layer? syncedRow;
+    for (final MapEntry(key: layerId, value: lengths)
+        in newLengthsByLayer.entries) {
+      final before = _project.layerById(layerId);
+      final after = before == null
+          ? null
+          : controller.retimedLayerForBlocks(
+              layer: before,
+              newLengthByStart: lengths,
+            );
+      if (before == null || after == null) {
+        continue;
+      }
+      edits.add((before: before, after: after));
+      if (sync == null && cut != null && ridesCutLength(before.kind)) {
+        sync = cutSyncSnapshotFor(project: _project, cut: cut, row: before);
+        syncedRow = after;
+      }
+    }
+    final resize = sync == null || syncedRow == null
+        ? null
+        : cutSyncResizeFor(project: _project, sync: sync, afterRow: syncedRow);
+    if (sync == null || resize == null) {
+      controller.retimeBlocksForLayers(newLengthsByLayer);
+      return;
+    }
+    commitWithCutSync(
+      controller: controller,
+      edits: edits,
+      sync: sync,
+      resize: resize,
+      description: 'Set comma exposure',
+    );
+    _changes.refreshAfterCutCommand();
   }
 }

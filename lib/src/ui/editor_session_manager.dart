@@ -2168,6 +2168,7 @@ class EditorSessionManager extends ChangeNotifier
   // would be a second name for the same verb (round 8, G4).
   late final ExposureVerbs exposureVerbs = ExposureVerbs(
     selection: this,
+    project: this,
     changes: this,
     controllers: activeCutControllers,
     camera: camera,

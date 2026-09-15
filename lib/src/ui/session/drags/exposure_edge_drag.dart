@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../../controllers/timeline_controller.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
@@ -103,12 +104,12 @@ CutSyncCapture? _captureCutSync({
   Layer? syncRow;
   if (bulk != null) {
     for (final candidate in bulk.values) {
-      if (_ridesCutLength(candidate.before.kind)) {
+      if (ridesCutLength(candidate.before.kind)) {
         syncRow = candidate.before;
         break;
       }
     }
-  } else if (anchor != null && _ridesCutLength(anchor.kind)) {
+  } else if (anchor != null && ridesCutLength(anchor.kind)) {
     syncRow = anchor;
   }
   final activeId = roles.project.activeCutId;
@@ -118,7 +119,7 @@ CutSyncCapture? _captureCutSync({
   if (syncRow == null || activeCut == null) {
     return null;
   }
-  return _cutSyncSnapshotFor(
+  return cutSyncSnapshotFor(
     project: roles.project,
     cut: activeCut,
     row: syncRow,
@@ -129,10 +130,10 @@ CutSyncCapture? _captureCutSync({
 /// anchor either — the STORYBOARD row is the sole rider (otherwise a bulk
 /// drag spanning an image row would silently switch which row drives the cut
 /// resize).
-bool _ridesCutLength(LayerKind kind) =>
+bool ridesCutLength(LayerKind kind) =>
     kind.coversWithoutGaps && !kind.holdsSingleCel;
 
-CutSyncCapture _cutSyncSnapshotFor({
+CutSyncCapture cutSyncSnapshotFor({
   required ProjectAccess project,
   required Cut cut,
   required Layer row,
@@ -386,7 +387,7 @@ class ExposureEdgeDrag implements EditorDragSession {
       blockStart: blockStartIndex,
       window: null,
       bulk: null,
-      cutSync: _cutSyncSnapshotFor(
+      cutSync: cutSyncSnapshotFor(
         project: roles.project,
         cut: cut,
         row: row,
@@ -628,67 +629,17 @@ class ExposureEdgeDrag implements EditorDragSession {
         _before;
   }
 
-  /// The synced durations/gaps for the row's end having moved to
-  /// [afterRow]'s end, or null when it has not moved.
-  ///
-  /// The cut ENDS WHERE THE ROW ENDS — that is what "always synced" means,
-  /// and taking it literally is also what makes the floor structural: a
-  /// row's end is its last block's end, so the duration can never land
-  /// before the last division (the `minimumCutDurationFor` guarantee the
-  /// plain trim clamps for by hand). Deriving the duration from a DELTA
-  /// instead would decouple the two the moment a stored row end differs
-  /// from the cut duration, and then the row's last comma clamps at one
-  /// frame while the duration keeps absorbing the whole delta.
+  /// The synced resize for [afterRow], or null when this drag carries no cut —
+  /// [cutSyncResizeFor], the law the comma buttons commit by too.
   CutResize? _cutSyncResizeFor(Layer afterRow) {
     final sync = _cutSync;
-    if (sync == null) {
-      return null;
-    }
-    final afterRowEnd = _storedRowEndOf(afterRow);
-    // Nothing moved on the row = nothing to sync (a drag that never left
-    // its frame must not snap a mismatched pair on its own).
-    if (afterRowEnd == sync.beforeRowEnd) {
-      return null;
-    }
-    // The structural floor above holds when the sync row IS the storyboard
-    // row. With a second covering kind (image) able to anchor the sync, the
-    // storyboard row's divisions are somebody else's data — clamp to their
-    // floor explicitly so shrinking through the IMAGE row can never strand a
-    // division outside the cut.
-    //
-    // Whichever row holds the divisions, the floor must be read off the form
-    // THIS DRAG is previewing, not off the repository's: the drag never
-    // writes mid-gesture, so a repository read answers about the row as it
-    // was when the pointer went down. Reading a stale floor against a live
-    // row end is `max()` comparing two different rows, and it pinned the
-    // duration above the row's end — the committed desync the user hit,
-    // invisible on the strip (whose last cell stretches to the duration) and
-    // a hole in the timeline (which paints the stored blocks).
-    //
-    // On the storyboard row this now collapses: a previewed row's end is its
-    // last block's end, so `floor <= afterRowEnd` always and the duration
-    // simply follows the row.
-    final syncedCut = _roles.project.cutById(sync.cutId);
-    final divisionRow = syncedCut == null
+    return sync == null
         ? null
-        : storyboardLayerForCut(syncedCut);
-    final floor = divisionRow == null
-        ? 1
-        : minimumCutDurationForStoryboardRow(
-            divisionRow.id == afterRow.id ? afterRow : divisionRow,
+        : cutSyncResizeFor(
+            project: _roles.project,
+            sync: sync,
+            afterRow: afterRow,
           );
-    final duration = math.max(floor, afterRowEnd);
-    return (
-      durations: {sync.cutId: duration},
-      gaps: {
-        // The FOLLOWING cut rides the cut's end, so its gap answers to how
-        // far that end actually moved — not to how far the row's did.
-        ?sync.nextCutId: followingGapAfterEndMove(
-          baseGap: sync.nextBeforeGap,
-          growth: duration - sync.beforeDuration,
-        ),
-      },
-    );
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
@@ -718,19 +669,13 @@ class ExposureEdgeDrag implements EditorDragSession {
     //
     // No fade re-anchor rides along any more (R4): the fade keys are the
     // TRACK's, on the global axis — a cut resize edits the cut, not them.
-    _roles.controllers.timelineController
-        .commitLayerTimelineDragsWithCutDurations(
-          edits: result.edits,
-          beforeDurations: {sync.cutId: sync.beforeDuration},
-          afterDurations: resize.durations,
-          beforeGaps: {
-            if (sync.nextCutId != null &&
-                resize.gaps.containsKey(sync.nextCutId))
-              sync.nextCutId!: sync.nextBeforeGap,
-          },
-          afterGaps: resize.gaps,
-          description: 'Retime storyboard cells',
-        );
+    commitWithCutSync(
+      controller: _roles.controllers.timelineController,
+      edits: result.edits,
+      sync: sync,
+      resize: resize,
+      description: 'Retime storyboard cells',
+    );
     _roles.changes.refreshAfterCutCommand();
     _roles.changes.warmActiveCut();
     _roles.changes.notifyChanged();
@@ -742,4 +687,91 @@ class ExposureEdgeDrag implements EditorDragSession {
   void cancel() {
     _roles.internals.dragPreview.value = null;
   }
+}
+
+/// Commits [edits] with the cut resize [sync] and [resize] imply, as ONE undo
+/// step (feedback #9: one undo restores both, or a drawing lands outside its
+/// cut) — the comma drag's release and the comma buttons' press.
+void commitWithCutSync({
+  required TimelineController controller,
+  required List<({Layer before, Layer after})> edits,
+  required CutSyncCapture sync,
+  required CutResize resize,
+  required String description,
+}) => controller.commitLayerTimelineDragsWithCutDurations(
+  edits: edits,
+  beforeDurations: {sync.cutId: sync.beforeDuration},
+  afterDurations: resize.durations,
+  beforeGaps: {
+    if (sync.nextCutId != null && resize.gaps.containsKey(sync.nextCutId))
+      sync.nextCutId!: sync.nextBeforeGap,
+  },
+  afterGaps: resize.gaps,
+  description: description,
+);
+
+/// The synced durations/gaps for the row's end having moved to
+/// [afterRow]'s end, or null when it has not moved.
+///
+/// The cut ENDS WHERE THE ROW ENDS — that is what "always synced" means,
+/// and taking it literally is also what makes the floor structural: a
+/// row's end is its last block's end, so the duration can never land
+/// before the last division (the `minimumCutDurationFor` guarantee the
+/// plain trim clamps for by hand). Deriving the duration from a DELTA
+/// instead would decouple the two the moment a stored row end differs
+/// from the cut duration, and then the row's last comma clamps at one
+/// frame while the duration keeps absorbing the whole delta.
+///
+/// 🚨F-91 · F-100: the comma BUTTONS commit by this too — one law for the
+/// drag and the press ([commitWithCutSync]).
+CutResize? cutSyncResizeFor({
+  required ProjectAccess project,
+  required CutSyncCapture sync,
+  required Layer afterRow,
+}) {
+  final afterRowEnd = _storedRowEndOf(afterRow);
+  // Nothing moved on the row = nothing to sync (a drag that never left
+  // its frame must not snap a mismatched pair on its own).
+  if (afterRowEnd == sync.beforeRowEnd) {
+    return null;
+  }
+  // The structural floor above holds when the sync row IS the storyboard
+  // row. With a second covering kind (image) able to anchor the sync, the
+  // storyboard row's divisions are somebody else's data — clamp to their
+  // floor explicitly so shrinking through the IMAGE row can never strand a
+  // division outside the cut.
+  //
+  // Whichever row holds the divisions, the floor must be read off the form
+  // THIS DRAG is previewing, not off the repository's: the drag never
+  // writes mid-gesture, so a repository read answers about the row as it
+  // was when the pointer went down. Reading a stale floor against a live
+  // row end is `max()` comparing two different rows, and it pinned the
+  // duration above the row's end — the committed desync the user hit,
+  // invisible on the strip (whose last cell stretches to the duration) and
+  // a hole in the timeline (which paints the stored blocks).
+  //
+  // On the storyboard row this now collapses: a previewed row's end is its
+  // last block's end, so `floor <= afterRowEnd` always and the duration
+  // simply follows the row.
+  final syncedCut = project.cutById(sync.cutId);
+  final divisionRow = syncedCut == null
+      ? null
+      : storyboardLayerForCut(syncedCut);
+  final floor = divisionRow == null
+      ? 1
+      : minimumCutDurationForStoryboardRow(
+          divisionRow.id == afterRow.id ? afterRow : divisionRow,
+        );
+  final duration = math.max(floor, afterRowEnd);
+  return (
+    durations: {sync.cutId: duration},
+    gaps: {
+      // The FOLLOWING cut rides the cut's end, so its gap answers to how
+      // far that end actually moved — not to how far the row's did.
+      ?sync.nextCutId: followingGapAfterEndMove(
+        baseGap: sync.nextBeforeGap,
+        growth: duration - sync.beforeDuration,
+      ),
+    },
+  );
 }
