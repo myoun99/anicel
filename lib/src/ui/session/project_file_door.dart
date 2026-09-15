@@ -58,6 +58,12 @@ typedef _SaveCarry = ({
   void Function(double)? onProgress,
 });
 
+/// What [ProjectFileDoor.writeArchiveCopy] wrote, and everything
+/// [ProjectFileDoor.adoptPlacedArchive] needs to make that archive the
+/// project: the media entry names it stored, and the edit count it is clean
+/// as of ([ProjectFile.bindToSavedFile]).
+typedef StagedArchive = ({Map<String, String> entryNames, int cleanAsOf});
+
 /// Saves the session into a `.anicel` and opens one back.
 /// Who asked for a save — the ONE thing the two entrances disagree about.
 ///
@@ -202,8 +208,12 @@ class ProjectFileDoor {
   /// ending their stroke under their hand would split one line into two,
   /// with two undo entries. [AutosaveClock] already answers that case the
   /// right way — it HOLDS the fire until the pen lifts — and the residual
-  /// race (a stroke that starts after the fire) costs nothing, because the
-  /// dirty mark keeps the work for the next save.
+  /// race (a stroke that starts after the fire) costs nothing, because a
+  /// save is clean only as of the edits it captured before reading the
+  /// project ([ProjectFile.bindToSavedFile]'s `cleanAsOf`): the stroke stays
+  /// unsaved, for the next save and for the close. 🪦Until F-128 this
+  /// sentence was false — the save cleared the mark at its end, stroke or
+  /// no stroke.
   ///
   /// ⚠️[SaveAsked] is required rather than derived so a new caller has to
   /// answer the question. ⛔It must never be read off `onProgress`, which
@@ -214,12 +224,18 @@ class ProjectFileDoor {
   /// ⚠️The pen goes FIRST and synchronously. Its landing is the pointer-up
   /// path's own four-step sequence, which finishes inside one event;
   /// putting an await in front of it would reopen the window this closes.
-  Future<void> _settleWorkInFlight(SaveAsked asked) async {
+  ///
+  /// Returns the edit count the save is clean as of — counted once what was
+  /// in flight has landed and before anything reads the project. Counted
+  /// HERE and nowhere else, so a writer that settles cannot forget to count
+  /// ([ProjectFile.bindToSavedFile]).
+  Future<int> _settleWorkInFlight(SaveAsked asked) async {
     if (asked == SaveAsked.byAPerson) {
       _liveStrokeLanding.landNow();
     }
     // The archive's parameters and raster must never disagree.
     await _textCelBakes.flushTextCelBakes();
+    return _file.editCount;
   }
 
   Future<void> saveProjectToFile(
@@ -264,14 +280,15 @@ class ProjectFileDoor {
   /// EMPTY placeholder — an unopenable husk where the user meant to put
   /// their project. A complete archive staged up front costs the same
   /// move and can never strand a husk.
-  /// Returns the media entry names the archive was written with, which is
-  /// what [adoptPlacedArchive] needs if this copy becomes the project.
-  Future<Map<String, String>> writeArchiveCopy(
+  /// Returns what [adoptPlacedArchive] needs if this copy becomes the
+  /// project: the media entry names it was written with, and the edit count
+  /// it is clean as of.
+  Future<StagedArchive> writeArchiveCopy(
     String path, {
     required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
-    await _settleWorkInFlight(asked);
+    final cleanAsOf = await _settleWorkInFlight(asked);
     final mediaToStore = projectMediaSources(
       project: _project.repository.requireProject(),
       projectFilePath: _file.path,
@@ -291,7 +308,10 @@ class ProjectFileDoor {
       onProgress: onProgress,
       adoptRefs: false,
     );
-    return mediaEntryNamesFor(mediaToStore);
+    return (
+      entryNames: mediaEntryNamesFor(mediaToStore),
+      cleanAsOf: cleanAsOf,
+    );
   }
 
   /// The archive at [placedPath] IS this project now — no second write.
@@ -315,9 +335,13 @@ class ProjectFileDoor {
   /// in RAM — which is what a never-saved session was already doing.
   void adoptPlacedArchive(
     String placedPath, {
-    required Map<String, String> mediaEntryNames,
+    required StagedArchive staged,
   }) {
-    _file.bindToSavedFile(placedPath, entryNames: mediaEntryNames);
+    _file.bindToSavedFile(
+      placedPath,
+      entryNames: staged.entryNames,
+      cleanAsOf: staged.cleanAsOf,
+    );
     _changes.notifyChanged();
   }
 
@@ -437,7 +461,7 @@ class ProjectFileDoor {
     required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
-    await _settleWorkInFlight(asked);
+    final cleanAsOf = await _settleWorkInFlight(asked);
     // Captured BEFORE the save moves the project path — it is what tells a
     // Save As from an ordinary save, which decides `rewriteWhole` below.
     // 🪦The comment here said 「a Save As has to retire the sidecars of the
@@ -515,6 +539,7 @@ class ProjectFileDoor {
     _file.bindToSavedFile(
       filePath,
       entryNames: mediaEntryNamesFor(mediaToStore),
+      cleanAsOf: cleanAsOf,
     );
     _changes.notifyChanged();
   }

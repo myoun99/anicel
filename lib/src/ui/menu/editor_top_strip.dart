@@ -36,7 +36,7 @@ import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
-import '../session/project_file_door.dart' show SaveAsked;
+import '../session/project_file_door.dart' show SaveAsked, StagedArchive;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
@@ -1658,8 +1658,8 @@ void _tellWhatTheSaveCouldNotCarry(
   );
 }
 
-/// Writes the whole live session to [stagingPath] and answers what media it
-/// stored — [ProjectFileDoor.writeArchiveCopy] in production.
+/// Writes the whole live session to [stagingPath] and answers what it wrote
+/// — [ProjectFileDoor.writeArchiveCopy] in production.
 ///
 /// 🚨★★★**A SEAM BECAUSE THE WRITER CANNOT RUN UNDER A FAKE CLOCK**, not
 /// because anyone wanted a choice about who writes the archive.
@@ -1674,7 +1674,7 @@ void _tellWhatTheSaveCouldNotCarry(
 /// ([FolderPicker.debugFileExporter] and friends). See the gravestone on
 /// [EditorTopStrip].
 typedef ProjectArchiveWriter =
-    Future<Map<String, String>> Function(
+    Future<StagedArchive> Function(
       String stagingPath,
       void Function(double) report,
     );
@@ -1697,10 +1697,10 @@ Future<void> promptSaveProjectAs(
   final initialDirectory = currentPath != null && currentPath.contains('/')
       ? currentPath.substring(0, currentPath.lastIndexOf('/'))
       : ensuredAppDocumentsDirectorySync();
-  // The media the staged archive stored, kept from the staging call to the
+  // What the staged archive holds, kept from the staging call to the
   // adoption below — the two are one decision ("this file is the project
   // now") split across the picker that sits between them.
-  Map<String, String>? staged;
+  StagedArchive? staged;
   final write =
       writeArchive ??
       (String path, void Function(double) report) =>
@@ -1761,7 +1761,7 @@ Future<void> promptSaveProjectAs(
     // write to afterwards, and Save As died with 「the location refused
     // both a direct write and a coordinated replace」 on a path it had
     // just successfully filled (실기 08-27, iPhone).
-    session.projectDoor.adoptPlacedArchive(path, mediaEntryNames: written);
+    session.projectDoor.adoptPlacedArchive(path, staged: written);
     recordRecentProject(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );

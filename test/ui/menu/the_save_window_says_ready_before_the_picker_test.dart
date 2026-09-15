@@ -94,7 +94,10 @@ void main() {
                 writeArchive: (path, report) async {
                   File(path).writeAsBytesSync(const [7, 7, 7, 7]);
                   report(1);
-                  return const <String, String>{};
+                  return (
+                    entryNames: const <String, String>{},
+                    cleanAsOf: session.projectFile.editCount,
+                  );
                 },
               ),
               child: const Text('go'),
@@ -206,7 +209,10 @@ void main() {
                   // was in a file that has gone.
                   session.projectDoor.celsLostToAMissingFile = {lostKey};
                   report(1);
-                  return const <String, String>{};
+                  return (
+                    entryNames: const <String, String>{},
+                    cleanAsOf: session.projectFile.editCount,
+                  );
                 },
               ),
               child: const Text('go'),

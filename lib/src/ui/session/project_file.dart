@@ -394,13 +394,37 @@ class ProjectFile {
     return path != null && !File(path).existsSync();
   }
 
-  bool _hasUnsavedChanges = false;
+  /// Every edit this session has made — [markDirty] counts one per history
+  /// change.
+  int _edits = 0;
 
-  /// Whether edits exist since the last save/open (autosave + title dots).
-  bool get hasUnsavedChanges => _hasUnsavedChanges;
+  /// [_edits] as of the state a file holds — or [_noFileHoldsIt].
+  ///
+  /// 🚨★★★**UNSAVED IS A COMPARISON, NOT A FLAG** (F-128, 2026-09-15 — 유저:
+  /// 「닫으려고 할때 편집한게 있으니 저장하라는 메시지가 언제부턴가 안뜸 …
+  /// 최대한 규칙 단순화」). It was a bool that a save cleared at its END, so
+  /// an edit that landed while the save was still writing — the autosave
+  /// tick has no window, so nothing stops the pen — was marked and then
+  /// un-marked: in no file, flagged nowhere, and the close asked nothing.
+  /// A save now says which edits its file holds ([bindToSavedFile]'s
+  /// `cleanAsOf`, captured before the save reads the project), so an edit
+  /// after that count stays unsaved by construction — there is no clear
+  /// left to put in the wrong place.
+  int _editsInFile = 0;
+
+  /// No count matches it: memory already differs from every file.
+  static const int _noFileHoldsIt = -1;
+
+  /// Whether this session holds edits no file has (autosave, the close
+  /// gate, the title dots).
+  bool get hasUnsavedChanges => _edits != _editsInFile;
+
+  /// The count a save captures before it reads the project, and hands back
+  /// as [bindToSavedFile]'s `cleanAsOf`.
+  int get editCount => _edits;
 
   void markDirty() {
-    _hasUnsavedChanges = true;
+    _edits += 1;
   }
 
   /// True while a manual save is running, so the autosave tick stands down
@@ -454,21 +478,26 @@ class ProjectFile {
   /// way out; nothing may save it again.
   bool _discardedUnsavedWork = false;
 
-  /// [filePath] IS the project now, carrying [entryNames] — the tail BOTH
-  /// writers share: the direct save and the picker-placed archive that is
-  /// adopted without a second write.
+  /// [filePath] IS the project now, carrying [entryNames] and every edit up
+  /// to [cleanAsOf] — the tail BOTH writers share: the direct save and the
+  /// picker-placed archive that is adopted without a second write.
   ///
   /// ⛔They used to state it twice, line for line, which is a copy by
   /// connascence even where the text drifted: one of them growing a step
   /// the other missed is a project that comes back holding the wrong
   /// media.
+  ///
+  /// ⚠️[cleanAsOf] is the [editCount] the writer captured BEFORE it read the
+  /// project. An edit that lands after may or may not have made it into the
+  /// bytes; either way it stays unsaved, which costs a question at most.
   void bindToSavedFile(
     String filePath, {
     required Map<String, String> entryNames,
+    required int cleanAsOf,
   }) {
     _mediaEntryNames = entryNames;
     _projectFilePath = filePath;
-    _hasUnsavedChanges = false;
+    _editsInFile = cleanAsOf;
     _completedSaveGeneration += 1;
     invalidateConformStoredBytes();
     // A save is the session saying it is worth keeping after all; whatever
@@ -498,7 +527,7 @@ class ProjectFile {
     // A different project is a different session; a discard that belonged
     // to the last one must not silence this one's autosave.
     _discardedUnsavedWork = false;
-    _hasUnsavedChanges = unsaved;
+    _editsInFile = unsaved ? _noFileHoldsIt : _edits;
   }
 
   /// This session is bound to NO file — what an imported project is until

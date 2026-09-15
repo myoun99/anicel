@@ -177,14 +177,14 @@ void main() {
     expect(s.projectFile.hasUnsavedChanges, isTrue);
 
     final staged = '${folder.path.replaceAll('\\', '/')}/staged.anicel';
-    final names = await projectDoorOf(s).writeArchiveCopy(staged, asked: SaveAsked.byAPerson);
+    final written = await projectDoorOf(s).writeArchiveCopy(staged, asked: SaveAsked.byAPerson);
 
     // What the export picker does, and all it does: MOVE.
     final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';
     File(staged).renameSync(placed);
     final bytesAsPlaced = File(placed).readAsBytesSync();
 
-    projectDoorOf(s).adoptPlacedArchive(placed, mediaEntryNames: names);
+    projectDoorOf(s).adoptPlacedArchive(placed, staged: written);
 
     expect(s.projectFile.path, placed);
     expect(

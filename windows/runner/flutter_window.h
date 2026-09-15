@@ -23,11 +23,18 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  // Asks the app whether |window| may close, and closes it when the app lets
+  // go. The WM_CLOSE case in MessageHandler says why the runner asks.
+  void AskTheAppToClose(HWND window);
+
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Whether the app has drawn a frame, and so has someone to answer a close.
+  bool app_can_answer_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
