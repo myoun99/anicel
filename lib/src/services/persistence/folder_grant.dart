@@ -17,6 +17,7 @@
 /// there is invisible; this one does not.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -844,41 +845,86 @@ abstract final class FolderPicker {
         'a wait with no deadline needs a way to be cancelled',
       );
     }
+    // 🚨★★★ONE WAIT, ONE CLOCK, ONE CANCEL (F-135, 유저 2026-09-15: 「우선
+    // 프로젝트 열 때 여는중 이라고만뜨는데」). The provider's fetch and the
+    // pick becoming readable are ONE wait to the person watching. The fetch
+    // used to be awaited bare, before the clock existed — and on an iPad it
+    // IS the long part (a 94MB project on Drive): the window said only
+    // 「여는 중…」, never that it was waiting for the cloud, and Cancel did
+    // nothing until the provider let go. Every wait in here goes through
+    // [tick]: stopped when the person stops it, reported as it grows, and
+    // bounded only by [within]. 🧪Measured the same day: once the bytes are
+    // local, the app's own read and apply of that project take ~160ms — this
+    // wait is what the window is for.
+    //
+    // ⚠️No percent for the fetch: iOS gives an app no progress for another
+    // app's File Provider download (the subscriber API is macOS-only), so the
+    // line says what is being waited for and for how long — never a number
+    // it cannot know.
+    var waited = Duration.zero;
+    var pause = step;
+    // One tick of the wait; false once [within] has passed. A wait that has
+    // something to finish passes it as [sooner] and ends the tick early when
+    // it does — and a tick ended that way reports nothing, because an
+    // instant answer is not a wait. The timer goes with it, so nothing is
+    // left ticking behind an answered question.
+    Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
+      if (isCancelled?.call() ?? false) {
+        throw const MaterializeCancelled();
+      }
+      if (within != null && waited >= within) {
+        return false;
+      }
+      final elapsed = Completer<void>();
+      final timer = Timer(pause, elapsed.complete);
+      await (sooner == null
+          ? elapsed.future
+          : Future.any<void>([sooner, elapsed.future]));
+      timer.cancel();
+      if (settled?.call() ?? false) {
+        return true;
+      }
+      waited += pause;
+      onWaiting?.call(waited);
+      // Doubling, capped: the common case lands within a second or two, and
+      // a slow fetch must not be asked a hundred times a minute.
+      pause = pause * 2;
+      if (pause > _materializeMaxStep) {
+        pause = _materializeMaxStep;
+      }
+      return true;
+    }
+
     // 🎯THE PROVIDER IS ASKED BEFORE THE FILE IS BELIEVED. A materialised
     // item reads at once — and it may be the copy the provider cached last
     // time, not what the cloud holds now (2026-09-13: twelve cuts on the
     // desktop, one on the iPad, same path). The coordinated read is what
     // makes the provider bring the current item; it copies nothing, and
     // where there is no coordinator it is not asked at all.
+    // ⚠️A Cancel here leaves the native coordination to finish on its own
+    // thread: its block only opens the item and closes it again, so there is
+    // nothing to undo — only nothing left to wait for.
     if (hasFileCoordinator) {
-      await readInPlaceCoordinated(path);
+      var answered = false;
+      final ask = readInPlaceCoordinated(path)
+          .then<void>((_) {}, onError: (Object _) {})
+          .whenComplete(() => answered = true);
+      while (!answered) {
+        if (!await tick(sooner: ask, settled: () => answered)) {
+          break;
+        }
+      }
     }
     if (await _plainlyReadable(path)) {
       return (path: path, staged: false);
     }
-    final deadline = within;
     if (await File(path).exists()) {
-      // Ask the platform to fetch it, then wait for the PICK to read —
-      // no copy anywhere in this loop.
+      // Ask the platform to fetch it, then wait for the PICK to read — no
+      // copy anywhere in this wait.
       await requestFileDownload(path);
-      var waited = Duration.zero;
-      var pause = step;
-      while (deadline == null || waited < deadline) {
-        if (isCancelled?.call() ?? false) {
-          throw const MaterializeCancelled();
-        }
-        await Future<void>.delayed(pause);
-        waited += pause;
-        onWaiting?.call(waited);
+      while (await tick()) {
         if (await _plainlyReadable(path)) {
           return (path: path, staged: false);
-        }
-        // Doubling, capped: the common case lands within a second or
-        // two, and a slow fetch must not be asked a hundred times a
-        // minute.
-        pause = pause * 2;
-        if (pause > _materializeMaxStep) {
-          pause = _materializeMaxStep;
         }
       }
     }

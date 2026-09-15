@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -64,6 +65,75 @@ void main() {
     );
     expect(source.staged, isFalse);
     expect(source.path, path, reason: 'the pick is the file that opens');
+  });
+
+  /// 🚨★★★F-135 (유저 2026-09-15: 「우선 프로젝트 열 때 여는중 이라고만
+  /// 뜨는데」) — on an iPad the provider's fetch IS the long wait, and it
+  /// used to be awaited before the wait's clock and its Cancel existed.
+  test('🚨 while the PROVIDER holds the file, the wait reports itself',
+      () async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    final path = '${temp.path}${Platform.pathSeparator}fetching.anicel';
+    File(path).writeAsBytesSync(const [9, 9]);
+    final provider = Completer<bool>();
+    FolderPicker.debugCoordinatedInPlaceReader = (_) => provider.future;
+    final seen = <Duration>[];
+
+    final opening = FolderPicker.materializeOpenedFile(
+      path,
+      within: null,
+      step: const Duration(milliseconds: 5),
+      onWaiting: seen.add,
+      isCancelled: () => false,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(seen, isNotEmpty, reason: 'the fetch is the wait a window draws');
+    provider.complete(true);
+
+    final source = await opening;
+    expect(source.path, path, reason: 'when the provider lets go, it opens');
+  });
+
+  test('🚨 a Cancel while the PROVIDER holds the file stops the open there',
+      () async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    final path = '${temp.path}${Platform.pathSeparator}stopped.anicel';
+    File(path).writeAsBytesSync(const [9, 9]);
+    // The provider answers late, and fine — so an open that ignored the
+    // Cancel would come back with the pick instead of stopping.
+    FolderPicker.debugCoordinatedInPlaceReader = (_) =>
+        Future<bool>.delayed(const Duration(milliseconds: 400), () => true);
+    var stop = false;
+
+    final opening = FolderPicker.materializeOpenedFile(
+      path,
+      within: null,
+      step: const Duration(milliseconds: 5),
+      isCancelled: () => stop,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    stop = true;
+
+    await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
+  });
+
+  test('an instant answer from the provider is not a wait — nothing is '
+      'reported', () async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    final path = '${temp.path}${Platform.pathSeparator}instant.anicel';
+    File(path).writeAsBytesSync(const [9, 9]);
+    FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
+    final seen = <Duration>[];
+
+    await FolderPicker.materializeOpenedFile(
+      path,
+      within: null,
+      step: const Duration(milliseconds: 50),
+      onWaiting: seen.add,
+      isCancelled: () => false,
+    );
+
+    expect(seen, isEmpty);
   });
 
   test('without a coordinator nothing is asked — there is nobody to ask',
