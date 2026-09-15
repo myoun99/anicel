@@ -17,6 +17,7 @@ class AudioLevelMeter extends StatelessWidget {
     super.key,
     required this.controller,
     required this.resolvePeaks,
+    this.metering = true,
   });
 
   final CanvasPlaybackController controller;
@@ -25,12 +26,19 @@ class AudioLevelMeter extends StatelessWidget {
   /// widget stays testable without a device).
   final ({double left, double right}) Function() resolvePeaks;
 
+  /// Whether this meter reads the peaks at all. A transport row keeps the
+  /// meter's seat while another scope plays (F-111), and it must not light
+  /// up with that scope's sound.
+  final bool metering;
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int?>(
       valueListenable: controller.globalFrameIndexListenable,
       builder: (context, frame, _) {
-        final peaks = frame == null ? (left: 0.0, right: 0.0) : resolvePeaks();
+        final peaks = frame == null || !metering
+            ? (left: 0.0, right: 0.0)
+            : resolvePeaks();
         return Semantics(
           label: AppText.strings.audioLevelMeter,
           child: SizedBox(

@@ -162,8 +162,15 @@ class PlaybackTransportControls extends StatelessWidget {
             // The level meter (AUDIO-PRO R2), only while THIS scope's
             // playback is live — a silent strip otherwise would just be
             // chrome.
-            if (resolveMeterPeaks != null && controlsThisScope)
-              _meter(),
+            //
+            // ↩️F-111 (유저 2026-09-12): 「재생시 음량있는부분 마이크 오른쪽부분
+            // 공간이 넓어지는데 역시 이런 공간 바뀌는거 해결하고싶으니」 — the
+            // meter MOUNTED with playback, so starting it opened a gap beside
+            // the mic: 없다가 생기는 UI. Its SEAT is reserved now and only
+            // the bars follow this scope's playback. The reason above still
+            // holds for what it paints: since T29 a silent meter paints
+            // nothing, so the seat costs no chrome.
+            if (resolveMeterPeaks != null) _meter(controlsThisScope),
             // ⛔The DROP readout is not here any more — it leads the row
             // (T29). Trailing a `min`-width row is exactly what made the
             // buttons move when its digits appeared.
@@ -173,12 +180,13 @@ class PlaybackTransportControls extends StatelessWidget {
     );
   }
 
-  Padding _meter() {
+  Padding _meter(bool metering) {
     return Padding(
       padding: const EdgeInsets.only(left: 6),
       child: AudioLevelMeter(
         controller: controller,
         resolvePeaks: resolveMeterPeaks!,
+        metering: metering,
       ),
     );
   }
