@@ -90,11 +90,13 @@ void main() {
     var notified = 0;
     s.addListener(() => notified += 1);
 
-    s.layerMarks.setLayerMark(layer.id, const LayerMark(process: LayerProcess.layout));
+    // KEY, not LO: the first row is the drawing row, born LO (F-76), and
+    // writing the label it already wears is no write at all.
+    s.layerMarks.setLayerMark(layer.id, const LayerMark(process: LayerProcess.key));
 
     expect(
       s.layers.firstWhere((row) => row.id == layer.id).mark,
-      const LayerMark(process: LayerProcess.layout),
+      const LayerMark(process: LayerProcess.key),
       reason: 'LIVENESS — the write has to have landed',
     );
     expect(notified, greaterThan(0));

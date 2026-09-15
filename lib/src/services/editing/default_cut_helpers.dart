@@ -4,6 +4,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
 import '../../core/timeline/timeline_defaults.dart';
 import 'default_layer_helpers.dart';
@@ -47,7 +48,7 @@ Cut createDefaultCut({
           duration: defaultCutDuration,
           canvasSize: canvasSize,
         ),
-      ),
+      ).copyWith(mark: LayerMark.bornOfKind(LayerKind.animation)),
       // The timesheet fixture row every cut carries: DIR 1. (The SE rows
       // S1·S2 are TRACK fixtures — see createDefaultTrack.)
       createInstructionLayer(cutId: cutId),

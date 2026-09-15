@@ -114,7 +114,9 @@ void main() {
     final markedId = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
-    marks(s).setLayerMark(markedId, const LayerMark(process: LayerProcess.layout));
+    // KEY, not LO: the drawing row is born LO (F-76), and writing the label
+    // it already wears changes nothing, so it would bank no undo to sweep.
+    marks(s).setLayerMark(markedId, const LayerMark(process: LayerProcess.key));
     final undosAfterMark = s.canUndo;
     expect(undosAfterMark, isTrue);
 
@@ -123,7 +125,7 @@ void main() {
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      const LayerMark(process: LayerProcess.layout),
+      const LayerMark(process: LayerProcess.key),
     );
 
     // A markless sweep adds no history: clearing twice then undoing ONCE
@@ -133,7 +135,7 @@ void main() {
     s.undo();
     expect(
       s.layers.firstWhere((layer) => layer.id == markedId).mark,
-      const LayerMark(process: LayerProcess.layout),
+      const LayerMark(process: LayerProcess.key),
     );
   });
 

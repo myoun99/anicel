@@ -131,6 +131,9 @@ class FoldersAndAttachments {
         attachedPlacement: placement,
         attachedMode: mode,
         folderId: folderId,
+        // F-133: made FROM the row you stand on, it starts with that row's
+        // colour label — the door names its target ([LayerMark.inherited]).
+        mark: active.mark.inherited,
       ),
       insertionIndex: insertionIndex,
     );

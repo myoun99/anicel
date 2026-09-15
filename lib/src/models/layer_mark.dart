@@ -1,3 +1,4 @@
+import 'layer_kind.dart';
 import 'layer_process.dart';
 
 /// The layer's 색 라벨 — which 공정 this layer is, and whose 수정 it is.
@@ -39,6 +40,34 @@ class LayerMark {
   /// plate is painted for it too — it wears the paper colour so the tap
   /// target stays discoverable (⑳, 2026-08-17).
   static const LayerMark none = LayerMark._none();
+
+  /// This label as the first value of a row made FROM this row (F-133, 유저
+  /// 2026-09-14): 「+ 종류버튼 통해 어태치 레이어 생성시, 색라벨의 초기값은
+  /// 대상 레이어의 색라벨을 이어받음 … 하드코딩하지말것 … 이어받는건 초기
+  /// 값을 그렇게 세팅한단거지 이후 변경가능」. The door names the row it makes
+  /// from and reads this off it.
+  ///
+  /// ⚠️The TAKE is not carried: the user named the colour label, and the take
+  /// is a chip of its own — the new row starts at its own first pass.
+  LayerMark get inherited =>
+      isNone ? none : LayerMark(process: process, revise: revise);
+
+  /// The label a row of [kind] made from nothing is born with (F-76, 유저
+  /// 2026-09-12): 「콘티레이어 생성하면 색라벨 콘티 소재가 되도록. 이미지
+  /// 레이어는 미술 소재, 애니메이션 레이어는 LO 소재」 — the kind's stage, as its
+  /// 소재. The kinds the user did not name are born unlabelled.
+  static LayerMark bornOfKind(LayerKind kind) => switch (kind) {
+    LayerKind.storyboard => const LayerMark(process: LayerProcess.conte),
+    LayerKind.image => const LayerMark(process: LayerProcess.art),
+    LayerKind.animation => const LayerMark(process: LayerProcess.layout),
+    LayerKind.folder ||
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.transition ||
+    LayerKind.camera ||
+    LayerKind.adjustment => none,
+  };
 
   /// Which stage this layer is. Null only for [none].
   final LayerProcess? process;

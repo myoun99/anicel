@@ -184,7 +184,8 @@ void main() {
       c.setLayerMark(
         cutId: row.cutId,
         layerId: row.layerId,
-        mark: const LayerMark(process: LayerProcess.layout),
+        // KEY, not LO: [rowOf] is the drawing row, born LO (F-76).
+        mark: const LayerMark(process: LayerProcess.key),
       );
     });
 

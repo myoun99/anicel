@@ -19,6 +19,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import '../../services/commands/cut_command_input_planner.dart'
@@ -173,7 +174,11 @@ class LayerStack {
                 kind: LayerKind.text,
               )
             : createDefaultAnimationLayer(layerId: layerId, cut: cut);
-        _layerVerbs.addRowAboveActive(newLayerFor);
+        // F-76: a row made from nothing wears its kind's label
+        // ([LayerMark.bornOfKind]).
+        _layerVerbs.addRowAboveActive(
+          (cut) => newLayerFor(cut).copyWith(mark: LayerMark.bornOfKind(kind)),
+        );
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack
         // above the active layer like every other kind — which is exactly
