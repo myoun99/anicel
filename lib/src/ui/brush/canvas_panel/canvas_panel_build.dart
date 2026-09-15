@@ -79,9 +79,7 @@ class _PanelBuild {
     // playhead too — the region is view state, and every
     // pixel op (lift/fill/draw-inside) already guards the
     // missing coordinator itself.
-    _selectionLayerActive = canvasToolSelects(
-      _state.widget.brushToolState.tool,
-    );
+    _selectionLayerActive = _state._selectionSeat.selectionLayerMounted;
     // R28-S: with a painting tool armed the panel paints the
     // committed region's ants itself (the interaction layer
     // is not mounted, but the selection still exists).

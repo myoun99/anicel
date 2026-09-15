@@ -64,6 +64,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.interactiveContentPose,
     this.activeSourceEffects = const <ResolvedLayerEffect>[],
     this.contentOverride,
+    this.toolInputEnabled = true,
     this.fitFocusRect,
     this.autoFrame,
     this.unframedFit,
@@ -192,6 +193,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// its own blank-canvas override, so the paper always shows.
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   contentOverride;
+
+  /// Forwarded to [BrushCanvasPanel.toolInputEnabled]: false while the
+  /// content takes no tool — playback.
+  final bool toolInputEnabled;
 
   /// Forwarded to [BrushCanvasPanel]: canvas-space rect the Fit button
   /// frames instead of the whole canvas.
@@ -518,6 +523,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       interactiveContentPose: widget.interactiveContentPose,
       activeSourceEffects: widget.activeSourceEffects,
       contentOverride: contentOverride,
+      toolInputEnabled: widget.toolInputEnabled,
       fitFocusRect: widget.fitFocusRect,
       autoFrame: widget.autoFrame,
       unframedFit: widget.unframedFit,

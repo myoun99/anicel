@@ -163,6 +163,8 @@ void main() {
     // ⚠️The press that USES the eyedropper is not pinned here: over the
     // playback view it does not stop yet, and did not for the eyedropper
     // TOOL before I-19 either (board: `playback-tap-taken-by-tool-layer`).
+    // ↩️It does now, and the tool does nothing with it — pinned with every
+    // tool in `a_press_on_playback_takes_no_tool_test.dart`.
     final session = await pumpEditor(tester);
     CanvasTool toolOf() =>
         tester.widget<ToolsPanel>(find.byType(ToolsPanel)).tool;

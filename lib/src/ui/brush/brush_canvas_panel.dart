@@ -205,6 +205,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.toolCursorsEnabled = true,
+    this.toolInputEnabled = true,
     this.hasContentToView = true,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
@@ -712,6 +713,25 @@ class BrushCanvasPanel extends StatefulWidget {
   /// for strictly read-only hosts (the media viewer), where a paint
   /// cursor over undrawable content is a false affordance.
   final bool toolCursorsEnabled;
+
+  /// False stands down the layers a tool takes the pointer through — the tap
+  /// layer (the eyedropper's pick, the stamp) and the selection layer
+  /// (select, move, cut, shape fill) — so a press reaches the content. For
+  /// content a press only STOPS: playback.
+  ///
+  /// 🚨T28-c (유저): 「뭘 누르든 입력이 존재하면 정지 … 입력 일 안함」. Playback
+  /// swapped the content and left these layers to the tool alone, so over
+  /// the playing picture the eyedropper picked a colour and the selection
+  /// tools took the press, and nothing stopped (board
+  /// `playback-tap-taken-by-tool-layer`).
+  ///
+  /// ⛔Not the media viewer's way of running no tool, handing the panel an
+  /// inert [brushToolState]: to the panel that is a tool SWITCH (it abandons
+  /// a polygon being traced) and the shell bars read the brush colour off
+  /// it, while playing and stopping change no tool. Nor [toolCursorsEnabled]:
+  /// the viewer shows no cursor and still runs the cut, and a cursor takes
+  /// no press.
+  final bool toolInputEnabled;
 
   /// False when the host has nothing on its stage yet — the media viewer
   /// with no file open (유저 F-77: 「뷰어패널 열린거 없으면 확대나 스크롤바같은

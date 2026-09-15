@@ -499,6 +499,9 @@ class _InteractiveCanvasBuild {
               !_isPlaybackActive
           ? (context, viewport) => _overlayStack(context, viewport, frame)
           : null,
+      // 🚨T28-c: while playback owns the content a press only stops it, so no
+      // tool takes the press — the same flag swaps the content in below.
+      toolInputEnabled: !_isPlaybackActive,
       contentOverride: _isPlaybackActive
           // The streamer rides ON the picture (REC1-E): the ADR
           // scribe belongs over the projection, never in a side

@@ -54,10 +54,18 @@ class _CanvasPanelSelection {
     _state._rebuild(_state._syncIdleAnts);
   }
 
+  /// Whether the selection layer is mounted: a selecting tool, over content
+  /// that takes tool input ([BrushCanvasPanel.toolInputEnabled]). The deck
+  /// mounts the layer on it and the idle ants paint on its negation, so a
+  /// selection stays drawn by one or the other while playback plays.
+  bool get selectionLayerMounted =>
+      _state.widget.toolInputEnabled &&
+      canvasToolSelects(_state.widget.brushToolState.tool);
+
   /// The region to paint when no selection layer is mounted (null while
   /// one is — it draws its own, session state included).
   CanvasSelectionRegion? get idleSelectionRegion {
-    if (canvasToolSelects(_state.widget.brushToolState.tool)) {
+    if (selectionLayerMounted) {
       return null;
     }
     return _state.widget.selectionCommands?.region;

@@ -206,8 +206,12 @@ class _CanvasPanelTap {
   }
 
   /// The tap action for the active NON-PAINTING tool; null while a
-  /// painting tool is active (no tap layer mounts then).
+  /// painting tool is active, and while the content takes no tool input
+  /// ([BrushCanvasPanel.toolInputEnabled]) — no tap layer mounts then.
   void Function(CanvasPoint point)? toolTapHandler() {
+    if (!_state.widget.toolInputEnabled) {
+      return null;
+    }
     switch (_state.widget.brushToolState.tool) {
       case CanvasTool.brush:
       case CanvasTool.eraser:

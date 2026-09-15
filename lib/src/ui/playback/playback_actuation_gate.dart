@@ -60,6 +60,12 @@ import 'playback_transport.dart';
 /// reach it (the pre-T28-c stop it always carried). KEYBOARD actuations
 /// keep the stop law everywhere but one: a bound view ZOOM (R6q3, below).
 ///
+/// ↩️The drawing surface was not all a press could reach (board
+/// `playback-tap-taken-by-tool-layer`): the TOOL layers over it — the
+/// eyedropper's and the stamp's tap layer, the selection tools' layer — were
+/// mounted by the tool alone and took the press over the playing picture.
+/// They stand down with the content now (`BrushCanvasPanel.toolInputEnabled`).
+///
 /// 🚨R6q3 (2026-08-25) — the user's answer to "어디까지 만질 수 있게 할까"
 /// was 2번: 「키보드 줌도 통과시킨다. 재생 중 줌은 입력 수단과 무관하게 한
 /// 법으로」. While no key zoomed, having no second case satisfied it — and the
