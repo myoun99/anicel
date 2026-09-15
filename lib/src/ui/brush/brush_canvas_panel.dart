@@ -62,7 +62,11 @@ import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
-import 'brush_cursor_overlay.dart';
+import 'brush_cursor_geometry.dart' show brushCursorShape;
+import 'brush_cursor_painter.dart' show brushCursorLook;
+import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
+import 'tool_cursor_look.dart';
+import 'tool_cursor_sprite.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/provisional_tile_pictures.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
@@ -700,13 +704,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
 
-  /// The pointer's viewport position + the composite color under it while
-  /// the eyedropper cursor is armed; drives the hover swatch only.
-  final ValueNotifier<({Offset position, int color})?> _eyedropperHover =
-      ValueNotifier<({Offset position, int color})?>(null);
-
-  /// R26 #23: the pointer position for tool cursors that draw an ICON but
-  /// sample nothing (the fill bucket).
+  /// The AIM: the pointer's panel-local position, for every tool cursor —
+  /// the brush ring, the bucket, the dropper and its swatch, the stamp's
+  /// ghost. One writer (the census), every cursor a reader.
+  ///
+  /// The eyedropper used to have a second notifier beside this one, holding
+  /// the position AND the colour sampled under it on every pointer event.
+  /// F-130 retired it: the swatch reads this aim and samples in its own
+  /// `paint`, once per frame (`eyedropper_swatch_painter.dart`).
   final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
 
   /// 🚨★★★F-33: what the surface painter draws as the stamp's ghost.
@@ -991,7 +996,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _idleAnts.dispose();
     _selectionFloat.dispose();
-    _eyedropperHover.dispose();
     _toolCursorHover.dispose();
     _stampPreview.dispose();
     widget.viewCommands?.unbind(this);
@@ -1015,14 +1019,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void _forgetCanvasPointer() {
     // The census's up/cancel arrive along the hit-test path cached at
     // DOWN, and Flutter keeps delivering them after this subtree
-    // detaches — so an unmount mid-press lands here with both notifiers
+    // detaches — so an unmount mid-press lands here with the notifier
     // already disposed. Guarded at the WRITER rather than per caller:
-    // every route in writes the same two, including any added later.
+    // every route in writes the same one, including any added later.
     if (!mounted) {
       return;
     }
     _toolCursor.setToolCursorHover(null, 'forget');
-    _eyedropperHover.value = null;
   }
 
   /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
@@ -1113,7 +1116,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void _noteCanvasPointer(
     Offset localPosition, {
     required PointerDeviceKind kind,
-    bool sample = true,
   }) {
     // I-15: nor while the pan hold has the pointer — it drives no tool.
     if (!AppInput.toolAcceptsPointer(kind) || CanvasPanHold.held.value) {
@@ -1164,9 +1166,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // which is otherwise invisible — see [RepaintCause].
       RepaintCause.note('pointer');
     }
-    if (!sample) {
-      return;
-    }
     // R28 #8: the ALWAYS-MOUNTED census drives the eyedropper cursor too.
     //
     // The cursor's own tracker mounts at the moment the tool arms, and
@@ -1177,9 +1176,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // icon then sat wherever the seed put it and refused to follow: "커서가
     // 이상한데로 이동하고 안움직임". This layer was mounted before the press,
     // so it is in the route and keeps reporting.
-    if (_toolCursor.eyedropperCursorActive) {
-      _toolCursor.sampleEyedropperHover(localPosition);
-    }
+    //
+    // ⛔It used to SAMPLE the composite here as well, per event, and skip
+    // the sample on pointer DOWN so the tap layer's own pick would not read
+    // the composite twice. F-130 moved the sample into the swatch's `paint`
+    // — once per frame, whatever the event rate — so there is nothing left
+    // here to skip: the aim above is the whole of what an event writes.
   }
 
   @override
@@ -1493,6 +1495,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
+  /// The three regions below each do two things and nothing else: hide
+  /// the system cursor while the tool's own cursor is up (the app draws
+  /// every tool cursor — 유저, F-130: 「앱 커서만 최대한 가볍게」), and say
+  /// when the pointer has gone.
   List<Widget> _brushCursorLayers() {
     return [
       Positioned.fill(
@@ -1509,8 +1515,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           // in-flight stroke's route and
           // freeze the moment the pen
           // touched down.
-          cursor: SystemMouseCursors
-              .none,
+          cursor: SystemMouseCursors.none,
           opaque: false,
           hitTestBehavior:
               HitTestBehavior
@@ -1538,8 +1543,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     return [
       Positioned.fill(
         child: MouseRegion(
-          cursor: SystemMouseCursors
-              .none,
+          cursor: SystemMouseCursors.none,
           opaque: false,
           hitTestBehavior:
               HitTestBehavior
@@ -1581,17 +1585,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           // R26 #22: the eyedropper wears its
           // OWN icon, not a crosshair — the
           // system cursor hides and the icon
-          // below rides the pointer.
-          cursor: SystemMouseCursors
-              .none,
+          // rides the aim.
+          cursor: SystemMouseCursors.none,
           opaque: false,
           hitTestBehavior:
               HitTestBehavior
                   .translucent,
+          // One aim for the icon and the
+          // swatch since F-130, so an exit
+          // forgets it the way the other two
+          // regions do.
           onExit: (_) =>
-              _eyedropperHover
-                      .value =
-                  null,
+              _forgetCanvasPointer(),
           // R28 #8: the swatch/icon is fed by
           // the panel's always-mounted pointer
           // census, not by a tracker mounted
@@ -2664,30 +2669,6 @@ class _CanvasViewportPanbar extends StatelessWidget {
             onViewportChanged(metrics.viewportForScroll(next)),
         onChangeEnd: onViewportChangeEnd,
       ),
-    );
-  }
-}
-
-/// R26 #22/#23: a tool's own icon standing in for the mouse cursor —
-/// white glyph with a dark halo so it reads on any artwork.
-class _ToolCursorIcon extends StatelessWidget {
-  const _ToolCursorIcon({required this.keyValue, required this.icon});
-
-  final String keyValue;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      key: ValueKey<String>(keyValue),
-      children: [
-        Icon(icon, size: 22, color: Colors.black.withValues(alpha: 0.55)),
-        Positioned(
-          left: 1,
-          top: 1,
-          child: Icon(icon, size: 20, color: Colors.white),
-        ),
-      ],
     );
   }
 }

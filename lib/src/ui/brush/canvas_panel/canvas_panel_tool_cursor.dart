@@ -1,8 +1,8 @@
 part of '../brush_canvas_panel.dart';
 
 /// The TOOL CURSOR — the cursor layers drawn for the active tool (brush,
-/// fill, eyedropper, stamp preview), which one is active, and the hover
-/// the eyedropper samples — as its own object.
+/// fill, eyedropper, stamp preview) and which one is active — as its own
+/// object.
 ///
 /// 🚨A collaborator carved out of `_BrushCanvasPanelState` (the audit's SRP
 /// cut, 2026-09-02). Measured before cutting: six State members shared.
@@ -75,12 +75,17 @@ class _CanvasPanelToolCursor {
   /// event reached their tracker. Entering the tool from a HELD button
   /// (the pen's barrel / right-click mapping) captures the pointer at the
   /// press, so no hover ever arrives — leaving the system cursor hidden
-  /// (the tracker's `MouseCursor.none` is mounted regardless) and nothing
+  /// (the tracker's `MouseCursor.none` was mounted regardless) and nothing
   /// drawn in its place: the "커서가 사라짐" report. Seeding from here on
-  /// the first frame the cursor arms gives the icon somewhere to be.
-
-  /// Guards the seeding to once per arming.
-  bool _eyedropperHoverSeeded = false;
+  /// the first frame the cursor armed gave the icon somewhere to be.
+  ///
+  /// ⛔THE EYEDROPPER SEED IS GONE TOO (F-130, 2026-09-15). It copied the
+  /// aim into a second notifier — position plus the colour sampled under
+  /// it — because the swatch and the icon read that second notifier. They
+  /// read the aim itself now, and the swatch samples in its own `paint`;
+  /// the position the census already holds IS where they appear, on the
+  /// first frame the tool arms, with nothing to copy and no seed to guard.
+  /// R27 #17 stays fixed by construction, the way R3 #8 does below.
 
   /// 🚨★★D34 PROBE — **the ONE writer of the aim, and it says who wrote it.**
   ///
@@ -134,7 +139,7 @@ class _CanvasPanelToolCursor {
   /// **2핑거 조작후 0.5초정도 뒤에 생기는느낌** … 커서 생긴상태에서 손뗄때도
   /// 생겼을때는 **커서가 존재하는채로 순간이동**」
   ///
-  /// ⛔THIS RUNS FROM `build()`, AND IT RESURRECTS A DEAD AIM. All five of
+  /// ⛔THIS RAN FROM `build()`, AND IT RESURRECTED A DEAD AIM. All five of
   /// those observations are this one line:
   ///
   /// * a zoom changes the viewport, so the panel REBUILDS — and every
@@ -174,7 +179,34 @@ class _CanvasPanelToolCursor {
   // 지우개나 다른툴누르면 커서가 사라짐」 — stays fixed, by construction
   // rather than by a build-time copy.
 
-  /// The four tool cursors' VISUALS, for the deck above the artwork.
+  /// The brush cursor's look for the tool state and the viewport as they
+  /// are now: the outline of the tip, in a box that certainly holds it.
+  ToolCursorLook _brushLook() => brushCursorLook(
+    brushCursorShape(
+      viewport: _state._viewportState._viewport,
+      size: _state.widget.brushToolState.size,
+      roundness: _state.widget.brushToolState.roundness,
+      angleDegrees: _state.widget.brushToolState.angleDegrees,
+    ),
+  );
+
+  /// The composite colour under a panel-local point, for the eyedropper's
+  /// swatch — or null while the tool has no sampler.
+  int? _sampleAt(Offset viewportPosition) {
+    final sample = _state.widget.sampleColorAt;
+    if (sample == null) {
+      return null;
+    }
+    return sample(
+      _state._viewportState._viewport.viewportToCanvas(
+        ViewportPoint(x: viewportPosition.dx, y: viewportPosition.dy),
+      ),
+    );
+  }
+
+  /// The tool cursors' VISUALS, for the deck above the artwork: a sprite
+  /// per cursor (`ToolCursorSprite`, moved by layer offset — 유저, F-130:
+  /// 「앱 커서만 최대한 가볍게」), and the stamp's ghost publisher.
   ///
   /// They used to be `Positioned` siblings of the canvas inside one Stack,
   /// which is what made a hover cost a full re-record of the layer stack.
@@ -183,100 +215,47 @@ class _CanvasPanelToolCursor {
   /// system cursor wins, and moving them would reorder both for no gain.
   ///
   /// ⚠️CONTRACT for every widget returned here: it either paints nothing or
-  /// carries its own `RepaintBoundary`. A cursor whose notifier is null
-  /// returns `SizedBox.shrink()` and satisfies the first half — and keeping
-  /// that shrink, rather than an always-mounted render object gated in
-  /// `paint`, is what keeps `find.byKey(...)` answering `findsNothing`
-  /// before the pointer has been anywhere. That assertion is the standing
-  /// oracle for R3 #8 (선택툴 누르고 다른 툴 누르면 커서가 사라짐).
+  /// carries its own `RepaintBoundary`. A sprite IS its own boundary, and
+  /// paints nothing while the aim is null — which used to be a
+  /// `SizedBox.shrink()` returned from a builder, so that `find.byKey(...)`
+  /// answered `findsNothing` before the pointer had been anywhere. That
+  /// assertion was the standing oracle for R3 #8 (선택툴 누르고 다른 툴 누르면
+  /// 커서가 사라짐); F-130 moved it to `RenderToolCursorSprite.debugPosition`,
+  /// which is null for exactly the same reason, so a sprite could be
+  /// mounted once and moved without a build.
   List<Widget> toolCursorLayers() {
+    final aim = _state._toolCursorHover;
     return [
       if (eyedropperCursorActive) ...[
-        // The hover SWATCH gets no boundary, deliberately. Its content
-        // changes on every sample, so it would re-record anyway — and its
-        // `BoxShadow` draws outside its 26px box, which a boundary's cull
-        // rect is entitled to clip (harder under Impeller than Skia).
-        ValueListenableBuilder<({Offset position, int color})?>(
-          valueListenable: _state._eyedropperHover,
-          builder: (context, hover, _) {
-            if (hover == null) {
-              return const SizedBox.shrink();
-            }
-            return Positioned(
-              left: hover.position.dx + 14,
-              top: hover.position.dy - 34,
-              child: IgnorePointer(
-                child: Container(
-                  key: const ValueKey<String>('eyedropper-hover-swatch'),
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: Color(0xFF000000 | hover.color),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black38, blurRadius: 3),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+        // The hover SWATCH: its pixels change with the colour under the
+        // pointer, so its picture is re-recorded per move — a disc — and
+        // it samples in its own paint, once per frame.
+        Positioned.fill(
+          child: ToolCursorSprite(
+            key: const ValueKey<String>('eyedropper-hover-swatch'),
+            position: aim,
+            look: eyedropperSwatchLook(position: aim, sample: _sampleAt),
+          ),
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
         // spot, so the glyph hangs up-left of the point being sampled.
-        //
-        // A constant glyph, so its layer is worth caching: moving it is
-        // then a layer offset rather than a text-and-icon re-record.
-        ValueListenableBuilder<({Offset position, int color})?>(
-          valueListenable: _state._eyedropperHover,
-          builder: (context, hover, _) {
-            if (hover == null) {
-              return const SizedBox.shrink();
-            }
-            return Positioned(
-              left: hover.position.dx - 3,
-              top: hover.position.dy - 21,
-              child: const IgnorePointer(
-                child: RepaintBoundary(
-                  child: _ToolCursorIcon(
-                    keyValue: 'eyedropper-cursor-icon',
-                    icon: Icons.colorize,
-                  ),
-                ),
-              ),
-            );
-          },
+        Positioned.fill(
+          child: ToolCursorSprite(
+            key: const ValueKey<String>('eyedropper-cursor-icon'),
+            position: aim,
+            look: eyedropperCursorLook(),
+          ),
         ),
       ],
       // R26 #23: the fill tool wears the bucket.
       if (fillCursorActive)
-        ValueListenableBuilder<Offset?>(
-          valueListenable: _state._toolCursorHover,
-          builder: (context, position, _) {
-            if (position == null) {
-              return const SizedBox.shrink();
-            }
-            return Positioned(
-              left: position.dx - 3,
-              top: position.dy - 20,
-              child: const IgnorePointer(
-                child: RepaintBoundary(
-                  child: _ToolCursorIcon(
-                    keyValue: 'fill-cursor-icon',
-                    icon: Icons.format_color_fill,
-                  ),
-                ),
-              ),
-            );
-          },
+        Positioned.fill(
+          child: ToolCursorSprite(
+            key: const ValueKey<String>('fill-cursor-icon'),
+            position: aim,
+            look: fillCursorLook(),
+          ),
         ),
-      // The painting tools wear their own footprint: an outline of the tip
-      // that follows the pointer, so a stroke can be aimed before it starts.
-      //
-      // `BrushCursorOverlay` already has the right shape inside
-      // (`Positioned > IgnorePointer > RepaintBoundary > CustomPaint`), so
-      // there is nothing to add here.
       // The stamp wears the PIECE, for the same reason the brush wears its
       // footprint: without it the only way to learn where a stamp lands is
       // to drop it and undo. It matters more here — a stamp puts down a
@@ -303,7 +282,7 @@ class _CanvasPanelToolCursor {
               );
             }
             return ValueListenableBuilder<Offset?>(
-              valueListenable: _state._toolCursorHover,
+              valueListenable: aim,
               builder: (context, position, _) => CutPieceImageHost(
                 piece: piece,
                 builder: (context, image) => CutStampPreviewPublisher(
@@ -316,59 +295,16 @@ class _CanvasPanelToolCursor {
             );
           },
         ),
+      // The painting tools wear their own footprint: an outline of the tip
+      // that follows the pointer, so a stroke can be aimed before it starts.
       if (brushCursorActive)
-        ValueListenableBuilder<Offset?>(
-          valueListenable: _state._toolCursorHover,
-          builder: (context, position, _) {
-            if (position == null) {
-              return const SizedBox.shrink();
-            }
-            return BrushCursorOverlay(
-              position: position,
-              viewport: _state._viewportState._viewport,
-              size: _state.widget.brushToolState.size,
-              roundness: _state.widget.brushToolState.roundness,
-              angleDegrees: _state.widget.brushToolState.angleDegrees,
-            );
-          },
+        Positioned.fill(
+          child: ToolCursorSprite(
+            key: const ValueKey<String>('brush-cursor-overlay'),
+            position: aim,
+            look: _brushLook(),
+          ),
         ),
     ];
-  }
-
-  void seedEyedropperHoverIfNeeded() {
-    if (!eyedropperCursorActive) {
-      _eyedropperHoverSeeded = false;
-      return;
-    }
-    if (_eyedropperHoverSeeded || _state._eyedropperHover.value != null) {
-      return;
-    }
-    final position = _state._toolCursorHover.value;
-    if (position == null) {
-      return;
-    }
-    _eyedropperHoverSeeded = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_state.mounted &&
-          eyedropperCursorActive &&
-          _state._eyedropperHover.value == null) {
-        sampleEyedropperHover(position);
-      }
-    });
-  }
-
-  void sampleEyedropperHover(Offset localPosition) {
-    final sample = _state.widget.sampleColorAt;
-    if (sample == null) {
-      return;
-    }
-    final color = sample(
-      _state._viewportState._viewport.viewportToCanvas(
-        ViewportPoint(x: localPosition.dx, y: localPosition.dy),
-      ),
-    );
-    _state._eyedropperHover.value = color == null
-        ? null
-        : (position: localPosition, color: color);
   }
 }

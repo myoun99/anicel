@@ -9,7 +9,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
-import 'package:anicel/src/ui/brush/brush_cursor_overlay.dart';
+import 'package:anicel/src/ui/brush/brush_cursor_painter.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
@@ -1879,20 +1880,19 @@ void main() {
       tester,
     ) async {
       await pumpWithTool(tester, CanvasTool.brush);
-      // Nothing is drawn before the pointer has been anywhere.
-      expect(
-        find.byKey(const ValueKey<String>('brush-cursor-overlay')),
-        findsNothing,
+      // Nothing is drawn before the pointer has been anywhere: the sprite
+      // is mounted with its tool (F-130) and shows nowhere.
+      final outline = find.byKey(
+        const ValueKey<String>('brush-cursor-overlay'),
       );
+      expect(outline, findsOneWidget);
+      expect(toolCursorShownAt(tester, outline), isNull);
 
       await hoverCanvas(tester);
 
+      expect(toolCursorShownAt(tester, outline), isNotNull);
       final painter =
-          tester
-                  .widget<CustomPaint>(
-                    find.byKey(const ValueKey<String>('brush-cursor-overlay')),
-                  )
-                  .painter!
+          tester.widget<ToolCursorSprite>(outline).look.painter
               as BrushCursorPainter;
       // A 40px brush is an outline, not the small-brush crosshair. The
       // radius is in SCREEN pixels, so it follows the render zoom — and a
@@ -1908,8 +1908,11 @@ void main() {
       await hoverCanvas(tester);
 
       expect(
-        find.byKey(const ValueKey<String>('brush-cursor-overlay')),
-        findsOneWidget,
+        toolCursorShownAt(
+          tester,
+          find.byKey(const ValueKey<String>('brush-cursor-overlay')),
+        ),
+        isNotNull,
       );
     });
 
@@ -1926,20 +1929,28 @@ void main() {
       final outline = find.byKey(
         const ValueKey<String>('brush-cursor-overlay'),
       );
-      expect(outline, findsOneWidget);
+      expect(toolCursorShownAt(tester, outline), isNotNull);
 
       CanvasPanHold.held.value = true;
       await tester.pump();
-      expect(outline, findsNothing, reason: 'held, a press paints nothing');
+      expect(
+        toolCursorShownAt(tester, outline),
+        isNull,
+        reason: 'held, a press paints nothing',
+      );
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(12, 8)));
       await tester.pump();
-      expect(outline, findsNothing, reason: 'a move under the hold aims none');
+      expect(
+        toolCursorShownAt(tester, outline),
+        isNull,
+        reason: 'a move under the hold aims none',
+      );
 
       CanvasPanHold.held.value = false;
       await tester.pump();
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
       await tester.pump();
-      expect(outline, findsOneWidget);
+      expect(toolCursorShownAt(tester, outline), isNotNull);
     });
 
     testWidgets('a tiny brush falls back to the crosshair', (tester) async {
@@ -1966,10 +1977,11 @@ void main() {
 
       final painter =
           tester
-                  .widget<CustomPaint>(
+                  .widget<ToolCursorSprite>(
                     find.byKey(const ValueKey<String>('brush-cursor-overlay')),
                   )
-                  .painter!
+                  .look
+                  .painter
               as BrushCursorPainter;
       expect(painter.shape, isNull);
     });

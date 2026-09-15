@@ -123,7 +123,11 @@ void main() {
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
       await tester.pump();
       final cursor = find.byKey(ValueKey<String>(cursorKey));
-      expect(cursor, findsOneWidget, reason: 'the $cursorKey must be up');
+      expect(
+        toolCursorShownAt(tester, cursor),
+        isNotNull,
+        reason: 'the $cursorKey must be up',
+      );
 
       // LIVENESS — a fixture whose underlay never painted would pass every
       // assertion below without proving anything.
@@ -142,7 +146,7 @@ void main() {
       expect(chromePaints[0], chromeBefore);
 
       // TREATMENT — eight moves, 4px apart.
-      final start = tester.getTopLeft(cursor);
+      final start = toolCursorShownAt(tester, cursor)!;
       canvasBefore = canvasPaints[0];
       chromeBefore = chromePaints[0];
       for (var i = 1; i <= 8; i += 1) {
@@ -180,9 +184,10 @@ void main() {
 
       // ALIVE — and the cursor still followed, so "it stopped moving" is
       // not a way to pass this test.
-      expect(cursor, findsOneWidget);
+      final end = toolCursorShownAt(tester, cursor);
+      expect(end, isNotNull);
       expect(
-        tester.getTopLeft(cursor).dx - start.dx,
+        end!.dx - start.dx,
         closeTo(32, 0.5),
         reason: 'the cursor tracked all eight moves',
       );
@@ -228,12 +233,15 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('fill-cursor-tracker')),
       findsOneWidget,
-      reason: 'the region that hides the system cursor',
+      reason: 'the region that says when the pointer has gone',
     );
     expect(
-      find.byKey(const ValueKey<String>('fill-cursor-icon')),
-      findsOneWidget,
-      reason: 'and the bucket that replaces it',
+      toolCursorShownAt(
+        tester,
+        find.byKey(const ValueKey<String>('fill-cursor-icon')),
+      ),
+      isNotNull,
+      reason: 'and the bucket that replaces the system cursor',
     );
   });
 }

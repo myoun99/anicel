@@ -795,13 +795,7 @@ void main() {
     await gesture.moveTo(tester.getCenter(find.byKey(tapLayerKey)));
     await tester.pump();
 
-    final swatch = tester.widget<Container>(
-      find.byKey(const ValueKey<String>('eyedropper-hover-swatch')),
-    );
-    expect(
-      (swatch.decoration! as BoxDecoration).color,
-      const Color(0xFF123456),
-    );
+    expect(eyedropperSwatchColor(tester), 0xFF123456);
   });
 
   testWidgets('R28 #8: the eyedropper cursor follows a BUTTON-HELD move — '
@@ -831,16 +825,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    Color swatchColor() =>
-        (tester
-                    .widget<Container>(
-                      find.byKey(
-                        const ValueKey<String>('eyedropper-hover-swatch'),
-                      ),
-                    )
-                    .decoration!
-                as BoxDecoration)
-            .color!;
+    int swatchColor() => eyedropperSwatchColor(tester)!;
 
     final center = tester.getCenter(find.byKey(tapLayerKey));
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);

@@ -36,9 +36,6 @@ class _PanelBuild {
       _state._viewportState.viewportNotifier.value = _state.widget.viewport;
       _state._viewportState._publishingViewport = false;
     }
-    // R27 #17: a cursor that armed mid-gesture gets a starting position.
-    _state._toolCursor.seedEyedropperHoverIfNeeded();
-
     return Padding(
       key: const ValueKey<String>('brush-canvas-panel'),
       // Zero: panels sit flush against the dock and the timeline (the
@@ -317,12 +314,24 @@ class _PanelBuild {
         //
         // ⚠️The rule for (B)'s children is: every one either
         // paints nothing or carries its own boundary. The
-        // `SizedBox.shrink()` a cursor returns while its
-        // notifier is null satisfies the first half — and
-        // KEEPING that shrink is what preserves the R3 #8
+        // `SizedBox.shrink()` a cursor returned while its
+        // notifier was null satisfied the first half — and
+        // KEEPING that shrink was what preserved the R3 #8
         // oracle (`findsNothing` before the pointer has been
-        // anywhere), which is why this is a Stack of widgets
+        // anywhere), which is why this was a Stack of widgets
         // and not a custom render object gated in `paint`.
+        //
+        // 🚨★★★F-130 (2026-09-15) made it that render object
+        // after all — `ToolCursorSprite`, its own boundary,
+        // moving its inner layer by offset with no build, no
+        // layout and no paint per move — because a Stack of
+        // `Positioned`s still rebuilt three widgets, re-laid
+        // this Stack out and re-recorded everything between
+        // the shell boundary and here on every pointer event
+        // (measured). The R3 #8 oracle did not die with the
+        // shrink: it is `RenderToolCursorSprite.debugPosition`,
+        // null for exactly the reason `findsNothing` used to
+        // be.
         //
         // ⛔Do NOT boundary the underlay or the overlay. It
         // would be a real further win during a stroke, and
@@ -434,7 +443,6 @@ class _PanelBuild {
                         _state._noteCanvasPointer(
                           event.localPosition,
                           kind: event.kind,
-                          sample: false,
                         );
                       },
                       onPointerMove: (event) => _state._noteCanvasPointer(

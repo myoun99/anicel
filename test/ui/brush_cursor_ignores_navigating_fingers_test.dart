@@ -79,8 +79,8 @@ void main() {
       await tester.pump();
 
       expect(
-        cursor,
-        findsNothing,
+        toolCursorShownAt(tester, cursor),
+        isNull,
         reason:
             'the finger is navigating, not aiming — nothing about the '
             'brush should follow it',
@@ -103,8 +103,8 @@ void main() {
     addTearDown(pen.removePointer);
     await pen.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
-    final aimed = tester.getTopLeft(cursor);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
+    final aimed = toolCursorShownAt(tester, cursor);
 
     // A finger lands somewhere else entirely. 「커서도 안움직이게」.
     final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
@@ -114,7 +114,7 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.getTopLeft(cursor),
+      toolCursorShownAt(tester, cursor),
       aimed,
       reason: 'the finger dragged the pen\'s aim across the canvas',
     );
@@ -123,14 +123,14 @@ void main() {
     await tester.pump();
 
     expect(
-      cursor,
-      findsOneWidget,
+      toolCursorShownAt(tester, cursor),
+      isNotNull,
       reason:
           'and it may not DELETE that aim on the way out either — a '
           'pointer the census refuses to write from is a pointer with '
           'nothing here to erase',
     );
-    expect(tester.getTopLeft(cursor), aimed);
+    expect(toolCursorShownAt(tester, cursor), aimed);
 
     // The same on the cancel path, which is how a navigating gesture
     // usually ends once the pan recognizer claims it.
@@ -139,8 +139,8 @@ void main() {
     await tester.pump();
     await second.cancel();
     await tester.pump();
-    expect(cursor, findsOneWidget);
-    expect(tester.getTopLeft(cursor), aimed);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
+    expect(toolCursorShownAt(tester, cursor), aimed);
   });
 
   testWidgets('a finger\'s lift leaves the ring a HOVERING pen owns — '
@@ -159,19 +159,19 @@ void main() {
     addTearDown(pen.removePointer);
     await pen.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
     await tester.pump();
-    final penAim = tester.getTopLeft(cursor);
+    final penAim = toolCursorShownAt(tester, cursor);
 
     await finger.up();
     await tester.pump();
 
     expect(
-      cursor,
-      findsOneWidget,
+      toolCursorShownAt(tester, cursor),
+      isNotNull,
       reason:
           'the pen has not exited and nobody asked for its aim to go — '
           'a hovering device is a holder the down-set cannot represent',
     );
-    expect(tester.getTopLeft(cursor), penAim);
+    expect(toolCursorShownAt(tester, cursor), penAim);
   });
 
   testWidgets('TWO hovering devices each hold their own: one leaving does '
@@ -198,8 +198,8 @@ void main() {
     await tester.pump();
     await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
-    final mouseAim = tester.getTopLeft(cursor);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
+    final mouseAim = toolCursorShownAt(tester, cursor);
 
     // A finger comes and goes. The mouse never left, so its aim stays.
     for (var i = 0; i < 2; i += 1) {
@@ -210,8 +210,8 @@ void main() {
       await tester.pump();
 
       expect(
-        cursor,
-        findsOneWidget,
+        toolCursorShownAt(tester, cursor),
+        isNotNull,
         reason:
             'lift $i: the pen\'s exit released the PEN\'s hold, not the '
             'mouse\'s — one flag for a per-device fact handed the mouse\'s '
@@ -223,7 +223,7 @@ void main() {
       // What matters is that the mouse's presence keeps it ALIVE.
       await mouse.moveTo(canvasGlobalOffset(tester, const Offset(24, 24)));
       await tester.pump();
-      expect(tester.getTopLeft(cursor), mouseAim);
+      expect(toolCursorShownAt(tester, cursor), mouseAim);
     }
   });
 
@@ -238,7 +238,7 @@ void main() {
     final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
     await finger.down(canvasGlobalOffset(tester, const Offset(20, 20)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
 
     useOneFingerSlot(CanvasTouchDragAction.flip);
     await tester.pump();
@@ -246,8 +246,8 @@ void main() {
     await tester.pump();
 
     expect(
-      cursor,
-      findsNothing,
+      toolCursorShownAt(tester, cursor),
+      isNull,
       reason:
           'the finger was admitted at DOWN, so its lift still ends its '
           'span — re-asking the live setting here would strand this ring',
@@ -259,12 +259,12 @@ void main() {
     final next = await tester.createGesture(kind: PointerDeviceKind.touch);
     await next.down(canvasGlobalOffset(tester, const Offset(50, 50)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
     await next.up();
     await tester.pump();
     expect(
-      cursor,
-      findsNothing,
+      toolCursorShownAt(tester, cursor),
+      isNull,
       reason:
           'a stranded id would have made this unreachable for the rest '
           'of the session — D34 back, and silently',
@@ -279,8 +279,8 @@ void main() {
     final drawing = await tester.createGesture(kind: PointerDeviceKind.touch);
     await drawing.down(canvasGlobalOffset(tester, const Offset(20, 20)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
-    final aimed = tester.getTopLeft(cursor);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
+    final aimed = toolCursorShownAt(tester, cursor);
 
     final other = await tester.createGesture(kind: PointerDeviceKind.touch);
     await other.down(canvasGlobalOffset(tester, const Offset(120, 100)));
@@ -289,8 +289,8 @@ void main() {
     await tester.pump();
 
     expect(
-      cursor,
-      findsOneWidget,
+      toolCursorShownAt(tester, cursor),
+      isNotNull,
       reason:
           'a press is a SPAN and they overlap — the aim belongs to the '
           'span, so it survives until the LAST holder lifts',
@@ -299,8 +299,8 @@ void main() {
     await drawing.up();
     await tester.pump();
     expect(
-      cursor,
-      findsNothing,
+      toolCursorShownAt(tester, cursor),
+      isNull,
       reason: 'and it does go when that last one lifts',
     );
     expect(aimed, isNotNull);
@@ -316,14 +316,14 @@ void main() {
     final finger = await tester.createGesture(kind: PointerDeviceKind.touch);
     await finger.down(canvasGlobalOffset(tester, const Offset(20, 20)));
     await tester.pump();
-    expect(cursor, findsOneWidget);
-    final start = tester.getTopLeft(cursor);
+    expect(toolCursorShownAt(tester, cursor), isNotNull);
+    final start = toolCursorShownAt(tester, cursor);
 
     await finger.moveTo(canvasGlobalOffset(tester, const Offset(70, 60)));
     await tester.pump();
 
     expect(
-      tester.getTopLeft(cursor),
+      toolCursorShownAt(tester, cursor),
       isNot(start),
       reason: 'a drawing finger is the aim — the outline has to follow it',
     );
@@ -332,8 +332,8 @@ void main() {
     await tester.pump();
 
     expect(
-      cursor,
-      findsNothing,
+      toolCursorShownAt(tester, cursor),
+      isNull,
       reason:
           'and the aim goes with the finger. Flutter delivers a region '
           'exit only for mouse and stylus, so the exit that clears this '
@@ -360,13 +360,13 @@ void main() {
       await tester.pump();
       await pointer.moveTo(canvasGlobalOffset(tester, const Offset(90, 70)));
       await tester.pump();
-      expect(cursor, findsOneWidget, reason: '$kind aims a tool');
+      expect(toolCursorShownAt(tester, cursor), isNotNull, reason: '$kind aims a tool');
 
       await pointer.up();
       await tester.pump();
       expect(
-        cursor,
-        findsNothing,
+        toolCursorShownAt(tester, cursor),
+        isNull,
         reason:
             '$kind: the contact ending IS its exit — nothing else is '
             'ever coming',
@@ -397,19 +397,19 @@ void main() {
     await pen.addPointer(location: Offset.zero);
     await pen.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
     await tester.pump();
-    expect(cursor, findsOneWidget, reason: 'fixture premise: the pen aimed');
+    expect(toolCursorShownAt(tester, cursor), isNotNull, reason: 'fixture premise: the pen aimed');
 
     await pen.moveTo(const Offset(-500, -500));
     await pen.removePointer();
     await tester.pump();
-    expect(cursor, findsNothing, reason: 'fixture premise: the pen left');
+    expect(toolCursorShownAt(tester, cursor), isNull, reason: 'fixture premise: the pen left');
 
     // Rebuild the panel the way a pinch-zoom does.
     await tester.pumpAndSettle();
 
     expect(
-      cursor,
-      findsNothing,
+      toolCursorShownAt(tester, cursor),
+      isNull,
       reason:
           '⛔the report: a rebuild put the ring back where the pointer '
           'HAD been, a beat after the touch that caused the rebuild',

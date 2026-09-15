@@ -4,7 +4,29 @@ import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
+import 'package:anicel/src/ui/brush/eyedropper_swatch_painter.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:flutter/widgets.dart';
+
+/// Where the tool cursor sprite under [sprite] shows, or null while it
+/// shows nothing. The R3 #8 oracle since F-130: a sprite is mounted
+/// whenever its tool is armed and paints nothing until there is an aim —
+/// null here is what `findsNothing` used to say.
+Offset? toolCursorShownAt(WidgetTester tester, Finder sprite) =>
+    tester.renderObject<RenderToolCursorSprite>(sprite).debugPosition;
+
+/// The colour the eyedropper's hover swatch last painted, or null when it
+/// painted nothing. Sampled in the swatch's own `paint`, once per frame.
+int? eyedropperSwatchColor(WidgetTester tester) =>
+    (tester
+                .widget<ToolCursorSprite>(
+                  find.byKey(const ValueKey<String>('eyedropper-hover-swatch')),
+                )
+                .look
+                .painter
+            as EyedropperSwatchPainter)
+        .debugLastColor;
 
 class FakeCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
