@@ -33,7 +33,9 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
-import '../../services/project_lookup.dart' show projectAudioSourcePaths;
+import '../../services/project_lookup.dart'
+    show cutPositionOf, projectAudioSourcePaths;
+import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'frame_clipboard.dart';
 import 'layer_clipboard.dart';
@@ -448,11 +450,21 @@ class ProjectFileDoor {
     sessionFields: AnicelSessionFields(
       grants: _grants.grantsToStore(),
       mediaCrcs: _fingerprints.crcsToStore(),
+      resume: _whereTheWorkStands().toJson(),
     ),
     onProgress: carry.onProgress,
     adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
     onFullWriteLeftAt: onFullWriteLeftAt,
+  );
+
+  /// Where the work stands right now, as every save writes it beside the
+  /// project (F-123) — read as the save is made, so the file holds the place
+  /// the person pressed Save from.
+  ProjectResume _whereTheWorkStands() => ProjectResume(
+    cutId: _timeline.editingSession.activeCutId,
+    layerId: _selection.activeLayerId,
+    frameIndex: _selection.currentFrameIndex,
   );
 
   Future<void> _swapIn({required String from, required String to}) =>
@@ -666,10 +678,22 @@ class ProjectFileDoor {
     // other whole-state reset clears here; this one was the omission.
     _selection.clearAllSelections();
     _selection.trackFrameRangeSelection.value = null;
+    // Where the work stood when it was saved (F-123) — each part only if this
+    // project still has it: a cut that is gone opens on the first cut, as a
+    // file without the part does; a row that is gone lands on the top row,
+    // the rebuild's own fallback; the frame lands inside the cut through the
+    // rebuild's own clamp.
+    final resume = ProjectResume.fromJson(result.resume);
+    final savedCut = resume.cutId;
     _timeline.editingSession.setActiveCutId(
-      result.project.tracks.first.cuts.first.id,
+      savedCut != null && cutPositionOf(result.project, savedCut) != null
+          ? savedCut
+          : result.project.tracks.first.cuts.first.id,
     );
-    _controllers.rebuild();
+    _controllers.rebuild(
+      preferredActiveLayerId: resume.layerId,
+      preferredFrameIndex: resume.frameIndex,
+    );
     _file.bindToOpenedFile(
       bindTo ?? filePath,
       // What this project carries, as the file on disk says. Anything the

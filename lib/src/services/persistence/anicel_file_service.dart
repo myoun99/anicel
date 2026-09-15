@@ -30,6 +30,7 @@ class AnicelOpenResult {
     this.mediaEntryNames = const {},
     this.grants = const [],
     this.mediaFingerprints = const MediaFingerprints.empty(),
+    this.resume = const {},
   });
 
   /// What the project recorded about its media's CONTENT, already remapped
@@ -57,6 +58,11 @@ class AnicelOpenResult {
   /// to the OS, and the answer may carry a different path — a bookmark
   /// follows a file that moved, which is most of why it exists.
   final List<Map<String, Object?>> grants;
+
+  /// Where the work stood when the project was saved, as written — see
+  /// [AnicelSessionFields.resume]. Empty for every file saved before it was
+  /// kept.
+  final Map<String, Object?> resume;
 }
 
 /// One dirty cel's save payload, resolved on the UI isolate to a
@@ -1395,6 +1401,7 @@ class AnicelFileService {
           normalizeFingerprintPath(path),
       }, moved: remap),
       grants: document.grants,
+      resume: document.resume,
     );
   }
 

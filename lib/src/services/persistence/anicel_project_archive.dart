@@ -356,6 +356,7 @@ class AnicelSessionFields {
   const AnicelSessionFields({
     this.grants = const [],
     this.mediaCrcs = const {},
+    this.resume = const {},
   });
 
   /// Security-scoped tokens for the media the project references.
@@ -364,6 +365,10 @@ class AnicelSessionFields {
   /// Pool path → CRC-32 hex, for the media somebody has read the bytes of
   /// — see [MediaFingerprints].
   final Map<String, Object?> mediaCrcs;
+
+  /// Where the work stood when it was saved — the cut, the row, the frame
+  /// and what the tools were holding — as the session wrote it (F-123).
+  final Map<String, Object?> resume;
 
   static const AnicelSessionFields none = AnicelSessionFields();
 }
@@ -461,6 +466,7 @@ Uint8List buildAnicelProjectJsonBytes({
         if (sessionFields.grants.isNotEmpty) 'grants': sessionFields.grants,
         if (sessionFields.mediaCrcs.isNotEmpty)
           'mediaCrcs': sessionFields.mediaCrcs,
+        if (sessionFields.resume.isNotEmpty) 'resume': sessionFields.resume,
       }),
     ),
   );
@@ -520,6 +526,7 @@ class AnicelProjectDocument {
     required this.mediaEntryNames,
     required this.grants,
     required this.mediaFingerprints,
+    required this.resume,
   });
 
   final Project project;
@@ -534,6 +541,10 @@ class AnicelProjectDocument {
   final List<Map<String, Object?>> grants;
 
   final MediaFingerprints mediaFingerprints;
+
+  /// Where the work stood when it was saved, as written — see
+  /// [AnicelSessionFields.resume].
+  final Map<String, Object?> resume;
 }
 
 /// The project a `.anicel`'s `project.json` bytes hold, with its format
@@ -559,6 +570,7 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
     grants: anicelGrantsField(decoded['grants']),
     mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
+    resume: anicelObjectMapField(decoded['resume']),
   );
 }
 
@@ -571,16 +583,24 @@ Map<String, String> anicelStringMapField(Object? json) => {
         entry.key as String: entry.value as String,
 };
 
+/// A document field read as a string-keyed map, on the same terms as
+/// [anicelStringMapField]: anything that is not a map reads as empty, and a
+/// key that is not a string is left out rather than throwing.
+///
+/// One coercion for every field that holds such a map — each grant, and the
+/// resume point (F-123), read through it.
+Map<String, Object?> anicelObjectMapField(Object? json) => {
+  if (json is Map)
+    for (final field in json.entries)
+      if (field.key is String) field.key as String: field.value,
+};
+
 /// A document field read as a list of string-keyed maps, on the same terms
 /// as [anicelStringMapField]: anything that is not one is left out.
 List<Map<String, Object?>> anicelGrantsField(Object? json) => [
   if (json is List)
     for (final entry in json)
-      if (entry is Map)
-        {
-          for (final field in entry.entries)
-            if (field.key is String) field.key as String: field.value,
-        },
+      if (entry is Map) anicelObjectMapField(entry),
 ];
 
 /// Parses .anicel bytes; throws [FormatException] on a newer format or a
