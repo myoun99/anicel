@@ -52,9 +52,9 @@ import '../../helpers/native_engine_path.dart';
 /// the raster thread's stack.
 ///
 /// 🧪**THE AXIS IS THE BUDGET, and it is held still by mutation, not by a
-/// second arm** — see the note at the end of the test for the two ways a
-/// "without the buffer" arm lied. Change the budget and the peak moves
-/// with it, linearly; that is a controlled comparison
+/// second arm** — see the note at the end of the reading test for the two
+/// ways a "without the buffer" arm lied. Change the budget and the peak
+/// moves with it, linearly; that is a controlled comparison
 /// ([[symptom-attribution-is-a-clue-not-a-cause]]: two states on one axis,
 /// never a number against a memory).
 ///
@@ -62,6 +62,13 @@ import '../../helpers/native_engine_path.dart';
 /// churns lists to force the collections, and Windows keeps freed pages in
 /// the working set — so the exact assertion is on the chain's own byte
 /// count and the footprint carries only a loose bound.
+/// ✏️2026-09-13 the footprint stopped being a bound at all (see the reading
+/// test), and 2026-09-15 it left the gate: the footprint reading and its
+/// control now live in their OWN test under the `benchmark` tag. Inside an
+/// affected batch they held the gate for minutes (09-13 it hit the ten-minute
+/// timeout — record `mem-footprint-test-times-out-in-a-batch` — and 09-15 it
+/// sat three minutes in a 460-file batch), while the two assertions that ARE
+/// the gate need neither a collection nor a footprint.
 void main() {
   const canvasSize = CanvasSize(width: 1024, height: 1024);
   const tileSize = 128;
@@ -135,49 +142,147 @@ void main() {
 
   BitmapSurfacePainter liveAt(int step) => surfaces[step % surfaces.length];
 
-  /// Paints [measuredPaints] frames and answers what the process kept,
-  /// and what [buffers] pinned at its worst moment while doing it.
-  ///
+  const nodes = <CompositeNode<CanvasStackRow>>[
+    CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+  ];
+
+  void widenTheView(WidgetTester tester) {
+    tester.view.physicalSize = const Size(
+      defaultViewSide + 80,
+      defaultViewSide + 80,
+    );
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+  }
+
   /// ⚠️[buffers] must be INJECTED, never left to the view to invent: the
   /// view's own cache is unreachable from here, so a run that used one
   /// would report `patched=0` and a peak of zero while painting exactly
-  /// as hard. See the note at the end of the test.
-  Future<({int keptMb, int chainPeakMb, String reading})> measure(
+  /// as hard. See the note at the end of the reading test.
+  Future<void> paintStep(
     WidgetTester tester,
-    QaNativeEngine engine, {
-    required DisplayBufferCache buffers,
-    required String arm,
-  }) async {
-    final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
-    const nodes = <CompositeNode<CanvasStackRow>>[
-      CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
-    ];
-
-    Future<void> paintStep(int step) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: defaultViewSide,
-                height: defaultViewSide,
-                child: CanvasLayerStackView(
-                  nodes: nodes,
-                  imageCache: imageCache,
-                  debugBufferCache: buffers,
-                  canvasSize: canvasSize,
-                  viewport: CanvasViewport(),
-                  activeSurfacePainter: liveAt(step),
-                  paintPaper: true,
-                  paperBackground: ProjectBackground.defaultBackground,
-                ),
+    DisplayBufferCache buffers,
+    LayerFrameImageCache imageCache,
+    int step,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: defaultViewSide,
+              height: defaultViewSide,
+              child: CanvasLayerStackView(
+                nodes: nodes,
+                imageCache: imageCache,
+                debugBufferCache: buffers,
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(),
+                activeSurfacePainter: liveAt(step),
+                paintPaper: true,
+                paperBackground: ProjectBackground.defaultBackground,
               ),
             ),
           ),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
+  }
+
+  /// Paints the warm-up and then the measured frames, and answers the most
+  /// [buffers] pinned at any moment of the measured ones. [afterPaint] is
+  /// told the count of measured paints so far.
+  Future<int> paintWatchingTheChain(
+    WidgetTester tester, {
+    required DisplayBufferCache buffers,
+    required LayerFrameImageCache imageCache,
+    void Function(int paints)? afterPaint,
+  }) async {
+    var chainPeak = 0;
+    // 🎯UNDER `runAsync`, WITH A TURN OF THE EVENT QUEUE AFTER EACH PAINT.
+    // The real base arrives through `Picture.toImage`, whose completion is
+    // a real engine callback; the fake async zone a plain `pump` runs in
+    // never delivers it, so the snapshots would all still be "in flight",
+    // `wantsPromotion` would stay false, and every paint would derive
+    // from the head under budget — the old shape, measured as the new one.
+    // The `promotedCount` assertion is what says this actually ran.
+    await tester.runAsync(() async {
+      for (var step = warmUpPaints; step < measuredPaints; step += 1) {
+        await paintStep(tester, buffers, imageCache, step);
+        await Future<void>.delayed(Duration.zero);
+        // Read AFTER every paint, not at the end: a chain collapses when a
+        // budget forces a full compose, so a final reading would report
+        // the trough of a sawtooth and call the peak zero.
+        chainPeak = max(chainPeak, buffers.heldBytes);
+        afterPaint?.call(step - warmUpPaints + 1);
+      }
+    });
+    return chainPeak;
+  }
+
+  String bufferLine(DisplayBufferCache buffers, int chainPeak) =>
+      'buffer: patched=${buffers.patchedCount} '
+      'full=${buffers.fullCount} '
+      'depth=${buffers.derivedDepth} '
+      'real=${buffers.promotedCount} '
+      'chainPeak=${chainPeak >> 20}MB';
+
+  testWidgets('🚨the display buffer may pin a chain of canvases, so the '
+      'chain has a byte budget — and a paint pins no more than head and base',
+      (tester) async {
+    widenTheView(tester);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+    final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
+    for (var step = 0; step < warmUpPaints; step += 1) {
+      await paintStep(tester, buffers, imageCache, step);
     }
+
+    final chainPeak = await paintWatchingTheChain(
+      tester,
+      buffers: buffers,
+      imageCache: imageCache,
+    );
+    final reading = bufferLine(buffers, chainPeak);
+    printOnFailure(reading);
+
+    // 🚨★★★①NO CHAIN — exact, and free of footprint noise. The cache
+    // reports what it pins: the head, the real base, and any deferred
+    // ancestors the head still holds. With the real base landing, that is
+    // TWO canvases (11.5MB here) and the deferred depth saws between 0
+    // and 1; the bound leaves room for one more. Before the real base it
+    // read 64MB — the budget's edge — and before the byte budget 516MB on
+    // this view, 1.06GB on a 1920×1080 canvas.
+    expect(
+      chainPeak >> 20,
+      lessThanOrEqualTo(residentBufferMb),
+      reason: 'the display buffer pinned more than head + real base:\n'
+          '$reading',
+    );
+    // ②AND THE SNAPSHOTS ACTUALLY LANDED. Without this, a promotion that
+    // never completes would leave every paint deriving from the head under
+    // budget — 64MB pinned, ① red, and this line is what names the cause.
+    expect(
+      buffers.promotedCount,
+      greaterThan(measuredPaints ~/ 8),
+      reason: 'real bases stopped landing — the head is being derived from '
+          'under budget instead:\n$reading',
+    );
+  });
+
+  testWidgets('READING: what the process kept over the same paints, beside '
+      'the bare toImageSync+DRAW+dispose control — run this file alone',
+      (tester) async {
+    final engine = QaNativeEngine.instance;
+    if (nativeEngineLibraryPathOrNull() == null || engine == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    widenTheView(tester);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+    final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
 
     int footprintMb() => (engine.processFootprintBytes ?? 0) >> 20;
 
@@ -196,7 +301,7 @@ void main() {
     };
 
     for (var step = 0; step < warmUpPaints; step += 1) {
-      await paintStep(step);
+      await paintStep(tester, buffers, imageCache, step);
     }
     await tester.runAsync(collectGarbage);
     final baseline = footprintMb();
@@ -210,75 +315,24 @@ void main() {
     // those apart, and the whole question is which one the user is living
     // in.
     final curve = <int>[];
-    var chainPeak = 0;
-    // 🎯UNDER `runAsync`, WITH A TURN OF THE EVENT QUEUE AFTER EACH PAINT.
-    // The real base arrives through `Picture.toImage`, whose completion is
-    // a real engine callback; the fake async zone a plain `pump` runs in
-    // never delivers it, so the snapshots would all still be "in flight",
-    // `wantsPromotion` would stay false, and every paint would derive
-    // from the head under budget — the old shape, measured as the new one.
-    // The `promotedCount` assertion below is what says this actually ran.
-    await tester.runAsync(() async {
-      for (var step = warmUpPaints; step < measuredPaints; step += 1) {
-        await paintStep(step);
-        await Future<void>.delayed(Duration.zero);
-        // Read AFTER every paint, not at the end: a chain collapses when a
-        // budget forces a full compose, so a final reading would report
-        // the trough of a sawtooth and call the peak zero.
-        chainPeak = max(chainPeak, buffers.heldBytes);
-        if ((step - warmUpPaints + 1) % 25 == 0) {
+    final chainPeak = await paintWatchingTheChain(
+      tester,
+      buffers: buffers,
+      imageCache: imageCache,
+      afterPaint: (paints) {
+        if (paints % 25 == 0) {
           curve.add(footprintMb() - baseline);
         }
-      }
-    });
+      },
+    );
     await tester.runAsync(collectGarbage);
     final afterGc = footprintMb();
     final after = counters();
-
     final named = [
       for (final entry in after.entries)
         '${entry.key} ${(entry.value - before[entry.key]!) >> 10}KB',
     ].join(' · ');
-    return (
-      keptMb: afterGc - baseline,
-      chainPeakMb: chainPeak >> 20,
-      reading:
-          '$arm: kept ${afterGc - baseline}MB '
-          '(baseline=${baseline}MB after=${afterGc}MB) '
-          'over ${measuredPaints - warmUpPaints} paints; named: $named'
-          '\n    curve(+MB every 25 paints): ${curve.join(' ')}'
-          '\n    buffer: patched=${buffers.patchedCount} '
-          'full=${buffers.fullCount} '
-          'depth=${buffers.derivedDepth} '
-          'real=${buffers.promotedCount} '
-          'chainPeak=${chainPeak >> 20}MB',
-    );
-  }
 
-  testWidgets('🚨the display buffer may pin a chain of canvases, so the '
-      'chain has a byte budget and painting does not grow the process',
-      (tester) async {
-    final engine = QaNativeEngine.instance;
-    if (nativeEngineLibraryPathOrNull() == null || engine == null) {
-      markTestSkipped(nativeEngineMissingSkipReason);
-      return;
-    }
-
-    tester.view.physicalSize = const Size(
-      defaultViewSide + 80,
-      defaultViewSide + 80,
-    );
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
-    final withBuffer = await measure(
-      tester,
-      engine,
-      buffers: buffers,
-      arm: 'WITH buffer',
-    );
     // 🚨★★★THE CONTROL VALIDATES THE INSTRUMENT, AND IT TOUCHES NO PRODUCT
     // CODE: record a picture, `toImageSync` it at the buffer's size, DRAW
     // it into another recording, dispose both — the bare pattern the
@@ -290,7 +344,7 @@ void main() {
     // measuring the harness and no product code could be changed on its
     // word. It reads ~0 — the pattern is clean and the app holds.
     await tester.runAsync(collectGarbage);
-    final drawnBefore = (engine.processFootprintBytes ?? 0) >> 20;
+    final drawnBefore = footprintMb();
     for (var step = 0; step < measuredPaints - warmUpPaints; step += 1) {
       final source = ui.PictureRecorder();
       ui.Canvas(source, const Rect.fromLTWH(0, 0, defaultViewSide, defaultViewSide))
@@ -311,37 +365,18 @@ void main() {
       image.dispose();
     }
     await tester.runAsync(collectGarbage);
-    final drawnAfter = (engine.processFootprintBytes ?? 0) >> 20;
-    final control =
-        'CONTROL toImageSync+DRAW+dispose: kept '
-        '${drawnAfter - drawnBefore}MB '
-        '(before=${drawnBefore}MB after=${drawnAfter}MB)';
+    final drawnAfter = footprintMb();
 
-    final reading =
-        '${withBuffer.reading}\n$control';
-    printOnFailure(reading);
-
-    // 🚨★★★①NO CHAIN — exact, and free of footprint noise. The cache
-    // reports what it pins: the head, the real base, and any deferred
-    // ancestors the head still holds. With the real base landing, that is
-    // TWO canvases (11.5MB here) and the deferred depth saws between 0
-    // and 1; the bound leaves room for one more. Before the real base it
-    // read 64MB — the budget's edge — and before the byte budget 516MB on
-    // this view, 1.06GB on a 1920×1080 canvas.
-    expect(
-      withBuffer.chainPeakMb,
-      lessThanOrEqualTo(residentBufferMb),
-      reason: 'the display buffer pinned more than head + real base:\n'
-          '$reading',
-    );
-    // ②AND THE SNAPSHOTS ACTUALLY LANDED. Without this, a promotion that
-    // never completes would leave every paint deriving from the head under
-    // budget — 64MB pinned, ① red, and this line is what names the cause.
-    expect(
-      buffers.promotedCount,
-      greaterThan(measuredPaints ~/ 8),
-      reason: 'real bases stopped landing — the head is being derived from '
-          'under budget instead:\n$reading',
+    // ignore: avoid_print
+    print(
+      'WITH buffer: kept ${afterGc - baseline}MB '
+      '(baseline=${baseline}MB after=${afterGc}MB) '
+      'over ${measuredPaints - warmUpPaints} paints; named: $named'
+      '\n    curve(+MB every 25 paints): ${curve.join(' ')}'
+      '\n    ${bufferLine(buffers, chainPeak)}'
+      '\nCONTROL toImageSync+DRAW+dispose: kept '
+      '${drawnAfter - drawnBefore}MB '
+      '(before=${drawnBefore}MB after=${drawnAfter}MB)',
     );
     // ⛔THE PROCESS FOOTPRINT IS A READING HERE, NOT A GATE. It was the
     // independent instrument that found the chain — the one that did not
@@ -377,5 +412,5 @@ void main() {
     // how it hides. THE AXIS OF THIS TEST IS THE BUDGET ITSELF, proven
     // where an axis can actually be held still: mutate the budget and the
     // peak moves with it, linearly.
-  });
+  }, tags: const ['benchmark']);
 }
