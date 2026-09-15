@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
+import 'cut_insertion.dart';
 
 class CreateCutCommand implements Command {
   CreateCutCommand({
@@ -64,13 +65,15 @@ class CreateCutCommand implements Command {
   final Cut cut;
 
   CutId? _previousActiveCutId;
-  int? _resolvedIndex;
   bool _hasExecuted = false;
 
-  /// The follower's leading gap before this cut took room out of it, kept so
-  /// undo can hand the room back. Null when there is no follower.
-  CutId? _absorbedFromCutId;
-  late int _absorbedGapBefore;
+  /// Where [cut] goes and the room it takes — the #19 arithmetic, shared
+  /// with an import's new cuts.
+  late final CutInsertion _insertion = CutInsertion(
+    trackId: trackId,
+    cut: cut,
+    index: index,
+  );
 
   @override
   String get description => 'Create cut ${cut.name}';
@@ -78,39 +81,10 @@ class CreateCutCommand implements Command {
   @override
   void execute() {
     _previousActiveCutId = editingSession.activeCutId;
-    _resolvedIndex ??= index ?? _cutCountForTrack();
-
-    // 🚨★★ 유저 #19 (2026-08-15): 「미는건 뒤에 공간없으면 밀어도되는데,
-    // **공간이 여유분이 있는데도 여유분 뒤의 컷을 밀어버림**」
-    //
-    // Cut positions are one cumulative pass over `leadingGap + duration`, so
-    // a plain list splice slides EVERY following cut right by the new cut's
-    // whole footprint — even when the room it needed was already sitting
-    // there as the follower's leading gap.
-    //
-    // ★This is deletion's rule read backwards. [cutDeletionHoleFor] hands a
-    // removed cut's frames TO the next cut's leading gap so nothing after it
-    // moves; creation takes them back out of that same gap, and only what
-    // the gap could not cover becomes a push. Empty gap, no room, the
-    // followers move exactly as far as they always did.
-    final follower = _followerCutOrNull();
-    if (follower != null) {
-      _absorbedFromCutId = follower.id;
-      _absorbedGapBefore = follower.leadingGapFrames;
-    }
-
-    repository.insertCut(trackId: trackId, cut: cut, index: _resolvedIndex);
-
-    final absorbedFrom = _absorbedFromCutId;
-    if (absorbedFrom != null) {
-      final footprint = cut.leadingGapFrames + cut.duration;
-      final remaining = _absorbedGapBefore - footprint;
-      repository.updateCutLeadingGap(
-        cutId: absorbedFrom,
-        leadingGapFrames: remaining < 0 ? 0 : remaining,
-      );
-    }
-
+    // 🚨★★ 유저 #19 (2026-08-15): the room this cut needs comes out of its
+    // follower's leading gap first, and only what the gap cannot cover is a
+    // push — [CutInsertion], where the user's words and the arithmetic live.
+    _insertion.apply(repository);
     editingSession.setActiveCutId(cut.id);
     _hasExecuted = true;
   }
@@ -127,43 +101,11 @@ class CreateCutCommand implements Command {
     }
     final previousActiveCutId = _previousActiveCutId;
 
-    repository.removeCut(cutId: cut.id);
     // ⛔The gap goes back BEFORE the active cut does, and it goes back to the
     // recorded number rather than gap+footprint: the follower may have had
     // less room than this cut took, and adding the footprint back would
-    // invent frames that were never there.
-    final absorbedFrom = _absorbedFromCutId;
-    if (absorbedFrom != null) {
-      repository.updateCutLeadingGap(
-        cutId: absorbedFrom,
-        leadingGapFrames: _absorbedGapBefore,
-      );
-    }
+    // invent frames that were never there ([CutInsertion.revert] keeps it).
+    _insertion.revert(repository);
     editingSession.setActiveCutId(previousActiveCutId);
-  }
-
-  /// The cut this one will land in FRONT of — the one whose leading gap is
-  /// the free space the new cut is entitled to use. Null when appending.
-  Cut? _followerCutOrNull() {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      if (track.id != trackId) {
-        continue;
-      }
-      final at = _resolvedIndex!;
-      return at < track.cuts.length ? track.cuts[at] : null;
-    }
-    throw StateError('Track not found: $trackId');
-  }
-
-  int _cutCountForTrack() {
-    final project = repository.requireProject();
-    for (final track in project.tracks) {
-      if (track.id == trackId) {
-        return track.cuts.length;
-      }
-    }
-
-    throw StateError('Track not found: $trackId');
   }
 }

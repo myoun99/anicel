@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/import_media_command.dart';
@@ -186,6 +187,88 @@ void main() {
         ).description,
         'Import 3 images',
       );
+    });
+
+    group('a new cut at an index takes its room the way Create Cut does (#19)', () {
+      /// Where cut [id] sits — the track's own span walk, not a second one.
+      int startOf(ProjectRepository repository, String id) =>
+          cutSpansOf(trackOf(repository))
+              .firstWhere((span) => span.cut.id == CutId(id))
+              .startFrame;
+
+      test('in front of a roomy follower the follower does not move — and undo '
+          'gives back exactly the gap it had', () {
+        final repository = ProjectRepository(
+          initialProject: projectWith(
+            cuts: [cut('a'), cut('b').copyWith(leadingGapFrames: 30)],
+          ),
+        );
+        final session = EditingSessionState(activeCutId: const CutId('a'));
+        final command = ImportMediaCommand(
+          repository: repository,
+          editingSession: session,
+          trackId: const TrackId('t'),
+          newCuts: [cut('new')],
+          newCutIndex: 1,
+        );
+        final before = startOf(repository, 'b');
+
+        command.execute();
+        expect(
+          [for (final c in trackOf(repository).cuts) c.id.value],
+          ['a', 'new', 'b'],
+        );
+        expect(
+          startOf(repository, 'b'),
+          before,
+          reason: 'the room the new cut needed was already free',
+        );
+
+        command.undo();
+        expect(trackOf(repository).cuts.last.leadingGapFrames, 30);
+        expect(startOf(repository, 'b'), before);
+        expect(session.activeCutId, const CutId('a'));
+      });
+
+      test('a batch keeps its order from that slot', () {
+        final repository = ProjectRepository(
+          initialProject: projectWith(cuts: [cut('a'), cut('b')]),
+        );
+        ImportMediaCommand(
+          repository: repository,
+          editingSession: EditingSessionState(activeCutId: const CutId('a')),
+          trackId: const TrackId('t'),
+          newCuts: [cut('new1'), cut('new2')],
+          newCutIndex: 1,
+        ).execute();
+
+        expect(
+          [for (final c in trackOf(repository).cuts) c.id.value],
+          ['a', 'new1', 'new2', 'b'],
+        );
+      });
+
+      test('a redo lands exactly where the first run did', () {
+        final repository = ProjectRepository(
+          initialProject: projectWith(
+            cuts: [cut('a'), cut('b').copyWith(leadingGapFrames: 5)],
+          ),
+        );
+        final command = ImportMediaCommand(
+          repository: repository,
+          editingSession: EditingSessionState(activeCutId: const CutId('a')),
+          trackId: const TrackId('t'),
+          newCuts: [cut('new')],
+          newCutIndex: 1,
+        );
+
+        command.execute();
+        final first = [for (final c in trackOf(repository).cuts) c];
+        command.undo();
+        command.execute();
+
+        expect(trackOf(repository).cuts, first);
+      });
     });
   });
 

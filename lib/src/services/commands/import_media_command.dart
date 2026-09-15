@@ -6,6 +6,7 @@ import '../../models/media_asset.dart';
 import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_repository.dart';
+import 'cut_insertion.dart';
 
 /// ONE import lands as ONE undo step: prebuilt cuts insert into the
 /// track, prebuilt layers insert into an existing cut, and the media pool
@@ -19,6 +20,7 @@ class ImportMediaCommand implements Command {
     required this.editingSession,
     this.trackId,
     this.newCuts = const [],
+    this.newCutIndex,
     this.targetCutId,
     this.newLayers = const [],
     this.layerInsertionIndex,
@@ -29,9 +31,14 @@ class ImportMediaCommand implements Command {
   final ProjectRepository repository;
   final EditingSessionState editingSession;
 
-  /// Where [newCuts] append (required when they exist).
+  /// Where [newCuts] go (required when they exist).
   final TrackId? trackId;
   final List<Cut> newCuts;
+
+  /// The track slot the first of [newCuts] takes, the rest following it in
+  /// order — where a drop put a new cut. Null is after the track's last cut,
+  /// which is where every import landed before a drop could name the place.
+  final int? newCutIndex;
 
   /// Where [newLayers] insert (required when they exist); they land on
   /// TOP of the stack (list end) unless [layerInsertionIndex] names a slot.
@@ -51,6 +58,10 @@ class ImportMediaCommand implements Command {
   CutId? _previousActiveCutId;
   List<MediaAsset>? _poolBefore;
   bool _hasExecuted = false;
+
+  /// The new cuts' insertions, made once so a redo takes exactly the room
+  /// the first run took ([CutInsertion]).
+  List<CutInsertion>? _cutInsertions;
 
   @override
   String get description => _description;
@@ -74,8 +85,17 @@ class ImportMediaCommand implements Command {
       if (track == null) {
         throw StateError('Importing cuts needs a track id.');
       }
-      for (final cut in newCuts) {
-        repository.insertCut(trackId: track, cut: cut);
+      final first = newCutIndex;
+      final insertions = _cutInsertions ??= [
+        for (var at = 0; at < newCuts.length; at += 1)
+          CutInsertion(
+            trackId: track,
+            cut: newCuts[at],
+            index: first == null ? null : first + at,
+          ),
+      ];
+      for (final insertion in insertions) {
+        insertion.apply(repository);
       }
       editingSession.setActiveCutId(newCuts.first.id);
     }
@@ -106,8 +126,8 @@ class ImportMediaCommand implements Command {
     for (final layer in newLayers) {
       repository.deleteLayer(cutId: targetCutId!, layerId: layer.id);
     }
-    for (final cut in newCuts) {
-      repository.removeCut(cutId: cut.id);
+    for (final insertion in (_cutInsertions ?? const <CutInsertion>[]).reversed) {
+      insertion.revert(repository);
     }
     repository.updateMediaAssets(poolBefore);
     editingSession.setActiveCutId(previousActiveCutId);
