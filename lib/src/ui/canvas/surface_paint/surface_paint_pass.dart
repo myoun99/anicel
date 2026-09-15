@@ -179,17 +179,12 @@ class _SurfacePaintPass {
     // drawImage per committed tile (~2.2ms at 1024 tiles, growing
     // linearly) for pixels the pasteboard clip drops anyway.
     //
-    // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The comment here used to say
-    // "the tile map is a coordinate hash, so each lookup is O(1)" and that
-    // was false: `tiles` is `Map.unmodifiable(_tiles)`, a getter that
-    // COPIES the cel's whole tile map on every read, so the walk below
-    // was O(visible coords × cel tiles) map entries. Measured 0.49 ms per
-    // paint at 70 tiles and 1.48 ms at 88 — and the same shape was
-    // measured at 82.7 ms per walk at the 1024 tiles the _canvas dialog
-    // allows, which is a cliff, not a smoothness question.
-    // (2d0478fb, 2026-09-09: the getter stopped copying — `tiles` hands
-    // over the stored unmodifiable view, so either lookup is O(1) now, and
-    // `tileAt` stays the one this walk means.)
+    // ⚠️ `tileAt`, NOT `surface.tiles[...]`. `tiles` WAS a getter copying
+    // the cel's whole map per read (`Map.unmodifiable`), so this walk was
+    // O(visible coords × cel tiles): 0.49 ms per paint at 70 tiles, 1.48 ms
+    // at 88, 82.7 ms per walk at the 1024 tiles the _canvas dialog allows —
+    // a cliff, not a smoothness question. 2d0478fb (2026-09-09) stopped the
+    // copy, so both lookups are O(1) now; `tileAt` stays the one meant here.
     _paintVisibleTiles();
     final pendingDecodes = _pendingDecodes;
     if (pendingDecodes != null) {

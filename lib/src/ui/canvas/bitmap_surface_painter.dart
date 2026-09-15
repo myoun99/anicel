@@ -142,7 +142,17 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// this painter's only when it paints its own paper there
   /// ([showTransparentBackground]); the merged stack seeds the page itself.
   /// Empty ([Rect.zero]) when it draws nothing.
+  ///
+  /// ⛔And its CLIP when it draws from state it does not publish
+  /// ([drawsOnlyFromPublishedState] is exactly the question 「can what this
+  /// draws be located from what it publishes」). Measured by its published
+  /// state alone, a test double drawing a mutable colour claimed nothing, a
+  /// folder around it sized its buffer without it, and the stroke vanished
+  /// from the canvas (`static_bake_render_parity_test`, 2026-09-15).
   Rect get drawnWorldRect {
+    if (!drawsOnlyFromPublishedState) {
+      return pasteboardRect;
+    }
     Rect? drawn;
     void add(Rect? rect) {
       if (rect != null) {
