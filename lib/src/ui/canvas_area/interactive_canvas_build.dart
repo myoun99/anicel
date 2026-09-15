@@ -125,8 +125,17 @@ class _InteractiveCanvasBuild {
     // canvas's copy of what playback and export draw. Playback renders its
     // own (through the frame painter), so this stands down there exactly
     // like the other editing chrome.
+    //
+    // 🚨F-90 (유저 2026-09-12): 「스토리보드패널, 룰러 드래그 하는동안 se의
+    // 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
+    // 비디오트랙이나 se트랙이나 법 하나로 통일」. The parked content — the track
+    // stack a scrub shows past the cut's territory, or a gap — draws the tags
+    // of the frame IT shows, the way it draws that frame's picture. These are
+    // the ACTIVE cut's at its own cursor, so over the parked picture they were
+    // the frame the drag had left. They stand down wherever the picture is not
+    // this canvas's: [_inGap] asks exactly that, for the content swap below.
     _activeCutForTags = session.activeCutOrNull;
-    _seNameTags = _isPlaybackActive || _activeCutForTags == null
+    _seNameTags = _isPlaybackActive || _inGap || _activeCutForTags == null
         ? const <ResolvedSeNameTag>[]
         : session.seEntries.seNameTagsForCutFrame(
             _activeCutForTags,
