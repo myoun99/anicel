@@ -186,6 +186,12 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
   final Set<int> _mine = <int>{};
 
   bool _releasedInside(Offset position) {
+    // A control that left the tree while it was held — a playback view that
+    // ended under the finger — still hears the lift, because pointer-up goes
+    // to the path the DOWN was hit-tested on. It has no box to be inside of.
+    if (!mounted) {
+      return false;
+    }
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) {
       return false;
@@ -198,24 +204,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
     final fireOn = PressFireScope.of(context);
     return RawGestureDetector(
       behavior: HitTestBehavior.deferToChild,
-      gestures: <Type, GestureRecognizerFactory>{
-        _ControlOwnsHorizontalDrag:
-            GestureRecognizerFactoryWithHandlers<_ControlOwnsHorizontalDrag>(
-              _ControlOwnsHorizontalDrag.new,
-              // ⛔A no-op handler is REQUIRED, not decoration:
-              // `DragGestureRecognizer.isPointerAllowed` returns FALSE when
-              // every callback is null, so a recogniser with nothing to
-              // report is never even offered the pointer. 🧪Measured: with
-              // `(r) {}` the absorb silently did nothing and the list
-              // scrolled from a button exactly as before.
-              (recognizer) => recognizer.onStart = (_) {},
-            ),
-        _ControlOwnsVerticalDrag:
-            GestureRecognizerFactoryWithHandlers<_ControlOwnsVerticalDrag>(
-              _ControlOwnsVerticalDrag.new,
-              (recognizer) => recognizer.onStart = (_) {},
-            ),
-      },
+      gestures: _absorbingPair(_VerbKnown.byTheFirstMove),
       child: Listener(
         onPointerDown: (event) {
           final innermost = !pressIsSpokenFor(event.pointer);
@@ -233,7 +222,19 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
           if (!_mine.remove(event.pointer)) {
             return;
           }
-          if (fireOn == PressFire.upInside && _releasedInside(event.position)) {
+          // 🚨A PRESS SOMETHING TURNED INTO A DRAG VERB IS NOT A CLICK (H24,
+          // 2026-09-15). The canvas takes the strong claim on the pointers it
+          // makes into its own gestures — a pan, a pinch, a flip — and a
+          // claimed control on that canvas (the playback view's stop, a conte
+          // cell, the header editor's tap-away) must not fire when that
+          // gesture lifts inside it. The playback view had already said so in
+          // as many words (D13): 「a plain tap — a press that navigates
+          // nothing — still means stop」. ⚠️Read BEFORE the canvas lets go:
+          // pointer-up runs deepest first, so the claim is still standing.
+          // The swipe columns are untouched — they fire on the DOWN.
+          if (fireOn == PressFire.upInside &&
+              _releasedInside(event.position) &&
+              !valueControlOwnsPointer(event.pointer)) {
             widget.onPressed?.call();
           }
         },
@@ -284,44 +285,107 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
 /// has run, which is the earliest moment the answer is complete. Nothing can
 /// scroll in between: a scroller needs a move too, and this one is deeper, so
 /// it is offered the same event first.
-bool _absorbsThisDrag(int? pointer) => !_standsDown(pointer);
+Map<Type, GestureRecognizerFactory> _absorbingPair(_VerbKnown known) =>
+    <Type, GestureRecognizerFactory>{
+      _AbsorbsHorizontalDrag:
+          GestureRecognizerFactoryWithHandlers<_AbsorbsHorizontalDrag>(
+            () => _AbsorbsHorizontalDrag(known),
+            // ⛔A no-op handler is REQUIRED, not decoration:
+            // `DragGestureRecognizer.isPointerAllowed` returns FALSE when
+            // every callback is null, so a recogniser with nothing to report
+            // is never even offered the pointer. 🧪Measured: with `(r) {}`
+            // the absorb silently did nothing and the list scrolled from a
+            // button exactly as before.
+            (recognizer) => recognizer.onStart = (_) {},
+          ),
+      _AbsorbsVerticalDrag:
+          GestureRecognizerFactoryWithHandlers<_AbsorbsVerticalDrag>(
+            () => _AbsorbsVerticalDrag(known),
+            (recognizer) => recognizer.onStart = (_) {},
+          ),
+    };
 
-class _ControlOwnsHorizontalDrag extends OwningHorizontalDragGestureRecognizer {
-  int? _pointer;
-
-  @override
-  void addAllowedPointer(PointerDownEvent event) {
-    _pointer = event.pointer;
-    super.addAllowedPointer(event);
-  }
-
-  @override
-  bool hasSufficientGlobalDistanceToAccept(
-    PointerDeviceKind pointerDeviceKind,
-    double? deviceTouchSlop,
-  ) => _absorbsThisDrag(_pointer);
-}
-
-class _ControlOwnsVerticalDrag extends OwningVerticalDragGestureRecognizer {
-  int? _pointer;
-
-  @override
-  void addAllowedPointer(PointerDownEvent event) {
-    _pointer = event.pointer;
-    super.addAllowedPointer(event);
-  }
-
-  @override
-  bool hasSufficientGlobalDistanceToAccept(
-    PointerDeviceKind pointerDeviceKind,
-    double? deviceTouchSlop,
-  ) => _absorbsThisDrag(_pointer);
-}
-
+/// When a pointer's drag VERB is known well enough to make way for it.
+///
 /// ⛔A drag from here is somebody's VERB (a swipe column, a slider): the
-/// weak claim stands down so the thing that owns it can run.
-bool _standsDown(int? pointer) =>
-    pointer != null && valueControlOwnsPointer(pointer);
+/// absorbing pair stands down so the thing that owns it can run. What
+/// differs between the two claims that mount the pair is only WHEN that is
+/// known — one question, answered at the moment each of them can answer it.
+enum _VerbKnown {
+  /// By the FIRST MOVE — a button's claim ([ControlPressClaim]). The note on
+  /// the pair above says why: a swipe column's strong claim sits ABOVE the
+  /// button and is taken after the button is offered the pointer.
+  byTheFirstMove,
+
+  /// At the DOWN — a surface's claim ([SurfaceDragClaim]). The canvas above
+  /// the surface takes the strong claim on the pointers it makes into its
+  /// own gestures, and those are exactly the drags the surface is there to
+  /// hold. Only a claim taken BELOW it — offered the down first — is a verb
+  /// to make way for.
+  atTheDown,
+}
+
+/// The pair's one question: hold this drag, or make way for a verb?
+///
+/// ⚠️A helper each recogniser HOLDS, not a mixin: `DragGestureRecognizer` is
+/// sealed outside its own library, so nothing can be mixed in on it.
+class _MakeWay {
+  _MakeWay(this._known);
+
+  final _VerbKnown _known;
+  int? _pointer;
+  bool _verbAtTheDown = false;
+
+  void noteDown(PointerDownEvent event) {
+    _pointer = event.pointer;
+    _verbAtTheDown = valueControlOwnsPointer(event.pointer);
+  }
+
+  bool get forAVerb {
+    final pointer = _pointer;
+    return switch (_known) {
+      _VerbKnown.byTheFirstMove =>
+        pointer != null && valueControlOwnsPointer(pointer),
+      _VerbKnown.atTheDown => _verbAtTheDown,
+    };
+  }
+}
+
+class _AbsorbsHorizontalDrag extends OwningHorizontalDragGestureRecognizer {
+  _AbsorbsHorizontalDrag(_VerbKnown known) : _makeWay = _MakeWay(known);
+
+  final _MakeWay _makeWay;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _makeWay.noteDown(event);
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) => !_makeWay.forAVerb;
+}
+
+class _AbsorbsVerticalDrag extends OwningVerticalDragGestureRecognizer {
+  _AbsorbsVerticalDrag(_VerbKnown known) : _makeWay = _MakeWay(known);
+
+  final _MakeWay _makeWay;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _makeWay.noteDown(event);
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) => !_makeWay.forAVerb;
+}
 
 /// 🚨★★★A DRAG FROM HERE IS THIS THING'S VERB — the STRONG claim, in one
 /// place.
@@ -372,6 +436,49 @@ class DragVerbClaim extends StatelessWidget {
       // ⛔Cancel too: a claim that outlives its gesture would silently
       // deafen whichever later pan is handed the same id.
       onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
+      child: child,
+    );
+  }
+}
+
+/// 🚨★★★A DRAG THAT STARTS ON A CANVAS SURFACE IS THAT SURFACE'S — the
+/// claim a whole surface wears, where [ControlPressClaim] is a button's and
+/// [DragVerbClaim] a bar's.
+///
+/// H24, reported three times: 08-26 「패널이 여러 개 열려 레일이 생기면 터치
+/// 시 스크롤 발생」, 09-01 「내부 터치는 강한 클레임으로 애초에 다른 곳에서
+/// 조작이 발생 안 하게」, 09-15 「스페이스바+클릭이나 터치조작이나 뷰어패널
+/// 내부에 대한 조작이 … 스크롤바랑 동시적용 … 스크롤바 절대 적용안되게
+/// 강한클레임으로 잡아줘. 캔버스 베이스패널은 전부 다 똑같이」.
+///
+/// It is the same absorbing pair a button wears, and it differs in one
+/// thing, for one reason: it makes way only for a verb claimed BELOW it
+/// ([_VerbKnown.atTheDown]). The canvas it is mounted inside claims the
+/// pointers it turns into its own pans and pinches, and those are the very
+/// drags this has to hold against an ancestor scroller — so a claim taken
+/// ABOVE it cannot be a reason to let go.
+///
+/// ⚠️It holds; it does not act. Everything the canvas does reads raw
+/// pointers, which no arena can take away, so nothing on the canvas loses
+/// its gesture to this. What does lose is an ARENA member beneath it that
+/// asks later: a handle that waited for a slop (it now accepts on the first
+/// movement — [OwningPanGestureRecognizer]), a tap recogniser (the playback
+/// view, the conte cells and the header editor's tap-away fire from
+/// [ControlPressClaim] now), and a text field (it takes [DragVerbClaim], and
+/// this makes way).
+class SurfaceDragClaim extends StatelessWidget {
+  const SurfaceDragClaim({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      // Translucent, as the canvas layer around it is: a blank canvas paints
+      // nothing hit-testable, and a drag that starts there is still the
+      // canvas's.
+      behavior: HitTestBehavior.translucent,
+      gestures: _absorbingPair(_VerbKnown.atTheDown),
       child: child,
     );
   }

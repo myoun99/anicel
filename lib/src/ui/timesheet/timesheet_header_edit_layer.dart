@@ -173,12 +173,18 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
             ),
           ],
         ] else ...[
-          // Tap-away barrier: clicking anywhere else commits the edit.
+          // Tap-away barrier: clicking anywhere else commits the edit. A
+          // claimed press like the boxes (H24): the canvas surface under the
+          // sheet takes the arena on the first movement, and a plain tap
+          // recogniser lost its tap to it whenever the hand moved.
           Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey<String>('timesheet-header-edit-barrier'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _focusNode?.unfocus(),
+            child: ControlPressClaim(
+              onPressed: () => _focusNode?.unfocus(),
+              child: GestureDetector(
+                key: const ValueKey<String>('timesheet-header-edit-barrier'),
+                behavior: HitTestBehavior.opaque,
+                onTap: silentPress(() => _focusNode?.unfocus()),
+              ),
             ),
           ),
           ..._buildEditor(target),
@@ -279,28 +285,33 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
           child: Container(
             color: const Color(0xFFF6F4F0),
             alignment: Alignment.topLeft,
-            child: TextField(
-              key: const ValueKey<String>('timesheet-header-edit-field'),
-              controller: _controller,
-              focusNode: _focusNode,
-              autofocus: true,
-              maxLines: memo ? null : 1,
-              expands: memo,
-              onSubmitted: memo ? null : (_) => _commit(),
-              // Header values print centered (R7-⑥); the memo stays
-              // top-left like handwriting.
-              textAlign: memo ? TextAlign.start : TextAlign.center,
-              style: TextStyle(
-                color: const Color(0xFF33322F),
-                fontSize: fontSize,
-                fontWeight: memo ? FontWeight.w400 : FontWeight.w600,
-              ),
-              decoration: const InputDecoration(
-                // Bare: this field sits ON the printed sheet (paper white),
-                // so it opts out of the app-wide dark filled box.
-                filled: false,
-                isCollapsed: true,
-                border: InputBorder.none,
+            // H24: a drag in the field selects text — the field's own verb —
+            // so it takes the STRONG claim, and the canvas surface under the
+            // sheet stands down for it rather than holding the drag.
+            child: DragVerbClaim(
+              child: TextField(
+                key: const ValueKey<String>('timesheet-header-edit-field'),
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: true,
+                maxLines: memo ? null : 1,
+                expands: memo,
+                onSubmitted: memo ? null : (_) => _commit(),
+                // Header values print centered (R7-⑥); the memo stays
+                // top-left like handwriting.
+                textAlign: memo ? TextAlign.start : TextAlign.center,
+                style: TextStyle(
+                  color: const Color(0xFF33322F),
+                  fontSize: fontSize,
+                  fontWeight: memo ? FontWeight.w400 : FontWeight.w600,
+                ),
+                decoration: const InputDecoration(
+                  // Bare: this field sits ON the printed sheet (paper white),
+                  // so it opts out of the app-wide dark filled box.
+                  filled: false,
+                  isCollapsed: true,
+                  border: InputBorder.none,
+                ),
               ),
             ),
           ),

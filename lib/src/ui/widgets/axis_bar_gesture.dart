@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart'
     show
         HorizontalDragGestureRecognizer,
+        PanGestureRecognizer,
         PointerDeviceKind,
         VerticalDragGestureRecognizer;
 
@@ -68,6 +69,24 @@ class OwningHorizontalDragGestureRecognizer
 class OwningVerticalDragGestureRecognizer
     extends VerticalDragGestureRecognizer {
   OwningVerticalDragGestureRecognizer({super.debugOwner});
+
+  @override
+  bool hasSufficientGlobalDistanceToAccept(
+    PointerDeviceKind pointerDeviceKind,
+    double? deviceTouchSlop,
+  ) => true;
+}
+
+/// The twin with no axis: a HANDLE — a transform box's corner, a gizmo's
+/// crosshair — dragged anywhere. A handle is a bar in two dimensions, and
+/// the law is the same one.
+///
+/// 🚨H24 (2026-09-15) is why it exists. The canvas a handle sits on now
+/// takes the arena on the first movement itself, so a handle that waited
+/// for the pan slop lost every drag to the surface under it. Deeper and just
+/// as early is what keeps the handle's drag the handle's.
+class OwningPanGestureRecognizer extends PanGestureRecognizer {
+  OwningPanGestureRecognizer({super.debugOwner, super.supportedDevices});
 
   @override
   bool hasSufficientGlobalDistanceToAccept(

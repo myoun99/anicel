@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/identity_memo.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -13,10 +14,10 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/viewport_point.dart';
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../input/control_press_claim.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
@@ -404,27 +405,49 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// Each cell's picture, a claimed press of its own.
+  ///
+  /// 🚨H24 (2026-09-15): the canvas surface under the sheet takes the arena
+  /// on the first movement, and one tap recogniser over the whole page lost
+  /// its tap to it the moment a finger wobbled. A cell fires from its claim
+  /// instead — the timesheet's header boxes' law — and not for a press the
+  /// canvas turned into a pan or a pinch.
+  ///
+  /// ⚠️REVERSED, so where two pictures overlap (a cell that encroaches with a
+  /// horizontal camera move) the EARLIER cell is on top and takes the press,
+  /// as the page-wide layer's first-match loop gave it.
   Positioned _cellTapLayer(CanvasViewport viewport, ContePageLayout page) {
     return Positioned.fill(
-      child: GestureDetector(
+      child: Stack(
         key: const ValueKey<String>('conte-cell-tap-layer'),
-        behavior: HitTestBehavior.translucent,
-        onTapUp: (details) {
-          final canvasPoint = viewport.viewportToCanvas(
-            ViewportPoint(
-              x: details.localPosition.dx,
-              y: details.localPosition.dy,
+        children: [
+          for (final cell in page.cells.reversed)
+            Positioned.fromRect(
+              rect: _onScreen(viewport, cell.pictureRect),
+              child: ControlPressClaim(
+                onPressed: () => _selectCell(cell),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: silentPress(() => _selectCell(cell)),
+                ),
+              ),
             ),
-          );
-          final point = Offset(canvasPoint.x, canvasPoint.y);
-          for (final cell in page.cells) {
-            if (cell.pictureRect.contains(point)) {
-              _selectCell(cell);
-              return;
-            }
-          }
-        },
+        ],
       ),
+    );
+  }
+
+  /// [documentRect] where [viewport] puts it on screen.
+  Rect _onScreen(CanvasViewport viewport, Rect documentRect) {
+    final topLeft = viewport.canvasToViewport(
+      CanvasPoint(x: documentRect.left, y: documentRect.top),
+    );
+    final bottomRight = viewport.canvasToViewport(
+      CanvasPoint(x: documentRect.right, y: documentRect.bottom),
+    );
+    return Rect.fromPoints(
+      Offset(topLeft.x, topLeft.y),
+      Offset(bottomRight.x, bottomRight.y),
     );
   }
 

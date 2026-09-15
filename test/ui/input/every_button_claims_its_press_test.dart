@@ -99,11 +99,15 @@ void main() {
     // peg opacity could no longer be dragged at all (measured — the onion
     // panel's drag test went red). Same shape as the row above.
     'onion-peg-column-': 'the strip above it owns the drag',
-    // ⛔SCRIMS AND GRID SURFACES, not buttons. Each covers a whole region
-    // and exists so that a press ANYWHERE lands somewhere; claiming one
-    // would mean the region under it could never be scrolled at all.
-    'canvas-playback-view': 'a scrim over the whole view',
-    'timesheet-header-edit-barrier': 'a tap-away scrim',
+    // ⛔GRID SURFACES, not buttons. Each covers a whole region and exists so
+    // that a press ANYWHERE lands somewhere; claiming one would mean the
+    // region under it could never be scrolled at all.
+    //
+    // 🪦The playback view and the header editor's tap-away scrim stood here
+    // until H24 (2026-09-15). Both sit on a CANVAS surface, which now takes
+    // the arena on the first movement itself: nothing under them scrolls
+    // any more, and a plain tap there lost its tap whenever the hand moved.
+    // Both are claimed presses now.
     '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
   };
 

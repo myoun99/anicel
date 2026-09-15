@@ -20,6 +20,7 @@ import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../input/control_press_claim.dart';
 
 /// The canvas panel's playback content: cached composite frames advancing
 /// with the controller's ticker, rendered INSIDE the panel viewport so the
@@ -177,11 +178,8 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       // gate's navigation hole lets pointers reach the panel so pan/zoom
       // keep working during playback, and a plain tap — a press that
       // navigates nothing — still means stop, as it did before T28-c.
-      return GestureDetector(
-        key: const ValueKey<String>('canvas-playback-view'),
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.controller.stop,
-        child: Stack(
+      return _stopsOnPress(
+        Stack(
           fit: StackFit.expand,
           children: [stack, _prerenderProgressBar(context)],
         ),
@@ -235,12 +233,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               position.localFrameIndex
         : 0;
 
-    return GestureDetector(
-      key: const ValueKey<String>('canvas-playback-view'),
-      behavior: HitTestBehavior.opaque,
-      // One tap anywhere on the canvas cancels playback.
-      onTap: widget.controller.stop,
-      child: Stack(
+    // One press anywhere on the canvas cancels playback.
+    return _stopsOnPress(
+      Stack(
         fit: StackFit.expand,
         children: [
           CustomPaint(
@@ -325,6 +320,24 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       ),
     );
   }
+
+  /// The whole view as one press that stops playback.
+  ///
+  /// 🚨A CLAIMED PRESS, not a tap recogniser (H24, 2026-09-15). The canvas
+  /// surface this sits on takes the arena on the first movement, and a tap
+  /// recogniser loses its tap to whatever wins it — so a finger that wobbled
+  /// would no longer have stopped playback. The claim fires on the release,
+  /// and not for a press the canvas turned into a gesture: D13's 「a press
+  /// that navigates nothing」, kept exactly.
+  Widget _stopsOnPress(Widget picture) => ControlPressClaim(
+    onPressed: widget.controller.stop,
+    child: GestureDetector(
+      key: const ValueKey<String>('canvas-playback-view'),
+      behavior: HitTestBehavior.opaque,
+      onTap: silentPress(widget.controller.stop),
+      child: picture,
+    ),
+  );
 
   Widget _prerenderProgressBar(BuildContext context) {
     return Positioned(

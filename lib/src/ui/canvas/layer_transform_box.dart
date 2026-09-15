@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../../services/layer_pose_paint.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import '../widgets/axis_bar_gesture.dart';
 
 /// Which member of the Transform group a box drag drives (R5 #10, the
 /// user's rule: "그 관련된 동작을 하면 관련된 멤버가 키찍고 값 바꾸도록").
@@ -220,17 +221,32 @@ class _LayerTransformBoxState extends State<LayerTransformBox> {
       top: center.dy - size / 2,
       width: size,
       height: size,
-      child: GestureDetector(
+      // H24: the canvas under this takes the arena on the first movement, so
+      // the handle takes it on the first movement too — deeper, so it is
+      // asked first ([OwningPanGestureRecognizer]).
+      child: RawGestureDetector(
         key: ValueKey<String>(keyValue),
         behavior: HitTestBehavior.opaque,
-        // TS9: a finger drives this only while the one-finger slot draws —
-        // stated as devices so the recognizer stays out of the arena and the
-        // flip below can take the touch (see [AppInput.toolPointerDevices]).
-        supportedDevices: AppInput.toolPointerDevices,
-        onPanStart: (details) => _beginGrab(grab, details.globalPosition),
-        onPanUpdate: (details) => _updateGrab(details.globalPosition),
-        onPanEnd: (_) => _endGrab(),
-        onPanCancel: _cancelGrab,
+        gestures: <Type, GestureRecognizerFactory>{
+          OwningPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<OwningPanGestureRecognizer>(
+                // TS9: a finger drives this only while the one-finger slot
+                // draws — stated as devices so the recognizer stays out of
+                // the arena and the flip below can take the touch (see
+                // [AppInput.toolPointerDevices]).
+                () => OwningPanGestureRecognizer(
+                  supportedDevices: AppInput.toolPointerDevices,
+                ),
+                (recognizer) {
+                  recognizer.onStart =
+                      (details) => _beginGrab(grab, details.globalPosition);
+                  recognizer.onUpdate =
+                      (details) => _updateGrab(details.globalPosition);
+                  recognizer.onEnd = (_) => _endGrab();
+                  recognizer.onCancel = _cancelGrab;
+                },
+              ),
+        },
         child: MouseRegion(
           cursor: cursor,
           child: Center(

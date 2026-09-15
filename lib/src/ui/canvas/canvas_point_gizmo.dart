@@ -4,6 +4,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/axis_bar_gesture.dart';
 
 /// Which glyph a [CanvasPointGizmo] wears, and the radii that draw it.
 ///
@@ -164,14 +165,29 @@ Widget _gizmoHandle({
         top: center.dy - handleSize / 2,
         width: handleSize,
         height: handleSize,
-        child: GestureDetector(
+        // H24: the canvas under this takes the arena on the first movement,
+        // so the handle takes it on the first movement too — deeper, so it
+        // is asked first ([OwningPanGestureRecognizer]).
+        child: RawGestureDetector(
           key: key,
           behavior: HitTestBehavior.opaque,
-          supportedDevices: AppInput.toolPointerDevices,
-          onPanStart: (_) => onDragStart(),
-          onPanUpdate: (details) => onDragDelta(details.delta),
-          onPanEnd: (_) => onDragEnd(),
-          onPanCancel: onDragCancel,
+          gestures: <Type, GestureRecognizerFactory>{
+            OwningPanGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  OwningPanGestureRecognizer
+                >(
+                  () => OwningPanGestureRecognizer(
+                    supportedDevices: AppInput.toolPointerDevices,
+                  ),
+                  (recognizer) {
+                    recognizer.onStart = (_) => onDragStart();
+                    recognizer.onUpdate =
+                        (details) => onDragDelta(details.delta);
+                    recognizer.onEnd = (_) => onDragEnd();
+                    recognizer.onCancel = onDragCancel;
+                  },
+                ),
+          },
           child: MouseRegion(
             cursor: SystemMouseCursors.move,
             child: CustomPaint(

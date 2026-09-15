@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
+import '../input/control_press_claim.dart';
+import '../input/value_control_pointers.dart';
 import '../input/wheel_law.dart';
 import '../../models/viewport_point.dart';
 import 'canvas_press.dart';
@@ -173,8 +175,46 @@ class _CanvasViewportGestureLayerState
       onPointerPanZoomStart: _handlePanZoomStart,
       onPointerPanZoomUpdate: _handlePanZoomUpdate,
       onPointerPanZoomEnd: _handlePanZoomEnd,
-      child: widget.child,
+      // 🚨★★★H24 — A DRAG THAT STARTS HERE IS THIS CANVAS'S, and no scroller
+      // around the panel moves with it (유저 2026-09-15: 「스페이스바+클릭이나
+      // 터치조작이나 뷰어패널 내부에 대한 조작이 다중패널의 스크롤바가
+      // 활성되있을때 … 동시적용되버리니까 스크롤바 절대 적용안되게
+      // 강한클레임으로 잡아줘. 캔버스 베이스패널은 전부 다 똑같이」). This
+      // layer reads raw pointers and never enters the arena, so an ancestor
+      // `Scrollable` won every drag that began on the canvas and scrolled
+      // under it. 🧪Measured with the dock's kind of scroller around a sheet
+      // panel: every device's drag scrolled it 144px, and two fingers did not
+      // even reach the pinch (12 viewports without the scroller, 0 with it).
+      //
+      // The claim sits INSIDE this Listener, and that is load-bearing: it is
+      // offered each down before this layer is, so it can tell a deeper
+      // widget's own drag verb from the pointers this layer is about to make
+      // into its gestures ([SurfaceDragClaim]).
+      child: SurfaceDragClaim(child: widget.child),
     );
+  }
+
+  /// Pointers this layer has made into ITS gestures, held under the strong
+  /// claim until each one lifts.
+  ///
+  /// What the claim is for is the press BELOW: a claimed control on the
+  /// canvas — the playback view's stop, a conte cell — does not fire when a
+  /// pan or a pinch that ran across it lifts inside it
+  /// ([ControlPressClaim]). Released per pointer on its OWN lift, never all
+  /// at once: the finger still down after its partner lifts is still part
+  /// of a gesture, not the start of a tap.
+  final Set<int> _gesturePointers = <int>{};
+
+  void _holdForTheGesture(int pointer) {
+    if (_gesturePointers.add(pointer)) {
+      claimPointerForValueControl(pointer);
+    }
+  }
+
+  void _releaseFromTheGesture(int pointer) {
+    if (_gesturePointers.remove(pointer)) {
+      releasePointerForValueControl(pointer);
+    }
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -203,6 +243,9 @@ class _CanvasViewportGestureLayerState
     _panPointer = event.pointer;
     _panStartLocalPosition = event.localPosition;
     _panStartViewport = _liveViewport;
+    // A pan press is this canvas's gesture from its down: the held key or
+    // the mapped button said so before anything moved.
+    _holdForTheGesture(event.pointer);
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -227,6 +270,10 @@ class _CanvasViewportGestureLayerState
   /// UP and CANCEL say the same thing to this layer — **this pointer left**
   /// — so one handler answers both. Only [PointerEvent.pointer] is read.
   void _handlePointerLift(PointerEvent event) {
+    // ⚠️Released here and not earlier: pointer-up reaches a claimed control
+    // on the canvas BEFORE this ancestor, so the control has already seen
+    // that this press was a gesture by the time the claim is let go.
+    _releaseFromTheGesture(event.pointer);
     if (_touchPositions.remove(event.pointer) != null) {
       _controlTouchLift(event.pointer);
       return;
@@ -298,6 +345,12 @@ class _CanvasViewportGestureLayerState
     if (_groupAction == CanvasTouchDragAction.flip) {
       widget.flipHud?.end();
     }
+    // Nor its claims: a claim that outlives its gesture deafens whichever
+    // later press is handed the same pointer id.
+    for (final pointer in _gesturePointers) {
+      releasePointerForValueControl(pointer);
+    }
+    _gesturePointers.clear();
     super.dispose();
   }
 
@@ -337,6 +390,7 @@ class _CanvasViewportGestureLayerState
         _groupAction != CanvasTouchDragAction.draw &&
         AppInput.settings.value.extraFingerModifier) {
       _modifierPointers.add(event.pointer);
+      _holdForTheGesture(event.pointer);
       _engageModifier();
     }
   }
@@ -351,6 +405,14 @@ class _CanvasViewportGestureLayerState
         return;
       }
       final moved = event.localPosition - down;
+      // Past the slop the press is a GESTURE, whichever action the group
+      // turns out to be — so a claimed control under it will not take its
+      // lift as a tap. The flip still classifies at its own distance (H30);
+      // this decides only that it is no longer a tap, with the slop every
+      // other group already locks at, not a number of its own.
+      if (moved.distance >= _touchSlop) {
+        _holdForTheGesture(event.pointer);
+      }
       if (moved.distance < _lockDistanceFor(_groupPointers.length)) {
         return;
       }
@@ -430,6 +492,11 @@ class _CanvasViewportGestureLayerState
 
   void _lockGroup({required Offset firstMovedDelta}) {
     _groupLocked = true;
+    // Every finger of a locked group is the gesture's — the one that stood
+    // still through a pinch included — so none of them lifts as a tap.
+    for (final pointer in _groupPointers) {
+      _holdForTheGesture(pointer);
+    }
     // 🚨★★★H24 (유저 2026-08-25): 「터치 제스처가 패널을 통과」 — two fingers
     // on the glass, one of them over the timeline, and the canvas ran a
     // ONE-finger gesture: the timeline flipped frames while the user was
