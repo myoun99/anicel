@@ -212,12 +212,13 @@ class HistoryPictures {
 
   /// The pictures of what a canvas paints for [tile] go — the tile's own,
   /// and on a row drawn through colour keys its keyed copy's, which lives
-  /// exactly as long as the tile does — unless a cel still holds [tile].
+  /// exactly as long as the tile does; truth and stand-in alike — unless a
+  /// cel still holds [tile].
   void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
     final keyed = keyedCopyOf(tile);
     final pictured =
-        _cache.imageFor(tile) != null ||
-        (keyed != null && _cache.imageFor(keyed) != null);
+        _cache.displayImageFor(tile) != null ||
+        (keyed != null && _cache.displayImageFor(keyed) != null);
     if (!pictured || store.holdsTile(coord, tile)) {
       return;
     }

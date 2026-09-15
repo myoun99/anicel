@@ -65,6 +65,35 @@ void main() {
     expect(cache.needsDecodeStart(lone), isTrue);
   });
 
+  testWidgets('a stand-in nothing shows goes too — the one a confirm composes '
+      'for a tile whose truth never lands', (tester) async {
+    final cache = BitmapTileImageCache();
+    final lone = tile();
+    cache.putProvisional(lone, picture());
+    final held = BitmapTileImageCache.liveImageBytes;
+    // ⛔Mutation: the release lets go of truth only → the stand-in stays for
+    // as long as the tile lives.
+    cache.releasePicture(coord, lone);
+    expect(cache.hasProvisional(lone), isFalse);
+    expect(BitmapTileImageCache.liveImageBytes, held - 4 * 4 * 4);
+  });
+
+  testWidgets('a stand-in a tile not ready yet composes from stays', (
+    tester,
+  ) async {
+    final cache = BitmapTileImageCache();
+    final before = tile();
+    final after = tile();
+    cache.putProvisional(before, picture());
+    TilePredecessors.instance.note(after, before);
+    cache.releasePicture(coord, before);
+    expect(
+      cache.hasProvisional(before),
+      isTrue,
+      reason: 'a successor composes from a stand-in as readily as from truth',
+    );
+  });
+
   testWidgets('🚨a picture a tile not ready yet composes from stays', (
     tester,
   ) async {

@@ -255,28 +255,40 @@ class BitmapTileImageCache extends ChangeNotifier {
     _release(provisional);
   }
 
-  /// Lets [tile]'s own picture go while the tile itself lives on — the door
-  /// undo-held-tile-pictures stage 2 needed, where a picture used to live
-  /// exactly as long as its tile. Asked for again, it is made again like the
-  /// picture of any tile that has none.
+  /// Lets [tile]'s pictures go while the tile itself lives on — its own and
+  /// its stand-in — the door undo-held-tile-pictures stage 2 needed, where a
+  /// picture used to live exactly as long as its tile. Asked for again, it
+  /// is made again like the picture of any tile that has none.
+  ///
+  /// 🚨THE STAND-IN GOES TOO. A confirm composes one for every tile its
+  /// landing changed, and a tile off screen never gets the truth that would
+  /// retire it — so it kept that stand-in for as long as the history held
+  /// the tile. Measured on the transform-repeat probe (2026-09-15): +6.8 MB
+  /// a scale-up step, every byte of it stand-ins on entries deeper than the
+  /// next step.
   ///
   /// The caller answers whether anything SHOWS [tile]. This refuses the two
   /// ways the screen borrows a picture for ANOTHER tile whose own is not
-  /// ready: a successor composing its stand-in from it
-  /// ([TilePredecessors.lends]), and the coordinate fallback, where [tile]
-  /// is filed as the latest picture at [coord] ([latestImageForCoord]).
+  /// ready: a successor composing its stand-in from it — from a stand-in as
+  /// readily as from truth ([TilePredecessors.lends]) — and the coordinate
+  /// fallback, where [tile] is filed as the latest picture at [coord]
+  /// ([latestImageForCoord]).
   ///
   /// Detached first, for the reason [_dropProvisional] gives, and retired
   /// through the deferred disposer like every picture here.
   void releasePicture(TileCoord coord, BitmapTile tile) {
     final image = _images[tile];
-    if (image == null || _lent(tile)) {
+    if ((image == null && _provisional[tile] == null) || _lent(tile)) {
       return;
     }
     for (final scoped in _latestDecodedByScope.values) {
       if (identical(scoped[coord], tile)) {
         return;
       }
+    }
+    _dropProvisional(tile);
+    if (image == null) {
+      return;
     }
     _images[tile] = null;
     _imageFinalizer.detach(tile);

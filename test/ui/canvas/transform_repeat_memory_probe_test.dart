@@ -1,10 +1,13 @@
 @Tags(['benchmark'])
 library;
 
+import 'dart:developer' show NativeRuntime;
 import 'dart:io' show Platform, ProcessInfo;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -27,6 +30,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/tile_predecessors.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
@@ -47,9 +51,11 @@ import '../../helpers/device_viewport.dart';
 ///
 /// Knobs, one axis each: `TRANSFORM_PROBE_ROUNDS` (6), `TRANSFORM_PROBE_ZOOM`
 /// (0.3 — the whole picture on screen), `TRANSFORM_PROBE_CLEAR_HISTORY=1`
-/// (the history let go after every round — what undo holds, released) and
+/// (the history let go after every round — what undo holds, released),
 /// `TRANSFORM_PROBE_RELEASE=0` (the pictures of entries deeper than the next
-/// step kept, as they were before undo-held-tile-pictures stage 2).
+/// step kept, as they were before undo-held-tile-pictures stage 2) and
+/// `TRANSFORM_PROBE_WHO=1` (after every step, who holds the tile pictures:
+/// the screen, the deeper entries by what kept each, and the rest).
 ///
 /// The selection is the picture's own ink box handed to the layer's region
 /// door in CANVAS space, and the scale goes through the NUMERIC channel
@@ -71,6 +77,8 @@ void main() {
   final clearHistory =
       Platform.environment['TRANSFORM_PROBE_CLEAR_HISTORY'] == '1';
   final release = Platform.environment['TRANSFORM_PROBE_RELEASE'] != '0';
+  final who = Platform.environment['TRANSFORM_PROBE_WHO'] == '1';
+  final heapSnapshot = Platform.environment['TRANSFORM_PROBE_HEAP_SNAPSHOT'];
 
   BrushDab square(double x, double y) => BrushDab(
     center: CanvasPoint(x: x, y: y),
@@ -204,6 +212,78 @@ void main() {
       (left, entry) => entry.key == 'footprint' ? left : left - entry.value,
     );
 
+    /// The cel as it stood before the last step — what the next undo puts
+    /// back.
+    BitmapSurface? lastBefore;
+
+    /// Who holds the tile pictures: the screen, the entries deeper than the
+    /// next step — split by what kept a deep one — and the rest, which is
+    /// the next steps' pictures plus anything outside the history and the
+    /// screen.
+    String whoHolds() {
+      final cache = BitmapTileImageCache.instance;
+      final key = coordinator.activeFrameKey;
+      final scope = (key.layerId, key.frameId);
+      final counted = Set<BitmapTile>.identity();
+      int bytesOf(BitmapTile tile) => tile.size * tile.size * 4;
+      // A stand-in is a picture too — `liveImageBytes` counts both — and a
+      // tile can hold one with no truth behind it, so the buckets count both.
+      int picturedBytes(BitmapTile tile) =>
+          (cache.imageFor(tile) != null ? bytesOf(tile) : 0) +
+          (cache.hasProvisional(tile) ? bytesOf(tile) : 0);
+      var screen = 0;
+      for (final tile in coordinator.currentSurfaceOf(key).tiles.values) {
+        if (counted.add(tile)) {
+          screen += picturedBytes(tile);
+        }
+      }
+      var next = 0;
+      for (final tile in lastBefore?.tiles.values ?? const <BitmapTile>[]) {
+        if (counted.add(tile)) {
+          next += picturedBytes(tile);
+        }
+      }
+      var held = 0;
+      var lent = 0;
+      var filed = 0;
+      var other = 0;
+      var standIns = 0;
+      history.visitDeepHeldTiles((coord, tile) {
+        if (!counted.add(tile)) {
+          return;
+        }
+        if (cache.hasProvisional(tile)) {
+          standIns += bytesOf(tile);
+        }
+        final image = cache.imageFor(tile);
+        if (image == null) {
+          return;
+        }
+        final bytes = bytesOf(tile);
+        if (store.holdsTile(coord, tile)) {
+          held += bytes;
+        } else if (TilePredecessors.instance.lends(
+          tile,
+          hasPicture: (successor) => cache.displayImageFor(successor) != null,
+        )) {
+          lent += bytes;
+        } else if (identical(
+          cache.latestImageForCoord(coord, scope: scope),
+          image,
+        )) {
+          filed += bytes;
+        } else {
+          other += bytes;
+        }
+      });
+      final live = BitmapTileImageCache.liveImageBytes;
+      final deep = held + lent + filed + other + standIns;
+      return 'who: live=${mb(live)} screen=${mb(screen)} next=${mb(next)} '
+          'deep=${mb(deep)} (held ${mb(held)} lent ${mb(lent)} '
+          'filed ${mb(filed)} other ${mb(other)} stand-ins ${mb(standIns)}) '
+          'outside=${mb(live - screen - next - deep)}';
+    }
+
     void report(String label, Map<String, int> now, Map<String, int> base) {
       final size = picture();
       final unnamed = unnamedOf(now);
@@ -246,6 +326,7 @@ void main() {
       await tester.pump();
       final was = picture();
       final before = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+      lastBefore = before;
       final steps = history.revision;
       commands.beginTransform();
       await tester.pump();
@@ -295,6 +376,10 @@ void main() {
         }
         final now = await holdings();
         report('round $round ×$factor', now, previous);
+        if (who) {
+          // ignore: avoid_print
+          print(whoHolds());
+        }
         // ignore: avoid_print
         print(
           '    took=${watch.elapsedMilliseconds}ms '
@@ -322,5 +407,15 @@ void main() {
     }
     final settled = await holdings();
     report('settled', settled, previous);
+    if (who) {
+      // ignore: avoid_print
+      print(whoHolds());
+    }
+    if (heapSnapshot != null) {
+      await tester.runAsync(collectGarbage);
+      NativeRuntime.writeHeapSnapshotToFile(heapSnapshot);
+      // ignore: avoid_print
+      print('heap snapshot written: $heapSnapshot');
+    }
   });
 }

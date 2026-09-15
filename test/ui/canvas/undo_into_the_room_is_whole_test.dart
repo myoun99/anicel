@@ -177,6 +177,25 @@ void main() {
     expect(_pictured(walk.surfaces[3]), 0, reason: 'stroke 4 is deep again');
   });
 
+  testWidgets('🚨stage 2: a stand-in on a deep entry goes too — the picture a '
+      'confirm composes for a tile whose truth never lands', (tester) async {
+    final walk = await _Walk.draw(tester, cels: 8);
+    final cache = BitmapTileImageCache.instance;
+    // Stroke 1's tiles sit under entry 2, deep, and their truth has gone.
+    // Give one the stand-in a confirm composes for a tile off screen.
+    final tile = walk.surfaces[0].tiles.values.first;
+    expect(cache.imageFor(tile), isNull, reason: 'premise: its truth went');
+    cache.putProvisional(
+      tile,
+      _uploadUniformTile(Uint8List(4), tile.size, tile.size),
+    );
+    walk.press();
+    await tester.pump();
+    // ⛔Mutation: the pass asks after truth only → a tile holding nothing
+    // but a stand-in is passed over, and keeps it as long as the history.
+    expect(cache.hasProvisional(tile), isFalse);
+  });
+
   testWidgets('control: with no store to ask, every entry keeps its pictures', (
     tester,
   ) async {
