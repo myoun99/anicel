@@ -232,6 +232,7 @@ class _CanvasPanelLift {
         );
         return;
       }
+      final doors = _selectionDoors();
       historyManager.execute(
         BrushLiftMoveHistoryCommand(
           coordinator: coordinator,
@@ -244,9 +245,8 @@ class _CanvasPanelLift {
           // transform moves the outline as much as the drawing, and one
           // confirm has to come back as one undo.
           regionBefore: preLift.region,
-          readRegion: () => _state.widget.selectionCommands?.region,
-          restoreRegion: (region) =>
-              _state.widget.selectionCommands?.setRegion(region),
+          readRegion: doors.read,
+          restoreRegion: doors.restore,
         ),
       );
     }
@@ -257,6 +257,30 @@ class _CanvasPanelLift {
       run();
     }
   }
+
+  /// The selection doors a confirmed move's undo entry keeps for its whole
+  /// life: read the live selection, put one back.
+  ///
+  /// 🚨★★★MADE HERE, AWAY FROM THE LANDING — AND THAT IS THE FIX, NOT A
+  /// TIDY-UP (C-ipad-crash ①, 2026-09-15). A Dart closure keeps the whole
+  /// SCOPE it was made in, not just the names it reads. Written inline in
+  /// [handleLiftConfirmed], these two kept that call's `preLift` (the
+  /// pre-lift picture) and `stampDab` (the landed stamp's RGBA) alive for as
+  /// long as the entry stayed in the history — through parking, outside
+  /// every budget, while [BrushLiftMoveHistoryCommand] nulled its own copies
+  /// and reported zero. 🔬A VM heap snapshot after ten ×2 → ×0.5 transforms
+  /// of a 2000×1400 picture: 526.9MB of stamps and 70MB of tiles held by
+  /// nothing but this context — the user's 「반복시마다 약 150mb」.
+  /// ⛔Nothing big may be in scope where a closure that outlives the call is
+  /// made; a method whose only local is `this` cannot hold anything else.
+  ({
+    CanvasSelectionRegion? Function() read,
+    void Function(CanvasSelectionRegion? region) restore,
+  })
+  _selectionDoors() => (
+    read: () => _state.widget.selectionCommands?.region,
+    restore: (region) => _state.widget.selectionCommands?.setRegion(region),
+  );
 
   /// REVERT of a session (R17-①): the pre-lift surface snapshot restores
   /// the picture byte-exactly; nothing lands in history.
