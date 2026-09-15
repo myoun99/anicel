@@ -84,14 +84,18 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// Whether the press under way has moved the value.
   bool _scrubbedThisPress = false;
 
-  /// How far the press under way has travelled along the label, and how far
-  /// it may before the value moves: the pointer kind's hit slop — the same
-  /// number the plain horizontal recogniser this replaced waited out before
-  /// its first delta. ⛔Not a new threshold. The owning recogniser reports
-  /// the very first pixel, and the labels scrub a unit per pixel, so without
-  /// it a pen that wobbles would move the zoom by a percent and lose its tap.
-  double _travel = 0;
+  /// Where the press went down, how far along the label it may go before
+  /// the value moves, and whether it has gone that far.
+  ///
+  /// ⛔NOT A NEW THRESHOLD. It is the rule the plain horizontal recogniser
+  /// this replaced applied before its first delta, spelled the same way:
+  /// the pointer kind's hit slop, measured as the press's net travel along
+  /// x. The owning recogniser takes the arena on the first movement and
+  /// reports what follows, so without this a pen that wobbles in a few
+  /// steps would move the zoom and lose its tap.
+  double _downX = 0;
   double _slop = 0;
+  bool _pastTheSlop = false;
 
   /// The readout with its units stripped — '−15°' seeds the field as
   /// '-15', because what you are replacing is the NUMBER.
@@ -108,21 +112,31 @@ class _DragValueLabelState extends State<DragValueLabel> {
 
   void _pressStarted(PointerDownEvent event) {
     _scrubbedThisPress = false;
-    _travel = 0;
+    _pastTheSlop = false;
+    _downX = event.position.dx;
     _slop = computeHitSlop(
       event.kind,
       MediaQuery.maybeGestureSettingsOf(context),
     );
   }
 
-  void _dragBy(double dx) {
-    if (_travel <= _slop) {
-      _travel += dx.abs();
-      if (_travel <= _slop) {
-        return;
-      }
+  bool _beyondTheSlop(Offset globalPosition) =>
+      (globalPosition.dx - _downX).abs() > _slop;
+
+  void _dragStarted(DragStartDetails details) {
+    _pendingUnits = 0;
+    _pastTheSlop = _beyondTheSlop(details.globalPosition);
+  }
+
+  /// The event that carries the press past the slop is the one the old
+  /// recogniser accepted on, and it reported nothing for it either — the
+  /// deltas after it are the scrub.
+  void _dragUpdated(DragUpdateDetails details) {
+    if (!_pastTheSlop) {
+      _pastTheSlop = _beyondTheSlop(details.globalPosition);
+      return;
     }
-    _pendingUnits += dx * widget.unitsPerPixel;
+    _pendingUnits += details.delta.dx * widget.unitsPerPixel;
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
@@ -183,9 +197,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
                         debugOwner: this,
                       ),
                       (recognizer) {
-                        recognizer.onStart = (_) => _pendingUnits = 0;
-                        recognizer.onUpdate = (details) =>
-                            _dragBy(details.delta.dx);
+                        recognizer.onStart = _dragStarted;
+                        recognizer.onUpdate = _dragUpdated;
                       },
                     ),
               },

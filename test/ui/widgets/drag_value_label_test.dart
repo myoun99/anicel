@@ -186,8 +186,14 @@ void main() {
         tester.getCenter(find.text('100%')),
         kind: PointerDeviceKind.stylus,
       );
-      await gesture.moveBy(const Offset(3, 2));
-      await tester.pump();
+      // ⚠️In STEPS, the way a pen wobbles. The drag takes the arena on the
+      // first movement and reports nothing for that one, so a single step
+      // never reaches the slop the scrub waits out — a one-step wobble
+      // passed with that slop deleted.
+      for (final step in const [Offset(2, 1), Offset(3, 0), Offset(-2, 1)]) {
+        await gesture.moveBy(step);
+        await tester.pump();
+      }
       await gesture.up();
       await tester.pump();
       expect(find.byType(InlineNumericField), findsOneWidget);
