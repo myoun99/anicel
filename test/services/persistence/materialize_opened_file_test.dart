@@ -99,10 +99,11 @@ void main() {
     FolderPicker.debugOperatingSystem = 'ios';
     final path = '${temp.path}${Platform.pathSeparator}stopped.anicel';
     File(path).writeAsBytesSync(const [9, 9]);
-    // The provider answers late, and fine — so an open that ignored the
-    // Cancel would come back with the pick instead of stopping.
-    FolderPicker.debugCoordinatedInPlaceReader = (_) =>
-        Future<bool>.delayed(const Duration(milliseconds: 400), () => true);
+    // ⚠️A Completer, not a delayed future: the provider must answer AFTER the
+    // Cancel has had its tick, and a timer nothing awaits is the side effect
+    // `tests_do_not_race_the_code_test` forbids.
+    final provider = Completer<bool>();
+    FolderPicker.debugCoordinatedInPlaceReader = (_) => provider.future;
     var stop = false;
 
     final opening = FolderPicker.materializeOpenedFile(
@@ -111,10 +112,15 @@ void main() {
       step: const Duration(milliseconds: 5),
       isCancelled: () => stop,
     );
+    final outcome = expectLater(opening, throwsA(isA<MaterializeCancelled>()));
     await Future<void>.delayed(const Duration(milliseconds: 30));
     stop = true;
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // The provider answers late, and fine — an open that ignored the Cancel
+    // would come back with the pick now instead of having stopped.
+    provider.complete(true);
 
-    await expectLater(opening, throwsA(isA<MaterializeCancelled>()));
+    await outcome;
   });
 
   test('an instant answer from the provider is not a wait — nothing is '
