@@ -19,6 +19,8 @@ import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
 import '../text/app_strings.dart' show AppText;
 import 'timeline_grid_metrics.dart';
+import 'timeline_cell_style.dart'
+    show timelineRowLabelHighlight, timelineRowLabelSplash;
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 
@@ -358,6 +360,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
         // No hover glow on the ROW surface (UI-R24 #6): selection speaks
         // through the background alone; only the buttons may brighten.
         hoverColor: Colors.transparent,
+        splashFactory: timelineRowLabelSplash,
+        highlightColor: timelineRowLabelHighlight,
         child: Container(
           width: _width,
           height: _height,

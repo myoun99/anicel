@@ -442,6 +442,19 @@ TimelineCellStyleColors timelineCellStyleColors({
   );
 }
 
+/// A rail row's LABEL is pressed without ink — no splash spreading from the
+/// press, no highlight while it is held — on every rail that has one: the
+/// timeline and the x-sheet (one row widget) and the storyboard's labels.
+///
+/// 🚨F-132 (유저 2026-09-14): 「x시트 레이어라벨만 클릭했을때 흰색으로 채워지는
+/// 애니메이션 없는데, 이거 맘에듬. 일단 그부분 타임라인이랑 스토리보드패널이랑
+/// 법 하나로 통일시키고, 애니메이션 없도록 하도록」. The label keeps its
+/// [InkWell] for its place in the gesture arena; what filled the row was that
+/// InkWell's default ink.
+const InteractiveInkFeatureFactory timelineRowLabelSplash =
+    NoSplash.splashFactory;
+const Color timelineRowLabelHighlight = Colors.transparent;
+
 /// The ONE corner radius every frame block wears — the timeline's rounded
 /// block language (D30 put the storyboard panels on it too, so the strip
 /// reads as frame blocks in thumbnail mode).
