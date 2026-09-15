@@ -28,6 +28,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'import_graph.dart';
+import 'native_engine_provenance.dart';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it.
 ///
@@ -204,6 +205,15 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
     return 0;
   }
 
+  // 🚨THE ENGINE IS PART OF WHAT A RUN MEASURES. Every suite loads the build
+  // under build/native_standalone, and a build from other C turns that C's
+  // behaviour into this checkout's reds and greens — 156 reds once, found by
+  // running the same files in another checkout (2026-09-13; the whole story
+  // is at the head of native_engine_provenance.dart). Said before the run,
+  // so it can be stopped, and again beside the verdict it qualifies.
+  final engine = _engineCaveat();
+  if (engine != null) _report(engine);
+
   final batches = files.isEmpty ? [<String>[]] : _batches(files);
   if (batches.length > 1) {
     _report('${files.length} files exceed the command-line budget: '
@@ -251,7 +261,34 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
         'exit $worst');
   }
   _reportSkips(skipped);
+  if (engine != null) _report(engine);
   return worst;
+}
+
+/// What to say when the engine the suites load was not built from the C in
+/// this checkout, or null when there is nothing to say.
+///
+/// No engine at all says nothing here: the suites skip, and a skip is
+/// already reported by name.
+String? _engineCaveat() {
+  const rebuild = 'Rebuild it from this checkout: bash tool/lane.sh engine';
+  final root = Directory.current.path;
+  final source = nativeSourceId(root);
+  if (source == null) {
+    return '⚠️could not name the C in this checkout, so whether the engine '
+        'was built from it is unchecked.';
+  }
+  String short(String id) => id.length > 8 ? id.substring(0, 8) : id;
+  return switch (engineProvenance(root, source)) {
+    EngineProvenance.current || EngineProvenance.absent => null,
+    EngineProvenance.foreign =>
+      '⚠️THE ENGINE WAS BUILT FROM OTHER C (${short(engineStampOf(root)!)}; '
+          'this checkout holds ${short(source)}) — every native result '
+          'describes that C. $rebuild',
+    EngineProvenance.unstamped =>
+      '⚠️the engine does not say which C it was built from — native results '
+          'may describe other C. $rebuild',
+  };
 }
 
 /// Says out loud when tests were skipped, and what usually causes it here.
@@ -275,10 +312,9 @@ void _reportSkips(int skipped) {
   _report('  that are FINE are the benchmarks (--tags benchmark) and the '
       'CI-only');
   _report('  engine pin. Anything else is a pin that is not running.');
-  _report('  A native pin skipping usually means no binary:');
-  _report('    cmake -S packages/qa_native/src -B build/native_standalone '
-      '-DCMAKE_BUILD_TYPE=Release');
-  _report('    cmake --build build/native_standalone --config Release');
+  _report('  A native pin skipping usually means no binary. Build one, '
+      'stamped with the C');
+  _report('  it came from: bash tool/lane.sh engine');
   _report('  ⛔But a built binary can skip too — that is a resolver that '
       'cannot see it,');
   _report('  and `native_engine_present_test` is the pin that says so.');
