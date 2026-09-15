@@ -190,12 +190,14 @@ class MediaPlacementDrag {
   void showOnLayerSlot({required int slot, required String path}) {
     final count = _cellsFor(path) ?? 1;
     final cut = _cutFrameCount();
+    // The name the landing gives the row ([mediaAssetNameFor]).
+    final name = mediaAssetNameFor(_assetFor(path), path);
     _preview.value = MediaPlacementPreview(
       silhouetteSlot: slot,
       silhouetteRow: count == 1
           ? Layer(
               id: _previewRowId,
-              name: mediaAssetDefaultName(path),
+              name: name,
               kind: LayerKind.image,
               frames: [
                 Frame(
@@ -211,7 +213,7 @@ class MediaPlacementDrag {
                 ),
               }),
             )
-          : _placedCells(0, count).copyWith(name: mediaAssetDefaultName(path)),
+          : _placedCells(0, count).copyWith(name: name),
     );
   }
 

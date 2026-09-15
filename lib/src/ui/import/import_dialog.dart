@@ -553,7 +553,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // and would otherwise fail as if it were corrupt.
       if (await _readableForImport(path) == null) {
         tally.warnings.add(
-          AppText.strings.imUnreadable(mediaAssetDefaultName(path)),
+          AppText.strings.imUnreadable(mediaFileName(path)),
         );
         continue;
       }
@@ -579,12 +579,12 @@ class _ImportDialogState extends State<ImportDialog> {
       ok = await _placeThrough(path, kind, tally, failedPages);
     } on Object {
       tally.warnings.add(
-        AppText.strings.imCorrupt(mediaAssetDefaultName(path)),
+        AppText.strings.imCorrupt(mediaFileName(path)),
       );
       return;
     }
     if (failedPages.isNotEmpty) {
-      final name = mediaAssetDefaultName(path);
+      final name = mediaFileName(path);
       tally.warnings.add(
         kind == MediaAssetKind.video
             ? AppText.strings.imFramesFailed(name, failedPages.length)
@@ -697,7 +697,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     return runWithAppProgress<bool>(
       context: context,
-      title: mediaAssetDefaultName(path),
+      title: mediaFileName(path),
       titleIcon: Icons.movie_outlined,
       runningLabel: AppText.strings.bakeProgressRunning,
       doneLabel: AppText.strings.bakeProgressDone,
@@ -714,13 +714,13 @@ class _ImportDialogState extends State<ImportDialog> {
     ImportFileSettings settings,
   ) {
     if (kind == MediaAssetKind.pdf && PdfRenderService.availability != true) {
-      return AppText.strings.imNoPdfRenderer(mediaAssetDefaultName(path));
+      return AppText.strings.imNoPdfRenderer(mediaFileName(path));
     }
     if (settings.into == ImportDestination.activeCutLayer &&
         widget.session.activeCutOrNull == null) {
       return AppText.strings.imNoActiveCut;
     }
-    return AppText.strings.imCouldNotImport(mediaAssetDefaultName(path));
+    return AppText.strings.imCouldNotImport(mediaFileName(path));
   }
 
   /// Registers [paths] in as few undo steps as their answers allow: one
@@ -759,7 +759,7 @@ class _ImportDialogState extends State<ImportDialog> {
       spot: widget.spot,
     );
     if (expanded == null) {
-      warnings.add(AppText.strings.imPsdNoLayers(mediaAssetDefaultName(path)));
+      warnings.add(AppText.strings.imPsdNoLayers(mediaFileName(path)));
       return false;
     }
     warnings.addAll(expanded);
@@ -774,7 +774,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // about one file, and the strip below already owns the word "Place"
       // for the question it asks.
       title: widget.placeOnly && _files.isNotEmpty
-          ? AppText.strings.imPlaceTitle(mediaAssetDefaultName(_files.first))
+          ? AppText.strings.imPlaceTitle(mediaFileName(_files.first))
           : AppText.strings.imImport,
       titleIcon: Icons.download_outlined,
       width: 760,
@@ -1008,12 +1008,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the name is what gets cut short when room runs out, the extension never
   /// is.
   ImportFileRow _tableRow(String path) {
-    final name = mediaAssetDefaultName(path);
-    final dot = name.lastIndexOf('.');
+    final parts = mediaFileNameParts(path);
     return ImportFileRow(
       path: path,
-      name: dot > 0 ? name.substring(0, dot) : name,
-      extension: dot > 0 ? name.substring(dot) : '',
+      name: parts.name,
+      extension: parts.extension,
       modified: _modifiedOf(path),
       size: byteSizeLabel(_sizeOf(path)),
     );
@@ -1316,7 +1315,7 @@ class _ImportDialogState extends State<ImportDialog> {
         for (final ignored in _ignoredSources)
           _InterpretationRow(
             leading: AppText.strings.imIgnored,
-            body: mediaAssetDefaultName(ignored),
+            body: mediaFileName(ignored),
             dim: true,
           ),
       ],
@@ -1452,7 +1451,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final total = large.fold<int>(0, (sum, path) => sum + _sizeOf(path));
     final named = [
       for (final path in large.take(3))
-        '${mediaAssetDefaultName(path)} (${byteSizeLabel(_sizeOf(path))})',
+        '${mediaFileName(path)} (${byteSizeLabel(_sizeOf(path))})',
     ].join(', ');
     final more = large.length > 3
         ? AppText.strings.imAndMore(large.length - 3)

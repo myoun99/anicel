@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/media_asset.dart' show mediaFileNameParts;
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -16,11 +17,11 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 /// row, because setting twenty files one at a time is not a feature.
 void main() {
   ImportFileRow row(String file) {
-    final dot = file.lastIndexOf('.');
+    final parts = mediaFileNameParts('/in/$file');
     return ImportFileRow(
       path: '/in/$file',
-      name: file.substring(0, dot),
-      extension: file.substring(dot),
+      name: parts.name,
+      extension: parts.extension,
       modified: '09-05',
       size: '1 MB',
     );

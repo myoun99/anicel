@@ -133,7 +133,7 @@ class CutFolderImportDoor {
         trackId: _selection.selectedTrackId,
         newCuts: [plan.cut],
         assetAdditions: registeredAssets,
-        description: 'Import folder ${mediaAssetDefaultName(folderPath)}',
+        description: 'Import folder ${mediaFileName(folderPath)}',
       ),
     );
 

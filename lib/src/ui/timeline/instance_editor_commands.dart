@@ -7,7 +7,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show PropertyKeyInterpolation;
 import '../../models/layer_id.dart';
-import '../../models/media_asset.dart' show mediaAssetDefaultName;
+import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/text_cel_style.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
@@ -249,7 +249,7 @@ Future<void> _editSeLabel(
     initialDialogue: session.selectedFrameName ?? '',
     linkedAudio: [
       for (final entry in linked)
-        (label: mediaAssetDefaultName(entry.clip.filePath), token: entry.index),
+        (label: mediaFileName(entry.clip.filePath), token: entry.index),
     ],
     previewAxis: previewAxis,
     commit: (dialogue, seName) =>
@@ -312,7 +312,7 @@ Future<void> editSeEntryInstance(
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
           (
-            label: mediaAssetDefaultName(layer.audioClips[index].filePath),
+            label: mediaFileName(layer.audioClips[index].filePath),
             token: index,
           ),
     ],

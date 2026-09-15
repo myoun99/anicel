@@ -56,7 +56,7 @@ Project _project({
 void main() {
   group('MediaAsset', () {
     test('round-trips through json; unknown kind decodes to audio', () {
-      const asset = MediaAsset(path: r'C:\snd\foot.wav', name: 'foot.wav');
+      const asset = MediaAsset(path: r'C:\snd\foot.wav', name: '발소리');
       expect(MediaAsset.fromJson(asset.toJson()), asset);
       expect(asset.toJson()['kind'], 'audio');
 
@@ -68,10 +68,41 @@ void main() {
       expect(unknownKind.kind, MediaAssetKind.audio);
     });
 
-    test('default name is the file name for either separator style', () {
-      expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot.wav');
-      expect(mediaAssetDefaultName('/home/a/clap.ogg'), 'clap.ogg');
-      expect(mediaAssetDefaultName('bare.wav'), 'bare.wav');
+    test('🚨the default name is the file name WITHOUT its extension — the '
+        'name a placement gives its rows (유저 2026-09-12)', () {
+      expect(mediaAssetDefaultName(r'C:\proj\snd\foot.wav'), 'foot');
+      expect(mediaAssetDefaultName('/home/a/clap.ogg'), 'clap');
+      expect(mediaAssetDefaultName('bare.wav'), 'bare');
+      expect(mediaAssetDefaultName('/a/take.2.wav'), 'take.2');
+      expect(mediaAssetDefaultName('/a/.env'), '.env');
+    });
+
+    test('a FILE name keeps its extension, and splits at its last dot — the '
+        'import table\'s rule, now the pool\'s too', () {
+      expect(mediaFileName(r'C:\proj\snd\foot.wav'), 'foot.wav');
+      expect(mediaFileName('/home/a/clap.ogg'), 'clap.ogg');
+      expect(
+        mediaFileNameParts('/a/take.2.wav'),
+        (name: 'take.2', extension: '.wav'),
+      );
+      expect(mediaFileNameParts('/a/README'), (name: 'README', extension: ''));
+      expect(mediaFileNameParts('/a/.env'), (name: '.env', extension: ''));
+    });
+
+    test('a name an older build wrote by DEFAULT — the file name with its '
+        'extension — reads as today\'s default; a typed name stays', () {
+      MediaAsset read(String name) =>
+          MediaAsset.fromJson({'path': '/a/foot.wav', 'name': name});
+      expect(read('foot.wav').name, 'foot');
+      expect(read('발소리').name, '발소리');
+      expect(read('foot').name, 'foot');
+    });
+
+    test('🚨a placement takes the POOL entry\'s name, which a rename '
+        'changed — and the default for a file the pool has not seen', () {
+      const entry = MediaAsset(path: '/pool/bg_street.png', name: '거리');
+      expect(mediaAssetNameFor(entry, entry.path), '거리');
+      expect(mediaAssetNameFor(null, '/pool/bg_street.png'), 'bg_street');
     });
 
     test('copyWith moves the path and keeps the name', () {
@@ -124,7 +155,7 @@ void main() {
 
       final restored = Project.fromJson(json);
       expect(restored.mediaAssets, const [
-        MediaAsset(path: r'C:\snd\foot.wav', name: 'foot.wav'),
+        MediaAsset(path: r'C:\snd\foot.wav', name: 'foot'),
       ]);
     });
 
@@ -142,7 +173,7 @@ void main() {
       final reconciled = reconciledMediaAssets(stored, tracks);
       expect(reconciled, [
         const MediaAsset(path: '/a.wav', name: '이름 있음'),
-        const MediaAsset(path: '/b.wav', name: 'b.wav'),
+        const MediaAsset(path: '/b.wav', name: 'b'),
       ]);
     });
 

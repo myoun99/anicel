@@ -177,12 +177,13 @@ void main() {
     expect(callbacks.importRequests, 1);
   });
 
-  testWidgets('rename flows through the dialog', (tester) async {
+  testWidgets('rename flows through the dialog — the NAME only, with the '
+      'extension beside the field (유저 2026-09-12)', (tester) async {
     final callbacks = _Callbacks()..existingPaths = {foot};
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: const [MediaAsset(path: foot, name: 'foot')],
     );
 
     await tester.tap(
@@ -193,6 +194,14 @@ void main() {
       find.byKey(const ValueKey<String>('media-asset-menu-rename')),
     );
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('media-rename-extension')),
+          )
+          .data,
+      '.wav',
+    );
     await tester.enterText(
       find.byKey(const ValueKey<String>('media-rename-field')),
       '발소리',
@@ -203,6 +212,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(callbacks.renamed, [(foot, '발소리')]);
+  });
+
+  testWidgets('pool-name: a row shows the NAME and the EXTENSION apart — the '
+      'name is what gets cut short, the extension never is', (tester) async {
+    const street = r'C:\bg\street.png';
+    await _pump(
+      tester,
+      _Callbacks()..existingPaths = {street},
+      assets: const [MediaAsset(path: street, name: '거리')],
+    );
+
+    expect(find.text('거리'), findsOneWidget);
+    expect(find.text('.png'), findsOneWidget);
   });
 
   testWidgets('relink picks the new file', (tester) async {

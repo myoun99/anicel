@@ -117,7 +117,9 @@ class MediaAsset {
   /// Absolute file path — the pool key clips reference.
   final String path;
 
-  /// Display name; seeds with the file name and is user-editable.
+  /// Display name WITHOUT the extension — the path keeps that; seeds with
+  /// [mediaAssetDefaultName] and is user-editable. What a placement names
+  /// the rows it makes with ([mediaAssetNameFor]).
   final String name;
 
   final MediaAssetKind kind;
@@ -253,10 +255,20 @@ class MediaAsset {
     if (dialogue != null) 'dialogue': dialogue,
   };
 
+  /// The stored name — except the one a build before 2026-09-12 wrote by
+  /// default, the file name WITH its extension: that reads as today's default
+  /// ([mediaAssetDefaultName]), and a name somebody typed stays what they
+  /// typed.
+  static String _storedName(Map<String, dynamic> json) {
+    final path = json['path'] as String;
+    final name = json['name'] as String;
+    return name == mediaFileName(path) ? mediaAssetDefaultName(path) : name;
+  }
+
   factory MediaAsset.fromJson(Map<String, dynamic> json) {
     return MediaAsset(
       path: json['path'] as String,
-      name: json['name'] as String,
+      name: _storedName(json),
       kind: MediaAssetKind.fromJson(json['kind']),
       offsetFrames: (json['offset'] as int?) ?? 0,
       lengthFrames: json['length'] as int?,
@@ -346,13 +358,49 @@ MediaAssetKind? mediaAssetKindForPath(String path) {
   };
 }
 
-/// The default display name for [path]: its file name (last segment of
-/// either separator style — the model stays dart:io-free).
-String mediaAssetDefaultName(String path) {
+/// [path]'s file name: its last segment, of either separator style (the
+/// model stays dart:io-free). What names a FILE — a message about it, a
+/// window about it, a folder.
+String mediaFileName(String path) {
   final segments = path.split(RegExp(r'[\\/]'));
   final name = segments.isEmpty ? path : segments.last;
   return name.isEmpty ? path : name;
 }
+
+/// [path]'s file name split at its extension: the NAME a person reads and
+/// renames, and the extension that stays the file's.
+///
+/// ONE split for every place that shows the two apart — the import window's
+/// file table, whose rule this was (the name is what gets cut short when
+/// room runs out, the extension never is), and the media pool (유저
+/// 2026-09-12: 「풀에서 이름이랑 확장자 나누고 이름변경시 이름만 변경」). A
+/// name whose only dot starts it (`.env`) has no extension.
+({String name, String extension}) mediaFileNameParts(String path) {
+  final file = mediaFileName(path);
+  final dot = file.lastIndexOf('.');
+  return dot > 0
+      ? (name: file.substring(0, dot), extension: file.substring(dot))
+      : (name: file, extension: '');
+}
+
+/// The name a pool entry starts with: its file's name WITHOUT the extension
+/// ([mediaFileNameParts]) — and so the name a placement gives the rows it
+/// makes and the dialogue on a sound's block.
+///
+/// 🚨REVERSES 2026-09-11 (라운드 6 확인 ③ 「대사 = 파일 이름(확장자 포함)」):
+/// 유저 2026-09-12 「해당 이름 대로 레이어 이름이나 이름/대사 만들어진다」.
+String mediaAssetDefaultName(String path) => mediaFileNameParts(path).name;
+
+/// The name a placement of the file at [path] gives what it makes — the
+/// layer, the new cut, a sound's dialogue — when [entry] is that file's pool
+/// entry: the entry's own name, which a rename changed; for a file the pool
+/// has not seen, the name it would start with.
+///
+/// 🚨ONE answer for the landing and for the silhouette drawn while the file
+/// hovers. Both rebuilt the name from the path, so a file renamed in the pool
+/// was still placed under its file name.
+String mediaAssetNameFor(MediaAsset? entry, String path) =>
+    entry?.name ?? mediaAssetDefaultName(path);
 
 /// Validates pool uniqueness: one entry per path.
 void validateMediaAssetPaths(List<MediaAsset> assets) {

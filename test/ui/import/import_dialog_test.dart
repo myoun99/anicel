@@ -1064,9 +1064,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final cut = s.repository.requireProject().tracks.first.cuts.firstWhere(
-      (cut) => cut.name == 'conte.pdf',
+      (cut) => cut.name == 'conte',
     );
-    final layer = cut.layers.firstWhere((l) => l.name == 'conte.pdf');
+    final layer = cut.layers.firstWhere((l) => l.name == 'conte');
     expect(layer.frames, hasLength(2), reason: 'two pages, not five');
     final pages = [for (final request in fake.renderRequests) request.$1];
     expect(
@@ -1301,6 +1301,15 @@ void main() {
         findsNothing,
         reason: 'it already landed — importing it again would duplicate it',
       );
+      // The row names its file without the extension and shows the extension
+      // on its own — the split the media pool shares (mediaFileNameParts).
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey<String>('import-name-$bad')))
+            .data,
+        'breaks',
+      );
+      expect(find.text('.png'), findsOneWidget);
     });
 
     testWidgets('🚨a WARNING holds the window open — the whole point of the '

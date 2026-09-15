@@ -98,8 +98,10 @@ void main() {
   });
 
   testWidgets('a sound lands on S1 from the cut start, tagged 「SE」 with its '
-      'file name as the dialogue and its clip linked — and one undo takes '
-      'block, clip and pool entry back', (tester) async {
+      'name — the file\'s, without the extension — as the dialogue and its '
+      'clip linked — and one undo takes block, clip and pool entry back', (
+    tester,
+  ) async {
     final s = session();
     final start = s.activeCutGlobalStartFrame;
     final fps = s.projectSettings.projectFps;
@@ -110,7 +112,7 @@ void main() {
     final block = s1.timeline[start];
     expect(block?.length, fps, reason: 'a one-second sound, whole');
     final frame = s1.frameById(block!.frameId!)!;
-    expect((frame.name, frame.seName), ('door.wav', 'SE'));
+    expect((frame.name, frame.seName), ('door', 'SE'));
     expect(s1.audioClips.single.frameId, frame.id);
     expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.audio);
 

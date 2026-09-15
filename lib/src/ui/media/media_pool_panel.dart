@@ -263,7 +263,10 @@ class MediaPoolPanel extends StatelessWidget {
   Future<void> _rename(BuildContext context, MediaAsset asset) async {
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameMediaDialog(initialName: asset.name),
+      builder: (context) => _RenameMediaDialog(
+        initialName: asset.name,
+        extension: mediaFileNameParts(asset.path).extension,
+      ),
     );
     if (name == null || name.isEmpty || name == asset.name) {
       return;
@@ -544,11 +547,29 @@ class MediaPoolPanel extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    asset.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
+                  // The NAME and its EXTENSION apart, as the import window's
+                  // table shows a file (유저 2026-09-12: 「풀에서 이름이랑
+                  // 확장자 나누고」): the name is what gets cut short, the
+                  // extension never is.
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          asset.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      Text(
+                        mediaFileNameParts(asset.path).extension,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                   // SIZE and DATE, not the path. The path was here because
                   // it was what the pool knew; what a person scanning a
@@ -691,9 +712,16 @@ class MediaPoolPanel extends StatelessWidget {
 }
 
 class _RenameMediaDialog extends StatelessWidget {
-  const _RenameMediaDialog({required this.initialName});
+  const _RenameMediaDialog({
+    required this.initialName,
+    required this.extension,
+  });
 
   final String initialName;
+
+  /// The file's extension, beside the field and out of it: a rename changes
+  /// the NAME only (유저 2026-09-12: 「이름변경시 이름만 변경」).
+  final String extension;
 
   @override
   Widget build(BuildContext context) {
@@ -702,6 +730,13 @@ class _RenameMediaDialog extends StatelessWidget {
       title: AppText.strings.mediaRename,
       titleIcon: Icons.drive_file_rename_outline,
       fieldLabel: AppText.strings.commonNameField,
+      fieldTrailing: Text(
+        extension,
+        key: const ValueKey<String>('media-rename-extension'),
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       initialValue: initialName,
       confirmLabel: AppText.strings.commonRename,
       emptyError: AppText.strings.mpNameEmpty,

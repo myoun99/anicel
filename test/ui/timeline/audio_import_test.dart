@@ -126,7 +126,7 @@ void main() {
     expect(seLayer().audioClips.single.filePath, 'C:/sound/voice.wav');
     // The pool learned the imported file (browse/reuse surface).
     expect(session.mediaPool.mediaAssets.single.path, 'C:/sound/voice.wav');
-    expect(session.mediaPool.mediaAssets.single.name, 'voice.wav');
+    expect(session.mediaPool.mediaAssets.single.name, 'voice');
     // Frame-linked: importing onto the empty cell created an SE instance
     // at the playhead and linked the sound to ITS frame — the block is the
     // sound's window.
@@ -214,7 +214,7 @@ void main() {
     // re-adding a known path is a no-op.
     await session.mediaPool.addMediaAssets([foot]);
     await session.mediaPool.addMediaAssets([foot]);
-    expect(session.mediaPool.mediaAssets.single.name, 'foot.wav');
+    expect(session.mediaPool.mediaAssets.single.name, 'foot');
     expect(seLayer().audioClips, isEmpty);
     expect(session.mediaPool.mediaAssetUses(foot), isEmpty);
 

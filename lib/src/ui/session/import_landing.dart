@@ -190,7 +190,10 @@ class ImportLanding {
           defaultCutCanvasSize,
       mint: idMint(),
       source: source,
-      displayName: mediaAssetDefaultName(source),
+      displayName: mediaAssetNameFor(
+        _project.repository.requireProject().mediaAssetByPath(source),
+        source,
+      ),
       projectFps: _project.repository.requireProject().fps,
       spot: spot,
     );
@@ -388,6 +391,11 @@ class ImportLanding {
   /// from that cell. Its block is tagged 「SE」 and carries the file's name
   /// as its dialogue (유저 2026-09-11: 「블록의 이름을 SE(SE 고정 …), 대사를
   /// 파일 이름(확장자포함)으로」).
+  ///
+  /// 🔁The dialogue's EXTENSION was reversed 2026-09-12 (「풀에서 이름이랑
+  /// 확장자 나누고 … 해당 이름 대로 레이어 이름이나 이름/대사 만들어진다」):
+  /// the dialogue is the pool entry's name, which carries no extension
+  /// ([mediaAssetNameFor]). The 「SE」 tag stands.
   ///
   /// ⛔NOT A SECOND WAY TO PUT A SOUND ON A ROW. The block and its clip land
   /// the way a recorded take lands — [planSeTakePlacement], the one planner

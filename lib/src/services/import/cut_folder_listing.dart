@@ -13,7 +13,7 @@
 import 'dart:io';
 
 import '../../models/import/cut_folder_parse.dart';
-import '../../models/media_asset.dart' show mediaAssetDefaultName;
+import '../../models/media_asset.dart' show mediaFileName;
 
 /// [entities] as the parser reads them: paths relative to [folderPath],
 /// one spelling, directories marked.
@@ -44,11 +44,11 @@ CutFolderParseResult parseCutFolderAt(
 }) {
   final parentPath = Directory(folderPath).parent.path;
   return parseCutFolder(
-    folderName: mediaAssetDefaultName(folderPath),
+    folderName: mediaFileName(folderPath),
     entries: entries,
     config: config,
     parentFolderName: parentPath.isEmpty
         ? null
-        : mediaAssetDefaultName(parentPath),
+        : mediaFileName(parentPath),
   );
 }

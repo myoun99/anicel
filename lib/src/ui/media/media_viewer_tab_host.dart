@@ -64,7 +64,7 @@ class MediaViewerRequest {
   /// Display name (the asset's); null falls back to the file name.
   final String? name;
 
-  String get displayName => name ?? mediaAssetDefaultName(path);
+  String get displayName => name ?? mediaFileName(path);
 }
 
 /// ONE viewer's whole state, owned by the workspace: what it looks at,

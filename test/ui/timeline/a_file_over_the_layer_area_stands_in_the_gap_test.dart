@@ -114,7 +114,8 @@ void main() {
           mediaAssets: const [
             MediaAsset(
               path: picture,
-              name: 'bg_street',
+              // Not the file's own name: the silhouette must read the POOL.
+              name: '거리',
               kind: MediaAssetKind.image,
             ),
             MediaAsset(path: sound, name: 'door', kind: MediaAssetKind.audio),
@@ -163,8 +164,8 @@ void main() {
       );
       expect(
         preview?.silhouetteRow?.name,
-        'bg_street.png',
-        reason: 'the name the drop would give it',
+        '거리',
+        reason: 'the name the drop would give it — the pool entry\'s',
       );
       expect(
         s.layerRowDragVerbs.inFlight.value?.caretSlot,
