@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import '../../models/attached_layer_resolve.dart';
+import '../../models/audio_clip.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -212,17 +213,20 @@ class FrameVerbs {
       index: block.startIndex,
       count: block.endIndexExclusive - block.startIndex,
     );
-    final bornFrames = <Frame>[];
+    var bornFrames = const <Frame>[];
+    var bornSounds = const <AudioClip>[];
     var placed = clip;
     var minted = const <FrameId, FrameId>{};
     if (!linked) {
       final independent = mintIndependentClip(
         clip: clip,
-        sources: layer.frames,
-        born: bornFrames,
+        from: [(cels: layer.frames, sounds: layer.audioClips)],
+        namesAreIdentity: layer.kind.celNameIsIdentity,
         mint: () => _frameIds.mintFrameId(layer.id),
       );
       placed = independent.clip;
+      bornFrames = independent.born;
+      bornSounds = independent.bornSounds;
       minted = independent.minted;
     }
     _controllers.timelineController.spliceRunsForLayers(
@@ -233,6 +237,7 @@ class FrameVerbs {
           liftCount: 0,
           clip: placed,
           bornFrames: bornFrames,
+          bornSounds: bornSounds,
         ),
       ],
       description: linked ? 'Link duplicate frames' : 'Duplicate frames',
@@ -276,7 +281,7 @@ class FrameVerbs {
       return null;
     }
 
-    final allowDuplicateName = layer.kind == LayerKind.se;
+    final allowDuplicateName = !layer.kind.celNameIsIdentity;
     if (!allowDuplicateName) {
       final conflictingFrameId = _controllers.timelineController
           .conflictingFrameIdForRename(

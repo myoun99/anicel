@@ -1,10 +1,11 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/audio_clip.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
+import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_splice.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
@@ -100,6 +101,11 @@ class FrameClipboard {
     if (layer == null ||
         copiedFrame == null ||
         layer.id != copiedFrame.layerId ||
+        // F-115 (유저 2026-09-12): 「se 블록 복붙, 우선 복사하고나서는 독립
+        // 붙여넣기만 가능. 왜냐하면 링크붙여넣기의 차이점이 없기때문」. A link
+        // is 겸용 — the same PICTURE exposed again — and a row whose cels hold
+        // no artwork has none to reuse.
+        !layer.kind.isDrawingCel ||
         // SYNCED attach rows own no timeline — linked reuse happens
         // through the BASE's links (link the base cel instead). Free
         // attach rows author normally (UI-R21 #3).
@@ -174,7 +180,7 @@ class FrameClipboard {
     for (final row in _pasteTargetRowsBesides(anchor)) {
       final clip = _controllers.timelineController.copyRunForLayer(
         layerId: row.id,
-        index: _internals.commitBlockStart(row.id, selection.startIndex),
+        index: _rangeStartOn(row.id, selection),
         count: selection.lengthFrames,
       );
       entries.add(_copiedRowFor(row, clip));
@@ -197,8 +203,27 @@ class FrameClipboard {
     ];
   }
 
-  _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) =>
-      _CopiedRow(layerId: row.id, clip: clip, cels: _celsCarriedBy(row, clip));
+  _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) {
+    final cels = _celsCarriedBy(row, clip);
+    return _CopiedRow(
+      layerId: row.id,
+      clip: clip,
+      cels: cels,
+      sounds: _soundsCarriedBy(row, cels),
+    );
+  }
+
+  /// The sounds [cels] carry on [row] — BY VALUE for the reason
+  /// [_celsCarriedBy] gives, and one more: a 잘라내기 takes a lifted
+  /// instance's sound out of the row with it (REC1-A), so a board that did
+  /// not hold it would paste the block back silent (F-115).
+  List<AudioClip> _soundsCarriedBy(Layer row, List<Frame> cels) {
+    final ids = {for (final cel in cels) cel.id};
+    return [
+      for (final sound in row.audioClips)
+        if (ids.contains(sound.frameId)) sound,
+    ];
+  }
 
   /// 🚨T3 신설 — 잘라내기: the same lift the paste does, with the clip going
   /// to the clipboard instead of a row.
@@ -257,15 +282,13 @@ class FrameClipboard {
             layerId: bankedLayerId,
             index: bankedLayerId == layer.id
                 ? run.index
-                : _internals.commitBlockStart(
-                    bankedLayerId,
-                    selection!.startIndex,
-                  ),
+                : _rangeStartOn(bankedLayerId, selection!),
             liftCount: bankedLayerId == layer.id
                 ? run.count
                 : selection!.lengthFrames,
             clip: null,
             bornFrames: const <Frame>[],
+            bornSounds: const <AudioClip>[],
           ),
         // ⛔MUTANT SURVIVES HERE (`if (false)`), and the classification is
         // NEVER APPLIED (2026-09-07): the copy above resolves the SAME
@@ -281,6 +304,7 @@ class FrameClipboard {
             liftCount: run.count,
             clip: null,
             bornFrames: const <Frame>[],
+            bornSounds: const <AudioClip>[],
           ),
       ],
       description: 'Cut frames',
@@ -308,12 +332,14 @@ class FrameClipboard {
             index: run.index,
             count: run.count,
           );
+    final cels = clip == null ? const <Frame>[] : _celsCarriedBy(layer, clip);
     _copiedFrame = _CopiedFrameReference(
       layerId: layer.id,
       frameId: frame.id,
       frameName: frame.name,
       clip: clip,
-      cels: clip == null ? const [] : _celsCarriedBy(layer, clip),
+      cels: cels,
+      sounds: _soundsCarriedBy(layer, cels),
       // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
       rows: [
         if (clip != null) _copiedRowFor(layer, clip),
@@ -450,9 +476,13 @@ class FrameClipboard {
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
     final selection = _selection.frameRangeSelection.value;
     final replacing = selection != null && selection.coversLayer(layer.id);
+    // F-115: with nothing selected the clip goes in at the playhead ON THE
+    // ROW'S OWN AXIS — a track-owned SE row keys the track's frames, and the
+    // cut-local index landed it on an earlier cut's.
     final index = replacing
         ? run!.index
-        : _controllers.timelineController.currentFrameIndex;
+        : _controllers.timelineController.currentFrameIndex +
+              _project.rowAxisOffset(layer.id);
     final liftCount = replacing ? run!.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
@@ -474,6 +504,7 @@ class FrameClipboard {
             int liftCount,
             TimelineClipRow? clip,
             List<Frame> bornFrames,
+            List<AudioClip> bornSounds,
           })
         >[];
     // Which minted cel came from which source, per row — the pictures move
@@ -493,12 +524,15 @@ class FrameClipboard {
       final board = copied.rows;
       final TimelineClipRow? mine;
       final List<Frame> mineCels;
+      final List<AudioClip> mineSounds;
       if (board.length <= 1) {
         mine = clip;
         mineCels = copied.cels;
+        mineSounds = copied.sounds;
       } else if (i < board.length) {
         mine = board[i].clip;
         mineCels = board[i].cels;
+        mineSounds = board[i].sounds;
       } else {
         continue;
       }
@@ -507,7 +541,7 @@ class FrameClipboard {
       // the layer would carry orphans nothing points at.
       final placed = placedClipFor(
         layer: target,
-        row: (clip: mine, cels: mineCels),
+        row: (clip: mine, cels: mineCels, sounds: mineSounds),
         independent: independent,
         mint: () => _frameIds.mintFrameId(target.id),
       );
@@ -516,15 +550,14 @@ class FrameClipboard {
       }
       runs.add((
         layerId: target.id,
-        // Each row resolves the band's start against ITS OWN blocks: a
-        // splice index is a block boundary, and two rows swept together
-        // rarely have their boundaries in the same place.
-        index: replacing
-            ? _internals.commitBlockStart(target.id, selection.startIndex)
-            : index,
+        // Each row places the band's start on ITS OWN axis ([_rangeStartOn]):
+        // two rows swept together need not key the same frames — a
+        // track-owned SE row keys the track's.
+        index: replacing ? _rangeStartOn(target.id, selection) : index,
         liftCount: liftCount,
         clip: placed.clip,
         bornFrames: placed.born,
+        bornSounds: placed.bornSounds,
       ));
     }
     _controllers.timelineController.spliceRunsForLayers(
@@ -562,6 +595,15 @@ class FrameClipboard {
   /// the session does not have — [TimelineController.spliceRunsForLayers]
   /// already takes a list so the extension is additive, but nothing here
   /// pretends to do it yet.
+  ///
+  /// 🚨F-115 — BOTH halves answer on the ROW'S OWN axis (유저 2026-09-12:
+  /// 「지금 붙여넣기하면 기존 블럭이 이상하게 움직일뿐 붙여넣어지지않음」). A
+  /// selection's cells move by the row's axis offset ([_rangeStartOn]); with
+  /// nothing selected the controller answers from the row it edits
+  /// ([TimelineController.runAtPlayheadForLayer] — the block Delete takes from
+  /// the same press). The unselected half used to come off the cut-local
+  /// display clone, which on a track-owned SE row past the first cut read,
+  /// lifted and inserted on an earlier cut's frames.
   ({int index, int count})? spliceRunOnActiveRow() {
     final layer = _selection.activeLayer;
     if (layer == null) {
@@ -570,20 +612,20 @@ class FrameClipboard {
     final selection = _selection.frameRangeSelection.value;
     if (selection != null && selection.coversLayer(layer.id)) {
       return (
-        index: _internals.commitBlockStart(layer.id, selection.startIndex),
+        index: _rangeStartOn(layer.id, selection),
         count: selection.lengthFrames,
       );
     }
-    final index = _controllers.timelineController.currentFrameIndex;
-    final covering = coveringDrawingBlockAt(layer.timeline, index);
-    if (covering == null) {
-      return (index: index, count: 1);
-    }
-    return (
-      index: covering.startIndex,
-      count: covering.endIndexExclusive - covering.startIndex,
-    );
+    return _controllers.timelineController.runAtPlayheadForLayer(layer.id);
   }
+
+  /// Where [selection] starts on [layerId]'s own row. A selection is a run of
+  /// CELLS — 「the range means exactly its cells」 — so it moves by the row's
+  /// axis offset. ⛔Not [SessionInternals.commitBlockStart]: that names the
+  /// BLOCK a display start stands for, and at 0 over a block spilling in from
+  /// an earlier cut it answered that block's start there (F-115).
+  int _rangeStartOn(LayerId layerId, TimelineFrameRangeSelection selection) =>
+      selection.startIndex + _project.rowAxisOffset(layerId);
 }
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
@@ -596,6 +638,7 @@ class _CopiedRow {
     required this.layerId,
     required this.clip,
     this.cels = const [],
+    this.sounds = const [],
   });
 
   final LayerId layerId;
@@ -605,6 +648,10 @@ class _CopiedRow {
   /// 잘라내기 orphans what it lifted, and a clipboard that does not hold
   /// what was put on it is not one.
   final List<Frame> cels;
+
+  /// The sounds those cels carry, BY VALUE for the same reason — a 잘라내기
+  /// takes a lifted instance's sound out of the row with it (F-115).
+  final List<AudioClip> sounds;
 }
 
 class _CopiedFrameReference {
@@ -614,6 +661,7 @@ class _CopiedFrameReference {
     required this.frameName,
     this.clip,
     this.cels = const [],
+    this.sounds = const [],
     this.rows = const [],
   });
 
@@ -654,4 +702,9 @@ class _CopiedFrameReference {
   /// ⛔Re-added only when MISSING. A copy leaves the originals where they
   /// are, and adding them again would put one cel in the layer twice.
   final List<Frame> cels;
+
+  /// The sounds [cels] carry, BY VALUE (F-115): a 잘라내기 takes a lifted
+  /// instance's sound out of the row with it (REC1-A), and an independent
+  /// paste gives each new instance a copy of its source's.
+  final List<AudioClip> sounds;
 }

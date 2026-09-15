@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/timeline_controller.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -114,6 +115,7 @@ void main() {
             liftCount: 1,
             clip: null,
             bornFrames: const <Frame>[],
+            bornSounds: const <AudioClip>[],
           ),
         ],
         description: 'test',
@@ -144,6 +146,7 @@ void main() {
             liftCount: 1,
             clip: null,
             bornFrames: const <Frame>[],
+            bornSounds: const <AudioClip>[],
           ),
         ],
         description: 'test',

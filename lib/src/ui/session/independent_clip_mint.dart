@@ -1,3 +1,4 @@
+import '../../models/audio_clip.dart';
 import '../../models/cut.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -20,8 +21,15 @@ import 'session_roles.dart';
 /// could not resolve, and it threw the minted map away, so the picture
 /// never followed (see [carryBakedPictures]).
 ///
-/// [sources] is searched IN ORDER, so a caller with more than one place to
-/// look states its priority by concatenating.
+/// [from] is the places to look, IN ORDER: a caller with more than one
+/// states its priority by the order it lists them. A source cel comes from
+/// the FIRST place that holds it, and so do the sounds it carries.
+///
+/// 🚨One place per cel, not one list per kind (F-115). The places used to be
+/// concatenated per kind — every cel, then every sound — and a cel's lookup
+/// stopped at its first match while the sounds were collected from ALL of
+/// them. A copy leaves its source on the row, so the source's sound was in
+/// the row's list AND on the clipboard's: the pasted instance got it twice.
 ///
 /// 🚨IT COMES OUT UNNAMED, and that is the point rather than an omission.
 /// A cel's name is its IDENTITY inside the layer — the rename path REFUSES
@@ -29,13 +37,26 @@ import 'session_roles.dart';
 /// 「같은 이름 = 같은 그림」 rule. Carrying the source's name would assert
 /// the very link this verb exists to avoid, and do it behind that dialog's
 /// back.
-({TimelineClipRow clip, List<Frame> born, Map<FrameId, FrameId> minted})
+///
+/// ↩️…where the name IS the row's identity ([namesAreIdentity], the kind's
+/// `celNameIsIdentity`). On an SE row it is the entry's dialogue, which the
+/// rename lets repeat, so the copy keeps it — and the SOUND linked to the
+/// source instance comes along as a sound of the new one (F-115, 유저
+/// 2026-09-12: 「내용은 이름/대사/링크된 오디오 등 모든 정보가 똑같음」).
+({
+  TimelineClipRow clip,
+  List<Frame> born,
+  List<AudioClip> bornSounds,
+  Map<FrameId, FrameId> minted,
+})
 mintIndependentClip({
   required TimelineClipRow clip,
-  required List<Frame> sources,
-  required List<Frame> born,
+  required List<({List<Frame> cels, List<AudioClip> sounds})> from,
+  required bool namesAreIdentity,
   required FrameId Function() mint,
 }) {
+  final born = <Frame>[];
+  final bornSounds = <AudioClip>[];
   final minted = <FrameId, FrameId>{};
   final exposures = <int, TimelineExposure>{};
   for (final entry in clip.exposures.entries) {
@@ -43,8 +64,11 @@ mintIndependentClip({
     if (sourceId == null) {
       continue;
     }
-    final source = sources.where((frame) => frame.id == sourceId).firstOrNull;
-    if (source == null) {
+    final place = from
+        .where((place) => place.cels.any((frame) => frame.id == sourceId))
+        .firstOrNull;
+    final source = place?.cels.firstWhere((frame) => frame.id == sourceId);
+    if (place == null || source == null) {
       // ⛔An exposure with no cel behind it is the damage itself. Drop the
       // cell rather than author a reference nothing can resolve — an empty
       // cell is a state the row already knows how to be.
@@ -58,12 +82,13 @@ mintIndependentClip({
       // paid for that lesson once. A band paste makes that risk ROUTINE:
       // every swept row mints in the same tick as its neighbours.
       final id = mint();
-      born.add(
-        duplicateFrameContent(
-          frame: source,
-          newFrameId: id,
-        ).copyWith(name: null),
-      );
+      final copy = duplicateFrameContent(frame: source, newFrameId: id);
+      born.add(namesAreIdentity ? copy.copyWith(name: null) : copy);
+      for (final sound in place.sounds) {
+        if (sound.frameId == sourceId) {
+          bornSounds.add(sound.copyWith(frameId: id));
+        }
+      }
       return id;
     });
     exposures[entry.key] = entry.value.copyWith(frameId: newId);
@@ -71,6 +96,7 @@ mintIndependentClip({
   return (
     clip: TimelineClipRow(exposures: exposures, length: clip.length),
     born: born,
+    bornSounds: bornSounds,
     // 🚨★★★WHICH CEL CAME FROM WHICH — the picture needs it.
     //
     // ⛔`duplicateFrameContent` deep-copies `strokes`, and for a while that
@@ -94,26 +120,36 @@ mintIndependentClip({
 /// row, [mint] is the caller's id source — and because the two functions
 /// it is the sibling of already live in this file.
 ///
-/// [row] is the clip AND the cels it carries as ONE argument, because a
-/// board row that lost its cels is not a row this can place.
-({TimelineClipRow clip, List<Frame> born, Map<FrameId, FrameId> minted})
+/// [row] is the clip AND the cels and sounds it carries as ONE argument,
+/// because a board row that lost them is not a row this can place.
+({
+  TimelineClipRow clip,
+  List<Frame> born,
+  List<AudioClip> bornSounds,
+  Map<FrameId, FrameId> minted,
+})
 placedClipFor({
   required Layer layer,
-  required ({TimelineClipRow clip, List<Frame> cels}) row,
+  required ({TimelineClipRow clip, List<Frame> cels, List<AudioClip> sounds})
+  row,
   required bool independent,
   required FrameId Function() mint,
 }) {
-  final born = <Frame>[
-    // A 잘라내기 orphaned the cels it lifted, so the layer no longer holds
-    // them; the clipboard does. Bringing back the SAME id is what makes
-    // cut-then-paste-back a move rather than a deletion — and re-adding
-    // only what is missing keeps a plain copy from duplicating anything.
-    if (!independent)
-      for (final cel in row.cels)
-        if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
-  ];
   if (!independent) {
-    return (clip: row.clip, born: born, minted: const {});
+    return (
+      clip: row.clip,
+      born: [
+        // A 잘라내기 orphaned the cels it lifted, so the layer no longer
+        // holds them; the clipboard does. Bringing back the SAME id is what
+        // makes cut-then-paste-back a move rather than a deletion — and
+        // re-adding only what is missing keeps a plain copy from duplicating
+        // anything.
+        for (final cel in row.cels)
+          if (!layer.frames.any((frame) => frame.id == cel.id)) cel,
+      ],
+      bornSounds: const <AudioClip>[],
+      minted: const {},
+    );
   }
   // 🚨THE CLIPBOARD IS THE SECOND PLACE TO LOOK, and after a 잘라내기
   // it is the ONLY one (유저 #3, 2026-08-14).
@@ -129,8 +165,11 @@ placedClipFor({
   // the clipboard is the only place the picture lives.
   return mintIndependentClip(
     clip: row.clip,
-    sources: [...layer.frames, ...row.cels],
-    born: born,
+    from: [
+      (cels: layer.frames, sounds: layer.audioClips),
+      (cels: row.cels, sounds: row.sounds),
+    ],
+    namesAreIdentity: layer.kind.celNameIsIdentity,
     mint: mint,
   );
 }

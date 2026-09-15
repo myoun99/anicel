@@ -110,6 +110,7 @@ class _TimelinePaste {
             length: 1,
           ),
           bornFrames: bornFrame == null ? const <Frame>[] : [bornFrame],
+          bornSounds: const <AudioClip>[],
         ),
       ],
       description: 'Paste frame',
@@ -132,6 +133,30 @@ class _TimelinePaste {
       timeline: ghostFreeTimeline(_controller._requireLayer(layerId)),
       index: index,
       count: count,
+    );
+  }
+
+  /// The run a clipboard verb means with nothing selected: the block under
+  /// the playhead on [layerId]'s OWN row, in its edit keys — the block
+  /// Delete takes from the same press ([_TimelineDelete.deleteCellForLayer]
+  /// asks the row and the edit index the same way) — or the one cell there
+  /// when no block covers it.
+  ///
+  /// 🚨F-115 (유저 2026-09-12: 「지금 붙여넣기하면 기존 블럭이 이상하게
+  /// 움직일뿐 붙여넣어지지않음」): the session resolved this on the cut-local
+  /// display clone and handed the local answer to [copyRunForLayer], whose
+  /// indexes are the EDIT axis — so on a track-owned SE row from cut 2 on,
+  /// copy, cut and paste read, lifted and inserted on cut 1's frames.
+  ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) {
+    final layer = _controller._requireLayer(layerId);
+    final index = _controller._editFrameIndexFor(layerId);
+    final covering = coveringDrawingBlockAt(layer.timeline, index);
+    if (covering == null) {
+      return (index: index, count: 1);
+    }
+    return (
+      index: covering.startIndex,
+      count: covering.endIndexExclusive - covering.startIndex,
     );
   }
 }

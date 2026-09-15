@@ -251,6 +251,19 @@ void _theCapabilityTable() {
     LayerKind.folder,
     LayerKind.adjustment,
   });
+  // F-115: every kind but SE — an SE entry's name is its dialogue, and the
+  // same line may repeat on a sheet.
+  column('celNameIsIdentity', (kind) => kind.celNameIsIdentity, {
+    LayerKind.animation,
+    LayerKind.storyboard,
+    LayerKind.image,
+    LayerKind.folder,
+    LayerKind.text,
+    LayerKind.instruction,
+    LayerKind.transition,
+    LayerKind.camera,
+    LayerKind.adjustment,
+  });
 
   // ---- derived columns ---------------------------------------------------
   // Each of these is a composition the file states as a law of its own, and

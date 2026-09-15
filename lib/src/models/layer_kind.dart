@@ -52,6 +52,7 @@ enum LayerKind {
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   storyboard(
@@ -78,6 +79,7 @@ enum LayerKind {
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   /// A PICTURE layer (BG/BOOK, imported stills): ONE cel by definition,
@@ -109,6 +111,7 @@ enum LayerKind {
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
@@ -142,6 +145,7 @@ enum LayerKind {
     isClipboardCopyable: false,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   /// A TEXT layer (R5, §6-s): the drawing layer's sibling — frames and
@@ -174,6 +178,7 @@ enum LayerKind {
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
@@ -206,6 +211,7 @@ enum LayerKind {
     isClipboardCopyable: false,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: false,
   ),
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
@@ -241,6 +247,7 @@ enum LayerKind {
     isClipboardCopyable: true,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   ),
 
   /// The TRANSITION row: the same instruction events one level up —
@@ -292,6 +299,7 @@ enum LayerKind {
     isClipboardCopyable: false,
     isReadOnlyInCut: true,
     reordersInCut: false,
+    celNameIsIdentity: true,
   ),
 
   /// The cut's camera track: selecting it puts the canvas into camera
@@ -325,6 +333,7 @@ enum LayerKind {
     isClipboardCopyable: false,
     isReadOnlyInCut: false,
     reordersInCut: false,
+    celNameIsIdentity: true,
   ),
 
   /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
@@ -375,6 +384,7 @@ enum LayerKind {
     isClipboardCopyable: false,
     isReadOnlyInCut: false,
     reordersInCut: true,
+    celNameIsIdentity: true,
   );
 
   const LayerKind(
@@ -398,6 +408,7 @@ enum LayerKind {
     required this.isClipboardCopyable,
     required this.isReadOnlyInCut,
     required this.reordersInCut,
+    required this.celNameIsIdentity,
   });
 
   final String jsonValue;
@@ -608,6 +619,19 @@ enum LayerKind {
   /// to both for different reasons; the camera row is fully editable here and
   /// simply has nowhere else to be.
   final bool reordersInCut;
+
+  /// Whether a cel's NAME is its identity on a row of this kind: the rename
+  /// REFUSES a second cel under a name already taken and offers to merge
+  /// instead (「같은 이름 = 같은 그림」), so a copy that means a NEW cel has to
+  /// come out unnamed (F-62: 「그림 복제되고 이름만 없는상태로」).
+  ///
+  /// 🚨An SE row answers NO. An entry's name is its DIALOGUE, and the same
+  /// line may repeat on a sheet — the rename has always let it
+  /// (`renameSelectedFrame`). So an SE entry copied independently keeps its
+  /// words (F-115, 유저 2026-09-12: 「내용은 이름/대사/링크된 오디오 등 모든
+  /// 정보가 똑같음」). ONE column, read by the rename's duplicate check and by
+  /// the independent-copy kernel, so the two cannot disagree again.
+  final bool celNameIsIdentity;
 
   /// Whether this kind contributes PIXELS of its own to the composite (a cel
   /// surface). SE and instruction rows composite (they carry FX and can host

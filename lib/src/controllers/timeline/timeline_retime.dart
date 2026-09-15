@@ -121,7 +121,9 @@ class _TimelineRetime {
   /// blocks pushed past the end line belong past the end line.
   ///
   /// [bornFrames] are the independent paste's new cels, which join the layer
-  /// in the same command that first points at them.
+  /// in the same command that first points at them; [bornSounds] are the
+  /// sounds those new instances carry (F-115), joining in the same command
+  /// for the same reason.
   void spliceRunsForLayers({
     required List<
       ({
@@ -130,6 +132,7 @@ class _TimelineRetime {
         int liftCount,
         TimelineClipRow? clip,
         List<Frame> bornFrames,
+        List<AudioClip> bornSounds,
       })
     >
     runs,
@@ -168,10 +171,13 @@ class _TimelineRetime {
               !laneExposesFrame(before.timeline, frame.id))
             frame,
       ];
+      final kept = _controller._audioClipsForFrames(before, nextFrames);
       final after = before.copyWith(
         frames: nextFrames,
         timeline: nextTimeline,
-        audioClips: _controller._audioClipsForFrames(before, nextFrames),
+        audioClips: run.bornSounds.isEmpty
+            ? kept
+            : [...kept, ...run.bornSounds],
       );
       if (before != after) {
         commands.add(

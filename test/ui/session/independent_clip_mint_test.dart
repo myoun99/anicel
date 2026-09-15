@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -6,9 +7,10 @@ import 'package:anicel/src/models/timeline_splice.dart';
 import 'package:anicel/src/ui/session/independent_clip_mint.dart';
 
 /// The kernel behind the independent paste and the independent block
-/// duplicate: one mint per distinct source cel, the copy unnamed, the run
-/// rebuilt on the new ids, and a cell whose source cannot be resolved
-/// DROPPED rather than authored.
+/// duplicate: one mint per distinct source cel, the copy unnamed where a name
+/// is the row's identity, the sounds of each source instance carried onto its
+/// copy, the run rebuilt on the new ids, and a cell whose source cannot be
+/// resolved DROPPED rather than authored.
 void main() {
   Frame cel(String id, {String? name}) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
@@ -25,15 +27,23 @@ void main() {
         length: length,
       );
 
-  ({TimelineClipRow clip, List<Frame> born, Map<FrameId, FrameId> minted}) mint(
+  ({
     TimelineClipRow clip,
-    List<Frame> sources,
-  ) {
+    List<Frame> born,
+    List<AudioClip> bornSounds,
+    Map<FrameId, FrameId> minted,
+  })
+  mint(
+    TimelineClipRow clip,
+    List<Frame> sources, {
+    List<AudioClip> sounds = const [],
+    bool namesAreIdentity = true,
+  }) {
     var next = 0;
     return mintIndependentClip(
       clip: clip,
-      sources: sources,
-      born: <Frame>[],
+      from: [(cels: sources, sounds: sounds)],
+      namesAreIdentity: namesAreIdentity,
       mint: () => FrameId('new-${next++}'),
     );
   }
@@ -70,6 +80,44 @@ void main() {
     expect(result.clip.exposures[0]?.frameId, result.born.single.id);
   });
 
+  test('🚨…and KEEPS its name where the name is not an identity — an SE '
+      'entry\'s dialogue (F-115)', () {
+    final result = mint(
+      clipOf({0: 'a'}, length: 1),
+      [cel('a', name: 'hello')],
+      namesAreIdentity: false,
+    );
+    expect(result.born.single.name, 'hello');
+    expect(result.born.single.id, isNot(const FrameId('a')));
+  });
+
+  test('🚨a source instance\'s SOUND comes along as a sound of its copy — and '
+      'only the sounds of the sources that were minted (F-115)', () {
+    const door = AudioClip(
+      filePath: 'C:/sounds/door.wav',
+      frameId: FrameId('a'),
+      offsetFrames: 3,
+      gain: 0.5,
+    );
+    const other = AudioClip(
+      filePath: 'C:/sounds/other.wav',
+      frameId: FrameId('not-in-the-clip'),
+    );
+    final result = mint(
+      clipOf({0: 'a', 1: 'b'}, length: 2),
+      [cel('a'), cel('b')],
+      sounds: const [door, other],
+    );
+
+    final newA = result.minted[const FrameId('a')];
+    expect(
+      result.bornSounds,
+      [door.copyWith(frameId: newA)],
+      reason: 'the door sound follows a onto its new id with its trim and '
+          'gain; b has none, and a sound on a cel outside the clip stays',
+    );
+  });
+
   test('⛔a cell whose source does not resolve is DROPPED, never authored', () {
     final result = mint(clipOf({0: 'a', 1: 'gone', 2: 'b'}, length: 3), [
       cel('a'),
@@ -94,16 +142,7 @@ void main() {
     expect(result.born.length, 1);
   });
 
-  test('born is APPENDED to, so a caller can seed it and read it back', () {
-    final born = <Frame>[cel('seed')];
-    final result = mintIndependentClip(
-      clip: clipOf({0: 'a'}, length: 1),
-      sources: [cel('a')],
-      born: born,
-      mint: () => const FrameId('new'),
-    );
-    expect(result.born.first.id, const FrameId('seed'));
-    expect(result.born.length, 2);
-    expect(identical(result.born, born), isTrue);
-  });
+  // ↩️「born is APPENDED to, so a caller can seed it and read it back」 went
+  // with the parameter (F-115): both callers handed in an empty list, and the
+  // linked paste — the one path that re-adds cels — never reaches the kernel.
 }

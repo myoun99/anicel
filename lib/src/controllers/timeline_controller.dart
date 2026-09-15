@@ -401,6 +401,7 @@ class TimelineController {
         int liftCount,
         TimelineClipRow? clip,
         List<Frame> bornFrames,
+        List<AudioClip> bornSounds,
       })
     >
     runs,
@@ -512,6 +513,8 @@ class TimelineController {
     required int index,
     required int count,
   }) => _paste.copyRunForLayer(layerId: layerId, index: index, count: count);
+  ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) =>
+      _paste.runAtPlayheadForLayer(layerId);
 
   // --- The one splice ----------------------------------------------------------
 
