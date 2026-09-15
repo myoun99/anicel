@@ -38,6 +38,11 @@ import '../project_repository.dart';
 /// [CompositeCommand] is already how this repo does that, and the legend's
 /// sheet/mark actions already land that way. A second batching mechanism
 /// here would be a copy of one that works.
+///
+/// ↩️Solo LEFT that list (F-125, 유저 2026-09-15: 「비지블 솔로모드 전환은
+/// 언두에 기록안되게 … 캔버스 관련 확대나 축소가 언두에 기록안되는거랑 같은
+/// 느낌」). It is display, written outside history the way zoom is — see
+/// `VisibilitySolo` — and an eye clicked by hand still lands here.
 class UpdateLayerDisplayCommand implements Command {
   UpdateLayerDisplayCommand({
     required this.repository,

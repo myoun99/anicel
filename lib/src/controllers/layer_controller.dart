@@ -218,6 +218,11 @@ class LayerController {
   /// single-layer call would make the undo one press per row, which is
   /// the same complaint in a new place.
   ///
+  /// ↩️Solo no longer comes through here (F-125, 유저 2026-09-15: 「비지블
+  /// 솔로모드 전환은 언두에 기록안되게」): it writes the eyes outside history,
+  /// the way zoom changes the view. Show all / Hide all
+  /// (`LayerSwitchVerbs.setAllLayersVisibility`) still does.
+  ///
   /// ⛔[CompositeCommand] is how this repo already collapses many edits
   /// into one entry (the legend's sheet/mark actions land that way), so
   /// the batch is a wrapper and not a second mechanism.

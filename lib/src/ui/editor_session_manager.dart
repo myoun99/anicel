@@ -1617,7 +1617,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     timeline: this,
-    controllers: activeCutControllers,
     internals: this,
   );
 

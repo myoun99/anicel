@@ -2,7 +2,6 @@ import '../../core/set_toggle.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
-import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// VISIBILITY SOLO — showing one layer alone and remembering what the others
@@ -13,13 +12,12 @@ import 'session_roles.dart';
 /// 2026-09-02). Measured before cutting: three fields of its own and eight
 /// session members touched. It names the roles it needs in its constructor.
 class VisibilitySolo {
-  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required ActiveCutControllers controllers, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _controllers = controllers, _internals = internals;
+  VisibilitySolo({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required TimelineAccess timeline, required SessionInternals internals}) : _project = project, _selection = selection, _changes = changes, _timeline = timeline, _internals = internals;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
@@ -30,6 +28,20 @@ class VisibilitySolo {
   /// layer re-solos; disengaging restores each eye from the snapshot.
   /// Leaving the cut exits the mode (restoring first) — the snapshot is
   /// cut-scoped.
+  ///
+  /// 🚨★★NO PART OF IT IS AN UNDO STEP (F-125, 유저 2026-09-15: 「비지블
+  /// 솔로모드 전환은 언두에 기록안되게. 스트로크하고 솔로모드하고 언두했는데
+  /// 솔로모드가 언두 되고싶지않아」 · 「캔버스 관련 확대나 축소가 언두에
+  /// 기록안되는거랑 같은 느낌 … 진짜 표시용만 바꿀뿐인거거든」).
+  ///
+  /// ↩️The 2026-08-29 round (#1345, 「눈을 껏다키든 뭐든 다 언두」) had put the
+  /// solo's flips into history as batches while the MODE stayed outside it.
+  /// Undoing those eyes moved the document, the tidy-up after the step
+  /// re-soloed for the mode that was still on, and the re-solo wrote a fresh
+  /// entry — so each press undid the entry the press before it had made, and
+  /// nothing from before the solo could be reached. Entering, leaving and
+  /// following the active row all write the eyes straight through the
+  /// repository now ([_writeEyes]); an eye clicked by hand still undoes.
   bool _layerVisibilitySoloEnabled = false;
 
   Map<LayerId, bool>? _visibilitySoloSnapshot;
@@ -65,35 +77,39 @@ class VisibilitySolo {
     // off turned its folders off with them, so soloing a row inside a folder
     // hid the very thing it was soloing. On the editing canvas that read as
     // "nothing happened"; in playback and export the frame came out EMPTY.
+    //
+    // 🚨AND STANDING ON A FOLDER SOLOS WHAT IT HOLDS (F-129, 유저 2026-09-14:
+    // 「폴더에 서있으면 폴더 내용물 전부 on해서 보여주도록. 중첩이 몇개있던
+    // 관계없이 내용물 전부」) — its whole subtree, the folders nested in it
+    // and their rows too, whatever their own eyes said before. A row that
+    // holds nothing has an empty subtree, so every row asks this one way.
     final keepShown = <LayerId>{
       activeId,
       for (final folder in stack.ancestryOf(
         stack.where((layer) => layer.id == activeId).firstOrNull?.folderId,
       ))
         folder.id,
+      for (final member in stack.subtreeMembersOf(activeId)) member.id,
     };
     // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
     // batches into two comprehensions read the row's own eye twice, and
     // `hidden_folder_is_hidden_test`'s downward ratchet caught it — that
     // count only goes down, because every extra place that re-derives
     // "is this row shown" is a place a hidden folder can be forgotten.
-    final toShow = <LayerId>[];
-    final toHide = <LayerId>[];
+    final flips = <LayerId, bool>{};
     for (final layer in stack) {
       _visibilitySoloSnapshot?.putIfAbsent(layer.id, () => layer.isVisible);
       final shouldShow = keepShown.contains(layer.id);
       if (layer.isVisible == shouldShow) {
         continue;
       }
-      (shouldShow ? toShow : toHide).add(layer.id);
+      flips[layer.id] = shouldShow;
     }
-    // Two batches, not one per row: Solo hides most of the stack and shows
-    // a few, and each side is one undo step rather than a screenful.
-    _controllers.layerController.setLayersVisible(layerIds: toShow, visible: true);
-    _controllers.layerController.setLayersVisible(
-      layerIds: toHide,
-      visible: false,
-    );
+    // ↩️Two history batches stood here (2026-08-29: 「Two batches, not one
+    // per row: Solo hides most of the stack and shows a few, and each side
+    // is one undo step rather than a screenful」). F-125 took the solo out of
+    // history altogether — see [_layerVisibilitySoloEnabled].
+    _writeEyes(flips);
   }
 
   void exitVisibilitySolo() {
@@ -104,9 +120,14 @@ class VisibilitySolo {
     if (snapshot == null) {
       return;
     }
-    // Restore through the repository's anywhere seam — rows deleted during
-    // the solo have nothing to restore (skip).
-    snapshot.forEach((layerId, visible) {
+    _writeEyes(snapshot);
+  }
+
+  /// Writes each row's eye OUTSIDE history — the solo is display, not an
+  /// edit (F-125). Through the repository's anywhere seam; rows deleted
+  /// during the solo have nothing to restore (skip).
+  void _writeEyes(Map<LayerId, bool> eyes) {
+    eyes.forEach((layerId, visible) {
       try {
         _project.repository.updateLayer(
           layerId: layerId,
@@ -122,6 +143,10 @@ class VisibilitySolo {
 
   /// Keeps the solo mode consistent after active-layer/cut changes: same
   /// cut → re-solo to the new active row; different cut → exit (restore).
+  ///
+  /// 🚨THIS RUNS AFTER EVERY UNDO THAT MOVES THE DOCUMENT
+  /// (`refreshAfterCutCommand`), so nothing it writes may be a step: a
+  /// re-solo that wrote history is what kept undo walking in place (F-125).
   void syncVisibilitySolo() {
     if (!_layerVisibilitySoloEnabled) {
       return;
