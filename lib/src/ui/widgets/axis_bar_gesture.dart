@@ -1,8 +1,13 @@
 import 'package:flutter/gestures.dart'
     show
+        GestureDisposition,
+        GestureMultiDragStartCallback,
         HorizontalDragGestureRecognizer,
+        MultiDragGestureRecognizer,
+        MultiDragPointerState,
         PanGestureRecognizer,
         PointerDeviceKind,
+        PointerDownEvent,
         VerticalDragGestureRecognizer;
 
 /// 🚨★★★ **THE LAW: A PRESS THAT LANDS ON A BAR BELONGS TO THAT BAR.**
@@ -93,4 +98,47 @@ class OwningPanGestureRecognizer extends PanGestureRecognizer {
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
   ) => true;
+}
+
+/// The MULTI-drag twin, for a `Draggable`: a drag SOURCE — a panel tab's
+/// grip, a media pool row, a brush preset cell — takes the arena on the
+/// first movement as well.
+///
+/// 🚨F-126 (유저 2026-09-13: 「패널을 드래그 해서 위치 움직이는 패널탭 띠,
+/// 마우스로는 움직여서 패널 위치 도킹가능한데 펜으로는 불가능. 이유 확인해서
+/// 법 통일」). Flutter's `ImmediateMultiDragGestureRecognizer` waits for the
+/// device's hit slop — one pixel for a mouse, eighteen for a pen or a
+/// finger — so a mouse's drag was accepted in the same move the press claim
+/// above it asked, and a pen's never was. This is the law of this file,
+/// asked of a drag source: winning is a matter of asking earlier, and no
+/// distance is compared.
+class OwningMultiDragGestureRecognizer extends MultiDragGestureRecognizer {
+  OwningMultiDragGestureRecognizer({
+    super.debugOwner,
+    super.supportedDevices,
+    super.allowedButtonsFilter,
+  });
+
+  @override
+  MultiDragPointerState createNewPointerState(PointerDownEvent event) =>
+      _FirstMovePointerState(event.position, event.kind, gestureSettings);
+
+  @override
+  String get debugDescription => 'owning multidrag';
+}
+
+class _FirstMovePointerState extends MultiDragPointerState {
+  _FirstMovePointerState(
+    super.initialPosition,
+    super.kind,
+    super.gestureSettings,
+  );
+
+  @override
+  void checkForResolutionAfterMove() => resolve(GestureDisposition.accepted);
+
+  @override
+  void accepted(GestureMultiDragStartCallback starter) {
+    starter(initialPosition);
+  }
 }

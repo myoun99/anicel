@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/grip_band.dart';
+import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
@@ -1100,7 +1101,15 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
     );
     final data = widget.dragData;
     if (data != null) {
-      grip = Draggable<EditorPanelTabDragData>(
+      // 🚨F-126 (유저 2026-09-13: 「마우스로는 움직여서 패널 위치
+      // 도킹가능한데 펜으로는 불가능. 이유 확인해서 법 통일」): the tab's own
+      // [ControlPressClaim] below takes the arena on the first movement, and
+      // since `e3c1a9f4` put it on the tab a stock `Draggable` lost the grip's
+      // drag to it for a pen, whose slop is eighteen pixels — a mouse's is
+      // one, so its drag was accepted in the same move. [OwningDraggable]
+      // asks on the first move too, and the grip is DEEPER than the claim, so
+      // it is asked first and wins for every device.
+      grip = OwningDraggable<EditorPanelTabDragData>(
         data: data,
         maxSimultaneousDrags: 1,
         // The avatar origin IS the pointer, so drop regions can split

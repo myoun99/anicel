@@ -21,6 +21,7 @@ import '../text/text_measure.dart';
 import '../text/byte_size_label.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart' show AppWindowActionEmphasis;
+import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_chip.dart';
 import 'media_asset_drag_data.dart';
@@ -705,8 +706,9 @@ class MediaPoolPanel extends StatelessWidget {
     );
 
     // The row IS the drag source: dropping it on an SE block links the
-    // sound to that block's frame.
-    return Draggable<MediaAssetDragData>(
+    // sound to that block's frame. It lifts on the first move for every
+    // device (F-126, [OwningDraggable]).
+    return OwningDraggable<MediaAssetDragData>(
       key: ValueKey<String>('media-asset-row-${asset.path}'),
       data: MediaAssetDragData(path: asset.path, name: asset.name),
       // 🚨The chip hangs at the POINTER, and a drop target depends on it:

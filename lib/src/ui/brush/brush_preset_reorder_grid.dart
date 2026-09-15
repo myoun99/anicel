@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../widgets/owning_draggable.dart';
+
 /// How wide one preset cell wants to be, in logical pixels.
 ///
 /// 🚨유저 확정: 「**260px 폭에서 2열**」, and the panel's own default width is
@@ -224,7 +226,9 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
             height: widget.cellHeight,
             child: widget.onReorder == null
                 ? child
-                : Draggable<int>(
+                // F-126: a pen lifts a cell on its first move, as a mouse
+                // does ([OwningDraggable]).
+                : OwningDraggable<int>(
                     data: index,
                     dragAnchorStrategy: childDragAnchorStrategy,
                     feedback: Material(

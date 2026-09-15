@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
+import 'package:anicel/src/ui/widgets/owning_draggable.dart';
 
 /// 🚨유저 확정 (`brush-grid-reorder-Q1`, 답 1): 「2열에서도 드래그 재정렬을
 /// 지킨다」. The option this beat would have made the order changeable only
@@ -284,7 +286,10 @@ void main() {
         ),
       );
 
-      expect(find.byType(Draggable<int>), findsNothing);
+      // F-126: the cells wear `OwningDraggable`, and `byType` matches the
+      // exact type — asking for a stock `Draggable<int>` would find nothing
+      // whether the cells could be dragged or not.
+      expect(find.byType(OwningDraggable<int>), findsNothing);
       expect(find.text('3'), findsOneWidget);
     });
 
@@ -323,6 +328,47 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
       expect(ends, 1, reason: 'and they need to be let go of');
+    });
+
+    testWidgets('F-126: a pen lifts a cell on its FIRST move, even where the '
+        'grid scrolls', (tester) async {
+      // 유저 2026-09-13 (F-126): a drag source starts for a pen the way it
+      // does for a mouse. Forty cells overflow the box, so the grid's own
+      // scroller is in the arena — a Draggable alone in it wins by default
+      // and would prove nothing.
+      var starts = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 260,
+              height: 200,
+              child: BrushPresetReorderGrid(
+                itemCount: 40,
+                cellHeight: brushPresetRowHeight,
+                itemKey: (index) => ValueKey<String>('cell-$index'),
+                onReorder: (_, _) {},
+                onDragStart: () => starts += 1,
+                itemBuilder: (context, index) =>
+                    ColoredBox(color: Colors.blue, child: Text('$index')),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final pen = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      expect(starts, 0, reason: 'fixture premise: a press alone lifts nothing');
+      await pen.moveBy(const Offset(0, 2));
+      await tester.pump();
+      expect(starts, 1);
+
+      await pen.up();
+      await tester.pumpAndSettle();
     });
   });
 }

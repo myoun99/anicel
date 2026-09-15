@@ -1,7 +1,8 @@
-import 'package:flutter/gestures.dart' show kDoubleTapMinTime;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kDoubleTapMinTime;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/ui/media/media_asset_drag_chip.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -160,6 +161,41 @@ void main() {
       find.byKey(const ValueKey<String>('media-asset-row-$foot')),
     );
     expect(draggable.dragAnchorStrategy, same(pointerDragAnchorStrategy));
+  });
+
+  testWidgets('F-126: a pen lifts a row on its FIRST move, even where the '
+      'list scrolls', (tester) async {
+    // 유저 2026-09-13 (F-126): a drag source starts for a pen the way it does
+    // for a mouse. Thirty rows overflow the panel, so the list's scroller is
+    // in the arena — a Draggable alone in it wins by default and would prove
+    // nothing.
+    await _pump(
+      tester,
+      _Callbacks(),
+      assets: [
+        for (var i = 0; i < 30; i += 1)
+          MediaAsset(path: 'C:\\snd\\s$i.wav', name: 's$i.wav'),
+      ],
+    );
+
+    final pen = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>(r'media-asset-row-C:\snd\s0.wav')),
+      ),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    expect(
+      find.byType(MediaAssetDragChip),
+      findsNothing,
+      reason: 'fixture premise: a press alone lifts nothing',
+    );
+    await pen.moveBy(const Offset(2, 0));
+    await tester.pump();
+    expect(find.byType(MediaAssetDragChip), findsOneWidget);
+
+    await pen.up();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the import button asks for the import WINDOW, not a picker', (

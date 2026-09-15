@@ -459,4 +459,76 @@ void main() {
     expect(find.text('content-b'), findsOneWidget);
     expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
   });
+
+  /// A drag that arrives the way a pen's and a finger's do: two pixels per
+  /// event, not one long hop.
+  ///
+  /// 🚨F-126: every drag above reaches its target in one hop, and a first
+  /// move longer than any slop starts every recogniser at once — so they all
+  /// passed while a pen could not lift a tab. The tab's press claim takes the
+  /// arena on the first movement; a drag waiting for eighteen pixels had
+  /// lost it by then.
+  Future<void> creepTab(
+    WidgetTester tester,
+    String id,
+    Offset target, {
+    required PointerDeviceKind kind,
+  }) async {
+    final gesture = await tester.startGesture(
+      tester.getCenter(_grip(id)),
+      kind: kind,
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(2, 0));
+      await tester.pump();
+    }
+    await gesture.moveTo(target + const Offset(0, -10));
+    await tester.pump();
+    await gesture.moveTo(target);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  for (final kind in const [
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+  ]) {
+    testWidgets('F-126: a ${kind.name} lifts a tab by its grip', (
+      tester,
+    ) async {
+      final model = _twoGroups();
+      await tester.pumpWidget(_Harness(model: model));
+
+      final tail = tester.getCenter(_tab('y')) + const Offset(200, 0);
+      await creepTab(tester, 'a', tail, kind: kind);
+
+      expect(
+        _tabsIn(model, 'one'),
+        ['b', 'c'],
+        reason: '유저 2026-09-13: 「마우스로는 움직여서 패널 위치 도킹가능한데 '
+            '펜으로는 불가능」',
+      );
+      expect(_tabsIn(model, 'two'), ['x', 'y', 'a']);
+    });
+  }
+
+  testWidgets('F-126: a pen pressed and lifted on the grip still opens the '
+      'tab — the grip claims the DRAG, not the press', (tester) async {
+    final model = _twoGroups();
+    await tester.pumpWidget(_Harness(model: model));
+
+    final pen = await tester.startGesture(
+      tester.getCenter(_grip('b')),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await pen.up();
+    await tester.pumpAndSettle();
+
+    expect(model.activeTabIn('one'), 'b');
+    expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
+  });
 }
