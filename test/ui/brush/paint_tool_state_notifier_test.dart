@@ -138,24 +138,5 @@ void main() {
       addTearDown(notifier.dispose);
       expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fillShape);
     });
-
-    test('a REFUSED switch leaves the memory where it was', () {
-      // The guard keeps the outgoing tool, so nothing has moved — recording
-      // the refused tool would send the button somewhere it cannot go.
-      final notifier = PaintToolStateNotifier(
-        BrushToolState.defaults.copyWith(tool: CanvasTool.fill),
-      );
-      addTearDown(notifier.dispose);
-      notifier.switchGuard = (tool) =>
-          tool == CanvasTool.fillShape ? 'no' : null;
-
-      notifier.value = notifier.value.copyWith(tool: CanvasTool.fillShape);
-      expect(notifier.value.tool, CanvasTool.fill, reason: 'refused');
-
-      // Read from OUTSIDE the group, or the "stay put" half would answer
-      // and the memory would never be consulted.
-      notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
-      expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
-    });
   });
 }

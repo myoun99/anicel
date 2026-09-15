@@ -359,8 +359,7 @@ class _HomePageState extends State<HomePage> {
     // through this channel — the toggle button was not the caller, so its
     // snackbar path never runs.
     _session.voiceRecording.voiceRecordingNotice.addListener(_showVoiceRecordingNotice);
-    // The shared refusal channel stays wired; nothing installs a guard
-    // any more.
+    // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
     // nothing to transform. 유저 확정 08-13 (피드백 ⑦) moved that refusal
@@ -369,10 +368,9 @@ class _HomePageState extends State<HomePage> {
     // on an empty layer is a nag rather than an answer. The gate was also
     // answering for the cel that was active at the moment of the switch,
     // which went stale the instant the user moved to another layer
-    // (피드백 ⑥); the live predicate cannot.
-    // The type test this used to need is gone: [_brushTool] is declared as
-    // the subclass now (the rail asks it for `railEntry`).
-    _brushTool.onSwitchRefused = cursorNotices.show;
+    // (피드백 ⑥); the live predicate cannot. Nothing installed a guard after
+    // that, so the notifier's seam and the notice hook this line wired went
+    // too (2026-09-16).
   }
 
   void _showVoiceRecordingNotice() {

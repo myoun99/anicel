@@ -82,34 +82,16 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
     return _railTileByGroup[group] ?? group;
   }
 
-  /// The tool-switch GUARD (R26 #13): returns a refusal MESSAGE to block
-  /// the switch, null to allow it. Installed once by the shell — every
-  /// entrance (toolbar, library panel, shortcut, Ctrl+T, mapped pen
-  /// button) writes through this one setter, so a refusal cannot be
-  /// routed around.
-  String? Function(CanvasTool tool)? switchGuard;
-
-  /// Where a refusal is announced (the shared cursor notice).
-  void Function(String message)? onSwitchRefused;
+  // 🪦A tool-switch GUARD (R26 #13) lived on this setter: a refusal message
+  // for a tool, the switch blocked and the message announced. Its one
+  // installer was the shell's transform-tool refusal, and #971 moved that
+  // refusal onto the edit (유저 확정 08-13, 피드백 ⑦ — see home_page). Nothing
+  // installed the guard after that, so the seam, its branch and its notice
+  // hook ran only in their own tests until they were removed (2026-09-16).
 
   @override
   set value(BrushToolState next) {
     final previous = value;
-    if (next.tool != previous.tool) {
-      final refusal = switchGuard?.call(next.tool);
-      if (refusal != null) {
-        onSwitchRefused?.call(refusal);
-        // The refusal blocks the TOOL only — settings carried in the
-        // same write still apply (a preset landing while blocked).
-        final kept = next.copyWith(tool: previous.tool);
-        if (kept != previous) {
-          super.value = kept;
-        }
-        // No rail memory to update: a refusal keeps the OUTGOING tool, so
-        // the tile the groups were last on has not moved.
-        return;
-      }
-    }
     if (next.tool != previous.tool) {
       if (canvasToolPaints(previous.tool)) {
         _paintToolBank[previous.tool] = previous;
