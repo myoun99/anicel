@@ -38,7 +38,8 @@ import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/layer_opacity_field.dart';
-import 'timeline/timeline_cut_end_handle.dart' show movieEndPreviewTotalFrames;
+import 'timeline/timeline_cut_end_handle.dart'
+    show timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
@@ -1836,9 +1837,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             _noDragPreview,
                                         builder: (context, preview, _) {
                                           final live =
-                                              movieEndPreviewTotalFrames(
+                                              timelineCutEndPreviewFrameCount(
                                                 preview: preview,
-                                                committedTotalFrames:
+                                                cutId: null,
+                                                playbackFrameCount:
                                                     frame.totalFrames,
                                                 committedTrailingFrames:
                                                     frame.project
@@ -2007,6 +2009,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         width: frame.contentWidth,
                         renderedFrames: frame.renderedFrames,
                         contentFrames: frame.totalFrames,
+                        committedTrailingFrames: frame.project.trailingFrames,
+                        dragPreview: widget.dragPreview,
                         playhead: frame.playheadListenable,
                         frameReadySignal: widget.frameReadySignal,
                         viewportOffset: _horizontalScrollOffset,
@@ -2069,6 +2073,8 @@ class _StoryboardRuler extends StatefulWidget {
     required this.width,
     required this.renderedFrames,
     required this.contentFrames,
+    required this.committedTrailingFrames,
+    this.dragPreview,
     required this.playhead,
     required this.frameReadySignal,
     required this.viewportOffset,
@@ -2092,6 +2098,13 @@ class _StoryboardRuler extends StatefulWidget {
 
   /// The cuts' actual end (runway dimming + the cut-end boundary line).
   final int contentFrames;
+
+  /// The trailing gap past the last cut, as committed — what a movie-end
+  /// drag's preview replaces on the ruler's end line (F-18).
+  final int committedTrailingFrames;
+
+  /// The panel's drag channel; null keeps the ruler's end line committed.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The playhead + cache-warm signals, consumed by the cursor overlay
   /// PAINTER only (R12-B): a playback tick or a warming frame repaints
@@ -2255,6 +2268,10 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 currentFrameIndex: -1,
                 playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
+                // F-18: the ruler's end line follows the movie-end drag with
+                // the strip's line and grip — the same reader, the same gap.
+                dragPreview: widget.dragPreview,
+                committedTrailingFrames: widget.committedTrailingFrames,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,
                 metrics: metrics,
@@ -4152,9 +4169,10 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
       builder: (context, preview, child) => Positioned(
         key: const ValueKey<String>('storyboard-cut-end-handle'),
         left: widget.scale.leftForFrame(
-          movieEndPreviewTotalFrames(
+          timelineCutEndPreviewFrameCount(
             preview: preview,
-            committedTotalFrames: widget.committedTotalFrames,
+            cutId: null,
+            playbackFrameCount: widget.committedTotalFrames,
             committedTrailingFrames: widget.committedTrailingFrames,
           ),
         ),

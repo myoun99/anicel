@@ -46,7 +46,21 @@ void main() {
   /// `_editLaneAt` (eight) is the one dispatch both run through: the same
   /// five, plus the edit each keyed family — the name tag, the effect chain,
   /// the transform track — makes.
-  const wideSignatures = 383;
+  ///
+  /// ⚠️383 → 385 on 2026-09-16, two named as the rule above asks. The same
+  /// lines ride in both lanes, so whichever lands first carries the other's
+  /// count. F-18: `timelineDrawnEndPreviewFrameCount` (five) took the
+  /// movie's trailing gap, because the storyboard's end line, its grip and
+  /// its ruler now read a movie-end drag through the cut end's one function
+  /// instead of a second one beside it (`movieEndPreviewTotalFrames`, gone);
+  /// the drawn end is that cut end plus the のりしろ, and its fifth input is
+  /// the one the cut end gained. F-101: `propertyLanesForRow` (five) is the
+  /// lane list both panels now build an SE row's lanes from — the row, the
+  /// rows an attach base is found among, which groups are open, where a lane
+  /// reads its value and where a keyless pose is centred. The last two are
+  /// the answers the two rails give differently: the cut's canvas, the
+  /// camera frame.
+  const wideSignatures = 385;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
@@ -79,7 +93,19 @@ void main() {
   /// that claimed the dirty mark kept the work while the save was clearing
   /// it. Cutting those to buy a number is the trade this repo does not make,
   /// and shrinking the door is a round of its own.
-  const longClasses = 53;
+  ///
+  /// ⚠️53 → 56 on 2026-09-16, three named, one per lane, the same lines in
+  /// each so the first to land carries the others' count. F-115:
+  /// `FrameClipboard` crossed the line taking copy, cut and paste of SE
+  /// blocks onto the row's own axis, which from the second cut on had read
+  /// a cut-local index. F-81: `Standing` crossed it becoming the ONE body a
+  /// fold hands the current row off through (`handOffOnFold`) — the lane
+  /// folds, the folder fold and the attach group's fold had three.
+  /// F-90: `_TimesheetTabHostState` stood at the line and crossed it
+  /// printing the cut under the playhead — its document, its playhead row
+  /// and its ink — rather than only the open cut. Shrinking any of the
+  /// three to fit is a round of its own.
+  const longClasses = 56;
 
   late CleanCodeScan scan;
   setUpAll(() {

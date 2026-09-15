@@ -35,15 +35,32 @@ class TimelineCutEndDragCallbacks {
 }
 
 /// The playbackFrameCount a boundary consumer should DISPLAY: the live
-/// trim preview's duration while a drag targets [cutId], the committed
+/// trim preview's duration while a drag targets [cutId]; the previewed MOVIE
+/// end while a movie-end drag runs on a surface whose end includes the
+/// trailing gap ([committedTrailingFrames] — the storyboard); the committed
 /// count otherwise.
+///
+/// 🚨F-18 (유저 2026-08-28): 「프레임영역은 라이브로 따라가는데 룰러에 있는
+/// 엔드라인은 라이브로 안보임. 이걸 통일이라고 한거냐?」 — the storyboard's
+/// strip read the movie-end drag through a function of its own and its ruler
+/// read none, so one end line kept two laws. Every end line reads this one.
+///
+/// ↩️That function was `movieEndPreviewTotalFrames` (F-18, 유저 2026-08-24:
+/// 「스토리보드패널의 엔드라인 드래그시 라이브로 안보임. 어떤 다른 규칙을
+/// 만든거지? 타임라인패널이랑 통일」). Its reason stays true: the storyboard's
+/// body builds from the committed project once, on purpose, so an end line
+/// reads the preview itself rather than the panel re-reading the project.
 int timelineCutEndPreviewFrameCount({
   required TimelineDragPreview? preview,
   required CutId? cutId,
   required int playbackFrameCount,
+  int? committedTrailingFrames,
 }) {
   if (preview is CutTrimDragPreview && cutId != null) {
     return preview.previewDurations[cutId] ?? playbackFrameCount;
+  }
+  if (preview is MovieEndDragPreview && committedTrailingFrames != null) {
+    return playbackFrameCount - committedTrailingFrames + preview.trailingFrames;
   }
   return playbackFrameCount;
 }
@@ -63,12 +80,14 @@ int timelineDrawnEndPreviewFrameCount({
   required CutId? cutId,
   required int playbackFrameCount,
   required int? drawnFrameCount,
+  int? committedTrailingFrames,
 }) {
   final handle = (drawnFrameCount ?? playbackFrameCount) - playbackFrameCount;
   final cutEnd = timelineCutEndPreviewFrameCount(
     preview: preview,
     cutId: cutId,
     playbackFrameCount: playbackFrameCount,
+    committedTrailingFrames: committedTrailingFrames,
   );
   return handle <= 0 ? cutEnd : cutEnd + handle;
 }
@@ -202,31 +221,4 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
       ),
     );
   }
-}
-
-/// The movie-end line's DISPLAY position while an end-line drag is live.
-///
-/// 🚨F-18 (유저 2026-08-24): 「스토리보드패널의 엔드라인 드래그시 라이브로
-/// 안보임. 어떤 다른 규칙을 만든거지? 타임라인패널이랑 통일」.
-///
-/// The storyboard's body builds from the COMMITTED project once, on purpose
-/// (the drag preview is read further down, where the measurement says it
-/// matters). The end line was built up there with it, so it stood still until
-/// release while its timeline sibling followed the pointer — one line, two
-/// rules, which is what the report is.
-///
-/// ⇒ The line reads the preview HERE instead of the panel re-reading the
-/// project: the same shape [timelineCutEndPreviewFrameCount] already uses for
-/// the cut end, one drag over.
-int movieEndPreviewTotalFrames({
-  required TimelineDragPreview? preview,
-  required int committedTotalFrames,
-  required int committedTrailingFrames,
-}) {
-  if (preview is! MovieEndDragPreview) {
-    return committedTotalFrames;
-  }
-  return committedTotalFrames -
-      committedTrailingFrames +
-      preview.trailingFrames;
 }

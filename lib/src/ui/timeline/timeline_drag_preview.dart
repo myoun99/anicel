@@ -233,8 +233,9 @@ class CutTrimDragPreview extends TimelineDragPreview {
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
-/// the storyboard substitutes it into its project view so the end line
-/// (and the ruler's content end) follow the pointer live.
+/// the storyboard's end line, its grip and its ruler's end line all read it
+/// through `timelineCutEndPreviewFrameCount`, so the three follow the pointer
+/// live together (F-18).
 class MovieEndDragPreview extends TimelineDragPreview {
   const MovieEndDragPreview({required this.trailingFrames});
 
