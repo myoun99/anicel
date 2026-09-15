@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import 'axis_bar_gesture.dart';
 import 'inline_numeric_field.dart';
 
 /// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
@@ -15,8 +17,20 @@ import 'inline_numeric_field.dart';
 /// which is what the user asked to be rid of everywhere. It cost nothing
 /// to give up: there was no single-tap action to collide with, and the
 /// app's rule is now one line — a tap edits a number, a double tap opens
-/// a thing. Tap and drag do not fight: past the slop the drag takes the
-/// arena and the tap is refused; release without moving and it is a tap.
+/// a thing.
+///
+/// 🚨H24 (유저 2026-09-15: 「뷰어쪽 줌 레일스크롤바랑 겹치는거」): A PRESS
+/// THAT STARTS HERE IS THE LABEL'S, WHICHEVER WAY IT MOVES. Tap and drag
+/// used to settle it between them in the arena — past the slop the drag
+/// won, and the tap was refused — which left the arena open to a list
+/// around the label. 🧪Measured in a scroller: a drag that ran straight up
+/// moved the list 120px for touch, pen and mouse alike (a horizontal
+/// recogniser never crosses its slop on one). The drag takes the arena on
+/// the first movement now, as the slider's does
+/// ([OwningHorizontalDragGestureRecognizer]) — which is exactly what would
+/// refuse a tap left in the arena on any wobble (F-120's shape), so the tap
+/// is the claim's, fired on release inside
+/// ([_DragValueLabelState._editUnlessScrubbed]).
 class DragValueLabel extends StatefulWidget {
   const DragValueLabel({
     super.key,
@@ -67,6 +81,18 @@ class _DragValueLabelState extends State<DragValueLabel> {
   bool _editing = false;
   double _pendingUnits = 0;
 
+  /// Whether the press under way has moved the value.
+  bool _scrubbedThisPress = false;
+
+  /// How far the press under way has travelled along the label, and how far
+  /// it may before the value moves: the pointer kind's hit slop — the same
+  /// number the plain horizontal recogniser this replaced waited out before
+  /// its first delta. ⛔Not a new threshold. The owning recogniser reports
+  /// the very first pixel, and the labels scrub a unit per pixel, so without
+  /// it a pen that wobbles would move the zoom by a percent and lose its tap.
+  double _travel = 0;
+  double _slop = 0;
+
   /// The readout with its units stripped — '−15°' seeds the field as
   /// '-15', because what you are replacing is the NUMBER.
   String get _seed => widget.text.replaceAll(RegExp(r'[^0-9.\-]'), '');
@@ -80,12 +106,39 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
   }
 
+  void _pressStarted(PointerDownEvent event) {
+    _scrubbedThisPress = false;
+    _travel = 0;
+    _slop = computeHitSlop(
+      event.kind,
+      MediaQuery.maybeGestureSettingsOf(context),
+    );
+  }
+
   void _dragBy(double dx) {
+    if (_travel <= _slop) {
+      _travel += dx.abs();
+      if (_travel <= _slop) {
+        return;
+      }
+    }
     _pendingUnits += dx * widget.unitsPerPixel;
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
+      _scrubbedThisPress = true;
       widget.onDragDelta(whole);
+    }
+  }
+
+  /// A press edits the number unless it moved the value.
+  ///
+  /// ⛔Not the arena: the drag takes it on the first movement, so the arena
+  /// can no longer tell a tap from a scrub. The verb's own answer does —
+  /// did a whole unit go out.
+  void _editUnlessScrubbed() {
+    if (!_scrubbedThisPress) {
+      _beginEdit();
     }
   }
 
@@ -107,23 +160,43 @@ class _DragValueLabelState extends State<DragValueLabel> {
     }
     final label = MouseRegion(
       cursor: SystemMouseCursors.resizeLeftRight,
-      // 🚨A horizontal drag here SCRUBS the value — that is the verb, so it
-      // takes the STRONG claim. Without it an ancestor scroller wins the
-      // drag at its slop and the number never moves.
-      child: DragVerbClaim(
-        behavior: HitTestBehavior.opaque,
-        child: GestureDetector(
-          key: ValueKey<String>(widget.keyValue),
-          behavior: HitTestBehavior.opaque,
-          onTap: _beginEdit,
-          onHorizontalDragStart: (_) => _pendingUnits = 0,
-          onHorizontalDragUpdate: (details) => _dragBy(details.delta.dx),
-          child: SizedBox(
-            width: widget.width,
-            child: Text(
-              widget.text,
-              textAlign: widget.textAlign,
-              style: widget.textStyle ?? const TextStyle(fontSize: 12),
+      // ⚠️The order is what makes the tap right. Pointer-up runs deepest
+      // first, so [DragVerbClaim] has let its claim go by the time
+      // [ControlPressClaim] asks whether a drag verb owns the pointer — the
+      // claim then fires, and [_editUnlessScrubbed] is what refuses a press
+      // that scrubbed.
+      child: ControlPressClaim(
+        onPressed: _editUnlessScrubbed,
+        child: Listener(
+          onPointerDown: _pressStarted,
+          child: DragVerbClaim(
+            behavior: HitTestBehavior.opaque,
+            child: RawGestureDetector(
+              key: ValueKey<String>(widget.keyValue),
+              behavior: HitTestBehavior.opaque,
+              gestures: <Type, GestureRecognizerFactory>{
+                OwningHorizontalDragGestureRecognizer:
+                    GestureRecognizerFactoryWithHandlers<
+                      OwningHorizontalDragGestureRecognizer
+                    >(
+                      () => OwningHorizontalDragGestureRecognizer(
+                        debugOwner: this,
+                      ),
+                      (recognizer) {
+                        recognizer.onStart = (_) => _pendingUnits = 0;
+                        recognizer.onUpdate = (details) =>
+                            _dragBy(details.delta.dx);
+                      },
+                    ),
+              },
+              child: SizedBox(
+                width: widget.width,
+                child: Text(
+                  widget.text,
+                  textAlign: widget.textAlign,
+                  style: widget.textStyle ?? const TextStyle(fontSize: 12),
+                ),
+              ),
             ),
           ),
         ),

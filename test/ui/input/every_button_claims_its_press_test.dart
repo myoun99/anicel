@@ -259,9 +259,12 @@ void main() {
     // control's own callbacks are silent ([silentPress]), empty or null, and
     // the claim's `onPressed` is the one thing that acts.
     //
-    // ⚠️A [DragVerbClaim] parent is not read here, and that is the scrub
-    // label's shape: its tap and its drag are both its own verbs, so the
-    // arena between THOSE two is the thing that decides.
+    // ⚠️EVERY claim parent is read, [DragVerbClaim] included. 🪦It was left
+    // out for the scrub label, whose tap and drag settled it between them in
+    // the arena — and a list around the label won every drag of it that ran
+    // vertically (H24, 2026-09-15: a drag straight up moved the list 120px).
+    // Its drag takes the arena on the first movement now and its tap is its
+    // claim's, so the exemption had nothing left to protect.
     // ⚠️The spaces go INSIDE the lookahead. Outside it, `\s*` gives back the
     // space it matched and the lookahead is asked at 「 silentPress(」, which
     // is not 「silentPress(」 — every silent tap in the app read as live.
@@ -271,9 +274,7 @@ void main() {
     );
     final riding = [
       for (final control in scannedControls())
-        if ((control.parent == 'ControlPressClaim' ||
-                control.parent == 'RailSwipeColumnPointer') &&
-            live.hasMatch(control.arguments))
+        if (control.parent != null && live.hasMatch(control.arguments))
           control.site,
     ];
     expect(

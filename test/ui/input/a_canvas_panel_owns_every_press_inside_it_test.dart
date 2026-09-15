@@ -197,6 +197,60 @@ void main() {
         expect(h.emitted, isNotEmpty, reason: 'the canvas took the pinch');
         expect(h.scroll.offset, 0);
       });
+
+      testWidgets('⛔fixture premise: a wheel notch and a trackpad pan OFF '
+          'the panel scroll', (tester) async {
+        final h = await pump(tester, mount);
+        final below =
+            tester.getTopLeft(find.byKey(outsideKey)) + const Offset(200, 40);
+        final wheel = TestPointer(1, PointerDeviceKind.mouse);
+        wheel.hover(below);
+        await tester.sendEventToBinding(wheel.scroll(const Offset(0, 60)));
+        await tester.pumpAndSettle();
+        expect(h.scroll.offset, greaterThan(0), reason: 'the wheel');
+
+        h.scroll.jumpTo(0);
+        await tester.pump();
+        final pad = await tester.createGesture(
+          kind: PointerDeviceKind.trackpad,
+        );
+        await pad.panZoomStart(below);
+        await pad.panZoomUpdate(below, pan: const Offset(0, -60));
+        await pad.panZoomEnd();
+        await tester.pumpAndSettle();
+        expect(h.scroll.offset, greaterThan(0), reason: 'the trackpad');
+      });
+
+      testWidgets('a wheel notch inside zooms the view and never scrolls', (
+        tester,
+      ) async {
+        final h = await pump(tester, mount);
+        final wheel = TestPointer(1, PointerDeviceKind.mouse);
+        wheel.hover(inside(tester));
+        await tester.sendEventToBinding(wheel.scroll(const Offset(0, 60)));
+        await tester.pumpAndSettle();
+        expect(h.emitted, isNotEmpty, reason: 'the canvas took the notch');
+        expect(h.scroll.offset, 0);
+      });
+
+      testWidgets('a trackpad pan and pinch inside move the view and never '
+          'scroll', (tester) async {
+        final h = await pump(tester, mount);
+        final pad = await tester.createGesture(
+          kind: PointerDeviceKind.trackpad,
+        );
+        await pad.panZoomStart(inside(tester));
+        await pad.panZoomUpdate(inside(tester), pan: const Offset(0, -60));
+        await pad.panZoomUpdate(
+          inside(tester),
+          pan: const Offset(0, -90),
+          scale: 1.4,
+        );
+        await pad.panZoomEnd();
+        await tester.pumpAndSettle();
+        expect(h.emitted, isNotEmpty, reason: 'the canvas took the gesture');
+        expect(h.scroll.offset, 0);
+      });
     });
   }
 
