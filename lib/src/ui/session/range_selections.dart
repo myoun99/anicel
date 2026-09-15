@@ -112,10 +112,9 @@ class RangeSelections {
     // (now on the DOWN) would wipe the move it was starting.
     final lanes = _selection.laneRangeSelection.value;
     if (lanes != null && frameIndex != null && row is LaneRowAddress) {
-      final laneAxisFrame =
-          !frameIsGlobal && _project.isTrackSeLayerId(row.layerId)
-          ? frameIndex + _project.activeCutGlobalStartFrame
-          : frameIndex;
+      final laneAxisFrame = frameIsGlobal
+          ? frameIndex
+          : frameIndex + _project.rowAxisOffset(row.layerId);
       if (lanes.coversLane(row.layerId, row.laneId) &&
           laneAxisFrame >= lanes.startIndex &&
           laneAxisFrame < lanes.endIndexExclusive) {
@@ -469,9 +468,7 @@ class RangeSelections {
     }
     // THE ONE-SELECTION LAW — see [claimSelection].
     claimSelection(TimelineSelectionKind.lanes);
-    final toGlobal = !framesAreGlobal && _project.isTrackSeLayerId(layerId)
-        ? _project.activeCutGlobalStartFrame
-        : 0;
+    final toGlobal = framesAreGlobal ? 0 : _project.rowAxisOffset(layerId);
     final start = math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
     final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
     if (endExclusive <= start) {

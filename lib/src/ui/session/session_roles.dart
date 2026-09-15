@@ -56,6 +56,7 @@ abstract interface class ProjectAccess {
   Cut? get activeCutOrNull;
   Cut? cutById(CutId cutId);
   bool isTrackSeLayerId(LayerId layerId);
+  int rowAxisOffset(LayerId layerId);
   bool isTrackTransitionLayerId(LayerId layerId);
   List<Layer> get layers;
   Cut get requireActiveCut;

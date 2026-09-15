@@ -301,11 +301,7 @@ class LaneVerbs {
     LayerId layerId,
     int frameIndex, {
     required bool frameIsGlobal,
-  }) =>
-      frameIndex +
-      (!frameIsGlobal && _project.isTrackSeLayerId(layerId)
-          ? _project.activeCutGlobalStartFrame
-          : 0);
+  }) => frameIndex + (frameIsGlobal ? 0 : _project.rowAxisOffset(layerId));
 
   /// The READ half of the projection: the row a lane on [shown] resolves
   /// its VALUES against, and the frame [frameIndex] — on [shown]'s own rail —

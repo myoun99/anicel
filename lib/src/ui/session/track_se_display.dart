@@ -50,6 +50,20 @@ class TrackSeDisplay {
   /// what a row IS.
   bool isTrackSeLayerId(LayerId layerId) => trackSeAnywhere(layerId) != null;
 
+  /// How far [layerId]'s OWN frame axis runs ahead of the cut's: the open
+  /// cut's global start for a track-owned SE row, whose keys live on the
+  /// track's frames, and zero for every row keyed on the cut.
+  ///
+  /// 🚨ASKED HERE AND NOWHERE ELSE. Six verbs wrote this conditional out by
+  /// hand — the controllers' frame offset, the lane verbs' write axis, the
+  /// lane selection's hit test and its drag, the fill funnel's
+  /// pre-subtraction below and the cut-local lane range — and the clipboard
+  /// (F-115) was about to be the seventh. Copies that agree today are the
+  /// ones that part later; the source scan
+  /// `the_row_axis_offset_is_asked_in_one_place_test` keeps it here.
+  int rowAxisOffset(LayerId layerId) =>
+      isTrackSeLayerId(layerId) ? _project.activeCutGlobalStartFrame : 0;
+
   /// Whether [layerId] is a TRACK-OWNED row of the storyboard's rail — an SE
   /// lane or the transition row.
   ///
@@ -195,13 +209,11 @@ class TrackSeDisplay {
     for (final entry in gapsByLayer.entries) {
       final layer = entry.key;
       // ⚠️The fills funnel re-applies the track-SE display lens
-      // (`frameOffsetForLayer` adds the active cut's global start on the
-      // way in), because its usual callers speak CUT-LOCAL indexes. These
-      // gaps are already GLOBAL — pre-subtract the SAME expression the
-      // lens uses, or every entry lands double-shifted.
-      final lensOffset = isTrackSeLayerId(layer.id)
-          ? _project.activeCutGlobalStartFrame
-          : 0;
+      // (`frameOffsetForLayer` adds the row's axis offset on the way in),
+      // because its usual callers speak CUT-LOCAL indexes. These gaps are
+      // already GLOBAL — pre-subtract the SAME offset ([rowAxisOffset]), or
+      // every entry lands double-shifted.
+      final lensOffset = rowAxisOffset(layer.id);
       final layerFills =
           <({int startIndex, int length, FrameId frameId, String? name})>[];
       for (final gap in entry.value) {

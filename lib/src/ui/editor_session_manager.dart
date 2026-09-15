@@ -1017,6 +1017,8 @@ class EditorSessionManager extends ChangeNotifier
   @override
   bool isTrackSeLayerId(LayerId layerId) => trackSe.isTrackSeLayerId(layerId);
   @override
+  int rowAxisOffset(LayerId layerId) => trackSe.rowAxisOffset(layerId);
+  @override
   Layer? trackSeGlobalLayerById(LayerId layerId) =>
       trackSe.trackSeGlobalLayerById(layerId);
 
@@ -2500,7 +2502,7 @@ class EditorSessionManager extends ChangeNotifier
       cutLocalLaneRangeSelection.value = span;
       return;
     }
-    final offset = activeCutGlobalStartFrame;
+    final offset = rowAxisOffset(span.layerId);
     final start = math.max(span.startIndex, offset);
     final end = math.min(
       span.endIndexExclusive,

@@ -92,9 +92,7 @@ class ActiveCutControllers {
       initialFrameIndex: clampedFrameIndex(preferredFrameIndex),
       // Track-SE mutations shift to the global axis inside the controller;
       // reads keep flowing through the cut-local display clones.
-      frameOffsetForLayer: (layerId) => _project.isTrackSeLayerId(layerId)
-          ? _project.activeCutGlobalStartFrame
-          : 0,
+      frameOffsetForLayer: _project.rowAxisOffset,
       trackSeLayers: () => _selection.activeTrack.seLayers,
     );
     _internals.editingFrameCursor.value = timelineController.currentFrameIndex;
