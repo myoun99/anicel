@@ -235,7 +235,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   final ValueNotifier<int> _rowWindowBucket = ValueNotifier<int>(0);
 
   double _verticalScrollOffset = 0;
-  double _lastEffectiveHorizontalScrollOffset = 0;
 
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
@@ -394,7 +393,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     hooks: () => widget.hooks,
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _renderedFrameCount,
-    scrolledFrameOffset: () => _lastEffectiveHorizontalScrollOffset,
+    scrolledFrameOffset: () => _frameAxis.paintedOffset,
   );
 
   /// Brings the SELECTION back into view on both axes (R5, user
@@ -740,7 +739,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               final viewportWidth = constraints.hasBoundedWidth
                   ? constraints.maxWidth
                   : 0.0;
-              _lastEffectiveHorizontalScrollOffset = _frameAxisOffset.value;
+              _frameAxis.rereadAfterLayout();
               _horizontalSync.synchronize(
                 _scroll.effectiveHorizontalScrollOffset(
                   requestedOffset: _frameAxisOffset.value,
@@ -1056,9 +1055,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                   // resize. What the ruler renders
                                                   // and hit-tests at is the scroll
                                                   // position itself.
-                                                  _lastEffectiveHorizontalScrollOffset =
-                                                      _frameAxisOffset
-                                                          .value;
                                                   _horizontalSync.synchronize(
                                                     _scroll.effectiveHorizontalScrollOffset(
                                                       requestedOffset:
@@ -1242,73 +1238,52 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             // Per-pixel scrolls move the
                                                             // TRANSLATE only; the content
                                                             // is the stable child below.
-                                                            child: ValueListenableBuilder<double>(
-                                                              valueListenable:
-                                                                  _frameAxisOffset,
-                                                              child:
-                                                                  rulerContent,
-                                                              // R9 #3: the RAW scroll
-                                                              // position, overscroll
-                                                              // included. Clamping here
-                                                              // pinned the ruler at the
-                                                              // end while the body kept
-                                                              // sliding — this file's
-                                                              // own contract, broken by
-                                                              // the clamp meant for a
-                                                              // different job (deciding
-                                                              // whether the CONTROLLER
-                                                              // needs correcting after
-                                                              // a viewport resize).
-                                                              builder:
-                                                                  (
-                                                                    context,
-                                                                    offset,
-                                                                    child,
-                                                                  ) {
-                                                                    _lastEffectiveHorizontalScrollOffset =
-                                                                        offset;
-                                                                    // 🚨★★★F-32's
-                                                                    // OTHER HALF, and
-                                                                    // it is the SAME
-                                                                    // asymmetry with
-                                                                    // the halves
-                                                                    // swapped: here
-                                                                    // the CELLS land
-                                                                    // on the device
-                                                                    // grid and the
-                                                                    // RULER kept the
-                                                                    // raw fraction.
-                                                                    //
-                                                                    // 🧪Measured at
-                                                                    // ratio 1.5,
-                                                                    // offset 1.5:
-                                                                    // ruler 453.5 vs
-                                                                    // cells 453.667.
-                                                                    // ⛔I had read
-                                                                    // this file and
-                                                                    // written 「both
-                                                                    // halves carry the
-                                                                    // raw offset, so
-                                                                    // they agree」 —
-                                                                    // reading was
-                                                                    // wrong and the
-                                                                    // measurement is
-                                                                    // what caught it.
-                                                                    return DeviceGridScrollBody(
-                                                                      controller:
-                                                                          _horizontalScrollController,
-                                                                      axisDirection:
-                                                                          AxisDirection.right,
-                                                                      child: Transform.translate(
-                                                                        offset: Offset(
-                                                                          -offset,
-                                                                          0,
-                                                                        ),
-                                                                        child:
-                                                                            child,
-                                                                      ),
-                                                                    );
-                                                                  },
+                                                            //
+                                                            // R9 #3: the RAW scroll
+                                                            // position, overscroll
+                                                            // included. Clamping here
+                                                            // pinned the ruler at the
+                                                            // end while the body kept
+                                                            // sliding — this file's
+                                                            // own contract, broken by
+                                                            // the clamp meant for a
+                                                            // different job (deciding
+                                                            // whether the CONTROLLER
+                                                            // needs correcting after
+                                                            // a viewport resize).
+                                                            //
+                                                            // 🚨★★★F-32's OTHER HALF,
+                                                            // and it is the SAME
+                                                            // asymmetry with the
+                                                            // halves swapped: here the
+                                                            // CELLS land on the device
+                                                            // grid and the RULER kept
+                                                            // the raw fraction.
+                                                            //
+                                                            // 🧪Measured at ratio 1.5,
+                                                            // offset 1.5: ruler 453.5
+                                                            // vs cells 453.667. ⛔I had
+                                                            // read this file and
+                                                            // written 「both halves
+                                                            // carry the raw offset, so
+                                                            // they agree」 — reading
+                                                            // was wrong and the
+                                                            // measurement is what
+                                                            // caught it.
+                                                            //
+                                                            // ↩️F-95: the offset came
+                                                            // from a NOTIFIER a resize
+                                                            // past the end never
+                                                            // reached. The follower
+                                                            // reads the position when
+                                                            // it paints, with the
+                                                            // cells' correction on it.
+                                                            child: ScrollFollower(
+                                                              controller:
+                                                                  _horizontalScrollController,
+                                                              axisDirection:
+                                                                  AxisDirection.right,
+                                                              child: rulerContent,
                                                             ),
                                                           ),
                                                         ),

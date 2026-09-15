@@ -222,6 +222,66 @@ void main() {
       expect(offsetWrites, 1);
     });
 
+    testWidgets('🚨F-95: what PAINTS reads the position, and the copy catches '
+        'up when a layout says to', (tester) async {
+      // ↩️This case used to make a REAL silent correction: a viewport grown
+      // past the end of its content pulled its position back during layout
+      // and called no listener (유저 2026-09-12: 「패널의 스플리터로 좌우
+      // 길이 바꾸면 … 룰러랑 내부 프레임 영역이랑 위치가 … 어긋남」).
+      //
+      // ⛔That timing is Flutter's, and it MOVED. On 3.47.4 the same toy
+      // leaves the position OUT OF RANGE for frames and then brings it home
+      // WITH listeners (measured 2026-09-16: pixels 3800 against a max of
+      // 3500 for two pumps, nine notifies by the time it settled). A test
+      // that pins the engine's schedule goes red for a reason that is not
+      // ours — and this one also asked for 3200 where the surface only ever
+      // allowed 3400, so it pinned a number the toy could not reach.
+      //
+      // 🚨The APP's law is pinned where it belongs, on the real panels and
+      // in the user's own terms: `a_ruler_stays_on_its_cells_through_a_
+      // resize_test` — measured again on 3.47.4, where the symptom is
+      // unchanged (the cells follow the correction by 600px and the ruler
+      // does not).
+      //
+      // What is OURS, and what this pins, is the follower's two promises,
+      // driven directly so no engine schedule can move them.
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 200,
+        rebuild: (fn) => fn(),
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+
+      controller.jumpTo(120);
+      follower.handleScroll();
+      expect(offset.value, 120, reason: 'fixture: the copy heard the scroll');
+
+      // The copy goes stale — however it got that way, silently or late.
+      offset.value = 999;
+      expect(
+        follower.paintedOffset,
+        120,
+        reason: 'what paints reads the POSITION, never the copy',
+      );
+
+      follower.rereadAfterLayout();
+      await tester.pump();
+      expect(
+        offset.value,
+        120,
+        reason: 'the copy catches up the frame after the layout that asked',
+      );
+    });
+
     testWidgets('the trailing room GROWS as the view reaches past the end', (
       tester,
     ) async {

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../layout/render_shifted_child.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_coordinate_policy.dart';
 
@@ -262,7 +263,7 @@ mixin TimelineFrameAxisRenderMixin on RenderBox {
 }
 
 class RenderTimelineFrameAxisBox extends RenderProxyBox
-    with TimelineFrameAxisRenderMixin {
+    with TimelineFrameAxisRenderMixin, RenderShiftedChildHitTest {
   RenderTimelineFrameAxisBox({
     required TimelineFrameGeometryHandle geometry,
     required double crossAxisExtent,
@@ -333,18 +334,7 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
   }
 
   @override
-  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    final child = this.child;
-    if (child == null) {
-      return false;
-    }
-    return result.addWithPaintOffset(
-      offset: _childOffset,
-      position: position,
-      hitTest: (result, transformed) =>
-          child.hitTest(result, position: transformed),
-    );
-  }
+  Offset get childPaintOffset => _childOffset;
 
   @override
   double computeMinIntrinsicWidth(double height) => axis == Axis.horizontal

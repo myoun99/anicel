@@ -239,7 +239,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     hooks: () => widget.hooks,
     frameCellExtent: () => _metrics.frameCellWidth,
     renderedFrameCount: () => _frameScroll.renderedFrameCount,
-    scrolledFrameOffset: () => _lastEffectiveFrameScrollOffset,
+    scrolledFrameOffset: () => _frameAxis.paintedOffset,
   );
 
   /// The fallback rail extent for hosts that keep none of their own — the
@@ -287,7 +287,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// rebuilds per pixel.
   final ValueNotifier<double> _frameAxisOffset = ValueNotifier<double>(0);
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
-  double _lastEffectiveFrameScrollOffset = 0;
 
   /// The frame axis following its controller — the rail's follower, the
   /// same object, transposed by nothing but which controller it holds.
@@ -750,8 +749,50 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // Pixels move the TRANSLATE only; the
             // rail painter windows itself off the
             // offset (UI-R15 — no bucket rebuild).
-            child: ValueListenableBuilder<double>(
-              valueListenable: _frameAxisOffset,
+            //
+            // R9 #3 (transposed): the RAW scroll
+            // position, overscroll included —
+            // the clamp is for correcting the
+            // CONTROLLER, not for paint.
+            //
+            // 🚨★★★F-32: THE SAME
+            // CORRECTION THE CELLS GET.
+            //
+            // 유저: 「해당 레이어 영역
+            // 자체가 밀림 … 띠가 살짝
+            // 아래로 2px정도?」 — and it
+            // only happens 「스크롤에
+            // 따라」, which is the tell.
+            //
+            // The frame CELLS scroll
+            // through
+            // [DeviceGridScrollBody],
+            // which cancels the offset's
+            // sub-device-pixel fraction.
+            // This rail moved by a RAW
+            // translate, so it kept that
+            // fraction — 🧪measured at
+            // ratio 1.5: rail 360.0 vs
+            // cells 359.667, a third of a
+            // logical pixel apart, at
+            // rest identical.
+            //
+            // ⛔Not a rounding of its own
+            // here: the correction is
+            // that widget's, and a second
+            // copy of the arithmetic is
+            // how the two drift apart
+            // again the next time either
+            // is touched.
+            //
+            // ↩️F-95: the translate read a
+            // NOTIFIER that a resize past
+            // the end never reached; the
+            // follower reads the position
+            // when it paints.
+            child: ScrollFollower(
+              controller: _frameScrollController,
+              axisDirection: AxisDirection.down,
               child: Builder(
                 builder: (context) {
                   return SizedBox(
@@ -831,50 +872,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   );
                 },
               ),
-              // R9 #3 (transposed): the RAW scroll
-              // position, overscroll included —
-              // the clamp is for correcting the
-              // CONTROLLER, not for paint.
-              builder: (context, offset, child) {
-                _lastEffectiveFrameScrollOffset = offset;
-                // 🚨★★★F-32: THE SAME
-                // CORRECTION THE CELLS GET.
-                //
-                // 유저: 「해당 레이어 영역
-                // 자체가 밀림 … 띠가 살짝
-                // 아래로 2px정도?」 — and it
-                // only happens 「스크롤에
-                // 따라」, which is the tell.
-                //
-                // The frame CELLS scroll
-                // through
-                // [DeviceGridScrollBody],
-                // which cancels the offset's
-                // sub-device-pixel fraction.
-                // This rail moved by a RAW
-                // translate, so it kept that
-                // fraction — 🧪measured at
-                // ratio 1.5: rail 360.0 vs
-                // cells 359.667, a third of a
-                // logical pixel apart, at
-                // rest identical.
-                //
-                // ⛔Not a rounding of its own
-                // here: the correction is
-                // that widget's, and a second
-                // copy of the arithmetic is
-                // how the two drift apart
-                // again the next time either
-                // is touched.
-                return DeviceGridScrollBody(
-                  controller: _frameScrollController,
-                  axisDirection: AxisDirection.down,
-                  child: Transform.translate(
-                    offset: Offset(0, -offset),
-                    child: child,
-                  ),
-                );
-              },
             ),
           ),
         ),
@@ -947,7 +944,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               viewportExtent: bodyViewportHeight,
               frameCellExtent: _metrics.frameCellWidth,
             );
-            _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
+            _frameAxis.rereadAfterLayout();
             _frameSync.synchronize(
               _frameScroll.effectiveFrameScrollOffset(
                 requestedOffset: _frameAxisOffset.value,

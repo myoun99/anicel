@@ -1,6 +1,8 @@
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'device_grid.dart';
+import 'render_shifted_child.dart';
 
 /// Lands a scrollable's CONTENT on the device-pixel grid without touching
 /// the scroll position.
@@ -118,15 +120,8 @@ class DeviceGridScrollBody extends StatelessWidget {
     if (!grid.isActive) {
       return Offset.zero;
     }
-    // ⛔`positions.length == 1` before `offset`, which asserts otherwise.
-    // On mobile every controller-less vertical scroll view under a route
-    // inherits that route's PrimaryScrollController, so two open panels is
-    // enough to bring the frame down.
-    if (controller.positions.length != 1) {
-      return Offset.zero;
-    }
-    final offset = controller.offset;
-    if (!offset.isFinite) {
+    final offset = singleScrollPixelsOf(controller);
+    if (offset == null) {
       return Offset.zero;
     }
     // 🚨THE SIGN. A forward viewport paints the content at MINUS the
@@ -141,5 +136,164 @@ class DeviceGridScrollBody extends StatelessWidget {
     return axisDirection == AxisDirection.down
         ? Offset(0, correction)
         : Offset(correction, 0);
+  }
+}
+
+/// The pixels of the ONE scroll position [controller] drives — null when it
+/// drives none or several, or holds no finite pixels yet.
+///
+/// ⛔`positions.length == 1` before the pixels, because `offset` asserts
+/// otherwise. On mobile every controller-less vertical scroll view under a
+/// route inherits that route's PrimaryScrollController, so two open panels
+/// is enough to bring the frame down.
+double? singleScrollPixelsOf(ScrollController controller) {
+  final positions = controller.positions;
+  if (positions.length != 1) {
+    return null;
+  }
+  final position = positions.single;
+  if (!position.hasPixels || !position.pixels.isFinite) {
+    return null;
+  }
+  return position.pixels;
+}
+
+/// Content that stands OUTSIDE a scrollable and moves with it — a ruler
+/// pinned over the frame cells, a rail beside them. It is translated by the
+/// scroll position and landed by [DeviceGridScrollBody], the correction the
+/// scrolled content itself wears (F-32).
+///
+/// 🚨F-95 (유저 2026-09-12): 「패널의 스플리터로 좌우 길이 바꾸면 타임라인
+/// 룰러랑 내부 프레임 영역이랑 위치가 좌우 방향으로 어긋남.
+/// 근본/구조적으로 어긋나지 않도록」. The three rulers moved by an offset
+/// NOTIFIER fed from the controller's listeners, and a viewport that grows
+/// past the end of its content pulls its position back during layout
+/// (`correctBy`) without calling one. 🧪Measured on the timeline: scrolled
+/// to 2635 and widened from 700 to 1300, the cells went to 2035 and the
+/// ruler stayed at 2635 — 600px apart, and still apart once settled.
+///
+/// So the translate reads the POSITION when it paints, which is when the
+/// viewport beside it reads the same number to place its cells: a
+/// correction made in this frame's layout reaches both halves, and neither
+/// can hold an older one.
+class ScrollFollower extends StatelessWidget {
+  const ScrollFollower({
+    super.key,
+    required this.controller,
+    required this.axisDirection,
+    required this.child,
+  });
+
+  /// The controller of the scrollable this content follows.
+  final ScrollController controller;
+
+  /// See [DeviceGridScrollBody.axisDirection].
+  final AxisDirection axisDirection;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DeviceGridScrollBody(
+    controller: controller,
+    axisDirection: axisDirection,
+    child: _ScrollPositionTranslate(
+      controller: controller,
+      axis: axisDirectionToAxis(axisDirection),
+      child: child,
+    ),
+  );
+}
+
+class _ScrollPositionTranslate extends SingleChildRenderObjectWidget {
+  const _ScrollPositionTranslate({
+    required this.controller,
+    required this.axis,
+    required Widget super.child,
+  });
+
+  final ScrollController controller;
+  final Axis axis;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderScrollPositionTranslate(controller: controller, axis: axis);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderScrollPositionTranslate renderObject,
+  ) {
+    renderObject
+      ..controller = controller
+      ..axis = axis;
+  }
+}
+
+/// Paints and hit-tests its child at minus the position's pixels, read AT
+/// THAT MOMENT and never kept — a kept value is the copy F-95 was.
+class _RenderScrollPositionTranslate extends RenderProxyBox
+    with RenderShiftedChildHitTest {
+  _RenderScrollPositionTranslate({
+    required ScrollController controller,
+    required Axis axis,
+  }) : _controller = controller,
+       _axis = axis;
+
+  ScrollController get controller => _controller;
+  ScrollController _controller;
+  set controller(ScrollController value) {
+    if (identical(value, _controller)) {
+      return;
+    }
+    if (attached) {
+      _controller.removeListener(markNeedsPaint);
+      value.addListener(markNeedsPaint);
+    }
+    _controller = value;
+    markNeedsPaint();
+  }
+
+  Axis get axis => _axis;
+  Axis _axis;
+  set axis(Axis value) {
+    if (value == _axis) {
+      return;
+    }
+    _axis = value;
+    markNeedsPaint();
+  }
+
+  Offset get _translation {
+    final pixels = singleScrollPixelsOf(_controller) ?? 0.0;
+    return _axis == Axis.horizontal ? Offset(-pixels, 0) : Offset(0, -pixels);
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _controller.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    _controller.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child != null) {
+      context.paintChild(child, offset + _translation);
+    }
+  }
+
+  @override
+  Offset get childPaintOffset => _translation;
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) {
+    final translation = _translation;
+    transform.translateByDouble(translation.dx, translation.dy, 0, 1);
   }
 }

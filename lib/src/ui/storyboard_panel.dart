@@ -1993,6 +1993,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               final viewportWidth = constraints.hasBoundedWidth
                   ? constraints.maxWidth
                   : frame.contentWidth;
+              _frameAxis.rereadAfterLayout();
               return SizedBox(
                 height: StoryboardPanel._rulerHeight,
                 child: ClipRect(
@@ -2005,8 +2006,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     // UI-R15: scroll moves ONLY this translate — the
                     // ruler strip itself builds once (full bounds)
                     // and its painters window off the live offset.
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _horizontalScrollOffset,
+                    //
+                    // 🚨★★★F-32, the THIRD grid with this exact
+                    // shape: the cells below sit inside
+                    // `DeviceGridScrollBody` (which cancels the
+                    // scroll offset's sub-device-pixel fraction)
+                    // and this ruler translated raw, so it kept
+                    // the fraction they had cancelled.
+                    //
+                    // 🧪Measured at ratio 1.5, offset 1.5: ruler
+                    // 453.5 vs cells 453.667 — the same numbers
+                    // the horizontal timeline gave.
+                    //
+                    // ↩️F-95: the translate read a NOTIFIER that a
+                    // resize past the end never reached; the
+                    // follower reads the position when it paints.
+                    child: ScrollFollower(
+                      controller: _horizontalController,
+                      axisDirection: AxisDirection.right,
                       child: _StoryboardRuler(
                         width: frame.contentWidth,
                         renderedFrames: frame.renderedFrames,
@@ -2027,25 +2044,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         framesPerSecond: _countingFps,
                         showSeconds: widget.showSeconds,
                       ),
-                      // 🚨★★★F-32, the THIRD grid with this exact
-                      // shape: the cells below sit inside
-                      // `DeviceGridScrollBody` (which cancels the
-                      // scroll offset's sub-device-pixel fraction)
-                      // and this ruler translated raw, so it kept
-                      // the fraction they had cancelled.
-                      //
-                      // 🧪Measured at ratio 1.5, offset 1.5: ruler
-                      // 453.5 vs cells 453.667 — the same numbers
-                      // the horizontal timeline gave.
-                      builder: (context, offset, child) =>
-                          DeviceGridScrollBody(
-                            controller: _horizontalController,
-                            axisDirection: AxisDirection.right,
-                            child: Transform.translate(
-                              offset: Offset(-offset, 0),
-                              child: child,
-                            ),
-                          ),
                     ),
                   ),
                 ),

@@ -21,6 +21,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
+import '../layout/render_shifted_child.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'axis_turn.dart';
@@ -342,7 +343,8 @@ class _RailWindowBox extends SingleChildRenderObjectWidget {
 /// unbounded inside a scroll body. The rails would then have had to
 /// publish a cross-axis scalar each, and the storyboard has none to
 /// publish (its row heights are per-track).
-class _RenderRailWindowBox extends RenderShiftedBox {
+class _RenderRailWindowBox extends RenderShiftedBox
+    with RenderShiftedChildHitTest {
   _RenderRailWindowBox({
     required Axis axis,
     required double windowExtent,
@@ -482,21 +484,11 @@ class _RenderRailWindowBox extends RenderShiftedBox {
     );
   }
 
+  /// ⚠️The window's own `hitTest` already rejects anything outside `size`,
+  /// so a control pushed out of view cannot be tapped — the shared
+  /// [RenderShiftedChildHitTest] only carries the offset.
   @override
-  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    final child = this.child;
-    if (child == null) {
-      return false;
-    }
-    // The window's own `hitTest` already rejects anything outside `size`,
-    // so a control pushed out of view cannot be tapped.
-    return result.addWithPaintOffset(
-      offset: _shift,
-      position: position,
-      hitTest: (result, transformed) =>
-          child.hitTest(result, position: transformed),
-    );
-  }
+  Offset get childPaintOffset => _shift;
 
   @override
   void applyPaintTransform(RenderBox child, Matrix4 transform) {

@@ -136,8 +136,8 @@ void main() {
     );
   });
 
-  test('🚨★★★F-32: every scroll-offset translate sits inside the '
-      'device-grid body', () {
+  test('🚨★★★F-32 · F-95: whatever follows a scroll offset moves through '
+      'ScrollFollower', () {
     // 🚨SCANNED, and for the same reason as the case above: a raw
     // `Transform.translate(-offset)` looks right at whole-pixel offsets
     // and only parts company from its siblings at fractional ones. Three
@@ -155,12 +155,20 @@ void main() {
     // ⛔A behavioural test per grid cannot close this — it passes the day
     // a FOURTH surface is written without the correction. This is the
     // ratchet ([[no-copy-to-share]]: 「소스 스캔 래칫으로 닫는다」).
-    // ⛔LINE-LOCAL, not file-local. A file-wide 「does it mention
-    // DeviceGridScrollBody」 check was written first and it PASSED while
-    // the bug was reinstated: these files mount several of them, so the
-    // other two covered for the one that had been taken away. The guard
-    // has to look at the translate's own neighbourhood.
-    const lookBack = 24;
+    //
+    // ↩️F-95 (유저 2026-09-12) retired the NEIGHBOURHOOD rule this check
+    // used to apply — a scroll-offset translate was fine if a
+    // `DeviceGridScrollBody(` stood within 24 lines above it (and before
+    // that, a file-wide 「does it mention DeviceGridScrollBody」 check had
+    // PASSED while the bug was reinstated, because the other two covered
+    // for the one taken away). All three translates did sit inside the
+    // body, and they still came 600px off their cells: the offset they
+    // moved by was a notifier fed from the controller's listeners, and a
+    // viewport that grows past its content's end corrects its position
+    // during layout without calling one. `ScrollFollower` reads the
+    // position when it paints and wears the body's correction, so a
+    // scroll-offset translate written anywhere else is wrong whatever
+    // surrounds it.
     final offenders = <String>[];
     for (final entity in Directory('lib/src').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) {
@@ -168,8 +176,9 @@ void main() {
       }
       final path = entity.path.replaceAll(r'\', '/');
       final rel = path.substring(path.indexOf('lib/'));
-      // The widget that DOES the correcting is where the raw translate
-      // belongs — it is the one place allowed to write one.
+      // The file that DOES the following and the correcting is where a
+      // position-driven translate belongs — the one place allowed to write
+      // one.
       if (rel.endsWith('layout/device_grid_scroll_controller.dart')) {
         continue;
       }
@@ -181,14 +190,9 @@ void main() {
         // Is this one driven by a scroll offset? Its `Offset(...)` is on
         // this line or the next few.
         final head = lines.sublist(i, (i + 4).clamp(0, lines.length)).join(' ');
-        if (!RegExp(
+        if (RegExp(
           r'Offset\(\s*-?offset\b|Offset\(\s*0,\s*-offset\b',
         ).hasMatch(head)) {
-          continue;
-        }
-        final from = (i - lookBack).clamp(0, lines.length);
-        final before = lines.sublist(from, i).join(' ');
-        if (!before.contains('DeviceGridScrollBody(')) {
           offenders.add('$rel:${i + 1}');
         }
       }
@@ -197,9 +201,11 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'wrap it in DeviceGridScrollBody — the cells it lines up with '
-          'are already inside one, and a raw translate keeps the fraction '
-          'they cancelled (F-32)',
+          'mount it through ScrollFollower — it reads the scroll position '
+          'when it paints and takes DeviceGridScrollBody\'s correction; an '
+          'offset carried in a notifier misses the corrections a viewport '
+          'makes during layout (F-95), and a raw translate keeps the '
+          'fraction the cells cancelled (F-32)',
     );
   });
 }
