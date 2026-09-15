@@ -16,6 +16,7 @@ import '../theme/app_theme.dart';
 import '../theme/layer_mark_palette.dart';
 import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 // The fit math the band shares with the renderer (㉑): the cells a label
 // costs and the cells a span holds.
 import '../text/vertical_writing.dart'

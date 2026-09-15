@@ -1,5 +1,4 @@
 import '../core/collection_equality.dart';
-import 'app_language.dart';
 import 'property_track.dart';
 import 'string_id.dart';
 import 'transform_track.dart' show lerpDouble;
@@ -52,27 +51,21 @@ enum EffectKind {
 
   /// The English menu/lane label — the vocabulary artists already read in
   /// AE and Photoshop.
+  ///
+  /// Japanese followed Clip Studio's terms (user rule 07-22: ja localized
+  /// first; every other language keeps the shared English vocabulary artists
+  /// already read — the exact rule the blend names followed). ↩️Every
+  /// language has its own words now (유저 2026-09-15,
+  /// blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」, which
+  /// reversed that rule for every name a model carries), keyed by
+  /// [jsonValue] in the string tables — `EffectKindWords` in
+  /// `ui/text/model_vocabulary.dart`, which a model cannot import.
   String get label => switch (this) {
     EffectKind.brightnessContrast => 'Brightness & Contrast',
     EffectKind.hueSaturation => 'Hue/Saturation',
     EffectKind.blur => 'Blur',
     EffectKind.deleteColor => 'Delete Color',
     EffectKind.keepColor => 'Keep Color',
-  };
-
-  /// The label in the program language. Japanese follows Clip Studio's
-  /// terms (user rule 07-22: ja localized first; every other language keeps
-  /// the shared English vocabulary artists already read) — the exact rule
-  /// [LayerBlendMode.labelFor] states for the blend names.
-  String labelFor(AppLanguage language) => switch (language) {
-    AppLanguage.ja => switch (this) {
-      EffectKind.brightnessContrast => '明るさ・コントラスト',
-      EffectKind.hueSaturation => '色相・彩度',
-      EffectKind.blur => 'ぼかし',
-      EffectKind.deleteColor => '色削除',
-      EffectKind.keepColor => '色残し',
-    },
-    _ => label,
   };
 
   /// Whether this kind SPREADS pixels outside their own coverage — the

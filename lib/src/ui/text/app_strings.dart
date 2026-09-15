@@ -92,6 +92,28 @@ enum AppStrings {
   String layerReviseAbbrev(String key, String fallback) =>
       _values['layerReviseAbbrev.$key'] ?? fallback;
 
+  /// A blend mode's name, by the enum value's `name` — ONE family for the
+  /// layer, brush and dual-tip blends, whose separable twelve share names, so
+  /// a row serves every list that offers it. Same contract as
+  /// [layerProcessName]: the English is the model's, the rest are here.
+  ///
+  /// 🚨유저 2026-09-15 (blend-mode-names-language-Q1): 「블렌드 모드도 모든
+  /// 언어로 번역」 — reversing the 07-22 rule (ja localized first, every other
+  /// language the shared English) for every name a model carries. The ko, fr
+  /// and zh words are each language's Photoshop blend list; ja keeps the Clip
+  /// Studio words the models carried.
+  String blendModeName(String name, String fallback) =>
+      _values['blendMode.$name'] ?? fallback;
+
+  /// An effect kind's name, by its `jsonValue` — the same reversal.
+  String effectKindName(String key, String fallback) =>
+      _values['effectKind.$key'] ?? fallback;
+
+  /// A selection mode's name, by the enum value's `name` — the same reversal;
+  /// the ko rows are the user's own words (R26 #16).
+  String selectionModeName(String name, String fallback) =>
+      _values['selectionMode.$name'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -2730,6 +2752,32 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-delete-colour': '色削除',
     'shortcutAction.edit-keep-colour': '色残し',
+    'blendMode.passThrough': '通過',
+    'blendMode.normal': '通常',
+    'blendMode.color': '通常',
+    'blendMode.behind': '背面',
+    'blendMode.erase': '消去',
+    'blendMode.darken': '比較（暗）',
+    'blendMode.multiply': '乗算',
+    'blendMode.colorBurn': '焼き込みカラー',
+    'blendMode.lighten': '比較（明）',
+    'blendMode.screen': 'スクリーン',
+    'blendMode.colorDodge': '覆い焼きカラー',
+    'blendMode.add': '加算',
+    'blendMode.overlay': 'オーバーレイ',
+    'blendMode.softLight': 'ソフトライト',
+    'blendMode.hardLight': 'ハードライト',
+    'blendMode.difference': '差の絶対値',
+    'blendMode.exclusion': '除外',
+    'effectKind.brightnessContrast': '明るさ・コントラスト',
+    'effectKind.hueSaturation': '色相・彩度',
+    'effectKind.blur': 'ぼかし',
+    'effectKind.deleteColor': '色削除',
+    'effectKind.keepColor': '色残し',
+    'selectionMode.replace': '新規選択',
+    'selectionMode.add': '追加選択',
+    'selectionMode.subtract': '部分解除',
+    'selectionMode.intersect': '選択中',
     'shortcutAction.file-save': '保存',
     'shortcutAction.file-save-as': '名前を付けて保存…',
     'shortcutAction.layer-visibility-solo': 'アクティブレイヤーをソロ',
@@ -3845,6 +3893,34 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-delete-colour': '색 삭제',
     'shortcutAction.edit-keep-colour': '색 남기기',
+    'blendMode.passThrough': '통과',
+    'blendMode.normal': '표준',
+    'blendMode.color': '표준',
+    'blendMode.behind': '배경',
+    'blendMode.erase': '지우기',
+    'blendMode.darken': '어둡게 하기',
+    'blendMode.multiply': '곱하기',
+    'blendMode.colorBurn': '색상 번',
+    'blendMode.lighten': '밝게 하기',
+    'blendMode.screen': '스크린',
+    'blendMode.colorDodge': '색상 닷지',
+    'blendMode.add': '선형 닷지(추가)',
+    'blendMode.overlay': '오버레이',
+    'blendMode.softLight': '소프트 라이트',
+    'blendMode.hardLight': '하드 라이트',
+    'blendMode.difference': '차이',
+    'blendMode.exclusion': '제외',
+    'effectKind.brightnessContrast': '밝기·대비',
+    'effectKind.hueSaturation': '색조·채도',
+    'effectKind.blur': '흐림 효과',
+    'effectKind.deleteColor': '색 삭제',
+    'effectKind.keepColor': '색 남기기',
+    // R26 #16 — the user's own words for the four selection modes
+    // (「갱신/추가/삭제/선택중」), moved here from the enum.
+    'selectionMode.replace': '갱신',
+    'selectionMode.add': '추가',
+    'selectionMode.subtract': '삭제',
+    'selectionMode.intersect': '선택중',
     'shortcutAction.file-save': '저장',
     'shortcutAction.file-save-as': '다른 이름으로 저장…',
     'shortcutAction.layer-visibility-solo': '활성 레이어 솔로',
@@ -4977,6 +5053,32 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-delete-colour': 'Supprimer la couleur',
     'shortcutAction.edit-keep-colour': 'Conserver la couleur',
+    'blendMode.passThrough': 'Transfert',
+    'blendMode.normal': 'Normal',
+    'blendMode.color': 'Normal',
+    'blendMode.behind': 'Arrière',
+    'blendMode.erase': 'Effacer',
+    'blendMode.darken': 'Obscurcir',
+    'blendMode.multiply': 'Produit',
+    'blendMode.colorBurn': 'Densité couleur +',
+    'blendMode.lighten': 'Éclaircir',
+    'blendMode.screen': 'Superposition',
+    'blendMode.colorDodge': 'Densité couleur -',
+    'blendMode.add': 'Densité linéaire - (Ajout)',
+    'blendMode.overlay': 'Incrustation',
+    'blendMode.softLight': 'Lumière tamisée',
+    'blendMode.hardLight': 'Lumière crue',
+    'blendMode.difference': 'Différence',
+    'blendMode.exclusion': 'Exclusion',
+    'effectKind.brightnessContrast': 'Luminosité/Contraste',
+    'effectKind.hueSaturation': 'Teinte/Saturation',
+    'effectKind.blur': 'Flou',
+    'effectKind.deleteColor': 'Supprimer la couleur',
+    'effectKind.keepColor': 'Conserver la couleur',
+    'selectionMode.replace': 'Nouvelle sélection',
+    'selectionMode.add': 'Ajouter à la sélection',
+    'selectionMode.subtract': 'Soustraire de la sélection',
+    'selectionMode.intersect': 'Intersection avec la sélection',
     'shortcutAction.file-save': 'Enregistrer',
     'shortcutAction.file-save-as': 'Enregistrer sous…',
     'shortcutAction.layer-visibility-solo': 'Solo du calque actif',
@@ -6070,6 +6172,32 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-delete-colour': '删除颜色',
     'shortcutAction.edit-keep-colour': '保留颜色',
+    'blendMode.passThrough': '穿透',
+    'blendMode.normal': '正常',
+    'blendMode.color': '正常',
+    'blendMode.behind': '背后',
+    'blendMode.erase': '擦除',
+    'blendMode.darken': '变暗',
+    'blendMode.multiply': '正片叠底',
+    'blendMode.colorBurn': '颜色加深',
+    'blendMode.lighten': '变亮',
+    'blendMode.screen': '滤色',
+    'blendMode.colorDodge': '颜色减淡',
+    'blendMode.add': '线性减淡（添加）',
+    'blendMode.overlay': '叠加',
+    'blendMode.softLight': '柔光',
+    'blendMode.hardLight': '强光',
+    'blendMode.difference': '差值',
+    'blendMode.exclusion': '排除',
+    'effectKind.brightnessContrast': '亮度/对比度',
+    'effectKind.hueSaturation': '色相/饱和度',
+    'effectKind.blur': '模糊',
+    'effectKind.deleteColor': '删除颜色',
+    'effectKind.keepColor': '保留颜色',
+    'selectionMode.replace': '新选区',
+    'selectionMode.add': '添加到选区',
+    'selectionMode.subtract': '从选区减去',
+    'selectionMode.intersect': '与选区交叉',
     'shortcutAction.file-save': '保存',
     'shortcutAction.file-save-as': '另存为…',
     'shortcutAction.layer-visibility-solo': '独奏当前图层',

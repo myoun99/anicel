@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
@@ -49,7 +48,7 @@ void main() {
     );
   });
 
-  test('pass-through round-trips and reads the CSP term in ja', () {
+  test('pass-through round-trips under its English name', () {
     final folder = createFolderLayer(id: const LayerId('f'), name: 'F');
     expect(folder.toJson()['blendMode'], 'passThrough');
     expect(
@@ -57,7 +56,11 @@ void main() {
       LayerBlendMode.passThrough,
     );
     expect(LayerBlendMode.passThrough.label, 'Pass Through');
-    expect(LayerBlendMode.passThrough.labelFor(AppLanguage.ja), '通過');
+    // ↩️This test also read the CSP term 通過 off the model in ja. The term
+    // lives in the string tables now (유저 2026-09-15,
+    // blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」) and
+    // `model_vocabulary_speaks_every_language_test` pins it with every other
+    // language's word.
   });
 
   test('a pass-through folder contributes NO blend to its members; an '

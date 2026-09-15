@@ -14,6 +14,7 @@ import '../widgets/pressure_curve_popup.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 
 /// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
 /// user-picked candidate B, 07-22): 브러시 크기 / 잉크 / 브러시 끝 /

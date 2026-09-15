@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../models/app_language.dart';
 import '../models/canvas_point.dart';
 import 'canvas_selection_shape.dart';
 
@@ -24,30 +23,20 @@ enum SelectionCombineMode {
   /// selected instead of throwing it away.
   static const SelectionCombineMode defaultMode = SelectionCombineMode.add;
 
+  /// The English label.
+  ///
+  /// ja followed the PS/CSP Japanese terms and ko the user's own words (the
+  /// same rule the brush blend labels follow); other languages keep the
+  /// shared English vocabulary. ↩️Every language has its own words now
+  /// (유저 2026-09-15, blend-mode-names-language-Q1: 「블렌드 모드도 모든
+  /// 언어로 번역」), keyed by `name` in the string tables — the ko rows are
+  /// still the user's words — through `SelectionCombineModeWords` in
+  /// `ui/text/model_vocabulary.dart`, which a service cannot import.
   String get label => switch (this) {
     replace => 'Replace',
     add => 'Add',
     subtract => 'Subtract',
     intersect => 'Intersect',
-  };
-
-  /// The label in the program language. ja follows the PS/CSP Japanese
-  /// terms and ko the user's own words (the same rule the brush blend
-  /// labels follow); other languages keep the shared English vocabulary.
-  String labelFor(AppLanguage language) => switch (language) {
-    AppLanguage.ja => switch (this) {
-      replace => '新規選択',
-      add => '追加選択',
-      subtract => '部分解除',
-      intersect => '選択中',
-    },
-    AppLanguage.ko => switch (this) {
-      replace => '갱신',
-      add => '추가',
-      subtract => '삭제',
-      intersect => '선택중',
-    },
-    _ => label,
   };
 
   String toJson() => name;

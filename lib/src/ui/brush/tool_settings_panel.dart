@@ -23,6 +23,7 @@ import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../text/trimmed_decimal.dart';
 import '../widgets/settings_prompt_text.dart';
 import '../listenable_rebind.dart';

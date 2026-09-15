@@ -61,6 +61,9 @@ enum VerticalGlyphForm {
   /// legible, which is exactly why the failure hid: the blend-mode names
   /// are translated ONLY into Japanese, so every other language (this
   /// user's included) got the unreadable case as its default.
+  /// ↩️Since 2026-09-15 every language has its own blend words
+  /// (blend-mode-names-language-Q1); English, and any word a language keeps
+  /// in Latin letters, is still the case this form exists for.
   sideways,
 }
 

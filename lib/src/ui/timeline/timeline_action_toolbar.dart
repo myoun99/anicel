@@ -25,6 +25,7 @@ import '../theme/app_theme.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../dialogs/app_prompt_dialog.dart';
 
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies

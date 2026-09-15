@@ -1,6 +1,5 @@
 import 'dart:ui' show BlendMode;
 
-import 'app_language.dart';
 import 'separable_blend_mode.dart';
 
 /// The BRUSH's own composite against the cel it paints on (R26 #9, BB-1).
@@ -69,24 +68,18 @@ enum BrushBlendMode {
   };
 
   /// The industry-standard English label.
+  ///
+  /// ja followed the PS/CSP Japanese terms (user rule 07-22: ja localized
+  /// first, other languages keep the shared English vocabulary). ↩️Every
+  /// language has its own words now (유저 2026-09-15,
+  /// blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」), keyed
+  /// by `name` in the string tables — `BrushBlendModeWords` in
+  /// `ui/text/model_vocabulary.dart`, which a model cannot import.
   String get label => switch (this) {
     color => 'Color',
     behind => 'Behind',
     erase => 'Erase',
     _ => separable!.label,
-  };
-
-  /// The label in the program language — ja follows the PS/CSP Japanese
-  /// terms (user rule 07-22: ja localized first, other languages keep
-  /// the shared English vocabulary).
-  String labelFor(AppLanguage language) => switch (language) {
-    AppLanguage.ja => switch (this) {
-      color => '通常',
-      behind => '背面',
-      erase => '消去',
-      _ => separable!.labelFor(language),
-    },
-    _ => label,
   };
 
   String toJson() => name;

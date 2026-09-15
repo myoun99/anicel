@@ -17,6 +17,7 @@ import 'timeline_section_policy.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../text/vertical_writing_text.dart';
 
 /// The rail legend's bulk commands (session-backed; the host wires them).

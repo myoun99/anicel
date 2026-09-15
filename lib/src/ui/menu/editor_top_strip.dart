@@ -21,6 +21,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';

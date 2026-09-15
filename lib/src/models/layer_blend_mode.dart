@@ -1,6 +1,5 @@
 import 'dart:ui' show BlendMode;
 
-import 'app_language.dart';
 import 'separable_blend_mode.dart';
 
 /// The layer's compositing blend against everything below it (R26 #30).
@@ -56,22 +55,17 @@ enum LayerBlendMode {
 
   /// The menu label (the industry-standard English terms every paint
   /// tool shares).
+  ///
+  /// Japanese followed Clip Studio's terms (user rule 07-22: ja localized
+  /// first; every other language keeps the shared English vocabulary artists
+  /// already read). ↩️Every language has its own words now (유저 2026-09-15,
+  /// blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」), keyed
+  /// by `name` in the string tables — `LayerBlendModeWords` in
+  /// `ui/text/model_vocabulary.dart`, which a model cannot import.
   String get label => switch (this) {
     passThrough => 'Pass Through',
     normal => 'Normal',
     _ => separable!.label,
-  };
-
-  /// The label in the program language. Japanese follows Clip Studio's
-  /// terms (user rule 07-22: ja localized first; every other language
-  /// keeps the shared English vocabulary artists already read).
-  String labelFor(AppLanguage language) => switch (language) {
-    AppLanguage.ja => switch (this) {
-      passThrough => '通過',
-      normal => '通常',
-      _ => separable!.labelFor(language),
-    },
-    _ => label,
   };
 
   String toJson() => name;

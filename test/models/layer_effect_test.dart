@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -266,22 +265,12 @@ void main() {
     });
   });
 
-  group('labels', () {
-    test('ja localizes, the other languages keep the shared vocabulary', () {
-      expect(
-        EffectKind.blur.labelFor(AppLanguage.ja),
-        isNot(EffectKind.blur.label),
-      );
-      for (final language in AppLanguage.values) {
-        if (language == AppLanguage.ja) {
-          continue;
-        }
-        for (final kind in EffectKind.values) {
-          expect(kind.labelFor(language), kind.label);
-        }
-      }
-    });
-  });
+  // ↩️A 'labels' group stood here pinning the 07-22 rule: ja localizes, the
+  // other languages keep the shared English vocabulary. 유저 2026-09-15
+  // (blend-mode-names-language-Q1: 「블렌드 모드도 모든 언어로 번역」)
+  // reversed it for every name a model carries — the effect kinds' words live
+  // in the string tables, and `model_vocabulary_speaks_every_language_test`
+  // pins them in every language.
 
   group('layer equality', () {
     test('two layers differing only in an effect value are NOT equal', () {
