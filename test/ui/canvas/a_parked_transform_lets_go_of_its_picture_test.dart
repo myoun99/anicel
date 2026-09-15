@@ -13,6 +13,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/persistence/volatile_scratch_files.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -42,7 +43,8 @@ import '../../helpers/device_viewport.dart';
 /// own `_preLiftSurface` and `retainsPreLiftSurface` read false the whole
 /// time. So this reads what a user's memory reads — whether the picture's
 /// tiles are still ALIVE once the budget parked the entry — with a control
-/// on each side: the resident entry DOES hold them, and the entry DID park.
+/// on each side: the resident entry DOES hold them, and the entry was PARKED
+/// (still in the history), not deleted.
 void main() {
   testWidgets('🚨once its entry parks, a confirmed transform lets go of the '
       'picture it would undo to', (tester) async {
@@ -57,13 +59,9 @@ void main() {
         deferredBakeRatio: 0,
       ),
     );
-    // A budget no transform fits under, so every entry below the top one
-    // parks. The setter narrows the room along with it, and the room is not
-    // what this is about — so it is opened again.
-    final history = HistoryManager()..byteBudget = 1;
-    VolatileScratchFiles.ceilingBytes = 0;
-    addTearDown(() => VolatileScratchFiles.ceilingBytes = 0);
+    final history = HistoryManager();
     addTearDown(history.dispose);
+    addTearDown(() => VolatileScratchFiles.ceilingBytes = 0);
     final commands = CanvasSelectionCommands();
     final transformOptions = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transformOptions.dispose);
@@ -119,10 +117,8 @@ void main() {
     await settle();
 
     // The picture's own ink box through the layer's region door, Ctrl+T,
-    // the percentage, Enter — no handle has to be on screen. [landed] runs
-    // the instant the entry is in the history, before the budget's spill —
-    // which runs on its own schedule — can have parked anything.
-    Future<void> scale(double factor, {VoidCallback? landed}) async {
+    // the percentage, Enter — no handle has to be on screen.
+    Future<void> scale(double factor) async {
       commands.deselect();
       await tester.pump();
       final bounds = bitmapSurfaceContentBounds(
@@ -154,7 +150,6 @@ void main() {
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
       commands.commitTransform();
-      landed?.call();
       await tester.pump();
       await settle();
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');
@@ -180,17 +175,45 @@ void main() {
       reason: 'control: while its entry is resident, the transform holds the '
           'picture it would undo to — the measurement can see a holder',
     );
+    await scale(0.5);
 
-    var billedAtTheLanding = 0;
-    await scale(
-      0.5,
-      landed: () => billedAtTheLanding = history.retainedBytes,
-    );
-    await tester.runAsync(history.drainSpilling);
+    // ⚠️PARK THE ENTRIES AND DELETE NOTHING, asked the way a user's next edit
+    // asks. A stack that cannot get under its budget with the top entry
+    // resident stands the spill down and DELETES — and a deleted entry frees
+    // whatever its closures hold, so the mutant that brought the leak back
+    // passed that way twice (a one-byte budget; then a budget computed from
+    // the picture, which the top entry's bill still exceeded). So the budget
+    // sits one byte under what the stack holds now, and the next entry
+    // weighs nothing: everything beneath it can park, and the stack ends
+    // under any budget. The setter narrows the room along with it, and the
+    // room is not what this is about — reopened.
+    final held = history.retainedBytes;
+    final entries = history.undoCount;
+    history.byteBudget = held - 1;
+    VolatileScratchFiles.ceilingBytes = 0;
+    history.execute(_WeighsNothing());
+    // ⚠️BOTH CLOCKS, NOT `drainSpilling`. The spill starts where the entry
+    // was pushed — inside the test's fake-async zone — and it advances only
+    // while that zone is pumped; awaiting it from real time alone waited on
+    // a future that nothing could complete, and a run sat idle for six
+    // minutes (2026-09-15). Real time lets the parking isolate answer, the
+    // pump lets the zone take the answer.
+    for (var i = 0; i < 50 && history.retainedBytes >= held; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
     expect(
       history.retainedBytes,
-      lessThan(billedAtTheLanding),
-      reason: 'control: the budget parked the deep entry',
+      lessThan(held),
+      reason: 'control: the budget parked the entries beneath the new one',
+    );
+    expect(
+      history.undoCount,
+      entries + 1,
+      reason: 'control: PARKED, not deleted — a deleted entry frees its '
+          'closures whatever they hold, and would prove nothing',
     );
     await settle();
     // ⚠️A FEW rounds, not the helper's fifty: when something still holds the
@@ -227,3 +250,17 @@ List<WeakReference<BitmapTile>> _weakTilesOfTheActiveCel(
       .values)
     WeakReference<BitmapTile>(tile),
 ];
+
+/// The next edit, reduced to what the stack does with it: an entry that
+/// holds no payload, so pushing it trims the stack and nothing it holds can
+/// stop everything beneath it from parking.
+class _WeighsNothing implements Command {
+  @override
+  String get description => 'Nothing';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
+}
