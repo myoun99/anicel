@@ -35,9 +35,16 @@ Future<void> collectGarbage() async {
 /// ⚠️It gives up after [rounds] collections without [settled], so the
 /// caller's own `expect` still reports the real value: a release that never
 /// comes stays red. The bound only decides how long that takes to say so.
+///
+/// ⛔It was 50, and a release that never came took one test past 10 GB and
+/// five minutes to say so (2026-09-15): fifty rounds of churn under a heap
+/// something was holding. Measured the same day, every call the suite makes
+/// (five, across the three files that use this) settled in ONE collection —
+/// so six leaves room for a finalizer message a loaded machine delivers late,
+/// and still names a holder in seconds.
 Future<void> collectGarbageUntil(
   bool Function() settled, {
-  int rounds = 50,
+  int rounds = 6,
 }) async {
   var collected = 0;
   do {
