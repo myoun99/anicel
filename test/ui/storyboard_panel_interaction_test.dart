@@ -1090,7 +1090,9 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
       );
-      expect(requireCutBlock(tester, 'cut-b').total, '48');
+      // ↩️F-89 (유저 2026-09-12): the second cut states its own 24 frames,
+      // not where it ends (48).
+      expect(requireCutBlock(tester, 'cut-b').total, '24');
 
       await _pumpStoryboardPanel(
         tester,
@@ -1103,7 +1105,7 @@ void main() {
         showSeconds: true,
         projectFrameRate: ProjectFrameRate.fps24,
       );
-      expect(requireCutBlock(tester, 'cut-b').total, '2+0');
+      expect(requireCutBlock(tester, 'cut-b').total, '1+0');
     });
 
     testWidgets('frame axis: scrolling stays CLAMPED to the built cells; '

@@ -18,7 +18,7 @@ import 'theme/app_theme.dart';
 import 'timeline/timeline_cell_style.dart';
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
-    show timelineCommaLabelVisibleFor, timelineDurationLabel;
+    show timelineRunLengthLabel;
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_glyph_cache.dart';
 import 'repaint_props.dart';
@@ -419,9 +419,14 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       // D27: no explanatory copy — an empty layer slot reads as ''.
       layerLabel: layerName ?? '',
       hasStoryboardLayer: layerName != null,
+      // ↩️F-89 (유저 2026-09-12): 「컷블록의 컷 길이 텍스트가 실제 컷길이랑
+      // 다름 … 프레임블록이랑 똑같은거니까 거기서 사용하는 로직 그대로
+      // 재사용」 — the cut's own length, by the frame blocks' run label. It
+      // printed the running END frame, the conte sheet's TIME column (D23),
+      // which the conte sheet itself keeps.
       total: width >= totalLabelMinWidth
-          ? timelineDurationLabel(
-              entry.endFrame,
+          ? timelineRunLengthLabel(
+              entry.endFrame - entry.startFrame,
               showSeconds: showSeconds,
               countingBase: countingBase,
             )
@@ -462,16 +467,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           // the paint path already skips. (The block's bottom-right
           // `total` is a running END frame, not a comma length — it
           // stays un-gated on purpose.)
-          cell.frameId == null ||
-                  !timelineCommaLabelVisibleFor(
-                    cell.endIndexExclusive - cell.startIndex,
-                  )
+          // ↩️F-89 (유저 2026-09-12): the total is the cut's own length now,
+          // by this same label.
+          cell.frameId == null
               ? ''
-              : timelineDurationLabel(
-                  cell.endIndexExclusive - cell.startIndex,
-                  showSeconds: showSeconds,
-                  countingBase: countingBase,
-                ),
+              : timelineRunLengthLabel(
+                      cell.endIndexExclusive - cell.startIndex,
+                      showSeconds: showSeconds,
+                      countingBase: countingBase,
+                    ) ??
+                    '',
       ],
     );
   }

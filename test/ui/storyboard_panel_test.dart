@@ -210,6 +210,9 @@ void main() {
     expect(block.title, 'Cut A');
     // The conte-sheet TIME column: cumulative time at the cut's end sits
     // bottom-right (the old duration/frame-range row is gone).
+    //
+    // ↩️F-89 (유저 2026-09-12): the block states the cut's OWN length now,
+    // by the frame blocks' run label — for the first cut the two agree.
     expect(block.total, '24');
     expect(block.hasStoryboardLayer, isFalse);
     // D27: the honest empty state — no explanatory copy in the band.
@@ -232,11 +235,15 @@ void main() {
     },
   );
 
-  testWidgets('shows cumulative end times for sequential cuts', (tester) async {
+  // ↩️F-89 (유저 2026-09-12): 「스토리보드패널의 컷블록의 컷 길이 텍스트가 실제
+  // 컷길이랑 다름. 예를들어 3번째 컷의 경우, 1번인덱스부터 3번째 컷의 끝
+  // 인덱스만큼을 컷길이로서 표기하고있는듯」. This pinned the running END frame
+  // (the conte sheet's TIME column, which that sheet keeps): 12 then 48.
+  testWidgets('each cut block states its own length', (tester) async {
     await _pumpPanel(tester, _twoCutProject());
 
     expect(requireCutBlock(tester, 'cut-short').total, '12');
-    expect(requireCutBlock(tester, 'cut-long').total, '48');
+    expect(requireCutBlock(tester, 'cut-long').total, '36');
   });
 
   testWidgets('tapping inactive cut block calls onCutSelected with cut id', (

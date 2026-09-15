@@ -7,7 +7,7 @@ import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
-    show timelineCommaLabelVisibleFor, timelineDurationLabel;
+    show timelineRunLengthLabel;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -138,7 +138,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       }
       // D23: a 1-comma block prints nothing — paint and semantics fall
       // silent together (the semantics builder iterates these labels).
-      if (!timelineCommaLabelVisibleFor(endIndexExclusive - startIndex)) {
+      final text = timelineRunLengthLabel(
+        endIndexExclusive - startIndex,
+        showSeconds: showSeconds,
+        countingBase: countingBase,
+      );
+      if (text == null) {
         continue;
       }
       final start = _edge(startIndex);
@@ -149,11 +154,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
         TimelineRunLabel(
           startIndex: startIndex,
           endIndexExclusive: endIndexExclusive,
-          text: timelineDurationLabel(
-            endIndexExclusive - startIndex,
-            showSeconds: showSeconds,
-            countingBase: countingBase,
-          ),
+          text: text,
           // Frame axis: the last cell's centre. Cross axis: the far end
           // (R10).
           anchor: offsetAlong(

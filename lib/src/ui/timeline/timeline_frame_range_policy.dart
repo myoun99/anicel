@@ -69,7 +69,32 @@ String timelineDurationLabel(
 /// gate cannot drift per surface. (The cut block's bottom-right total is
 /// a RUNNING END FRAME — the conte TIME column — not a comma length, and
 /// deliberately does not consult this.)
+///
+/// ↩️F-89 (유저 2026-09-12) took the cut block off that exception: its total
+/// is the cut's own length now, through [timelineRunLengthLabel] like every
+/// other block.
 bool timelineCommaLabelVisibleFor(int frames) => frames >= 2;
+
+/// The length label a run of [frames] prints on its block —
+/// [timelineDurationLabel], or nothing for a 1-comma run
+/// ([timelineCommaLabelVisibleFor]). ONE answer for every block that states
+/// its length: the frame blocks' run labels (timeline and x-sheet), the
+/// storyboard's panels and its cut blocks.
+///
+/// 🚨F-89 (유저 2026-09-12): 「스토리보드패널의 컷블록의 컷 길이 텍스트가
+/// 실제 컷길이랑 다름 … 애초에 이 컷블록도 프레임블록이랑 똑같은거니까
+/// 거기서 사용하는 로직 그대로 재사용해서 법 통일시키면 해결일듯」.
+String? timelineRunLengthLabel(
+  int frames, {
+  required bool showSeconds,
+  required int countingBase,
+}) => timelineCommaLabelVisibleFor(frames)
+    ? timelineDurationLabel(
+        frames,
+        showSeconds: showSeconds,
+        countingBase: countingBase,
+      )
+    : null;
 
 /// The endless frame axis' contract (UI-R12 #16, unifying the timeline,
 /// the X-sheet and the storyboard): cells exist exactly because they are
