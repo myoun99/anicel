@@ -16,6 +16,7 @@ import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_beat_lines.dart';
 import 'timeline_frame_span_layout.dart';
 import 'axis_turn.dart';
 import '../repaint_props.dart';
@@ -565,18 +566,24 @@ class _SeNameBox extends StatelessWidget {
 
 /// The paper frame block for hosts without paper cells underneath (the
 /// storyboard's SE track): near-white fill, hairline outline, rounded ends
-/// and a cell divider every [frameCellExtent] — visually the drawing rows'
+/// and the frame grid's own lines across it — visually the drawing rows'
 /// block, painted as one span.
 class SePaperSpan extends StatelessWidget {
   const SePaperSpan({
     super.key,
     required this.axis,
     required this.frameCellExtent,
+    required this.startFrame,
     this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
   final double frameCellExtent;
+
+  /// The frame the span starts on, on its host's frame axis. The grid thins
+  /// and weights a line by the FRAME its boundary starts, so a span that did
+  /// not know where it stands would draw a grid of its own.
+  final int startFrame;
 
   /// The block's own colour — its layer's mark (⑲). Defaulted, so a host
   /// with no layer in hand still gets the paper.
@@ -584,11 +591,16 @@ class SePaperSpan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final law = TimelineGridLaw.maybeOf(context);
     return CustomPaint(
       painter: _SePaperPainter(
         axis: axis,
         frameCellExtent: frameCellExtent,
+        startFrame: startFrame,
         paper: paper,
+        ground: law?.ground,
+        framesPerSecond: law?.framesPerSecond ?? 0,
+        colorScheme: Theme.of(context).colorScheme,
       ),
       child: const SizedBox.expand(),
     );
@@ -599,12 +611,20 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   _SePaperPainter({
     required this.axis,
     required this.frameCellExtent,
+    required this.startFrame,
     required this.paper,
+    required this.ground,
+    required this.framesPerSecond,
+    required this.colorScheme,
   });
 
   final Axis axis;
   final double frameCellExtent;
+  final int startFrame;
   final Color paper;
+  final Color? ground;
+  final int framesPerSecond;
+  final ColorScheme colorScheme;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -616,21 +636,41 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
 
     canvas.save();
     canvas.clipRRect(rrect);
-    final dividerPaint = Paint()
-      ..color = timelineDrawingInkColor.withValues(alpha: 0.15)
-      ..strokeWidth = 1;
     final mainExtent = extentAlong(axis, size);
     final crossExtent = extentAcross(axis, size);
     if (frameCellExtent > 0) {
-      for (
-        var x = frameCellExtent;
-        x < mainExtent - 0.5;
-        x += frameCellExtent
-      ) {
+      // 🚨F-92 (유저 2026-09-12): 「스토리보드패널의 프레임셀 그리드,
+      // 타임라인패널이랑 다름 … 줌 축소해도 1f마다 블록에 세로선이있음.
+      // 타임라인이랑 다른 법 절대로 두지말고 관련 로직 싹 다 통일」. This drew
+      // a line at EVERY frame in a faint ink of its own. Which boundaries show
+      // at this zoom, where they sit and in what ink over this paper are the
+      // timeline cells' answers now: the one grid law
+      // ([timelineFrameBoundaryLineInk]) and the ground rule the cells
+      // painter resolves it on.
+      final seen = timelineGridGroundOver(under: ground, painted: paper);
+      final frames = (mainExtent / frameCellExtent).round();
+      for (var offset = 1; offset < frames; offset += 1) {
+        final ink = timelineFrameBoundaryLineInk(
+          frameIndex: startFrame + offset,
+          frameCellExtent: frameCellExtent,
+          framesPerSecond: framesPerSecond,
+          colorScheme: colorScheme,
+        );
+        if (ink == null) {
+          continue;
+        }
+        final along = timelineFrameBoundaryLinePosition(
+          offset,
+          frameCellExtent,
+        );
         canvas.drawLine(
-          offsetAlong(axis, along: x, across: 0),
-          offsetAlong(axis, along: x, across: crossExtent),
-          dividerPaint,
+          offsetAlong(axis, along: along, across: 0),
+          offsetAlong(axis, along: along, across: crossExtent),
+          Paint()
+            ..color = seen == null
+                ? ink.color
+                : timelineGridLineInkOnGround(ink, seen)
+            ..strokeWidth = ink.strokeWidth,
         );
       }
     }
@@ -649,8 +689,12 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     axis,
     frameCellExtent,
+    startFrame,
     // A mark change repaints the block (⑲) — without this the row would
     // keep the colour it was first painted with.
     paper,
+    ground,
+    framesPerSecond,
+    colorScheme,
   );
 }

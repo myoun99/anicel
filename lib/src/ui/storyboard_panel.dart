@@ -3041,6 +3041,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
             child: SePaperSpan(
               axis: Axis.horizontal,
               frameCellExtent: timelineScale.pixelsPerFrame,
+              startFrame: entry.key,
               // ⑲: the block is its layer's colour label.
               paper: layerMarkColor(layer.mark),
             ),
@@ -3647,6 +3648,7 @@ class _StoryboardSeRow extends StatelessWidget {
     child: SePaperSpan(
       axis: Axis.horizontal,
       frameCellExtent: timelineScale.pixelsPerFrame,
+      startFrame: block.startIndex,
       // ⑲: the block is its layer's colour label.
       paper: layerMarkColor(layer.mark),
     ),

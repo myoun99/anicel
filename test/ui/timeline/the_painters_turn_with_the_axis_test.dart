@@ -302,7 +302,13 @@ void main() {
             child: SizedBox(
               width: size.width,
               height: size.height,
-              child: SePaperSpan(axis: axis, frameCellExtent: 10),
+              // 20px: at this zoom the grid keeps every boundary, so each
+              // cell still has its divider.
+              child: SePaperSpan(
+                axis: axis,
+                frameCellExtent: 20,
+                startFrame: 0,
+              ),
             ),
           ),
         ),
@@ -321,22 +327,22 @@ void main() {
     testWidgets('horizontal: one divider per cell, standing up the height', (
       tester,
     ) async {
-      final spy = await paint(tester, Axis.horizontal, const Size(40, 24));
+      final spy = await paint(tester, Axis.horizontal, const Size(80, 24));
       expect(spy.lines.map((l) => (l.from, l.to)), [
-        (const Offset(10, 0), const Offset(10, 24)),
-        (const Offset(20, 0), const Offset(20, 24)),
-        (const Offset(30, 0), const Offset(30, 24)),
+        (const Offset(20.5, 0), const Offset(20.5, 24)),
+        (const Offset(40.5, 0), const Offset(40.5, 24)),
+        (const Offset(60.5, 0), const Offset(60.5, 24)),
       ]);
     });
 
     testWidgets('vertical: one divider per cell, lying across the width', (
       tester,
     ) async {
-      final spy = await paint(tester, Axis.vertical, const Size(24, 40));
+      final spy = await paint(tester, Axis.vertical, const Size(24, 80));
       expect(spy.lines.map((l) => (l.from, l.to)), [
-        (const Offset(0, 10), const Offset(24, 10)),
-        (const Offset(0, 20), const Offset(24, 20)),
-        (const Offset(0, 30), const Offset(24, 30)),
+        (const Offset(0, 20.5), const Offset(24, 20.5)),
+        (const Offset(0, 40.5), const Offset(24, 40.5)),
+        (const Offset(0, 60.5), const Offset(24, 60.5)),
       ]);
     });
   });
