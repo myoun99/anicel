@@ -434,7 +434,12 @@ class TimelineCursorLayer extends StatelessWidget {
             frameCellWidth: metrics.frameCellWidth,
             rowHeight: metrics.layerRowHeight,
             borderColor: timelineSelectedFrameBorderColor,
-            borderRadius: const BorderRadius.all(Radius.circular(6)),
+            borderRadius: BorderRadius.all(
+              timelineBlockCornerRadiusAt(
+                cellExtent: metrics.frameCellWidth,
+                crossExtent: metrics.layerRowHeight,
+              ),
+            ),
           ),
           ?_cellRing(frame, displayRange, cursorVisible: cursorVisible),
         ],
