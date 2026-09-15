@@ -597,6 +597,18 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // 🚨A row that cannot be reordered ALWAYS takes the select half — the
     // ban is on moving, not on selecting (F-16). ⛔Without this the two
     // questions ride one flag again, just one layer down.
+    // ↩️「ALWAYS」 until F-16-Q1: inside the selection it lifts (below).
+    //
+    // 🗣️F-16-Q1 = visual. 유저: 「추가로 드래그로직도 작동은 하도록. 어차피
+    // 결과적으로 이동될곳 없어서 이동은 안되지만 통일감 내고싶음」 — so a row
+    // that cannot be reordered takes the SAME fork as every other row: pressed
+    // INSIDE the selection it is picked up and shows it, and on release it
+    // settles where it was. No caret, no crossing, no move verb — the
+    // select-only shape still cannot be handed a destination.
+    if (!widget.canReorder && inSelection == true) {
+      setState(() => _lifting = true);
+      return;
+    }
     _selecting = !widget.canReorder || inSelection == false;
     if (_selecting) {
       widget.hooks.onSelectBegin?.call(widget.subject);
@@ -610,6 +622,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// ⑨: true while this drag is growing the row SELECTION rather than
   /// moving rows.
   bool _selecting = false;
+
+  /// F-16: true while an UNMOVABLE row is held inside the row selection —
+  /// picked up and showing it, going nowhere. The row's own state: no move
+  /// verb starts, so there is nothing to commit or cancel when it lets go.
+  bool _lifting = false;
 
   /// True while this drag is MOVING rows — the flag [dispose] reads to know
   /// an open session verb would otherwise leak. Cleared before the hooks
@@ -627,6 +644,10 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
       return;
     }
     widget.onGripReleased?.call();
+    if (_lifting) {
+      setState(() => _lifting = false);
+      return;
+    }
     if (_selecting) {
       _selecting = false;
       widget.hooks.onSelectEnd?.call();
@@ -791,7 +812,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
             caretShowing &&
             widget.isLastRow &&
             showing.caretSlot == widget.slotBefore + 1;
-        final lifted = drag?.subject == widget.subject;
+        final lifted = drag?.subject == widget.subject || _lifting;
         return Stack(
           clipBehavior: Clip.none,
           children: [
