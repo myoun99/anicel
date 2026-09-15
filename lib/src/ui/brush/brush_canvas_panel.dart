@@ -205,6 +205,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
     this.toolCursorsEnabled = true,
+    this.hasContentToView = true,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.pageStrip = const <Widget>[],
@@ -695,6 +696,16 @@ class BrushCanvasPanel extends StatefulWidget {
   /// for strictly read-only hosts (the media viewer), where a paint
   /// cursor over undrawable content is a false affordance.
   final bool toolCursorsEnabled;
+
+  /// False when the host has nothing on its stage yet — the media viewer
+  /// with no file open (유저 F-77: 「뷰어패널 열린거 없으면 확대나 스크롤바같은
+  /// 조작 버튼 비활성화」). Every view control keeps its place and goes
+  /// disabled: fit, 1:1, the zoom steps, the zoom readout and both panbars.
+  ///
+  /// ⚠️Its own question. [allowViewRotation] answers "does this host have
+  /// the control at all" (false HIDES it); this answers "is there a view to
+  /// operate right now" (false DISABLES it in place).
+  final bool hasContentToView;
 
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
@@ -2494,6 +2505,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.liveViewport,
+    required this.viewEnabled,
     required this.onZoomSet,
     required this.onZoomIn,
     required this.onZoomOut,
@@ -2563,6 +2575,11 @@ class _CanvasViewportBottomBar extends StatelessWidget {
 
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback onViewportChangeEnd;
+
+  /// Whether there is a view to operate — [BrushCanvasPanel.hasContentToView].
+  /// False keeps fit, 1:1, the zoom steps and the readout in place, disabled.
+  final bool viewEnabled;
+
   final ValueChanged<double> onZoomSet;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
@@ -2628,12 +2645,14 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     required this.canvasSize,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
+    this.enabled = true,
   });
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
+  final bool enabled;
   @override
   Widget build(BuildContext context) => _CanvasViewportPanbar(
     axis: Axis.horizontal,
@@ -2642,6 +2661,7 @@ class CanvasViewportHorizontalScrollbar extends StatelessWidget {
     canvasSize: canvasSize,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
+    enabled: enabled,
   );
 }
 
@@ -2653,12 +2673,14 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     required this.canvasSize,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
+    this.enabled = true,
   });
   final CanvasViewport viewport;
   final Size editorViewportSize;
   final CanvasSize canvasSize;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
+  final bool enabled;
   @override
   Widget build(BuildContext context) => _CanvasViewportPanbar(
     axis: Axis.vertical,
@@ -2667,6 +2689,7 @@ class CanvasViewportVerticalScrollbar extends StatelessWidget {
     canvasSize: canvasSize,
     onViewportChanged: onViewportChanged,
     onViewportChangeEnd: onViewportChangeEnd,
+    enabled: enabled,
   );
 }
 
@@ -2678,6 +2701,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
     required this.canvasSize,
     required this.onViewportChanged,
     this.onViewportChangeEnd,
+    required this.enabled,
   });
   final Axis axis;
   final CanvasViewport viewport;
@@ -2685,6 +2709,9 @@ class _CanvasViewportPanbar extends StatelessWidget {
   final CanvasSize canvasSize;
   final ValueChanged<CanvasViewport> onViewportChanged;
   final VoidCallback? onViewportChangeEnd;
+
+  /// F-77: false keeps the panbar in its place with nothing to pan.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -2711,6 +2738,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
         // The whole lane pans relatively: the canvas panbar has always
         // been a grab-anywhere 1:1 surface, not a jump-to-tap track.
         lanePress: AppScrollbarLanePress.relativeDrag,
+        enabled: enabled,
         onOffsetChanged: (next) =>
             onViewportChanged(metrics.viewportForScroll(next)),
         onChangeEnd: onViewportChangeEnd,

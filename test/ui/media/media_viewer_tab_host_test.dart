@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -12,6 +13,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, buildAppTheme;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
 
@@ -44,25 +46,40 @@ void main() {
   /// it, so a folded-away rail cannot lose the page you were on), so the
   /// harness has to hold it too — a host with nowhere to put the answer
   /// simply never turns a page.
-  Widget hostIn(MediaViewerSlot slot, {required String viewerId}) =>
-      ValueListenableBuilder<int>(
-        valueListenable: slot.position,
-        builder: (context, position, _) => MediaViewerTabHost(
-          viewerId: viewerId,
-          session: session,
-          request: slot.request,
-          position: position,
-          onPositionChanged: (next) => slot.position.value = next,
-        ),
-      );
+  Widget hostIn(
+    MediaViewerSlot slot, {
+    required String viewerId,
+    CanvasViewport? viewport,
+    ValueChanged<CanvasViewport>? onViewportChanged,
+  }) => ValueListenableBuilder<int>(
+    valueListenable: slot.position,
+    builder: (context, position, _) => MediaViewerTabHost(
+      viewerId: viewerId,
+      session: session,
+      request: slot.request,
+      position: position,
+      onPositionChanged: (next) => slot.position.value = next,
+      viewport: viewport,
+      onViewportChanged: onViewportChanged,
+    ),
+  );
 
   Future<void> pumpViewer(
     WidgetTester tester, {
     String viewerId = 'media-viewer',
+    CanvasViewport? viewport,
+    ValueChanged<CanvasViewport>? onViewportChanged,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: hostIn(slot, viewerId: viewerId)),
+        home: Scaffold(
+          body: hostIn(
+            slot,
+            viewerId: viewerId,
+            viewport: viewport,
+            onViewportChanged: onViewportChanged,
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -92,6 +109,82 @@ void main() {
       find.byKey(const ValueKey<String>('media-viewer-page')),
       findsNothing,
     );
+  });
+
+  // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
+  // 비활성화」). An empty viewer still frames a stage, so every view verb
+  // used to zoom and pan nothing at all.
+
+  testWidgets('🐛F-77: with nothing to view, the zoom readout stays in its '
+      'place and neither scrubs nor opens its field', (tester) async {
+    await pumpViewer(tester);
+    final label = find.byKey(
+      const ValueKey<String>('canvas-viewport-zoom-label'),
+    );
+    expect(label, findsOneWidget, reason: 'in its place, not removed');
+    String zoomText() => tester
+        .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+        .data!;
+    final before = zoomText();
+
+    final gesture = await tester.startGesture(tester.getCenter(label));
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(zoomText(), before, reason: 'an empty stage has no view to zoom');
+
+    await tester.tap(label);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+      findsNothing,
+      reason: 'and a tap opens no field',
+    );
+  });
+
+  testWidgets('🐛F-77: with nothing to view, neither panbar pans', (
+    tester,
+  ) async {
+    final seen = <CanvasViewport>[];
+    // Zoomed in, so both lanes have somewhere to go — without range a panbar
+    // takes no drag anyway, and the test would measure nothing.
+    await pumpViewer(
+      tester,
+      viewport: CanvasViewport(zoom: 4.0),
+      onViewportChanged: seen.add,
+    );
+    seen.clear();
+    for (final (key, delta) in const [
+      ('canvas-viewport-horizontal-scrollbar', Offset(-60, 0)),
+      ('canvas-viewport-vertical-scrollbar', Offset(0, -60)),
+    ]) {
+      final bar = find.byKey(ValueKey<String>(key));
+      expect(bar, findsOneWidget, reason: '$key is in its place');
+      await tester.drag(bar, delta);
+      await tester.pumpAndSettle();
+      expect(seen, isEmpty, reason: '$key moved an empty stage');
+    }
+  });
+
+  testWidgets('🐛F-77: with nothing to view, 1:1 in the gear moves no view', (
+    tester,
+  ) async {
+    final seen = <CanvasViewport>[];
+    await pumpViewer(
+      tester,
+      viewport: CanvasViewport(zoom: 4.0),
+      onViewportChanged: seen.add,
+    );
+    seen.clear();
+    await openViewSettings(tester);
+    final item = find.byKey(const ValueKey<String>('canvas-viewport-reset'));
+    expect(item, findsOneWidget, reason: 'listed, in its place');
+    await tester.tap(item, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(seen, isEmpty, reason: '1:1 of an empty stage');
   });
 
   testWidgets('a PDF request pages through the fake document: readout, '

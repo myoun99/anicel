@@ -89,6 +89,7 @@ void main() {
       double contentExtent = 1000,
       double initialOffset = 0,
       VoidCallback? onChangeEnd,
+      bool enabled = true,
     }) async {
       var offset = initialOffset;
       await tester.pumpWidget(
@@ -111,6 +112,7 @@ void main() {
                   laneKey: const ValueKey<String>('app-scrollbar-lane'),
                   onOffsetChanged: (next) => setState(() => offset = next),
                   onChangeEnd: onChangeEnd,
+                  enabled: enabled,
                 ),
               ),
             ),
@@ -218,6 +220,40 @@ void main() {
         find.byKey(const ValueKey<String>('app-scrollbar-under-test')),
       );
       await tester.tapAt(laneTopLeft + const Offset(200, 7));
+      await tester.pump();
+
+      expect(offsetOf(), 0);
+    });
+
+    // F-77: a panbar over an empty stage keeps its place and takes nothing.
+    testWidgets('disabled, a lane tap jumps nothing', (tester) async {
+      final offsetOf = await pumpBar(
+        tester,
+        axis: Axis.horizontal,
+        lanePress: AppScrollbarLanePress.jumpToPointer,
+        enabled: false,
+      );
+
+      final laneTopLeft = tester.getTopLeft(
+        find.byKey(const ValueKey<String>('app-scrollbar-under-test')),
+      );
+      await tester.tapAt(laneTopLeft + const Offset(200, 7));
+      await tester.pump();
+
+      expect(offsetOf(), 0);
+    });
+
+    testWidgets('disabled, a drag moves nothing', (tester) async {
+      final offsetOf = await pumpBar(
+        tester,
+        axis: Axis.horizontal,
+        enabled: false,
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('app-scrollbar-under-test')),
+        const Offset(100, 0),
+      );
       await tester.pump();
 
       expect(offsetOf(), 0);
@@ -348,6 +384,27 @@ void main() {
       await mouse.moveTo(const Offset(200, 200));
       await tester.pump();
       expect(thumbColour(tester), AppColors.hairlineStrong);
+    });
+
+    testWidgets('disabled, neither hovering nor pressing lights the thumb', (
+      tester,
+    ) async {
+      await pumpBar(tester, axis: Axis.vertical, enabled: false);
+      final bar = find.byKey(
+        const ValueKey<String>('app-scrollbar-under-test'),
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+
+      await mouse.down(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+      await mouse.up();
     });
 
     testWidgets('thumb thickness is the same at rest, hovered and pressed', (

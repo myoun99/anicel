@@ -58,6 +58,9 @@ Widget floorPillHarness({
   required double width,
   required bool onFloor,
   int leadingCount = 0,
+  CanvasViewport? viewport,
+  bool hasContentToView = true,
+  ValueChanged<CanvasViewport>? onViewportChanged,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
@@ -66,6 +69,9 @@ Widget floorPillHarness({
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
     floorCover: EdgeInsets.zero,
     canvasSize: const CanvasSize(width: 300, height: 300),
+    viewport: viewport,
+    onViewportChanged: onViewportChanged,
+    hasContentToView: hasContentToView,
     paperColor: 0xFFFFFFFF,
     onPaperColorChanged: (_) {},
     pasteboardColor: 0xFF202020,
@@ -878,6 +884,125 @@ void main() {
       findsOneWidget,
       reason: '1:1 is in every gear — it is the zoom steps that are not',
     );
+  });
+
+  // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
+  // 비활성화」). Every verb below publishes through the panel's one viewport
+  // publisher, so `onViewportChanged` hears each of them the moment it acts.
+
+  testWidgets('F-77: with nothing to view, fit, 1:1 and the zoom steps stay '
+      'on the floor pill and move no view', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    final seen = <CanvasViewport>[];
+    await tester.pumpWidget(
+      floorPillHarness(
+        width: 900,
+        onFloor: true,
+        viewport: CanvasViewport(zoom: 3.0),
+        hasContentToView: false,
+        onViewportChanged: seen.add,
+      ),
+    );
+    await tester.pumpAndSettle();
+    seen.clear();
+    for (final key in const [
+      'canvas-viewport-fit',
+      'canvas-viewport-reset',
+      'canvas-viewport-zoom-out',
+      'canvas-viewport-zoom-in',
+    ]) {
+      final button = find.byKey(ValueKey<String>(key));
+      expect(button, findsOneWidget, reason: '$key is in its place');
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(seen, isEmpty, reason: '$key moved a view there is none of');
+    }
+  });
+
+  testWidgets('F-77: folded into the gear, 1:1 and the zoom steps are listed '
+      'and move no view either', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+    final seen = <CanvasViewport>[];
+    await tester.pumpWidget(
+      floorPillHarness(
+        width: 150,
+        onFloor: true,
+        viewport: CanvasViewport(zoom: 3.0),
+        hasContentToView: false,
+        onViewportChanged: seen.add,
+      ),
+    );
+    await tester.pumpAndSettle();
+    seen.clear();
+    for (final key in const [
+      'canvas-viewport-reset',
+      'canvas-viewport-zoom-out',
+      'canvas-viewport-zoom-in',
+    ]) {
+      await openViewSettings(tester);
+      final item = find.byKey(ValueKey<String>(key));
+      expect(item, findsOneWidget, reason: '$key is listed');
+      await tester.tap(item, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(seen, isEmpty, reason: '$key moved a view there is none of');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('F-77: a host that gains something to view lights its view '
+      'controls — both bar memos carry the answer', (tester) async {
+    final seen = <CanvasViewport>[];
+    // Zoomed in, so the panbar has somewhere to go: without range it takes
+    // no drag enabled or not, and the half below would measure nothing.
+    Widget harness({required bool hasContentToView}) => floorPillHarness(
+      width: 600,
+      onFloor: false,
+      viewport: CanvasViewport(zoom: 3.0),
+      hasContentToView: hasContentToView,
+      onViewportChanged: seen.add,
+    );
+    await tester.pumpWidget(harness(hasContentToView: false));
+    await tester.pump();
+    await tester.pumpWidget(harness(hasContentToView: true));
+    await tester.pump();
+
+    // The panbars FIRST: any zoom change rebuilds them through the viewport
+    // their token already carries, so after one only the answer is left
+    // unmeasured.
+    seen.clear();
+    await tester.drag(
+      find.byKey(const ValueKey<String>('canvas-viewport-horizontal-scrollbar')),
+      const Offset(-60, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      seen,
+      isNotEmpty,
+      reason:
+          'the panbars were built with nothing to view; their memo must not '
+          'outlive the answer',
+    );
+
+    // A pan leaves the pill's token alone — it carries the zoom, not the
+    // offset — so the answer is still the only thing that changed for it.
+    final label = find.byKey(
+      const ValueKey<String>('canvas-viewport-zoom-label'),
+    );
+    String zoomText() => tester
+        .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+        .data!;
+    final before = zoomText();
+    final gesture = await tester.startGesture(tester.getCenter(label));
+    for (var step = 0; step < 12; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(zoomText(), isNot(before), reason: 'nor may the pill\'s memo');
   });
 
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {

@@ -44,6 +44,7 @@ class DragValueLabel extends StatefulWidget {
     this.textStyle,
     this.inputKeyValue,
     this.textAlign = TextAlign.center,
+    this.enabled = true,
   });
 
   /// Stable widget key base (`keyValue` label / `keyValue`-input).
@@ -72,6 +73,11 @@ class DragValueLabel extends StatefulWidget {
   /// numbers; whether the rest should follow is a UI-session question,
   /// not this one's.
   final TextAlign textAlign;
+
+  /// False leaves the readout where it is: no scrub, no field, and the text
+  /// wears the disabled foreground every icon button wears
+  /// (`AppIconButton`'s `disabledForegroundColor`).
+  final bool enabled;
 
   @override
   State<DragValueLabel> createState() => _DragValueLabelState();
@@ -158,6 +164,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
 
   @override
   Widget build(BuildContext context) {
+    final style = widget.textStyle ?? const TextStyle(fontSize: 12);
     if (_editing) {
       return SizedBox(
         width: widget.width,
@@ -166,21 +173,23 @@ class _DragValueLabelState extends State<DragValueLabel> {
             widget.inputKeyValue ?? '${widget.keyValue}-input',
           ),
           initialText: _seed,
-          textStyle: widget.textStyle ?? const TextStyle(fontSize: 12),
+          textStyle: style,
           onSubmit: _commitEdit,
           onCancel: () => setState(() => _editing = false),
         ),
       );
     }
     final label = MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
+      cursor: widget.enabled
+          ? SystemMouseCursors.resizeLeftRight
+          : MouseCursor.defer,
       // ⚠️The order is what makes the tap right. Pointer-up runs deepest
       // first, so [DragVerbClaim] has let its claim go by the time
       // [ControlPressClaim] asks whether a drag verb owns the pointer — the
       // claim then fires, and [_editUnlessScrubbed] is what refuses a press
       // that scrubbed.
       child: ControlPressClaim(
-        onPressed: _editUnlessScrubbed,
+        onPressed: widget.enabled ? _editUnlessScrubbed : null,
         child: Listener(
           onPointerDown: _pressStarted,
           child: DragVerbClaim(
@@ -188,26 +197,34 @@ class _DragValueLabelState extends State<DragValueLabel> {
             child: RawGestureDetector(
               key: ValueKey<String>(widget.keyValue),
               behavior: HitTestBehavior.opaque,
-              gestures: <Type, GestureRecognizerFactory>{
-                OwningHorizontalDragGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      OwningHorizontalDragGestureRecognizer
-                    >(
-                      () => OwningHorizontalDragGestureRecognizer(
-                        debugOwner: this,
-                      ),
-                      (recognizer) {
-                        recognizer.onStart = _dragStarted;
-                        recognizer.onUpdate = _dragUpdated;
-                      },
-                    ),
-              },
+              gestures: widget.enabled
+                  ? <Type, GestureRecognizerFactory>{
+                      OwningHorizontalDragGestureRecognizer:
+                          GestureRecognizerFactoryWithHandlers<
+                            OwningHorizontalDragGestureRecognizer
+                          >(
+                            () => OwningHorizontalDragGestureRecognizer(
+                              debugOwner: this,
+                            ),
+                            (recognizer) {
+                              recognizer.onStart = _dragStarted;
+                              recognizer.onUpdate = _dragUpdated;
+                            },
+                          ),
+                    }
+                  : const <Type, GestureRecognizerFactory>{},
               child: SizedBox(
                 width: widget.width,
                 child: Text(
                   widget.text,
                   textAlign: widget.textAlign,
-                  style: widget.textStyle ?? const TextStyle(fontSize: 12),
+                  style: widget.enabled
+                      ? style
+                      : style.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.38),
+                        ),
                 ),
               ),
             ),

@@ -1382,6 +1382,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // Read-only host: a brush-tip cursor over undrawable content is a
       // false affordance.
       toolCursorsEnabled: false,
+      // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
+      // 비활성화」): with no file open there is no view to operate.
+      hasContentToView: request != null,
       // 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.

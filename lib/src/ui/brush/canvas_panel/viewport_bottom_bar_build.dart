@@ -204,6 +204,7 @@ class _BottomBarBuild {
           label: AppText.strings.viewResetView,
           icon: Icons.crop_free,
           onSelected: _bar.onReset,
+          enabled: _bar.viewEnabled,
         ),
       // ⛔Only where they exist to begin with. A panel that is not on
       // the floor has no zoom steps at any width — they are the
@@ -216,6 +217,7 @@ class _BottomBarBuild {
           shortcuts: const [EditorActionIds.canvasZoomOut],
           icon: Icons.zoom_out,
           onSelected: _bar.onZoomOut,
+          enabled: _bar.viewEnabled,
         ),
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-in',
@@ -223,6 +225,7 @@ class _BottomBarBuild {
           shortcuts: const [EditorActionIds.canvasZoomIn],
           icon: Icons.zoom_in,
           onSelected: _bar.onZoomIn,
+          enabled: _bar.viewEnabled,
         ),
       ],
       // Asked as a PREDICATE, not by building the row and measuring
@@ -457,7 +460,7 @@ class _BottomBarBuild {
     keyValue: 'canvas-viewport-fit',
     tooltip: AppText.strings.viewFitToView,
     icon: const Icon(Icons.fit_screen),
-    onPressed: _bar.onFit,
+    onPressed: _bar.viewEnabled ? _bar.onFit : null,
   );
 
   Widget _resetButton() => _bar._barIconButton(
@@ -467,7 +470,7 @@ class _BottomBarBuild {
       '1:1',
       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, height: 1),
     ),
-    onPressed: _bar.onReset,
+    onPressed: _bar.viewEnabled ? _bar.onReset : null,
   );
 
   Widget _zoomOutButton() => _bar._barIconButton(
@@ -475,7 +478,7 @@ class _BottomBarBuild {
     tooltip: editorActionLabel(EditorActionIds.canvasZoomOut),
     shortcuts: const [EditorActionIds.canvasZoomOut],
     icon: const Icon(Icons.zoom_out),
-    onPressed: _bar.onZoomOut,
+    onPressed: _bar.viewEnabled ? _bar.onZoomOut : null,
   );
 
   Widget _zoomInButton() => _bar._barIconButton(
@@ -483,7 +486,7 @@ class _BottomBarBuild {
     tooltip: editorActionLabel(EditorActionIds.canvasZoomIn),
     shortcuts: const [EditorActionIds.canvasZoomIn],
     icon: const Icon(Icons.zoom_in),
-    onPressed: _bar.onZoomIn,
+    onPressed: _bar.viewEnabled ? _bar.onZoomIn : null,
   );
 
   Widget _zoomReadout() {
@@ -494,6 +497,7 @@ class _BottomBarBuild {
       text: '${displayPercent.round()}%',
       tooltip: AppText.strings.viewZoomDrag,
       width: _CanvasViewportBottomBar._zoomReadoutWidth,
+      enabled: _bar.viewEnabled,
       textStyle: const TextStyle(fontSize: 12),
       // ⛔No second bound here. `_zoomToAroundCenter` clamps in display
       // units for every absolute zoom verb, so the readout, the ± buttons

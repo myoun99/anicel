@@ -13,8 +13,9 @@ import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
 void main() {
   Future<({List<double> deltas, List<String> edits})> pump(
-    WidgetTester tester,
-  ) async {
+    WidgetTester tester, {
+    bool enabled = true,
+  }) async {
     final deltas = <double>[];
     final edits = <String>[];
     await tester.pumpWidget(
@@ -28,6 +29,7 @@ void main() {
               onEditSubmit: edits.add,
               unitsPerPixel: 1,
               width: 64,
+              enabled: enabled,
             ),
           ),
         ),
@@ -79,6 +81,35 @@ void main() {
     expect(seen.edits, ['250']);
     expect(find.byType(InlineNumericField), findsNothing);
     expect(seen.deltas, isEmpty);
+  });
+
+  testWidgets('disabled, it keeps its place: a drag reports nothing, a tap '
+      'opens no field, and the text wears the disabled foreground', (
+    tester,
+  ) async {
+    final seen = await pump(tester, enabled: false);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('100%')),
+    );
+    for (var step = 0; step < 6; step += 1) {
+      await gesture.moveBy(const Offset(10, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+    expect(seen.deltas, isEmpty);
+
+    await tester.tap(find.text('100%'));
+    await tester.pump();
+    expect(find.byType(InlineNumericField), findsNothing);
+    expect(seen.edits, isEmpty);
+
+    final scheme = Theme.of(tester.element(find.text('100%'))).colorScheme;
+    expect(
+      tester.widget<Text>(find.text('100%')).style?.color,
+      scheme.onSurface.withValues(alpha: 0.38),
+      reason: 'the disabled foreground every icon button wears',
+    );
   });
 
   /// 🚨H24 (유저 2026-09-15: 「뷰어쪽 줌 레일스크롤바랑 겹치는거」) — the

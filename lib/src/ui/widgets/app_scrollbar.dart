@@ -131,6 +131,7 @@ class AppScrollbar extends StatefulWidget {
     this.thumbSeat = AppScrollbarThumbSeat.centered,
     this.thumbKey,
     this.laneKey,
+    this.enabled = true,
   });
 
   final Axis axis;
@@ -149,6 +150,10 @@ class AppScrollbar extends StatefulWidget {
 
   final Key? thumbKey;
   final Key? laneKey;
+
+  /// False takes no press, no drag and no hover colour: the thumb stays at
+  /// rest where the view is, because the extents are still the truth.
+  final bool enabled;
 
   @override
   State<AppScrollbar> createState() => _AppScrollbarState();
@@ -190,7 +195,9 @@ class _AppScrollbarState extends State<AppScrollbar> {
         // Colour is the whole state machine (see the class doc). White
         // rather than a palette grey because a 4px thumb has to win
         // against the lane behind it to read as "the pointer is here".
-        final color = _pressed
+        final color = !widget.enabled
+            ? AppColors.hairlineStrong
+            : _pressed
             ? AppColors.accent
             : _hovered
             ? Colors.white
@@ -274,7 +281,9 @@ class _AppScrollbarState extends State<AppScrollbar> {
       widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
 
   void _lanePressed(double position, AppScrollbarGeometry geometry) {
-    if (!geometry.canScroll || geometry.containsThumb(position)) {
+    if (!widget.enabled ||
+        !geometry.canScroll ||
+        geometry.containsThumb(position)) {
       return;
     }
     widget.onOffsetChanged(
@@ -283,7 +292,9 @@ class _AppScrollbarState extends State<AppScrollbar> {
   }
 
   void _dragStart(double position, AppScrollbarGeometry geometry) {
-    if (!geometry.canScroll) {
+    // A drag that does not start leaves `_dragThumbStart` null, which is
+    // what stops `_dragUpdate` too.
+    if (!widget.enabled || !geometry.canScroll) {
       return;
     }
     var thumbStart = geometry.thumbStart;

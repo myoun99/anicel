@@ -39,13 +39,19 @@ class _CanvasPanelShellBars {
   /// of a window resize rebuilt the pill — thirteen icon buttons with their
   /// tooltips, overlay portals and gesture detectors — for a number it
   /// ignores.
-  ({CanvasViewport viewport, Size viewportSize, CanvasSize canvasSize})?
+  ({
+    CanvasViewport viewport,
+    Size viewportSize,
+    CanvasSize canvasSize,
+    bool view,
+  })?
   _panbarsToken;
 
   ({
     double zoom,
     CanvasSize canvasSize,
     bool rotation,
+    bool view,
     bool floor,
     int paper,
     int pasteboard,
@@ -69,6 +75,9 @@ class _CanvasPanelShellBars {
       viewport: _state._viewportState._viewport,
       viewportSize: viewportSize,
       canvasSize: _state.widget.canvasSize,
+      // F-77: the panbars capture whether there is a view to operate, so a
+      // memo that did not carry it would outlive the answer.
+      view: _state.widget.hasContentToView,
     );
     final pillToken = (
       // ⛔NOT the whole viewport — and since 2026-08-13 not "everything the
@@ -111,6 +120,9 @@ class _CanvasPanelShellBars {
       zoom: _state._viewportState._viewport.zoom,
       canvasSize: _state.widget.canvasSize,
       rotation: _state.widget.allowViewRotation,
+      // F-77: the steps, the readout and the list's zoom items capture
+      // whether there is a view to operate.
+      view: _state.widget.hasContentToView,
       // WHICH BAR this is — flat on the floor, folded anywhere else. It
       // cannot change without this panel being rebuilt, but a memo that
       // did not carry it would be a memo that outlives the answer.
@@ -161,6 +173,7 @@ class _CanvasPanelShellBars {
         canvasSize: _state.widget.canvasSize,
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
+        enabled: _state.widget.hasContentToView,
       );
       _memoHorizontalStripBar = CanvasViewportHorizontalScrollbar(
         viewport: _state._viewportState._viewport,
@@ -168,6 +181,7 @@ class _CanvasPanelShellBars {
         canvasSize: _state.widget.canvasSize,
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
+        enabled: _state.widget.hasContentToView,
       );
     }
     if (memoizable && pillToken == _pillToken && _memoBottomBar != null) {
@@ -203,6 +217,7 @@ class _CanvasPanelShellBars {
       onZoomOut: _zoomOutFromBar,
       onFit: _state._viewportState._fitToView,
       onReset: _state._viewportState._resetView,
+      viewEnabled: _state.widget.hasContentToView,
       onRotateCcw: _state.widget.allowViewRotation ? _rotateCcwFromBar : null,
       onRotateCw: _state.widget.allowViewRotation ? _rotateCwFromBar : null,
       onRotateReset: _state.widget.allowViewRotation
