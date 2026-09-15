@@ -511,6 +511,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @visibleForTesting
   int get debugImagesRevision => _imagesRevision;
 
+  /// The buffer this view actually composites with — the one it made, or
+  /// the one a test handed it. F-130's benchmark reads its miss counters
+  /// off the REAL app, where nothing can pass `debugBufferCache` in: a hover
+  /// that composites the whole buffer again is invisible in every pixel and
+  /// only a counter can say it happened.
+  @visibleForTesting
+  DisplayBufferCache get debugBufferCacheInUse => _bufferCache;
+
   /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
   ///
   /// ⛔This is not belt-and-braces on top of the tree comparison. A recorded
@@ -1787,6 +1795,10 @@ class _LayerStackPainter extends CustomPainter {
       return null;
     }
     final cache = surfacePainter.tileImageCache;
+    // F-130: the stamp's ghost is part of what the live surface looks like
+    // (F-33 draws it inside this painter), so it is part of the tokens —
+    // by value, with the rect it covers, so a hover can be patched.
+    final ghost = surfacePainter.stampPreview?.value;
     return (
       overlay: <TileCoord, Object>{
         ...overlay?.tileImages ?? const <TileCoord, ui.Image>{},
@@ -1795,6 +1807,7 @@ class _LayerStackPainter extends CustomPainter {
         for (final entry in surfacePainter.surface.tiles.entries)
           entry.key: cache.imageFor(entry.value) ?? entry.value,
       },
+      ghost: ghost == null ? null : (value: ghost, rect: ghost.canvasRect),
     );
   }
 
@@ -1830,9 +1843,13 @@ class _LayerStackPainter extends CustomPainter {
       return (located: false, dirty: null, now: null);
     }
     final kept = since;
-    if (kept.tiles.isEmpty) {
-      // Nothing to compare against — the first paint after a cold start,
-      // or a kept image made without a snapshot.
+    // Nothing to compare against — the first paint after a cold start, or
+    // a kept image made without a snapshot. ⛔THE SENTINEL, BY IDENTITY,
+    // and not `kept.tiles.isEmpty` as it used to read: an empty cel's
+    // snapshot is empty too, and it is a perfectly good base — the stamp's
+    // usual target is an empty cel, and reading its snapshot as 「none」
+    // refused the ghost's patch on every move there (F-130, measured).
+    if (identical(kept, noLiveSurfaceTokens)) {
       return (located: false, dirty: null, now: now);
     }
     final tileSize = activeSurfacePainter!.surface.tileSize.toDouble();
@@ -1849,6 +1866,18 @@ class _LayerStackPainter extends CustomPainter {
     }
     for (final coord in _movedCoords(kept.tiles, now.tiles)) {
       add(rectOf(coord));
+    }
+    // F-130: a ghost that moved (or came, or went) dirties where it WAS and
+    // where it IS — the old place has to be repainted without it.
+    final ghostWas = kept.ghost;
+    final ghostNow = now.ghost;
+    if (ghostWas?.value != ghostNow?.value) {
+      if (ghostWas != null) {
+        add(ghostWas.rect);
+      }
+      if (ghostNow != null) {
+        add(ghostNow.rect);
+      }
     }
     return (located: true, dirty: dirty?.inflate(1), now: now);
   }

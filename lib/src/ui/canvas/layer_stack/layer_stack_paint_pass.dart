@@ -718,6 +718,13 @@ class _LayerStackPaintPass {
             ridingPaint,
           ),
         );
+        // 🚨F-33 / F-130: the projection is the tiles and the stroke — the
+        // stamp's ghost is drawn by the walk, which this blit replaced, so
+        // it vanished past the cap and under `QA_KNEE_AT_ONE` (adversarial
+        // review, 2026-09-15). Drawn here over the image, as the walk
+        // draws it over everything; the slot's buffer (a ghost opens one:
+        // `drawsDisjointCoverage` says false) carries the layer over both.
+        _painter.activeSurfacePainter!.paintStampPreviewInto(into);
       } else if (standIn != null &&
           standIn.shouldStandInFor(_painter.activeSurfacePainter!)) {
         assert(() {
@@ -769,6 +776,10 @@ class _LayerStackPaintPass {
         // waiting on actually start — the walk's collect pass is
         // skipped this frame, so its decode starts must not be.
         _painter.activeSurfacePainter!.startPendingDecodes(into);
+        // 🚨F-33 / F-130: the ghost, over the held image — the same
+        // reason as on the flat route above. A hover during the swap
+        // window is not an edit, so the window stays open.
+        _painter.activeSurfacePainter!.paintStampPreviewInto(into);
       } else {
         assert(() {
           debugActiveSlotDraw = ActiveSlotDraw.tiles;

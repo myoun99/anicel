@@ -226,6 +226,7 @@ void main() {
     const tokens = (
       overlay: <Object, Object>{},
       tiles: <Object, Object>{'t': 'made-with-the-head'},
+      ghost: null,
     );
 
     /// A head with a snapshot on its way — the shape `_composeMiss` makes.
