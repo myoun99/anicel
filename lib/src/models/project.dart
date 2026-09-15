@@ -26,8 +26,9 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 ///
 /// ⚠️This colour REACHES THE EXPORT: `export_frame_renderer` paints it under
 /// every non-alpha frame and a fade thins the frame down to it. A project
-/// that wants a true-black fade sets its backdrop back to `0xFF000000` in the
-/// project background window — the default is the editor's opinion, not a
+/// that wants a true-black fade sets its backdrop back to `0xFF000000` with
+/// the canvas pill's backdrop swatch (the project background window this
+/// used to name is gone, F-114) — the default is the editor's opinion, not a
 /// constraint on the film.
 ///
 /// ⚠️Must stay in step with `AppColors.backdrop`, which is the same colour

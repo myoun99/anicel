@@ -499,7 +499,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       viewport: viewport,
       background: session.projectSettings.projectBackground,
       backdropArgb: project.backdropArgb,
+      backdropNone: project.backdropNone,
       pasteboardArgb: project.pasteboardArgb,
+      pasteboardNone: project.pasteboardNone,
       showAlphaCheckerboard: alphaPreviewEnabled.value,
       trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
     );
@@ -610,6 +612,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
+          pasteboardNone: session.repository.requireProject().pasteboardNone,
           trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
           trackGlobalFrameOf: session.rowSpans.trackGlobalFrameOf,
           // ALL-CUTS playback watches the whole stage: the

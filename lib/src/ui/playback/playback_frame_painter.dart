@@ -49,6 +49,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
     this.pasteboardColor,
+    this.pasteboardNone = false,
+    this.checkersAbsentPlanes = false,
     this.paintPaper = true,
     this.paintLetterbox = true,
     this.seNameTags = const [],
@@ -123,6 +125,17 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
   /// canvas mode where the panel supplies its own surroundings).
   final Color? pasteboardColor;
 
+  /// Whether the pasteboard is ABSENT (F-114) — [pasteboardColor] is then
+  /// the kept colour, and nothing of it is painted.
+  final bool pasteboardNone;
+
+  /// Whether an absent plane — the paper ([ProjectBackground.none]) or the
+  /// pasteboard ([pasteboardNone]) — shows the checkerboard where it would
+  /// be, the way the editing canvas shows it (유저 2026-09-15: 「없음버튼 누르면
+  /// 없는상태. 즉 해당 용지부분이 체크무늬되도록」). ON SCREEN ONLY: the export
+  /// leaves it false, and an absent plane prints nothing.
+  final bool checkersAbsentPlanes;
+
   /// False = no paper at all (playlist GAPS, UI-R9 #2): the panel's own
   /// background shows through — the same void the gap-parked scrub
   /// preview shows. There is no cut in a gap, so there is no paper.
@@ -154,6 +167,10 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     }
     final background = paperBackground;
     if (background != null) {
+      if (background.none && checkersAbsentPlanes) {
+        paintAlphaCheckerboard(canvas, rect);
+        return;
+      }
       paintProjectPaper(canvas, rect, background, antiAlias: antiAlias);
     } else {
       canvas.drawRect(
@@ -224,8 +241,13 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     if (pose != null && pasteboardColor != null) {
       // The stage's apron: the camera sees the pasteboard wherever it
       // reaches past the paper — part of the cut unit, so it fades with
-      // it.
-      canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
+      // it. An ABSENT pasteboard (F-114) is the checkerboard on screen and
+      // nothing at all anywhere else.
+      if (!pasteboardNone) {
+        canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
+      } else if (checkersAbsentPlanes) {
+        paintAlphaCheckerboard(canvas, frameRect!);
+      }
     }
     // The cut pose (AE precomp semantics) transforms the cut's FINISHED
     // picture over the display space — outermost, above the camera
@@ -385,6 +407,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     paperColor,
     paperBackground,
     pasteboardColor,
+    pasteboardNone,
+    checkersAbsentPlanes,
     paintPaper,
     paintLetterbox,
     // The pan-phase snap reads it — a monitor move must repaint, not

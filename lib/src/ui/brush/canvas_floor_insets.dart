@@ -123,6 +123,8 @@ class CanvasStageColors extends InheritedWidget {
     super.key,
     required this.backdropArgb,
     required this.pasteboardArgb,
+    this.backdropNone = false,
+    this.pasteboardNone = false,
     required super.child,
   });
 
@@ -133,13 +135,20 @@ class CanvasStageColors extends InheritedWidget {
   /// backdrop.
   final int pasteboardArgb;
 
+  /// Whether each plane is ABSENT (F-114) — a checkerboard where it would
+  /// be — while its colour above stays kept for the next pick.
+  final bool backdropNone;
+  final bool pasteboardNone;
+
   static CanvasStageColors? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<CanvasStageColors>();
 
   @override
   bool updateShouldNotify(CanvasStageColors oldWidget) =>
       oldWidget.backdropArgb != backdropArgb ||
-      oldWidget.pasteboardArgb != pasteboardArgb;
+      oldWidget.pasteboardArgb != pasteboardArgb ||
+      oldWidget.backdropNone != backdropNone ||
+      oldWidget.pasteboardNone != pasteboardNone;
 }
 
 /// Whether [band] overlaps the vertical range [top]..[bottom].

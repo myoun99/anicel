@@ -64,7 +64,9 @@ class CanvasTrackStackView extends StatefulWidget {
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
+    this.backdropNone = false,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
+    this.pasteboardNone = false,
     this.showAlphaCheckerboard = false,
     this.transformTrackOf,
     this.trackEffectsOf,
@@ -132,6 +134,11 @@ class CanvasTrackStackView extends StatefulWidget {
   /// The bottom covered track's stage apron (R3b): fills its camera frame
   /// under the paper, and fades with the cut unit.
   final int pasteboardArgb;
+
+  /// Whether the backdrop and the pasteboard are ABSENT (F-114): on screen
+  /// each is the checkerboard where it would be.
+  final bool backdropNone;
+  final bool pasteboardNone;
 
   /// Alpha preview (display-only): the backdrop renders as the alpha
   /// checkerboard, showing what an alpha export leaves open.
@@ -283,8 +290,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     _pruneStale([for (final position in positions) position.cutId]);
     // The BACKDROP floor (R3b): the void is retired — an uncovered frame
     // shows the stage's floor (or the alpha checkerboard under the
-    // preview toggle), exactly what an opaque export bakes there.
-    final floor = widget.showAlphaCheckerboard
+    // preview toggle), exactly what an opaque export bakes there. An ABSENT
+    // backdrop (F-114) is the same checkerboard, as on the editing canvas.
+    final floor = widget.showAlphaCheckerboard || widget.backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
             painter: AlphaCheckerboardPainter(),
@@ -408,6 +416,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             pasteboardColor: isStage && cameraView
                 ? Color(widget.pasteboardArgb)
                 : null,
+            // F-114: absent planes show the checkerboard here as on the
+            // editing canvas — on screen only.
+            pasteboardNone: widget.pasteboardNone,
+            checkersAbsentPlanes: true,
             fadeOpacity: isStage ? weight : 1,
             imageOpacity: isStage ? 1 : weight,
           ),

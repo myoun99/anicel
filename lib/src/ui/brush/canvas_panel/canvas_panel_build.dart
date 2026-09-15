@@ -400,6 +400,11 @@ class _PanelBuild {
                 child: _StagePlanes(
                   backdropArgb: _state._stageBackdropArgb,
                   pasteboardArgb: _state._stagePasteboardArgb,
+                  // F-114: an absent plane shows the checkerboard where
+                  // it would be.
+                  backdropNone: _state._stageBackdropNone,
+                  pasteboardNone: _state._stagePasteboardNone,
+                  paperNone: _state.widget.paperNone,
                   canvasSize: _state.widget.canvasSize,
                   viewport: _state._viewportState._viewport,
                   // R27 #17: a passive census of where the pointer

@@ -69,11 +69,17 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.unframedFit,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.paperNone = false,
     this.onPaperColorChanged,
+    this.onPaperNone,
     this.pasteboardColor,
+    this.pasteboardNone,
     this.onPasteboardColorChanged,
+    this.onPasteboardNone,
     this.backdropArgb,
+    this.backdropNone,
     this.onBackdropColorChanged,
+    this.onBackdropNone,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -210,15 +216,23 @@ class MainCanvasBrushHost extends StatefulWidget {
   final int paperColor;
   final ValueChanged<int>? onPaperColorChanged;
 
+  /// F-114 pass-through: the paper's absence and its 「없음」.
+  final bool paperNone;
+  final VoidCallback? onPaperNone;
+
   /// null = from [CanvasStageColors], the shell's one answer for every
   /// canvas panel (유저, R4 #2). Same contract as on [BrushCanvasPanel];
-  /// this host only carries it through.
+  /// this host only carries it through — the absence too.
   final int? pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
+  final bool? pasteboardNone;
+  final VoidCallback? onPasteboardNone;
 
   /// The BACKDROP behind the pasteboard (R3b). null = from the scope.
   final int? backdropArgb;
   final ValueChanged<int>? onBackdropColorChanged;
+  final bool? backdropNone;
+  final VoidCallback? onBackdropNone;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -509,11 +523,17 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       unframedFit: widget.unframedFit,
       sampleColorAt: widget.sampleColorAt,
       paperColor: widget.paperColor,
+      paperNone: widget.paperNone,
       onPaperColorChanged: widget.onPaperColorChanged,
+      onPaperNone: widget.onPaperNone,
       pasteboardColor: widget.pasteboardColor,
+      pasteboardNone: widget.pasteboardNone,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
+      onPasteboardNone: widget.onPasteboardNone,
       backdropArgb: widget.backdropArgb,
+      backdropNone: widget.backdropNone,
       onBackdropColorChanged: widget.onBackdropColorChanged,
+      onBackdropNone: widget.onBackdropNone,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

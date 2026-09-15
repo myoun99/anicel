@@ -24,8 +24,8 @@ void paintProjectPaper(
   ProjectBackground background, {
   required bool antiAlias,
 }) {
-  final color = Color(background.argb);
-  if (background.none || color.a <= 0) {
+  final color = Color(background.paintedArgb);
+  if (color.a <= 0) {
     return;
   }
   canvas.drawRect(

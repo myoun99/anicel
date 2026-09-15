@@ -48,6 +48,7 @@ class CanvasPlaybackView extends StatefulWidget {
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
+    this.pasteboardNone = false,
     this.transformTrackOf,
     this.trackEffectsOf,
     this.trackGlobalFrameOf,
@@ -88,6 +89,9 @@ class CanvasPlaybackView extends StatefulWidget {
   /// The project pasteboard (R3b): the stage apron the camera view shows
   /// past the paper's edge, fading with the cut unit.
   final int pasteboardArgb;
+
+  /// Whether the pasteboard is ABSENT (F-114) — the checkerboard on screen.
+  final bool pasteboardNone;
 
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
@@ -305,6 +309,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               pasteboardColor: widget.cameraViewEnabled && !inGap
                   ? Color(widget.pasteboardArgb)
                   : null,
+              // F-114: an absent pasteboard or paper shows the checkerboard
+              // here as on the editing canvas — on screen only.
+              pasteboardNone: widget.pasteboardNone,
+              checkersAbsentPlanes: true,
               // R9 #21: the track's STATIC opacity, which is not an fx and so
               // survives the bypass. The ANIMATED fade it used to carry is
               // F.I/F.O spans on the transition row now — single-cut playback

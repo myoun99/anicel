@@ -22,6 +22,10 @@ class _CanvasPanelShellBars {
         _state.widget.pasteboardColor ??
         scope?.pasteboardArgb ??
         AppWorkspaceColors.defaultPasteboardArgb;
+    _state._stageBackdropNone =
+        _state.widget.backdropNone ?? scope?.backdropNone ?? false;
+    _state._stagePasteboardNone =
+        _state.widget.pasteboardNone ?? scope?.pasteboardNone ?? false;
   }
 
   /// R13-3 shell memo: the panbars/zoom-rotate bar are a Material button
@@ -46,6 +50,9 @@ class _CanvasPanelShellBars {
     int paper,
     int pasteboard,
     int backdrop,
+    bool paperNone,
+    bool pasteboardNone,
+    bool backdropNone,
     Object? host,
   })?
   _pillToken;
@@ -118,6 +125,11 @@ class _CanvasPanelShellBars {
       paper: _state.widget.paperColor,
       pasteboard: _state._stagePasteboardArgb,
       backdrop: _state._stageBackdropArgb,
+      // F-114: an absence is part of what the swatches capture — the same
+      // stale-swatch lesson as the colours above.
+      paperNone: _state.widget.paperNone,
+      pasteboardNone: _state._stagePasteboardNone,
+      backdropNone: _state._stageBackdropNone,
       host: _state.widget.bottomBarHostToken,
       // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
       // it cannot come back by accident (R2 #12 took the readout off every
@@ -170,11 +182,17 @@ class _CanvasPanelShellBars {
       liveViewport: _state._viewportState.viewportNotifier,
       canvasSize: _state.widget.canvasSize,
       paperColor: _state.widget.paperColor,
+      paperNone: _state.widget.paperNone,
       onPaperColorChanged: _state.widget.onPaperColorChanged,
+      onPaperNone: _state.widget.onPaperNone,
       pasteboardColor: _state._stagePasteboardArgb,
+      pasteboardNone: _state._stagePasteboardNone,
       onPasteboardColorChanged: _state.widget.onPasteboardColorChanged,
+      onPasteboardNone: _state.widget.onPasteboardNone,
       backdropColor: _state._stageBackdropArgb,
+      backdropNone: _state._stageBackdropNone,
       onBackdropColorChanged: _state.widget.onBackdropColorChanged,
+      onBackdropNone: _state.widget.onBackdropNone,
       // Read when a picker opens, so the memoized bar does not have to be
       // rebuilt every time the brush colour moves.
       currentColorOf: () => _state.widget.brushToolState.color,

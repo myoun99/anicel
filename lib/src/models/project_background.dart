@@ -28,6 +28,13 @@ class ProjectBackground {
   /// it would be, and nothing painted for it anywhere.
   final bool none;
 
+  /// What the paper actually puts into a picture: its colour, or nothing at
+  /// all while it is absent. ONE answer for everything that reads the paper
+  /// as pixels — the painter, the eyedropper's paper fallback, the fill's
+  /// paper — so an absent paper cannot be skipped by one of them and sampled
+  /// as white by another. [argb] stays the kept colour a swatch shows.
+  int get paintedArgb => none ? 0x00000000 : argb;
+
   /// The default paper — R28 #9: PURE white.
   ///
   /// It used to be 0xFFEDEDED, the "near white" the user spotted ("캔버스

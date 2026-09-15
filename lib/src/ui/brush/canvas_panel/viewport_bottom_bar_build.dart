@@ -94,6 +94,11 @@ class _BottomBarBuild {
           tooltip: AppText.strings.viewCanvasColor,
           color: _bar.paperColor,
           onChanged: onPaper,
+          // F-114: each of the three planes can be absent, and its alpha is
+          // real.
+          none: _bar.paperNone,
+          onNone: _bar.onPaperNone,
+          keepsAlpha: true,
         ),
       if (onPasteboard != null) ...[
         const SizedBox(width: 4),
@@ -103,6 +108,9 @@ class _BottomBarBuild {
           tooltip: AppText.strings.viewPasteboardColor,
           color: _bar.pasteboardColor,
           onChanged: onPasteboard,
+          none: _bar.pasteboardNone,
+          onNone: _bar.onPasteboardNone,
+          keepsAlpha: true,
         ),
       ],
       // 제일오른쪽에 배경색 (유저, R3 #4) — outermost swatch for the

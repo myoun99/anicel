@@ -123,6 +123,94 @@ void main() {
     );
   });
 
+  testWidgets('🚨F-114: an ABSENT backdrop or pasteboard is the checkerboard '
+      'exactly where that plane would be', (tester) async {
+    // 유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
+    // 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」. The same stage
+    // as the test above: the corner is backdrop, (438, 288) is apron.
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    const backdrop = 0xFF102030;
+    const pasteboard = 0xFF00A0FF;
+
+    Future<int Function(int x, int y)> capture({
+      required bool backdropNone,
+      required bool pasteboardNone,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RepaintBoundary(
+              key: const ValueKey<String>('stage-capture'),
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: BrushCanvasFixture.canvasSize,
+                floorCover: EdgeInsets.zero,
+                backdropArgb: backdrop,
+                backdropNone: backdropNone,
+                pasteboardColor: pasteboard,
+                pasteboardNone: pasteboardNone,
+                viewport: seedFromRender(
+                  tester,
+                  CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey<String>('stage-capture')),
+      );
+      final image = boundary.toImageSync();
+      late Uint8List bytes;
+      await tester.runAsync(() async {
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        bytes = data!.buffer.asUint8List();
+      });
+      image.dispose();
+      return (int x, int y) {
+        final i = (y * 900 + x) * 4;
+        return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      };
+    }
+
+    bool checker(int rgb) => rgb == 0xFFFFFF || rgb == 0xCCCCCC;
+
+    final noBackdrop = await capture(backdropNone: true, pasteboardNone: false);
+    expect(
+      checker(noBackdrop(2, 2)),
+      isTrue,
+      reason: 'beyond the pasteboard, the absent backdrop is the checkerboard',
+    );
+    expect(
+      noBackdrop(438, 288),
+      pasteboard & 0xFFFFFF,
+      reason: 'a pasteboard that is there still covers its own place',
+    );
+
+    final noPasteboard = await capture(
+      backdropNone: false,
+      pasteboardNone: true,
+    );
+    expect(
+      checker(noPasteboard(438, 288)),
+      isTrue,
+      reason: 'the apron of an absent pasteboard is the checkerboard',
+    );
+    expect(
+      noPasteboard(2, 2),
+      backdrop & 0xFFFFFF,
+      reason: 'and the backdrop that is there lies beyond it, as before',
+    );
+  });
+
   testWidgets('유저 R4 #2: a canvas panel given NO stage colours takes the '
       'shell\'s, so every canvas-based panel sits in the same room', (
     tester,
@@ -330,7 +418,8 @@ void main() {
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
             floorCover: EdgeInsets.zero,
-            paperColor: 0xFFFFFFFF,
+            // A THINNED paper: the pick below has to keep its alpha.
+            paperColor: 0x80FFFFFF,
             onPaperColorChanged: commits.add,
           ),
         ),
@@ -348,7 +437,7 @@ void main() {
       reason: 'the shared picker opened in the shared sub-window',
     );
 
-    // Drag on the wheel: any pick commits opaquely.
+    // Drag on the wheel: a pick keeps the paper's own alpha.
     //
     // ⚠️Aimed at the RING, not at the box's edge. The wheel takes its
     // radius from `size.shortestSide`, so the moment the popup grew wider
@@ -366,8 +455,11 @@ void main() {
     for (final color in commits) {
       expect(
         (color >> 24) & 0xFF,
-        0xFF,
-        reason: 'surfaces are opaque — never a stencil',
+        0x80,
+        reason: 'this read 「surfaces are opaque — never a stencil」 until '
+            'F-114 (유저 2026-09-15: 「불투명도는 … 진짜 불투명도를 '
+            '낮추는행위」): the canvas planes keep the alpha their window '
+            'says, and a colour pick does not reset it',
       );
     }
 

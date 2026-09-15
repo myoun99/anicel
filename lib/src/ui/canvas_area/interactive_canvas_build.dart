@@ -360,7 +360,7 @@ class _InteractiveCanvasBuild {
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.brushSurfaceForLayerFrame,
         point: point,
-        paperColor: session.projectSettings.projectBackground.argb,
+        paperColor: session.projectSettings.projectBackground.paintedArgb,
         source:
             _state.widget.eyedropperSource?.value ??
             CanvasColorSampleSource.display,
@@ -378,10 +378,21 @@ class _InteractiveCanvasBuild {
       // handlers stay — this is still where the pill's swatches are
       // wired, and writing is not the same question as reading.
       paperColor: session.projectSettings.projectBackground.argb,
+      // F-114: a pick is a plane that is there; 「없음」 takes it away and
+      // keeps its colour for the next pick.
+      paperNone: session.projectSettings.projectBackground.none,
       onPaperColorChanged: (argb) =>
           session.projectSettings.setProjectBackground(ProjectBackground.color(argb)),
+      onPaperNone: () => session.projectSettings.setProjectBackground(
+        ProjectBackground.color(
+          session.projectSettings.projectBackground.argb,
+          none: true,
+        ),
+      ),
       onPasteboardColorChanged: session.projectSettings.setPasteboardColor,
+      onPasteboardNone: session.projectSettings.setPasteboardNone,
       onBackdropColorChanged: session.projectSettings.setProjectBackdrop,
+      onBackdropNone: session.projectSettings.setProjectBackdropNone,
       onEyedropperPick: (color) => _state.widget.onBrushToolStateChanged?.call(
         _state.widget.brushToolState.value.copyWith(color: color),
       ),
@@ -416,7 +427,7 @@ class _InteractiveCanvasBuild {
         // writes the fill's field, not the brush's.
         opacity: toolState.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
-        paperColor: session.projectSettings.projectBackground.argb,
+        paperColor: session.projectSettings.projectBackground.paintedArgb,
         // The same guide the brush obeys, handed down by the view
         // that read it — a symmetry that replicates strokes
         // replicates fills.

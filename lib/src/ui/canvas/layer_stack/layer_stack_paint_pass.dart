@@ -126,7 +126,7 @@ class _LayerStackPaintPass {
       // buffer counters line in `paint_geometry_probe_test`.
       final probe =
           'stack paint paper=${_painter.paintPaper}'
-          ' alpha=${Color(_painter.paperBackground.argb).a.toStringAsFixed(2)}'
+          ' alpha=${Color(_painter.paperBackground.paintedArgb).a.toStringAsFixed(2)}'
           ' nodes=${_painter.nodes.length}'
           ' rect=${_canvasRect.width.round()}x${_canvasRect.height.round()}';
       if (probe != _LayerStackPainter._lastStackProbe) {

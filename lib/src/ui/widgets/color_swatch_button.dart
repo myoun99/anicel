@@ -8,6 +8,7 @@ import '../color/color_wheel_panel.dart' show ColorWheel;
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'anchored_popup.dart';
+import 'field_slider.dart';
 import '../repaint_props.dart';
 
 /// The ONE color-picking control (R28 #9): a round swatch that opens the
@@ -27,6 +28,8 @@ class ColorSwatchButton extends StatelessWidget {
     required this.onChanged,
     this.currentColorOf,
     this.onNone,
+    this.none = false,
+    this.keepsAlpha = false,
     this.tooltip,
   });
 
@@ -60,6 +63,19 @@ class ColorSwatchButton extends StatelessWidget {
   /// 가능한 자리에서만 눌리고, 아닌 데서는 회색으로 죽어 있음」.
   final VoidCallback? onNone;
 
+  /// 🚨F-114 (유저 2026-09-15): the plane this colour paints is ABSENT —
+  /// 「없음버튼 누르면 없는상태」. The face shows the slash while [color] stays
+  /// the kept colour a pick or the opacity bar starts from. A host whose
+  /// absence IS a null colour (the アフレコ box) leaves this false.
+  final bool none;
+
+  /// Whether the host keeps ALPHA — the canvas's paper, pasteboard and
+  /// backdrop (F-114: 「불투명도는 체크무늬는 안되고 진짜 불투명도를
+  /// 낮추는행위」). The window's opacity bar is live for it and a pick keeps
+  /// the bar's alpha; everywhere else the bar's seat stays dead and a pick is
+  /// opaque.
+  final bool keepsAlpha;
+
   final String? tooltip;
   static const double _diameter = 18;
 
@@ -81,7 +97,9 @@ class ColorSwatchButton extends StatelessWidget {
             child: SizedBox(
               width: _diameter,
               height: _diameter,
-              child: CustomPaint(painter: _SwatchPainter(color: color)),
+              child: CustomPaint(
+                painter: _SwatchPainter(color: none ? null : color),
+              ),
             ),
           ),
         ),
@@ -100,6 +118,8 @@ class ColorSwatchButton extends StatelessWidget {
     onChanged: onChanged,
     currentColorOf: currentColorOf,
     onNone: onNone,
+    none: none,
+    keepsAlpha: keepsAlpha,
   );
 }
 
@@ -150,6 +170,8 @@ Future<void> showColorPickerPopup(
   required ValueChanged<int> onChanged,
   int Function()? currentColorOf,
   VoidCallback? onNone,
+  bool none = false,
+  bool keepsAlpha = false,
 }) {
   return showAnchoredPopup<void>(
     anchorContext,
@@ -168,6 +190,8 @@ Future<void> showColorPickerPopup(
       onChanged: onChanged,
       currentColorOf: currentColorOf,
       onNone: onNone,
+      none: none,
+      keepsAlpha: keepsAlpha,
     ),
   );
 }
@@ -182,12 +206,16 @@ class _ColorPickerBody extends StatefulWidget {
     required this.onChanged,
     required this.currentColorOf,
     required this.onNone,
+    required this.none,
+    required this.keepsAlpha,
   });
 
   final int? initialColor;
   final ValueChanged<int> onChanged;
   final int Function()? currentColorOf;
   final VoidCallback? onNone;
+  final bool none;
+  final bool keepsAlpha;
 
   @override
   State<_ColorPickerBody> createState() => _ColorPickerBodyState();
@@ -201,10 +229,40 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
     Color(widget.initialColor ?? 0xFF808080),
   );
 
+  /// The alpha every colour this window emits carries: the kept colour's
+  /// own where the host keeps alpha, opaque everywhere else.
+  late int _alpha = widget.keepsAlpha
+      ? (widget.initialColor ?? 0xFFFFFFFF) >>> 24
+      : 0xFF;
+
+  /// Whether the window still reads the plane as absent. The host's none
+  /// goes the moment this window emits a colour, but the window was built
+  /// with the value it opened on, so it keeps its own.
+  late bool _none = widget.none;
+
   void _apply(HSVColor next) {
-    setState(() => _hsv = next);
-    // Opaque: these are surfaces (paper, pasteboard), never stencils.
-    widget.onChanged(next.toColor().withAlpha(0xFF).toARGB32());
+    setState(() {
+      _hsv = next;
+      _none = false;
+    });
+    _emit();
+  }
+
+  void _setOpacity(double opacity) {
+    setState(() {
+      _alpha = (opacity * 255).round();
+      _none = false;
+    });
+    _emit();
+  }
+
+  void _emit() {
+    // Opaque unless the host keeps alpha. This read 「Opaque: these are
+    // surfaces (paper, pasteboard), never stencils」 until F-114 (유저
+    // 2026-09-15) put a REAL opacity on those very surfaces: the canvas's
+    // three planes keep the bar's alpha, and every other host is still a
+    // surface that must not turn into a stencil.
+    widget.onChanged(_hsv.toColor().withAlpha(_alpha).toARGB32());
   }
 
   @override
@@ -296,20 +354,38 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
   /// 신설해서 **캔버스알약쪽이랑 멤버쪽에 존재하도록**」, and 없다가 생기는
   /// UI 금지). The window is one window; a row that appears only on member
   /// lanes would make it two.
+  ///
+  /// 🚨F-114 (유저 2026-09-15) puts the OPACITY bar in this row: 「버튼 있는
+  /// 열에서, 왼쪽정렬로 불투명도 슬라이더가 존재하고, 오른쪽에 공간 남겨놔서
+  /// 거기다가 없음버튼. 없음버튼누르면 불투명도쪽 비활성화시킴. 불투명도쪽
+  /// 조절은 가능해서 조절하면 활성화색되면서 조절」. So 「없음」 no longer
+  /// closes the window: it dims the bar in place, the bar stays draggable, and
+  /// a drag lights it and brings the plane back. The bar's seat is dead where
+  /// the host keeps no alpha, the way the button's is where none is no value.
   Widget _noneRow() {
     final onNone = widget.onNone;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: _action(
-        keyValue: 'color-picker-none',
-        label: AppText.strings.colorNone,
-        onPressed: onNone == null
-            ? null
-            : () {
-                onNone();
-                unawaited(Navigator.of(context).maybePop());
-              },
-      ),
+    return Row(
+      children: [
+        Expanded(
+          child: FieldSlider.opacity(
+            key: const ValueKey<String>('color-picker-opacity'),
+            value: _alpha / 255,
+            onChanged: widget.keepsAlpha ? _setOpacity : null,
+            restingAccent: _none ? AppColors.textDim : null,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _action(
+          keyValue: 'color-picker-none',
+          label: AppText.strings.colorNone,
+          onPressed: onNone == null
+              ? null
+              : () {
+                  onNone();
+                  setState(() => _none = true);
+                },
+        ),
+      ],
     );
   }
 

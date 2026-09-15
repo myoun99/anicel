@@ -1746,6 +1746,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
             backdropArgb: project?.backdropArgb ?? defaultProjectBackdropArgb,
             pasteboardArgb:
                 project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
+            backdropNone: project?.backdropNone ?? false,
+            pasteboardNone: project?.pasteboardNone ?? false,
             child: child!,
           );
         },

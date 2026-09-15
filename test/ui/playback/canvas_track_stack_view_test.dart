@@ -100,6 +100,8 @@ void main() {
     double Function(CutId cutId)? trackStaticOpacityOf,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     bool cameraViewEnabled = true,
+    bool backdropNone = false,
+    bool pasteboardNone = false,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -121,6 +123,8 @@ void main() {
             cutPictureVisibleOf: cutPictureVisibleOf,
             trackStaticOpacityOf: trackStaticOpacityOf,
             pasteboardArgb: 0xff123456,
+            backdropNone: backdropNone,
+            pasteboardNone: pasteboardNone,
           ),
         ),
       ),
@@ -135,7 +139,9 @@ void main() {
           matching: find.byType(CustomPaint),
         ),
       ))
-        paint.painter! as PlaybackFramePainter,
+        // An absent backdrop's checkerboard floor rides the same stack
+        // (F-114); only the frames are asked about here.
+        if (paint.painter case final PlaybackFramePainter painter) painter,
     ];
   }
 
@@ -499,6 +505,49 @@ void main() {
     expect(painters[0].cameraPose, isNotNull);
     expect(painters[0].paintLetterbox, isTrue);
     expect(painters[0].pasteboardColor, isNotNull);
+
+    f.composites.dispose();
+  });
+
+  testWidgets('🚨F-114: an ABSENT backdrop is the checkerboard floor, and an '
+      'absent pasteboard rides the painter as a checkerboard on screen', (
+    tester,
+  ) async {
+    // 유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
+    // 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」 — the law the
+    // editing canvas keeps, so a scrub into playback does not trade the
+    // checkerboard for a colour.
+    final f = fixture();
+    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
+    f.frame.value = 3;
+    Widget floor() => tester.widget(
+      find.byKey(const ValueKey<String>('canvas-track-stack-floor')),
+    );
+
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+    );
+    expect(floor(), isA<ColoredBox>(), reason: 'control: a backdrop that is there');
+
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+      backdropNone: true,
+      pasteboardNone: true,
+    );
+    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
+    final bottom = paintersOf(tester).first;
+    expect(bottom.pasteboardNone, isTrue);
+    expect(
+      bottom.checkersAbsentPlanes,
+      isTrue,
+      reason: 'on screen the absent apron checkers — the export never sets it',
+    );
 
     f.composites.dispose();
   });

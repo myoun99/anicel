@@ -57,7 +57,7 @@ import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter, alphaPreviewEnabled;
+    show AlphaCheckerboardPainter, alphaPreviewEnabled, paintAlphaCheckerboard;
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -171,11 +171,17 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentStrokeActive,
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
+    this.paperNone = false,
     this.onPaperColorChanged,
+    this.onPaperNone,
     this.pasteboardColor,
+    this.pasteboardNone,
     this.onPasteboardColorChanged,
+    this.onPasteboardNone,
     this.backdropArgb,
+    this.backdropNone,
     this.onBackdropColorChanged,
+    this.onBackdropNone,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -545,6 +551,12 @@ class BrushCanvasPanel extends StatefulWidget {
   final int paperColor;
   final ValueChanged<int>? onPaperColorChanged;
 
+  /// Whether the paper is ABSENT (F-114) — [paperColor] stays the kept
+  /// colour for the next pick — and what 「없음」 does in its window. A null
+  /// handler leaves the window's none button dead for the paper.
+  final bool paperNone;
+  final VoidCallback? onPaperNone;
+
   /// null = take it from [CanvasStageColors], which is what every panel
   /// inside the workspace does (유저, R4 #2). Pass a value only to mount
   /// this panel outside the shell — the dev fixtures and most tests.
@@ -554,10 +566,15 @@ class BrushCanvasPanel extends StatefulWidget {
   final int? pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
 
-  /// The BACKDROP behind the pasteboard (R3b): the stage's opaque floor,
-  /// or the alpha checkerboard while the preview toggle is on. It is what
-  /// lies BEYOND the pasteboard now, not merely under it. null = from the
-  /// scope.
+  /// The pasteboard's absence (F-114) and its 「없음」. null = from the
+  /// scope, like [pasteboardColor].
+  final bool? pasteboardNone;
+  final VoidCallback? onPasteboardNone;
+
+  /// The BACKDROP behind the pasteboard (R3b): the stage's floor — thinnable
+  /// since F-114 — or the alpha checkerboard while the preview toggle is on.
+  /// It is what lies BEYOND the pasteboard now, not merely under it. null =
+  /// from the scope.
   final int? backdropArgb;
 
   /// 캔버스 색 바꾸는곳 제일오른쪽에 배경색 바꾸는 버튼도 (유저, R3 #4). The
@@ -565,6 +582,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// left the third plane of the same stage reachable only from a dialog.
   /// Null hides the swatch, like the other two.
   final ValueChanged<int>? onBackdropColorChanged;
+
+  /// The backdrop's absence (F-114) and its 「없음」. null = from the scope.
+  final bool? backdropNone;
+  final VoidCallback? onBackdropNone;
 
   /// An eyedropper pick — the tool's tap and drag, and a held mapped
   /// button's live pick alike. ONE pick (I-15): the Alt-only pick that stood
@@ -744,6 +765,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// hook, not an arbitrary call site.
   late int _stageBackdropArgb;
   late int _stagePasteboardArgb;
+  late bool _stageBackdropNone;
+  late bool _stagePasteboardNone;
 
   /// Whether this panel is the one LYING ON THE FLOOR — which decides
   /// whether its pill lays its whole vocabulary out or keeps it folded
@@ -1186,7 +1209,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
     if (oldWidget.backdropArgb != widget.backdropArgb ||
-        oldWidget.pasteboardColor != widget.pasteboardColor) {
+        oldWidget.pasteboardColor != widget.pasteboardColor ||
+        oldWidget.backdropNone != widget.backdropNone ||
+        oldWidget.pasteboardNone != widget.pasteboardNone) {
       _shellBars.readStageColors();
     }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
@@ -2441,12 +2466,18 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.viewport,
     required this.canvasSize,
     required this.paperColor,
+    required this.paperNone,
     required this.onPaperColorChanged,
+    required this.onPaperNone,
     required this.pasteboardColor,
+    required this.pasteboardNone,
     required this.onPasteboardColorChanged,
+    required this.onPasteboardNone,
     required this.backdropColor,
+    required this.backdropNone,
     required this.currentColorOf,
     required this.onBackdropColorChanged,
+    required this.onBackdropNone,
     required this.onViewportChanged,
     required this.onViewportChangeEnd,
     required this.liveViewport,
@@ -2494,6 +2525,15 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// The third plane of the same stage (유저, R3 #4).
   final int backdropColor;
   final ValueChanged<int>? onBackdropColorChanged;
+
+  /// Each plane's absence and its 「없음」 (F-114): the swatch slashes and
+  /// the window dims its opacity bar while a plane is none.
+  final bool paperNone;
+  final VoidCallback? onPaperNone;
+  final bool pasteboardNone;
+  final VoidCallback? onPasteboardNone;
+  final bool backdropNone;
+  final VoidCallback? onBackdropNone;
 
   /// The tool's own colour, handed to every picker this bar opens for
   /// its 현재 색 반영 button (see [ColorSwatchButton.currentColorOf]).
@@ -2696,6 +2736,9 @@ class _StagePlanes extends StatelessWidget {
   const _StagePlanes({
     required this.backdropArgb,
     required this.pasteboardArgb,
+    required this.backdropNone,
+    required this.pasteboardNone,
+    required this.paperNone,
     required this.canvasSize,
     required this.viewport,
     required this.child,
@@ -2703,6 +2746,12 @@ class _StagePlanes extends StatelessWidget {
 
   final int backdropArgb;
   final int pasteboardArgb;
+
+  /// Which planes are ABSENT (F-114) — each shows the checkerboard where it
+  /// would be.
+  final bool backdropNone;
+  final bool pasteboardNone;
+  final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
   final Widget child;
@@ -2717,6 +2766,9 @@ class _StagePlanes extends StatelessWidget {
               painter: _StagePlanesPainter(
                 backdrop: Color(backdropArgb),
                 pasteboard: Color(pasteboardArgb),
+                backdropNone: backdropNone,
+                pasteboardNone: pasteboardNone,
+                paperNone: paperNone,
                 canvasSize: canvasSize,
                 viewport: viewport,
               ),
@@ -2729,16 +2781,29 @@ class _StagePlanes extends StatelessWidget {
 /// Fills with the backdrop, then lays the pasteboard over the region it
 /// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation
 /// and both flips like everything else on the stage.
+///
+/// 🚨F-114 (유저 2026-09-15: 「없음버튼 누르면 없는상태. 즉 해당 용지부분이
+/// 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」): an ABSENT plane is
+/// the checkerboard over exactly the region that plane would fill — one rule
+/// for the three ([_paintPlane]). A paper that is there stays the layer
+/// stack's to paint, alpha and all; an absent one paints nothing in the stack,
+/// so its checkerboard is laid here, under the artwork.
 class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   const _StagePlanesPainter({
     required this.backdrop,
     required this.pasteboard,
+    required this.backdropNone,
+    required this.pasteboardNone,
+    required this.paperNone,
     required this.canvasSize,
     required this.viewport,
   });
 
   final Color backdrop;
   final Color pasteboard;
+  final bool backdropNone;
+  final bool pasteboardNone;
+  final bool paperNone;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
 
@@ -2780,36 +2845,93 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
     // the exception.
     canvas.save();
     canvas.clipRect(box);
-    canvas.drawRect(box, Paint()..color = backdrop);
-    if (pasteboard.a <= 0) {
+    _paintPlane(canvas, box, null, backdrop, none: backdropNone);
+    _paintPlane(
+      canvas,
+      box,
+      _quad(canvasSize.pasteboardRect),
+      pasteboard,
+      none: pasteboardNone,
+    );
+    if (paperNone) {
+      _paintPlane(
+        canvas,
+        box,
+        _quad(
+          Rect.fromLTWH(
+            0,
+            0,
+            canvasSize.width.toDouble(),
+            canvasSize.height.toDouble(),
+          ),
+        ),
+        const Color(0x00000000),
+        none: true,
+      );
+    }
+    canvas.restore();
+  }
+
+  /// One plane over [region] — the whole [box] when null: the checkerboard
+  /// when the plane is absent, otherwise its colour wherever that has any
+  /// alpha.
+  ///
+  /// ⚠️The box as a RECT, not a path: the backdrop is the box itself, and
+  /// the clip test asks the first recorded path whether it escapes the box
+  /// — the pasteboard's quad does, a box-shaped path cannot.
+  static void _paintPlane(
+    Canvas canvas,
+    Rect box,
+    Path? region,
+    Color color, {
+    required bool none,
+  }) {
+    if (none) {
+      canvas.save();
+      if (region != null) {
+        canvas.clipPath(region);
+      }
+      paintAlphaCheckerboard(canvas, box);
       canvas.restore();
       return;
     }
-    final wall = canvasSize.pasteboardRect;
-    final left = wall.left;
-    final top = wall.top;
-    final right = wall.right;
-    final bottom = wall.bottom;
-    // The four corners through the view transform, as a PATH: under
-    // rotation the pasteboard is a quad, and a Rect would silently square
-    // it back up.
+    if (color.a <= 0) {
+      return;
+    }
+    final paint = Paint()..color = color;
+    if (region == null) {
+      canvas.drawRect(box, paint);
+    } else {
+      canvas.drawPath(region, paint);
+    }
+  }
+
+  /// [rect]'s four corners through the view transform, as a PATH: under
+  /// rotation a plane is a quad, and a Rect would silently square it back up.
+  Path _quad(Rect rect) {
     Offset at(double x, double y) {
       final point = viewport.canvasToViewport(CanvasPoint(x: x, y: y));
       return Offset(point.x, point.y);
     }
 
-    final path = Path()
-      ..moveTo(at(left, top).dx, at(left, top).dy)
-      ..lineTo(at(right, top).dx, at(right, top).dy)
-      ..lineTo(at(right, bottom).dx, at(right, bottom).dy)
-      ..lineTo(at(left, bottom).dx, at(left, bottom).dy)
+    return Path()
+      ..moveTo(at(rect.left, rect.top).dx, at(rect.left, rect.top).dy)
+      ..lineTo(at(rect.right, rect.top).dx, at(rect.right, rect.top).dy)
+      ..lineTo(at(rect.right, rect.bottom).dx, at(rect.right, rect.bottom).dy)
+      ..lineTo(at(rect.left, rect.bottom).dx, at(rect.left, rect.bottom).dy)
       ..close();
-    canvas.drawPath(path, Paint()..color = pasteboard);
-    canvas.restore();
   }
 
   @override
-  Object get props => (backdrop, pasteboard, canvasSize, viewport);
+  Object get props => (
+    backdrop,
+    pasteboard,
+    backdropNone,
+    pasteboardNone,
+    paperNone,
+    canvasSize,
+    viewport,
+  );
 }
 
 /// Which of the pill's foldable groups are OUT at a given width — the fold
