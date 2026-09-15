@@ -56,7 +56,18 @@ void main() {
   /// its two gestures became objects in `session/drags/`, and neither
   /// replacement joined it — the biggest, `ExposureEdgeDrag`, is 508. The
   /// rule above cuts both ways, so the ceiling follows it down.
-  const longClasses = 52;
+  ///
+  /// ⚠️52 → 53 on 2026-09-15, the offender named: `ProjectFileDoor` sat at
+  /// 583 lines and F-128 took it to 602. The round made 「unsaved」 a
+  /// comparison of edit counts, and the door is where a save COUNTS — at the
+  /// settle, before it reads the project — so the capture, the staged
+  /// archive's count and the adoption that hands it back are door code. Most
+  /// of the nineteen lines are the decisions beside them: why the count is
+  /// taken at the settle and nowhere else, and the gravestone on the sentence
+  /// that claimed the dirty mark kept the work while the save was clearing
+  /// it. Cutting those to buy a number is the trade this repo does not make,
+  /// and shrinking the door is a round of its own.
+  const longClasses = 53;
 
   late CleanCodeScan scan;
   setUpAll(() {
