@@ -62,51 +62,65 @@ CanvasViewport renderSnappedViewport(
 }
 
 /// The fraction of a device pixel the render translation is snapped TO at
-/// display scale [scale] (zoom × device pixel ratio), in sixteenths.
+/// display scale [scale] (zoom × device pixel ratio).
 ///
 /// Zero at 1:1 and below — whole pixels, the old law, byte for byte — and
 /// zero wherever whole pixels already keep every sample off the texel
-/// boundaries (every whole zoom). Otherwise the sixteenth that maximises
-/// the smallest distance from `((j + 0.5 - phase) / scale)` to an integer
-/// over 8192 device pixels either side of the origin: for a 1%-step zoom
-/// the denominator's power of two is at most 4, and one of the sixteenths
-/// always lands the residues on the half — the tie is then 1/(2q) of a
-/// texel away, 1/200 at worst, where the paths' rounding is ~1e-5.
+/// boundaries. For a scale s = p/q in lowest terms the device pixel centres
+/// sample the texel grid at residues that step through every multiple of
+/// 1/p, offset by `(0.5 − phase)·q/p`; the best any phase can do is put that
+/// offset on the half — 1/(2p) of a texel from every boundary. Whole pixels
+/// already do when q is odd (every whole zoom among them); when q is even,
+/// the smallest phase that does is 1/(2q). Ties keep the smaller phase, so
+/// a scale that whole pixels already serve keeps phase 0 and its bytes.
 ///
-/// Memoised on the scale: a pinch changes it every frame, and the search
-/// is 16 × 16384 subtractions.
+/// 🚨★★★F-83 (유저 2026-09-11: 「1의자리 배율에서 발생하는게
+/// 남아있는거같음」, reported at 146%). This was a SEARCH over sixteenths of
+/// a pixel, argued enough because a 1%-step zoom's denominator carries at
+/// most 2² — true at a device pixel ratio of 1 or 2 and nowhere else. A
+/// monitor at 125% (5/4) or 175% (7/4) multiplies another 2² in, and there
+/// no sixteenth put the residues on the half: every odd-percent zoom from
+/// 101% to 399% — 150 of them at each — kept a column exactly ON a texel
+/// boundary, and an app UI scale on top lost more (225 zooms at
+/// 125% × 110%; 146% itself breaks under any UI scale other than 100% on a
+/// 125–250% monitor — measured 2026-09-15). A finer fixed grid only moves
+/// the cliff, so the phase is read off the denominator itself, and a pinch
+/// that changes the scale every frame pays a few divisions instead of a
+/// sixteen-way search per frame (100,000 calls measured at 13ms).
 double samplingPhaseFor(double scale) {
   if (!(scale > 1) || !scale.isFinite) {
     return 0;
   }
-  final memo = _phaseMemo;
-  if (memo != null && memo.scale == scale) {
-    return memo.phase;
-  }
-  var best = 0.0;
-  var bestMargin = -1.0;
-  for (var sixteenth = 0; sixteenth < 16; sixteenth += 1) {
-    final phase = sixteenth / 16;
-    var margin = 0.5;
-    for (var j = -8192; j < 8192 && margin > bestMargin; j += 1) {
-      final u = (j + 0.5 - phase) / scale;
-      final d = (u - u.roundToDouble()).abs();
-      if (d < margin) {
-        margin = d;
-      }
-    }
-    // Strictly better only: ties keep the smaller phase, so a scale that
-    // whole pixels already serve keeps phase 0 and its exact bytes.
-    if (margin > bestMargin + 1e-9) {
-      bestMargin = margin;
-      best = phase;
-    }
-  }
-  _phaseMemo = (scale: scale, phase: best);
-  return best;
+  final q = _denominatorOf(scale);
+  return q.isOdd ? 0 : 1 / (2 * q);
 }
 
-({double scale, double phase})? _phaseMemo;
+/// The denominator of the fraction closest to [scale] that a view can tell
+/// apart from it: continued-fraction convergents, stopping at the first one
+/// exact to 1e-9, or before a denominator larger than the 16,384 device
+/// pixels the law is measured over.
+int _denominatorOf(double scale) {
+  var numerator = scale.floor();
+  var previousNumerator = 1;
+  var denominator = 1;
+  var previousDenominator = 0;
+  var rest = scale - numerator;
+  while (rest > 1e-12 && (scale - numerator / denominator).abs() > 1e-9) {
+    final x = 1 / rest;
+    final term = x.floor();
+    final nextDenominator = term * denominator + previousDenominator;
+    if (nextDenominator > 16384) {
+      break;
+    }
+    final nextNumerator = term * numerator + previousNumerator;
+    previousNumerator = numerator;
+    numerator = nextNumerator;
+    previousDenominator = denominator;
+    denominator = nextDenominator;
+    rest = x - term;
+  }
+  return denominator;
+}
 
 /// The ONE way painters take canvas-space geometry to the screen (P8):
 /// translate · scale · rotate · flip — the matrix

@@ -74,6 +74,42 @@ void main() {
     expect(margin(1.5, samplingPhaseFor(1.5)), closeTo(1 / 6, 1e-9));
   });
 
+  test('🚨F-83: the same holds under every display scale factor — Windows '
+      '125% and 175%, and an app UI scale on top of the monitor\'s', () {
+    // 유저 2026-09-11: 「1의자리 배율에서 발생하는게 남아있는거같음」. A
+    // monitor ratio multiplies the zoom's denominator: 125% is 5/4 and 175%
+    // is 7/4, so a 1%-step zoom there carries 2⁴ — and a search over
+    // sixteenths of a pixel found NO phase for any odd percent (150 zooms
+    // each, measured 2026-09-15), with more lost again under a UI scale.
+    int gcd(int a, int b) => b == 0 ? a : gcd(b, a % b);
+    // A monitor ratio × the app's own UI scale, in hundredths each.
+    for (final (monitor, ui) in <(int, int)>[
+      (125, 100),
+      (150, 100),
+      (175, 100),
+      (200, 100),
+      (250, 100),
+      (125, 110),
+      (175, 115),
+      (150, 90),
+    ]) {
+      for (var percent = 101; percent <= 400; percent += 1) {
+        final numerator = percent * monitor * ui;
+        const denominator = 1000000;
+        final p = numerator ~/ gcd(numerator, denominator);
+        final s = numerator / denominator;
+        final phase = samplingPhaseFor(s);
+        final least = margin(s, phase);
+        expect(
+          least,
+          greaterThanOrEqualTo(1 / (2 * p) - 1e-9),
+          reason: '$percent% at a $monitor% monitor and $ui% UI: phase '
+              '$phase leaves a sample $least from a texel boundary',
+        );
+      }
+    }
+  });
+
   test('1:1, every whole zoom and every reduction keep phase 0 — their '
       'bytes are what they always were', () {
     for (final s in <double>[0.25, 0.5, 0.8, 0.9, 1.0, 2.0, 3.0, 4.0, 8.0]) {
