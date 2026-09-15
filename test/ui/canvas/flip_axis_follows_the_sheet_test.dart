@@ -10,10 +10,13 @@ import 'package:anicel/src/models/app_input_settings.dart';
 /// 유저 2026-08-24: 「타임라인패널 x시트일 경우, 플립 그냥 반전시키자. 세로가
 /// 프레임이동 가로가 레이어이동 되도록. 그게 직관적임」.
 ///
-/// The gesture locks to the axis the fingers moved along and then has to say
-/// what that axis MEANS. Sideways-is-frames was written into the lock, which
-/// is right for the timeline and backwards for the X-sheet — where the frames
-/// run down the page and the rows run across it.
+/// ↩️This pinned the flip resolving the axis ITSELF — sideways fired
+/// row-walk ids on the X-sheet. The shell asks the same question again when
+/// those ids arrive, so on the X-sheet the answer flipped twice: 유저
+/// 2026-08-31 실기: 「터치는 위아래 터치 조작이 여전히 레이어이동, 심각한건
+/// 플립ui는 프레임이동의 ui 보여주고있음」. The gesture now fires the arrow
+/// keys' DIRECTION ids on every sheet, and what the sheet decides is the
+/// HUD's axis — the same question the shell's walk asks, answered once there.
 void main() {
   const flipFingers = 3;
 
@@ -25,7 +28,7 @@ void main() {
     );
   });
 
-  Future<List<String>> flipDrag(
+  Future<({List<String> actions, FlipHudAxis? axis})> flipDrag(
     WidgetTester tester, {
     required Offset travel,
     required bool framesRunVertically,
@@ -60,56 +63,78 @@ void main() {
       await gesture.moveBy(travel);
       await tester.pump();
     }
+    // The LIVE axis is dropped the moment the fingers lift.
+    final axis = hud.axis;
     for (final gesture in gestures) {
       await gesture.up();
     }
     await tester.pumpAndSettle();
-    return actions;
+    return (actions: actions, axis: axis);
   }
 
-  testWidgets('on the TIMELINE, sideways walks frames', (tester) async {
-    final actions = await flipDrag(
+  testWidgets('on the TIMELINE, sideways fires the sideways ids and the HUD '
+      'shows frames', (tester) async {
+    final flip = await flipDrag(
       tester,
       travel: const Offset(160, 0),
       framesRunVertically: false,
     );
     expect(
-      actions,
+      flip.actions,
       isNotEmpty,
       reason: 'fixture premise: the drag crossed at least one step',
     );
-    expect(actions.every((id) => id.startsWith('drawing-')), isTrue);
+    expect(flip.actions.every((id) => id.startsWith('drawing-')), isTrue);
+    expect(flip.axis, FlipHudAxis.frame);
   });
 
-  testWidgets('on the X-SHEET, sideways walks ROWS instead', (tester) async {
-    final actions = await flipDrag(
+  testWidgets('on the X-SHEET, sideways fires the SAME sideways ids — and the '
+      'HUD shows rows', (tester) async {
+    final flip = await flipDrag(
       tester,
       travel: const Offset(160, 0),
       framesRunVertically: true,
     );
-    expect(actions, isNotEmpty);
-    expect(actions.every((id) => id.startsWith('selection-nudge-')), isTrue);
+    expect(flip.actions, isNotEmpty);
+    expect(
+      flip.actions.every((id) => id.startsWith('drawing-')),
+      isTrue,
+      reason: 'a direction, not a meaning: the shell reads the sheet once',
+    );
+    expect(flip.axis, FlipHudAxis.row);
   });
 
-  testWidgets('and downward walks FRAMES there', (tester) async {
-    final actions = await flipDrag(
+  testWidgets('and downward fires the downward ids there, with the HUD on '
+      'frames', (tester) async {
+    final flip = await flipDrag(
       tester,
       travel: const Offset(0, 160),
       framesRunVertically: true,
     );
-    expect(actions, isNotEmpty);
-    expect(actions.every((id) => id.startsWith('drawing-')), isTrue);
+    expect(flip.actions, isNotEmpty);
+    expect(
+      flip.actions.every((id) => id.startsWith('selection-nudge-')),
+      isTrue,
+    );
+    expect(
+      flip.axis,
+      FlipHudAxis.frame,
+      reason: '유저: 「세로가 프레임이동」 — the picture and the walk agree',
+    );
   });
 
-  testWidgets('while on the timeline downward still walks rows', (
-    tester,
-  ) async {
-    final actions = await flipDrag(
+  testWidgets('while on the timeline downward fires the downward ids with the '
+      'HUD on rows', (tester) async {
+    final flip = await flipDrag(
       tester,
       travel: const Offset(0, 160),
       framesRunVertically: false,
     );
-    expect(actions, isNotEmpty);
-    expect(actions.every((id) => id.startsWith('selection-nudge-')), isTrue);
+    expect(flip.actions, isNotEmpty);
+    expect(
+      flip.actions.every((id) => id.startsWith('selection-nudge-')),
+      isTrue,
+    );
+    expect(flip.axis, FlipHudAxis.row);
   });
 }

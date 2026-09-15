@@ -84,7 +84,9 @@ void main() {
     await finger.moveBy(const Offset(96, 0));
     await tester.pump();
     expect(probes.actions, isNotEmpty);
-    expect(probes.actions.toSet(), {'frame-next'});
+    // ↩️F-28 (유저 2026-08-31): the flip fires the Ctrl+ARROW's direction id
+    // now, not the axis-blind frame step — the shell decides what → means.
+    expect(probes.actions.toSet(), {'frame-walk-right'});
 
     await modifier.up();
     await finger.up();

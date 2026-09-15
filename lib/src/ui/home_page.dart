@@ -564,8 +564,9 @@ class _HomePageState extends State<HomePage> {
         _session.frameVerbs.flipRow(forward: false);
       }
     } else {
-      // Across it: the row stack.
-      _timelineLayerNav.step(forward ? 1 : -1);
+      // Across it: the row stack, in the direction the sheet lays it out
+      // (F-28, 유저 2026-08-31: 「좌우가 방향이 반대임」).
+      _timelineLayerNav.step(_flipHud.rowStepAcross(forward: forward));
     }
     _session.revealSelection();
   }

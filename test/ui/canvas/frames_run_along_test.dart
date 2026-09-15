@@ -36,4 +36,26 @@ void main() {
     );
     expect(hud.framesRunAlong(horizontal: true), isFalse);
   });
+
+  test('a step ACROSS the frame axis walks the stack the way the sheet lays '
+      'it out', () {
+    final timeline = FlipHudController()..framesRunVertically = false;
+    final xsheet = FlipHudController()..framesRunVertically = true;
+    addTearDown(timeline.dispose);
+    addTearDown(xsheet.dispose);
+    expect(
+      timeline.rowStepAcross(forward: true),
+      1,
+      reason: '↓ is the next row down the timeline',
+    );
+    expect(timeline.rowStepAcross(forward: false), -1);
+    expect(
+      xsheet.rowStepAcross(forward: true),
+      -1,
+      reason:
+          '유저 2026-08-31: 「좌우가 방향이 반대임」 — the X-sheet lays the '
+          'stack out right to left, so → is a step back through it',
+    );
+    expect(xsheet.rowStepAcross(forward: false), 1);
+  });
 }

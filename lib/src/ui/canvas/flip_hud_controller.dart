@@ -101,6 +101,17 @@ class FlipHudController extends ChangeNotifier {
   bool framesRunAlong({required bool horizontal}) =>
       horizontal != framesRunVertically;
 
+  /// Which way one step ACROSS the frame axis walks the row stack: +1 is
+  /// the next row in the timeline's own display order.
+  ///
+  /// 🚨F-28 (유저 2026-08-31 실기: 「키보드는 위아래는 제대로 반전되있음.
+  /// 다만 좌우가 방향이 반대임」): the timeline stacks the rows down the
+  /// screen, and the X-sheet lays the same stack out as columns reading right
+  /// to left (`adjacentDisplayedRow`), so → there is a step BACK through the
+  /// stack. Asked here, beside the axis, for the reason [framesRunAlong] is.
+  int rowStepAcross({required bool forward}) =>
+      (forward ? 1 : -1) * (framesRunVertically ? -1 : 1);
+
   (int, int)? _lastPosition;
   DateTime? _lastLandedAt;
   Duration? _lastStepInterval;
