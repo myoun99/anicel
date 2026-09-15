@@ -70,7 +70,9 @@ void main() {
 
       truth = null;
       standIn = null;
-      await collectGarbage();
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+      );
 
       expect(
         BitmapTileImageCache.liveImageBytes,
@@ -91,7 +93,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      final held = tileAt(0, 0);
+      PlacedTile? held = tileAt(0, 0);
       BitmapTileImageCache.instance.adoptDecoded(
         held,
         await anImage(),
@@ -124,6 +126,16 @@ void main() {
       );
       // Read after the census, so the tile outlives it.
       expect(BitmapTileImageCache.instance.imageFor(held.tile), isNotNull);
+
+      // ⚠️And take this test's picture off the books before it ends. The
+      // counter is one static for the whole file, so a release still in the
+      // post when the next test reads its baseline lands in the MIDDLE of
+      // that test instead — whichever order the tests run in.
+      final withHeld = BitmapTileImageCache.liveImageBytes;
+      held = null;
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes <= withHeld - oneImage,
+      );
     });
   });
 
@@ -155,7 +167,9 @@ void main() {
       expect(BitmapTileImageCache.liveImageBytes - before, oneImage);
 
       placed = null;
-      await collectGarbage();
+      await collectGarbageUntil(
+        () => BitmapTileImageCache.liveImageBytes == before,
+      );
 
       expect(BitmapTileImageCache.liveImageBytes, before);
     });

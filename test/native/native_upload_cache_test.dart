@@ -112,7 +112,7 @@ void main() {
     final keptPointer = cache.upload(kept);
     expect(cache.residentBytes, 96, reason: 'fixture: both copies resident');
 
-    await collectGarbage();
+    await collectGarbageUntil(() => cache.residentBytes == 32);
 
     expect(gone.target, isNull, reason: 'the cache must not pin its source');
     expect(cache.residentBytes, 32, reason: 'the dead source took its copy');
