@@ -5,15 +5,17 @@
 ///
 /// Drawings AND media live INSIDE the file — user direction, no scattered
 /// sidecars. WHICH media travels is [MediaAsset.carried] and nothing else:
-/// the import window sets it, and the kind only chooses that flag's
-/// DEFAULT (video starts as a reference, the rest start carried).
+/// the import window sets it, and every file starts carried whatever its
+/// kind or size.
 ///
 /// 🪦This paragraph used to say「decided by KIND … video stays a
 /// reference」. That ceiling died 2026-08-14 — a movie the user had
 /// explicitly asked the project to hold was being dropped on the way to
 /// the archive, the flag saying yes while the save said no. The size
-/// protection moved to the [largeCarriedAssetBytes] warning, which is a
-/// warning and never a refusal: it is their file and their disk.
+/// protection then moved to a warning in the import window — a warning and
+/// never a refusal, their file and their disk — and the kind's default and
+/// that warning both went 2026-09-16 (user decisions, on
+/// `seedImportSettings`).
 ///
 /// A referenced file keeps a save-directory-relative path so a Drive
 /// folder opened on another machine relinks by itself, and its

@@ -171,11 +171,11 @@ class MediaAsset {
   /// being a usable proxy the moment carrying no longer means copying a
   /// file somewhere first.
   ///
-  /// 🔑 This flag is the WHOLE answer at save time. The kind only picks
-  /// the import default ([mediaKindCarriedByDefault]: video starts as a
-  /// reference, the rest start carried) — it stopped being a ceiling on
-  /// 2026-08-14 (user decision, recorded on [mediaKindCarriedByDefault]),
-  /// and the protection moved to the [largeCarriedAssetBytes] warning.
+  /// 🔑 This flag is the WHOLE answer at save time. The kind stopped being
+  /// a ceiling on 2026-08-14 and stopped picking even the import default on
+  /// 2026-09-16, when the size warning that had taken the ceiling's place
+  /// went too (user decisions, recorded on `seedImportSettings`): every file
+  /// starts carried and can be linked.
   ///
   /// Assets from before this existed fall back to [sourcePath] being set,
   /// which is exactly the ones that WERE copied into the project: the old

@@ -273,53 +273,14 @@ Set<String> projectAudioSourcePaths(Project project) => {
     if (mediaKindCanCarrySound(asset.kind)) asset.path,
 };
 
-/// Whether an asset of this [kind] is carried by DEFAULT.
-///
-/// Blender's rule as the starting point (user decision 2026-08-13): images
-/// and sounds pack, video does not — a reference movie can be three
-/// gigabytes, while a sound the project does not carry is a sound that
-/// goes missing the first time someone moves a folder.
-///
-/// 🚨 It was a CEILING until 2026-08-14 and is now only a default (user
-/// decision, same round as the video decoder): *"비디오도 그냥 유저가
-/// 선택하게 하면 좋을거같은데. 참조만 강요하는게아니라."* A movie that a
-/// person deliberately wants inside the file — a three-second reference
-/// take, a trimmed clip — was refused by a rule that could not hear them.
-///
-/// What the ceiling protected against did not go away, it moved: the
-/// import window says what carrying a file is about to cost, by name and
-/// by size, BEFORE it costs it ([largeCarriedAssetBytes]). A warning the
-/// user can answer beats a refusal they cannot.
-///
-/// A PREDICATE rather than a switch at each call site, so the next kind
-/// answers here once instead of in every save path
-/// ([[predicates-before-new-kind]]).
-bool mediaKindCarriedByDefault(MediaAssetKind kind) => switch (kind) {
-  MediaAssetKind.audio || MediaAssetKind.image || MediaAssetKind.pdf => true,
-  MediaAssetKind.video => false,
-};
-
-/// The size at which carrying a file is worth saying out loud.
-///
-/// Dialogue audio runs to a few megabytes and a scanned timesheet
-/// likewise, a storyboard PDF to a few tens — so this sits well clear of
-/// ordinary work and catches the accident instead: the several-hundred-
-/// megabyte master somebody meant to reference, doubling the project
-/// without a word about it.
-///
-/// A WARNING and never a refusal (user direction). It is their file and
-/// their disk; what they need is to know before the save, not to be
-/// stopped at the door.
-const int largeCarriedAssetBytes = 100 * 1024 * 1024;
-
 /// Every pool path whose bytes the project should carry.
 ///
 /// ONE question: the asset's own [MediaAsset.carried], where the import
-/// window's copy-or-reference answer lives. The kind only chose the
-/// DEFAULT of that answer at import ([mediaKindCarriedByDefault]) — the
-/// old kind ceiling died 2026-08-14, see the decision there. A sound left
-/// outside on purpose, because the original is shared with another tool,
-/// stays outside.
+/// window's copy-or-reference answer lives. The kind once chose the DEFAULT
+/// of that answer at import — a ceiling until 2026-08-14, a default until
+/// 2026-09-16, nothing since (the decisions are on `seedImportSettings`). A
+/// sound left outside on purpose, because the original is shared with
+/// another tool, stays outside.
 ///
 /// ⚠️ The POOL only. SE clips reference audio by path and are warmed by
 /// [projectAudioSourcePaths], but a clip is not a registration — what the

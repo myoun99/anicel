@@ -12,7 +12,6 @@ import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
-import '../../services/project_lookup.dart' show largeCarriedAssetBytes;
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../dialogs/app_progress_dialog.dart';
@@ -131,9 +130,9 @@ class _ImportDialogState extends State<ImportDialog> {
   ImportFileSettings _settingsFor(String path) {
     final kind = mediaAssetKindForPath(path);
     final resolved = resolvedImportSettings(
-      // Untouched rows answer with their seed ([_seedFor]) — a movie starts
-      // as a reference, and without its sound on a picture row's frames.
-      _settings[path] ?? _seedFor(path),
+      // Untouched rows answer with their seed ([_seed]) — without a movie's
+      // sound on a picture row's frames.
+      _settings[path] ?? _seed,
       kind: kind,
       isPsd: importPathIsPsd(path),
       placing: _placing,
@@ -171,7 +170,7 @@ class _ImportDialogState extends State<ImportDialog> {
   ) {
     setState(() {
       for (final path in paths) {
-        _settings[path] = change(_settings[path] ?? _seedFor(path));
+        _settings[path] = change(_settings[path] ?? _seed);
       }
     });
   }
@@ -180,10 +179,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// first answer used to start from the class's blank default instead, so
   /// pressing Bake on a movie also turned its Link into Keep — one column
   /// changed under a press in another.
-  ImportFileSettings _seedFor(String path) => seedImportSettings(
-    kind: mediaAssetKindForPath(path),
-    spot: widget.spot,
-  );
+  ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
   /// conform answers, and the 「소리」 column asks only of a movie with one.
@@ -220,10 +216,12 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// 🚨This paragraph used to end「the KIND rule settles that case on its
   /// own — video is never carried, whatever this says」. That ceiling died
-  /// 2026-08-14 and video carries like anything else; the kind only picks
-  /// this toggle's STARTING position ([defaultImportMode]). What protects
-  /// against the 3GB surprise now is the size note below and the toggle
-  /// itself, both of which the person can see before pressing Import.
+  /// 2026-08-14 and video carries like anything else. The kind then picked
+  /// only a file's STARTING answer, and a size note named what carrying would
+  /// cost; both went 2026-09-16 (유저: any file, at any size, is kept or
+  /// linked as the person answers — the decisions are on
+  /// [seedImportSettings]). The toggle itself is what the person sees before
+  /// pressing Import.
   ///
   /// What is left is which failure a person meets by not choosing. A
   /// reference dies when the original moves, and a project that has to be
@@ -779,24 +777,13 @@ class _ImportDialogState extends State<ImportDialog> {
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
-      // The size warning moved down here with the settings column: what
-      // travels inside the project file is now the sum of per-row answers,
-      // so it belongs where the window speaks about the batch.
-      footerNote: _status.isEmpty && _largeCarriedPaths().isEmpty
+      footerNote: _status.isEmpty
           ? null
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_status.isNotEmpty)
-                  Text(
-                    _status,
-                    key: const ValueKey<String>('import-status'),
-                    style: Theme.of(context).textTheme.labelSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                _largeCarriedNote(context),
-              ],
+          : Text(
+              _status,
+              key: const ValueKey<String>('import-status'),
+              style: Theme.of(context).textTheme.labelSmall,
+              overflow: TextOverflow.ellipsis,
             ),
       actions: [
         AppWindowAction(
@@ -1382,93 +1369,9 @@ class _ImportDialogState extends State<ImportDialog> {
     try {
       return File(path).lengthSync();
     } on Object {
-      return 0; // Unreadable: the import degrades, and so does its warning.
+      return 0; // Unreadable: the import degrades.
     }
   });
-
-  /// Every path this import would REGISTER — the loose files, or the
-  /// reference rows a cut folder brings with it. Baked cels are not here:
-  /// their pixels become `.celz` and the file itself is not carried.
-  List<String> _registeredPaths() {
-    final folder = _folder;
-    if (folder == null) {
-      return _files;
-    }
-    final parsed = _parsed;
-    if (parsed == null) {
-      return const [];
-    }
-    return [
-      for (final reference in parsed.references) '$folder/${reference.file}',
-    ];
-  }
-
-  /// The files big enough that carrying them should be said out loud.
-  ///
-  /// Only ones that WOULD be carried — warning about a file that is
-  /// staying outside is the noise that teaches people to ignore the real
-  /// warning.
-  ///
-  /// 🪦It used to say「the kind ceiling means a movie is never in here
-  /// however the chips are set」. That ceiling died 2026-08-14: a movie
-  /// STARTS on Reference and lands here the moment someone sets it to
-  /// Keep inside — which is exactly when a 3GB warning is worth having.
-  List<String> _largeCarriedPaths() {
-    // Loose files answer one at a time now, so the question is per row:
-    // which of them are big AND set to travel inside the project file.
-    if (_files.isNotEmpty) {
-      return [
-        for (final path in _files)
-          // Every kind can be carried now, so a big MOVIE warns too — which
-          // is the point: the ceiling that used to refuse it silently is
-          // gone, and this sentence is what took its place.
-          // A file the pool already holds costs nothing new here.
-          if (_poolEntryFor(path) == null &&
-              _settingsFor(path).mode == ImportFileMode.keepInside &&
-              _sizeOf(path) >= largeCarriedAssetBytes)
-            path,
-      ];
-    }
-    if (!_copyIntoProject) {
-      return const [];
-    }
-    return [
-      for (final path in _registeredPaths())
-        if (_sizeOf(path) > largeCarriedAssetBytes) path,
-    ];
-  }
-
-  /// Says what carrying is about to cost, before it costs it.
-  ///
-  /// Apple's default is Keep inside and the toggle is one click away, so
-  /// the size someone did not intend to take on is the one they find out
-  /// about at the next sync. It leads with the TOTAL because that is the
-  /// number being decided, and it names the files because that is what
-  /// the answer acts on.
-  Widget _largeCarriedNote(BuildContext context) {
-    final large = _largeCarriedPaths();
-    if (large.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    final total = large.fold<int>(0, (sum, path) => sum + _sizeOf(path));
-    final named = [
-      for (final path in large.take(3))
-        '${mediaFileName(path)} (${byteSizeLabel(_sizeOf(path))})',
-    ].join(', ');
-    final more = large.length > 3
-        ? AppText.strings.imAndMore(large.length - 3)
-        : '';
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        AppText.strings.imLargeCarry(byteSizeLabel(total), named, more),
-        key: const ValueKey<String>('import-large-carry-note'),
-        style: Theme.of(context).textTheme.labelSmall!.copyWith(
-          color: Theme.of(context).colorScheme.error,
-        ),
-      ),
-    );
-  }
 
   /// The FOLDER column. A cut folder lands a whole CUT rather than
   /// placing a file, and a loose file answers per ROW in the file table
@@ -1516,7 +1419,6 @@ class _ImportDialogState extends State<ImportDialog> {
               color: Theme.of(context).colorScheme.outline,
             ),
           ),
-          _largeCarriedNote(context),
           const SizedBox(height: 6),
           // §6-z22: a cut folder's cels are what you draw on next, so
           // the folder import always bakes — no toggle to mislead.

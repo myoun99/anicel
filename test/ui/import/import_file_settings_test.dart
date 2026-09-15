@@ -34,15 +34,12 @@ void main() {
       ]);
     });
 
-    test('a movie STARTS as a reference — that is a default, not a wall', () {
-      expect(
-        defaultImportMode(MediaAssetKind.video),
-        ImportFileMode.reference,
-      );
-      expect(
-        defaultImportMode(MediaAssetKind.audio),
-        ImportFileMode.keepInside,
-      );
+    test('every file starts on Keep inside, whatever its kind or size — the '
+        'settings\' own start (유저 2026-09-16: 「파일 크기 어떻든 '
+        '품기/참조가능으로 바꿨으니 기본값이든 경고줄이든 싹 다 삭제 '
+        '잔존제거」)', () {
+      expect(seedImportSettings().mode, ImportFileMode.keepInside);
+      expect(seedImportSettings(), const ImportFileSettings());
     });
 
     test('and a movie the user asks for STAYS kept inside', () {

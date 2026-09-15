@@ -80,11 +80,11 @@ void main() {
   });
 
   test('a movie imported as a REFERENCE stays outside', () async {
-    // Not a kind ceiling — that died 2026-08-14 (decision on
-    // mediaKindCarriedByDefault); a movie the user asks to carry IS
-    // carried. This fixture says copyIntoProject: false, so what it pins
-    // is that the reference answer is honoured: carried is the whole
-    // answer, and here the answer is no.
+    // Not a kind ceiling — that died 2026-08-14, and the kind's default
+    // went too on 2026-09-16 (decisions on seedImportSettings); a movie the
+    // user asks to carry IS carried. This fixture says copyIntoProject:
+    // false, so what it pins is that the reference answer is honoured:
+    // carried is the whole answer, and here the answer is no.
     final editor = session();
     final projectPath = '${directory.path}/scene.anicel';
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);

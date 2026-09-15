@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -337,10 +338,11 @@ void main() {
       // It used to start on Reference everywhere but Apple, where a
       // recorded path dies at the next launch without a grant. Two things
       // moved since: the project carries its own media, so carrying costs
-      // bytes inside a ZIP rather than a second file on disk, and video
-      // DEFAULTS to Reference (mediaKindCarriedByDefault — a default only
-      // since 2026-08-14, no longer a ceiling), so the 3GB-movie accident
-      // that made Reference the blanket default answers itself per kind.
+      // bytes inside a ZIP rather than a second file on disk, and the
+      // 3GB-movie accident that made Reference the blanket default was
+      // answered per kind (video defaulted to Reference from 2026-08-14)
+      // until 2026-09-16, when the user made every file, at any size, the
+      // person's own call.
       //
       // What is left is which failure someone meets by not choosing, and a
       // link that breaks when the original moves is the worse one.
@@ -548,90 +550,19 @@ void main() {
     expect(s.mediaPool.mediaAssets, isEmpty);
   });
 
-  // --- The size warning (A-2) ---------------------------------------------
-  //
-  // Keep inside is the default and the chips are one click apart, so the
-  // cost of an accident is a project that quietly doubled. The window is
-  // where the choice is made and where changing it is cheap; the save is
-  // already too late, and a modal there is the shape this round has spent
-  // its whole length avoiding.
-
-  /// A file of [bytes] that costs no time to make — the length is what is
-  /// being tested, never the contents.
-  Future<String> writeBigFile(String name, int bytes) async {
-    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-    await file.parent.create(recursive: true);
-    final handle = file.openSync(mode: FileMode.write);
-    handle.truncateSync(bytes);
-    handle.closeSync();
-    return file.path;
-  }
-
-  testWidgets('a large file bound for the project file says so — total, '
-      'name and the way out', (tester) async {
+  testWidgets('a large file bound for the project file is kept like any '
+      'other, and nothing under the table second-guesses it (유저 '
+      '2026-09-16: 「파일 크기 어떻든 품기/참조가능으로 바꿨으니 기본값이든 '
+      '경고줄이든 싹 다 삭제 잔존제거」)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    final path = await tester.runAsync(
-      () => writeBigFile('마스터.wav', 120 * 1024 * 1024),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: [path!]),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    final note = find.byKey(const ValueKey<String>('import-large-carry-note'));
-    expect(note, findsOneWidget, reason: 'Keep inside is the default');
-    final text = tester.widget<Text>(note).data!;
-    expect(text, contains('120 MB'), reason: 'the number being decided');
-    expect(text, contains('마스터'), reason: 'and what the answer acts on');
-    expect(
-      text,
-      contains(AppText.strings.imModeReference),
-      reason: 'the way out is named',
-    );
-  });
-
-  testWidgets('choosing Reference takes the warning away', (tester) async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    final path = await tester.runAsync(
-      () => writeBigFile('마스터.wav', 120 * 1024 * 1024),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: [path!]),
-        ),
-      ),
-    );
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('import-large-carry-note')),
-      findsOneWidget,
-    );
-
-    await pickCell(tester, column: 'file', path: path, option: 'reference');
-
-    expect(
-      find.byKey(const ValueKey<String>('import-large-carry-note')),
-      findsNothing,
-      reason: 'nothing large is going inside any more',
-    );
-  });
-
-  testWidgets('a large MOVIE never warns — the kind keeps it outside '
-      'whatever the chips say', (tester) async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    final path = await tester.runAsync(
-      () => writeBigFile('참고영상.mp4', 900 * 1024 * 1024),
-    );
+    final path = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}마스터.wav');
+      final handle = file.openSync(mode: FileMode.write);
+      handle.truncateSync(120 * 1024 * 1024);
+      handle.closeSync();
+      return file.path;
+    });
 
     await tester.pumpWidget(
       MaterialApp(
@@ -643,31 +574,9 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('import-large-carry-note')),
-      findsNothing,
-      reason:
-          'a warning about a file that was always staying outside is '
-          'the noise that teaches people to ignore the real one',
-    );
-  });
-
-  testWidgets('an ordinary file does not warn', (tester) async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    final path = await tester.runAsync(() => writePng('보통.png'));
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ImportDialog(session: s, initialPaths: [path!]),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(
-      find.byKey(const ValueKey<String>('import-large-carry-note')),
-      findsNothing,
+      tester.widget<AppWindow>(find.byType(AppWindow)).footerNote,
+      isNull,
+      reason: 'the footer is the status line, and nothing is running',
     );
   });
 
@@ -789,27 +698,22 @@ void main() {
       );
     });
 
-    testWidgets('a movie starts as a reference and can be carried anyway', (
-      tester,
-    ) async {
+    testWidgets('a movie starts on Keep like the picture beside it, and can '
+        'be linked', (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       final movie = await tester.runAsync(() => writeMovie('ref.mp4'));
       await pump(tester, [png!, movie!]);
 
       expect(
         cellText(tester, 'file', movie),
-        'Link',
-        reason: 'three gigabytes should not land in a project by accident',
+        'Keep',
+        reason: 'every file starts where the settings start (유저 2026-09-16)',
       );
       expect(cellText(tester, 'file', png), 'Keep');
 
-      await pickCell(tester, column: 'file', path: movie, option: 'keepInside');
+      await pickCell(tester, column: 'file', path: movie, option: 'reference');
 
-      expect(
-        cellText(tester, 'file', movie),
-        'Keep',
-        reason: 'the kind decides the DEFAULT, and the user decides this',
-      );
+      expect(cellText(tester, 'file', movie), 'Link');
     });
 
     testWidgets('🚨a sound PLACES on the SE rows (유저 2026-09-11: 「소리파일: '

@@ -130,19 +130,13 @@ void main() {
       expect(asks(kind: MediaAssetKind.audio), isFalse);
     });
 
-    test('the seed: a movie starts as a reference WITH its sound — without '
-        'it on a picture row\'s frames (「프레임 영역 드롭은 끔」)', () {
-      final free = seedImportSettings(kind: MediaAssetKind.video);
-      expect((free.mode, free.sound), (ImportFileMode.reference, true));
+    test('the seed: a movie starts WITH its sound — without it on a picture '
+        'row\'s frames (「프레임 영역 드롭은 끔」)', () {
+      expect(seedImportSettings().sound, isTrue);
       final onFrames = seedImportSettings(
-        kind: MediaAssetKind.video,
         spot: const RowFramesSpot(layerId: LayerId('a'), frameIndex: 0),
       );
       expect(onFrames.sound, isFalse);
-      expect(
-        seedImportSettings(kind: MediaAssetKind.image).mode,
-        ImportFileMode.keepInside,
-      );
     });
 
     test('on an SE row\'s cell the sound is the PLACE\'s answer, locked on '
@@ -173,12 +167,16 @@ void main() {
   });
 
   testWidgets('a movie row is asked the bake question, starting unbaked — '
-      'and pressing Bake leaves its Link alone', (tester) async {
+      'and pressing Bake leaves its File answer alone', (tester) async {
     final movie = await writeMovie(tester, 'take.mp4');
     await open(tester, [movie]);
 
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOff);
-    expect(cellText(tester, 'file', movie), AppText.strings.imModeReference);
+    expect(
+      cellText(tester, 'file', movie),
+      AppText.strings.imModeKeep,
+      reason: 'a movie starts where every file starts (유저 2026-09-16)',
+    );
 
     await tester.tap(find.byKey(ValueKey<String>('import-cell-bake-$movie')));
     await tester.pump();
@@ -186,10 +184,8 @@ void main() {
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOn);
     expect(
       cellText(tester, 'file', movie),
-      AppText.strings.imModeReference,
-      reason:
-          '🐛the first answer used to start from the blank default, which '
-          'carries',
+      AppText.strings.imModeKeep,
+      reason: 'a press in one column answers that column only',
     );
   });
 

@@ -1,5 +1,4 @@
 import '../../models/media_asset.dart';
-import '../../services/project_lookup.dart' show mediaKindCarriedByDefault;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart' show ImportDestination;
 import '../text/app_strings.dart';
@@ -12,10 +11,10 @@ import '../text/app_strings.dart';
 /// with a column per question tells the truth by construction — the cell
 /// shows what THIS file will do.
 ///
-/// The kind decides DEFAULTS, not ceilings. A movie starts as a reference
-/// because that is what a three-gigabyte take should be, and it can still
-/// be carried by someone who means it (user decision 2026-08-14, reversing
-/// the ceiling set on 08-13).
+/// The kind decides no answer about keeping: it was a ceiling until
+/// 2026-08-14 and a default until 2026-09-16, and now every file starts
+/// where the settings start and can be kept or linked at any size — the
+/// decisions are on [seedImportSettings].
 ///
 /// Everything here is pure so the rules can be tested without a window: the
 /// table renders these answers, it does not compute them.
@@ -128,17 +127,6 @@ class ImportFileSettings {
       Object.hash(mode, bake, into, fit, psd, inFrame, outFrame, sound);
 }
 
-/// What a file of this [kind] answers before anyone has answered for it.
-///
-/// The one place the kind still speaks: a movie starts as a reference so
-/// that dropping a three-gigabyte take does not quietly make a
-/// three-gigabyte project, and everything else starts carried so that
-/// moving a folder does not break the project.
-ImportFileMode defaultImportMode(MediaAssetKind? kind) =>
-    kind == null || mediaKindCarriedByDefault(kind)
-    ? ImportFileMode.keepInside
-    : ImportFileMode.reference;
-
 /// Whether [path] is a Photoshop document — the only kind with a second
 /// way in.
 bool importPathIsPsd(String path) {
@@ -150,10 +138,8 @@ bool importPathIsPsd(String path) {
   return extension == 'psd' || extension == 'psb';
 }
 
-/// Whether [mode] may be answered. Every kind may be carried — the kind
-/// still decides what a file answers by DEFAULT, and a person who wants a
-/// three-second take inside the project file gets to say so, with the size
-/// warning naming the cost before it lands.
+/// Whether [mode] may be answered. Every kind may be carried, at any size
+/// ([seedImportSettings] has the decisions).
 ///
 /// ⏳A trim keeps only part of the source and a pointer is refused for it.
 /// The user decided on 2026-09-11 to lift this (「구간 잘라도 참조 그대로:
@@ -190,17 +176,31 @@ bool importSoundAllowed({
 /// empty cell IS its sound (「SE 행 드롭은 켬으로 잠김」).
 bool importSoundLocked(ImportLayerSpot? spot) => spot is SeCellSpot;
 
-/// What a row answers before anyone has answered for it — its KIND's
-/// default (a movie starts as a reference) and its PLACE's: a movie dropped
-/// on a picture row's frames starts without its sound, which can be turned
-/// on (「프레임 영역 드롭은 끔(켤 수 있음)」).
-ImportFileSettings seedImportSettings({
-  required MediaAssetKind? kind,
-  ImportLayerSpot? spot,
-}) => ImportFileSettings(
-  mode: defaultImportMode(kind),
-  sound: spot is! RowFramesSpot,
-);
+/// What a row answers before anyone has answered for it — the settings' own
+/// starting answers, and its PLACE's: a movie dropped on a picture row's
+/// frames starts without its sound, which can be turned on (「프레임 영역
+/// 드롭은 끔(켤 수 있음)」).
+///
+/// 🚨THE KIND HAS NO SAY in how a file is kept, and neither has its size:
+/// every file starts on Keep inside, the settings' own default (유저
+/// 2026-09-16: 「파일 크기 어떻든 품기/참조가능으로 바꿨으니 기본값이든
+/// 경고줄이든 싹 다 삭제 잔존제거」). How it got here, so nobody re-derives
+/// the old rules:
+///  * 2026-08-13 — Blender's rule as a CEILING (user decision): images and
+///    sounds pack, video does not; a reference movie can be three gigabytes,
+///    while a sound the project does not carry goes missing the first time
+///    someone moves a folder.
+///  * 2026-08-14 — a DEFAULT only (user decision, same round as the video
+///    decoder): *"비디오도 그냥 유저가 선택하게 하면 좋을거같은데. 참조만
+///    강요하는게아니라."* A movie someone deliberately wanted inside the
+///    file had been refused by a rule that could not hear them. What the
+///    ceiling protected against moved into a 100 MB size warning in the
+///    import window — a WARNING and never a refusal (user direction: their
+///    file, their disk).
+///  * 2026-09-16 — the movie default and the size warning both went, by the
+///    answer above.
+ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
+    ImportFileSettings(sound: spot is! RowFramesSpot);
 
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an

@@ -308,17 +308,6 @@ void main() {
   });
 
   group('what the project carries', () {
-    test('sounds, stills and PDFs are carried by default; video is not', () {
-      // Blender's rule as the DEFAULT — it was a ceiling until 08-14, when
-      // the user reversed it: a movie starts as a reference because three
-      // gigabytes should not land in a project by accident, and it can
-      // still be carried by someone who means it.
-      expect(mediaKindCarriedByDefault(MediaAssetKind.audio), isTrue);
-      expect(mediaKindCarriedByDefault(MediaAssetKind.image), isTrue);
-      expect(mediaKindCarriedByDefault(MediaAssetKind.pdf), isTrue);
-      expect(mediaKindCarriedByDefault(MediaAssetKind.video), isFalse);
-    });
-
     test('the pool decides, and CARRIED is the whole answer', () {
       final project = _project(
         mediaAssets: [

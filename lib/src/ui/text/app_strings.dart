@@ -1032,11 +1032,6 @@ enum AppStrings {
   String get imMultiCutMark => _s('imMultiCutMark');
   String get imPickToSee => _s('imPickToSee');
 
-  /// A note that names a few files and counts the rest — '{n}' is how many
-  /// names were not listed.
-  String imAndMore(int count) =>
-      _s('imAndMore').replaceFirst('{n}', '$count');
-
   /// The placement strip and the window's title when it places one file, and
   /// the words for a pill that cannot be used from where the window opened.
   String get imPlaceLabel => _s('imPlaceLabel');
@@ -1093,14 +1088,6 @@ enum AppStrings {
   String imRenderingPdf(int done, int total) => _s(
     'imRenderingPdfTemplate',
   ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
-
-  /// The size warning — a WARNING, so it may be a sentence. '{files}' is the
-  /// named files and '{more}' the [imAndMore] tail.
-  String imLargeCarry(String total, String files, String more) =>
-      _s('imLargeCarryTemplate')
-          .replaceAll('{total}', total)
-          .replaceAll('{files}', files)
-          .replaceAll('{more}', more);
 
   /// The cut-folder column's words.
   String get imKeepExplain => _s('imKeepExplain');
@@ -1907,7 +1894,6 @@ enum AppStrings {
     'imExcluded': 'Excluded',
     'imIgnored': 'Ignored',
     'imMultiCutMark': '(multi-cut)',
-    'imAndMore': ' and {n} more',
     'imPickToSee': 'Pick files or a cut folder to see the interpretation.',
     'imPlaceLabel': 'Place',
     'imPlaceTitleTemplate': 'Place — {name}',
@@ -1946,8 +1932,6 @@ enum AppStrings {
     'imPsdNoLayersTemplate':
         '{name}: no layers to expand — import it merged instead.',
     'imRenderingPdfTemplate': 'Rendering PDF page {done}/{total}…',
-    'imLargeCarryTemplate':
-        '{total} goes inside the project file — {files}{more}. Keeping compresses each file as it comes in, so the project grows by less than that. Linking leaves the originals where they are.',
     'imKeepExplain':
         'The project file holds these, compressed; the originals are left alone.',
     'imReferenceExplain':
@@ -2927,7 +2911,6 @@ enum AppStrings {
     'imExcluded': '除外',
     'imIgnored': '無視',
     'imMultiCutMark': '（兼用）',
-    'imAndMore': ' ほか{n}件',
     'imPickToSee': 'ファイルかカットフォルダを選ぶと解釈が出ます。',
     'imPlaceLabel': '配置',
     'imPlaceTitleTemplate': '配置 — {name}',
@@ -2966,8 +2949,6 @@ enum AppStrings {
     'imPsdNoLayersTemplate':
         '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
     'imRenderingPdfTemplate': 'PDF ページを描画中 {done}/{total}…',
-    'imLargeCarryTemplate':
-        '{total} がプロジェクトファイルに入ります — {files}{more}。埋め込むときにファイルごとに圧縮するので、プロジェクトの増加はそれより小さくなります。リンクは元のファイルをその場所に残します。',
     'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
     'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
     'imCutFolderBakes':
@@ -3967,7 +3948,6 @@ enum AppStrings {
     'imExcluded': '제외',
     'imIgnored': '무시',
     'imMultiCutMark': '(겸용)',
-    'imAndMore': ' 외 {n}개',
     'imPickToSee': '파일이나 컷 폴더를 고르면 해석이 나옵니다.',
     'imPlaceLabel': '배치',
     'imPlaceTitleTemplate': '배치 — {name}',
@@ -4003,8 +3983,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': '{name}: 임포트하지 못했습니다.',
     'imPsdNoLayersTemplate': '{name}: 펼칠 레이어가 없습니다 — 합치기로 가져오세요.',
     'imRenderingPdfTemplate': 'PDF 쪽을 그리는 중 {done}/{total}…',
-    'imLargeCarryTemplate':
-        '{total} 가 프로젝트 파일 안에 들어갑니다 — {files}{more}. 품을 때 파일마다 압축하므로 프로젝트는 그보다 덜 커집니다. 참조는 원본을 그 자리에 둡니다.',
     'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
     'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
     'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
@@ -5039,7 +5017,6 @@ enum AppStrings {
     'imExcluded': 'Exclu',
     'imIgnored': 'Ignoré',
     'imMultiCutMark': '(multi-plan)',
-    'imAndMore': ' et {n} de plus',
     'imPickToSee':
         'Choisissez des fichiers ou un dossier de plan pour voir '
         'l\'interprétation.',
@@ -5081,8 +5058,6 @@ enum AppStrings {
     'imPsdNoLayersTemplate':
         '{name} : aucun calque à développer — importez-le fusionné.',
     'imRenderingPdfTemplate': 'Rendu de la page PDF {done}/{total}…',
-    'imLargeCarryTemplate':
-        '{total} entrent dans le fichier du projet — {files}{more}. L’intégration compresse chaque fichier à l’arrivée : le projet grossit donc de moins. Lier laisse les originaux où ils sont.',
     'imKeepExplain':
         'Le fichier du projet les contient, compressés ; les originaux restent intacts.',
     'imReferenceExplain':
@@ -6041,7 +6016,6 @@ enum AppStrings {
     'imExcluded': '已排除',
     'imIgnored': '已忽略',
     'imMultiCutMark': '（兼用）',
-    'imAndMore': ' 等{n}个',
     'imPickToSee': '选择文件或镜头文件夹即可查看解析。',
     'imPlaceLabel': '放置',
     'imPlaceTitleTemplate': '放置 — {name}',
@@ -6076,8 +6050,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': '无法导入 {name}。',
     'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
     'imRenderingPdfTemplate': '正在渲染 PDF 页面 {done}/{total}…',
-    'imLargeCarryTemplate':
-        '{total} 将放入项目文件 — {files}{more}。内嵌时会逐个压缩，所以项目增加的大小会更小。链接会让原文件留在原处。',
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',
     'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',
