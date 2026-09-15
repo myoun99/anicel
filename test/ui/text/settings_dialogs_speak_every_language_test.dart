@@ -192,6 +192,12 @@ void main() {
       // Input Inspector is one of the `edit-*` menu toggles nobody tabled,
       // and translating a diagnostic would make it
       // read differently depending on who opened it.
+      //
+      // ↩️The TOGGLES are tabled now (유저 2026-09-15,
+      // diagnostic-menu-language-Q1: 「메뉴 항목만 번역」): the seven `edit-*`
+      // entries speak the program language like every menu entry, and what
+      // they open — the overlays under `ui/debug/` — stays English, which is
+      // what this exclusion still keeps.
       if (path.contains('/ui/dialogs/') ||
           path.endsWith('/brush_canvas_smoke_screen.dart') ||
           path.contains('/ui/debug/')) {
