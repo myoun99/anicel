@@ -23,13 +23,14 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// you zoom out.
 ///
 /// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
-/// far enough and that rect spans the whole pasteboard — 5×5 canvases,
-/// 11700×8270 on a 2340×1654 page — which exceeds the buffer cap and drops
-/// the paint onto the SCREEN-resolution fallback. That fallback is the one
-/// place the editing canvas stops matching the other routes.
+/// far enough and that rect spans the whole pasteboard — 5×5 canvases then,
+/// 11700×8270 on a 2340×1654 page; 3×3 since H2, which is why the page
+/// below is larger — which exceeds the buffer cap and drops the paint onto
+/// the SCREEN-resolution fallback. That fallback is the one place the
+/// editing canvas stops matching the other routes.
 ///
-/// Bounding by CONTENT keeps the page at 2340×1654, which never reaches the
-/// cap. This pins that as a NUMBER rather than an argument.
+/// Bounding by CONTENT keeps the buffer at the page (3000×2000 below), which
+/// never reaches the cap. This pins that as a NUMBER rather than an argument.
 void main() {
   // 🧪MEASURED, not assumed: the pasteboard is the canvas grown by ONE canvas
   // per side, so it is 3× the page per axis. A 2340×1654 page tops out at
@@ -126,8 +127,9 @@ void main() {
     await paintAt(tester, 1.0);
     await paintAt(tester, 0.2);
     // 🚨THE CASE THAT USED TO FALL THROUGH. Zoomed out to 2% AND panned so
-    // the whole 5×5 pasteboard sits inside the window — that is when the
-    // old bounds handed the buffer an 11700×8270 rect, past the cap, and
+    // the whole pasteboard sits inside the window — that is when the old
+    // bounds handed the buffer a rect past the cap (9000×6000 for this
+    // page; 11700×8270 on the 5×5 one this was written against), and
     // the paint dropped to screen resolution. Without the pan the visible
     // rect only ever caught the positive quadrant and never reached it.
     await paintAt(tester, 0.02, panX: 200, panY: 150);

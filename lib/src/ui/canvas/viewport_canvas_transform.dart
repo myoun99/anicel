@@ -87,7 +87,10 @@ CanvasViewport renderSnappedViewport(
 /// at no monitor under 100% UI — measured 2026-09-15). A finer fixed grid only moves
 /// the cliff, so the phase is read off the denominator itself, and a pinch
 /// that changes the scale every frame pays a few divisions instead of a
-/// sixteen-way search per frame (100,000 calls measured at 13ms).
+/// sixteen-way search per frame (100,000 calls measured at 13ms). ↩️That
+/// was the denominator law alone: since the review below, a scale between
+/// fractions — every frame of a pinch — is MEASURED, 30–610 µs once per
+/// scale.
 ///
 /// 🚨★★★AND THE DENOMINATOR ALONE WAS WRONG OFF THE EXACT SCALES (review
 /// 2026-09-15). 1/(2q) is the best phase only where the scale IS p/q. A
