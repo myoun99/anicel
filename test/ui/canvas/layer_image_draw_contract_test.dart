@@ -227,6 +227,14 @@ void main() {
 /// as the seeder's base draw beside it. ⚠️It landed two commits before this
 /// line: this file does not import what it scans, so `affected_tests` never
 /// selected it — CLAUDE.md's source-scanning-contract rule, one more time.
+/// **38** still, and a different 38 (2026-09-15): +1 in viewer_document —
+/// `cropImageRgba` (7e22dfa5, the viewer's cut tool) copies a box of the
+/// page 1:1 onto a picture its own size under `BlendMode.src` and
+/// `FilterQuality.none`, the quality-owning-leaf class — and −1 in
+/// import_preview, whose raw draw left with 00346e27's placement window. The
+/// first landed with no line here and turned master red at 39; the second
+/// brought the number back with none either. Both are named so the number
+/// describes the tree it counts.
 const int _knownRawDraws = 38;
 
 final RegExp _rawImageDraw = RegExp(
