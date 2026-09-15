@@ -7,7 +7,6 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
-import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
@@ -45,14 +44,19 @@ enum ConteInkPlane {
 /// namespace).
 class ConteInkController extends SheetInkController<ConteInkPlane> {
   ConteInkController({BrushFrameStore? rowStore, BrushFrameStore? pageStore})
-    : _row = InkPlaneSlot(
-        store: rowStore ?? BrushFrameStore(),
-        initialFrameKey: _initKey,
-      ),
-      _page = InkPlaneSlot(
-        store: pageStore ?? BrushFrameStore(),
-        initialFrameKey: _initKey,
+    : this._(
+        InkPlaneSlot(
+          store: rowStore ?? BrushFrameStore(),
+          initialFrameKey: _initKey,
+        ),
+        InkPlaneSlot(
+          store: pageStore ?? BrushFrameStore(),
+          initialFrameKey: _initKey,
+        ),
       );
+
+  ConteInkController._(this._row, this._page)
+    : super({ConteInkPlane.row: _row, ConteInkPlane.page: _page});
 
   static const BrushFrameKey _initKey = BrushFrameKey(
     projectId: conteInkProjectId,
@@ -101,14 +105,6 @@ class ConteInkController extends SheetInkController<ConteInkPlane> {
       ),
     );
   }
-
-  @override
-  BrushFrameEditingCoordinator coordinatorFor(ConteInkPlane plane) =>
-      (plane == ConteInkPlane.row ? _row : _page).coordinator;
-
-  @override
-  BrushFrameStore storeFor(ConteInkPlane plane) =>
-      (plane == ConteInkPlane.row ? _row : _page).store;
 }
 
 /// The ink windows for one page, bottom-of-stack first: page ink lies

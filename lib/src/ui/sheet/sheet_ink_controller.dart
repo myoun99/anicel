@@ -38,18 +38,55 @@ import '../canvas/tiled_surface_compose.dart';
 ///
 /// [P] is the panel's own plane type. A sheet with one plane passes a
 /// type with one value (or `void`-like) and ignores the argument.
+///
+/// 🚨THE TIMESHEET WAS THE THIRD COPY (F-80 ②, 2026-09-15). Its controller
+/// re-wrote the session lookup, the commit and the has-ink oracle beside
+/// this class instead of extending it, so a law written here reached two
+/// sheets of three. It extends this now, and every sheet hands over its
+/// planes rather than answering the two lookups by hand.
 abstract class SheetInkController<P> extends ChangeNotifier {
+  /// [planes] is every plane the sheet draws on, keyed by the plane value
+  /// its windows carry.
+  ///
+  /// 🚨★★★F-80 ② — THE PANEL FOLLOWS THE STORE, NOT THE CALLER.
+  ///
+  /// 유저 2026-09-11: 「드로잉on인상태에서 그릴때 undo로 기록이안되는거같음.
+  /// 언두해도 언두안되고 다른곳 타임라인 조작이나 그 패널 바깥의 동작이
+  /// 언두됨」. The stroke WAS in history, and undo did put the surface back.
+  /// The panel was never told: its ink windows take their surface when the
+  /// host rebuilds, the host rebuilds on this notifier, and this notified
+  /// for a commit only — undo and redo reach the store through the history
+  /// command, never through here. The session's notify after every undo had
+  /// been covering for that until 44bdeb49 (2026-09-10) stopped an undo
+  /// that moves no row from tidying the document up. The stroke stayed on
+  /// the sheet, and the next press undid something outside the panel.
+  ///
+  /// The canvas met the same thing on 2026-08-27, and its answer is the one
+  /// here: [BrushFrameStore.celPixelRevision] is the one signal every
+  /// surface write bumps — a stroke, an undo, a redo, a file restore — so
+  /// the controller follows that, whoever made the write.
+  SheetInkController(Map<P, InkPlaneSlot> planes) : _planes = planes {
+    for (final slot in planes.values) {
+      slot.store.celPixelRevision.addListener(_onCelPixelsChanged);
+    }
+  }
+
+  final Map<P, InkPlaneSlot> _planes;
+
+  void _onCelPixelsChanged() => notifyListeners();
+
   /// WHICH coordinator owns [plane]'s surfaces. Throws if geometry has not
   /// been synced — the panels all build their coordinators lazily from
   /// their own `syncGeometry`, whose rules genuinely differ (the conte
   /// derives two sizes from sheet metrics, the envelope one from an aspect
   /// ratio), so that stays with each panel.
   @protected
-  BrushFrameEditingCoordinator coordinatorFor(P plane);
+  BrushFrameEditingCoordinator coordinatorFor(P plane) =>
+      _planes[plane]!.coordinator;
 
   /// WHICH store holds [plane]'s baked surfaces.
   @protected
-  BrushFrameStore storeFor(P plane);
+  BrushFrameStore storeFor(P plane) => _planes[plane]!.store;
 
   /// The session surface for one window (created blank on first access).
   BrushEditSessionState sessionStateFor(P plane, BrushFrameKey key) {
@@ -142,6 +179,11 @@ abstract class SheetInkController<P> extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    // The stores can outlive the panel — the session keeps the envelope's
+    // and the conte's for the life of the project.
+    for (final slot in _planes.values) {
+      slot.store.celPixelRevision.removeListener(_onCelPixelsChanged);
+    }
     for (final entry in _display.values) {
       entry.$2.dispose();
     }

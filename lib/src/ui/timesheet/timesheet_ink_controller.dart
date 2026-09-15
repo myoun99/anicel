@@ -1,6 +1,3 @@
-import 'package:flutter/foundation.dart';
-
-import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -8,10 +5,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
-import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
-import '../../services/brush_stroke_commit_data.dart';
-import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_controller.dart';
@@ -38,7 +32,22 @@ enum TimesheetInkPlane {
 /// export. Strokes commit through the app [HistoryManager] with the same
 /// [BrushStrokeHistoryCommand] the drawing canvas uses (undo parity), and
 /// erase reuses the same blend routes untouched.
-class TimesheetInkController extends ChangeNotifier {
+///
+/// 🚨It EXTENDS [SheetInkController] (F-80 ②, 2026-09-15). It was a plain
+/// notifier beside that class, repeating its session lookup, its commit
+/// and its has-ink oracle around two planes of its own — so the law that
+/// makes a sheet hear its ink come back through undo had to be written in
+/// the shared class, and would have reached every sheet but this one.
+class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
+  TimesheetInkController()
+    : this._(
+        InkPlaneSlot(store: BrushFrameStore(), initialFrameKey: _initKey),
+        InkPlaneSlot(store: BrushFrameStore(), initialFrameKey: _initKey),
+      );
+
+  TimesheetInkController._(this._strip, this._page)
+    : super({TimesheetInkPlane.strip: _strip, TimesheetInkPlane.page: _page});
+
   /// Ink resolution multiplier over document space (72px per frame row —
   /// the plan's 4×). Affordable because the live-stroke rasterizer is
   /// tile-sparse: stroke cost scales with the ink actually drawn, never
@@ -80,14 +89,8 @@ class TimesheetInkController extends ChangeNotifier {
     frameId: FrameId('timesheet-ink-init'),
   );
 
-  final InkPlaneSlot _strip = InkPlaneSlot(
-    store: BrushFrameStore(),
-    initialFrameKey: _initKey,
-  );
-  final InkPlaneSlot _page = InkPlaneSlot(
-    store: BrushFrameStore(),
-    initialFrameKey: _initKey,
-  );
+  final InkPlaneSlot _strip;
+  final InkPlaneSlot _page;
 
   /// One page band of frame rows × the half column width, at [inkScale].
   CanvasSize? get stripBandSurfaceSize => _strip.size;
@@ -118,48 +121,5 @@ class TimesheetInkController extends ChangeNotifier {
         height: (pagedLayout.paperHeight * inkScale).ceil(),
       ),
     );
-  }
-
-  BrushFrameEditingCoordinator _coordinatorFor(TimesheetInkPlane plane) =>
-      (plane == TimesheetInkPlane.strip ? _strip : _page).coordinator;
-
-  /// The session surface for one band/page window (created blank on first
-  /// access).
-  BrushEditSessionState sessionStateFor(
-    TimesheetInkPlane plane,
-    BrushFrameKey key,
-  ) {
-    final coordinator = _coordinatorFor(plane);
-    coordinator.selectFrame(key);
-    return coordinator.activeSessionState;
-  }
-
-  /// Commits a finished sheet stroke through the app history (one undo
-  /// step, exactly like a canvas stroke).
-  void commitStroke({
-    required TimesheetInkPlane plane,
-    required BrushFrameKey key,
-    required BrushStrokeCommitData strokeData,
-    required HistoryManager historyManager,
-    CacheInvalidationSink? cacheInvalidationSink,
-  }) {
-    final coordinator = _coordinatorFor(plane);
-    coordinator.selectFrame(key);
-    historyManager.execute(
-      BrushStrokeHistoryCommand(
-        coordinator: coordinator,
-        strokeData: strokeData,
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
-    );
-    notifyListeners();
-  }
-
-  /// Whether the band/page cel holds any ink (test/debug oracle — R19
-  /// P3b: the baked raster is the content; undo restores surfaces, so
-  /// "count" collapses to has-content).
-  bool hasInkFor(TimesheetInkPlane plane, BrushFrameKey key) {
-    final store = (plane == TimesheetInkPlane.strip ? _strip : _page).store;
-    return store.celHasRenderableContent(key);
   }
 }

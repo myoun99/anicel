@@ -7,7 +7,6 @@ import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/frame_id.dart';
-import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -26,16 +25,20 @@ import '../sheet/sheet_ink_controller.dart';
 /// annotations from a form the user re-shapes.
 class CutEnvelopeInkController extends SheetInkController<Null> {
   CutEnvelopeInkController({BrushFrameStore? store})
-    : _plane = InkPlaneSlot(
-        store: store ?? BrushFrameStore(),
-        initialFrameKey: const BrushFrameKey(
-          projectId: envelopeInkProjectId,
-          trackId: envelopeInkTrackId,
-          cutId: CutId('envelope-ink-init'),
-          layerId: envelopeInkLayerId,
-          frameId: FrameId('envelope-ink-init'),
+    : this._(
+        InkPlaneSlot(
+          store: store ?? BrushFrameStore(),
+          initialFrameKey: const BrushFrameKey(
+            projectId: envelopeInkProjectId,
+            trackId: envelopeInkTrackId,
+            cutId: CutId('envelope-ink-init'),
+            layerId: envelopeInkLayerId,
+            frameId: FrameId('envelope-ink-init'),
+          ),
         ),
       );
+
+  CutEnvelopeInkController._(this._plane) : super({null: _plane});
 
   final InkPlaneSlot _plane;
 
@@ -67,12 +70,6 @@ class CutEnvelopeInkController extends SheetInkController<Null> {
       ),
     );
   }
-
-  @override
-  BrushFrameEditingCoordinator coordinatorFor(Null plane) => _plane.coordinator;
-
-  @override
-  BrushFrameStore storeFor(Null plane) => _plane.store;
 }
 
 /// The smallest on-screen extent worth an ink window.
