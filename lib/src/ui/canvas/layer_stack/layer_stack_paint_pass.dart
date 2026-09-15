@@ -95,12 +95,7 @@ class _LayerStackPaintPass {
       devicePixelRatio: _painter.devicePixelRatio,
     );
 
-    _canvasRect = Rect.fromLTWH(
-      0,
-      0,
-      _painter.canvasSize.width.toDouble(),
-      _painter.canvasSize.height.toDouble(),
-    );
+    _canvasRect = _painter.canvasSize.canvasRect;
     // T12 field probe, one floor DOWN from the canvas area's.
     //
     // That one measures what the WIDGET decided; this measures what the
@@ -778,12 +773,7 @@ class _LayerStackPaintPass {
           // own opening block (the merged stack passes false and
           // paints paper itself; standalone hosts rely on this).
           into.drawRect(
-            Rect.fromLTWH(
-              0,
-              0,
-              _painter.canvasSize.width.toDouble(),
-              _painter.canvasSize.height.toDouble(),
-            ),
+            _painter.canvasSize.canvasRect,
             Paint()..color = const Color(ProjectBackground.defaultPaperArgb),
           );
         }

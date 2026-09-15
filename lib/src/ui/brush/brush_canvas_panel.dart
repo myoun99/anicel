@@ -19,6 +19,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';

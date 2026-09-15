@@ -77,6 +77,16 @@ extension PasteboardBounds on CanvasSize {
     pasteboardBottomExclusive.toDouble(),
   );
 
+  /// The canvas itself as a canvas-space [ui.Rect], [0, width) ×
+  /// [0, height) — what a paper plate fills, a fit frames and a backdrop
+  /// paints.
+  ///
+  /// ⛔ONE CONVERSION (audit, 2026-09-15), for [pasteboardRect]'s reason:
+  /// this rect was typed out from the size in eleven places across seven
+  /// files. `one_canvas_rect_test` keeps it at one.
+  ui.Rect get canvasRect =>
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
+
   bool containsPasteboardPixel({required int x, required int y}) {
     return x >= pasteboardLeft &&
         x < pasteboardRightExclusive &&

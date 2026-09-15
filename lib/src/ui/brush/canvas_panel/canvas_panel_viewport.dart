@@ -327,14 +327,7 @@ class _CanvasPanelViewport {
 
   void _fitToView() {
     final canvasSize = _state.widget.canvasSize;
-    final target =
-        _state.widget.fitFocusRect ??
-        Rect.fromLTWH(
-          0,
-          0,
-          canvasSize.width.toDouble(),
-          canvasSize.height.toDouble(),
-        );
+    final target = _state.widget.fitFocusRect ?? canvasSize.canvasRect;
     _state._rebuild(() {
       _viewport = _state._fittedInto(
         _resolvedVisibleRect(),

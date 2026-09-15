@@ -161,14 +161,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     }
 
     if (showTransparentBackground) {
-      add(
-        Rect.fromLTWH(
-          0,
-          0,
-          surface.canvasSize.width.toDouble(),
-          surface.canvasSize.height.toDouble(),
-        ),
-      );
+      add(surface.canvasSize.canvasRect);
     }
     add(tileCoordsWorldRect(surface.tiles.keys, surface.tileSize));
     final overlay = overlayModel;

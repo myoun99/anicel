@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/layer_effect.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
+import '../models/pasteboard_bounds.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart' show Cut;
 import '../models/layer_id.dart';
@@ -941,15 +942,7 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
       viewport,
       devicePixelRatio: devicePixelRatio,
     );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        0,
-        0,
-        canvasSize.width.toDouble(),
-        canvasSize.height.toDouble(),
-      ),
-      Paint()..color = color,
-    );
+    canvas.drawRect(canvasSize.canvasRect, Paint()..color = color);
     canvas.restore();
   }
 

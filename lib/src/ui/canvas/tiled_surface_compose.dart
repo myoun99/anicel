@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../core/dev_profile.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -23,24 +24,13 @@ class PositionedSurfaceImage {
   /// Whether this is the plain canvas-extent case (consumers keep their
   /// exact legacy draw path for it — byte parity).
   bool isCanvasExtent(BitmapSurface surface) =>
-      worldRect ==
-      ui.Rect.fromLTWH(
-        0,
-        0,
-        surface.canvasSize.width.toDouble(),
-        surface.canvasSize.height.toDouble(),
-      );
+      worldRect == surface.canvasSize.canvasRect;
 }
 
 /// The canvas rect UNIONED with every stored tile's rect — the extent a
 /// positioned compose rasters. Integer-aligned by construction.
 ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
-  final canvas = ui.Rect.fromLTWH(
-    0,
-    0,
-    surface.canvasSize.width.toDouble(),
-    surface.canvasSize.height.toDouble(),
-  );
+  final canvas = surface.canvasSize.canvasRect;
   final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
   return tiles == null ? canvas : canvas.expandToInclude(tiles);
 }

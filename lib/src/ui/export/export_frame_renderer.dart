@@ -7,6 +7,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -315,7 +316,7 @@ class ExportFrameRenderer {
         height: size.height,
         paint: (canvas) => _paintBackdropGround(
           canvas,
-          ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+          size.canvasRect,
           preserveAlpha: preserveAlpha,
         ),
       );
@@ -479,12 +480,7 @@ class ExportFrameRenderer {
     final weights = shared.weights;
     final globalFrame = shared.globalFrame;
 
-    final bounds = ui.Rect.fromLTWH(
-      0,
-      0,
-      size.width.toDouble(),
-      size.height.toDouble(),
-    );
+    final bounds = size.canvasRect;
     final images = <ui.Image>[];
     try {
       return await rasterizeOffscreen(
@@ -619,7 +615,7 @@ class ExportFrameRenderer {
     // frames, a posed stage sliding off, a fade thinning the stack away.
     _paintBackdropGround(
       canvas,
-      ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
+      size.canvasRect,
       preserveAlpha: preserveAlpha,
     );
     for (var i = 0; i < positions.length; i += 1) {

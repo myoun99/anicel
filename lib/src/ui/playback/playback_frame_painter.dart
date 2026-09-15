@@ -6,6 +6,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
+import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
@@ -205,12 +206,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         devicePixelRatio: devicePixelRatio,
       );
     }
-    final canvasRect = Rect.fromLTWH(
-      0,
-      0,
-      canvasSize.width.toDouble(),
-      canvasSize.height.toDouble(),
-    );
+    final canvasRect = canvasSize.canvasRect;
 
     Rect? frameRect;
     if (pose != null) {
