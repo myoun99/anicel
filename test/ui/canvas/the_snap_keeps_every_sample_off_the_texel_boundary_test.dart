@@ -113,6 +113,77 @@ void main() {
     }
   });
 
+  test('🚨off the exact scales the phase is never worse than the sixteenth '
+      'search it replaced — a wheel notch, a pinch (review 2026-09-15)', () {
+    // The search F-83 replaced, kept here as the oracle the law has to
+    // match or beat: the sixteenth of a pixel with the best true margin.
+    double searched(double s) {
+      var best = 0.0;
+      var bestMargin = -1.0;
+      for (var sixteenth = 0; sixteenth < 16; sixteenth += 1) {
+        final least = margin(s, sixteenth / 16);
+        if (least > bestMargin + 1e-9) {
+          bestMargin = least;
+          best = sixteenth / 16;
+        }
+      }
+      return best;
+    }
+
+    void neverWorse(double s, String what) {
+      final chosen = margin(s, samplingPhaseFor(s));
+      final old = margin(s, searched(s));
+      expect(
+        chosen,
+        greaterThanOrEqualTo(old - 1e-12),
+        reason: '$what (scale $s): phase ${samplingPhaseFor(s)} leaves a '
+            'sample $chosen from a texel boundary where the search kept $old',
+      );
+    }
+
+    // 39/2 − 4.1e-5: the continued fraction runs on to q = 12113, whose
+    // phase (0) left a sample 2.1e-6 of a texel from a boundary; a quarter
+    // pixel keeps every one about a hundredth away.
+    const nextToAHalf = 19.49995872029756;
+    expect(
+      margin(nextToAHalf, samplingPhaseFor(nextToAHalf)),
+      greaterThan(0.01),
+    );
+    neverWorse(nextToAHalf, 'next to 39/2');
+    // Wheel notches (×1.1 each) from the zooms a view starts at, at the
+    // monitor ratios the app meets.
+    for (final ratio in const [1.0, 1.25, 1.5, 1.75, 2.0]) {
+      for (final start in const [1.0, 0.5, 0.8347]) {
+        var zoom = start / ratio;
+        for (var notch = 1; notch <= 30; notch += 1) {
+          zoom *= 1.1;
+          final s = zoom * ratio;
+          if (s > 1 && s <= 32) {
+            neverWorse(s, '$notch notches from $start at $ratio');
+          }
+        }
+      }
+    }
+    // And a spread of the scales a pinch passes through on its way.
+    var s = 1.0;
+    for (var step = 1; step <= 120; step += 1) {
+      s *= 1.0293;
+      neverWorse(s, 'pinch step $step');
+    }
+    // Where a convergent's phase does better than every sixteenth, the law
+    // takes it: fourteen wheel notches from 100% (measured 2026-09-15 —
+    // 3.43e-5 of a texel against the search's 3.36e-5).
+    var notched = 1.0;
+    for (var notch = 0; notch < 14; notch += 1) {
+      notched *= 1.1;
+    }
+    expect(
+      margin(notched, samplingPhaseFor(notched)),
+      greaterThan(margin(notched, searched(notched)) + 1e-7),
+      reason: 'the convergents are candidates for a reason',
+    );
+  });
+
   test('1:1, every whole zoom and every reduction keep phase 0 — their '
       'bytes are what they always were', () {
     for (final s in <double>[0.25, 0.5, 0.8, 0.9, 1.0, 2.0, 3.0, 4.0, 8.0]) {

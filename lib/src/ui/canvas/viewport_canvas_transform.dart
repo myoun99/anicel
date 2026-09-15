@@ -37,11 +37,11 @@ export '../../services/viewport_transform_matrix.dart';
 /// 100·120·140·160·180·200·300·400% — exactly the p-odd/q-even set.
 ///
 /// So the translation is snapped to `whole + `[samplingPhaseFor]`(s)`
-/// device pixels: the phase at which every visible sample point is as far
-/// from a texel boundary as this scale allows. At 1:1 and at every whole
-/// zoom the phase is 0 and the bytes are what they always were; at 110%
-/// it is a quarter pixel, and the nearest tie is 1/22 of a texel away —
-/// hundreds of times the rounding any path can carry.
+/// device pixels: the phase, of those the laws below name, at which every
+/// visible sample point is farthest from a texel boundary. At 1:1 and at
+/// every whole zoom the phase is 0 and the bytes are what they always were;
+/// at 110% it is a twentieth of a pixel, and the nearest tie is 1/22 of a
+/// texel away — hundreds of times the rounding any path can carry.
 CanvasViewport renderSnappedViewport(
   CanvasViewport viewport,
   double devicePixelRatio,
@@ -88,29 +88,90 @@ CanvasViewport renderSnappedViewport(
 /// the cliff, so the phase is read off the denominator itself, and a pinch
 /// that changes the scale every frame pays a few divisions instead of a
 /// sixteen-way search per frame (100,000 calls measured at 13ms).
+///
+/// 🚨★★★AND THE DENOMINATOR ALONE WAS WRONG OFF THE EXACT SCALES (review
+/// 2026-09-15). 1/(2q) is the best phase only where the scale IS p/q. A
+/// wheel notch (×1.1) or a pinch lands NEXT to such a fraction, the
+/// continued fraction runs on to a denominator in the thousands, and its
+/// phase left samples millionths of a texel off a boundary where a
+/// sixteenth had kept them a hundredth away: 39/2 − 4.1e-5 at 2.1e-6
+/// against 0.0119, fourteen wheel notches from 100% at 1.0e-5 against
+/// 3.4e-5. So neither law picks alone: every phase either one names is
+/// measured and the best TRUE margin wins — never worse than the search,
+/// never worse than the denominator. Ties keep the smaller phase, as before.
+///
+/// An exact fraction — every preset, typed and 1%-step zoom at every
+/// monitor ratio and UI stop — skips the measuring: its denominator's phase
+/// is already the best any phase can do. Measured 2026-09-15 (Dart VM): that
+/// answer in under a microsecond; a scale between fractions 30–610 µs, where
+/// the search alone had cost 250–620 µs — once per scale, the memo keeping it
+/// for every painter that asks after.
 double samplingPhaseFor(double scale) {
   if (!(scale > 1) || !scale.isFinite) {
     return 0;
   }
-  final q = _denominatorOf(scale);
-  return q.isOdd ? 0 : 1 / (2 * q);
+  final kept = _phaseMemo[scale];
+  if (kept != null) {
+    return kept;
+  }
+  if (_phaseMemo.length >= 8) {
+    _phaseMemo.remove(_phaseMemo.keys.first);
+  }
+  return _phaseMemo[scale] = _bestPhaseFor(scale);
 }
 
-/// The denominator of the fraction closest to [scale] that a view can tell
-/// apart from it: continued-fraction convergents, stopping at the first one
-/// exact to 1e-9, or before a denominator larger than the 16,384 device
-/// pixels the law is measured over.
-int _denominatorOf(double scale) {
+double _bestPhaseFor(double scale) {
+  final convergents = _convergentsOf(scale);
+  final (:p, :q) = convergents.last;
+  // Exactly p/q, with a full period of residues inside the measured pixels:
+  // 1/(2q), or whole pixels for an odd q, puts every sample 1/(2p) from a
+  // boundary, and no phase can put the nearest one farther.
+  if ((scale - p / q).abs() <= 1e-12 * scale &&
+      p <= 2 * _measuredHalfWidth) {
+    return q.isOdd ? 0 : 1 / (2 * q);
+  }
+  final phases = <double>{
+    0,
+    for (final convergent in convergents)
+      if (convergent.q.isEven) 1 / (2 * convergent.q),
+    for (var sixteenth = 1; sixteenth < 16; sixteenth += 1) sixteenth / 16,
+  }.toList()..sort();
+  var best = 0.0;
+  var bestMargin = -1.0;
+  for (final phase in phases) {
+    final margin = _marginAt(scale, phase, failsAt: bestMargin + 1e-12);
+    if (margin > bestMargin + 1e-12) {
+      bestMargin = margin;
+      best = phase;
+    }
+  }
+  return best;
+}
+
+/// The last few scales' phases. More than one: the sheet canvas and the
+/// editing canvas paint at their own scales in the same frame, and a pinch
+/// moves one of them every frame.
+final Map<double, double> _phaseMemo = {};
+
+/// The device pixel centres a phase is measured over: this many either
+/// side of the canvas origin.
+const _measuredHalfWidth = 8192;
+
+/// The continued-fraction convergents p/q of [scale], shallowest first — up
+/// to the first one exact to 1e-9, or the last before q outgrows the
+/// measured pixels.
+List<({int p, int q})> _convergentsOf(double scale) {
   var numerator = scale.floor();
   var previousNumerator = 1;
   var denominator = 1;
   var previousDenominator = 0;
   var rest = scale - numerator;
+  final convergents = [(p: numerator, q: denominator)];
   while (rest > 1e-12 && (scale - numerator / denominator).abs() > 1e-9) {
     final x = 1 / rest;
     final term = x.floor();
     final nextDenominator = term * denominator + previousDenominator;
-    if (nextDenominator > 16384) {
+    if (nextDenominator > 2 * _measuredHalfWidth) {
       break;
     }
     final nextNumerator = term * numerator + previousNumerator;
@@ -119,8 +180,40 @@ int _denominatorOf(double scale) {
     previousDenominator = denominator;
     denominator = nextDenominator;
     rest = x - term;
+    convergents.add((p: numerator, q: denominator));
   }
-  return denominator;
+  return convergents;
+}
+
+/// The least distance, in texels, from a texel boundary that any device
+/// pixel centre within [_measuredHalfWidth] of the origin samples at, for
+/// [scale] and [phase] — or the first distance at or below [failsAt], which
+/// already loses.
+///
+/// Walks the BOUNDARIES rather than the pixels: boundary n is sampled
+/// nearest by the pixel centre closest to `n·scale − 0.5 + phase`, so 16,384
+/// / [scale] steps say what 16,384 would.
+double _marginAt(double scale, double phase, {required double failsAt}) {
+  final first = ((-_measuredHalfWidth + 0.5 - phase) / scale).floor();
+  final last = ((_measuredHalfWidth - 0.5 - phase) / scale).ceil();
+  var least = 0.5;
+  for (var n = first; n <= last; n += 1) {
+    final boundary = n * scale;
+    var pixel = (boundary - 0.5 + phase).roundToDouble();
+    if (pixel < -_measuredHalfWidth) {
+      pixel = -_measuredHalfWidth.toDouble();
+    } else if (pixel > _measuredHalfWidth - 1) {
+      pixel = _measuredHalfWidth - 1.0;
+    }
+    final distance = (pixel + 0.5 - phase - boundary).abs() / scale;
+    if (distance < least) {
+      least = distance;
+      if (least <= failsAt) {
+        return least;
+      }
+    }
+  }
+  return least;
 }
 
 /// The ONE way painters take canvas-space geometry to the screen (P8):

@@ -24,7 +24,7 @@ import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 /// 2026-09-11).
 ///
 /// F-67's phase snap lands the render translation on whole + φ device
-/// pixels above 1:1 (a quarter pixel at 110%), so the canvas's left and top
+/// pixels above 1:1 (1/20 of a pixel at 110%), so the canvas's left and top
 /// edges sit INSIDE a device pixel. Every boundary within the artwork is
 /// decided per pixel by its centre — nearest sampling — but the outer edge
 /// of the buffer blit and of the paper rect was anti-aliased, which painted
@@ -47,8 +47,8 @@ void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
   const paper = ProjectBackground.color(0xFF00FF00);
   const zoom = 1.1;
-  // Pan chosen so the phase (1/4 at 110%) puts BOTH edges of each axis
-  // inside a pixel: left 5.25, right 9.65; top 3.25, bottom 7.65.
+  // Pan chosen so the phase (1/20 at 110%) puts BOTH edges of each axis
+  // inside a pixel: left 5.05, right 9.45; top 3.05, bottom 7.45.
   final viewport = CanvasViewport(zoom: zoom, panX: 5, panY: 3);
   const logical = Size(16, 16);
 
