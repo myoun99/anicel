@@ -104,7 +104,7 @@ void main() {
       final archive = buildAnicelArchiveBytes(
         project: project,
         cels: const [],
-        grants: [grant.toJson()!],
+        sessionFields: AnicelSessionFields(grants: [grant.toJson()!]),
       );
 
       final parsed = parseAnicelArchiveBytes(archive);

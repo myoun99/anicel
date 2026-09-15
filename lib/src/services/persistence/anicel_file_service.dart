@@ -338,13 +338,10 @@ class AnicelFileService {
     /// entry REMOVED — that is the settings-change sweep.
     ProjectConforms conforms = const ProjectConforms.none(),
 
-    /// The security-scoped tokens for referenced media, already reduced to
-    /// JSON by the session — see [buildAnicelProjectJsonBytes].
-    List<Map<String, Object?>> grants = const [],
-
-    /// Pool path → CRC-32 hex, for the media somebody has read the bytes
-    /// of — see [MediaFingerprints].
-    Map<String, Object?> mediaCrcs = const {},
+    /// What the document carries beside the project — the media grants and
+    /// fingerprints, already reduced to JSON by the session. See
+    /// [AnicelSessionFields].
+    AnicelSessionFields sessionFields = AnicelSessionFields.none,
 
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
@@ -508,8 +505,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
         conforms: conforms,
-        grants: grants,
-        mediaCrcs: mediaCrcs,
+        sessionFields: sessionFields,
         onProgress: onProgress,
       );
       if (adopted != null) {
@@ -533,8 +529,7 @@ class AnicelFileService {
       saveDirectory: saveDirectory,
       mediaToStore: mediaToStore,
       conforms: conforms,
-      grants: grants,
-      mediaCrcs: mediaCrcs,
+      sessionFields: sessionFields,
       onProgress: onProgress,
       onFullWriteLeftAt: onFullWriteLeftAt,
     );
@@ -766,8 +761,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
-    List<Map<String, Object?>> grants = const [],
-    Map<String, Object?> mediaCrcs = const {},
+    required AnicelSessionFields sessionFields,
     Map<String, MediaByteSource> mediaToStore = const {},
 
     /// Pool path → the conform to carry alongside it, taken AS IT SITS
@@ -828,8 +822,7 @@ class AnicelFileService {
           project: project,
           saveDirectory: saveDirectory,
           mediaInArchive: mediaToStore.keys.toSet(),
-          grants: grants,
-          mediaCrcs: mediaCrcs,
+          sessionFields: sessionFields,
         );
         progress.step();
         final blobs = _resolvedBlobs(works, progress);
@@ -1016,8 +1009,7 @@ class AnicelFileService {
     required Set<BrushFrameKey> dirty,
     required String filePath,
     required String saveDirectory,
-    List<Map<String, Object?>> grants = const [],
-    Map<String, Object?> mediaCrcs = const {},
+    required AnicelSessionFields sessionFields,
     Map<String, MediaByteSource> mediaToStore = const {},
 
     /// Pool path → the conform to carry alongside it, taken AS IT SITS
@@ -1093,8 +1085,7 @@ class AnicelFileService {
         works: works,
         mediaToStore: mediaToStore,
         conforms: conforms,
-        grants: grants,
-        mediaCrcs: mediaCrcs,
+        sessionFields: sessionFields,
         onProgress: onProgress,
       );
     } on Object {
@@ -1192,10 +1183,9 @@ class AnicelFileService {
     required List<_CelWork> works,
     required Map<String, MediaByteSource> mediaToStore,
     required ProjectConforms conforms,
-    // Plain maps, so the closure carries values the port can copy — the
-    // picker's grant type could not cross this boundary at all.
-    required List<Map<String, Object?>> grants,
-    required Map<String, Object?> mediaCrcs,
+    // Plain maps inside, so the closure carries values the port can copy —
+    // the picker's grant type could not cross this boundary at all.
+    required AnicelSessionFields sessionFields,
     void Function(double)? onProgress,
   }) {
     return _reportingProgress(
@@ -1232,8 +1222,7 @@ class AnicelFileService {
               project: project,
               saveDirectory: saveDirectory,
               mediaInArchive: mediaToStore.keys.toSet(),
-              grants: grants,
-              mediaCrcs: mediaCrcs,
+              sessionFields: sessionFields,
             );
             yield (name: projectEntry.name, bytes: projectEntry.bytes);
             progress.step();

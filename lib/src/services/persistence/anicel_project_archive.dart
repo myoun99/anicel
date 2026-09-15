@@ -337,6 +337,37 @@ String anicelCelEntryName(BrushFrameKey key) {
 const String anicelProjectEntryName = 'project.json';
 const String anicelProjectEntryNameCompressed = 'project.json.z';
 
+/// What a session hands a `.anicel` to carry BESIDE the project, already
+/// reduced to plain JSON: the types that understand these fields cannot
+/// cross into the isolate that writes the file (a grant reaches for a
+/// `MethodChannel`).
+///
+/// 🚨★★ONE VALUE, NOT A PARAMETER PER FIELD (F-123, 2026-09-15). The grants
+/// and the fingerprints rode seven signatures side by side, from the
+/// session's save call down to this writer; where the work stood would have
+/// been the third field down that road, and every road would have had to
+/// learn it again.
+///
+/// ⛔None of these is part of [Project], and for one reason each time: none
+/// of them is an edit. A bookmark the OS re-issues, a checksum read on
+/// import — kept in the model, they would mark the film dirty for
+/// something the person never did.
+class AnicelSessionFields {
+  const AnicelSessionFields({
+    this.grants = const [],
+    this.mediaCrcs = const {},
+  });
+
+  /// Security-scoped tokens for the media the project references.
+  final List<Map<String, Object?>> grants;
+
+  /// Pool path → CRC-32 hex, for the media somebody has read the bytes of
+  /// — see [MediaFingerprints].
+  final Map<String, Object?> mediaCrcs;
+
+  static const AnicelSessionFields none = AnicelSessionFields();
+}
+
 /// The entry a save should WRITE: the compressed one, always.
 ///
 /// The bytes are a codec byte followed by the payload — the same shape a
@@ -350,16 +381,14 @@ const String anicelProjectEntryNameCompressed = 'project.json.z';
   required Project project,
   String? saveDirectory,
   Set<String> mediaInArchive = const {},
-  List<Map<String, Object?>> grants = const [],
-  Map<String, Object?> mediaCrcs = const {},
+  AnicelSessionFields sessionFields = AnicelSessionFields.none,
 }) {
   final compressed = compressAnicelPayload(
     buildAnicelProjectJsonBytes(
       project: project,
       saveDirectory: saveDirectory,
       mediaInArchive: mediaInArchive,
-      grants: grants,
-      mediaCrcs: mediaCrcs,
+      sessionFields: sessionFields,
     ),
   );
   return (
@@ -397,11 +426,10 @@ Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
   Set<String> mediaInArchive = const {},
-  List<Map<String, Object?>> grants = const [],
 
-  /// Pool path → CRC-32 hex, for the assets somebody has read the bytes of.
-  /// Kept out of `project` on purpose — see [MediaFingerprints].
-  Map<String, Object?> mediaCrcs = const {},
+  /// What the session keeps beside the project — kept out of `project` on
+  /// purpose, see [AnicelSessionFields].
+  AnicelSessionFields sessionFields = AnicelSessionFields.none,
 }) {
   final mediaRelativePaths = <String, String>{};
   final mediaEntries = <String, String>{};
@@ -430,8 +458,9 @@ Uint8List buildAnicelProjectJsonBytes({
         'project': project.toJson(),
         if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
         if (mediaEntries.isNotEmpty) 'mediaEntries': mediaEntries,
-        if (grants.isNotEmpty) 'grants': grants,
-        if (mediaCrcs.isNotEmpty) 'mediaCrcs': mediaCrcs,
+        if (sessionFields.grants.isNotEmpty) 'grants': sessionFields.grants,
+        if (sessionFields.mediaCrcs.isNotEmpty)
+          'mediaCrcs': sessionFields.mediaCrcs,
       }),
     ),
   );
@@ -456,16 +485,14 @@ Uint8List buildAnicelArchiveBytes({
   required Project project,
   required List<AnicelCelBlob> cels,
   String? saveDirectory,
-  List<Map<String, Object?>> grants = const [],
-  Map<String, Object?> mediaCrcs = const {},
+  AnicelSessionFields sessionFields = AnicelSessionFields.none,
 }) {
   // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
   // tier) address raw bytes by {offset, length} without inflating.
   final projectEntry = buildAnicelProjectEntry(
     project: project,
     saveDirectory: saveDirectory,
-    grants: grants,
-    mediaCrcs: mediaCrcs,
+    sessionFields: sessionFields,
   );
   final archive = Archive()
     ..add(

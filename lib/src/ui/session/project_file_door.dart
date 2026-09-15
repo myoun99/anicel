@@ -26,7 +26,7 @@ import '../../services/media/project_media_sources.dart'
     show ProjectConforms, mediaEntryNamesFor, projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
-    show remapProjectMediaPaths;
+    show AnicelSessionFields, remapProjectMediaPaths;
 import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderPicker, MaterializeCancelled;
@@ -295,17 +295,13 @@ class ProjectFileDoor {
       mediaEntryNames: _file.mediaEntryNames,
       staging: _staging,
     );
-    final conforms = _file.conformsToStore();
-    celsLostToAMissingFile = await _anicelFileService.save(
-      project: _project.repository.requireProject(),
-      brushFrameStore: _renderCaches.brushFrameStore,
-      auxCelStores: _auxCelStores,
-      filePath: path,
-      mediaToStore: mediaToStore,
-      conforms: conforms,
-      grants: _grants.grantsToStore(),
-      mediaCrcs: _fingerprints.crcsToStore(),
-      onProgress: onProgress,
+    celsLostToAMissingFile = await _saveArchive(
+      path,
+      (
+        mediaToStore: mediaToStore,
+        conforms: _file.conformsToStore(),
+        onProgress: onProgress,
+      ),
       adoptRefs: false,
     );
     return (
@@ -428,12 +424,19 @@ class ProjectFileDoor {
   /// THE save call, once. Four sites used to build it — the direct save,
   /// the staging road, the coordinated road and the door's own writer —
   /// and the clone gate counted the fourth (2026-09-13). What differs per
-  /// road is the path, whether a Save As forces a whole write, and whether
-  /// the caller takes the swap; everything else is this session's.
+  /// road is the path, whether a Save As forces a whole write, whether the
+  /// caller takes the swap, and whether the session adopts what was
+  /// written; everything else is this session's.
+  ///
+  /// The Save As staging copy was a fifth, still spelling the call for
+  /// itself to say `adoptRefs: false`. It goes through here now (F-123,
+  /// 2026-09-15): a field the session adds to every save would otherwise
+  /// have had to be remembered there as well.
   Future<Set<BrushFrameKey>> _saveArchive(
     String filePath,
     _SaveCarry carry, {
     bool rewriteWhole = false,
+    bool adoptRefs = true,
     void Function(String tempPath)? onFullWriteLeftAt,
   }) => _anicelFileService.save(
     project: _project.repository.requireProject(),
@@ -442,9 +445,12 @@ class ProjectFileDoor {
     filePath: filePath,
     mediaToStore: carry.mediaToStore,
     conforms: carry.conforms,
-    grants: _grants.grantsToStore(),
-    mediaCrcs: _fingerprints.crcsToStore(),
+    sessionFields: AnicelSessionFields(
+      grants: _grants.grantsToStore(),
+      mediaCrcs: _fingerprints.crcsToStore(),
+    ),
     onProgress: carry.onProgress,
+    adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
     onFullWriteLeftAt: onFullWriteLeftAt,
   );
