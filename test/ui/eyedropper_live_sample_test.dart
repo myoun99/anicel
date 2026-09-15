@@ -46,10 +46,7 @@ void main() {
         initialFrameKey: frameKey,
         frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           for (var index = 0; index < 20; index += 1)

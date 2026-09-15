@@ -66,10 +66,7 @@ void main() {
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: s.requireActiveCut.canvasSize,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 8,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
       sourceDabs: [
         // A diagonal spray: whatever region of the canvas the viewport

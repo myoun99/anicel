@@ -54,10 +54,7 @@ void main() {
       initialFrameKey: frameKeys.first,
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
     final history = HistoryManager();
     addTearDown(history.dispose);

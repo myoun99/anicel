@@ -42,8 +42,6 @@ void main() {
       tileSize: tileSize,
     ),
     historyPolicy: const BrushHistoryPolicy(
-      userUndoLimit: 8,
-      deferredBakeRatio: 0,
       retainedSessionLimit: 4,
     ),
   );

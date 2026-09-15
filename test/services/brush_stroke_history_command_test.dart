@@ -160,10 +160,7 @@ BrushFrameEditingCoordinator _coordinator() {
     sessionStore: BrushFrameEditSessionStore(
       canvasSize: const CanvasSize(width: 8, height: 8),
     ),
-    historyPolicy: const BrushHistoryPolicy(
-      userUndoLimit: 8,
-      deferredBakeRatio: 0,
-    ),
+    historyPolicy: const BrushHistoryPolicy(),
   );
 }
 

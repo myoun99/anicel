@@ -58,10 +58,7 @@ void main() {
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 8,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
       sourceDabs: [
         BrushDab(

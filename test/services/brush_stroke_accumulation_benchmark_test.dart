@@ -70,10 +70,7 @@ void main() {
         frameStore: store,
         sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
         // The main canvas host's production policy.
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 24,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       );
       final historyManager = HistoryManager();
       final commands = <BrushStrokeHistoryCommand>[];

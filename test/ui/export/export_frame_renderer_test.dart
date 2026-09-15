@@ -52,10 +52,7 @@ void main() {
         initialFrameKey: frameKey,
         frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           BrushDab(
@@ -166,10 +163,7 @@ void main() {
         initialFrameKey: frameKey,
         frameStore: session.renderCaches.brushFrameStore,
         sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           BrushDab(

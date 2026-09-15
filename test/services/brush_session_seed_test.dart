@@ -28,7 +28,7 @@ void main() {
     layerId: LayerId('seed-layer'),
     frameId: FrameId('seed-frame'),
   );
-  const policy = BrushHistoryPolicy(userUndoLimit: 24, deferredBakeRatio: 0);
+  const policy = BrushHistoryPolicy();
 
   BrushDab dab(double x, double y, int color) => BrushDab(
     center: CanvasPoint(x: x, y: y),

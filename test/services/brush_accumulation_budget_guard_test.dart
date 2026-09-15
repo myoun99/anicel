@@ -65,10 +65,7 @@ void main() {
       initialFrameKey: celKey(0),
       frameStore: BrushFrameStore(),
       sessionStore: sessionStore,
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
     return (coordinator, sessionStore, HistoryManager());
   }

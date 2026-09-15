@@ -1,15 +1,7 @@
-import 'dart:math' as math;
-
 class BrushHistoryPolicy {
   const BrushHistoryPolicy({
-    required this.userUndoLimit,
-    required this.deferredBakeRatio,
-    this.minimumDeferredBakeBuffer = 16,
     this.retainedSessionLimit = defaultRetainedSessionLimit,
-  }) : assert(userUndoLimit > 0),
-       assert(deferredBakeRatio >= 0),
-       assert(minimumDeferredBakeBuffer >= 0),
-       assert(retainedSessionLimit > 0);
+  }) : assert(retainedSessionLimit > 0);
 
   /// Default cap for LIVE edit sessions (R13): every cel ever drawn on used
   /// to keep its session — surface plus up to a full materialization byte
@@ -21,16 +13,7 @@ class BrushHistoryPolicy {
   /// the O(1) display-cache reseed + command-replay undo.
   static const int defaultRetainedSessionLimit = 4;
 
-  final int userUndoLimit;
-  final double deferredBakeRatio;
-  final int minimumDeferredBakeBuffer;
-
   /// Maximum LIVE sessions the edit-session store retains (LRU beyond it
   /// evicts; the active session is always kept).
   final int retainedSessionLimit;
-
-  int get deferredBakeLimit => math.max(
-    minimumDeferredBakeBuffer,
-    (userUndoLimit * deferredBakeRatio).round(),
-  );
 }

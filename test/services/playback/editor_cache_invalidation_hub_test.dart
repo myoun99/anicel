@@ -65,10 +65,7 @@ void main() {
         canvasSize: const CanvasSize(width: 8, height: 8),
         tileSize: 4,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 8,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
 
     final outcome = coordinator.commitSourceStroke(

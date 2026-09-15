@@ -34,7 +34,7 @@ void main() {
       ),
       frameStore: BrushFrameStore(),
       sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-      historyPolicy: const BrushHistoryPolicy(userUndoLimit: 4, deferredBakeRatio: 0),
+      historyPolicy: const BrushHistoryPolicy(),
     );
 
     final outcome = coordinator.commitSourceStroke(

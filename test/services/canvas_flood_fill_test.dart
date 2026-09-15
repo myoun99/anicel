@@ -430,10 +430,7 @@ void main() {
             canvasSize: canvasSize,
             tileSize: 4,
           ),
-          historyPolicy: const BrushHistoryPolicy(
-            userUndoLimit: 8,
-            deferredBakeRatio: 0,
-          ),
+          historyPolicy: const BrushHistoryPolicy(),
         );
         coordinator.commitSourceStroke(sourceDabs: [dab]);
 

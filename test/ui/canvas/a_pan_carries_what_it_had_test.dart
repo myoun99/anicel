@@ -70,10 +70,7 @@ void main() {
         canvasSize: canvasSize,
         tileSize: 8,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 8,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
       sourceDabs: [
         for (var i = 0; i < 4; i += 1)

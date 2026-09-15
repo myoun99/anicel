@@ -52,10 +52,7 @@ void main() {
         sessionStore: BrushFrameEditSessionStore(
           canvasSize: session.requireActiveCut.canvasSize,
         ),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           for (var index = 0; index < 40; index += 1)

@@ -34,7 +34,7 @@ void main() {
   group('brush stroke accumulation stays bounded', () {
     test('the SESSION retains zero per-stroke history — undo weight lives '
         'only on the app stack as surface snapshots (R19 P3b)', () {
-      final coordinator = _coordinator(userUndoLimit: 8);
+      final coordinator = _coordinator();
       for (var stroke = 0; stroke < 40; stroke += 1) {
         coordinator.commitSourceStroke(sourceDabs: [_dab(stroke % 6)]);
       }
@@ -50,7 +50,7 @@ void main() {
 
     test('the app history command drops its one-shot commit payload after '
         'the first execute', () {
-      final coordinator = _coordinator(userUndoLimit: 8);
+      final coordinator = _coordinator();
       final history = HistoryManager();
       final command = BrushStrokeHistoryCommand(
         coordinator: coordinator,
@@ -190,7 +190,7 @@ class _ProbeCommand implements Command {
   void undo() => log.add('undo $index');
 }
 
-BrushFrameEditingCoordinator _coordinator({required int userUndoLimit}) {
+BrushFrameEditingCoordinator _coordinator() {
   const key = BrushFrameKey(
     projectId: ProjectId('project'),
     trackId: TrackId('track'),
@@ -204,10 +204,7 @@ BrushFrameEditingCoordinator _coordinator({required int userUndoLimit}) {
     sessionStore: BrushFrameEditSessionStore(
       canvasSize: const CanvasSize(width: 8, height: 8),
     ),
-    historyPolicy: BrushHistoryPolicy(
-      userUndoLimit: userUndoLimit,
-      deferredBakeRatio: 0,
-    ),
+    historyPolicy: const BrushHistoryPolicy(),
   );
 }
 

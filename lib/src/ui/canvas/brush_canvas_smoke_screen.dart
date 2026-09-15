@@ -193,10 +193,7 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
         canvasSize: _resolvedCanvasSize,
         tileSize: widget.tileSize,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 256,
-        deferredBakeRatio: 0.1,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
   }
 

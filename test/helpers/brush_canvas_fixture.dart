@@ -47,10 +47,7 @@ class BrushCanvasFixture {
   static BrushFrameEditingCoordinator createCoordinator({
     List<BrushFrameKey>? frameKeys,
     CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
-    BrushHistoryPolicy historyPolicy = const BrushHistoryPolicy(
-      userUndoLimit: defaultCutDuration,
-      deferredBakeRatio: 0,
-    ),
+    BrushHistoryPolicy historyPolicy = const BrushHistoryPolicy(),
   }) {
     final keys = frameKeys ?? createFrameKeys();
     return BrushFrameEditingCoordinator(

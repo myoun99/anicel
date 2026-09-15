@@ -146,10 +146,7 @@ void main() {
           canvasSize: canvasSize,
           tileSize: 4,
         ),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           BrushDab(
@@ -358,10 +355,7 @@ void main() {
           canvasSize: canvasSize,
           tileSize: 16,
         ),
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 8,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       ).commitSourceStroke(
         sourceDabs: [
           BrushDab(

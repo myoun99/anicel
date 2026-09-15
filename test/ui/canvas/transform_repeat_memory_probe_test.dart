@@ -110,10 +110,7 @@ void main() {
       sessionStore: BrushFrameEditSessionStore(
         canvasSize: defaultCutCanvasSize,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: defaultCutDuration,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();

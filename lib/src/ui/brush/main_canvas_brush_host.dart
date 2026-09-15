@@ -617,10 +617,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       initialFrameKey: initialFrameKey,
       frameStore: _frameStore,
       sessionStore: BrushFrameEditSessionStore(canvasSize: widget.canvasSize),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 24,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     );
   }
 }

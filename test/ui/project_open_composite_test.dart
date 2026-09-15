@@ -60,10 +60,7 @@ void main() {
         canvasSize: s.requireActiveCut.canvasSize,
         tileSize: 256,
       ),
-      historyPolicy: const BrushHistoryPolicy(
-        userUndoLimit: 8,
-        deferredBakeRatio: 0,
-      ),
+      historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
       sourceDabs: [
         BrushDab(
@@ -224,10 +221,7 @@ BitmapSurface materializeSingleDabSurface(CanvasSize canvasSize) {
     initialFrameKey: key,
     frameStore: store,
     sessionStore: sessionStore,
-    historyPolicy: const BrushHistoryPolicy(
-      userUndoLimit: 4,
-      deferredBakeRatio: 0,
-    ),
+    historyPolicy: const BrushHistoryPolicy(),
   ).commitSourceStroke(
     sourceDabs: [
       BrushDab(

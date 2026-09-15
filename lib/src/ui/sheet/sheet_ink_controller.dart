@@ -170,10 +170,7 @@ BrushFrameEditingCoordinator inkCoordinatorSynced(
     initialFrameKey: initialFrameKey,
     frameStore: store,
     sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-    historyPolicy: const BrushHistoryPolicy(
-      userUndoLimit: 24,
-      deferredBakeRatio: 0,
-    ),
+    historyPolicy: const BrushHistoryPolicy(),
   );
 }
 

@@ -72,10 +72,7 @@ void main() {
         initialFrameKey: celKey(0),
         frameStore: store,
         sessionStore: sessionStore,
-        historyPolicy: const BrushHistoryPolicy(
-          userUndoLimit: 24,
-          deferredBakeRatio: 0,
-        ),
+        historyPolicy: const BrushHistoryPolicy(),
       );
       final historyManager = HistoryManager();
 
