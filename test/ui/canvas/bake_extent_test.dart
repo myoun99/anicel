@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
@@ -23,6 +26,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
@@ -290,6 +294,220 @@ void main() {
       fresh,
       reason: 'same document, same viewport, same canvas — the picture may '
           'not depend on which size was painted first',
+    );
+  });
+
+  testWidgets('🚨a live draw past the extent REPLAYS the bake — no re-record, '
+      'no stretched backdrop (review 2026-09-15)', (tester) async {
+    // F-85 made the buffer cover everything the active slot draws, and the
+    // bake's extent followed it: a stamp ghost hovering past the ink dropped
+    // every recording and rasterised the whole backdrop again on each move.
+    //
+    // A 32px page seen whole with its pasteboard (origin 32px in), SEVEN rows
+    // of ink below the active layer — the raster threshold, as above; a
+    // picture replays at any size, so below it nothing could stretch — and a
+    // stamp ghost on the active layer.
+    const canvasSize = CanvasSize(width: 32, height: 32);
+    const view = Size(96, 96);
+    const frameKey = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
+    );
+    const inThePage = Rect.fromLTWH(8, 8, 16, 16);
+    const onThePasteboard = Rect.fromLTWH(-16, 16, 16, 16);
+
+    final ghostImage = () {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 16, 16),
+        Paint()..color = const Color(0xFFFF0000),
+      );
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(16, 16);
+      picture.dispose();
+      return image;
+    }();
+    addTearDown(ghostImage.dispose);
+    final piece = CutPiece(
+      image: BrushStampImage(
+        id: 'ghost',
+        width: 16,
+        height: 16,
+        rgba: Uint8List(16 * 16 * 4),
+      ),
+      originLeft: 0,
+      originTop: 0,
+    );
+    CutStampPreview ghostAt(Rect where) => CutStampPreview(
+      piece: piece,
+      image: ghostImage,
+      canvasRect: where,
+      opacity: 1,
+      blendMode: BrushBlendMode.color,
+    );
+
+    LayerFrameImageCache cacheWithDab() {
+      final store = BrushFrameStore();
+      BrushFrameEditingCoordinator(
+        initialFrameKey: frameKey,
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: canvasSize,
+          tileSize: 16,
+        ),
+        historyPolicy: const BrushHistoryPolicy(
+          userUndoLimit: 8,
+          deferredBakeRatio: 0,
+        ),
+      ).commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 20, y: 20),
+            color: 0xFF0000FF,
+            size: 5,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+      return LayerFrameImageCache(frameStore: store);
+    }
+
+    Future<({CustomPainter painter, StaticCompositeBake bake})> pump(
+      ValueNotifier<CutStampPreview?> ghost,
+    ) async {
+      final cache = cacheWithDab();
+      await tester.runAsync(
+        () => cache.prepare(
+          key: frameKey,
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: view.width,
+                height: view.height,
+                child: CanvasLayerStackView(
+                  nodes: [
+                    for (var i = 0; i < 7; i += 1)
+                      const CompositeLeaf<CanvasStackRow>(
+                        CanvasLayerImageRequest(
+                          frameKey: frameKey,
+                          opacity: 1,
+                        ),
+                      ),
+                    const CompositeLeaf<CanvasStackRow>(
+                      CanvasActiveLayerRow(opacity: 1),
+                    ),
+                  ],
+                  imageCache: cache,
+                  canvasSize: canvasSize,
+                  viewport: CanvasViewport(panX: 32, panY: 32),
+                  activeSurfacePainter: BitmapSurfacePainter(
+                    surface: BitmapSurface(
+                      canvasSize: canvasSize,
+                      tileSize: 16,
+                      tiles: const {},
+                    ),
+                    stampPreview: ghost,
+                    showTransparentBackground: false,
+                  ),
+                  paintPaper: true,
+                  paperBackground: const ProjectBackground.color(0xFF00FF00),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final painter = tester
+          .widgetList<CustomPaint>(
+            find.descendant(
+              of: find.byType(CanvasLayerStackView),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .where((paint) => paint.painter != null)
+          .first
+          .painter!;
+      final bake =
+          // ignore: avoid_dynamic_calls
+          (tester.state(find.byType(CanvasLayerStackView)) as dynamic).debugBake
+              as StaticCompositeBake;
+      return (painter: painter, bake: bake);
+    }
+
+    Future<Uint8List> paintAt(CustomPainter painter, Size size) => rasterBytes(
+      (canvas) => painter.paint(canvas, size),
+      size.width.round(),
+      size.height.round(),
+    );
+
+    final ghost = ValueNotifier<CutStampPreview?>(ghostAt(inThePage));
+    addTearDown(ghost.dispose);
+    final mounted = await pump(ghost);
+    await tester.runAsync(() => paintAt(mounted.painter, view));
+    expect(
+      mounted.bake.rasterCount,
+      1,
+      reason: 'anchor: the backdrop is the RASTER, the mechanism a stretch '
+          'can reach',
+    );
+    final recorded = mounted.bake.recordCount;
+
+    ghost.value = ghostAt(onThePasteboard);
+    final moved = await tester.runAsync(() => paintAt(mounted.painter, view));
+    expect(
+      mounted.bake.recordCount,
+      recorded,
+      reason: 'the ghost grew the BUFFER past the committed extent; nothing '
+          'the bake records draws it, so a hover replays the backdrop '
+          'instead of rasterising it again under the pointer',
+    );
+    // The counter is live: an extent that really moves re-records. Painted
+    // before the fresh mount below retires this stack's images.
+    await tester.runAsync(() => paintAt(mounted.painter, const Size(48, 48)));
+    expect(
+      mounted.bake.recordCount,
+      greaterThan(recorded),
+      reason: 'anchor: a narrower view moves the extent the recordings '
+          'depend on — the count above did not stay put by being dead',
+    );
+
+    // The same state, painted by a stack that never saw the ghost elsewhere.
+    final settled = ValueNotifier<CutStampPreview?>(ghostAt(onThePasteboard));
+    addTearDown(settled.dispose);
+    final fresh = await pump(settled);
+    final freshBytes = await tester.runAsync(
+      () => paintAt(fresh.painter, view),
+    );
+    // Screen (24, 56) is canvas (-8, 24): inside the ghost on the pasteboard.
+    const probe = ((56 * 96) + 24) * 4;
+    expect(
+      [freshBytes![probe], freshBytes[probe + 1], freshBytes[probe + 2]],
+      [255, 0, 0],
+      reason: 'anchor: the ghost is on the pasteboard, so the buffer really '
+          'did grow past the page',
+    );
+    expect(
+      moved,
+      freshBytes,
+      reason: 'the backdrop raster lands on the rect it was recorded over — '
+          'handed the grown buffer\'s rect, the old raster stretched across '
+          'it',
     );
   });
 }

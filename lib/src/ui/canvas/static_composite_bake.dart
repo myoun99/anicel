@@ -131,6 +131,7 @@ class StaticCompositeBake {
     }
     final recorder = ui.PictureRecorder();
     record(Canvas(recorder));
+    _recordCount += 1;
     final picture = recorder.endRecording();
     _slots[id] = picture;
     canvas.drawPicture(picture);
@@ -186,6 +187,7 @@ class StaticCompositeBake {
       final into = Canvas(recorder);
       into.translate(-rect.left, -rect.top);
       record(into);
+      _recordCount += 1;
       final picture = recorder.endRecording();
       try {
         held = picture.toImageSync(width, height);
@@ -218,4 +220,11 @@ class StaticCompositeBake {
   /// one blit instead of N draws.
   @visibleForTesting
   int get rasterCount => _rasters.length;
+
+  /// Recordings made since this bake was created, pictures and rasters
+  /// alike — the seam that tells a replay from a re-record. The slot counts
+  /// cannot: a drop followed by the same paint leaves them where they were.
+  @visibleForTesting
+  int get recordCount => _recordCount;
+  int _recordCount = 0;
 }

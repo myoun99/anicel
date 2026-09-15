@@ -187,6 +187,9 @@ class _SurfacePaintPass {
     // paint at 70 tiles and 1.48 ms at 88 — and the same shape was
     // measured at 82.7 ms per walk at the 1024 tiles the _canvas dialog
     // allows, which is a cliff, not a smoothness question.
+    // (2d0478fb, 2026-09-09: the getter stopped copying — `tiles` hands
+    // over the stored unmodifiable view, so either lookup is O(1) now, and
+    // `tileAt` stays the one this walk means.)
     _paintVisibleTiles();
     final pendingDecodes = _pendingDecodes;
     if (pendingDecodes != null) {

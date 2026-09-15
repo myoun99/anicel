@@ -393,4 +393,136 @@ void main() {
       ),
     );
   });
+
+  /// 🚨The review of the landing above (2026-09-15): once the buffer follows
+  /// the ghost, a hover that crosses the committed extent MOVES the buffer's
+  /// rect, and a moved rect is what the scroll carry exists for. It carried
+  /// the old ghost along — a smear where the ghost had been — and, moving
+  /// back inside, repainted nothing and left the ghost out.
+  testWidgets('🚨the stamp ghost leaves nothing behind when it crosses the '
+      'extent edge, either way', (tester) async {
+    final image = redSquare();
+    addTearDown(image.dispose);
+    final ghost = ValueNotifier<CutStampPreview?>(null);
+    addTearDown(ghost.dispose);
+    final piece = CutPiece(
+      image: BrushStampImage(
+        id: 'ghost',
+        width: tileSize,
+        height: tileSize,
+        rgba: redRgba(),
+      ),
+      originLeft: 0,
+      originTop: 0,
+    );
+    CutStampPreview ghostAt(Rect where) => CutStampPreview(
+      piece: piece,
+      image: image,
+      canvasRect: where,
+      opacity: 1,
+      blendMode: BrushBlendMode.color,
+    );
+    // A committed tile, blank so it draws nothing a probe could read. It was
+    // load-bearing when this pin was written — an empty snapshot then read
+    // as 「nothing to compare」 and refused the carry on its own — and since
+    // F-130's sentinel an empty cel is a good base too; the tile keeps the
+    // pin on the case the smear was found on.
+    final tiles = BitmapTileImageCache();
+    final surface = surfaceWith({
+      TileCoord(x: 1, y: 1): BitmapTile.blank(size: tileSize),
+    });
+    await decodeAll(tester, tiles, surface);
+    final stack = await pumpStack(
+      tester,
+      painter: BitmapSurfacePainter(
+        surface: surface,
+        stampPreview: ghost,
+        tileImageCache: tiles,
+        showTransparentBackground: false,
+      ),
+    );
+    // A third spot inside the page that does not touch the first, so a
+    // carried smear of the first cannot pass for a ghost drawn here.
+    const otherPageSpot = Rect.fromLTWH(16, 0, 16, 16);
+    const otherPageProbe = Offset(56, 40);
+
+    ghost.value = ghostAt(pageSpot);
+    expect(
+      await redAt(tester, stack, pageProbe),
+      isTrue,
+      reason: 'control: the ghost inside the page is drawn',
+    );
+
+    ghost.value = ghostAt(pasteboardSpot);
+    expect(
+      await redAt(tester, stack, pasteboardProbe),
+      isTrue,
+      reason: 'control: the ghost moved onto the pasteboard, past the page',
+    );
+    expect(
+      await redAt(tester, stack, pageProbe),
+      isFalse,
+      reason: 'where the ghost WAS is repainted, not carried into the grown '
+          'buffer',
+    );
+
+    ghost.value = ghostAt(otherPageSpot);
+    expect(
+      await redAt(tester, stack, otherPageProbe),
+      isTrue,
+      reason: 'back inside the page the buffer shrinks: the ghost is drawn '
+          'where it is now, not left out of a carry with nothing to repaint',
+    );
+    expect(
+      await redAt(tester, stack, pageProbe),
+      isFalse,
+      reason: 'and no smear from the first spot rides the carry back',
+    );
+  });
+
+  /// 🚨The same review: a painter answered with its CANVAS rect whether or not
+  /// it drew there, and the selection's float is a painter on a canvas-sized
+  /// surface — a ten-pixel move drag claimed the page and the page shifted
+  /// by the drag, every frame.
+  testWidgets('🚨a painter claims what it draws, not the canvas it belongs '
+      'to — and a move\'s float claims its ink', (tester) async {
+    const bigPage = CanvasSize(width: 4096, height: 4096);
+    final ink = BitmapSurface(
+      canvasSize: bigPage,
+      tileSize: tileSize,
+      tiles: {TileCoord(x: 3, y: 2): BitmapTile.blank(size: tileSize)},
+    );
+    BitmapSurfacePainter painterOf(
+      BitmapSurface surface, {
+      required bool ownPaper,
+    }) => BitmapSurfacePainter(
+      surface: surface,
+      tileImageCache: BitmapTileImageCache(),
+      showTransparentBackground: ownPaper,
+    );
+
+    final lifted = painterOf(ink, ownPaper: false);
+    expect(lifted.drawnWorldRect, const Rect.fromLTWH(48, 32, 16, 16));
+    expect(
+      SelectionFloatPaint(
+        surface: lifted,
+        surfaceOffset: CanvasPoint(x: 100, y: -40),
+      ).drawnWorldRect,
+      const Rect.fromLTWH(148, -8, 16, 16),
+      reason: 'the float of one tile of ink is that tile, carried by the drag',
+    );
+    expect(
+      painterOf(ink, ownPaper: true).drawnWorldRect,
+      const Rect.fromLTWH(0, 0, 4096, 4096),
+      reason: 'the canvas rect is a painter\'s only when it paints its own '
+          'paper there',
+    );
+    expect(
+      painterOf(
+        BitmapSurface(canvasSize: bigPage, tileSize: tileSize, tiles: const {}),
+        ownPaper: false,
+      ).drawnWorldRect,
+      Rect.zero,
+    );
+  });
 }

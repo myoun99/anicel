@@ -5,6 +5,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'tile_origin.dart';
 
 /// ⓔ 4단계 — THE ACTIVE LAYER AS ONE IMAGE, ASSEMBLED, NEVER RE-BLENDED.
 ///
@@ -243,17 +244,7 @@ abstract final class ActiveLayerFlatProjection {
   /// ([PasteboardBounds.pasteboardRect] — the same wall the painter clips
   /// to). Null when there is no ink at all.
   static ui.Rect? _worldRectOf(Iterable<TileCoord> coords, BitmapSurface surface) {
-    ui.Rect? union;
-    final tileSize = surface.tileSize.toDouble();
-    for (final coord in coords) {
-      final rect = ui.Rect.fromLTWH(
-        coord.x * tileSize,
-        coord.y * tileSize,
-        tileSize,
-        tileSize,
-      );
-      union = union == null ? rect : union.expandToInclude(rect);
-    }
+    final union = tileCoordsWorldRect(coords, surface.tileSize);
     if (union == null) {
       return null;
     }

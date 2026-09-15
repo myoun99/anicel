@@ -41,6 +41,7 @@ import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../../services/cel_source_effect_pass.dart';
 import 'raster_picture.dart';
+import 'tile_origin.dart';
 
 part 'layer_stack/layer_stack_paint_pass.dart';
 
@@ -1229,7 +1230,9 @@ class _ActiveLayerStandIn {
   final BitmapSurface surface;
 
   /// The surface's committed tiles, captured once (the surface is
-  /// immutable; `surface.tiles` is a defensive whole-map copy per read).
+  /// immutable; `surface.tiles` was a defensive whole-map copy per read
+  /// until 2d0478fb, 2026-09-09 — it hands over the stored view now, and the
+  /// capture stays the list this window compares by).
   final List<BitmapTile> tiles;
 
   final BitmapTileImageCache tileImages;
@@ -1478,9 +1481,11 @@ Paint _withLayerPaint(Paint draw, Paint? layer) {
 /// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
 /// tiles that actually exist — so an ordinary page bounds to 2340×1654 and
 /// never reaches the cap. The fallback stops being reachable, and one
-/// resolution serves every zoom. For the ACTIVE row it is everything the
-/// slot draws ([activeSurfaceExtent]) — its committed surface alone cut
-/// every live draw at the edge of the ink already landed (F-85).
+/// resolution serves every zoom. For the ACTIVE row it is whatever the caller
+/// measures it by ([activeSurfaceExtent]): everything the slot draws for the
+/// display buffer — its committed surface alone cut every live draw at the
+/// edge of the ink already landed (F-85) — and that committed surface for the
+/// bake, which never records the live slot (review 2026-09-15).
 ///
 /// ⛔RECOMPUTED, NEVER ACCUMULATED. A rect that only ever grew would be the
 /// high-water mark of everything you had done — the "sticky / containment
@@ -1852,31 +1857,22 @@ class _LayerStackPainter extends CustomPainter {
     if (identical(kept, noLiveSurfaceTokens)) {
       return (located: false, dirty: null, now: now);
     }
-    final tileSize = activeSurfacePainter!.surface.tileSize.toDouble();
-    Rect? dirty;
-    void add(Rect rect) => dirty = dirty == null ? rect : dirty!.expandToInclude(rect);
-    Rect rectOf(TileCoord coord) => Rect.fromLTWH(
-      coord.x * tileSize,
-      coord.y * tileSize,
-      tileSize,
-      tileSize,
+    var dirty = tileCoordsWorldRect(
+      _movedCoords(
+        kept.overlay,
+        now.overlay,
+      ).followedBy(_movedCoords(kept.tiles, now.tiles)),
+      activeSurfacePainter!.surface.tileSize,
     );
-    for (final coord in _movedCoords(kept.overlay, now.overlay)) {
-      add(rectOf(coord));
-    }
-    for (final coord in _movedCoords(kept.tiles, now.tiles)) {
-      add(rectOf(coord));
-    }
     // F-130: a ghost that moved (or came, or went) dirties where it WAS and
     // where it IS — the old place has to be repainted without it.
     final ghostWas = kept.ghost;
     final ghostNow = now.ghost;
     if (ghostWas?.value != ghostNow?.value) {
-      if (ghostWas != null) {
-        add(ghostWas.rect);
-      }
-      if (ghostNow != null) {
-        add(ghostNow.rect);
+      for (final ghost in [ghostWas, ghostNow]) {
+        if (ghost != null) {
+          dirty = dirty?.expandToInclude(ghost.rect) ?? ghost.rect;
+        }
       }
     }
     return (located: true, dirty: dirty?.inflate(1), now: now);

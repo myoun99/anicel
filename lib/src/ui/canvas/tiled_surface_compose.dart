@@ -35,24 +35,14 @@ class PositionedSurfaceImage {
 /// The canvas rect UNIONED with every stored tile's rect — the extent a
 /// positioned compose rasters. Integer-aligned by construction.
 ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
-  var left = 0;
-  var top = 0;
-  var right = surface.canvasSize.width;
-  var bottom = surface.canvasSize.height;
-  for (final coord in surface.tiles.keys) {
-    final tileLeft = coord.x * surface.tileSize;
-    final tileTop = coord.y * surface.tileSize;
-    if (tileLeft < left) left = tileLeft;
-    if (tileTop < top) top = tileTop;
-    if (tileLeft + surface.tileSize > right) right = tileLeft + surface.tileSize;
-    if (tileTop + surface.tileSize > bottom) bottom = tileTop + surface.tileSize;
-  }
-  return ui.Rect.fromLTRB(
-    left.toDouble(),
-    top.toDouble(),
-    right.toDouble(),
-    bottom.toDouble(),
+  final canvas = ui.Rect.fromLTWH(
+    0,
+    0,
+    surface.canvasSize.width.toDouble(),
+    surface.canvasSize.height.toDouble(),
   );
+  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  return tiles == null ? canvas : canvas.expandToInclude(tiles);
 }
 
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by

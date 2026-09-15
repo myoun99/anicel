@@ -21,7 +21,6 @@ import 'bitmap_tile_image_cache.dart';
 import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
 import 'tile_predecessors.dart';
-import 'tiled_surface_compose.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
@@ -126,27 +125,48 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// 그려지는데 정확히 페이스트보드 끝까지 그림 그려지지않음. 그 상태에서 손
   /// 떼면 정상적으로 페이스트보드에 그림 남아있음」. The merged stack sizes its
   /// one display buffer by what each row covers, and it asked this painter's
-  /// SURFACE ([surfaceContentWorldRect]) — so every draw past the ink that had
+  /// SURFACE (`surfaceContentWorldRect`) — so every draw past the ink that had
   /// already landed was cut at that ink's edge until a commit put tiles
   /// there.
   ///
   /// ⛔Whoever sizes a buffer around this painter reads THIS, never the
   /// surface alone — and a draw added to [paintContentInto] without its rect
-  /// here is the same defect again. The surface's own rect stays the base,
-  /// so an idle layer covers exactly what its cached twin covers.
+  /// here is the same defect again.
+  ///
+  /// 🚨WHAT IT DRAWS, NOT THE CANVAS IT BELONGS TO (review 2026-09-15). This
+  /// used to start from `surfaceContentWorldRect`, which seeds the whole
+  /// canvas rect — and the selection's float is a painter too, built on a
+  /// canvas-sized surface: a move drag claimed page ∪ the page shifted by the
+  /// drag on every frame, even for a ten-pixel selection, and a page past
+  /// 4096 could push the buffer over its cap mid-drag. The canvas rect is
+  /// this painter's only when it paints its own paper there
+  /// ([showTransparentBackground]); the merged stack seeds the page itself.
+  /// Empty ([Rect.zero]) when it draws nothing.
   Rect get drawnWorldRect {
-    var drawn = surfaceContentWorldRect(surface);
+    Rect? drawn;
+    void add(Rect? rect) {
+      if (rect != null) {
+        drawn = drawn?.expandToInclude(rect) ?? rect;
+      }
+    }
+
+    if (showTransparentBackground) {
+      add(
+        Rect.fromLTWH(
+          0,
+          0,
+          surface.canvasSize.width.toDouble(),
+          surface.canvasSize.height.toDouble(),
+        ),
+      );
+    }
+    add(tileCoordsWorldRect(surface.tiles.keys, surface.tileSize));
     final overlay = overlayModel;
     if (overlay != null) {
-      final extent = overlay.tileSize.toDouble();
-      for (final coord in overlay.tileImages.keys) {
-        drawn = drawn.expandToInclude(
-          Rect.fromLTWH(coord.x * extent, coord.y * extent, extent, extent),
-        );
-      }
+      add(tileCoordsWorldRect(overlay.tileImages.keys, overlay.tileSize));
       final stamp = overlay.stampImage;
       if (stamp != null) {
-        drawn = drawn.expandToInclude(
+        add(
           overlay.stampOffset &
               Size(stamp.width.toDouble(), stamp.height.toDouble()),
         );
@@ -154,9 +174,9 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     }
     final ghost = stampPreview?.value;
     if (ghost != null && ghost.image != null) {
-      drawn = drawn.expandToInclude(ghost.canvasRect);
+      add(ghost.canvasRect);
     }
-    return drawn;
+    return drawn ?? Rect.zero;
   }
 
   @override

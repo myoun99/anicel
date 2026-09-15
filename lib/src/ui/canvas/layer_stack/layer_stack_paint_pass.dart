@@ -77,11 +77,14 @@ class _LayerStackPaintPass {
 
   // One paint's geometry: set by [paint] before the walk below reads it.
   // The page rect, the on-screen part of the pasteboard, the content the
-  // display buffer must cover, and the live surface's extent read once.
+  // display buffer must cover, the part of it the bake records over, and
+  // the active slot's two extents, each read once.
   late final Rect _canvasRect;
   late final Rect _visibleCanvasRect;
-  late Rect _contentExtent;
+  late final Rect _contentExtent;
+  late final Rect _bakeExtent;
   Rect? _memoActiveExtent;
+  Rect? _memoCommittedExtent;
 
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -163,54 +166,9 @@ class _LayerStackPaintPass {
       return;
     }
 
-    // The live surface's own extent, read ONCE per paint: `surface.tiles`
-    // rebuilds its map on every call and the node walk asks per group.
-
-    // What a group's `saveLayer` is sized by, and — unioned below — what the
-    // one display buffer covers. CONTENT, clamped to the storable universe;
-    // the pasteboard clamp is the backstop a pose needs, since a transform
-    // can push a layer anywhere and an unbounded rect is an unbounded
-    // offscreen.
-
-    // 🚨SEEDED WITH THE PAGE, not with the nodes alone.
-    //
-    // The composite always covers the document: the paper is drawn over the
-    // canvas rect whether or not any row has ink there, and a row's own
-    // extent is measured against the SURFACE's canvas — which is not
-    // necessarily this view's. Starting from the nodes alone shrank the
-    // buffer below the page, and the paper went with it.
-    _contentExtent = Rect.fromLTWH(
-      0,
-      0,
-      _painter.canvasSize.width.toDouble(),
-      _painter.canvasSize.height.toDouble(),
-    );
-    for (final node in _painter.nodes) {
-      final rect = _bufferBoundsFor(node);
-      if (rect.isEmpty) {
-        continue;
-      }
-      _contentExtent = _contentExtent.isEmpty
-          ? rect
-          : _contentExtent.expandToInclude(rect);
-    }
-    // 🚨CONTENT **AND** VIEW, and each guards a different cliff.
-    //
-    // Bounded by the VIEW alone (the old `pasteboard ∩ visibleRect`), zooming
-    // out until the pasteboard fits hands the buffer 9× the page — past the
-    // cap, and the paint drops to the SCREEN-resolution fallback, which is
-    // the one place the editing canvas stops matching playback, the camera
-    // and the export.
-    //
-    // Bounded by CONTENT alone, a page wider than the cap (a 12000px sheet)
-    // exceeds it at EVERY zoom, including the close-ups that sit comfortably
-    // inside it today — the same cliff approached from the other side.
-    //
-    // The intersection is under the cap whenever either one is, which is what
-    // keeps a single resolution reachable at every zoom and every page size.
-    _contentExtent = _contentExtent.isEmpty
-        ? _visibleCanvasRect
-        : _contentExtent.intersect(_visibleCanvasRect);
+    // What a group's buffer is sized by and, unioned, what the one display
+    // buffer covers — the law is [_compositeExtentWith]'s.
+    _contentExtent = _compositeExtentWith(_activeSurfaceExtent);
     if (_contentExtent.isEmpty) {
       canvas.restore();
       return;
@@ -220,7 +178,21 @@ class _LayerStackPaintPass {
     // consulted, so a resized panel re-records instead of replaying
     // closures that captured the old bounds — or worse, blitting the old
     // raster with a src rect computed from the new dimensions.
-    _painter.bake?.ensureExtent(_contentExtent);
+    //
+    // 🚨★★★WITHOUT THE LIVE DRAWS (review 2026-09-15). F-85 made the buffer
+    // cover everything the active slot draws, and this declared THAT extent:
+    // a stamp ghost hovering past the ink, a stroke entering a new pasteboard
+    // tile, a float dragged across the pasteboard — every such frame dropped
+    // every recording and rasterised the whole backdrop again under the
+    // pointer. Nothing the bake records draws the live slot (the backdrop is
+    // the paper and the rows below it, every other slot a sibling), so it
+    // records over the same composite measured with the active row at its
+    // COMMITTED surface, which no hover and no stroke in flight moves. The
+    // band a live draw adds lies outside every row the bake holds; the only
+    // backdrop pixels it could have shown are an effect's spread past its own
+    // row, cut there just as the idle buffer's edge cuts them.
+    _bakeExtent = _compositeExtentWith(_committedSurfaceExtent);
+    _painter.bake?.ensureExtent(_bakeExtent);
 
     // The geometry field probe — the numbers every buffer decision depends
     // on and nobody has ever measured on a device: the logical view, the
@@ -384,7 +356,7 @@ class _LayerStackPaintPass {
     /// empty, so flattening and replaying are the same picture — which is
     /// exactly what the parity suite pins.
 
-    /// [rasterRect] is non-null only when this is composing the display
+    /// `intoTheBuffer` is true only when this is composing the display
     /// buffer. The direct walk deliberately does NOT take the backdrop
     /// raster: it draws in screen space, so a flattened backdrop would be
     /// resampled by the CTM as one image while the rest of the stack was
@@ -415,6 +387,7 @@ class _LayerStackPaintPass {
         canvas,
         // The direct walk draws under the viewport transform, so a group
         // that rasterises itself has to match the CTM it is drawn into.
+        intoTheBuffer: false,
         rasterScale: _painter.viewport.zoom.abs() * _painter.devicePixelRatio,
       );
     } else {
@@ -451,7 +424,11 @@ class _LayerStackPaintPass {
   /// same slot. Read off the committed surface alone, a stroke in flight, a
   /// fill's stamp, the stamp ghost and a transform's float were all cut at
   /// the edge of the ink that had already landed — and came back the moment
-  /// a commit put tiles there.
+  /// a commit put tiles there. What the DISPLAY BUFFER covers; the bake
+  /// measures by [_committedSurfaceExtent].
+  ///
+  /// Read ONCE per paint: the node walk asks per group, and the answer walks
+  /// every tile and overlay tile the slot holds.
   Rect _activeSurfaceExtent() =>
       _memoActiveExtent ??= switch (_painter.activeSurfacePainter) {
         null => Rect.zero,
@@ -460,19 +437,74 @@ class _LayerStackPaintPass {
 
   Rect _withTheFloat(Rect drawn) {
     final float = _painter.floatOverlay?.value?.drawnWorldRect;
-    return float == null || float.isEmpty
-        ? drawn
-        : drawn.expandToInclude(float);
+    if (float == null || float.isEmpty) {
+      return drawn;
+    }
+    // A slot that draws nothing answers [Rect.zero], and a union with it
+    // would reach back to the origin.
+    return drawn.isEmpty ? float : drawn.expandToInclude(float);
   }
 
-  Rect _bufferBoundsFor(CompositeNode<_PaintRow> node) =>
-      _visibleCanvasRect.intersect(
-        _paintNodeExtent(
-          node,
-          canvasSize: _painter.canvasSize,
-          activeSurfaceExtent: _activeSurfaceExtent,
-        ),
-      );
+  /// The active row at its COMMITTED surface alone, measured as a cached row
+  /// is — what the bake records over, since nothing it records draws the
+  /// live slot (the bake's extent in [paint] says why). Read once, like
+  /// [_activeSurfaceExtent].
+  Rect _committedSurfaceExtent() =>
+      _memoCommittedExtent ??= switch (_painter.activeSurfacePainter) {
+        null => Rect.zero,
+        final painter => surfaceContentWorldRect(painter.surface),
+      };
+
+  /// What the composite covers with the active row measured by
+  /// [activeSurfaceExtent]: the page and every row's buffer bounds, clamped
+  /// to the view. CONTENT, clamped to the storable universe; the pasteboard
+  /// clamp is the backstop a pose needs, since a transform can push a layer
+  /// anywhere and an unbounded rect is an unbounded offscreen.
+  Rect _compositeExtentWith(Rect Function() activeSurfaceExtent) {
+    // 🚨SEEDED WITH THE PAGE, not with the nodes alone.
+    //
+    // The composite always covers the document: the paper is drawn over the
+    // canvas rect whether or not any row has ink there, and a row's own
+    // extent is measured against the SURFACE's canvas — which is not
+    // necessarily this view's. Starting from the nodes alone shrank the
+    // buffer below the page, and the paper went with it.
+    var extent = _canvasRect;
+    for (final node in _painter.nodes) {
+      final rect = _bufferBoundsFor(node, activeSurfaceExtent);
+      if (rect.isEmpty) {
+        continue;
+      }
+      extent = extent.isEmpty ? rect : extent.expandToInclude(rect);
+    }
+    // 🚨CONTENT **AND** VIEW, and each guards a different cliff.
+    //
+    // Bounded by the VIEW alone (the old `pasteboard ∩ visibleRect`), zooming
+    // out until the pasteboard fits hands the buffer 9× the page — past the
+    // cap, and the paint drops to the SCREEN-resolution fallback, which is
+    // the one place the editing canvas stops matching playback, the camera
+    // and the export.
+    //
+    // Bounded by CONTENT alone, a page wider than the cap (a 12000px sheet)
+    // exceeds it at EVERY zoom, including the close-ups that sit comfortably
+    // inside it today — the same cliff approached from the other side.
+    //
+    // The intersection is under the cap whenever either one is, which is what
+    // keeps a single resolution reachable at every zoom and every page size.
+    return extent.isEmpty
+        ? _visibleCanvasRect
+        : extent.intersect(_visibleCanvasRect);
+  }
+
+  Rect _bufferBoundsFor(
+    CompositeNode<_PaintRow> node,
+    Rect Function() activeSurfaceExtent,
+  ) => _visibleCanvasRect.intersect(
+    _paintNodeExtent(
+      node,
+      canvasSize: _painter.canvasSize,
+      activeSurfaceExtent: activeSurfaceExtent,
+    ),
+  );
 
   void _paintNodesWith(
     Canvas canvas,
@@ -552,7 +584,7 @@ class _LayerStackPaintPass {
     // away. Content bounds keep it inside by construction, and
     // this says so where it can fail.
     final groupRect = effectBufferBounds(
-      _bufferBoundsFor(node),
+      _bufferBoundsFor(node, _activeSurfaceExtent),
       groupPlan.outsetPixels,
     );
     assert(
@@ -589,7 +621,7 @@ class _LayerStackPaintPass {
     // which is what lets a stroke drawn UNDER an adjustment read
     // through the grade while you draw it.
     final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsFor(node),
+      bounds: _bufferBoundsFor(node, _activeSurfaceExtent),
       effects: effects,
       mix: mix,
     );
@@ -812,7 +844,7 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _bufferBoundsFor(node),
+          _bufferBoundsFor(node, _activeSurfaceExtent),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,
@@ -950,7 +982,7 @@ class _LayerStackPaintPass {
     );
   }
 
-  void _paintBackdropSplit(Canvas into, Rect rect, double rasterScale) {
+  void _paintBackdropSplit(Canvas into, double rasterScale) {
     final at = _painter.nodes.indexWhere(
       _LayerStackPainter._enclosesActiveSurface,
     );
@@ -958,13 +990,24 @@ class _LayerStackPaintPass {
     final rasterPays =
         (_painter.paintPaper ? 1 : 0) + _replayOpsOf(below) >=
         _LayerStackPainter._backdropRasterMinReplayOps;
+    // 🚨THE BAKE'S RECT, NOT THE BUFFER'S (review 2026-09-15). `drawRaster`
+    // keeps one image per slot and does not key it by the rect, which is why
+    // the extent it is declared under has to move whenever that rect does.
+    // The buffer's rect moves with every live draw past the ink and the
+    // bake's extent deliberately does not ([paint]), so the raster is made
+    // over the bake's extent on the buffer's own pixel grid and lands back
+    // on it inside whichever buffer is being composed. Handed the buffer's
+    // rect, a held raster stretched across the grown one.
+    final rasterRect = _wholePixelsOutward(_bakeExtent);
     // One body, two mechanisms: the record closure is identical either
     // way, so the fallback cannot drift from the raster — `drawRaster`
     // records the same ops shifted into the rect and blits them back to
-    // it, which lands pixel-for-pixel where the replay would have.
+    // it, which lands pixel-for-pixel where the replay would have. The one
+    // thing the raster leaves out is a replay's spread past that rect: an
+    // effect bleeding past its own row into a band only a live draw opened.
     void drawBackdrop(String id, void Function(Canvas c) record) {
       if (rasterPays) {
-        _painter.bake!.drawRaster(into, id, rect, record);
+        _painter.bake!.drawRaster(into, id, rasterRect, record);
       } else {
         _painter.bake!.draw(into, id, record);
       }
@@ -999,7 +1042,7 @@ class _LayerStackPaintPass {
 
   void _paintContent(
     Canvas into, {
-    Rect? rasterRect,
+    required bool intoTheBuffer,
     required double rasterScale,
   }) {
     // ⛔No bake handed down (a host that does not own one, or a tree with
@@ -1010,13 +1053,23 @@ class _LayerStackPaintPass {
       _paintNodes(into, _painter.nodes, rasterScale);
       return;
     }
-    if (rasterRect != null) {
-      _paintBackdropSplit(into, rasterRect, rasterScale);
+    if (intoTheBuffer) {
+      _paintBackdropSplit(into, rasterScale);
       return;
     }
     _paintPaperInto(into);
     _paintSplit(into, _painter.nodes, 0, rasterScale);
   }
+
+  /// [bounds] grown out to whole canvas pixels: the grid the display buffer
+  /// is made on, and the backdrop raster inside it with it — so the raster
+  /// lands 1:1 on the buffer's pixels whichever of the two rects is larger.
+  static Rect _wholePixelsOutward(Rect bounds) => Rect.fromLTRB(
+    bounds.left.floorToDouble(),
+    bounds.top.floorToDouble(),
+    bounds.right.ceilToDouble(),
+    bounds.bottom.ceilToDouble(),
+  );
 
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution, or null
   /// when the stack should just paint itself onto the screen.
@@ -1040,12 +1093,7 @@ class _LayerStackPaintPass {
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
     // a second time and undo the point of having it.
-    final rect = Rect.fromLTRB(
-      bounds.left.floorToDouble(),
-      bounds.top.floorToDouble(),
-      bounds.right.ceilToDouble(),
-      bounds.bottom.ceilToDouble(),
-    );
+    final rect = _wholePixelsOutward(bounds);
     final width = rect.width.round();
     final height = rect.height.round();
     if (width <= 0 || height <= 0) {
@@ -1179,7 +1227,7 @@ class _LayerStackPaintPass {
       derived = scroll.deferred;
     } else {
       // The canvas-resolution buffer records with a translate only.
-      _paintContent(into, rasterRect: rect, rasterScale: 1);
+      _paintContent(into, intoTheBuffer: true, rasterScale: 1);
       derived = false;
     }
     return _keepMiss(
@@ -1312,7 +1360,7 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// Recomposes [region] of [rect] over pixels a carry already put in
+  /// Recomposes [region] of the buffer over pixels a carry already put in
   /// [into] — the one step the patch and the scroll carry share.
   ///
   /// ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
@@ -1328,7 +1376,7 @@ class _LayerStackPaintPass {
   ///
   /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
   /// carried pixels and leave a seam of its own.
-  void _recomposeOverCarried(Canvas into, Rect rect, List<Rect> region) {
+  void _recomposeOverCarried(Canvas into, List<Rect> region) {
     final clip = Path();
     for (final part in region) {
       clip.addRect(part);
@@ -1337,7 +1385,7 @@ class _LayerStackPaintPass {
     into.clipPath(clip, doAntiAlias: false);
     into.drawPaint(Paint()..blendMode = BlendMode.clear);
     // The canvas-resolution buffer records with a translate only.
-    _paintContent(into, rasterRect: rect, rasterScale: 1);
+    _paintContent(into, intoTheBuffer: true, rasterScale: 1);
     into.restore();
   }
 
@@ -1352,7 +1400,7 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    _recomposeOverCarried(into, rect, [dirty]);
+    _recomposeOverCarried(into, [dirty]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1401,7 +1449,7 @@ class _LayerStackPaintPass {
     for (final band in bands) {
       area += band.width * band.height;
     }
-    _recomposeOverCarried(into, rect, bands);
+    _recomposeOverCarried(into, bands);
     return area;
   }
 
@@ -1424,7 +1472,7 @@ class _LayerStackPaintPass {
   /// down here — a change re-rasters the whole SCREEN-RES buffer, which
   /// is the cheap direction (결정 ⑤: 무릎 아래 획 정밀도 불요), so the
   /// fractional-grid AA family never gets a foothold; ④ the recording
-  /// takes the PICTURE route (`rasterRect: null`), never the backdrop
+  /// takes the PICTURE route (`intoTheBuffer: false`), never the backdrop
   /// raster — a 1:1 `none` blit under scale would nearest-downsample the
   /// whole backdrop.
   ///
@@ -1475,7 +1523,7 @@ class _LayerStackPaintPass {
       // The PICTURE route through the very same walk the s=1 buffer
       // records — one body, so folders, adjustments, effects and the
       // float cannot drift between the two resolutions.
-      _paintContent(into, rasterRect: null, rasterScale: s);
+      _paintContent(into, intoTheBuffer: false, rasterScale: s);
     } finally {
       _painter._activeFlatForRecording = null;
       _painter._paperInsetForRecording = null;
