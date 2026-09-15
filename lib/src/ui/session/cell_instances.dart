@@ -225,6 +225,15 @@ class CellInstances {
     }
     return switch (layer.kind) {
       LayerKind.se => _frameVerbs.canCreateDrawingAtCurrentFrame,
+      // F-107 (유저 2026-09-12): 「콘티레이어에선 불가능한 버튼 비활성화 …
+      // 그 외도 있나 확인」. These rows' press is
+      // [EditorSessionManager.createDrawingAtCurrentFrame], which refuses a
+      // block's FIRST cell (nothing there to divide) and a picture row whose
+      // one cel exists (D22) — the catch-all lit the ＋ over both.
+      LayerKind.animation ||
+      LayerKind.storyboard ||
+      LayerKind.image ||
+      LayerKind.text => _frameVerbs.canCreateDrawingAtCurrentFrame,
       LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
       _ => true,
     };

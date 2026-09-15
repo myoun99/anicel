@@ -15,11 +15,17 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 /// predicates now (the file's existing `_StaticCommandGroup` idiom), which
 /// takes it to 257.
 ///
+/// ↩️F-107 (2026-09-15): the ＋ is dark on a block's first cell now — its
+/// press has nothing to divide there — so that crossing moves the icon group
+/// too and can no longer show it standing still. The step here goes the
+/// other way: one cell into a held cel, where the ＋, the ✕ and the mark
+/// light, and the comma buttons, lit on both cells, stay as they were.
+///
 /// ⚠️ The oracle is widget INSTANCE identity. Asking "is the button still
 /// enabled" passes against a toolbar that rebuilds it every step.
 void main() {
-  testWidgets('a crossing rebuilds the comma buttons and leaves the icon '
-      'buttons alone', (tester) async {
+  testWidgets('a step into a hold rebuilds the icon buttons and leaves the '
+      'comma buttons alone', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -45,34 +51,29 @@ void main() {
       ),
     );
 
-    // A cel at 0, empty paper at 4 — the crossing the flip makes.
+    // A cel held over 0-2: its first cell, then the one after.
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
+    session.exposureVerbs.setCommaForSelectionOrCurrent(3);
     await tester.pumpAndSettle();
     final addBefore = iconButton('new-frame-button');
-    final markBefore = iconButton('toggle-mark-button');
     final commaBefore = commaButton();
 
-    session.selectFrameIndex(4);
+    session.selectFrameIndex(1);
     await tester.pumpAndSettle();
 
     // FIXTURE GUARD: the step really did change a button. Without this the
     // test would pass on a step that changed nothing, which is the case the
     // defect never touched.
     expect(
-      identical(commaButton(), commaBefore),
-      isFalse,
-      reason: 'the comma buttons DO change across this step',
-    );
-    expect(
       identical(iconButton('new-frame-button'), addBefore),
-      isTrue,
-      reason: 'the Add button did not change, so it must not be rebuilt',
+      isFalse,
+      reason: 'the icon buttons DO change across this step',
     );
     expect(
-      identical(iconButton('toggle-mark-button'), markBefore),
+      identical(commaButton(), commaBefore),
       isTrue,
-      reason: 'nor the mark button',
+      reason: 'the comma buttons did not change, so they must not be rebuilt',
     );
 
     session.playbackRig.prerenderScheduler.cancel();

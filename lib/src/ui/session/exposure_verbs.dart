@@ -79,8 +79,19 @@ class ExposureVerbs {
   /// revert the X) and a MOVIE kept as a reference (a gap would restart the
   /// movie). Free attach rows cut exposures like any drawing layer
   /// (UI-R21 #3).
+  ///
+  /// 🚨F-107 (유저 2026-09-12): 「콘티레이어에선 불가능한 버튼 비활성화.
+  /// 우선 프레임의 x버튼. 그 외도 있나 확인」. An X makes an EMPTY cell, and a
+  /// COVERING row ([LayerKind.coversWithoutGaps]) has none in its world: the
+  /// storyboard row's write normalization runs every panel on to the next
+  /// division in the same write, so the X lit there and its press only left
+  /// an undo step that undid nothing. That row times its panels by the comma
+  /// (F-91), so it is no retime stand-down — what it refuses is the hole,
+  /// and the kind answers that.
   bool _blankable(Layer layer) =>
-      layer.kind.holdsDrawings && !_changes.standsDownFromRetime(layer.id);
+      layer.kind.holdsDrawings &&
+      !layer.kind.coversWithoutGaps &&
+      !_changes.standsDownFromRetime(layer.id);
 
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;
