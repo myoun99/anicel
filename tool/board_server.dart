@@ -432,46 +432,18 @@ Future<void> _handle(HttpRequest req) async {
         final card = readBoard(File(_recordsPath))
             .where((c) => c.id == id)
             .firstOrNull;
-        final left = card == null
-            ? const <String>[]
-            : checksWaiting(card).where((ts) => ts != ref).toList();
         final note = '${body['note'] ?? ''}'.trim();
-        // 🚨★★★A CHECK TICKED WITH WORDS IS 분류 전, NOT 완료.
-        //
-        // ⛔This is the board's own law — 「유저가 적은 것은 언제나 분류 전」
-        // — and it is here because breaking it cost four reports. H24, F-28,
-        // F-22-rest and R27-rest were all ticked `ok` WITH a memo saying what
-        // was still wrong; the tick cleared the row, the words went with it,
-        // and nothing on the board said they existed. They surfaced on
-        // 2026-08-31 only because I went looking through the file.
-        //
-        // ⚠️An empty memo still means 문제 없음, so the quiet path is exactly
-        // what it was: 확인 완료 while checks remain, 완료 on the last one.
-        // ⛔TWO LINES, because they are two facts and only one of them
-        // clears the check. `checksWaiting` clears on 확인 완료 / 완료 and on
-        // nothing else — a single 유저 line would have left the button on
-        // screen looking like the tick never landed. 🧪Caught before it
-        // shipped by reading that function rather than assuming it.
-        _append({
-          'kind': 'item',
-          'id': id,
-          'at': left.isEmpty ? '완료' : '확인 완료',
-          'ref': ref,
-          'said': note.isEmpty ? '확인 — 문제 없음' : '확인함',
-          'ts': _now(),
-        });
-        if (note.isNotEmpty) {
-          // ⚠️Carries the same `ref`: the dedupe key is (text, ref), and two
-          // checks answered with the SAME words would otherwise collapse
-          // into one — the bug `ref` was added to fix, one row down.
-          _append({
-            'kind': 'item',
-            'id': id,
-            'at': '유저',
-            'ref': ref,
-            'said': note,
-            'ts': _now(),
-          });
+        // What the lines say, and why a tick can write two of them, lives on
+        // [tickRecords] — a route that only appends is a route no test can
+        // assert on.
+        for (final line in tickRecords(
+          card: card,
+          id: id,
+          ref: ref,
+          note: note,
+          now: _now,
+        )) {
+          _append(line);
         }
       case '/ask-move':
         _append({
@@ -983,6 +955,69 @@ String _esc(String s) => const HtmlEscape().convert(s);
 /// ⚠️It takes cards and nothing else. gh and git status are what a server
 /// fetches; a page with neither still has to be correct, and that is exactly
 /// the page a test should assert on.
+/// The lines a tick on [id] appends: the tick itself, and the user's words
+/// beside it when there are any. [card] is what the board holds for [id]
+/// right now (null if nothing), [ref] the `ts` of the check being cleared.
+///
+/// 🚨★★★A CHECK TICKED WITH WORDS IS 분류 전, NOT 완료.
+///
+/// ⛔This is the board's own law — 「유저가 적은 것은 언제나 분류 전」 — and
+/// it is here because breaking it cost four reports. H24, F-28, F-22-rest and
+/// R27-rest were all ticked `ok` WITH a memo saying what was still wrong; the
+/// tick cleared the row, the words went with it, and nothing on the board
+/// said they existed. They surfaced on 2026-08-31 only because I went looking
+/// through the file.
+///
+/// ⚠️An empty memo still means 문제 없음, so the quiet path is exactly what
+/// it was: 확인 완료 while checks remain, 완료 on the last one.
+/// ⛔TWO LINES, because they are two facts and only one of them clears the
+/// check. `checksWaiting` clears on 확인 완료 / 완료 and on nothing else — a
+/// single 유저 line would have left the button on screen looking like the
+/// tick never landed. 🧪Caught before it shipped by reading that function
+/// rather than assuming it.
+///
+/// 🚨★★★BOTH LINES CARRY THE CARD'S OWN KIND (2026-09-15). They used to say
+/// `kind: item` whatever the card was. On a card born `kind: check` that one
+/// word made it an item, and a check's 실기 확인 entry is not a line in the
+/// file — it is the entry [foldChecksIntoCards] folds in FOR a check. So the
+/// tick that cleared the check deleted the entry its own [ref] named, and
+/// six finished checks kept the gate saying 「가리키는 곳이 없는 값」 at the
+/// end of every turn, in every session.
+List<Map<String, dynamic>> tickRecords({
+  required BoardCard? card,
+  required String id,
+  required String ref,
+  required String note,
+  required String Function() now,
+}) {
+  final kind = card?.kind ?? 'item';
+  final left = card == null
+      ? const <String>[]
+      : checksWaiting(card).where((ts) => ts != ref).toList();
+  return [
+    {
+      'kind': kind,
+      'id': id,
+      'at': left.isEmpty ? '완료' : '확인 완료',
+      'ref': ref,
+      'said': note.isEmpty ? '확인 — 문제 없음' : '확인함',
+      'ts': now(),
+    },
+    // ⚠️Carries the same `ref`: the dedupe key is (text, ref), and two checks
+    // answered with the SAME words would otherwise collapse into one — the
+    // bug `ref` was added to fix, one row down.
+    if (note.isNotEmpty)
+      {
+        'kind': kind,
+        'id': id,
+        'at': '유저',
+        'ref': ref,
+        'said': note,
+        'ts': now(),
+      },
+  ];
+}
+
 String renderBoard(List<BoardCard> entries) =>
     _render(entries, _Gh(const [], ok: false), const []);
 
@@ -1155,6 +1190,9 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
         '$rows</div>');
   }
 
+  // 🚨★★★ONE READER FOR 「has this card ended」 — the model's, which is the
+  // one `board_say` refuses by and the gate judges by (2026-09-15).
+  final ended = endedCards(entries);
   final loose = alive
       .where((e) =>
           e.kind == 'item' &&
@@ -1165,13 +1203,17 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
           e.state != 'ask' &&
           // A card waiting to be tried on a device is drawn in 실기 확인.
           e.state != 'hands' &&
-          // An answered item has been looked at and reported on; it belongs in
-          // its own story now, not back in 착수 가능 claiming to be unstarted.
-          e.answer == null &&
-          // A claimed PR normally means the card is being CHECKED, not
-          // started. Unless it still has leftovers — then this is exactly
-          // where it belongs, with the merged part already in its story.
-          (e.pr == null || !claimed.containsKey(e.pr) || stillOwed(e)))
+          // An ANSWERED QUESTION that is still only a question has ended, and
+          // only that. ↩️Two other questions stood here: `e.answer == null`
+          // (「an answered item has been looked at and reported on」) and a
+          // claimed PR hiding its card unless it still had leftovers (「a
+          // claimed PR normally means the card is being CHECKED」). Both were
+          // second readers of what the story already says — an old check
+          // submit leaves `answer: ok` on ordinary work, and since 2026-08-31
+          // a merge moves no card. On 2026-09-15 they drew F-28, R27-rest,
+          // F-18 and I-8 on no section at all while their stories said 남은
+          // 것 and 나중에, which looks exactly like a card that ended.
+          !ended.containsKey(e.id))
       .toList();
   // Work can be underway before there is a PR to point at -- an investigation,
   // a round mid-flight. Without this those items sat in 착수 가능 claiming to

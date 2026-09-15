@@ -166,4 +166,43 @@ void main() {
           'gone from the page entirely would be the opposite bug',
     );
   });
+
+  group('칸은 이야기가 정한다 — 옛 답이나 예전 PR 이 카드를 숨기지 않는다', () {
+    // 🚨★★★2026-09-15: a session wrote a roadmap and then read the page, and
+    // four work cards were on NO section at all — F-28, R27-rest and F-18
+    // carried an `answer` an old check submit had left behind, I-8 an old PR
+    // claim. Their stories said 남은 것 and 나중에; the renderer asked two
+    // other questions and drew them nowhere, which looks exactly like a card
+    // that ended.
+    test('🚨a work card carrying an old check answer is drawn', () {
+      final html = page([
+        '{"kind":"item","id":"W","title":"작업","answer":"ok",'
+            '"ts":"2026-08-31T01:00:00Z"}',
+        '{"kind":"item","id":"W","at":"남은 것","note":"아직 남았다",'
+            '"ts":"2026-08-31T02:00:00Z"}',
+      ]);
+      expect(
+        html,
+        contains('id="c-W"'),
+        reason: 'an `answer` on a card that asks nothing is not an ending — '
+            'the model already says so (`endedCards`), and the page has to '
+            'ask the same question',
+      );
+    });
+
+    test('🚨a card that once claimed a PR and was put off is drawn', () {
+      final html = page([
+        '{"kind":"item","id":"W","title":"작업","pr":1234,"at":"실기 확인",'
+            '"note":"착지","ts":"2026-08-31T01:00:00Z"}',
+        '{"kind":"item","id":"W","at":"나중에","note":"상담이 먼저",'
+            '"ts":"2026-08-31T02:00:00Z"}',
+      ]);
+      expect(
+        html,
+        contains('id="c-W"'),
+        reason: 'a merge does not move a card and does not hide one either — '
+            'the newest 대분류 is 나중에, so that is where it is drawn',
+      );
+    });
+  });
 }
