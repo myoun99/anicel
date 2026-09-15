@@ -458,6 +458,12 @@ class ProjectFileDoor {
     onFullWriteLeftAt: onFullWriteLeftAt,
   );
 
+  /// What the tools are holding — read at each save and put back on open by
+  /// whoever holds them: the shell's tool notifier and the workspace's
+  /// preset library, neither of which the door can reach. Null until the
+  /// workspace installs it; a session with no workspace carries no tools.
+  ToolChoiceBridge? toolChoice;
+
   /// Where the work stands right now, as every save writes it beside the
   /// project (F-123) — read as the save is made, so the file holds the place
   /// the person pressed Save from.
@@ -465,6 +471,7 @@ class ProjectFileDoor {
     cutId: _timeline.editingSession.activeCutId,
     layerId: _selection.activeLayerId,
     frameIndex: _selection.currentFrameIndex,
+    tools: toolChoice?.read() ?? const {},
   );
 
   Future<void> _swapIn({required String from, required String to}) =>
@@ -694,6 +701,7 @@ class ProjectFileDoor {
       preferredActiveLayerId: resume.layerId,
       preferredFrameIndex: resume.frameIndex,
     );
+    toolChoice?.resume(resume.tools);
     _file.bindToOpenedFile(
       bindTo ?? filePath,
       // What this project carries, as the file on disk says. Anything the

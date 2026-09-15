@@ -50,6 +50,7 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
+import 'brush/tool_choice.dart';
 import 'brush/brush_canvas_defaults.dart';
 import 'brush/guide_panels.dart';
 import 'brush/tool_library_panel.dart';
@@ -1021,12 +1022,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // before the opening brush is taken up, so that brush wears what the
     // hand left on it (H25-again) — read alongside the libraries, not after
     // them, so it adds no wait of its own.
-    unawaited(
-      _tipLibrary
-          .load()
-          .then((_) => _presetLibrary.load())
-          .then((_) => handSettingsRecalled)
-          .then((_) => _brushPresets.selectOpeningPreset()),
+    _brushPresets.libraryLanded = _tipLibrary
+        .load()
+        .then((_) => _presetLibrary.load())
+        .then((_) => handSettingsRecalled)
+        .then((_) => _brushPresets.selectOpeningPreset());
+    unawaited(_brushPresets.libraryLanded);
+    // F-123: what the tools were holding rides with the project — read at
+    // each save, put back on open once the library can name the brushes.
+    widget.session.projectDoor.toolChoice = (
+      read: () => toolChoiceOf(_brushTool).toJson(),
+      resume: (saved) =>
+          _brushPresets.resumeChoice(ToolChoice.fromJson(saved)),
     );
     // Warm the conte's embedded faces so the sheet opens with its type
     // ready (the tab host still awaits, for the cold path).

@@ -19,6 +19,14 @@ import '../../services/persistence/anicel_project_archive.dart'
 /// 🚨EVERY PART ANSWERS FOR ITSELF. A file from before this existed, a cut
 /// deleted since, a value nobody can read — each part that cannot be read
 /// comes back as "nothing saved here", and only that part falls back.
+/// What reads the tools part of a [ProjectResume] at each save and puts it
+/// back on open — installed on the door by the workspace, which holds the
+/// tools and the preset library the door cannot reach (F-123).
+typedef ToolChoiceBridge = ({
+  Map<String, Object?> Function() read,
+  void Function(Map<String, Object?> saved) resume,
+});
+
 class ProjectResume {
   const ProjectResume({
     this.cutId,

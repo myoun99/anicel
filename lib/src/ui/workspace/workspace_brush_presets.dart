@@ -262,12 +262,24 @@ class _WorkspaceBrushPresets {
     final targetTool = canvasToolPaints(current.tool)
         ? current.tool
         : CanvasTool.brush;
-    final overlay = _brushHandSettings[_handKey(targetTool, preset.id)];
-    _state._brushTool.value = current.withPreset(
+    _state._brushTool.value = _brushFromPreset(current, preset, targetTool);
+  }
+
+  /// [from] holding [preset]'s brush for [tool]. H25: the brush as the hand
+  /// last left it with THIS tool, or nothing — in which case the brush's own
+  /// file speaks.
+  ///
+  /// The one road from a preset to a held brush: a press on the library and
+  /// a project's resumed tools (F-123) both take it.
+  BrushToolState _brushFromPreset(
+    BrushToolState from,
+    BrushPreset preset,
+    CanvasTool tool,
+  ) {
+    final overlay = _brushHandSettings[_handKey(tool, preset.id)];
+    return from.withPreset(
       preset,
-      tool: targetTool,
-      // H25: the brush as the hand last left it with THIS tool, or nothing —
-      // in which case the brush's own file speaks.
+      tool: tool,
       held: overlay == null
           ? null
           : brushSettingsUnderHand(
@@ -277,6 +289,30 @@ class _WorkspaceBrushPresets {
             ),
     );
   }
+
+  /// When the libraries have landed and the opening brush has been taken
+  /// up — what a resumed tool choice waits for (F-123): a brush is named by
+  /// its preset, and only a library that has loaded can find it.
+  Future<void> libraryLanded = Future<void>.value();
+
+  /// Puts back what the tools held when the project was saved (F-123), once
+  /// the library can name the brushes. A preset it no longer has leaves THAT
+  /// tool on what it holds; every other part still lands.
+  void resumeChoice(ToolChoice choice) => unawaited(
+    libraryLanded.then((_) {
+      if (!_state.mounted) {
+        return;
+      }
+      resumeToolChoice(
+        _state._brushTool,
+        choice,
+        brushFor: (from, tool, id) {
+          final preset = _presetNamed(id);
+          return preset == null ? null : _brushFromPreset(from, preset, tool);
+        },
+      );
+    }),
+  );
 
   /// The library's preset with [id], or null when it holds none.
   BrushPreset? _presetNamed(BrushPresetId id) {

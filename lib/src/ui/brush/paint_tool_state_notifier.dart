@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../models/brush_preset_id.dart';
 import 'brush_tool_state.dart';
 
 /// The app's active-tool notifier with PER-PAINT-TOOL memory (R11-④):
@@ -23,6 +24,14 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   /// The tile each rail GROUP was last on — see [railEntry].
   final Map<CanvasTool, CanvasTool> _railTileByGroup =
       <CanvasTool, CanvasTool>{};
+
+  /// The preset [tool]'s brush came from: the live state's when [tool] is
+  /// in hand, the bank's otherwise — null while that tool holds none.
+  ///
+  /// What a project carries of each paint tool's brush (F-123). A read, not
+  /// a second way in: the bank still only changes through the setter below.
+  BrushPresetId? presetHeldBy(CanvasTool tool) =>
+      tool == value.tool ? value.presetId : _paintToolBank[tool]?.presetId;
 
   void _rememberRailTile() {
     final tool = value.tool;

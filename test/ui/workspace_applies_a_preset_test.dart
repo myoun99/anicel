@@ -402,4 +402,61 @@ void main() {
     );
     expect(settings(tester).state.antiAlias, BrushAntiAlias.none);
   });
+
+  testWidgets('🚨F-123: the workspace hands the door what the tools hold, and '
+      'puts a saved choice back through the library', (tester) async {
+    await pumpWithPresets(tester);
+    final workspace = tester.widget<EditorWorkspace>(
+      find.byType(EditorWorkspace),
+    );
+    final bridge = workspace.session.projectDoor.toolChoice!;
+    final tools = workspace.brushTool!;
+    final held = tools.value.presetId;
+    final other = onScreen(tester).firstWhere(
+      (id) => id != held,
+      orElse: () => throw StateError('⛔premise: one preset only — $held'),
+    );
+    expect(
+      bridge.read()['tool'],
+      tools.value.tool.name,
+      reason: 'the door reads the hand as it is',
+    );
+
+    bridge.resume({
+      'tool': 'eraser',
+      'presets': {'eraser': other.value},
+    });
+    await tester.pumpAndSettle();
+    expect(tools.value.tool, CanvasTool.eraser);
+    expect(tools.value.presetId, other);
+  });
+
+  testWidgets('🚨F-123: a choice handed back BEFORE the library has landed '
+      'waits for it — a brush is named by a preset only a loaded library can '
+      'find', (tester) async {
+    const saved = BrushPresetId('builtin-g-pen');
+    late EditorWorkspace workspace;
+    await pumpWithPresets(
+      tester,
+      beforeTheLibraryLands: () async {
+        workspace = tester.widget<EditorWorkspace>(
+          find.byType(EditorWorkspace),
+        );
+        workspace.session.projectDoor.toolChoice!.resume({
+          'presets': {'brush': saved.value},
+        });
+      },
+    );
+    expect(
+      panel(tester).presets.first.id,
+      isNot(saved),
+      reason: 'premise: the opening brush is another one',
+    );
+    expect(
+      workspace.brushTool!.value.presetId,
+      saved,
+      reason: 'resumed once the library could name it, not dropped because '
+          'it was still empty',
+    );
+  });
 }
