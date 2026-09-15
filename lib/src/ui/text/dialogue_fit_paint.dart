@@ -13,6 +13,10 @@ import 'vertical_writing_text.dart';
 /// every glyph upright, so a `ー` inside dialogue lay across the column
 /// while the notation word two columns over rotated it.
 ///
+/// A glyph longer than its cell narrows down the column into it, by the
+/// row's own [dialogueGlyphCondensation] (F-93): the sheet and a vertical
+/// timeline keep the rule the user gave for the zoomed-out row.
+///
 /// [topCenter] is the top of the column on its centre line and [extent]
 /// how far down it runs; [style] carries the whole look, so the screen's
 /// w600 12pt and the sheet's regular 9pt are values rather than two
@@ -31,6 +35,14 @@ void paintDialogueFitColumn(
     glyphCount: glyphs.length,
     mainExtent: extent,
   );
+  final cellExtent = dialogueGlyphCellExtent(
+    glyphCount: glyphs.length,
+    mainExtent: extent,
+  );
+  double condense(double extentAlongColumn) => dialogueGlyphCondensation(
+    glyphExtent: extentAlongColumn,
+    cellExtent: cellExtent,
+  );
   for (var i = 0; i < glyphs.length; i += 1) {
     final painter = TextPainter(
       text: TextSpan(text: glyphs[i], style: style),
@@ -43,6 +55,7 @@ void paintDialogueFitColumn(
       center: Offset(topCenter.dx, topCenter.dy + centers[i]),
       fontSize: style.fontSize!,
       maxCrossExtent: maxCrossExtent,
+      alongColumnScale: condense,
     );
   }
 }

@@ -146,6 +146,11 @@ double paintVerticalText(
 /// what the table rotates. Both the screen overlay and the printed sheet
 /// were placing dialogue glyphs upright, which left `ー` a horizontal bar
 /// in the one place a vertical column makes it most obvious.
+///
+/// [alongColumnScale] lets such a host narrow a glyph DOWN the column
+/// alone: it is handed the glyph's advance there, once the form and the
+/// width fit are applied, and answers the factor. SE dialogue passes it so
+/// a glyph keeps to its frame cell (F-93).
 void paintVerticalTextCell(
   Canvas canvas,
   VerticalTextCell cell, {
@@ -154,12 +159,19 @@ void paintVerticalTextCell(
   required double fontSize,
   double maxCrossExtent = double.infinity,
   double spanExtent = 0,
+  double Function(double extentAlongColumn)? alongColumnScale,
 }) {
   // Every form scales UNIFORMLY when it is wider than the column allows —
   // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
   // as a font bug, and the SE columns really do get this narrow: a
   // four-column SE group is 10px per column, so the limit is reachable,
   // not theoretical.
+  //
+  // ↩️F-93 (유저 2026-09-12): DOWN the column a glyph may still be narrowed
+  // on that one axis, through [alongColumnScale] — SE dialogue asks for it
+  // when its glyphs outnumber the room: 「이렇게 겹쳐질땐 글자 한글자의 좌우
+  // 길이? 를 줄여서 한 칸에 한 글자라는 느낌이 나도록」. The width rule
+  // above stands.
   double fitScale(double extentAcrossColumn) {
     return extentAcrossColumn > maxCrossExtent && extentAcrossColumn > 0
         ? maxCrossExtent / extentAcrossColumn
@@ -167,6 +179,8 @@ void paintVerticalTextCell(
   }
 
   canvas.save();
+  final bool turned;
+  final double scale;
   switch (cell.form) {
     case VerticalGlyphForm.rotated:
       // Turned 90° clockwise about the cell's centre: the long-vowel bar
@@ -174,10 +188,8 @@ void paintVerticalTextCell(
       // is the glyph's HEIGHT that has to clear the column.
       canvas.translate(center.dx, center.dy);
       canvas.rotate(math.pi / 2);
-      final scale = fitScale(painter.height);
-      if (scale != 1.0) {
-        canvas.scale(scale, scale);
-      }
+      turned = true;
+      scale = fitScale(painter.height);
     case VerticalGlyphForm.sideways:
       // The word lies down and reads along the column. It is scaled into
       // the slots it reserved (the reservation is an estimate, so this is
@@ -189,29 +201,35 @@ void paintVerticalTextCell(
           spanExtent > 0 && painter.width > spanExtent && painter.width > 0
           ? spanExtent / painter.width
           : 1.0;
-      final scale = math.min(alongScale, fitScale(painter.height));
-      if (scale != 1.0) {
-        canvas.scale(scale, scale);
-      }
+      turned = true;
+      scale = math.min(alongScale, fitScale(painter.height));
     case VerticalGlyphForm.tateChuYoko:
       // 縦中横: the digits stay horizontal and condense into the width one
       // upright glyph would have taken.
       canvas.translate(center.dx, center.dy);
       final target = math.min(fontSize, maxCrossExtent);
-      final scale = painter.width > target && painter.width > 0
+      turned = false;
+      scale = painter.width > target && painter.width > 0
           ? target / painter.width
           : 1.0;
-      if (scale != 1.0) {
-        canvas.scale(scale, scale);
-      }
     case VerticalGlyphForm.shifted:
     case VerticalGlyphForm.upright:
       final shift = cell.shiftEm * fontSize;
       canvas.translate(center.dx + shift, center.dy - shift);
-      final scale = fitScale(painter.width);
-      if (scale != 1.0) {
-        canvas.scale(scale, scale);
-      }
+      turned = false;
+      scale = fitScale(painter.width);
+  }
+  // A standing glyph advances an em down the column; a turned one, its
+  // width.
+  final along =
+      alongColumnScale?.call((turned ? painter.width : fontSize) * scale) ??
+      1.0;
+  if (scale != 1.0 || along != 1.0) {
+    if (turned) {
+      canvas.scale(scale * along, scale);
+    } else {
+      canvas.scale(scale, scale * along);
+    }
   }
   painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
   canvas.restore();

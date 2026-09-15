@@ -10,6 +10,9 @@ import '../repaint_props.dart';
 /// axis. Mirrors the paper sheet's SE column, where dialogue stretches to
 /// fill its covered frames.
 ///
+/// A glyph longer than its cell narrows into it along [axis] and keeps its
+/// size across — [dialogueGlyphCondensation] (F-93), on either axis.
+///
 /// Down a COLUMN the glyphs take their vertical-writing forms, through the
 /// shared table. They used not to: the class doc said "every glyph painted
 /// upright (never rotated)", so a long-vowel bar in `ドアー` stayed lying
@@ -81,22 +84,30 @@ class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
       return;
     }
     final glyphs = text.characters.toList(growable: false);
+    final mainExtent = extentAlong(axis, size);
     final centers = dialogueGlyphCenters(
       glyphCount: glyphs.length,
-      mainExtent: extentAlong(axis, size),
+      mainExtent: mainExtent,
+    );
+    final cellExtent = dialogueGlyphCellExtent(
+      glyphCount: glyphs.length,
+      mainExtent: mainExtent,
     );
     for (var i = 0; i < glyphs.length; i += 1) {
       final painter = TextPainter(
         text: TextSpan(text: glyphs[i], style: style),
         textDirection: TextDirection.ltr,
       )..layout();
-      painter.paint(
-        canvas,
-        Offset(
-          centers[i] - painter.width / 2,
-          (size.height - painter.height) / 2,
-        ),
+      final condensation = dialogueGlyphCondensation(
+        glyphExtent: painter.width,
+        cellExtent: cellExtent,
       );
+      canvas
+        ..save()
+        ..translate(centers[i], size.height / 2)
+        ..scale(condensation, 1);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+      canvas.restore();
     }
   }
 
