@@ -18,14 +18,26 @@
 // ABI NUMBER: it moves only on a bump, and the C changes far more often than
 // its interface does.
 //
-// The name is the C itself, the way CI already names it — CI keys its engine
+// The name is the C itself, the way CI already names it: CI keys its engine
 // cache on `hashFiles('packages/qa_native/src/**')`
-// (`.github/actions/native-engine/action.yml`). Here it is the tree id git
-// would record for that directory as it sits on disk now, committed or not,
-// so a lane that edits its C and rebuilds is current without committing.
+// (`.github/actions/native-engine/action.yml`), a hash of every file under
+// the directory. Here it is the same idea — every file's path and bytes, in
+// path order — so an edit is other C the moment it is saved, and a lane that
+// edits its C and rebuilds is current without committing anything.
 // ⚠️CI also keys on the runner image, because the compiler ships with it;
 // every checkout on one machine builds with the same compiler, so the C is
 // the only thing that differs between them.
+//
+// ⛔IN-PROCESS, NOT GIT. The first version asked git for the tree it would
+// record (a throwaway index, then `write-tree`), and proving that meant a
+// test that started git and dart — which `tests_do_not_race_the_code_test`
+// refuses for the reason it gives: a subprocess per case turns the bulk run
+// into a fight for cores (#1361). Git was also answering a question nobody
+// here asked — what it would TRACK — while CMake compiles what is on disk.
+//
+// ⚠️The fold is 64-bit FNV-1a: it tells two states of one directory apart,
+// it is not a signature, and nothing trusts it further than 「was this
+// binary built from these bytes」.
 //
 // Asked by `tool/lane.sh` (open, land, native, engine), which builds when the
 // answer is no, and by `tool/affected_tests.dart`, which says so before and
@@ -34,9 +46,10 @@
 // Usage:
 //   dart tool/native_engine_provenance.dart check <checkout>
 // Prints `<source id> <provenance>`. Exit 0 when the engine there was built
-// from that C; 1 when it was not, or there is none; 2 when the C cannot be
-// named.
+// from that C; 1 when it was not, or there is none; 2 when the checkout
+// holds no C to name.
 
+import 'dart:convert';
 import 'dart:io';
 
 /// Where a checkout builds its standalone engine.
@@ -56,7 +69,7 @@ enum EngineProvenance {
   /// Built from exactly the C this checkout holds.
   current,
 
-  /// Built from other C: the stamp names a different tree.
+  /// Built from other C: the stamp names different bytes.
   foreign,
 
   /// A build nobody stamped, so nothing says which C it came from.
@@ -66,30 +79,56 @@ enum EngineProvenance {
   absent,
 }
 
-/// The name of the C [checkout] would build, or null when git cannot say.
+/// The name of the C [checkout] would build, or null when it holds none.
 ///
-/// A THROWAWAY INDEX, so the checkout's own index — what its author has
-/// staged — is never touched: HEAD is read into it, the source directory as
-/// it sits on disk is added over that, and the tree git would record for the
-/// directory is the answer. Files nobody added count, because CMake compiles
-/// what is on disk, not what is committed.
+/// Every file under [nativeSourceDir] — its path from there, then its bytes
+/// — in path order, each framed by its length, so bytes cannot slide from
+/// one field into the next and come out the same.
 String? nativeSourceId(String checkout) {
-  final scratch = Directory.systemTemp.createTempSync('native_source_id_');
-  final index = '${scratch.path}${Platform.pathSeparator}index';
-  ProcessResult git(List<String> args) => Process.runSync(
-        'git',
-        ['-C', checkout, ...args],
-        environment: {'GIT_INDEX_FILE': index},
-      );
-  try {
-    if (git(['read-tree', 'HEAD']).exitCode != 0) return null;
-    if (git(['add', '--', nativeSourceDir]).exitCode != 0) return null;
-    final tree = git(['write-tree', '--prefix=$nativeSourceDir/']);
-    final id = (tree.stdout as String).trim();
-    return tree.exitCode == 0 && id.isNotEmpty ? id : null;
-  } finally {
-    scratch.deleteSync(recursive: true);
+  final root = Directory('$checkout/$nativeSourceDir');
+  if (!root.existsSync()) return null;
+  final files = <String, File>{
+    for (final entity in root.listSync(recursive: true, followLinks: false))
+      if (entity is File) _pathWithin(root.path, entity.path): entity,
+  };
+  final fold = _SourceFold();
+  for (final path in files.keys.toList()..sort()) {
+    fold
+      ..addFramed(utf8.encode(path))
+      ..addFramed(files[path]!.readAsBytesSync());
   }
+  return fold.name;
+}
+
+/// [path] from [root], with `/` between its parts on every platform.
+String _pathWithin(String root, String path) {
+  final tail = path.substring(root.length).replaceAll(r'\', '/');
+  return tail.startsWith('/') ? tail.substring(1) : tail;
+}
+
+/// 64-bit FNV-1a over length-framed fields.
+class _SourceFold {
+  static const int _offsetBasis = (0xcbf29ce4 << 32) | 0x84222325;
+  static const int _prime = 0x100000001b3;
+
+  int _hash = _offsetBasis;
+
+  void addFramed(List<int> bytes) {
+    final length = bytes.length;
+    _add([for (var shift = 0; shift < 64; shift += 8) (length >> shift) & 0xff]);
+    _add(bytes);
+  }
+
+  void _add(List<int> bytes) {
+    var hash = _hash;
+    for (final byte in bytes) {
+      hash = (hash ^ byte) * _prime;
+    }
+    _hash = hash;
+  }
+
+  String get name =>
+      BigInt.from(_hash).toUnsigned(64).toRadixString(16).padLeft(16, '0');
 }
 
 /// The name of the C the engine build in [checkout] says it came from.
@@ -112,6 +151,19 @@ EngineProvenance engineProvenance(String checkout, String sourceId) {
       : EngineProvenance.foreign;
 }
 
+/// What `check` says about [checkout]: the line `tool/lane.sh` parses —
+/// `<source id> <provenance>`, null when there is no C to name — and the
+/// exit code it branches on.
+({String? line, int exitCode}) checkReport(String checkout) {
+  final id = nativeSourceId(checkout);
+  if (id == null) return (line: null, exitCode: 2);
+  final provenance = engineProvenance(checkout, id);
+  return (
+    line: '$id ${provenance.name}',
+    exitCode: provenance == EngineProvenance.current ? 0 : 1,
+  );
+}
+
 void main(List<String> args) {
   if (args.length != 2 || args.first != 'check') {
     stderr.writeln(
@@ -119,13 +171,12 @@ void main(List<String> args) {
     );
     exit(64);
   }
-  final checkout = args[1];
-  final id = nativeSourceId(checkout);
-  if (id == null) {
-    stderr.writeln('could not name the C in $checkout');
-    exit(2);
+  final report = checkReport(args[1]);
+  final line = report.line;
+  if (line == null) {
+    stderr.writeln('no C to name under ${args[1]}/$nativeSourceDir');
+  } else {
+    stdout.writeln(line);
   }
-  final provenance = engineProvenance(checkout, id);
-  stdout.writeln('$id ${provenance.name}');
-  exit(provenance == EngineProvenance.current ? 0 : 1);
+  exit(report.exitCode);
 }

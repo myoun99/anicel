@@ -275,7 +275,7 @@ String? _engineCaveat() {
   final root = Directory.current.path;
   final source = nativeSourceId(root);
   if (source == null) {
-    return '⚠️could not name the C in this checkout, so whether the engine '
+    return '⚠️this checkout holds no $nativeSourceDir, so whether the engine '
         'was built from it is unchecked.';
   }
   String short(String id) => id.length > 8 ? id.substring(0, 8) : id;

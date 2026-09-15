@@ -5,158 +5,174 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/native_engine_provenance.dart';
 
 /// 🚨AN ENGINE BUILD SAYS WHICH C IT CAME FROM, and the name is the C's
-/// content — ⛔not a file time, ⛔not the ABI number. The five incidents that
+/// content — ⛔not a file time, ⛔not the ABI number. The incidents that
 /// decided it are at the head of `tool/native_engine_provenance.dart`.
 ///
-/// Measured against a real git repository, because the answer IS git's: a
-/// stand-in would pin whatever the stand-in does.
+/// Two checkouts are two directories here, because that is the case the
+/// name exists for: `open` copies the trunk's engine into a lane, and the
+/// lane has to recognise the trunk's C as its own.
 void main() {
-  late Directory repo;
+  late Directory sandbox;
+  late String trunk;
+  late String lane;
 
-  ProcessResult git(List<String> args) =>
-      Process.runSync('git', ['-C', repo.path, ...args]);
+  File source(String checkout, String path) =>
+      File('$checkout/$nativeSourceDir/$path');
 
-  File source(String name) => File('${repo.path}/$nativeSourceDir/$name');
+  void write(String checkout, String path, List<int> bytes) =>
+      source(checkout, path)
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(bytes);
 
-  String committedTree() =>
-      (git(['rev-parse', 'HEAD:$nativeSourceDir']).stdout as String).trim();
+  void writeText(String checkout, String path, String text) =>
+      write(checkout, path, text.codeUnits);
 
-  String nameOfTheC() => nativeSourceId(repo.path)!;
+  void holdTheC(String checkout) {
+    writeText(checkout, 'qa_engine.c', 'int abi(void) { return 35; }\n');
+    writeText(checkout, 'qa_compress.c', 'int zstd;\n');
+    writeText(checkout, 'third_party/zstd.h', '#define ZSTD 1\n');
+  }
 
-  void stampWith(String id) => File('${repo.path}/$engineStampPath')
-    ..createSync(recursive: true)
-    ..writeAsStringSync('$id\n');
+  void stampWith(String checkout, String id) =>
+      File('$checkout/$engineStampPath')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('$id\n');
+
+  String nameOf(String checkout) => nativeSourceId(checkout)!;
 
   setUp(() {
-    repo = Directory.systemTemp.createTempSync('native_provenance_');
-    git(['init', '-q']);
-    git(['config', 'user.email', 'lane@example.invalid']);
-    git(['config', 'user.name', 'lane']);
-    source('qa_engine.c')
+    sandbox = Directory.systemTemp.createTempSync('native_provenance_');
+    trunk = '${sandbox.path}/trunk';
+    lane = '${sandbox.path}/lane';
+    holdTheC(trunk);
+    holdTheC(lane);
+    File('$lane/app.dart')
       ..createSync(recursive: true)
-      ..writeAsStringSync('int abi(void) { return 35; }\n');
-    source('qa_compress.c').writeAsStringSync('int zstd;\n');
-    File('${repo.path}/app.dart').writeAsStringSync('// dart\n');
-    git(['add', '--', nativeSourceDir, 'app.dart']);
-    git(['commit', '-q', '-m', 'fixture']);
+      ..writeAsStringSync('// dart\n');
   });
-  tearDown(() => repo.deleteSync(recursive: true));
+  tearDown(() => sandbox.deleteSync(recursive: true));
 
-  test('⛔fixture premise: the C is committed and git names its tree', () {
-    expect(committedTree(), matches(RegExp(r'^[0-9a-f]{40}$')));
+  test('⛔fixture premise: a checkout holding C gets a name', () {
+    expect(nameOf(trunk), matches(RegExp(r'^[0-9a-f]{16}$')));
   });
 
   group('the name of the C', () {
-    test('a clean checkout names it exactly as the commit does', () {
-      expect(nativeSourceId(repo.path), committedTree());
+    test('two checkouts holding the same C give it the same name — the copy '
+        '`open` makes is recognised in the lane', () {
+      expect(nameOf(lane), nameOf(trunk));
     });
 
-    test('an edit nobody committed is other C, and undoing it is the same C '
-        'again — the name is the content, not a file time', () {
-      final committed = committedTree();
-      source('qa_engine.c').writeAsStringSync('int abi(void) { return 36; }\n');
-      expect(nameOfTheC(), isNot(committed));
-      source('qa_engine.c').writeAsStringSync('int abi(void) { return 35; }\n');
-      expect(nameOfTheC(), committed);
+    test('an edit is other C, and undoing it is the same C again whatever '
+        'the file time says', () {
+      final before = nameOf(lane);
+      writeText(lane, 'qa_engine.c', 'int abi(void) { return 36; }\n');
+      expect(nameOf(lane), isNot(before));
+      writeText(lane, 'qa_engine.c', 'int abi(void) { return 35; }\n');
+      source(lane, 'qa_engine.c').setLastModifiedSync(DateTime(2001));
+      expect(nameOf(lane), before);
     });
 
-    test('a file nobody added is part of it — CMake compiles what is on disk',
-        () {
-      final committed = committedTree();
-      source('qa_new.c').writeAsStringSync('int added;\n');
-      expect(nameOfTheC(), isNot(committed));
+    test('a new file is part of it — CMake compiles what is on disk', () {
+      final before = nameOf(lane);
+      writeText(lane, 'qa_new.c', 'int added;\n');
+      expect(nameOf(lane), isNot(before));
     });
 
-    test('a file deleted from disk is other C', () {
-      final committed = committedTree();
-      source('qa_compress.c').deleteSync();
-      expect(nameOfTheC(), isNot(committed));
+    test('a deleted file is other C', () {
+      final before = nameOf(lane);
+      source(lane, 'qa_compress.c').deleteSync();
+      expect(nameOf(lane), isNot(before));
     });
 
-    test('a file git tracks counts even when the ignore rules match it — the '
-        'commit is read first, and what is on disk is added over it', () {
-      File('${repo.path}/.gitignore').writeAsStringSync('*.lib\n');
-      source('zstd.lib').writeAsStringSync('prebuilt');
-      git(['add', '-f', '--', '.gitignore', '$nativeSourceDir/zstd.lib']);
-      git(['commit', '-q', '-m', 'a tracked file the ignore rules match']);
-      expect(nameOfTheC(), committedTree());
+    test('a renamed file is other C, though no byte in it changed', () {
+      final before = nameOf(lane);
+      source(lane, 'qa_compress.c')
+          .renameSync(source(lane, 'qa_compressor.c').path);
+      expect(nameOf(lane), isNot(before));
+    });
+
+    test('a file in a folder below counts', () {
+      final before = nameOf(lane);
+      writeText(lane, 'third_party/zstd.h', '#define ZSTD 2\n');
+      expect(nameOf(lane), isNot(before));
+    });
+
+    test('where a name ends and its bytes begin is part of the name', () {
+      // `ab` holding `c` against `a` holding `bc`: one byte stream, two
+      // different directories.
+      writeText(trunk, 'ab', 'c');
+      writeText(lane, 'a', 'bc');
+      expect(nameOf(lane), isNot(nameOf(trunk)));
+    });
+
+    test('where one file ends and the next begins is part of the name', () {
+      // `a` = `b` then `c` = `d`, against one `a` holding all of it — the
+      // second file's name included, down to the separator byte.
+      writeText(trunk, 'a', 'b');
+      writeText(trunk, 'c', 'd');
+      write(lane, 'a', [...'b'.codeUnits, ...'c'.codeUnits, 0, ...'d'.codeUnits]);
+      expect(nameOf(lane), isNot(nameOf(trunk)));
     });
 
     test('a change outside the C is not a change to it', () {
-      final committed = committedTree();
-      File('${repo.path}/app.dart').writeAsStringSync('// edited\n');
-      expect(nameOfTheC(), committed);
+      final before = nameOf(lane);
+      File('$lane/app.dart').writeAsStringSync('// edited\n');
+      expect(nameOf(lane), before);
     });
 
-    test("naming it stages nothing: the checkout's own index is untouched",
-        () {
-      source('qa_engine.c').writeAsStringSync('int abi(void) { return 36; }\n');
-      source('qa_new.c').writeAsStringSync('int added;\n');
-      nameOfTheC();
-      final staged = git(['diff', '--cached', '--name-only']).stdout as String;
-      expect(staged.trim(), isEmpty);
+    test('a checkout with no C has no name', () {
+      expect(nativeSourceId('${sandbox.path}/nothing'), isNull);
     });
   });
 
   group('what the engine in a checkout is', () {
     test('no build here at all: absent', () {
-      expect(
-        engineProvenance(repo.path, nameOfTheC()),
-        EngineProvenance.absent,
-      );
+      expect(engineProvenance(lane, nameOf(lane)), EngineProvenance.absent);
     });
 
     test('a build nobody stamped: unstamped', () {
-      Directory('${repo.path}/$engineBuildDir').createSync(recursive: true);
-      expect(
-        engineProvenance(repo.path, nameOfTheC()),
-        EngineProvenance.unstamped,
-      );
+      Directory('$lane/$engineBuildDir').createSync(recursive: true);
+      expect(engineProvenance(lane, nameOf(lane)), EngineProvenance.unstamped);
     });
 
-    test('stamped with this C: current', () {
-      stampWith(nameOfTheC());
-      expect(
-        engineProvenance(repo.path, nameOfTheC()),
-        EngineProvenance.current,
-      );
+    test("the trunk's stamp, copied into a lane holding the trunk's C: "
+        'current', () {
+      stampWith(trunk, nameOf(trunk));
+      stampWith(lane, engineStampOf(trunk)!);
+      expect(engineProvenance(lane, nameOf(lane)), EngineProvenance.current);
     });
 
     test('stamped with this C, and then the C moved: foreign', () {
-      stampWith(nameOfTheC());
-      source('qa_engine.c').writeAsStringSync('int abi(void) { return 36; }\n');
-      expect(
-        engineProvenance(repo.path, nameOfTheC()),
-        EngineProvenance.foreign,
-      );
+      stampWith(lane, nameOf(lane));
+      writeText(lane, 'qa_engine.c', 'int abi(void) { return 36; }\n');
+      expect(engineProvenance(lane, nameOf(lane)), EngineProvenance.foreign);
     });
   });
 
   group('the line tool/lane.sh reads', () {
-    ProcessResult check() => Process.runSync(
-          'dart',
-          ['tool/native_engine_provenance.dart', 'check', repo.path],
-          runInShell: true,
-        );
-
-    test("current: exit 0, the line is the C's name and then the verdict", () {
-      final id = nameOfTheC();
-      stampWith(id);
-      final result = check();
-      expect(result.exitCode, 0, reason: '${result.stderr}');
-      expect((result.stdout as String).trim(), '$id current');
+    test("current: exit 0, the C's name and then the verdict", () {
+      stampWith(lane, nameOf(lane));
+      final report = checkReport(lane);
+      expect(report.line, '${nameOf(lane)} current');
+      expect(report.exitCode, 0);
     });
 
     test('not current: exit 1, still naming the C so the build can stamp it',
         () {
-      final result = check();
-      expect(result.exitCode, 1, reason: '${result.stderr}');
-      expect((result.stdout as String).trim(), '${nameOfTheC()} absent');
+      final report = checkReport(lane);
+      expect(report.line, '${nameOf(lane)} absent');
+      expect(report.exitCode, 1);
+    });
+
+    test('no C: exit 2, and nothing for a build to stamp', () {
+      final report = checkReport('${sandbox.path}/nothing');
+      expect(report.line, isNull);
+      expect(report.exitCode, 2);
     });
 
     test('tool/lane.sh asks this tool and writes the stamp where it reads it',
         () {
-      final lane = File('tool/lane.sh').readAsStringSync();
+      final laneScript = File('tool/lane.sh').readAsStringSync();
       // The ASSIGNMENT, not the path: the header comment spells the path
       // too, and a drifted variable under a correct comment passed a plain
       // `contains` (mutant, 2026-09-15).
@@ -164,9 +180,9 @@ void main() {
         '^ENGINE_STAMP=${RegExp.escape(engineStampPath)}\\r?\$',
         multiLine: true,
       );
-      expect(lane, matches(stampVariable));
+      expect(laneScript, matches(stampVariable));
       expect(
-        lane,
+        laneScript,
         matches(RegExp(r'tool/native_engine_provenance\.dart"? check ')),
       );
     });
