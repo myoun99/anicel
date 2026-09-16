@@ -64,31 +64,61 @@ class AnicelArchiveContents {
     required this.project,
     required this.cels,
     required this.mediaRelativePaths,
-    this.grants = const [],
-    this.mediaFingerprints = const MediaFingerprints.empty(),
+    this.session = AnicelOpenedSessionFields.none,
   });
 
   final Project project;
   final List<AnicelCelBlob> cels;
   final Map<String, String> mediaRelativePaths;
 
+  /// What the file carried beside the project, as read.
+  final AnicelOpenedSessionFields session;
+}
+
+/// What a `.anicel` carries BESIDE the project, as READ — the other end of
+/// [AnicelSessionFields]: the grants still raw (a bookmark only becomes
+/// usable by being handed back to the OS, and the answer may carry a
+/// DIFFERENT path — it follows a file that moved), the fingerprints typed,
+/// and where the work stood as written.
+///
+/// 🚨★★ONE VALUE, NOT A FIELD PER CARRIER (session-fields-read-side,
+/// 2026-09-16). The three fields rode the document, the whole-archive parse
+/// and the open result each as its own trio; a fourth session field had to
+/// be added to every carrier and to what built each one — five places for
+/// one fact, and the whole-archive parse had already lost the resume
+/// point on the way.
+///
+/// Every field is empty for a project written before it was kept.
+class AnicelOpenedSessionFields {
+  const AnicelOpenedSessionFields({
+    this.grants = const [],
+    this.mediaFingerprints = const MediaFingerprints.empty(),
+    this.resume = const {},
+  });
+
+  /// Security-scoped tokens for the media the project references, raw and
+  /// unresolved — the type that understands them reaches for a
+  /// `MethodChannel`, and this file is read from inside an isolate.
+  final List<Map<String, Object?>> grants;
+
   /// What the project knows about its media's CONTENT, for telling one
-  /// `A1.png` from another when a reference has to be found again. Empty
-  /// for every project written before they were kept.
+  /// `A1.png` from another when a reference has to be found again.
   final MediaFingerprints mediaFingerprints;
 
-  /// Security-scoped tokens for the media this project REFERENCES, as
-  /// they were written. Empty everywhere a path is durable on its own, and
-  /// empty for every project written before they were kept.
-  ///
-  /// Raw JSON, for the same reason the writer takes raw JSON: the type
-  /// that understands these cannot be imported here. The session decodes
-  /// them.
-  ///
-  /// ⚠️ Not yet resolved either — a bookmark has to be handed back to the
-  /// OS to become usable, and that answer may carry a DIFFERENT path (a
-  /// bookmark follows a file that moved).
-  final List<Map<String, Object?>> grants;
+  /// Where the work stood when it was saved, as written — see
+  /// [AnicelSessionFields.resume].
+  final Map<String, Object?> resume;
+
+  static const AnicelOpenedSessionFields none = AnicelOpenedSessionFields();
+
+  /// The same fields with the fingerprints replaced — an open remaps them
+  /// to wherever the references actually resolved.
+  AnicelOpenedSessionFields withFingerprints(MediaFingerprints fingerprints) =>
+      AnicelOpenedSessionFields(
+        grants: grants,
+        mediaFingerprints: fingerprints,
+        resume: resume,
+      );
 }
 
 /// Everything media lives under, so the save path can tell an asset's
@@ -526,9 +556,7 @@ class AnicelProjectDocument {
     required this.project,
     required this.mediaRelativePaths,
     required this.mediaEntryNames,
-    required this.grants,
-    required this.mediaFingerprints,
-    required this.resume,
+    required this.session,
   });
 
   final Project project;
@@ -539,14 +567,8 @@ class AnicelProjectDocument {
   /// Pool path → the archive entry holding that asset's bytes.
   final Map<String, String> mediaEntryNames;
 
-  /// Security-scoped tokens as written, unresolved.
-  final List<Map<String, Object?>> grants;
-
-  final MediaFingerprints mediaFingerprints;
-
-  /// Where the work stood when it was saved, as written — see
-  /// [AnicelSessionFields.resume].
-  final Map<String, Object?> resume;
+  /// What the file carried beside the project, as written.
+  final AnicelOpenedSessionFields session;
 }
 
 /// The project a `.anicel`'s `project.json` bytes hold, with its format
@@ -570,9 +592,11 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
     mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
     mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
-    grants: anicelGrantsField(decoded['grants']),
-    mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
-    resume: anicelObjectMapField(decoded['resume']),
+    session: AnicelOpenedSessionFields(
+      grants: anicelGrantsField(decoded['grants']),
+      mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
+      resume: anicelObjectMapField(decoded['resume']),
+    ),
   );
 }
 
@@ -637,8 +661,7 @@ AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
     project: document.project,
     cels: cels,
     mediaRelativePaths: document.mediaRelativePaths,
-    grants: document.grants,
-    mediaFingerprints: document.mediaFingerprints,
+    session: document.session,
   );
 }
 

@@ -108,8 +108,8 @@ void main() {
       );
 
       final parsed = parseAnicelArchiveBytes(archive);
-      expect(parsed.grants, hasLength(1));
-      final restored = FolderGrant.fromJson(parsed.grants.single);
+      expect(parsed.session.grants, hasLength(1));
+      final restored = FolderGrant.fromJson(parsed.session.grants.single);
       expect(restored, isNotNull);
       expect(restored!.path, '/외장/참고영상.mp4');
       expect(restored.bookmark, 'Ym9va21hcms=');

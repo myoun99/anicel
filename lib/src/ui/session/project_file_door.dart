@@ -643,7 +643,9 @@ class ProjectFileDoor {
     // goes on naming an address nothing answers at. This is the same move
     // the relative-path remap above makes, at the same moment, for the
     // same reason.
-    final movedByGrant = await _grants.resolveMediaGrants(result.grants);
+    final movedByGrant = await _grants.resolveMediaGrants(
+      result.session.grants,
+    );
     _project.repository.replaceProject(
       movedByGrant.isEmpty
           ? result.project
@@ -654,7 +656,9 @@ class ProjectFileDoor {
     // out here, after a bookmark resolved to a file the user renamed, and
     // the service never learns about it. Two movers, both of which have to
     // be followed — miss one and the next save deletes the fact.
-    _fingerprints.restoreFromFile(result.mediaFingerprints.moved(movedByGrant));
+    _fingerprints.restoreFromFile(
+      result.session.mediaFingerprints.moved(movedByGrant),
+    );
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     // The conte ink namespace routes to its own stores (R5); a ROW entry
@@ -690,7 +694,7 @@ class ProjectFileDoor {
     // file without the part does; a row that is gone lands on the top row,
     // the rebuild's own fallback; the frame lands inside the cut through the
     // rebuild's own clamp.
-    final resume = ProjectResume.fromJson(result.resume);
+    final resume = ProjectResume.fromJson(result.session.resume);
     final savedCut = resume.cutId;
     _timeline.editingSession.setActiveCutId(
       savedCut != null && cutPositionOf(result.project, savedCut) != null

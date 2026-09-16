@@ -28,14 +28,12 @@ class AnicelOpenResult {
     required this.project,
     required this.cels,
     this.mediaEntryNames = const {},
-    this.grants = const [],
-    this.mediaFingerprints = const MediaFingerprints.empty(),
-    this.resume = const {},
+    this.session = AnicelOpenedSessionFields.none,
   });
 
-  /// What the project recorded about its media's CONTENT, already remapped
-  /// to wherever the references actually resolved.
-  final MediaFingerprints mediaFingerprints;
+  /// What the file carried beside the project — its fingerprints already
+  /// remapped to wherever the references actually resolved.
+  final AnicelOpenedSessionFields session;
 
   final Project project;
   final Map<BrushFrameKey, AnicelCelFileRef> cels;
@@ -49,20 +47,6 @@ class AnicelOpenResult {
   /// and plays the wrong sound. A name survives that, and the layout is
   /// already parsed whenever the bytes are actually wanted.
   final Map<String, String> mediaEntryNames;
-
-  /// Security-scoped tokens for the media this project REFERENCES, as
-  /// written. Raw JSON: the type that understands them reaches for a
-  /// `MethodChannel`, and this file is read from inside an isolate.
-  ///
-  /// ⚠️ NOT resolved. A bookmark only becomes usable by being handed back
-  /// to the OS, and the answer may carry a different path — a bookmark
-  /// follows a file that moved, which is most of why it exists.
-  final List<Map<String, Object?>> grants;
-
-  /// Where the work stood when the project was saved, as written — see
-  /// [AnicelSessionFields.resume]. Empty for every file saved before it was
-  /// kept.
-  final Map<String, Object?> resume;
 }
 
 /// One dirty cel's save payload, resolved on the UI isolate to a
@@ -1396,12 +1380,12 @@ class AnicelFileService {
       // path the project no longer uses describes nothing, and the one
       // moment that happens is this one — a project opened from a folder
       // that traveled has every reference rewritten to where it landed.
-      mediaFingerprints: document.mediaFingerprints.narrowedTo({
-        for (final path in projectMediaPaths(remapped))
-          normalizeFingerprintPath(path),
-      }, moved: remap),
-      grants: document.grants,
-      resume: document.resume,
+      session: document.session.withFingerprints(
+        document.session.mediaFingerprints.narrowedTo({
+          for (final path in projectMediaPaths(remapped))
+            normalizeFingerprintPath(path),
+        }, moved: remap),
+      ),
     );
   }
 
