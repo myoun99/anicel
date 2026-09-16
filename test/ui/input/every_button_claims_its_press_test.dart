@@ -153,9 +153,7 @@ void main() {
     'lib/src/ui/export/export_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,
-    'lib/src/ui/widgets/compact_switch.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,
-    'lib/src/ui/widgets/settings_rows.dart': 1,
     'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
   };
 
@@ -359,10 +357,14 @@ void main() {
     // ↩️press-law-material-controls: the Material families act through
     // `onChanged`, `onSelected` and `onSelectionChanged`, so those are a
     // live callback under a claim too, and `(_) {}` is as silent as `() {}`.
+    // ↩️press-law-switches: a control whose action carries a VALUE says its
+    // silence with `silentChange(` — the same sentence as `silentPress(`,
+    // typed for `ValueChanged`. Both read as silent here.
     final live = RegExp(
       r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'
       'SelectionChanged):'
-      r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}|\(_\)\s*\{\s*\}))',
+      r'(?!\s*(silentPress\(|silentChange\(|null\b|\(\)\s*\{\s*\}|'
+      r'\(_\)\s*\{\s*\}))',
     );
     final riding = [
       for (final control in scannedControls())

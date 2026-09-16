@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart';
+
 /// THE settings row pair — a label, a control, and the explanation as a
 /// TOOLTIP.
 ///
@@ -37,17 +39,26 @@ class SettingsSwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
 
+  /// 🚨★★★The row CLAIMS ITS PRESS, like every other control in the app —
+  /// the Preferences window scrolls, and a mouse is hardcoded to a ONE PIXEL
+  /// drag threshold, so a click that wobbled here used to be handed to the
+  /// window and the toggle cancelled. 유저 answered the shape on board
+  /// `press-law-switches`: **탭만**. The claim sits INSIDE the tooltip: a
+  /// wrapper outside one is not the thing the pointer lands on.
   @override
   Widget build(BuildContext context) {
     return settingsHelpTooltip(
       help,
-      SwitchListTile(
-        key: tileKey,
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-        title: Text(label),
-        value: value,
-        onChanged: onChanged,
+      ControlPressClaim(
+        onPressed: onChanged == null ? null : () => onChanged!(!value),
+        child: SwitchListTile(
+          key: tileKey,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(label),
+          value: value,
+          onChanged: silentChange(onChanged),
+        ),
       ),
     );
   }

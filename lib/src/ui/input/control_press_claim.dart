@@ -67,6 +67,21 @@ class PressFireScope extends InheritedWidget {
 /// twice on the devices where Flutter's tap still gets through.
 VoidCallback? silentPress(VoidCallback? real) => real == null ? null : () {};
 
+/// The same for a control whose action carries a VALUE — a switch, a
+/// checkbox, a radio.
+///
+/// ⛔It is [silentPress]'s sentence, not a second rule: the inner widget
+/// keeps the shape of [real] — its enabled look, its ink, its hover — and
+/// loses only the firing, which [ControlPressClaim] does instead. Null still
+/// means disabled, and a disabled control still claims its press, so a dead
+/// switch is not a scroll either.
+///
+/// ⚠️The claim fires a `VoidCallback`, so the site that mounts it is the one
+/// that says what the new value is (`() => onChanged(!value)` for a switch).
+/// That belongs at the site: only it knows what the control's press MEANS.
+ValueChanged<T>? silentChange<T>(ValueChanged<T>? real) =>
+    real == null ? null : (_) {};
+
 /// 🚨★★★A PRESS THAT LANDS ON A CONTROL BELONGS TO THAT CONTROL.
 ///
 /// The law is in CLAUDE.md and 유저 has stated it four times — 2026-08-14
