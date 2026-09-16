@@ -461,6 +461,24 @@ class _WorkspaceRail {
       final height = run.take(heights[i]);
       children.add(
         Positioned(
+          // 🚨★★★A GROUP IS WHICH GROUP IT IS, NOT WHERE IT SITS (F-103,
+          // 유저 2026-09-16: 「같은띠에서 뷰어패널이랑 컬러패널 연 상태에서,
+          // 컬러패널을 닫으면 … 파일 열렸습니다라는 반짝반짝 ui와 함께
+          // 내용물이 흰색됬다가 돌아옴」).
+          //
+          // Closing a group takes its entry out of [room.open], so every
+          // group below it moves up one slot. Unkeyed, these children match
+          // by POSITION: the panel below was handed the closed group's
+          // element — same widget types all the way down — and rebuilt as a
+          // different dock, which is a new State for the panel inside. The
+          // viewer read its file again, and that is the silhouette and the
+          // white. Keying by the rail id says the true thing (this child IS
+          // that group), so the ones that did not close are untouched.
+          //
+          // ★The companion of R6-⑤ below: that one keeps the column's SHAPE
+          // from changing under a live gesture, this one keeps each group's
+          // IDENTITY from moving when a neighbour leaves.
+          key: ValueKey<String>('rail-group-body-${room.open[i]}'),
           left: 0,
           right: 0,
           top: top,
