@@ -2189,46 +2189,6 @@ void _settlingTileGroup() {
     });
   });
 
-  group('preStrokeHoldTiles', () {
-    test('covers every touched coordinate, empty ones as explicit nulls', () {
-      final existing = BitmapTile.blank(size: 2);
-      final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 8, height: 8),
-        tileSize: 2,
-        tiles: {TileCoord(x: 0, y: 0): existing},
-      );
-
-      final hold = preStrokeHoldTiles(
-        surface: surface,
-        bounds: DirtyRegion(
-          left: 0,
-          top: 0,
-          rightExclusive: 4,
-          bottomExclusive: 4,
-        ),
-      );
-
-      expect(hold, hasLength(4));
-      expect(hold[TileCoord(x: 0, y: 0)], same(existing));
-      expect(hold.containsKey(TileCoord(x: 1, y: 0)), isTrue);
-      expect(hold[TileCoord(x: 1, y: 0)], isNull);
-      expect(hold[TileCoord(x: 0, y: 1)], isNull);
-      expect(hold[TileCoord(x: 1, y: 1)], isNull);
-    });
-
-    test('unknown bounds pin every existing tile', () {
-      final existing = BitmapTile.blank(size: 2);
-      final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 8, height: 8),
-        tileSize: 2,
-        tiles: {TileCoord(x: 1, y: 1): existing},
-      );
-
-      final hold = preStrokeHoldTiles(surface: surface, bounds: null);
-
-      expect(hold, {TileCoord(x: 1, y: 1): same(existing)});
-    });
-  });
 }
 
 /// A session whose cel is already painted a solid straight-RGBA [rgba], so

@@ -556,8 +556,8 @@ void main() {
     expect(fillColors.length, before, reason: 'middle click never fills');
   });
 
-  testWidgets('a fill that spills off the canvas holds only CANVAS tiles — '
-      'the settling bounds clip at the canvas wall, not the pasteboard', (
+  testWidgets('a fill that spills off the canvas shows and lands its '
+      'pasteboard tiles too — a fill is a stroke of one dab', (
     tester,
   ) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -597,14 +597,33 @@ void main() {
           ) +
           const Offset(10, 10),
     );
+    // The tap frame shows the result tiles (uploaded off the frame on the
+    // test runner's engine), the post-frame commit lands the same objects.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
     await tester.pump();
 
-    final held = tester
+    final landed = coordinator.currentSurfaceOf(frameKeys.first).tiles.keys;
+    expect(
+      landed.toSet(),
+      {
+        TileCoord(x: -1, y: -1),
+        TileCoord(x: 0, y: -1),
+        TileCoord(x: -1, y: 0),
+        TileCoord(x: 0, y: 0),
+      },
+      reason: 'the stamp lands on the pasteboard as it lands on the canvas',
+    );
+    final overlay = tester
         .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
-        .overlayModel!
-        .settleHoldTiles;
-    expect(held, isNotNull, reason: 'the fill pins its pre-fill tiles');
-    expect(held!.keys.toList(), [TileCoord(x: 0, y: 0)]);
+        .overlayModel!;
+    expect(
+      overlay.settleHoldTiles,
+      isNull,
+      reason: 'a fill pins nothing: its result tiles ARE what it shows',
+    );
   });
 
   testWidgets('a null fill region commits nothing', (tester) async {

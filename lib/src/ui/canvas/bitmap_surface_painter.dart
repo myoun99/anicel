@@ -180,13 +180,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     final overlay = overlayModel;
     if (overlay != null) {
       add(tileCoordsWorldRect(overlay.tileImages.keys, overlay.tileSize));
-      final stamp = overlay.stampImage;
-      if (stamp != null) {
-        add(
-          overlay.stampOffset &
-              Size(stamp.width.toDouble(), stamp.height.toDouble()),
-        );
-      }
     }
     final ghost = stampPreview?.value;
     if (ghost != null && ghost.image != null) {
@@ -306,13 +299,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       return false;
     }
     final overlay = overlayModel;
-    if (overlay == null) {
-      return true;
-    }
-    if (overlay.stampImage != null) {
-      return false;
-    }
-    if (!overlay.hasStrokeContent) {
+    if (overlay == null || !overlay.hasStrokeContent) {
       return true;
     }
     return _overlayReplacesCoords;

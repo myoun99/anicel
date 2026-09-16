@@ -2,11 +2,10 @@ part of '../bitmap_surface_painter.dart';
 
 /// ONE PAINT'S OVERLAY: the live stroke's tiles where they are an
 /// OPERATION on the committed pixels rather than a picture of the
-/// coordinate, and the fill's stamp — over what the base pass drew. A
-/// collaborator of `_SurfacePaintPass`, constructed per paint like the
-/// pass itself and reaching the paint's state through `_pass` (carved out
-/// on 2026-09-16 when the level blocks took the pass past the long-class
-/// line).
+/// coordinate — over what the base pass drew. A collaborator of
+/// `_SurfacePaintPass`, constructed per paint like the pass itself and
+/// reaching the paint's state through `_pass` (carved out on 2026-09-16
+/// when the level blocks took the pass past the long-class line).
 ///
 /// ⛔A PRE-BLENDED overlay on the surface's own grid is not drawn here at
 /// all: its tiles REPLACE their coordinates, so they are those coordinates'
@@ -37,32 +36,26 @@ class _OverlayPass {
     // removes committed pixels exactly like the commit pass will. On a
     // mismatched grid the isolation layer is up and pre-blended tiles
     // REPLACE (BlendMode.src) instead. The erase/blend paints serve only
-    // overlays that don't pre-blend (the fill stamp, and hosts driving the
-    // model directly).
-    final overlayPaint = _overlayPaint;
-    if (!_pass._overlayReplacesCoords) {
-      // R26 #18 (the selection) is NOT clipped here any more: the
-      // selection mask rides the pre-blend kernel, so a tile's result
-      // already equals the base wherever the selection excludes it.
-      final overlayTileSize = _overlay.tileSize.toDouble();
-      for (final entry in _overlay.tileImages.entries) {
-        final origin = Offset(
-          entry.key.x * overlayTileSize,
-          entry.key.y * overlayTileSize,
-        );
-        if (!_pass._visibleRect.overlaps(
-          Rect.fromLTWH(origin.dx, origin.dy, overlayTileSize, overlayTileSize),
-        )) {
-          continue;
-        }
-        _pass._canvas.drawImage(entry.value, origin, overlayPaint);
-      }
+    // overlays that don't pre-blend (hosts driving the model directly).
+    if (_pass._overlayReplacesCoords) {
+      return;
     }
-    // R23: a fill tap's overlay is ONE pre-decoded stamp image at the
-    // commit's exact placement (never coexists with stroke tiles).
-    final stampImage = _overlay.stampImage;
-    if (stampImage != null) {
-      _pass._canvas.drawImage(stampImage, _overlay.stampOffset, overlayPaint);
+    final overlayPaint = _overlayPaint;
+    // R26 #18 (the selection) is NOT clipped here any more: the
+    // selection mask rides the pre-blend kernel, so a tile's result
+    // already equals the base wherever the selection excludes it.
+    final overlayTileSize = _overlay.tileSize.toDouble();
+    for (final entry in _overlay.tileImages.entries) {
+      final origin = Offset(
+        entry.key.x * overlayTileSize,
+        entry.key.y * overlayTileSize,
+      );
+      if (!_pass._visibleRect.overlaps(
+        Rect.fromLTWH(origin.dx, origin.dy, overlayTileSize, overlayTileSize),
+      )) {
+        continue;
+      }
+      _pass._canvas.drawImage(entry.value, origin, overlayPaint);
     }
   }
 }

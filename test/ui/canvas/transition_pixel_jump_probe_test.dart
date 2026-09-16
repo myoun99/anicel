@@ -363,22 +363,6 @@ void main() {
     final painter3 = await pumpWith(painterFor(surface3));
     report('layer-switch(all-dirty-patch)', await paintBytes(tester, painter3));
 
-    // 7. fill-tap arm: a stamp overlay makes _liveDirtyCanvasRect refuse
-    //    (null) while the patch base still exists — a FULL compose is
-    //    forced with the picture unchanged (the stamp is transparent).
-    final stamp = await tester.runAsync(() async {
-      final recorder = ui.PictureRecorder();
-      Canvas(recorder);
-      final picture = recorder.endRecording();
-      final image = picture.toImageSync(1, 1);
-      picture.dispose();
-      return image;
-    });
-    overlay.setStampOverlay(stamp!, Offset.zero);
-    report('stamp-arm(dirty-refused-full)', await paintBytes(tester, painter3));
-    overlay.reset();
-    report('stamp-release(full)', await paintBytes(tester, painter3));
-
     // 8. the ROUTE FLIP measured directly: the same picture through the
     //    direct walk instead of the buffer. If a transition frame ever
     //    falls off the buffer route, THIS is the picture it swaps to.

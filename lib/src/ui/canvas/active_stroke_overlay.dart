@@ -21,9 +21,11 @@ import '../../services/brush_live_stroke_rasterizer.dart'
     show
         ActiveStrokePixelSource,
         BrushLiveStrokeRasterizer,
-        PreBlendedOverlayTile;
+        PreBlendedOverlayTile,
+        PromotedStrokeTile;
 import '../../services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
+import 'bitmap_tile_image_cache.dart';
 import 'deferred_image_disposal.dart';
 
 /// Mutable state of the in-progress stroke overlay.
@@ -199,33 +201,70 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   );
 
   /// Whether the overlay currently has stroke content to draw.
-  bool get hasStrokeContent => _tileImages.isNotEmpty || _stampImage != null;
+  bool get hasStrokeContent => _tileImages.isNotEmpty;
 
-  ui.Image? _stampImage;
-  ui.Offset _stampOffset = ui.Offset.zero;
-
-  /// R23: a FILL tap's overlay is ONE pre-decoded image at its stamp
-  /// rect. The flood already produced the full stamp RGBA, so blending
-  /// it into the live-raster tiles only to re-snapshot and re-decode
-  /// thousands of 128px overlay tiles (the 8K settle-frame stall) was
-  /// pure waste — one image, one decode, one draw.
-  ui.Image? get stampImage => _stampImage;
-
-  /// Canvas-space top-left of [stampImage] (the commit's exact
-  /// `(center - size/2).round()` placement, so overlay and committed
-  /// pixels land identically).
-  ui.Offset get stampOffset => _stampOffset;
-
-  /// Shows [image] as the whole overlay (fills never erase, tiles and
-  /// stamp never coexist — [reset] runs before every fill tap).
-  void setStampOverlay(ui.Image image, ui.Offset offset) {
-    final previous = _stampImage;
-    if (previous != null) {
-      DeferredImageDisposer.instance.retire(previous);
+  /// 🚨★★★A FILL'S RESULT TILES, AS THIS OVERLAY'S PICTURES (유저 절대규칙
+  /// 2026-09-17, `promoteFillDab`): the tiles the commit will install,
+  /// each uploaded from its own bytes and shown at its coordinate exactly
+  /// as a stroke's pre-blended tiles are — so the pen-up handoff takes
+  /// them at [fillPromotionRevision] and nothing is decoded twice. Where
+  /// the engine uploads synchronously every picture exists before this
+  /// returns; otherwise the uploads are awaited TOGETHER and installed in
+  /// one turn, so a fill appears whole, never tile by tile. A reset or a
+  /// new stroke while they are in flight makes them nobody's, and they
+  /// are disposed on arrival.
+  Future<void> showResultTiles(Iterable<PromotedStrokeTile> tiles) async {
+    final generation = _generation;
+    final inFlight = <Future<(TileCoord, ui.Image, int)?>>[];
+    for (final entry in tiles) {
+      final upload = BitmapTileImageCache.premultipliedTileUpload(entry.tile);
+      final uploaded = uploadImageSync(upload.view, tileSize, tileSize);
+      if (uploaded != null) {
+        upload.free();
+        _install(entry.coord, uploaded, revision: entry.revision);
+        continue;
+      }
+      _pendingDecodeCount += 1;
+      inFlight.add(() async {
+        try {
+          final image = await uploadRawRgba(
+            upload.view,
+            width: tileSize,
+            height: tileSize,
+          );
+          return (entry.coord, image, entry.revision);
+        } on Object catch (error, stack) {
+          FlutterError.reportError(
+            FlutterErrorDetails(
+              exception: error,
+              stack: stack,
+              library: 'anicel',
+              context: ErrorDescription(
+                'uploading a fill\'s result tile at ${entry.coord}',
+              ),
+            ),
+          );
+          return null;
+        } finally {
+          upload.free();
+        }
+      }());
     }
-    _stampImage = image;
-    _stampOffset = offset;
-    notifyListeners();
+    if (inFlight.isEmpty) {
+      return;
+    }
+    final landed = await Future.wait(inFlight);
+    for (final answer in landed) {
+      if (answer != null) {
+        final (coord, image, revision) = answer;
+        if (generation == _generation) {
+          _install(coord, image, revision: revision);
+        } else {
+          image.dispose();
+        }
+      }
+      _finishDecode();
+    }
   }
 
   Map<TileCoord, BitmapTile?>? _settleHoldTiles;
@@ -761,11 +800,6 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     _tileImageRevisions.clear();
     _decoding.clear();
     _dirtyWhileDecoding.clear();
-    final stamp = _stampImage;
-    if (stamp != null) {
-      DeferredImageDisposer.instance.retire(stamp);
-      _stampImage = null;
-    }
   }
 }
 

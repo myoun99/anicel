@@ -162,33 +162,29 @@ class _CanvasPanelSelection {
       // An empty list means the whole stroke fell outside the selection.
       return data.promotedTiles!.isEmpty ? null : data;
     }
-    var pixels = data.strokePixels;
-    var bounds = data.strokeBounds;
-    if (pixels == null || bounds == null) {
-      // No live raster (programmatic strokes, a redo replaying dabs):
-      // rasterize the coverage first so the clip has bytes to work on.
-      final rasterized = rasterizeStrokeForClipping(
-        dabs: data.sourceDabs,
-        canvasSize: _state.widget.canvasSize,
-        tileSize: _state.widget._editableCoordinator == null
-            ? BitmapSurface(canvasSize: _state.widget.canvasSize).tileSize
-            : _state.widget._editableCoordinator!
-                  .currentSurfaceOf(
-                    _state.widget._editableCoordinator!.activeFrameKey,
-                  )
-                  .tileSize,
-      );
-      if (rasterized == null) {
-        return null;
-      }
-      pixels = rasterized.pixels;
-      bounds = rasterized.bounds;
-    }
-    final clipped = clipStrokePixelsToSelection(
-      pixels: pixels,
-      bounds: bounds,
-      region: region,
-    );
+    final pixels = data.strokePixels;
+    final bounds = data.strokeBounds;
+    final clipped = pixels == null || bounds == null
+        // No live raster (programmatic strokes, a redo replaying dabs):
+        // the dabs are rasterized first so the clip has bytes to work on
+        // — the one door a fill's promotion takes too (`promoteFillDab`).
+        ? clipDabsToSelection(
+            dabs: data.sourceDabs,
+            canvasSize: _state.widget.canvasSize,
+            tileSize: _state.widget._editableCoordinator == null
+                ? BitmapSurface(canvasSize: _state.widget.canvasSize).tileSize
+                : _state.widget._editableCoordinator!
+                      .currentSurfaceOf(
+                        _state.widget._editableCoordinator!.activeFrameKey,
+                      )
+                      .tileSize,
+            region: region,
+          )
+        : clipStrokePixelsToSelection(
+            pixels: pixels,
+            bounds: bounds,
+            region: region,
+          );
     if (clipped == null) {
       return null;
     }

@@ -272,10 +272,10 @@ class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
 /// travels as data to that painter instead of as a widget above it.
 ///
 /// ⛔THE IMAGE IS BORROWED, NEVER OWNED. It belongs to the held [CutPiece],
-/// and the piece outlives any one hover. The overlay's own stamp slot
-/// ([ActiveStrokeOverlayModel.setStampOverlay]) RETIRES the image it
-/// replaces — handing it a piece's image would dispose the thing the user
-/// is still holding. That is why this is a separate slot with its own rule
+/// and the piece outlives any one hover. The overlay's own tile slots
+/// (`ActiveStrokeOverlayModel.showResultTiles`) RETIRE the image they
+/// replace — handing them a piece's image would dispose the thing the
+/// user is still holding. That is why this is a separate slot with its own rule
 /// rather than a second caller of that one.
 class CutStampPreview {
   const CutStampPreview({

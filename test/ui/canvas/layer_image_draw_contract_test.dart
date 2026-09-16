@@ -243,7 +243,7 @@ void main() {
 /// (`displayLevelOf`) — and a level is made by an image SHADER over a rect
 /// (`level_image.dart`), which owns its quality explicitly and is not a raw
 /// image draw.
-const int _knownRawDraws = 33;
+const int _knownRawDraws = 32;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

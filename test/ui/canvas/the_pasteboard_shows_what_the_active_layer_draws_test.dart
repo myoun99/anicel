@@ -17,6 +17,7 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
@@ -268,15 +269,19 @@ void main() {
     );
   });
 
-  testWidgets('🚨a fill\'s stamp shows on the pasteboard before it commits', (
-    tester,
-  ) async {
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+  testWidgets('🚨a fill\'s result tiles show on the pasteboard before it '
+      'commits', (tester) async {
+    // A fill is a stroke of one dab (2026-09-17): its result tiles reach
+    // the overlay as pre-blended tiles that REPLACE their coordinates —
+    // pasteboard coordinates included.
+    final base = surfaceWith(const {});
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+      ..preBlendBase = base;
     addTearDown(overlay.dispose);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
-        surface: surfaceWith(const {}),
+        surface: base,
         overlayModel: overlay,
         tileImageCache: BitmapTileImageCache(),
         showTransparentBackground: false,
@@ -284,11 +289,20 @@ void main() {
     );
     await expectShownOnThePasteboard(
       tester,
-      what: 'a fill\'s stamp',
+      what: 'a fill\'s result tile',
       stack: stack,
-      // The overlay owns the stamp from here: it retires the one it
-      // replaces and the last one with itself.
-      draw: (where) async => overlay.setStampOverlay(redSquare(), where.topLeft),
+      draw: (where) => tester.runAsync(
+        () => overlay.showResultTiles([
+          PromotedStrokeTile(
+            TileCoord(
+              x: (where.center.dx / tileSize).floor(),
+              y: (where.center.dy / tileSize).floor(),
+            ),
+            BitmapTile(size: tileSize, pixels: redRgba()),
+            fillPromotionRevision,
+          ),
+        ]),
+      ),
     );
   });
 

@@ -46,7 +46,7 @@ class PreBlendedOverlayTile {
 /// A finished stroke tile handed to the cel surface, with the stroke
 /// [revision] its pixels represent.
 class PromotedStrokeTile {
-  PromotedStrokeTile._(this.coord, this.tile, this.revision);
+  PromotedStrokeTile(this.coord, this.tile, this.revision);
 
   /// WHERE this tile goes. It is the map key the commit will store it
   /// under, carried beside the tile instead of read back off it — the
@@ -877,7 +877,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         _results.remove(key);
         _resultBytes -= byteLength;
       }
-      promoted.add(PromotedStrokeTile._(coord, tile, result.revision));
+      promoted.add(PromotedStrokeTile(coord, tile, result.revision));
     }
     return promoted;
   }

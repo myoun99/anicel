@@ -107,3 +107,32 @@ ClippedStrokePixels? rasterizeStrokeForClipping({
     bounds: bounds,
   );
 }
+
+/// [dabs] rasterized ([rasterizeStrokeForClipping]) and clipped to
+/// [region] ([clipStrokePixelsToSelection]) — the whole of what a stroke
+/// that arrives without live pixels goes through before the commit, in
+/// one place: the canvas panel's commit funnel runs it for programmatic
+/// strokes and history redos, and a fill's promotion runs it so the
+/// tiles it shows before the commit are the tiles the commit lands.
+///
+/// Null when the stroke draws nothing, or nothing of it survives the
+/// selection.
+ClippedStrokePixels? clipDabsToSelection({
+  required List<BrushDab> dabs,
+  required CanvasSize canvasSize,
+  required int tileSize,
+  required CanvasSelectionRegion region,
+}) {
+  final rasterized = rasterizeStrokeForClipping(
+    dabs: dabs,
+    canvasSize: canvasSize,
+    tileSize: tileSize,
+  );
+  return rasterized == null
+      ? null
+      : clipStrokePixelsToSelection(
+          pixels: rasterized.pixels,
+          bounds: rasterized.bounds,
+          region: region,
+        );
+}

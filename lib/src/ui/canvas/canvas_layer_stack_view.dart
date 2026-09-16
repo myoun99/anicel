@@ -1307,7 +1307,6 @@ class _ActiveLayerStandIn {
     final overlay = painter.overlayModel;
     if (overlay != null &&
         (overlay.hasStrokeContent ||
-            overlay.stampImage != null ||
             overlay.settling ||
             overlay.hasStandIns ||
             (overlay.settleHoldTiles?.isNotEmpty ?? false))) {
@@ -1803,9 +1802,6 @@ class _LayerStackPainter extends CustomPainter {
     if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
       return null;
     }
-    if (overlay?.stampImage != null) {
-      return null;
-    }
     if (!_liveSurfaceIsSpatiallyStable(nodes)) {
       return null;
     }
@@ -1945,7 +1941,6 @@ class _LayerStackPainter extends CustomPainter {
       if (overlay.hasStandIns || overlay.settling) {
         return null;
       }
-      live = Object.hash(live, identityHashCode(overlay.stampImage));
       for (final entry in overlay.tileImages.entries) {
         live = Object.hash(live, entry.key, identityHashCode(entry.value));
       }
@@ -1953,8 +1948,7 @@ class _LayerStackPainter extends CustomPainter {
     // 🚨★★★F-33: the stamp ghost is part of what this buffer would hold, so
     // it has to be part of the key. Left out, the buffer caches a frame
     // WITHOUT the ghost and the ghost then stops following the pointer —
-    // the silent failure this whole key exists to prevent, and the reason
-    // the fill stamp above is in it too.
+    // the silent failure this whole key exists to prevent.
     //
     // Its own `==` is identity on the piece and the image plus value on the
     // rect and the opacity, which is exactly what a hover changes.

@@ -264,31 +264,31 @@ class _BrushEditStroke {
   /// drop the overlay — all inside this one pointer event, so the very
   /// next frame paints committed tiles that already have their pictures.
   ///
-  /// 🚨★★★EVERY TILE, ON AN ENGINE THAT UPLOADS SYNCHRONOUSLY (유저 절대규칙
-  /// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The overlay
-  /// records a coordinate's picture and its revision inside the flush that
-  /// pre-blended it, so the final flush — which runs in this same handler
-  /// — has already handed every promoted tile the image the user is
-  /// looking at, and a tile whose image is somehow not there gets its own
-  /// bytes uploaded right here ([BitmapTileImageCache.adoptSyncUpload]).
-  /// Nothing stands in for a committed tile, no settle window opens, and
-  /// the overlay retires in this pointer event.
+  /// ⚠️ EXCEPT for the tiles whose image is not there to hand over, and
+  /// there are always some. The handoff is revision-gated, the revision is
+  /// written inside the decode callback, and `_flushPendingOverlayDabs()`
+  /// runs in this same synchronous handler — so a tile the final flush
+  /// touched cannot have recorded its new revision yet. For those the
+  /// settle window is still needed and still exists. Dropping the overlay
+  /// for them instead is what left a tile-shaped patch of the line missing
+  /// for a frame, showing the pre-stroke pixels the painter's stale
+  /// fallback answers with.
   ///
-  /// ⚠️ ON THE ASYNCHRONOUS ENGINE (Skia — the test runner) the miss is
-  /// what it was: the revision is written inside the decode callback, so a
-  /// tile the final flush touched cannot have recorded its new revision
-  /// yet, and for those the settle window is still needed and still
-  /// exists. Dropping the overlay for them instead is what left a
-  /// tile-shaped patch of the line missing for a frame, showing the
-  /// pre-stroke pixels the painter's stale fallback answers with. "Only on
-  /// a rare miss" would be the comfortable thing to write and it is false
-  /// there: on an ordinary two-segment stroke, 12 of 21 promoted
-  /// coordinates missed. And the window covers only PART of that hole:
-  /// what the overlay still holds is exactly the missed-WITH-an-older-image
-  /// set, because `takeTileImageAt` removes the ones it hands over; a
-  /// coordinate the final flush touched for the FIRST time was never
-  /// decoded by the overlay either — measured on a wide in-canvas fixture,
-  /// 62 promoted and 50 still painting pre-stroke pixels.
+  /// ⚠️ "Only on a rare miss" would be the comfortable thing to write here
+  /// and it is false: on an ordinary two-segment stroke, 12 of 21 promoted
+  /// coordinates miss. A stroke with nothing pending at pen-up does take
+  /// the synchronous path, and that is pinned by a test — but the settle
+  /// window is the common case, not the exception.
+  ///
+  /// ⚠️ And it covers only PART of the hole. What the overlay still holds
+  /// is exactly the missed-WITH-an-older-image set, because
+  /// `takeTileImageAt` removes the ones it hands over. A coordinate the
+  /// final flush touched for the FIRST time was never decoded by the
+  /// overlay either, so if the cel already had artwork there the stale
+  /// fallback still answers with the pre-stroke tile: measured on a wide
+  /// in-canvas fixture, 62 promoted and 50 still painting pre-stroke
+  /// pixels. Closing that needs the painter to stop borrowing for the
+  /// settling coordinates — a change to a painter three surfaces share.
   ///
   /// ⚠️ The dates, because they say this IS the user's report rather than
   /// a neighbour of it. The stale fallback landed 2026-07-05; the settle
@@ -318,105 +318,129 @@ class _BrushEditStroke {
     // window needs to know WHICH tiles to wait on. Null there means every
     // tile of the cel.
     final strokeBounds = rasterizer.strokeBounds;
-    var missedHandoff = false;
     final promotable = base != null && base.tileSize == rasterizer.tileSize;
-    final promoted = promotable
-        ? rasterizer.promoteStrokeTiles(
-            base: base,
-            mode: blendMode,
-            erase: erase,
-          )
-        : const <PromotedStrokeTile>[];
-    if (promotable) {
-      // Hand the decoded images over BEFORE the commit: the painter must
-      // never see an adopted tile without a picture (that is a frame of
-      // stale content — the flicker the settle machinery existed for).
-      // Only images at the promoted tile's own revision qualify; a
-      // stale one would be pinned to that tile forever.
-      for (final entry in promoted) {
-        final image = _state._overlay._overlayModel.takeTileImageAt(
-          entry.coord,
-          revision: entry.revision,
-        );
-        final placed = (coord: entry.coord, tile: entry.tile);
-        final scope = (_state.widget.layerId, _state.widget.frameId);
-        if (image != null) {
-          BitmapTileImageCache.instance.adoptDecoded(
-            placed,
-            image,
-            staleScope: scope,
-          );
-        } else if (BitmapTileImageCache.instance.adoptSyncUpload(
-              placed,
-              staleScope: scope,
-            ) !=
-            null) {
-          // The tile's own bytes are its picture from this call on: the
-          // same door the overlay's flush takes, for the one coordinate
-          // it could not (a first touch in the final flush on an engine
-          // whose upload is synchronous never gets here at all).
-        } else {
-          // Its decode never landed (or landed a revision behind): start
-          // one now, and REMEMBER, because the overlay must not be dropped
-          // while this coordinate has no picture.
-          //
-          // ⚠️ The sentence that used to be here — "the coordinate was
-          // showing base pixels anyway, so this is a continuation, not a
-          // regression" — is the false step that made this look benign.
-          // Once `_resetOverlay()` runs, base pixels ARE the regression:
-          // the committed tile has no image, so the painter's stale
-          // fallback answers with the PRE-STROKE tile and the stroke is
-          // missing in a tile-shaped patch.
-          //
-          // And this is not a rare race. `_flushPendingOverlayDabs()` and
-          // `commitStroke()` run in one synchronous handler, and the
-          // revision is recorded inside the decode CALLBACK, so a tile the
-          // final flush touched cannot possibly have recorded its new
-          // revision by the time `takeTileImageAt` compares — the miss is
-          // guaranteed for exactly those tiles. With a stabilizer the
-          // catch-up segment guarantees that flush has fresh dabs, so it
-          // is guaranteed to happen at all.
-          missedHandoff = true;
-          // What the overlay still holds here is covering for a COMMITTED
-          // tile now, not for the stroke. Saying so is what lets it
-          // outlive the stroke: the next pen-down must not take it away
-          // before its committed tile can paint.
-          _state._overlay._overlayModel.markStandIn(entry.coord);
-          BitmapTileImageCache.instance.ensureDecoded(
-            placed,
-            staleScope: scope,
-          );
-        }
-      }
+    final sourceDabs = List.of(_state._collectedDabs);
+    if (!promotable) {
+      // Without promotion (a host whose overlay grid differs from its
+      // surface's) the classic payload still commits correctly: a
+      // bounds-local row-major stroke buffer the commit composites.
+      _state.widget.onSourceStrokeCommitted(
+        BrushStrokeCommitData(
+          sourceDabs: sourceDabs,
+          blendMode: blendMode,
+          strokePixels: rasterizer.strokePixelsWithinBounds(),
+          strokeBounds: strokeBounds,
+          // F-12: the ceiling the live overlay has been drawing THROUGH —
+          // the buffer route is exactly where it has not been applied yet.
+          strokeOpacity: rasterizer.strokeOpacity,
+        ),
+      );
+      rasterizer.clear();
+      _state._overlay.resetOverlay();
+      return;
     }
-    _state.widget.onSourceStrokeCommitted(
+    final promoted = rasterizer.promoteStrokeTiles(
+      base: base,
+      mode: blendMode,
+      erase: erase,
+    );
+    rasterizer.clear();
+    landPromoted(
+      promoted,
       BrushStrokeCommitData(
-        sourceDabs: List.of(_state._collectedDabs),
+        sourceDabs: sourceDabs,
         // BB-1: the stroke's blend rides the payload — captured from the
         // stroke's settings SNAPSHOT, so a tool change can never flip a
         // committed stroke's mode.
         blendMode: blendMode,
-        promotedBase: promotable ? base : null,
-        promotedTiles: promotable
-            ? [
-                for (final entry in promoted)
-                  (coord: entry.coord, tile: entry.tile),
-              ]
-            : null,
-        // Without promotion (a host whose overlay grid differs from its
-        // surface's) the classic payload still commits correctly: a
-        // bounds-local row-major stroke buffer the commit composites.
-        strokePixels: promotable ? null : rasterizer.strokePixelsWithinBounds(),
-        strokeBounds: promotable ? null : rasterizer.strokeBounds,
-        // F-12: the ceiling the live overlay has been drawing THROUGH.
-        // Promoted tiles already carry it (it is folded into the mask the
-        // pre-blend runs), and the commit's promotion path installs them
-        // untouched — so this reaches the buffer route only, which is
-        // exactly where the ceiling has not been applied yet.
-        strokeOpacity: rasterizer.strokeOpacity,
+        promotedBase: base,
+        promotedTiles: [
+          for (final entry in promoted) (coord: entry.coord, tile: entry.tile),
+        ],
+        // F-12: promoted tiles already carry the ceiling (it is folded into
+        // the mask the pre-blend runs), and the commit's promotion path
+        // installs them untouched.
       ),
+      settlingBounds: strokeBounds,
     );
-    rasterizer.clear();
+  }
+
+  /// 🚨★★★THE ONE LANDING OF PROMOTED TILES — a stroke's at pen-up, a
+  /// fill's after its tap frame (`promoteFillDab`): hand each committed
+  /// tile the overlay image that shows exactly its pixels, commit, drop
+  /// the overlay — all in this one call, so the very next frame paints
+  /// committed tiles that already have their pictures and not one byte on
+  /// screen changes.
+  ///
+  /// The handoff is revision-gated (only an image at the promoted tile's
+  /// own revision qualifies; a stale one would be pinned to that tile
+  /// forever), and where the engine uploads synchronously every tile has
+  /// one. A tile whose image is somehow not there gets its own bytes
+  /// uploaded on the spot. Only on the asynchronous engine (Skia, the
+  /// test runner) can a tile reach the committed surface without a
+  /// picture — then the overlay's image stands in for it and the settle
+  /// window keeps it up until the decode lands ([settlingBounds] says
+  /// which tiles to wait on; null means every tile of the cel).
+  void landPromoted(
+    List<PromotedStrokeTile> promoted,
+    BrushStrokeCommitData data, {
+    required DirtyRegion? settlingBounds,
+  }) {
+    final overlay = _state._overlay._overlayModel;
+    final scope = (_state.widget.layerId, _state.widget.frameId);
+    var missedHandoff = false;
+    for (final entry in promoted) {
+      final placed = (coord: entry.coord, tile: entry.tile);
+      final image = overlay.takeTileImageAt(
+        entry.coord,
+        revision: entry.revision,
+      );
+      if (image != null) {
+        BitmapTileImageCache.instance.adoptDecoded(
+          placed,
+          image,
+          staleScope: scope,
+        );
+      } else if (BitmapTileImageCache.instance.adoptSyncUpload(
+            placed,
+            staleScope: scope,
+          ) !=
+          null) {
+        // The tile's own bytes are its picture from this call on: the
+        // same door the overlay's flush takes, for the one coordinate it
+        // could not (a first touch in the final flush on an engine whose
+        // upload is synchronous never gets here at all).
+      } else {
+        // Its decode never landed (or landed a revision behind): start one
+        // now, and REMEMBER, because the overlay must not be dropped while
+        // this coordinate has no picture.
+        //
+        // ⚠️ The sentence that used to be here — "the coordinate was
+        // showing base pixels anyway, so this is a continuation, not a
+        // regression" — is the false step that made this look benign.
+        // Once `_resetOverlay()` runs, base pixels ARE the regression: the
+        // committed tile has no image, so the painter's stale fallback
+        // answers with the PRE-STROKE tile and the stroke is missing in a
+        // tile-shaped patch.
+        //
+        // And this is not a rare race. `_flushPendingOverlayDabs()` and
+        // `commitStroke()` run in one synchronous handler, and the
+        // revision is recorded inside the decode CALLBACK, so a tile the
+        // final flush touched cannot possibly have recorded its new
+        // revision by the time `takeTileImageAt` compares — the miss is
+        // guaranteed for exactly those tiles. With a stabilizer the
+        // catch-up segment guarantees that flush has fresh dabs, so it is
+        // guaranteed to happen at all.
+        missedHandoff = true;
+        // What the overlay still holds here is covering for a COMMITTED
+        // tile now, not for the stroke. Saying so is what lets it outlive
+        // the stroke: the next pen-down must not take it away before its
+        // committed tile can paint.
+        overlay.markStandIn(entry.coord);
+        BitmapTileImageCache.instance.ensureDecoded(placed, staleScope: scope);
+      }
+    }
+    _state.widget.onSourceStrokeCommitted(data);
     if (missedHandoff) {
       // At least one promoted tile went to the committed surface without a
       // picture, so dropping the overlay now would show the pre-stroke
@@ -430,7 +454,7 @@ class _BrushEditStroke {
       // Bounds passed EXPLICITLY: `_settlingTiles()` falls back to every
       // tile of the cel when `_settlingBounds` is null, which would make a
       // one-tile stroke wait on the whole canvas.
-      _state._settlingState._settlingBounds = strokeBounds;
+      _state._settlingState._settlingBounds = settlingBounds;
       _state._settlingState._beginSettling();
       return;
     }

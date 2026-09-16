@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,6 @@ import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -19,21 +17,17 @@ import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/dirty_region.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/tile_coord.dart';
 import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_ground_color_sampling.dart';
-import '../../services/straight_rgba_image.dart'
-    show decodeStraightRgbaImage, decodedImageStillWanted;
+import '../../services/brush_fill_promotion.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/brush_pressure_dynamics.dart';
-import '../../services/brush_stroke_blend.dart'
-    show applySelectionMaskToStrokeAlpha;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/canvas_segment_clipper.dart';
 import '../../services/canvas_selection_region.dart';
@@ -90,35 +84,6 @@ List<PlacedTile> settlingTilesForBounds({
           entry.key.y <= box.lastY)
         (coord: entry.key, tile: entry.value),
   ];
-}
-
-/// The PRE-stroke tile (null = the coordinate was empty) for every
-/// committed-grid coordinate that [bounds] touches, pinned on the overlay
-/// model so settling frames stay pixel-identical to the live stroke (see
-/// [ActiveStrokeOverlayModel.settleHoldTiles]).
-///
-/// ⚠️ Its one caller is the FILL commit. This doc used to say "captured at
-/// pen-up", which stopped being true when promotion took the pin off the
-/// stroke path, and the stale sentence made the missing pin look like a
-/// deliberate design rather than something dropped. Pen-up settles by
-/// keeping the OVERLAY up instead — its tile images are the stroke a
-/// revision behind, which is a better stand-in than the pre-stroke tile
-/// because it is not missing the stroke.
-@visibleForTesting
-Map<TileCoord, BitmapTile?> preStrokeHoldTiles({
-  required BitmapSurface surface,
-  required DirtyRegion? bounds,
-}) {
-  if (bounds == null) {
-    return {...surface.tiles};
-  }
-  final tiles = surface.tiles;
-  return {
-    for (final coord in tileCoordsIn(
-      bounds.tileRange(tileSize: surface.tileSize),
-    ))
-      coord: tiles[coord],
-  };
 }
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
@@ -717,14 +682,12 @@ class _InteractiveBrushEditCanvasViewState
         (_activeStrokeInputSettings ?? widget.inputSettings).opacity;
   }
 
-  /// Rasterizes [newDabs] into the live buffer (exact commit math) and
-  /// re-decodes the touched overlay tiles.
-  ///
-  /// The overlay model snapshots and decodes each touched tile through the
-  /// same premultiply + `decodeImageFromPixels` pipeline as the committed
-  /// tiles, so the on-screen stroke rasterizes exactly like it will after
-  /// commit; decode completions repaint the canvas painter directly.
-  BrushDab? _pendingFillCommitDab;
+  /// A fill shown and not yet committed: its dab, the surface its result
+  /// tiles were made against, and those tiles ([_BrushEditFill]). The
+  /// post-frame commit lands them; a second tap while this is set is the
+  /// busy case.
+  ({BrushDab dab, BitmapSurface base, List<PromotedStrokeTile> tiles})?
+  _pendingFill;
 
   /// The touch pointer whose lift will run a fill, and where it landed.
   ///
@@ -738,7 +701,4 @@ class _InteractiveBrushEditCanvasViewState
   // A collaborator (canvas/brush_edit/brush_edit_fill.dart, a part of this library).
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditFill _fill = _BrushEditFill(this);
-
-  int _fillOverlayToken = 0;
-
 }

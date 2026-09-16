@@ -133,12 +133,10 @@ class _BrushEditOverlay {
   }
 
   /// Everything both of the above do before they part company: end the
-  /// settle window, and invalidate any in-flight fill stamp decode (R23)
-  /// — applying it after this reset would leave a ghost overlay with no
-  /// settling to clear it.
+  /// settle window (a fill, since 2026-09-17, lands the way a stroke does
+  /// and has no decode of its own to invalidate — `promoteFillDab`).
   void _endSettleWindowAndFillDecode() {
     _state._settlingState.endWindow();
-    _state._fillOverlayToken += 1;
   }
 
   void _appendOverlayDabs(List<BrushDab> newDabs) {
