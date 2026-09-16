@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../core/mapped_or_same.dart';
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
@@ -103,10 +104,12 @@ class BrushTipLibrary extends ChangeNotifier {
     if (_disposed || loaded.isEmpty) {
       return;
     }
-    _tips = [
-      for (final tip in _tips)
-        if (loaded[tip.id] == null) tip else tip.copyWith(mask: loaded[tip.id]),
-    ];
+    _tips = mappedOrSame(
+      _tips,
+      (tip) => loaded[tip.id] == null
+          ? tip
+          : tip.copyWith(mask: loaded[tip.id]),
+    );
     _notify();
   }
 
@@ -176,10 +179,10 @@ class BrushTipLibrary extends ChangeNotifier {
   );
 
   void rename(String id, String name) {
-    _tips = [
-      for (final tip in _tips)
-        if (tip.id == id && !tip.builtIn) tip.copyWith(name: name) else tip,
-    ];
+    _tips = mappedOrSame(
+      _tips,
+      (tip) => tip.id == id && !tip.builtIn ? tip.copyWith(name: name) : tip,
+    );
     _notify();
     unawaited(_persistIndex());
   }

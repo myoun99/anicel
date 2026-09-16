@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../core/mapped_or_same.dart';
 import '../../models/brush_group.dart';
 import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
@@ -189,10 +190,10 @@ class BrushPresetLibrary extends ChangeNotifier {
   }
 
   void rename(BrushPresetId id, String name) {
-    _presets = [
-      for (final preset in _presets)
-        if (preset.id == id) preset.copyWith(name: name) else preset,
-    ];
+    _presets = mappedOrSame(
+      _presets,
+      (preset) => preset.id == id ? preset.copyWith(name: name) : preset,
+    );
     _notify();
     _persist();
   }
@@ -230,15 +231,14 @@ class BrushPresetLibrary extends ChangeNotifier {
   /// Saves a group's name and face together — they are edited in one
   /// dialog, so they land in one write rather than two notifies.
   void editGroup(BrushGroupId id, String name, BrushGroupIcon? icon) {
-    _groups = [
-      for (final group in _groups)
-        if (group.id == id)
-          // A null icon means "no icon chosen", which has to be writable
-          // — that is how a group goes back to wearing its first brush.
-          group.copyWith(name: name, icon: icon, clearIcon: icon == null)
-        else
-          group,
-    ];
+    _groups = mappedOrSame(
+      _groups,
+      // A null icon means "no icon chosen", which has to be writable — that
+      // is how a group goes back to wearing its first brush.
+      (group) => group.id == id
+          ? group.copyWith(name: name, icon: icon, clearIcon: icon == null)
+          : group,
+    );
     _notify();
     _persist();
   }
@@ -260,10 +260,10 @@ class BrushPresetLibrary extends ChangeNotifier {
   }
 
   void setGroupCollapsed(BrushGroupId id, bool collapsed) {
-    _groups = [
-      for (final group in _groups)
-        if (group.id == id) group.copyWith(collapsed: collapsed) else group,
-    ];
+    _groups = mappedOrSame(
+      _groups,
+      (group) => group.id == id ? group.copyWith(collapsed: collapsed) : group,
+    );
     _notify();
     _persist();
   }

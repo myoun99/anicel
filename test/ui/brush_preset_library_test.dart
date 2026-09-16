@@ -263,6 +263,51 @@ void main() {
     });
   });
 
+  group('rename', () {
+    // 🚨A MUTANT SURVIVED HERE (2026-09-16). Flipping `preset.id == id` to
+    // `!=` in `BrushPresetLibrary.rename` left every test in this file
+    // green: the library's own rename was called by NOTHING. `editGroup`
+    // and `setGroupCollapsed` were both pinned, and the preset-level verb
+    // beside them was not.
+    test('renames the one asked for and leaves the rest alone', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final before = library.presets.map((p) => p.name).toList();
+
+      library.rename(const BrushPresetId('i2'), 'Fine liner');
+
+      final byId = {for (final p in library.presets) p.id.value: p.name};
+      expect(byId['i2'], 'Fine liner');
+      expect(
+        library.presets.where((p) => p.name == 'Fine liner').length,
+        1,
+        reason: 'the name lands on ONE preset — a walk that renamed the '
+            'complement would also put the name in the list',
+      );
+      expect(
+        [
+          for (final p in library.presets)
+            if (p.id.value != 'i2') p.name,
+        ],
+        [
+          for (var i = 0; i < before.length; i += 1)
+            if (library.presets[i].id.value != 'i2') before[i],
+        ],
+        reason: 'every other preset keeps the name it had',
+      );
+    });
+
+    test('an id no preset carries changes nothing', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final before = library.presets.map((p) => p.name).toList();
+
+      library.rename(const BrushPresetId('not-here'), 'Fine liner');
+
+      expect(library.presets.map((p) => p.name), before);
+    });
+  });
+
   group('tips carried on presets', () {
     late Directory tipDirectory;
     late BrushTipLibraryService tipService;

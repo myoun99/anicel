@@ -172,8 +172,30 @@ import '../../tool/refactor/clone_scan.dart';
 /// round, not a side effect.
 /// 🔜**That round takes this back down by at least one**, and probably more:
 /// the family is four.
+///
+/// 91 → 90 (2026-09-16, the round above, run immediately). The pair is gone
+/// because both bodies now call a walk that was ALREADY IN THE TREE:
+/// `core/mapped_or_same.dart`'s [mappedOrSame], written for four write-time
+/// normalizations that had each spelled it out by hand. The brush family's
+/// four — `BrushPresetLibrary.rename`, `.editGroup`, `.setGroupCollapsed`
+/// and `BrushTipLibrary.rename`, plus the tip library's mask-load write —
+/// go through it, and each one's own decision (which item, what it becomes)
+/// is what is left at the call site.
+/// ⛔**No new helper was authored**, which was the whole worry: the choice
+/// was never "no-op callback vs. second general helper", because the third
+/// option — the one the rule about investigating what exists is for — was
+/// sitting in `core/` already. `mappedOrSame` also does strictly more than
+/// the loops it replaced: it hands the SAME list back when nothing changed.
+/// ⛔`_replacingOne` in `services/project_tree_editor.dart` is untouched and
+/// is not the same thing: it fuses the found-flag into the step, which is
+/// its stated reason to exist and which none of these five wants.
+/// ⛔`delete` and `deleteGroup` are untouched too — they FILTER, a different
+/// verb, and folding a remover into a replacer is how one flag ends up
+/// answering two questions.
+/// Only one candidate left with it: the others in the family were already
+/// under the 40-token floor and never counted.
 void main() {
-  const ceiling = 91;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
