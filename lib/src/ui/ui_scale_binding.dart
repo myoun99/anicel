@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'ui_scale.dart';
+import 'session/cache_budgets.dart';
 
 /// The binding that puts [AppUiScale] into the root device matrix.
 ///
@@ -180,7 +181,7 @@ class AnicelBinding extends WidgetsFlutterBinding with UiScaleViewConfiguration 
     // of a gigabyte before anyone notices — the allowance matches the use
     // instead of the framework's guess about a different kind of app.
     PaintingBinding.instance.imageCache
-      ..maximumSizeBytes = 8 * 1024 * 1024
+      ..maximumSizeBytes = CacheBudgetLine.frameworkImageCacheBytes
       ..maximumSize = 50;
     // H30: a shortcut must not rebuild every button — see the method.
     applyFocusHighlightPolicy(focusManager);

@@ -542,7 +542,13 @@ enum AppStrings {
       _s('memoryItemStoryboardThumbnails');
   String get memoryItemMoviePictures => _s('memoryItemMoviePictures');
   String get memoryItemTileImages => _s('memoryItemTileImages');
-  String get memoryItemEngineBuffers => _s('memoryItemEngineBuffers');
+  String get memoryItemEnginePool => _s('memoryItemEnginePool');
+  String get memoryItemEngineScratch => _s('memoryItemEngineScratch');
+
+  /// What sits outside the allowance — the rows named in [items] — as one
+  /// sentence (유저 2026-09-16, memory-allowance-Q2).
+  String memoryOutsideAllowance(String items) =>
+      _s('memoryOutsideAllowanceTemplate').replaceAll('{items}', items);
   String get containerAreaSettings => _s('containerAreaSettings');
   String get containerAreaDiagnostics => _s('containerAreaDiagnostics');
   String get containerAreaSessionScratch => _s('containerAreaSessionScratch');
@@ -1871,7 +1877,11 @@ enum AppStrings {
     'memoryItemStoryboardThumbnails': 'Storyboard thumbnails',
     'memoryItemMoviePictures': 'Reference movies',
     'memoryItemTileImages': 'Canvas tile images',
-    'memoryItemEngineBuffers': 'Drawing engine buffers',
+    'memoryItemEnginePool': 'Drawing engine tile pool',
+    'memoryItemEngineScratch': 'Drawing engine scratch',
+    'memoryOutsideAllowanceTemplate':
+        'Outside the allowance, because no ceiling can be set on it: '
+        '{items}.',
     'containerAreaSettings': 'Settings',
     'containerAreaDiagnostics': 'Diagnostics log',
     'containerAreaSessionScratch': 'Session scratch',
@@ -2947,7 +2957,9 @@ enum AppStrings {
     'memoryItemStoryboardThumbnails': '絵コンテのサムネイル',
     'memoryItemMoviePictures': '参照動画',
     'memoryItemTileImages': 'キャンバスのタイル画像',
-    'memoryItemEngineBuffers': '描画エンジンのバッファ',
+    'memoryItemEnginePool': '描画エンジンのタイルプール',
+    'memoryItemEngineScratch': '描画エンジンの作業バッファ',
+    'memoryOutsideAllowanceTemplate': '割り当ての外（上限を掛けられないもの）: {items}',
     'containerAreaSettings': '設定',
     'containerAreaDiagnostics': '診断ログ',
     'containerAreaSessionScratch': 'セッション作業領域',
@@ -4214,7 +4226,9 @@ enum AppStrings {
     'memoryItemStoryboardThumbnails': '콘티 썸네일',
     'memoryItemMoviePictures': '참조 동영상',
     'memoryItemTileImages': '캔버스 타일 이미지',
-    'memoryItemEngineBuffers': '그리기 엔진 버퍼',
+    'memoryItemEnginePool': '그리기 엔진 타일 풀',
+    'memoryItemEngineScratch': '그리기 엔진 작업 버퍼',
+    'memoryOutsideAllowanceTemplate': '허용치 밖(천장을 걸 수 없는 것): {items}',
     'containerAreaSettings': '설정',
     'containerAreaDiagnostics': '진단 로그',
     'containerAreaSessionScratch': '세션 작업 공간',
@@ -5493,7 +5507,10 @@ enum AppStrings {
     'memoryItemStoryboardThumbnails': 'Vignettes du storyboard',
     'memoryItemMoviePictures': 'Vidéos de référence',
     'memoryItemTileImages': 'Images des tuiles du canevas',
-    'memoryItemEngineBuffers': 'Tampons du moteur de dessin',
+    'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
+    'memoryItemEngineScratch': 'Tampons de travail du moteur de dessin',
+    'memoryOutsideAllowanceTemplate':
+        "Hors de l'allocation, faute de plafond possible : {items}.",
     'containerAreaSettings': 'Réglages',
     'containerAreaDiagnostics': 'Journal de diagnostic',
     'containerAreaSessionScratch': 'Espace de session',
@@ -6781,7 +6798,9 @@ enum AppStrings {
     'memoryItemStoryboardThumbnails': '分镜缩略图',
     'memoryItemMoviePictures': '引用视频',
     'memoryItemTileImages': '画布图块图像',
-    'memoryItemEngineBuffers': '绘图引擎缓冲区',
+    'memoryItemEnginePool': '绘图引擎图块池',
+    'memoryItemEngineScratch': '绘图引擎工作缓冲区',
+    'memoryOutsideAllowanceTemplate': '配额之外（无法设上限）：{items}',
     'containerAreaSettings': '设置',
     'containerAreaDiagnostics': '诊断日志',
     'containerAreaSessionScratch': '会话暂存区',

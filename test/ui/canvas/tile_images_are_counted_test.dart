@@ -114,13 +114,15 @@ void main() {
         greaterThanOrEqualTo(oneImage),
         reason: 'fixture: a held picture is on the books',
       );
+      // Two rows since 2026-09-16: the pool has a ceiling the allowance
+      // sets, the scratch has none — one row was half inside and half out.
       expect(
-        rows['engineBuffers'],
-        (QaNativeEngine.instance?.tilePoolParkedBytes ?? 0) +
-            NativeScratch.liveBytes,
+        rows['enginePool'],
+        QaNativeEngine.instance?.tilePoolParkedBytes ?? 0,
       );
+      expect(rows['engineScratch'], NativeScratch.liveBytes);
       expect(
-        rows['engineBuffers'],
+        rows['engineScratch'],
         greaterThanOrEqualTo(1000),
         reason: 'fixture: a grown scratch is on the books',
       );

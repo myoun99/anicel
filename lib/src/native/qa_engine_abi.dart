@@ -167,7 +167,16 @@ import 'dart:io';
 ///   it is shown on, the playback warmer filling the frames ahead, and
 ///   export walking a whole cut. Each backend still addresses exactly one
 ///   document; the law picks which slot before it calls a hook.
-const int kQaEngineAbiVersion = 35;
+/// - v36: the memory tab's allowance reaches the engine (C-ipad-crash ②③,
+///   유저 2026-09-16). `qa_tile_pool_set_byte_cap` sets the cap on the parked
+///   tile blocks — a compile-time 512MB until then, so the one line of the
+///   allowance the engine held sat outside it — and releases the excess when
+///   lowered. `qa_app_memory_limit_bytes` answers what the OS lets THIS APP
+///   hold, held plus still available, or 0 where an app has no limit of its
+///   own: `qa_available_memory_bytes` on a desktop is the machine's free
+///   memory, a different question, and the automatic allowance is half of
+///   the app's limit where one exists and half the RAM where none does.
+const int kQaEngineAbiVersion = 36;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

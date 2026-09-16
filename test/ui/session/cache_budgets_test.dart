@@ -47,6 +47,10 @@ void main() {
       reason: 'a fixed 600MB that ignored the allowance would make it a lie',
     );
     expect(half.nativeUploads, budgets.nativeUploads ~/ 2);
+    // 유저 2026-09-16 (memory-allowance-Q2): 「천장을 걸 수 있는 것은 전부
+    // 허용치 안으로」 — the two that sat outside until then.
+    expect(half.imageCache, budgets.imageCache ~/ 2);
+    expect(half.enginePool, budgets.enginePool ~/ 2);
     expect(half.total, closeTo(budgets.total / 2, 16));
 
     final doubled = budgets.toAllowance(budgets.total * 2);
@@ -65,5 +69,23 @@ void main() {
       lessThan(budgets.total),
       reason: 'the slider has room below its automatic value',
     );
+  });
+
+  test('a holder is ONE line: the census rows it is the ceiling of are its '
+      'own, and a row no line names is outside the allowance', () {
+    // 유저 2026-09-16: 「타일그림이나 렌더링이나 그런 관련된거 바뀔수있으니
+    // 낡지않을구조로」 — the tab asks this, so a cache that gains a ceiling
+    // moves inside without a word of UI changing.
+    expect(CacheBudgetLine.covers('drawings'), isTrue);
+    expect(CacheBudgetLine.covers('layerImages'), isTrue, reason: 'playback');
+    expect(CacheBudgetLine.covers('enginePool'), isTrue);
+    expect(CacheBudgetLine.covers('imageCache'), isTrue);
+    expect(CacheBudgetLine.covers('engineScratch'), isFalse);
+    expect(CacheBudgetLine.covers('panelRasters'), isFalse);
+    expect(CacheBudgetLine.covers('tileImages'), isFalse);
+    // Every line names at least one row, or it is a budget nobody can see.
+    for (final line in CacheBudgetLine.values) {
+      expect(line.censusIds, isNotEmpty, reason: '$line');
+    }
   });
 }

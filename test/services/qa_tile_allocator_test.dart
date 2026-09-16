@@ -1,4 +1,4 @@
-﻿import 'dart:ffi';
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -91,6 +91,39 @@ void main() {
       0,
       reason: "a parked block is resident and nobody's picture",
     );
+  });
+
+  test('the cap the allowance sets releases the excess on the spot, and '
+      'nothing parks above it after', () {
+    // 유저 2026-09-16 (memory-allowance-Q2): the pool was a compile-time
+    // 512MB, the one line of the allowance the engine held outside it.
+    requireEngine();
+    if (!available) return;
+    final engine = QaNativeEngine.instance!;
+    const size = 88_880;
+    // Two live blocks, then both parked — a free-then-alloc would hand
+    // the first block straight back and park only one.
+    final first = engine.tileAlloc(size);
+    final second = engine.tileAlloc(size);
+    engine.tileFree(first);
+    engine.tileFree(second);
+    expect(engine.tilePoolParkedBytes, greaterThanOrEqualTo(2 * size));
+
+    engine.setTilePoolByteCap(size);
+    expect(
+      engine.tilePoolParkedBytes,
+      lessThanOrEqualTo(size),
+      reason: 'lowering the cap frees what is parked above it',
+    );
+    engine.tileFree(engine.tileAlloc(size + 16));
+    expect(
+      engine.tilePoolParkedBytes,
+      lessThanOrEqualTo(size),
+      reason: 'a free that would cross the cap does not park',
+    );
+
+    engine.setTilePoolByteCap(512 * 1024 * 1024);
+    QaNativeEngine.respondToMemoryPressure();
   });
 
   test('different sizes park independently', () {

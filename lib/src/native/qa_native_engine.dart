@@ -42,9 +42,11 @@ class QaNativeEngine {
     this._tileFreePointer,
     this._tilePoolCachedBytes,
     this._tilePoolTrim,
+    this._tilePoolSetByteCap,
     this._physicalMemoryBytes,
     this._processFootprintBytes,
     this._availableMemoryBytes,
+    this._appMemoryLimitBytes,
     this._fillGapCloseRun,
     this._floodFillWave,
     this._fillComposeBatch,
@@ -161,6 +163,7 @@ class QaNativeEngine {
   final Pointer<NativeFinalizerFunction> _tileFreePointer;
   final int Function() _tilePoolCachedBytes;
   final void Function() _tilePoolTrim;
+  final void Function(int) _tilePoolSetByteCap;
 
   /// Allocates tile pixel bytes from the C free-list allocator (R20-E1).
   /// Freed/finalized tile blocks park in exact-size C-side lists, so a
@@ -188,6 +191,11 @@ class QaNativeEngine {
   /// and nobody's picture. The memory census reads it.
   int get tilePoolParkedBytes => _tilePoolCachedBytes();
 
+  /// Caps what the pool may keep parked. The memory tab's allowance sets it
+  /// ([CacheBudgetLine.enginePool], v36); lowering it releases the excess
+  /// on the spot.
+  void setTilePoolByteCap(int bytes) => _tilePoolSetByteCap(bytes);
+
   /// The OS says memory is tight: give back what only makes the NEXT call
   /// cheaper — the tile blocks parked for reuse, and every scratch buffer
   /// (each regrows on its next call). Static, and never the call that
@@ -209,6 +217,7 @@ class QaNativeEngine {
 
   final int Function() _processFootprintBytes;
   final int Function() _availableMemoryBytes;
+  final int Function() _appMemoryLimitBytes;
 
   /// What THIS PROCESS is holding, or null where the platform will not
   /// say (v29).
@@ -229,6 +238,18 @@ class QaNativeEngine {
   /// from the machine can be double what the process is allowed to have.
   int? get availableMemoryBytes {
     final bytes = _availableMemoryBytes();
+    return bytes <= 0 ? null : bytes;
+  }
+
+  /// What the OS lets THIS APP hold all in — held plus still available —
+  /// or null where the OS gives an app no limit of its own (v36).
+  ///
+  /// ⛔Not [availableMemoryBytes] doubled up: on a desktop that one is the
+  /// MACHINE's free memory, which is not a limit on this app at all. Only
+  /// iOS answers here, and there it is the ceiling a jetsam decision is
+  /// made against — the number the automatic allowance halves.
+  int? get appMemoryLimitBytes {
+    final bytes = _appMemoryLimitBytes();
     return bytes <= 0 ? null : bytes;
   }
 
@@ -952,6 +973,10 @@ class QaNativeEngine {
           .lookupFunction<Void Function(), void Function()>(
             'qa_tile_pool_trim',
           );
+      final tilePoolSetByteCap = library
+          .lookupFunction<Void Function(Int64), void Function(int)>(
+            'qa_tile_pool_set_byte_cap',
+          );
       final physicalMemoryBytes = library
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_physical_memory_bytes',
@@ -963,6 +988,10 @@ class QaNativeEngine {
       final availableMemoryBytes = library
           .lookupFunction<Int64 Function(), int Function()>(
             'qa_available_memory_bytes',
+          );
+      final appMemoryLimitBytes = library
+          .lookupFunction<Int64 Function(), int Function()>(
+            'qa_app_memory_limit_bytes',
           );
       final fillGapCloseRun = library
           .lookupFunction<
@@ -1177,9 +1206,11 @@ class QaNativeEngine {
         tileFreePointer,
         tilePoolCachedBytes,
         tilePoolTrim,
+        tilePoolSetByteCap,
         physicalMemoryBytes,
         processFootprintBytes,
         availableMemoryBytes,
+        appMemoryLimitBytes,
         fillGapCloseRun,
         floodFillWave,
         fillComposeBatch,

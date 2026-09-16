@@ -282,6 +282,7 @@ class _HomePageState extends State<HomePage> {
         );
     _session = EditorSessionManager(
       initialProject: project,
+      frameworkImageCache: PaintingBinding.instance.imageCache,
       // Language + accent settings persist app-side (UI-R10 #7 /
       // UI-R22 #5); FLUTTER_TEST keeps widget tests off the developer's
       // saved files.

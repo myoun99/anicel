@@ -156,6 +156,7 @@ import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
 import 'session/layer_switch_verbs.dart';
 import 'session/editing_canvas.dart';
+import 'package:flutter/painting.dart' show ImageCache;
 
 /// Owns the editable project session for [HomePage]: the repository, undo
 /// history, cut/layer/timeline controllers, the cut command coordinator and the
@@ -186,9 +187,11 @@ class EditorSessionManager extends ChangeNotifier
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppWorkspaceColorsStore? workspaceColorsStore,
     AppUiScaleStore? uiScaleStore,
+    ImageCache? frameworkImageCache,
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
+       _frameworkImageCache = frameworkImageCache,
        appSettings = EditorAppSettings(
          languageSettingsStore: languageSettingsStore,
          accentSettingsStore: accentSettingsStore,
@@ -293,6 +296,17 @@ class EditorSessionManager extends ChangeNotifier
     physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
   );
 
+  /// The allowance when nobody has moved the slider: the device's, read
+  /// ONCE here ([automaticAllowanceBytes]) — an app's limit drifts with
+  /// what the app holds, and a slider whose automatic end kept moving
+  /// would be a lie about what was chosen.
+  late final int automaticAllowance = automaticAllowanceBytes(
+    physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
+    appMemoryLimitBytes: QaNativeEngine.instance?.appMemoryLimitBytes,
+    floorBytes: CacheBudgets.floors.total,
+    lawsTotalBytes: deviceCacheBudgets.total,
+  );
+
   /// Sets every cache's budget from the device's laws and the allowance a
   /// person chose (the memory tab). A new allowance is a new normal, so it
   /// also lifts what a memory warning had halved.
@@ -304,10 +318,9 @@ class EditorSessionManager extends ChangeNotifier
   /// to be set where each was built; this is now the one place every
   /// budget is set.
   void _applyCacheBudgets({bool enforce = true}) {
-    final allowance = AppMemory.settings.value.allowanceBytes;
-    final by = allowance == null
-        ? 1.0
-        : deviceCacheBudgets.factorFor(allowance);
+    final allowance =
+        AppMemory.settings.value.allowanceBytes ?? automaticAllowance;
+    final by = deviceCacheBudgets.factorFor(allowance);
     final budgets = deviceCacheBudgets.scaledBy(by);
     MemoryAllowance.factor.value = by;
     renderCaches.applyCacheBudgets(budgets);
@@ -316,6 +329,12 @@ class EditorSessionManager extends ChangeNotifier
     QaNativeEngine.instance?.nativeUploadByteBudget = budgets.nativeUploads;
     BrushTipStampCache.instance.byteBudget = budgets.brushTips;
     BrushLiveStrokeRasterizer.residentResultByteBudget = budgets.liveStroke;
+    // The two the allowance did not reach until 2026-09-16 (Q2): the
+    // framework's image cache, seeded by the binding before any session,
+    // and the engine's parked tile blocks, a compile-time cap until then.
+    // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
+    _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
+    QaNativeEngine.instance?.setTilePoolByteCap(budgets.enginePool);
     if (enforce) {
       playbackRig.playbackCache.enforcePlaybackCacheBudget();
     }
@@ -1199,6 +1218,13 @@ class EditorSessionManager extends ChangeNotifier
   /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
   final MediaStagingStore? _injectedMediaStagingStore;
+
+  /// [CacheBudgetLine.imageCache]'s holder: the framework's image cache,
+  /// which exists only once a binding does. The screen hands it in. A plain
+  /// test builds its session with no binding and hands nothing — the line
+  /// then has no holder to reach, and `PaintingBinding.instance` has no
+  /// null-safe form to ask.
+  final ImageCache? _frameworkImageCache;
 
   /// Where 품기 puts the bytes until a save absorbs them.
   ///

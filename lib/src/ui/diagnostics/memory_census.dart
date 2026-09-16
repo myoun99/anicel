@@ -195,15 +195,17 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
       bytes: BitmapTileImageCache.liveImageBytes,
     ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
-    // blocks parked for reuse (up to 512MB) and grow-only scratch sized by
-    // the largest call so far. Both resident, both read as engine overhead
-    // until C-ipad-crash (2026-09-11).
+    // blocks parked for reuse and grow-only scratch sized by the largest
+    // call so far. Both resident, both read as engine overhead until
+    // C-ipad-crash (2026-09-11). ✂️Two rows since 2026-09-16: the pool has
+    // a ceiling the allowance sets ([CacheBudgetLine.enginePool]) and the
+    // scratch has none — one row would have been half inside the
+    // allowance and half out.
     MemoryCensusItem(
-      id: 'engineBuffers',
-      bytes:
-          (QaNativeEngine.instance?.tilePoolParkedBytes ?? 0) +
-          NativeScratch.liveBytes,
+      id: 'enginePool',
+      bytes: QaNativeEngine.instance?.tilePoolParkedBytes ?? 0,
     ),
+    MemoryCensusItem(id: 'engineScratch', bytes: NativeScratch.liveBytes),
     // 🚨THE ONE HOLDER THAT IS NOT OURS AT ALL. Flutter's own image cache
     // is allowed 100 MiB and 1000 entries by default and nothing in this
     // app ever set either — so the readout could not say whether it held

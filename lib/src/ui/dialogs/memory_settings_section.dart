@@ -11,6 +11,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/app_icon_button.dart';
 import '../session/cache_budgets.dart';
 import '../../services/persistence/app_memory_settings.dart';
+import '../session/cache_budgets.dart' show CacheBudgetLine, CacheBudgets;
 
 /// Preferences ▸ Memory: what this app is holding in RAM, live.
 ///
@@ -100,9 +101,27 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'storyboardThumbnails' => strings.memoryItemStoryboardThumbnails,
       'moviePictures' => strings.memoryItemMoviePictures,
       'tileImages' => strings.memoryItemTileImages,
-      'engineBuffers' => strings.memoryItemEngineBuffers,
+      'enginePool' => strings.memoryItemEnginePool,
+      'engineScratch' => strings.memoryItemEngineScratch,
       _ => id,
     };
+  }
+
+  /// What sits outside the allowance, named: every census row no budget
+  /// line is the ceiling of, and the share nothing can enumerate.
+  ///
+  /// 🗣️유저 2026-09-16 (memory-allowance-Q2): 「셀 수 없는게 밖에 있으니 그
+  /// 부분을 문장으로 제대로 알기쉽게 간략하게 설명해두기」 — the one sentence
+  /// under a control the rule's own author asked for. ⛔Not written by hand:
+  /// it reads [CacheBudgetLine.covers], so a holder that gains a ceiling
+  /// leaves this sentence on its own (유저 09-16: 「낡지않을구조로」).
+  String _outsideAllowance(List<MemoryCensusItem> items) {
+    final strings = AppText.strings;
+    return strings.memoryOutsideAllowance([
+      for (final item in items)
+        if (!CacheBudgetLine.covers(item.id)) _labelFor(item.id),
+      strings.memoryUntracked,
+    ].join(' · '));
   }
 
   @override
@@ -118,7 +137,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
     final available = census?.availableBytes;
     final device = census?.deviceBytes;
     final items = census?.items ?? const <MemoryCensusItem>[];
-    final automatic = widget.session.deviceCacheBudgets.total;
+    final automatic = widget.session.automaticAllowance;
 
     return ValueListenableBuilder<AppMemorySettings>(
       valueListenable: AppMemory.settings,
@@ -196,6 +215,14 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
               _TotalRow(
                 label: strings.memoryAvailable,
                 value: available == null ? '—' : _mb(available),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _outsideAllowance(items),
+                key: const ValueKey<String>('memory-outside-allowance'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textDim,
+                ),
               ),
               const SizedBox(height: 12),
               for (final item in items)

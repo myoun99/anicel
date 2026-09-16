@@ -3052,6 +3052,9 @@ typedef struct qa_tile_block {
 static int64_t g_tile_bucket_sizes[QA_TILE_BUCKETS];
 static qa_tile_block* g_tile_bucket_heads[QA_TILE_BUCKETS];
 static int64_t g_tile_pool_cached_bytes = 0;
+// The cap in force. The define above is where it starts; the memory tab's
+// allowance moves it through qa_tile_pool_set_byte_cap (ABI 36).
+static int64_t g_tile_pool_byte_cap = QA_TILE_POOL_BYTE_CAP;
 
 QA_EXPORT void* qa_tile_alloc(int64_t size) {
   if (size <= 0) {
@@ -3088,7 +3091,7 @@ QA_EXPORT void qa_tile_free(void* pixels) {
   qa_tile_block* block = ((qa_tile_block*)pixels) - 1;
   const int64_t size = block->size;
   QA_TILE_LOCK();
-  if (g_tile_pool_cached_bytes + size <= QA_TILE_POOL_BYTE_CAP) {
+  if (g_tile_pool_cached_bytes + size <= g_tile_pool_byte_cap) {
     int slot = -1;
     for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
       if (g_tile_bucket_sizes[i] == size) {
@@ -3139,6 +3142,26 @@ QA_EXPORT void qa_tile_pool_trim(void) {
     g_tile_bucket_sizes[i] = 0;
   }
   g_tile_pool_cached_bytes = 0;
+  QA_TILE_UNLOCK();
+}
+
+// Sets the cap (ABI 36), releasing parked blocks until what is parked fits
+// under it - a lowered cap must not wait for the next free to take effect.
+QA_EXPORT void qa_tile_pool_set_byte_cap(int64_t bytes) {
+  QA_TILE_LOCK();
+  g_tile_pool_byte_cap = bytes < 0 ? 0 : bytes;
+  for (int i = 0; i < QA_TILE_BUCKETS; i += 1) {
+    while (g_tile_bucket_heads[i] != NULL &&
+           g_tile_pool_cached_bytes > g_tile_pool_byte_cap) {
+      qa_tile_block* block = g_tile_bucket_heads[i];
+      g_tile_bucket_heads[i] = block->next;
+      g_tile_pool_cached_bytes -= block->size;
+      free(block);
+    }
+    if (g_tile_bucket_heads[i] == NULL) {
+      g_tile_bucket_sizes[i] = 0;
+    }
+  }
   QA_TILE_UNLOCK();
 }
 
@@ -4818,6 +4841,20 @@ QA_EXPORT int64_t qa_available_memory_bytes(void) {
 #endif
 }
 
+// What the OS lets THIS APP hold, all in: what it holds now plus what it may
+// still take - the ceiling a jetsam decision is made against. 0 where the OS
+// gives an app no limit of its own: a desktop's free memory
+// (qa_available_memory_bytes there) is the machine's, not this app's.
+// C-ipad-crash (ABI 36): the automatic allowance is half of this where it
+// exists and half the RAM where it does not.
+QA_EXPORT int64_t qa_app_memory_limit_bytes(void) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+  return qa_process_footprint_bytes() + (int64_t)os_proc_available_memory();
+#else
+  return 0;
+#endif
+}
+
 // ---------------------------------------------------------------------------
 // Cel pixel pass (ABI 33): 색 변환 and 픽셀 비우기 over a cel's tiles.
 //
@@ -5060,4 +5097,4 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // native document meant a ~111ms re-open per switch, and a movie kept as a
 // reference put three callers in the room at once — the canvas where it is
 // shown, the playback warmer ahead of it, and export walking the cut.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 35; }
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 36; }

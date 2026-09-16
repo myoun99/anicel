@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
+import 'package:anicel/src/models/app_language.dart';
 
 /// Preferences ▸ Memory (유저 2026-08-28): 「이 앱이 쓰는 메모리의 총합.
 /// 그리고 추가적으로 거기서 어떤항목이 얼만큼 차지하는지도 보여주고」.
@@ -79,7 +80,8 @@ void main() {
       'storyboardThumbnails',
       'moviePictures',
       'tileImages',
-      'engineBuffers',
+      'enginePool',
+      'engineScratch',
     });
   });
 
@@ -186,6 +188,38 @@ void main() {
         expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
       }
       expect(find.text(AppText.strings.memoryDeviceTotal), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 600));
+    });
+
+    testWidgets('what sits outside the allowance is named from the census — '
+        'the rows no budget line is the ceiling of', (tester) async {
+      // 유저 2026-09-16 (memory-allowance-Q2): 「셀 수 없는게 밖에 있으니 그
+      // 부분을 문장으로 제대로 알기쉽게 간략하게 설명해두기」 — and
+      // (chat, the same day) 「낡지않을구조로」: the sentence is read off
+      // [CacheBudgetLine.covers], never written by hand.
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final session = newSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MemorySettingsSection(session: session)),
+        ),
+      );
+      final line = tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('memory-outside-allowance')),
+          )
+          .data!;
+      expect(line, startsWith('허용치 밖'));
+      for (final outside in ['캔버스 타일 이미지', '그리기 엔진 작업 버퍼', '패널 래스터', '엔진·폰트·프레임워크']) {
+        expect(line, contains(outside), reason: outside);
+      }
+      for (final inside in ['그리기 엔진 타일 풀', '이미지 캐시', '그림']) {
+        expect(line, isNot(contains(inside)), reason: '$inside has a ceiling');
+      }
       await tester.pump(const Duration(milliseconds: 600));
     });
 

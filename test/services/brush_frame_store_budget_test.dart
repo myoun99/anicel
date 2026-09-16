@@ -148,10 +148,15 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    // No engine in a host test run → unknown RAM → the desktop default.
-    // (On CI the engine may load; then the seed is machine-scaled but
-    // still within the clamp.)
-    expect(session.renderCaches.brushFrameStore.hotCelByteBudget, inInclusiveRange(384 * mb, 1536 * mb));
+    // The seed is the device law at the automatic allowance: with no
+    // engine (a host test run) the desktop default, byte for byte; with
+    // one (the native parity run) this machine's.
+    expect(
+      session.renderCaches.brushFrameStore.hotCelByteBudget,
+      session.deviceCacheBudgets
+          .toAllowance(session.automaticAllowance)
+          .drawings,
+    );
 
     session.renderCaches.brushFrameStore.hotCelByteBudget = 1024 * mb;
     session.respondToMemoryPressure();
