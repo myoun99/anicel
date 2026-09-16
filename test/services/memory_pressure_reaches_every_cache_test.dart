@@ -71,9 +71,14 @@ void main() {
     );
     addTearDown(session.dispose);
 
+    // The playback line at the automatic allowance: the 600MB law with no
+    // engine, and this machine's share of RAM/2 where one is loaded.
+    final full = session.deviceCacheBudgets
+        .toAllowance(session.automaticAllowance)
+        .playback;
     expect(
       session.playbackRig.playbackCache.playbackCacheByteBudget,
-      playbackCacheBudgetBytes,
+      full,
       reason: 'fixture premise: the full budget before any warning',
     );
 
@@ -81,7 +86,7 @@ void main() {
 
     expect(
       session.playbackRig.playbackCache.playbackCacheByteBudget,
-      lessThan(playbackCacheBudgetBytes),
+      lessThan(full),
       reason: '⛔the largest cache in the app heard the warning',
     );
     expect(

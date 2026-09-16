@@ -12,6 +12,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -49,6 +50,12 @@ void main() {
 
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
+    // The budget below is worked out in pages at factor 1. The automatic
+    // allowance is the device's — RAM/2 where an engine can say — so pin
+    // the allowance to the laws' total, where every budget is its law.
+    AppMemory.settings.value = AppMemorySettings(
+      allowanceBytes: session.deviceCacheBudgets.total,
+    );
     slot = MediaViewerSlot();
     held = CutPieceSlot();
     tool = ValueNotifier<BrushToolState>(cutTool());
@@ -59,6 +66,7 @@ void main() {
   tearDown(() {
     PdfRenderService.debugResetForTests();
     ViewerRasterBudget.debugPageBytesOverride = null;
+    AppMemory.settings.value = const AppMemorySettings();
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     cursorNotices.clear();
     tool.dispose();

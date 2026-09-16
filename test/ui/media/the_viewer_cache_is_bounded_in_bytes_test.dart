@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
@@ -46,6 +47,13 @@ void main() {
 
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
+    // The tests count in PAGES at factor 1 (a "four-page" budget). The
+    // automatic allowance is the device's — RAM/2 where an engine can say
+    // — so pin the allowance to the laws' total, where every budget is
+    // its law.
+    AppMemory.settings.value = AppMemorySettings(
+      allowanceBytes: session.deviceCacheBudgets.total,
+    );
     slot = MediaViewerSlot();
     opens = 0;
   });
@@ -53,6 +61,7 @@ void main() {
   tearDown(() {
     PdfRenderService.debugResetForTests();
     ViewerRasterBudget.debugPageBytesOverride = null;
+    AppMemory.settings.value = const AppMemorySettings();
     slot.dispose();
     session.dispose();
   });
