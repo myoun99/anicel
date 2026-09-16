@@ -988,7 +988,10 @@ class _LayerStackPaintPass {
     );
   }
 
-  void _paintBackdropSplit(Canvas into, double rasterScale) {
+  /// Where the live surface splits the stack (−1 when nothing encloses it),
+  /// whether the backdrop below it pays for a raster, and the rect that
+  /// raster is made over.
+  ({int at, bool rasterPays, Rect rasterRect}) _backdropPlan() {
     final at = _painter.nodes.indexWhere(
       _LayerStackPainter._enclosesActiveSurface,
     );
@@ -1004,7 +1007,16 @@ class _LayerStackPaintPass {
     // over the bake's extent on the buffer's own pixel grid and lands back
     // on it inside whichever buffer is being composed. Handed the buffer's
     // rect, a held raster stretched across the grown one.
-    final rasterRect = _wholeBufferPixelsOutward(_bakeExtent);
+    return (
+      at: at,
+      rasterPays: rasterPays,
+      rasterRect: _wholeBufferPixelsOutward(_bakeExtent),
+    );
+  }
+
+  void _paintBackdropSplit(Canvas into, double rasterScale) {
+    final plan = _backdropPlan();
+    final at = plan.at;
     // One body, two mechanisms: the record closure is identical either
     // way, so the fallback cannot drift from the raster — `drawRaster`
     // records the same ops shifted into the rect and blits them back to
@@ -1014,11 +1026,11 @@ class _LayerStackPaintPass {
     // The raster is made at the buffer's own scale — level pixels below
     // 100% — so its blit back is 1:1 in the buffer whatever the level.
     void drawBackdrop(String id, void Function(Canvas c) record) {
-      if (rasterPays) {
+      if (plan.rasterPays) {
         _painter.bake!.drawRaster(
           into,
           id,
-          rasterRect,
+          plan.rasterRect,
           record,
           rasterScale: rasterScale,
         );

@@ -83,7 +83,7 @@ void main() {
       'and maps back at exactly half', (tester) async {
     await tester.runAsync(() async {
       expect(halvedSize(2341, 1655), (width: 1171, height: 828));
-      expect(sizeAtLevel(2341, 1655, 2), (width: 586, height: 414));
+      expect(halvedSize(1171, 828), (width: 586, height: 414));
       // 3×2: the third column has no right-hand neighbour; clamped, its
       // level pixel is the texel itself.
       final source = await image(3, 2, (x, y) => [x * 100, 0, 0, 255]);

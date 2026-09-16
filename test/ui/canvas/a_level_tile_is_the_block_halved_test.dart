@@ -73,13 +73,15 @@ void main() {
     TileCoord? coord,
     bool Function()? mayMake,
   }) => pyramid.imageFor(
-    surface,
-    scope: 'cel',
+    (
+      surface: surface,
+      scope: 'cel',
+      cache: cache,
+      picture: (PlacedTile placed) => cache.displayImageFor(placed.tile),
+      mayMake: mayMake ?? () => true,
+    ),
     level: 1,
     coord: coord ?? TileCoord(x: 0, y: 0),
-    cache: cache,
-    picture: (PlacedTile placed) => cache.displayImageFor(placed.tile),
-    mayMake: mayMake ?? () => true,
   );
 
   testWidgets('the level-1 picture is the four tiles halved into their '
@@ -272,19 +274,21 @@ void main() {
       ui.Image? levelTwo(int ration) {
         var left = ration;
         return pyramid.imageFor(
-          surface,
-          scope: 'cel',
+          (
+            surface: surface,
+            scope: 'cel',
+            cache: cache,
+            picture: (PlacedTile placed) => cache.displayImageFor(placed.tile),
+            mayMake: () {
+              if (left <= 0) {
+                return false;
+              }
+              left -= 1;
+              return true;
+            },
+          ),
           level: 2,
           coord: TileCoord(x: 0, y: 0),
-          cache: cache,
-          picture: (placed) => cache.displayImageFor(placed.tile),
-          mayMake: () {
-            if (left <= 0) {
-              return false;
-            }
-            left -= 1;
-            return true;
-          },
         );
       }
 

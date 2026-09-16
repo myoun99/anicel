@@ -38,19 +38,22 @@ class _LevelBlocks {
       bottom: visible.bottom,
       tileSize: surface.tileSize * span,
     );
+    final ask = (
+      surface: surface,
+      scope: _painter.staleScope,
+      cache: _painter.tileImageCache,
+      // A tile's own picture, or one uploaded now within the paint's
+      // ration; null makes the block draw its tiles.
+      picture: _pass._ownOrUploadedPicture,
+      mayMake: _mayMake,
+    );
     for (final coord in tileCoordsIn(blocks)) {
       final levelTile = _liveDrawTouches(coord)
           ? null
           : TilePyramid.instance.imageFor(
-              surface,
-              scope: _painter.staleScope,
+              ask,
               level: _pass._level,
               coord: coord,
-              cache: _painter.tileImageCache,
-              // A tile's own picture, or one uploaded now within the
-              // paint's ration; null makes the block draw its tiles.
-              picture: _pass._ownOrUploadedPicture,
-              mayMake: _mayMake,
             );
       if (levelTile != null) {
         // 1:1 in the level's pixels: the block is span × span tiles of

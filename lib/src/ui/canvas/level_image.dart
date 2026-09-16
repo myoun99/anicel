@@ -74,12 +74,3 @@ ui.Picture halvingPicture(Iterable<LevelSource> sources) {
 /// row.
 ({int width, int height}) halvedSize(int width, int height) =>
     (width: (width + 1) ~/ 2, height: (height + 1) ~/ 2);
-
-/// The size of [width] × [height] at [level]: halved [level] times.
-({int width, int height}) sizeAtLevel(int width, int height, int level) {
-  var size = (width: width, height: height);
-  for (var i = 0; i < level; i += 1) {
-    size = halvedSize(size.width, size.height);
-  }
-  return size;
-}
