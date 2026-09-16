@@ -1063,13 +1063,20 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       // The block's LAST cell, bottom-centre, 1px inset — the timeline
       // run label's anchor, in the panel's own coordinates (the slot's
       // edges ARE the cell edges: panels tile the strip).
-      final lastCellCentre = slot.right - _cellExtent / 2;
+      // ↩️F-96: centred while it fits; a count wider than the cell ends at
+      // the cell and grows back into the panel — the run label's law
+      // ([timelineBlockWordStart]).
       // D29-2: the same carry as the name above — the comma reads against
       // the band's fill, which is what the cut's own length reads against.
       _paintPlatedGlyph(
         canvas,
         Offset(
-          lastCellCentre - glyph.width / 2,
+          timelineBlockWordStart(
+            cellStart: slot.right - _cellExtent,
+            cellExtent: _cellExtent,
+            wordExtent: glyph.width,
+            growth: TimelineBlockWordGrowth.towardBlockStart,
+          ),
           slot.bottom - glyph.height - 1,
         ),
         comma,

@@ -718,28 +718,47 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The Dart glyph/dash pass over every cell in [window] whose span no
   /// fresh tile covers (T3: a tiled span already carries its ink).
+  ///
+  /// F-96: a word grows on past its cell, so each untiled stretch also lays
+  /// the word that grows into it from before ([wordCellBefore]), and paints
+  /// under a clip of its own extent — a word that also lives in a tile is
+  /// never inked twice: the tile holds its part, this pass the rest.
   void _paintForegrounds(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,
     List<(int, int)> tiledSpans,
   ) {
-    for (
-      var frameIndex = window.startIndex;
-      frameIndex < window.endIndexExclusive;
-      frameIndex += 1
-    ) {
-      var tiled = false;
-      for (final span in tiledSpans) {
-        if (frameIndex >= span.$1 && frameIndex < span.$2) {
-          tiled = true;
-          break;
-        }
+    var from = window.startIndex;
+    for (final span in [
+      ...tiledSpans,
+      (window.endIndexExclusive, window.endIndexExclusive),
+    ]) {
+      final to = math.min(span.$1, window.endIndexExclusive);
+      if (to > from) {
+        _paintUntiledForegrounds(canvas, from, to);
       }
-      if (tiled) {
-        continue;
-      }
+      from = math.max(from, span.$2);
+    }
+  }
+
+  /// One untiled stretch [from, to) of [_paintForegrounds].
+  void _paintUntiledForegrounds(Canvas canvas, int from, int to) {
+    final first = cellRectFor(from);
+    final past = cellRectFor(to);
+    canvas.save();
+    canvas.clipRect(
+      axis == Axis.horizontal
+          ? Rect.fromLTRB(first.left, 0, past.left, crossAxisExtent)
+          : Rect.fromLTRB(0, first.top, crossAxisExtent, past.top),
+    );
+    final lead = wordCellBefore(from);
+    if (lead != null) {
+      _paintCellForeground(canvas, lead);
+    }
+    for (var frameIndex = from; frameIndex < to; frameIndex += 1) {
       _paintCellForeground(canvas, frameIndex);
     }
+    canvas.restore();
   }
 
   /// The cell's dense, mostly-static part: the paper-block fill and its
@@ -868,6 +887,52 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
+  /// Where the word of the cell at [frameIndex] is laid, row-local: along
+  /// the frame axis by the block-word law — a name that outgrows its cell
+  /// starts at the cell and grows on into its block (F-96,
+  /// [timelineBlockWordStart]) — and centred across it. PUBLIC: the tile
+  /// emitter bakes its word exactly here.
+  @override
+  Offset cellWordOriginFor(int frameIndex, Size word) {
+    final cell = cellRectFor(frameIndex);
+    return axis == Axis.horizontal
+        ? Offset(
+            timelineBlockWordStart(
+              cellStart: cell.left,
+              cellExtent: cell.width,
+              wordExtent: word.width,
+              growth: TimelineBlockWordGrowth.towardBlockEnd,
+            ),
+            cell.center.dy - word.height / 2,
+          )
+        : Offset(
+            cell.center.dx - word.width / 2,
+            timelineBlockWordStart(
+              cellStart: cell.top,
+              cellExtent: cell.height,
+              wordExtent: word.height,
+              growth: TimelineBlockWordGrowth.towardBlockEnd,
+            ),
+          );
+  }
+
+  /// The nearest cell before [frameIndex] that writes a WORD, or null when
+  /// the nearest writing is a hold dash or there is none — the word that may
+  /// grow into [frameIndex]'s cell from before it (F-96). PUBLIC: the
+  /// classic pass lays it at the start of what it paints, the tile emitter
+  /// at the start of a tile.
+  @override
+  int? wordCellBefore(int frameIndex) {
+    for (var index = frameIndex - 1; index >= frameStartIndex; index -= 1) {
+      final model = cellModelAt(index);
+      if (model.glyph.isEmpty) {
+        continue;
+      }
+      return model.ghost && model.glyph == _holdDashGlyph ? null : index;
+    }
+    return null;
+  }
+
   /// The cell's sparse foreground ink (hold dashes, glyph text) — the
   /// classic pass; tile mode bakes the same content into the tiles (T3)
   /// and skips this for covered spans.
@@ -911,7 +976,9 @@ class TimelineRowCellsPainter extends CustomPainter
       // path blits glyphs at integer physical positions, so the classic
       // pass must land on the same grid — otherwise the classic↔tile
       // swap on row activation reads as the text thinning/thickening.
-      final raw = rect.center - Offset(glyph.width / 2, glyph.height / 2);
+      // F-96: centred while the word fits its cell, growing on into the
+      // block when it does not ([cellWordOriginFor]).
+      final raw = cellWordOriginFor(frameIndex, glyph.size);
       final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
       glyph.paint(
         canvas,

@@ -122,4 +122,14 @@ abstract interface class TimelineTileRasterSource {
   /// The glyph's resolved text style — the shared glyph cache and the tile
   /// emitter's bake key both read this.
   TextStyle glyphStyleFor(TimelineRowCellModel model);
+
+  /// Where the word of the cell at [frameIndex] is laid, row-local, for a
+  /// word of size [word] (F-96: a name that outgrows its cell grows on into
+  /// its block). The tile emitter bakes its word exactly here.
+  Offset cellWordOriginFor(int frameIndex, Size word);
+
+  /// The nearest cell before [frameIndex] that writes a WORD, or null — the
+  /// word that may grow into [frameIndex]'s cell from before it (F-96). A
+  /// tile lays it at its first cell, as the classic pass does at a window's.
+  int? wordCellBefore(int frameIndex);
 }

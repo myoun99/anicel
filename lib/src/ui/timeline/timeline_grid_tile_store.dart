@@ -503,12 +503,16 @@ class TimelineGridTileStore {
     final originMain = horizontal ? originRect.left : originRect.top;
 
     final glyphCells =
-        <({Rect rect, String text, TextStyle style, int rgba, String key})>[];
-    for (
-      var frameIndex = spanStartIndex;
-      frameIndex < spanEndIndexExclusive;
-      frameIndex += 1
-    ) {
+        <({int frameIndex, String text, TextStyle style, int rgba, String key})>[];
+    // F-96: a word may start before the span and grow into it, so the
+    // nearest earlier word is baked too — the tile's own edge cuts what lies
+    // outside it, the way it cuts a word that grows past the span's end.
+    final lead = painter.wordCellBefore(spanStartIndex);
+    for (final frameIndex in [
+      ?lead,
+      for (var index = spanStartIndex; index < spanEndIndexExclusive; index += 1)
+        index,
+    ]) {
       final model = painter.cellModelAt(frameIndex);
       if (model.glyph.isEmpty) {
         continue;
@@ -548,7 +552,7 @@ class TimelineGridTileStore {
       }
       final style = painter.glyphStyleFor(model);
       glyphCells.add((
-        rect: rect,
+        frameIndex: frameIndex,
         text: model.glyph,
         style: style,
         rgba: timelineGridPackRgba(ink),
@@ -603,14 +607,18 @@ class TimelineGridTileStore {
       if (glyph == null) {
         continue;
       }
-      // The classic pass centers on the LOGICAL text size; the bake pads
-      // 1 physical px on each side.
-      final destX =
-          (cell.rect.center.dx * dpr - glyph.logicalWidth * dpr / 2).round() -
-          1;
-      final destY =
-          (cell.rect.center.dy * dpr - glyph.logicalHeight * dpr / 2).round() -
-          1;
+      // Laid where the classic pass lays it, on the LOGICAL text size
+      // ([TimelineTileRasterSource.cellWordOriginFor]); the bake pads 1
+      // physical px on each side.
+      final origin = painter.cellWordOriginFor(
+        cell.frameIndex,
+        Size(glyph.logicalWidth, glyph.logicalHeight),
+      );
+      final local = horizontal
+          ? origin.translate(-originMain, 0)
+          : origin.translate(0, -originMain);
+      final destX = (local.dx * dpr).round() - 1;
+      final destY = (local.dy * dpr).round() - 1;
       writer.glyph(
         destX,
         destY,

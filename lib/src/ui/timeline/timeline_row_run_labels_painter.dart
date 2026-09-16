@@ -187,14 +187,27 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       // pushed to the far end of the cross axis with a 1px inset — the
       // timeline's bottom, the X-sheet's right. The cross axis is what
       // keeps the badge clear of the cel name, which centres in the cell.
+      // ↩️F-96: centred while it fits; a number wider than the cell ends at
+      // the cell and grows back into its block ([timelineBlockWordStart]).
+      final lastCellStart = blockEnd - frameCellExtent;
       final offset = axis == Axis.horizontal
           ? Offset(
-              label.anchor.dx - glyph.width / 2,
+              timelineBlockWordStart(
+                cellStart: lastCellStart,
+                cellExtent: frameCellExtent,
+                wordExtent: glyph.width,
+                growth: TimelineBlockWordGrowth.towardBlockStart,
+              ),
               crossAxisExtent - glyph.height - 1,
             )
           : Offset(
               crossAxisExtent - glyph.width - 1,
-              label.anchor.dy - glyph.height / 2,
+              timelineBlockWordStart(
+                cellStart: lastCellStart,
+                cellExtent: frameCellExtent,
+                wordExtent: glyph.height,
+                growth: TimelineBlockWordGrowth.towardBlockStart,
+              ),
             );
       // 🚨F-24: the block's OWN ink, the one the cel name inside the block
       // already wears — not the ground law. The number and the name sit on

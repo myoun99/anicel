@@ -168,6 +168,46 @@ TextStyle timelineBlockWordStyle(
   leadingDistribution: TextLeadingDistribution.even,
 );
 
+/// Which way a word in a block grows once it outgrows its cell.
+enum TimelineBlockWordGrowth {
+  /// On into the block past the cell — a block's NAME, from its first cell.
+  towardBlockEnd,
+
+  /// Back into the block before the cell — a block's LENGTH, from its last.
+  towardBlockStart,
+}
+
+/// Where a WORD in a block starts along the frame axis: centred on its cell
+/// while it fits, and past that it grows INTO its block from the cell's edge
+/// — a name from the start of its cell, a length from the end of its cell.
+///
+/// 🚨F-96 (유저 2026-09-12): 「프레임 블록의 텍스트, 프레임 이름은 해당 칸에
+/// 존재하는데 왼쪽정렬? 그니까 텍스트 길어지면 해당 칸에서 좌우로 늘어나는데,
+/// 그게아니라 해당 칸에서 오른쪽으로 늘어나도록. 그리고 코마 텍스트는 오른쪽에
+/// 있는거니까 오른쪽정렬. 해당 칸에서 왼쪽으로 늘어나도록. 결과적으로 텍스트가
+/// 길어져도 해당 블록에서 보이게 하고싶음이 목적」. ↩️Every block word was
+/// centred on its cell whatever its length, so a long one spilled out of both
+/// sides — a name back over the cells before its block.
+///
+/// A word that fits keeps the centred look every block had, and the edge
+/// takes over exactly where the word reaches it, so a name one letter longer
+/// does not jump.
+double timelineBlockWordStart({
+  required double cellStart,
+  required double cellExtent,
+  required double wordExtent,
+  required TimelineBlockWordGrowth growth,
+}) {
+  final centred = cellStart + (cellExtent - wordExtent) / 2;
+  switch (growth) {
+    case TimelineBlockWordGrowth.towardBlockEnd:
+      return centred > cellStart ? centred : cellStart;
+    case TimelineBlockWordGrowth.towardBlockStart:
+      final endAligned = cellStart + cellExtent - wordExtent;
+      return centred < endAligned ? centred : endAligned;
+  }
+}
+
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
 /// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha
