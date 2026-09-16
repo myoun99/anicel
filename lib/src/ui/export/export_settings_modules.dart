@@ -416,13 +416,6 @@ class ExportChoiceRow<T> extends StatelessWidget {
   );
 }
 
-Widget exportModuleNote(BuildContext context, String text) => Text(
-  text,
-  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-    fontSize: 10.5,
-    color: Theme.of(context).colorScheme.onSurfaceVariant,
-  ),
-);
 
 /// What the Format module offers in a tab: the LINEUP (v10 — every pill
 /// shows), with per-pill enablement + reason from the machine's actual
@@ -721,14 +714,12 @@ class ExportScopeModule extends StatelessWidget {
     required this.scope,
     required this.enabled,
     required this.onChanged,
-    this.note,
     this.child,
   });
 
   final ExportScopeKind scope;
   final bool enabled;
   final ValueChanged<ExportScopeKind> onChanged;
-  final String? note;
   final Widget? child;
 
   static String summarize(ExportScopeKind scope) =>
@@ -754,10 +745,6 @@ class ExportScopeModule extends StatelessWidget {
           enabledFor: (_) => enabled,
         ),
         if (child != null) ...[const SizedBox(height: 1), child!],
-        if (note != null) ...[
-          const SizedBox(height: 5),
-          exportModuleNote(context, note!),
-        ],
       ],
     );
   }
@@ -819,13 +806,6 @@ class ExportSizeModule extends StatelessWidget {
               ),
           ],
         ),
-        if (projectScope) ...[
-          const SizedBox(height: 5),
-          exportModuleNote(
-            context,
-            'Canvas is cut-scope only (cuts size their canvases freely).',
-          ),
-        ],
       ],
     );
   }

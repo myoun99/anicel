@@ -3799,17 +3799,6 @@ class ExportDialogState extends State<ExportDialog> {
               scale: spec.sheetScale,
               onPick: (step) => _updateSpec(spec.copyWith(sheetScale: step)),
             ),
-            const SizedBox(height: 5),
-            exportModuleNote(
-              context,
-              spec.format == ExportTimesheetFormat.sheetImage
-                  ? "The panel's B4 paper rendered per page — what the "
-                        'Timesheet tab shows is what prints.'
-                  : 'One .xdts digital timesheet per cut (OpenToonz/CSP-'
-                        'compatible sheet data, no rendering). TDTS and the '
-                        'Auto Sheet JSON join once their sample files '
-                        'arrive.',
-            ),
           ],
         ),
       ),
@@ -3859,16 +3848,6 @@ class ExportDialogState extends State<ExportDialog> {
               keyPrefix: 'export-contescale',
               scale: spec.sheetScale,
               onPick: (step) => _updateSpec(spec.copyWith(sheetScale: step)),
-            ),
-            const SizedBox(height: 5),
-            exportModuleNote(
-              context,
-              spec.format == ExportConteFormat.pdf
-                  ? 'One A4 PDF of the whole picture conte — rules and '
-                        'text as vectors (embedded OFL fonts), cell '
-                        'pictures as images.'
-                  : "The panel's A4 paper rendered per page — what the "
-                        'Conte tab shows is what prints.',
             ),
           ],
         ),
@@ -4018,14 +3997,12 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// ⛔ONE SCOPE CONTROL. Five tabs wrote out the title, the summarize
   /// call and the enabled pair; what actually differs is the fold key,
-  /// whether it opens by default, and what rides inside it — the cut grid
-  /// or a note.
+  /// whether it opens by default, and what rides inside it — the cut grid.
   ExportAccordion _scopeAccordion({
     required ExportScopeKind scope,
     required void Function(ExportScopeKind scope) onChanged,
     ({String key, bool open}) fold = (key: 'scope', open: false),
     Widget? child,
-    String? note,
   }) => ExportAccordion(
     title: AppText.strings.exScope,
     summary: ExportScopeModule.summarize(scope),
@@ -4034,7 +4011,6 @@ class ExportDialogState extends State<ExportDialog> {
       scope: scope,
       enabled: !_isExporting,
       onChanged: onChanged,
-      note: note,
       child: child,
     ),
   );
@@ -4112,16 +4088,6 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ),
             ],
-            const SizedBox(height: 5),
-            exportModuleNote(
-              context,
-              cutPaper
-                  ? "The cut's own pixels, so the PNG drops into the "
-                        'working file as a layer and lines up with the '
-                        'artwork. The form keeps its shape and whatever is '
-                        'left over stays margin.'
-                  : 'The 봉투 at print resolution (2480px ≈ A4 at 300dpi).',
-            ),
           ],
         ),
       ),
@@ -4184,13 +4150,6 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 5),
-            exportModuleNote(
-              context,
-              'Separate files are the PSD layering, as PNGs: whoever opens '
-              'them can delete the filled-in values without losing the '
-              'printed form. Only the paper file is opaque.',
-            ),
           ],
         ),
       ),
@@ -4200,10 +4159,6 @@ class ExportDialogState extends State<ExportDialog> {
         // Open by default: "this cut or the whole film" is the first thing
         // anyone asks of a per-cut document.
         fold: (key: 'envelope-scope', open: true),
-        note:
-            'A 겸용 cut and its siblings are ONE envelope — the folder '
-            'they share in the studio — so they write one file, not one '
-            'each.',
       ),
     ];
   }

@@ -34,10 +34,6 @@ void main() {
         if (trimmed.startsWith('//') || trimmed.startsWith('///')) {
           continue;
         }
-        // The declaration itself is the carrier, not a caption.
-        if (trimmed.startsWith('Widget exportModuleNote(')) {
-          continue;
-        }
         if (trimmed.contains('exportModuleNote(')) {
           offenders.add('$path:${i + 1}  $trimmed');
         }
@@ -63,11 +59,15 @@ void main() {
   });
 }
 
-/// The captions standing when this gate landed (2026-09-04), all six in the
-/// export dialog and its modules: the timesheet format, the conte format,
-/// the envelope paper, the separate-files note, and two in the shared
-/// modules.
+/// Six captions stood when this gate landed (2026-09-04), all in the export
+/// dialog and its modules: the timesheet format, the conte format, the
+/// envelope paper, the separate-files note, and two in the shared modules.
+/// Which of them earned their line was the user's call, and the audit's job
+/// was only to stop a seventh arriving unasked.
 ///
-/// ⛔NOT DELETED HERE ON PURPOSE. Which of them earn their line is the
-/// user's call — the audit's job was to stop a seventh arriving unasked.
-const int _knownCaptions = 6;
+/// ↩️The user made that call on 2026-09-16 (export-module-notes-Q1: 「모두
+/// 지운다」): all nine sentences went, and the helper that drew them went
+/// with them. The census is a wall at zero now — `exportModuleNote(` is the
+/// name a caption under an export control would come back under, and
+/// `the_modules_carry_no_notes_test` reads the window itself.
+const int _knownCaptions = 0;
