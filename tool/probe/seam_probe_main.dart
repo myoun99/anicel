@@ -594,7 +594,10 @@ class _SeamProbe {
     p.bytes,
     width: p.w,
     height: p.h,
-  ).timeout(const Duration(seconds: 5), onTimeout: () => null);
+  ).then<ui.Image?>((image) => image).timeout(
+    const Duration(seconds: 5),
+    onTimeout: () => null,
+  );
 
   Future<Uint8List?> _png(_Rgba p) async {
     final img = await _imageFrom(p);
