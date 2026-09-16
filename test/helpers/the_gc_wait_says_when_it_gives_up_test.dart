@@ -64,12 +64,21 @@ void main() {
 
   test('🚨a bound already spent churns nothing at all', () async {
     var churns = 0;
+    // ⚠️The clock MOVES, even here where it starts past the bound. A pin
+    // whose clock stands still cannot end if a mutant loosens the bound —
+    // and one did: 「× 200」 left this test spinning for six hours and had
+    // to be killed by hand (2026-09-16). A pin has to be able to FAIL, and
+    // it has to be able to STOP.
+    var spent = const Duration(seconds: 31);
 
     final happened = await churnUntil(
       happened: () => false,
-      elapsed: () => const Duration(seconds: 31),
+      elapsed: () => spent,
       atMost: const Duration(seconds: 30),
-      churn: () async => churns += 1,
+      churn: () async {
+        churns += 1;
+        spent += const Duration(seconds: 1);
+      },
     );
 
     expect(happened, isFalse);
