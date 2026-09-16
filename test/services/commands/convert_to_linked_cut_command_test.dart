@@ -51,7 +51,7 @@ void main() {
       (current) => current.copyWith(
         tracks: [
           for (final t in current.tracks)
-            t.id == track.id ? t.copyWith(cuts: [...t.cuts, target]) : t,
+            if (t.id == track.id) t.copyWith(cuts: [...t.cuts, target]) else t,
         ],
       ),
     );

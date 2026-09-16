@@ -181,7 +181,7 @@ class VideoExportService {
       'apl0',
       '-pix_fmt',
       if (codec == ExportVideoCodec.prores4444)
-        keepAlpha ? 'yuva444p10le' : 'yuv444p10le'
+        if (keepAlpha) 'yuva444p10le' else 'yuv444p10le'
       else
         'yuv422p10le',
     ] else ...[

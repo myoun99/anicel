@@ -56,9 +56,10 @@ void main() {
 
   List<String> names(List<TimelineDisplayRow> rows) => [
     for (final row in rows)
-      row.isLane
-          ? '${row.layer.id.value}/${row.lane!.laneId}'
-          : row.layer.id.value,
+      if (row.isLane)
+        '${row.layer.id.value}/${row.lane!.laneId}'
+      else
+        row.layer.id.value,
   ];
 
   test('an open twirl puts the lanes AFTER the layer on the rail and '

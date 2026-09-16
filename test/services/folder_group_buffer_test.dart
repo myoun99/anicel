@@ -222,9 +222,10 @@ void main() {
       expect(
         treeOf([
           for (final layer in layers)
-            layer.kind == LayerKind.folder
-                ? layer.copyWith(transformEnabled: false)
-                : layer,
+            if (layer.kind == LayerKind.folder)
+              layer.copyWith(transformEnabled: false)
+            else
+              layer,
         ]).single,
         isA<CompositeLeaf<CutFrameCompositeRow>>(),
         reason: 'the folder\'s transform switch off means opacity 1 again — '

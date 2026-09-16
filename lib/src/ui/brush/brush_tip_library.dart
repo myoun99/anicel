@@ -105,7 +105,7 @@ class BrushTipLibrary extends ChangeNotifier {
     }
     _tips = [
       for (final tip in _tips)
-        loaded[tip.id] == null ? tip : tip.copyWith(mask: loaded[tip.id]),
+        if (loaded[tip.id] == null) tip else tip.copyWith(mask: loaded[tip.id]),
     ];
     _notify();
   }
@@ -178,7 +178,7 @@ class BrushTipLibrary extends ChangeNotifier {
   void rename(String id, String name) {
     _tips = [
       for (final tip in _tips)
-        tip.id == id && !tip.builtIn ? tip.copyWith(name: name) : tip,
+        if (tip.id == id && !tip.builtIn) tip.copyWith(name: name) else tip,
     ];
     _notify();
     unawaited(_persistIndex());

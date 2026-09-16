@@ -447,7 +447,7 @@ class _Walk {
       [
         0,
         for (var k = 1; k < _colours.length; k += 1)
-          k < _colours.length - cels ? 0 : _cel,
+          if (k < _colours.length - cels) 0 else _cel,
       ],
     );
     return walk;

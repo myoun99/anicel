@@ -593,13 +593,15 @@ void main() {
       final withFolder = [...stack(), _row('F', kind: LayerKind.folder)];
       final answers = [
         for (var slot = 0; slot <= withFolder.length; slot += 1)
-          resolveLayerDrop(
-            stack: withFolder,
-            movingId: const LayerId('F'),
-            insertAt: slot,
-          ) == null
-              ? 'X'
-              : '.',
+          if (resolveLayerDrop(
+                stack: withFolder,
+                movingId: const LayerId('F'),
+                insertAt: slot,
+              ) ==
+              null)
+            'X'
+          else
+            '.',
       ].join();
       // The folder sits LAST, so its own two gaps are the final pair — X for
       // the same reason as above (④), not because a folder is refused there.

@@ -456,9 +456,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return (
       names: [
         for (final cell in cells)
-          cell.frameId == null
-              ? ''
-              : celNumberOrMark(frameNames[cell.frameId]),
+          if (cell.frameId == null)
+            ''
+          else
+            celNumberOrMark(frameNames[cell.frameId]),
       ],
       commaLabels: [
         for (final cell in cells)
@@ -469,14 +470,15 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           // stays un-gated on purpose.)
           // ↩️F-89 (유저 2026-09-12): the total is the cut's own length now,
           // by this same label.
-          cell.frameId == null
-              ? ''
-              : timelineRunLengthLabel(
-                      cell.endIndexExclusive - cell.startIndex,
-                      showSeconds: showSeconds,
-                      countingBase: countingBase,
-                    ) ??
-                    '',
+          if (cell.frameId == null)
+            ''
+          else
+            timelineRunLengthLabel(
+                  cell.endIndexExclusive - cell.startIndex,
+                  showSeconds: showSeconds,
+                  countingBase: countingBase,
+                ) ??
+                '',
       ],
     );
   }

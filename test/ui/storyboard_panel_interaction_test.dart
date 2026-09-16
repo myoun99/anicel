@@ -911,7 +911,10 @@ void main() {
         Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 2, 2), Paint());
         final picture = recorder.endRecording();
         try {
-          return picture.toImage(2, 2);
+          // 🚨AWAITED inside the try: without it the `finally` disposed the
+          // picture while `toImage` was still reading it (3.47's
+          // unawaited_return_in_try_block found this, 2026-09-16).
+          return await picture.toImage(2, 2);
         } finally {
           picture.dispose();
         }
@@ -1053,7 +1056,8 @@ void main() {
         Canvas(recorder).drawRect(const Rect.fromLTWH(0, 0, 4, 2), Paint());
         final picture = recorder.endRecording();
         try {
-          return picture.toImage(4, 2);
+          // 🚨AWAITED inside the try — see the note at the 2×2 fixture.
+          return await picture.toImage(4, 2);
         } finally {
           picture.dispose();
         }

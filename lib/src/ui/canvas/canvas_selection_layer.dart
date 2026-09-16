@@ -2933,12 +2933,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // afterwards.
     final moved = [
       for (var i = 0; i < startOffsets.length; i += 1)
-        dragPoints.contains(i)
-            ? CanvasPoint(
-                x: startOffsets[i].x + dx,
-                y: startOffsets[i].y + dy,
-              )
-            : startOffsets[i],
+        if (dragPoints.contains(i))
+          CanvasPoint(
+            x: startOffsets[i].x + dx,
+            y: startOffsets[i].y + dy,
+          )
+        else
+          startOffsets[i],
     ];
     setState(() {
       if (_mode == TransformMode.mesh) {
@@ -3371,11 +3372,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     return [
       for (final copy in symmetryTransforms(symmetry))
-        copy.isIdentity
-            ? drawn
-            : CanvasSelectionShape([
-                for (final point in drawn.points) copy.apply(point),
-              ]),
+        if (copy.isIdentity)
+          drawn
+        else
+          CanvasSelectionShape([
+            for (final point in drawn.points) copy.apply(point),
+          ]),
     ];
   }
 

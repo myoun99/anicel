@@ -131,7 +131,7 @@ class MediaPool {
   void renameMediaAsset(String path, String name) {
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in mediaAssets)
-        asset.path == path ? asset.copyWith(name: name) : asset,
+        if (asset.path == path) asset.copyWith(name: name) else asset,
     ], description: 'Rename media');
     _changes.notifyChanged();
   }
@@ -452,7 +452,7 @@ class MediaPool {
     await _staging.stageCarriedBytes([path]);
     _project.cutCommandCoordinator.updateMediaAssets([
       for (final asset in pool)
-        asset.path == path ? asset.copyWith(carried: true) : asset,
+        if (asset.path == path) asset.copyWith(carried: true) else asset,
     ], description: 'Register media in project');
     _changes.notifyChanged();
     return true;

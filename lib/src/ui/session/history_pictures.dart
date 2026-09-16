@@ -19,10 +19,13 @@ import '../canvas/shown_cels.dart';
 ///   started a few tiles a frame — a press at a human pace finds them
 ///   ready and lands at once.
 /// - A press that outruns that is answered on the spot where the engine
-///   can upload synchronously (Impeller: iPad, Android, macOS).
-/// - Where it cannot (Skia: Windows) the step WAITS for its pictures, then
-///   lands. The model does not move until the screen can show where it
-///   moved to, so the two never disagree.
+///   can upload synchronously (Impeller — every platform we ship, since
+///   3.47 made it the desktop default too).
+/// - Where it cannot the step WAITS for its pictures, then lands. The
+///   model does not move until the screen can show where it moved to, so
+///   the two never disagree. ⛔This arm is NOT dead code now that the
+///   desktop has Impeller: the upload is a runtime probe, and it also
+///   answers no on an engine with no GPU context.
 /// - Pictures no step can reach next are let go: an entry deeper than the
 ///   next step each way keeps its tiles, not their pictures — a press that
 ///   gets there before the warm-up does takes the wait above.

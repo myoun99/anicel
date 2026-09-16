@@ -96,12 +96,13 @@ SeTakePlacement? planSeTakePlacement({
   final nextClips = <AudioClip>[
     for (final clip in layer.audioClips)
       if (referenced.contains(clip.frameId))
-        splice.offsetBumps.containsKey(clip.frameId)
-            ? clip.copyWith(
-                offsetFrames:
-                    clip.offsetFrames + splice.offsetBumps[clip.frameId]!,
-              )
-            : clip,
+        if (splice.offsetBumps.containsKey(clip.frameId))
+          clip.copyWith(
+            offsetFrames:
+                clip.offsetFrames + splice.offsetBumps[clip.frameId]!,
+          )
+        else
+          clip,
     ...splice.clonedClips,
     AudioClip(
       filePath: filePath,

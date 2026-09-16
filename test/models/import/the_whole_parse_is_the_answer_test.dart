@@ -114,9 +114,10 @@ String _dump(CutFolderParseResult result) {
   for (final layer in result.layers) {
     final cells = [
       for (final cell in layer.cells)
-        cell.olderRevisions.isEmpty
-            ? cell.file
-            : '${cell.file}(<${cell.olderRevisions.join(' ')})',
+        if (cell.olderRevisions.isEmpty)
+          cell.file
+        else
+          '${cell.file}(<${cell.olderRevisions.join(' ')})',
     ];
     lines.add('layer ${layer.symbol}: ${cells.join(' ')}');
   }

@@ -113,14 +113,15 @@ TrackSeLift liftCutSeLayersToTrack(TrackId trackId, List<Cut> cuts) {
 
   final cutsWithoutSe = [
     for (final cut in cuts)
-      cut.layers.any((layer) => layer.kind == LayerKind.se)
-          ? cut.copyWith(
-              layers: [
-                for (final layer in cut.layers)
-                  if (layer.kind != LayerKind.se) layer,
-              ],
-            )
-          : cut,
+      if (cut.layers.any((layer) => layer.kind == LayerKind.se))
+        cut.copyWith(
+          layers: [
+            for (final layer in cut.layers)
+              if (layer.kind != LayerKind.se) layer,
+          ],
+        )
+      else
+        cut,
   ];
 
   return (

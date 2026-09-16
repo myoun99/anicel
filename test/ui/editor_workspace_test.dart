@@ -563,15 +563,16 @@ void main() {
                 cut.copyWith(
                   layers: [
                     for (final layer in cut.layers)
-                      layer.id == row.id
-                          // Hidden, so the canvas never goes looking for it.
-                          ? layer.copyWith(
-                              isVisible: false,
-                              mediaReference: const MediaReference(
-                                assetPath: still,
-                              ),
-                            )
-                          : layer,
+                      if (layer.id == row.id)
+                        // Hidden, so the canvas never goes looking for it.
+                        layer.copyWith(
+                          isVisible: false,
+                          mediaReference: const MediaReference(
+                            assetPath: still,
+                          ),
+                        )
+                      else
+                        layer,
                   ],
                 ),
                 ...track.cuts.skip(1),

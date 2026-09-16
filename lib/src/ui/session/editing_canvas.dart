@@ -141,9 +141,10 @@ class EditingCanvas {
     ({Set<LayerId> layerIds, double opacity}) preview,
   ) => [
     for (final layer in source)
-      preview.layerIds.contains(layer.id) && layer.kind.hasPictureOpacity
-          ? layer.copyWith(opacity: preview.opacity)
-          : layer,
+      if (preview.layerIds.contains(layer.id) && layer.kind.hasPictureOpacity)
+        layer.copyWith(opacity: preview.opacity)
+      else
+        layer,
   ];
 
   /// The track's SE rows as cut-local display clones, read-only.

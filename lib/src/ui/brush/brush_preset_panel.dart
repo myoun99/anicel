@@ -1254,9 +1254,10 @@ class _BrushGroupTab extends StatelessWidget {
               // No fixed width: the selected tab's border is thicker, so a
               // hard-sized box overflows it by a pixel.
               if (showIcon)
-                showName
-                    ? SizedBox(width: 20, child: _face(colorScheme))
-                    : Expanded(child: _face(colorScheme)),
+                if (showName)
+                  SizedBox(width: 20, child: _face(colorScheme))
+                else
+                  Expanded(child: _face(colorScheme)),
               if (showName)
                 Expanded(
                   child: Padding(

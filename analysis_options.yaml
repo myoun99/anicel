@@ -7,6 +7,24 @@
 
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
+# ⛔DO NOT DELETE THIS BLOCK AS NOISE. `flutter pub get` WROTE IT, on the
+# 3.44.2 → 3.47.4 upgrade (2026-09-16): the tool stamps it the first time
+# pub get runs under 3.47 in a checkout, alongside pubspec.lock,
+# package_config.json and .flutter-plugins-dependencies (measured — all four
+# carry the same mtime second). 3.47 generates Dart under the platform
+# folders for build hooks and native assets, and without these excludes
+# `flutter analyze` — the merge gate — descends into generated code nobody
+# wrote. It is committed rather than left dirty so every worktree does not
+# show a spurious modification the moment it resolves packages.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

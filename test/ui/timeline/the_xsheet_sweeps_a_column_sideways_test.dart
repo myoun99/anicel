@@ -47,7 +47,7 @@ void main() {
             body: TimelinePanel(
               layers: [
                 for (final l in layers)
-                  visible[l.id]! ? l : l.copyWith(isVisible: false),
+                  if (visible[l.id]!) l else l.copyWith(isVisible: false),
               ],
               activeLayerId: const LayerId('draw-0'),
               frameCursor: cursor,

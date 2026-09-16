@@ -6,8 +6,17 @@ import 'package:flutter/foundation.dart';
 ///
 /// `ui.decodeImageFromPixelsSync` is IMPELLER ONLY. On Skia it throws a
 /// bare `String`, so availability is a runtime probe rather than a
-/// platform check — and Windows runs Skia in every build, debug included,
-/// so on the machine this is written on the answer is always no.
+/// platform check — the question is what THIS engine can do, and that
+/// also covers an engine with no GPU context and the test override below.
+///
+/// 🚨2026-09-16: WINDOWS ANSWERS YES NOW. Impeller became the default
+/// renderer on macOS, Windows and Linux in Flutter 3.47, and this repo
+/// moved 3.44.2 → 3.47.4 the same day. Before that Windows ran Skia in
+/// every build, so ⚠️this path had never once executed on a developer
+/// machine here — its safety argument is STRUCTURAL, not measured: the
+/// pixels cross as a `Handle`, and a native call cannot hold a Dart
+/// handle past its own return, so the bytes must be consumed inside it.
+/// Suspect this first, not last, when a freshly edited tile draws wrong.
 ///
 /// Why it matters enough to have its own module: it is the only way to
 /// give a tile that has BYTES and no picture a picture within the frame.

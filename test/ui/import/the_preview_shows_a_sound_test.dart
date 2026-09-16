@@ -20,7 +20,7 @@ void main() {
     bucketsPerSecond: 80,
     peaks: Float32List.fromList([
       for (var bucket = 0; bucket < 160; bucket += 1)
-        bucket.isEven ? 0.9 : 0.2,
+        if (bucket.isEven) 0.9 else 0.2,
     ]),
   );
 

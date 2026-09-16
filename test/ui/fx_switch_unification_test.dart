@@ -70,7 +70,10 @@ void main() {
       // One effect off is a MIX — the row still does some of its fx.
       session.effectsAndFx.updateLayerEffects(row.id, [
         for (final effect in effectsOf(session, row.id))
-          effect.id == row.first ? effect.copyWith(enabled: false) : effect,
+          if (effect.id == row.first)
+            effect.copyWith(enabled: false)
+          else
+            effect,
       ]);
       expect(session.effectsAndFx.layerFxState(row.id), LayerFxState.mixed);
       expect(

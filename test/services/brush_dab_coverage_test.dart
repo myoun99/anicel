@@ -44,7 +44,8 @@ void main() {
     size: 8,
     alpha: Uint8List.fromList([
       for (var y = 0; y < 8; y += 1)
-        for (var x = 0; x < 8; x += 1) x < 4 ? 255 : 0,
+        for (var x = 0; x < 8; x += 1)
+          if (x < 4) 255 else 0,
     ]),
   );
 

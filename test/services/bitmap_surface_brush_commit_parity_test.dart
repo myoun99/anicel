@@ -161,7 +161,7 @@ final BrushTipMask _testTipMask = BrushTipMask(
   size: 8,
   alpha: Uint8List.fromList([
     for (var index = 0; index < 64; index += 1)
-      index % 7 == 0 ? 0 : ((index * 4 + 16) % 256),
+      if (index % 7 == 0) 0 else ((index * 4 + 16) % 256),
   ]),
 );
 

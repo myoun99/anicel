@@ -67,10 +67,13 @@ double displayScaleOf(double zoom) => zoom.abs();
 /// rotated view's edges are diagonals, so anti-aliasing stays there. A
 /// flip is axis-aligned and changes nothing.
 ///
-/// ⚠️Impeller (iPad, Android) may not honour `isAntiAlias = false` at all —
-/// unverified here, Windows is Skia. If it does not, those devices keep the
-/// blended line they have today, which is no worse; the phase snap does not
-/// depend on this either way.
+/// ⚠️Impeller may not honour `isAntiAlias = false` at all. If it does not,
+/// those devices keep the blended line they have today, which is no worse;
+/// the phase snap does not depend on this either way.
+/// 🆕2026-09-16: this stopped being unverifiable here — Impeller became the
+/// default on Windows in Flutter 3.47 and this repo moved to it, so the
+/// desktop now draws the edge the same engine the tablets do. ⚠️Still
+/// unverified: nobody has looked at the boundary since.
 bool displayEdgeAntiAliased(CanvasViewport viewport) =>
     viewport.rotationDegrees != 0 ||
     filterQualityForDisplayScale(displayScaleOf(viewport.zoom)) !=

@@ -163,9 +163,10 @@ List<RuntimePathEntry> collectRuntimePathReport() {
           'An edit produces new tile pixels, and the canvas can only '
           'draw a picture of them. Impeller can make one immediately; '
           'Skia cannot, so those tiles show slightly older content or '
-          'wait. Windows runs Skia in every build, iOS and Android run '
-          'Impeller — this row is the renderer showing through, not a '
-          'packaging problem.',
+          'wait. Impeller is the default everywhere as of Flutter 3.47, '
+          'so this row says no only where the engine genuinely has no '
+          'synchronous upload — it is the renderer showing through, not '
+          'a packaging problem.',
     ),
   );
 

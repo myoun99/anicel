@@ -90,7 +90,8 @@ ClippedStrokePixels? rasterizeStrokeForClipping({
     return null;
   }
   final coverageDabs = [
-    for (final dab in dabs) dab.erase ? dab.copyWith(erase: false) : dab,
+    for (final dab in dabs)
+      if (dab.erase) dab.copyWith(erase: false) else dab,
   ];
   final sequence = BrushDabSequence(coverageDabs);
   final bounds = dirtyRegionForBrushDabSequence(sequence);

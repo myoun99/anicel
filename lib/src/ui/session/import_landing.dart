@@ -325,9 +325,10 @@ class ImportLanding {
               ? layers
               : [
                   for (final layer in layers)
-                    layer.folderId == null
-                        ? layer.copyWith(folderId: folderId)
-                        : layer,
+                    if (layer.folderId == null)
+                      layer.copyWith(folderId: folderId)
+                    else
+                      layer,
                 ],
           layerInsertionIndex: placement?.index,
           assetAdditions: assets,

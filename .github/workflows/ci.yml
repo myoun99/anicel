@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.44.2'
+  FLUTTER_VERSION: '3.47.4'
 
 jobs:
   # 🚨★★★DOES THIS CHANGE TOUCH THE APP AT ALL?

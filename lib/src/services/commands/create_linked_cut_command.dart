@@ -131,12 +131,13 @@ class CreateLinkedCutCommand implements Command {
           .copyWith(
             tracks: [
               for (final projectTrack in project.tracks)
-                projectTrack.id == track.id
-                    ? projectTrack.copyWith(
-                        cuts: [...projectTrack.cuts]
-                          ..insert(sourceIndex + 1, newCut),
-                      )
-                    : projectTrack,
+                if (projectTrack.id == track.id)
+                  projectTrack.copyWith(
+                    cuts: [...projectTrack.cuts]
+                      ..insert(sourceIndex + 1, newCut),
+                  )
+                else
+                  projectTrack,
             ],
           )
           .copyWith(linkRegistry: LayerLinkRegistry(groups: groups));

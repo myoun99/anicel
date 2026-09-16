@@ -130,9 +130,10 @@ List<Widget> layerRailLeadingCells({
     // each run's columns, so reserving the slot again inside every header
     // would count the band twice.
     if (includeSectionSlot)
-      sectionBand == null
-          ? LayerSectionBandCell(axis: axis)
-          : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
+      if (sectionBand == null)
+        LayerSectionBandCell(axis: axis)
+      else
+        layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
     // A6 (2026-08-17): the colour label is the layer area's FIRST cell —
     // a full-row plate flush against the section zone, left of the twirl
     // (「위치 = 레이어 영역 맨 왼쪽(펼치기 버튼 왼쪽)」, 「패딩 절대 금지」).

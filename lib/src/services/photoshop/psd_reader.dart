@@ -600,7 +600,7 @@ Uint8List? _readComposite(
       // channel — the composite is the odd one out in this format.
       final counts = <int>[
         for (var i = 0; i < channelCount * height; i += 1)
-          psb ? reader.readUint32() : reader.readUint16(),
+          if (psb) reader.readUint32() else reader.readUint16(),
       ];
       for (var c = 0; c < channelCount; c += 1) {
         final rows = counts.sublist(c * height, (c + 1) * height);

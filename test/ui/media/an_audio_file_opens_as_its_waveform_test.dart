@@ -29,7 +29,7 @@ void main() {
       for (var bucket = 0; bucket < (80 * seconds).round(); bucket += 1)
         // A shape rather than a flat line, so a band that painted nothing
         // cannot be told apart from one that painted silence.
-        bucket.isEven ? 0.9 : 0.2,
+        if (bucket.isEven) 0.9 else 0.2,
     ]),
   );
 

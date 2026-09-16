@@ -111,9 +111,10 @@ String singleActivatorLabel(
     if (activator.alt) 'Alt',
     if (activator.shift) 'Shift',
     if (activator.meta)
-      (platform ?? defaultTargetPlatform) == TargetPlatform.windows
-          ? 'Win'
-          : 'Meta',
+      if ((platform ?? defaultTargetPlatform) == TargetPlatform.windows)
+        'Win'
+      else
+        'Meta',
     _triggerLabel(activator.trigger, apple: false),
   ];
   return parts.join('+');

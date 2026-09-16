@@ -191,7 +191,7 @@ class BrushPresetLibrary extends ChangeNotifier {
   void rename(BrushPresetId id, String name) {
     _presets = [
       for (final preset in _presets)
-        preset.id == id ? preset.copyWith(name: name) : preset,
+        if (preset.id == id) preset.copyWith(name: name) else preset,
     ];
     _notify();
     _persist();
@@ -232,11 +232,12 @@ class BrushPresetLibrary extends ChangeNotifier {
   void editGroup(BrushGroupId id, String name, BrushGroupIcon? icon) {
     _groups = [
       for (final group in _groups)
-        group.id == id
-            // A null icon means "no icon chosen", which has to be writable
-            // — that is how a group goes back to wearing its first brush.
-            ? group.copyWith(name: name, icon: icon, clearIcon: icon == null)
-            : group,
+        if (group.id == id)
+          // A null icon means "no icon chosen", which has to be writable
+          // — that is how a group goes back to wearing its first brush.
+          group.copyWith(name: name, icon: icon, clearIcon: icon == null)
+        else
+          group,
     ];
     _notify();
     _persist();
@@ -261,7 +262,7 @@ class BrushPresetLibrary extends ChangeNotifier {
   void setGroupCollapsed(BrushGroupId id, bool collapsed) {
     _groups = [
       for (final group in _groups)
-        group.id == id ? group.copyWith(collapsed: collapsed) : group,
+        if (group.id == id) group.copyWith(collapsed: collapsed) else group,
     ];
     _notify();
     _persist();

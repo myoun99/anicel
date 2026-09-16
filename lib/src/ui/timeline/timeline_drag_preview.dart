@@ -427,14 +427,17 @@ Project _projectWithLayersSubstituted(
         track.copyWith(
           cuts: [
             for (final cut in track.cuts)
-              cut.layers.any((layer) => previewLayers.containsKey(layer.id))
-                  ? cut.copyWith(
-                      layers: [
-                        for (final layer in cut.layers)
-                          previewLayers[layer.id] ?? layer,
-                      ],
-                    )
-                  : cut,
+              if (cut.layers.any(
+                (layer) => previewLayers.containsKey(layer.id),
+              ))
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      previewLayers[layer.id] ?? layer,
+                  ],
+                )
+              else
+                cut,
           ],
         ),
     ],

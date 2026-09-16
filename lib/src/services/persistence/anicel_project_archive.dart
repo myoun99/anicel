@@ -687,20 +687,22 @@ Project remapProjectMediaPaths(Project project, Map<String, String> oldToNew) {
         track.copyWith(
           seLayers: [
             for (final layer in track.seLayers)
-              layer.audioClips.isEmpty
-                  ? layer
-                  : layer.copyWith(audioClips: remapClips(layer.audioClips)),
+              if (layer.audioClips.isEmpty)
+                layer
+              else
+                layer.copyWith(audioClips: remapClips(layer.audioClips)),
           ],
           cuts: [
             for (final cut in track.cuts)
               cut.copyWith(
                 layers: [
                   for (final layer in cut.layers)
-                    layer.audioClips.isEmpty
-                        ? layer
-                        : layer.copyWith(
-                            audioClips: remapClips(layer.audioClips),
-                          ),
+                    if (layer.audioClips.isEmpty)
+                      layer
+                    else
+                      layer.copyWith(
+                        audioClips: remapClips(layer.audioClips),
+                      ),
                 ],
               ),
           ],

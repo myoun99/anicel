@@ -89,9 +89,10 @@ Future<List<LayerId>> _swipeDownTheEyeColumn(
           setState(() {
             layers = [
               for (final layer in layers)
-                layer.id == id
-                    ? layer.copyWith(isVisible: !layer.isVisible)
-                    : layer,
+                if (layer.id == id)
+                  layer.copyWith(isVisible: !layer.isVisible)
+                else
+                  layer,
             ];
           });
         },

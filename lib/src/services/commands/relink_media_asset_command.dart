@@ -56,7 +56,10 @@ class RelinkMediaAssetCommand implements Command {
     return layer.copyWith(
       audioClips: [
         for (final clip in layer.audioClips)
-          clip.filePath == oldPath ? clip.copyWith(filePath: newPath) : clip,
+          if (clip.filePath == oldPath)
+            clip.copyWith(filePath: newPath)
+          else
+            clip,
       ],
       // The layer's MEDIA REFERENCE (§6-z23) rides the same relink walk.
       mediaReference: referencesAsset

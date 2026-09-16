@@ -27,7 +27,7 @@
 # workflow reuses the check rather than carrying a copy that could drift.
 definitions:
   environment: &apple_environment
-    flutter: 3.44.2
+    flutter: 3.47.4
     xcode: latest
     cocoapods: default
     groups:

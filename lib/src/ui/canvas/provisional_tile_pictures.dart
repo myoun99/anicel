@@ -55,8 +55,10 @@ final Paint _tilePaint = Paint()
 /// already, which is why this is called where the picture lives — the
 /// selection layer's float and decoded resample — rather than at the
 /// commit funnel, which holds only bytes. Turning bytes into an image
-/// synchronously is `decodeImageFromPixelsSync`, and that is Impeller
-/// only while Windows runs Skia in every build.
+/// synchronously is `decodeImageFromPixelsSync`, which is Impeller only —
+/// and since Flutter 3.47 made Impeller the desktop default (this repo
+/// moved 2026-09-16) that route exists on every platform we ship. It is
+/// still asked rather than assumed: see [syncImageUploadSupported].
 ///
 /// ⚠️ PRECONDITION: the INK owns the operator, and it must be the one the
 /// commit composites with — nothing here can check it. This draws the base
