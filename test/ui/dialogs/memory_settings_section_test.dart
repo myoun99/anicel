@@ -214,10 +214,12 @@ void main() {
           )
           .data!;
       expect(line, startsWith('허용치 밖'));
-      for (final outside in ['캔버스 타일 이미지', '그리기 엔진 작업 버퍼', '패널 래스터', '엔진·폰트·프레임워크']) {
+      for (final outside in ['그리기 엔진 작업 버퍼', '패널 래스터', '엔진·폰트·프레임워크']) {
         expect(line, contains(outside), reason: outside);
       }
-      for (final inside in ['그리기 엔진 타일 풀', '이미지 캐시', '그림']) {
+      // The tile pictures moved inside on 2026-09-16 (render round): a
+      // ceiling the session sets ([CacheBudgetLine.tileImages]).
+      for (final inside in ['캔버스 타일 이미지', '그리기 엔진 타일 풀', '이미지 캐시', '그림']) {
         expect(line, isNot(contains(inside)), reason: '$inside has a ceiling');
       }
       await tester.pump(const Duration(milliseconds: 600));

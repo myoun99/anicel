@@ -183,10 +183,11 @@ void main() {
     final cache = BitmapTileImageCache.instance;
     // Stroke 1's tiles sit under entry 2, deep, and their truth has gone.
     // Give one the stand-in a confirm composes for a tile off screen.
-    final tile = walk.surfaces[0].tiles.values.first;
+    final placed = walk.surfaces[0].tiles.entries.first;
+    final tile = placed.value;
     expect(cache.imageFor(tile), isNull, reason: 'premise: its truth went');
     cache.putProvisional(
-      tile,
+      (coord: placed.key, tile: tile),
       _uploadUniformTile(Uint8List(4), tile.size, tile.size),
     );
     walk.press();

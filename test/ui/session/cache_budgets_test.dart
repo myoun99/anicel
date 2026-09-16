@@ -18,12 +18,18 @@ void main() {
     expect(budgets.playback, 600 * mb);
     expect(budgets.viewerPages, 1536 * mb ~/ 6);
     expect(budgets.nativeUploads, 640 * mb);
+    expect(budgets.tileImages, 512 * mb);
   });
 
   test('a 3GB tablet gets the device laws — RAM/4 and RAM/8', () {
     final budgets = CacheBudgets.forDevice(physicalMemoryBytes: 3 * gb);
     expect(budgets.drawings, 3 * gb ~/ 4);
     expect(budgets.undo, 3 * gb ~/ 8);
+    expect(
+      budgets.tileImages,
+      3 * gb ~/ 16,
+      reason: 'the tile pictures: RAM/16 (render round, 2026-09-16)',
+    );
     expect(
       budgets.sheetInk,
       budgets.drawings,
@@ -51,6 +57,7 @@ void main() {
     // 허용치 안으로」 — the two that sat outside until then.
     expect(half.imageCache, budgets.imageCache ~/ 2);
     expect(half.enginePool, budgets.enginePool ~/ 2);
+    expect(half.tileImages, budgets.tileImages ~/ 2);
     expect(half.total, closeTo(budgets.total / 2, 16));
 
     final doubled = budgets.toAllowance(budgets.total * 2);
@@ -82,7 +89,10 @@ void main() {
     expect(CacheBudgetLine.covers('imageCache'), isTrue);
     expect(CacheBudgetLine.covers('engineScratch'), isFalse);
     expect(CacheBudgetLine.covers('panelRasters'), isFalse);
-    expect(CacheBudgetLine.covers('tileImages'), isFalse);
+    // Inside since 2026-09-16 (render round): the tile pictures gained a
+    // ceiling ([CacheBudgetLine.tileImages]) and moved in without a word of
+    // UI changing — which is exactly what this test was written to allow.
+    expect(CacheBudgetLine.covers('tileImages'), isTrue);
     // Every line names at least one row, or it is a budget nobody can see.
     for (final line in CacheBudgetLine.values) {
       expect(line.censusIds, isNotEmpty, reason: '$line');

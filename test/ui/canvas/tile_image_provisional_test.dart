@@ -44,7 +44,7 @@ void main() {
       expect(cache.displayImageFor(tile.tile), isNull);
       expect(cache.needsDecodeStart(tile.tile), isTrue);
 
-      cache.putProvisional(tile.tile, await anImage());
+      cache.putProvisional(tile, await anImage());
 
       // Draws.
       expect(cache.displayImageFor(tile.tile), isNotNull);
@@ -62,7 +62,7 @@ void main() {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final tile = tileAt(1, 0);
-      cache.putProvisional(tile.tile, await anImage());
+      cache.putProvisional(tile, await anImage());
       final standIn = cache.displayImageFor(tile.tile);
 
       cache.ensureDecoded(tile);
@@ -88,7 +88,7 @@ void main() {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final tile = tileAt(2, 0);
-      cache.putProvisional(tile.tile, await anImage());
+      cache.putProvisional(tile, await anImage());
 
       cache.adoptDecoded(tile, await anImage());
 
@@ -106,7 +106,7 @@ void main() {
       final real = await anImage();
       cache.adoptDecoded(tile, real);
 
-      cache.putProvisional(tile.tile, await anImage());
+      cache.putProvisional(tile, await anImage());
 
       expect(cache.hasProvisional(tile.tile), isFalse);
       expect(identical(cache.imageFor(tile.tile), real), isTrue);
@@ -121,7 +121,7 @@ void main() {
       const scope = 'cel';
       final tile = tileAt(4, 0);
 
-      cache.putProvisional(tile.tile, await anImage());
+      cache.putProvisional(tile, await anImage());
 
       // The whole point of the stand-in is that it is a picture of THIS
       // tile. Letting it seed the per-coordinate bucket would hand the

@@ -69,7 +69,7 @@ void main() {
       'for a tile whose truth never lands', (tester) async {
     final cache = BitmapTileImageCache();
     final lone = tile();
-    cache.putProvisional(lone, picture());
+    cache.putProvisional((coord: coord, tile: lone), picture());
     final held = BitmapTileImageCache.liveImageBytes;
     // ⛔Mutation: the release lets go of truth only → the stand-in stays for
     // as long as the tile lives.
@@ -84,7 +84,7 @@ void main() {
     final cache = BitmapTileImageCache();
     final before = tile();
     final after = tile();
-    cache.putProvisional(before, picture());
+    cache.putProvisional((coord: coord, tile: before), picture());
     TilePredecessors.instance.note(after, before);
     cache.releasePicture(coord, before);
     expect(

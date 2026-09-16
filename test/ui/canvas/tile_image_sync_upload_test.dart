@@ -144,7 +144,7 @@ void main() {
     debugSyncImageUploadOverride = (_, _, _) => aSolidImage();
 
     final standingIn = inkedTile();
-    cache.putProvisional(standingIn.tile, aSolidImage());
+    cache.putProvisional(standingIn, aSolidImage());
     cache.adoptSyncUpload(standingIn);
     expect(cache.imageFor(standingIn.tile), isNotNull);
     expect(

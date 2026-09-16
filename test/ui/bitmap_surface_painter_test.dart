@@ -19,6 +19,8 @@ import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/pictured_tiles.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
 void main() {
@@ -441,6 +443,47 @@ void main() {
         80 - BitmapSurfacePainter.decodeStartBudget,
       );
     });
+
+    test('the tiles under the visible rect are what the picture budget '
+        'keeps warm; over budget, the rest may go', () {
+      // The painter stamps what its paint had under the view
+      // ([TilePictureBudget.shown]) — the one thing the budget's walk must
+      // never let go. Pinned through the real paint, not the stamp alone.
+      final pictured = PicturedTiles();
+      final cache = BitmapTileImageCache(pictured: pictured);
+      final budget = TilePictureBudget(cache: cache, pictured: pictured);
+      final surface = grid();
+      final baseline = BitmapTileImageCache.liveImageBytes;
+      for (final entry in surface.tiles.entries) {
+        cache.adoptDecoded(
+          (coord: entry.key, tile: entry.value),
+          _solid(2, const Color(0xFF00FF00)),
+          staleScope: BitmapTileImageCache.unfiled,
+        );
+      }
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        tileImageCache: cache,
+        pictureBudget: budget,
+      );
+      // The left fifth of the canvas: the 16 tiles at x∈{0,1} are under
+      // the view, the other 64 are not.
+      paintOnce(painter, const Size(4, 16));
+
+      budget.byteBudget = baseline;
+      expect(budget.letGo(), 64);
+      for (final entry in surface.tiles.entries) {
+        final underTheView = entry.key.x < 2;
+        expect(
+          cache.displayImageFor(entry.value) != null,
+          underTheView,
+          reason: underTheView
+              ? 'tile ${entry.key} is under the view: kept'
+              : 'tile ${entry.key} is off screen: let go',
+        );
+      }
+    });
   });
 
   // The draw walk visits only the tile coordinates the view covers, and
@@ -764,18 +807,6 @@ void main() {
   /// its pixels" and from "drew the previous generation". A stand-in the
   /// same colour as the tile would make either outcome green.
   group('a tile stands in for itself (N4 ③)', () {
-    ui.Image solid(int size, Color color) {
-      final recorder = ui.PictureRecorder();
-      Canvas(recorder).drawRect(
-        Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
-        Paint()..color = color,
-      );
-      final picture = recorder.endRecording();
-      final image = picture.toImageSync(size, size);
-      picture.dispose();
-      return image;
-    }
-
     test('a stand-in outranks the previous generation at the same '
         'coordinate', () async {
       const scope = 'cel';
@@ -790,7 +821,7 @@ void main() {
       );
       cache.adoptDecoded(
         previous,
-        solid(2, const Color(0xFF0000FF)),
+        _solid(2, const Color(0xFF0000FF)),
         staleScope: scope,
       );
 
@@ -801,7 +832,7 @@ void main() {
         size: 2,
         colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
       );
-      cache.putProvisional(committed.tile, solid(2, const Color(0xFF00FF00)));
+      cache.putProvisional(committed, _solid(2, const Color(0xFF00FF00)));
 
       final pixels = await _paintPixels(
         BitmapSurfacePainter(
@@ -848,8 +879,8 @@ void main() {
         );
         tiles[coord] = tile.tile;
         cache.putProvisional(
-          tile.tile,
-          solid(tileSize, const Color(0xFF00FF00)),
+          tile,
+          _solid(tileSize, const Color(0xFF00FF00)),
         );
       }
 
@@ -1226,4 +1257,18 @@ class _Point {
 
   @override
   int get hashCode => Object.hash(x, y);
+}
+
+/// A [size]-square picture of one [color] — a stand-in or a truth a test
+/// hands the cache, in a colour the tile's own bytes do not contain.
+ui.Image _solid(int size, Color color) {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawRect(
+    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+    Paint()..color = color,
+  );
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(size, size);
+  picture.dispose();
+  return image;
 }

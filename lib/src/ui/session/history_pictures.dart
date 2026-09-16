@@ -1,11 +1,12 @@
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter/gestures.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/history_manager.dart';
+import '../canvas/after_frame_once.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/shown_cels.dart';
 
@@ -149,7 +150,7 @@ class HistoryPictures {
     _warmAheadAfterTheFrame();
   }
 
-  bool _aheadScheduled = false;
+  final AfterFrameOnce _warmAhead = AfterFrameOnce();
 
   /// After a step lands, the NEXT one each way is read and its pictures
   /// started — a few tiles a frame, while the user looks at this one.
@@ -160,29 +161,25 @@ class HistoryPictures {
   /// a step put back a wrong picture — a read-ahead is adopted only
   /// against the surface it leaned on.
   void _warmAheadAfterTheFrame() {
-    // Nothing on screen, nothing to warm — and no binding needed for it.
-    if (_aheadScheduled || !_shown.anyShown) {
+    // Nothing on screen, nothing to warm.
+    if (!_shown.anyShown) {
       return;
     }
-    _aheadScheduled = true;
-    SchedulerBinding.instance
-      ..addPostFrameCallback((_) {
-        _aheadScheduled = false;
-        if (_disposed) {
-          return;
-        }
-        _shown.warm([
-          for (final undo in const [true, false])
-            for (final MapEntry(:key, value: cel) in history
-                .readAhead(undo: undo, wants: _shown.isShown)
-                .entries)
-              (key, cel.next),
-        ]);
-      })
-      ..ensureVisualUpdate();
+    _warmAhead.ask(() {
+      if (_disposed) {
+        return;
+      }
+      _shown.warm([
+        for (final undo in const [true, false])
+          for (final MapEntry(:key, value: cel) in history
+              .readAhead(undo: undo, wants: _shown.isShown)
+              .entries)
+            (key, cel.next),
+      ]);
+    });
   }
 
-  bool _releaseScheduled = false;
+  final AfterFrameOnce _release = AfterFrameOnce();
 
   /// After anything moves the history — a commit, a step, the budget — the
   /// pictures of the tiles only a DEEPER entry holds are let go.
@@ -196,21 +193,17 @@ class HistoryPictures {
   /// After the frame, for the warm's reason: inside the change, the walk
   /// would hold up the frame that shows it.
   void _letDeepPicturesGoAfterTheFrame() {
-    // The warm's guard too: nothing on screen, and no binding needed.
-    if (_releaseScheduled || !_shown.anyShown) {
+    // The warm's guard too: nothing on screen.
+    if (!_shown.anyShown) {
       return;
     }
-    _releaseScheduled = true;
-    SchedulerBinding.instance
-      ..addPostFrameCallback((_) {
-        _releaseScheduled = false;
-        final store = _store;
-        if (_disposed || store == null) {
-          return;
-        }
-        history.visitDeepHeldTiles((coord, tile) => _letGo(store, coord, tile));
-      })
-      ..ensureVisualUpdate();
+    _release.ask(() {
+      final store = _store;
+      if (_disposed || store == null) {
+        return;
+      }
+      history.visitDeepHeldTiles((coord, tile) => _letGo(store, coord, tile));
+    });
   }
 
   /// The pictures of what a canvas paints for [tile] go — the tile's own,

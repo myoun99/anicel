@@ -4,8 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'raster_picture.dart';
@@ -171,7 +171,7 @@ final Paint _tilePaint = Paint()
     // above disposes, the raster arm disposes inside the helper, and the two
     // agree by structure instead of by remembering.
     final image = rasterPicture(recorder, tileSize, tileSize);
-    images.putProvisional(tile, image);
+    images.putProvisional((coord: coord, tile: tile), image);
     seeded += 1;
   }
   return (seeded: seeded, adopted: adopted, skipped: skipped);
@@ -295,15 +295,17 @@ ProvisionalInkPainter inkFromSurface(
 /// the engine premultiplies at the draw — the same conversion the decode
 /// path makes, so the composed pixel is the decoded pixel.
 ///
-/// Returns the stand-in it put in [cache] for [tile] (ownership transferred
-/// there), and the rects it spent, or null image and zero rects when it
-/// declined: predecessor missing, its picture missing, or over budget.
+/// Returns the stand-in it put in [cache] for [placed]'s tile (ownership
+/// transferred there), and the rects it spent, or null image and zero rects
+/// when it declined: predecessor missing, its picture missing, or over
+/// budget.
 ({ui.Image? image, int rects}) composePredecessorStandIn({
   required BitmapTileImageCache cache,
-  required BitmapTile tile,
+  required PlacedTile placed,
   required TilePredecessor predecessor,
   required int rectBudget,
 }) {
+  final tile = placed.tile;
   final before = predecessor.tile;
   ui.Image? beforeImage;
   if (before != null) {
@@ -398,7 +400,7 @@ ProvisionalInkPainter inkFromSurface(
     );
   }
   final image = rasterPicture(recorder, size, size);
-  cache.putProvisional(tile, image);
+  cache.putProvisional(placed, image);
   TilePredecessors.instance.drop(tile);
   return (image: image, rects: runX.length);
 }

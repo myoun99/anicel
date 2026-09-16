@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../core/sync_image_upload.dart';
 import '../../services/straight_rgba_image.dart';
@@ -11,7 +10,9 @@ import '../../models/bitmap_tile.dart';
 import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
+import 'after_frame_once.dart';
 import 'deferred_image_disposal.dart';
+import 'pictured_tiles.dart';
 import 'tile_predecessors.dart';
 
 /// What has been asked of the engine for one tile that has no picture yet.
@@ -50,11 +51,16 @@ enum _TileDecodeAsk {
 /// manual eviction: the [Expando] releases them with the tile, and a
 /// [Finalizer] disposes the decoded image afterwards.
 class BitmapTileImageCache extends ChangeNotifier {
-  BitmapTileImageCache();
+  BitmapTileImageCache({PicturedTiles? pictured})
+    : pictured = pictured ?? PicturedTiles.instance;
 
   /// Shared instance used by the display painter. A render cache, not app
   /// state: it holds no editing data and only accelerates repaints.
   static final BitmapTileImageCache instance = BitmapTileImageCache();
+
+  /// The roll of every tile given a picture here — the one way the pictures
+  /// held can be walked ([TilePictureBudget]), since [_images] cannot be.
+  final PicturedTiles pictured;
 
   /// Bumped whenever this cache tells its listeners something moved — one
   /// int that answers "did anything I hold change since you last looked".
@@ -219,7 +225,8 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// so the observable has to be about ownership too.
   bool hasProvisional(BitmapTile tile) => _provisional[tile] != null;
 
-  /// Gives [tile] a synthesized stand-in until its own decode lands.
+  /// Gives [placed]'s tile a synthesized stand-in until its own decode
+  /// lands.
   ///
   /// Ownership transfers: the image is retired when the real decode
   /// replaces it, or with the tile if no decode ever comes. The caller must
@@ -231,7 +238,8 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// [_latestDecodedByScope]: a stand-in is not a truthful predecessor for
   /// some later generation to borrow, and seeding it there would put the
   /// off-by-two into a lineage that outlives it.
-  void putProvisional(BitmapTile tile, ui.Image image) {
+  void putProvisional(PlacedTile placed, ui.Image image) {
+    final tile = placed.tile;
     if (_images[tile] != null || _provisional[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
@@ -239,6 +247,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     _provisional[tile] = image;
     _provisionalFinalizer.attach(tile, image, detach: tile);
     _hold(image);
+    pictured.hold(placed);
   }
 
   /// Retires [tile]'s stand-in, if it has one. Called the moment its real
@@ -293,6 +302,20 @@ class BitmapTileImageCache extends ChangeNotifier {
     _images[tile] = null;
     _imageFinalizer.detach(tile);
     _release(image);
+  }
+
+  /// [releasePicture] for the budget's walk ([TilePictureBudget]), with the
+  /// coordinate fallback's filing struck FIRST — [releasePicture] refuses to
+  /// release over it, and a picture the budget lets go is not available for
+  /// anything. A picture a successor still borrows stays. True when it went.
+  bool evictPicture(PlacedTile placed) {
+    for (final scoped in _latestDecodedByScope.values) {
+      if (identical(scoped[placed.coord], placed.tile)) {
+        scoped.remove(placed.coord);
+      }
+    }
+    releasePicture(placed.coord, placed.tile);
+    return displayImageFor(placed.tile) == null;
   }
 
   bool _lent(BitmapTile tile) => TilePredecessors.instance.lends(
@@ -373,6 +396,7 @@ class BitmapTileImageCache extends ChangeNotifier {
       _images[tile] = image;
       _imageFinalizer.attach(tile, image, detach: tile);
       _hold(image);
+      pictured.hold(placed);
       // Truth has landed; the stand-in has nothing left to stand in for,
       // and neither has the predecessor it would have been composed from.
       _dropProvisional(tile);
@@ -451,6 +475,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     _images[tile] = image;
     _imageFinalizer.attach(tile, image, detach: tile);
     _hold(image);
+    pictured.hold(placed);
     // An adopted picture IS the truth (the overlay decoded exactly these
     // bytes), so it retires a stand-in just as a decode would — and the
     // predecessor with it.
@@ -527,7 +552,7 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
   }
 
-  bool _notifyScheduled = false;
+  final AfterFrameOnce _notifyAfterFrame = AfterFrameOnce();
 
   /// Coalesces decode-completion notifications to at most ONE per frame: a
   /// big stroke's commit decodes dozens of tiles whose completions land
@@ -536,31 +561,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// next stroke (R11-⑥). The settling overlay keeps the stroke on screen
   /// through the extra frame of latency. Without a scheduler binding
   /// (headless painter tests) completions notify directly, as before.
-  void _scheduleNotify() {
-    if (_notifyScheduled) {
-      return;
-    }
-    final binding = _schedulerBindingOrNull();
-    if (binding == null) {
-      notifyListeners();
-      return;
-    }
-    _notifyScheduled = true;
-    binding.addPostFrameCallback((_) {
-      _notifyScheduled = false;
-      notifyListeners();
-    });
-    // A completion between frames must still get a frame to notify on.
-    binding.ensureVisualUpdate();
-  }
-
-  static SchedulerBinding? _schedulerBindingOrNull() {
-    try {
-      return SchedulerBinding.instance;
-    } on FlutterError {
-      return null;
-    }
-  }
+  void _scheduleNotify() => _notifyAfterFrame.ask(notifyListeners);
 
   /// Whether every tile of [tiles] has a decoded image ready.
   bool allDecoded(Iterable<BitmapTile> tiles) {

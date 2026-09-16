@@ -1,14 +1,11 @@
 part of '../bitmap_surface_painter.dart';
 
-/// ONE PAINT OF A BITMAP SURFACE'S CONTENT — the paper, the visible
-/// tiles (a committed image, a held pre-stroke tile, or the live tile with
-/// its upload and pixel-fallback budgets), the stroke overlay, and the
-/// stamp preview.
-///
-/// 🚨A collaborator carved out of `BitmapSurfacePainter` (the audit's
-/// cognitive cut, Round 6, 2026-09-03): `paintContentInto` was 418 lines
-/// scoring 80 on the meter. Constructed PER PAINT; it reaches the painter
-/// through `_painter`.
+/// ONE PAINT OF A BITMAP SURFACE'S CONTENT — the paper, the visible tiles
+/// (a committed image, a held pre-stroke tile, or the live tile within its
+/// upload and pixel-fallback budgets), the stroke overlay, the stamp preview.
+/// 🚨Carved out of `BitmapSurfacePainter` (the audit's cognitive cut, Round
+/// 6, 2026-09-03: `paintContentInto` was 418 lines scoring 80). Constructed
+/// PER PAINT; it reaches the painter through `_painter`.
 class _SurfacePaintPass {
   _SurfacePaintPass(this._painter);
 
@@ -56,6 +53,7 @@ class _SurfacePaintPass {
   void paintContentInto(Canvas canvas, {Paint? layerPaint}) {
     _canvas = canvas;
     _layerPaint = layerPaint;
+    _painter.pictureBudget.paintBegan(_painter.staleScope);
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,
       'A layer paint may only ride the individual draws when they cover '
@@ -211,6 +209,7 @@ class _SurfacePaintPass {
     // No pasteboard dim (user decision, Flash-style): off-_canvas artwork
     // shows at full brightness — the paper edge against the backdrop is
     // the stage boundary.
+    _painter.pictureBudget.paintEnded();
   }
 
   /// The paper under a surface that shows no transparency.
@@ -237,11 +236,12 @@ class _SurfacePaintPass {
     _pendingDecodes = _painter.tilesAwaitingDecode();
   }
 
-  /// Every tile under the visible rect: a committed image, a held
-  /// pre-stroke tile, or the live tile within the upload and pixel
-  /// budgets.
+  /// Every tile under the visible rect — a committed image, a held pre-stroke
+  /// tile, or the live tile within the upload and pixel budgets — and each
+  /// one stamped as shown for the picture budget ([TilePictureBudget.shown]).
   void _paintVisibleTiles() {
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
+      _painter.pictureBudget.shown(_painter.staleScope, covered.tile);
       _paintTile((coord: covered.coord, tile: covered.tile));
     }
   }
@@ -442,7 +442,7 @@ class _SurfacePaintPass {
     final cache = _painter.tileImageCache;
     final composed = composePredecessorStandIn(
       cache: cache,
-      tile: placed.tile,
+      placed: placed,
       predecessor: predecessor,
       rectBudget: _predecessorRectBudget,
     );

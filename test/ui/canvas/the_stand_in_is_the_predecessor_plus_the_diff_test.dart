@@ -104,7 +104,7 @@ void main() {
 
       final composed = composePredecessorStandIn(
         cache: cache,
-        tile: after,
+        placed: (coord: TileCoord(x: 0, y: 0), tile: after),
         predecessor: TilePredecessors.instance.of(after)!,
         rectBudget: 1000,
       );
@@ -131,7 +131,7 @@ void main() {
       TilePredecessors.instance.note(after, null);
       final composed = composePredecessorStandIn(
         cache: cache,
-        tile: after,
+        placed: (coord: TileCoord(x: 0, y: 0), tile: after),
         predecessor: TilePredecessors.instance.of(after)!,
         rectBudget: 1000,
       );
@@ -152,7 +152,7 @@ void main() {
       TilePredecessors.instance.note(after, before);
       final composed = composePredecessorStandIn(
         cache: cache,
-        tile: after,
+        placed: (coord: TileCoord(x: 0, y: 0), tile: after),
         predecessor: TilePredecessors.instance.of(after)!,
         rectBudget: 10,
       );
@@ -170,7 +170,7 @@ void main() {
       TilePredecessors.instance.note(after, before);
       final composed = composePredecessorStandIn(
         cache: cache,
-        tile: after,
+        placed: (coord: TileCoord(x: 0, y: 0), tile: after),
         predecessor: TilePredecessors.instance.of(after)!,
         rectBudget: 1000,
       );

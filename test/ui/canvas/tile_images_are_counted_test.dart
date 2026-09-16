@@ -57,7 +57,7 @@ void main() {
         await anImage(),
         staleScope: BitmapTileImageCache.unfiled,
       );
-      cache.putProvisional(standIn.tile, await anImage());
+      cache.putProvisional(standIn, await anImage());
       expect(BitmapTileImageCache.liveImageBytes - before, 2 * oneImage);
 
       // Its truth landing retires the stand-in: one off, one on.

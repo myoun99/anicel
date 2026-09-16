@@ -83,6 +83,7 @@ import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
+import 'canvas/tile_picture_budget.dart';
 import 'session/cache_budgets.dart';
 import '../services/memory_allowance.dart';
 import '../services/brush_tip_stamp_cache.dart';
@@ -344,6 +345,9 @@ class EditorSessionManager extends ChangeNotifier
     // ★A new [CacheBudgetLine] is applied HERE, and nowhere else.
     _frameworkImageCache?.maximumSizeBytes = budgets.imageCache;
     QaNativeEngine.instance?.setTilePoolByteCap(budgets.enginePool);
+    // The canvas's tile pictures (render round, 2026-09-16): the walk that
+    // lets the unshown ones go reads this ceiling after every paint.
+    TilePictureBudget.instance.byteBudget = budgets.tileImages;
     if (enforce) {
       playbackRig.playbackCache.enforcePlaybackCacheBudget();
     }

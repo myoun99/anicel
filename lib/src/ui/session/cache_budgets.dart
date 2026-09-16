@@ -6,6 +6,7 @@ import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/history_manager.dart';
 import '../../services/memory_allowance.dart';
+import '../canvas/tile_picture_budget.dart';
 import '../media/viewer_raster_budget.dart';
 import '../playback/playback_cache_budget.dart';
 
@@ -65,7 +66,13 @@ enum CacheBudgetLine {
   imageCache({'imageCache'}),
 
   /// The drawing engine's tile blocks parked for reuse.
-  enginePool({'enginePool'});
+  enginePool({'enginePool'}),
+
+  /// The canvas's tile pictures — every decoded tile's GPU copy, truths and
+  /// stand-ins. Ceilinged since 2026-09-16 (render round): the ones no
+  /// canvas is showing go, the ones on screen never do
+  /// ([TilePictureBudget]).
+  tileImages({'tileImages'});
 
   const CacheBudgetLine(this.censusIds);
 
@@ -107,6 +114,9 @@ enum CacheBudgetLine {
       BrushLiveStrokeRasterizer.defaultResidentResultByteBudget,
     CacheBudgetLine.imageCache => frameworkImageCacheBytes,
     CacheBudgetLine.enginePool => engineTilePoolBytes,
+    CacheBudgetLine.tileImages => TilePictureBudget.deviceScaledByteBudget(
+      physicalMemoryBytes: physicalMemoryBytes,
+    ),
   };
 
   /// The least this line may be scaled to: what it already keeps under a
@@ -123,7 +133,8 @@ enum CacheBudgetLine {
     CacheBudgetLine.brushTips ||
     CacheBudgetLine.liveStroke ||
     CacheBudgetLine.imageCache ||
-    CacheBudgetLine.enginePool => 0,
+    CacheBudgetLine.enginePool ||
+    CacheBudgetLine.tileImages => 0,
   };
 }
 
@@ -179,6 +190,7 @@ class CacheBudgets {
   int get liveStroke => this[CacheBudgetLine.liveStroke];
   int get imageCache => this[CacheBudgetLine.imageCache];
   int get enginePool => this[CacheBudgetLine.enginePool];
+  int get tileImages => this[CacheBudgetLine.tileImages];
 
   int get total => _bytes.values.fold(0, (sum, bytes) => sum + bytes);
 

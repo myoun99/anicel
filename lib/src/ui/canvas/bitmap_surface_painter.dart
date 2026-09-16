@@ -20,6 +20,7 @@ import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
+import 'tile_picture_budget.dart';
 import 'tile_predecessors.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
@@ -50,7 +51,9 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     this.staleScope,
     this.devicePixelRatio = 1.0,
     BitmapTileImageCache? tileImageCache,
+    TilePictureBudget? pictureBudget,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
+       pictureBudget = pictureBudget ?? TilePictureBudget.instance,
        super(
          repaint: Listenable.merge([
            tileImageCache ?? BitmapTileImageCache.instance,
@@ -112,6 +115,11 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   final Object? staleScope;
 
   final BitmapTileImageCache tileImageCache;
+
+  /// Told which tiles each paint has under its visible rect, so the
+  /// pictures it lets go are never the ones on screen
+  /// ([TilePictureBudget.shown]).
+  final TilePictureBudget pictureBudget;
 
   /// The pasteboard rect in canvas space — the clip this painter works
   /// within (artwork past the canvas edge stays visible while editing).

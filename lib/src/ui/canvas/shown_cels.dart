@@ -1,10 +1,11 @@
-import 'package:flutter/scheduler.dart';
+import 'package:flutter/foundation.dart' show VoidCallback;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/placed_tile.dart';
+import 'after_frame_once.dart';
 import 'bitmap_tile_image_cache.dart';
 
 /// A cel as a canvas names it — the scope its painter already uses.
@@ -115,7 +116,7 @@ class ShownCels {
   }
 
   List<PlacedTile> _queue = const [];
-  bool _pumpScheduled = false;
+  final AfterFrameOnce _nextPump = AfterFrameOnce();
 
   bool _needsPicture(PlacedTile placed) =>
       _cache.displayImageFor(placed.tile) == null &&
@@ -154,21 +155,9 @@ class ShownCels {
     }
   }
 
-  /// ⚠️Reached only with something queued, which takes a canvas showing a
-  /// cel — so there is a binding to schedule on.
-  void _scheduleNextPump() {
-    if (_pumpScheduled) {
-      return;
-    }
-    _pumpScheduled = true;
-    SchedulerBinding.instance
-      ..addPostFrameCallback((_) {
-        _pumpScheduled = false;
-        _pump(BitmapTileImageCache.decodeStartBudget);
-      })
-      // A queue still waiting must get a frame to go on in.
-      ..ensureVisualUpdate();
-  }
+  /// The rest of the queue goes on after the frame, a ration at a time.
+  void _scheduleNextPump() =>
+      _nextPump.ask(() => _pump(BitmapTileImageCache.decodeStartBudget));
 
   /// Calls [then] once [cels] are drawable, and returns what stops the
   /// wait.
