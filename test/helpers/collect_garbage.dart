@@ -14,10 +14,31 @@ import 'dart:developer' show reachabilityBarrier;
 ///
 /// Churns small lists instead of asking the VM, because a test cannot
 /// reach the VM service — the way `leak_tracker`'s `forceGC` does it.
-Future<void> collectGarbage() async {
+///
+/// 🚨★★★IT GIVES UP AFTER [atMost] (tile-count-timeout-under-load). The
+/// loop used to wait for the barrier with no bound at all, and a barrier
+/// that does not advance is not an error the caller ever hears about: in a
+/// full affected batch this file hit the runner's TEN MINUTE cap twice in
+/// one day (2026-09-16), which kills the whole file and says nothing about
+/// what leaked.
+///
+/// 🔬Measured on this machine, idle: one collection is 110–472 turns of the
+/// event loop and **34–124 ms**. Under a hundred-odd concurrent test
+/// isolates the turns are the same and the SCHEDULING is not — so the bound
+/// is wall-clock, not turns, and it is two orders of magnitude over the
+/// idle cost.
+///
+/// ⚠️Giving up is not passing: nothing here asserts. The caller's own
+/// `expect` reads the real number afterwards, so a release that never came
+/// is still red — it just says so in seconds instead of taking the file
+/// down with it.
+Future<void> collectGarbage({
+  Duration atMost = const Duration(seconds: 30),
+}) async {
   final target = reachabilityBarrier + 2;
+  final clock = Stopwatch()..start();
   final churn = <List<int>>[];
-  while (reachabilityBarrier < target) {
+  while (reachabilityBarrier < target && clock.elapsed < atMost) {
     await Future<void>.delayed(Duration.zero);
     churn.add(List<int>.filled(30000, 0));
     if (churn.length > 100) {
@@ -45,10 +66,11 @@ Future<void> collectGarbage() async {
 Future<void> collectGarbageUntil(
   bool Function() settled, {
   int rounds = 6,
+  Duration atMost = const Duration(seconds: 30),
 }) async {
   var collected = 0;
   do {
-    await collectGarbage();
+    await collectGarbage(atMost: atMost);
     collected += 1;
   } while (!settled() && collected < rounds);
 }
