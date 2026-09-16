@@ -903,9 +903,13 @@ void main() {
 
   /// N4 ⑤: an engine that can turn BYTES into a picture within the frame.
   ///
-  /// 🚨 Every machine that runs this suite says it cannot — Windows is
-  /// Skia in every build, CI included — so these drive the cache's
-  /// injection point. The uploader here is faithful: it draws the actual
+  /// 🚨 Every machine that runs this suite says it cannot — the harness is
+  /// `flutter_tester`, which has no synchronous upload, CI included — so
+  /// these drive the cache's injection point. (It used to say "Windows is
+  /// Skia in every build"; 3.47 made Impeller the desktop default and the
+  /// SHIPPED app now says it can, 2026-09-16. The harness did not move, so
+  /// the seam is needed more than before, not less.)
+  /// The uploader here is faithful: it draws the actual
   /// premultiplied bytes it is handed, so the raster below is the tile's
   /// own pixels and not a token standing for them.
   group('bytes become pictures within the frame (N4 ⑤)', () {
@@ -1053,9 +1057,13 @@ void main() {
       // and premultiply — plus the upload. Unrationed, a zoomed-out paint
       // of a large cel would do the whole visible grid at once, which is
       // precisely the burst decodeStartBudget exists to spread out. This
-      // is the one N4 ⑤ regression that could never show on the renderer
-      // it was written on: Skia declines every call before the budget is
-      // even consulted.
+      // is the one N4 ⑤ regression that could not show on the renderer it
+      // was written on: Skia declines every call before the budget is even
+      // consulted.
+      // 🚨2026-09-16: THAT STOPPED BEING A COMFORT. The desktop ships
+      // Impeller since 3.47, so the burst this rations is now reachable in
+      // production on every platform — and `flutter_tester` still declines,
+      // so this budgeted test is the only place it is watched at all.
       const budget = BitmapSurfacePainter.decodeStartBudget;
       const columns = budget + 8;
       const tileSize = 2;

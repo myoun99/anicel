@@ -31,10 +31,13 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 /// at the production tile size, per refused tile, with no finalizer behind
 /// it.
 ///
-/// 🚨The refusal arrives through [debugRawRgbaUploader] because Windows
-/// runs Skia in every build and CI does too: on the machines this project
-/// develops on the engine simply never refuses. See that setter for why a
-/// seam is the honest answer here and not a shortcut.
+/// 🚨The refusal arrives through [debugRawRgbaUploader] because the engine
+/// under `flutter test` simply never refuses — the harness is
+/// `flutter_tester`, and CI runs the same one. (This used to say "because
+/// Windows runs Skia in every build"; that stopped being true when 3.47
+/// made Impeller the desktop default, 2026-09-16, and the harness — not
+/// the platform — was always what the seam is for.) See that setter for
+/// why a seam is the honest answer here and not a shortcut.
 void main() {
   const canvasSize = CanvasSize(width: 24, height: 8);
 

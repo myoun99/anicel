@@ -18,12 +18,20 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// nothing has ever decoded. All three have BYTES and no picture, and no
 /// image operand to compose from.
 ///
-/// 🚨 EVERY MACHINE THAT RUNS THIS TEST ANSWERS "NO".
-/// `decodeImageFromPixelsSync` is Impeller only and Windows runs Skia in
-/// every build, CI included. So the engine call is behind an injection
-/// point and these tests drive that, because the alternative is a suite
-/// that exercises this path by watching it return null — which is what
-/// "we shipped an untested path" looks like from the inside.
+/// 🚨 EVERY MACHINE THAT RUNS THIS TEST ANSWERS "NO", AND THE REASON
+/// CHANGED UNDER IT (2026-09-16). It used to be the platform: the call is
+/// Impeller-only and Windows ran Skia in every build. Since 3.47 the
+/// PRODUCT answers yes — Impeller is the desktop default and this repo
+/// moved to it — but `flutter test` still answers no, because the harness
+/// is `flutter_tester`, not the Windows embedder. The `isFalse` below is
+/// what pins that, and it is the whole reason this file is worth having.
+///
+/// ⇒ The gap between what ships and what the suite can run just got WIDER,
+/// not narrower: the synchronous path is now live for users and still
+/// unreachable here. So the engine call stays behind an injection point and
+/// these tests drive that, because the alternative is a suite that
+/// exercises this path by watching it return null — which is what "we
+/// shipped an untested path" looks like from the inside.
 void main() {
   PlacedTile inkedTile() {
     final tile = BitmapTile.blank(size: 2);

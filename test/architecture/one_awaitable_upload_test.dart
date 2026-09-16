@@ -9,10 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// handler to neither — the inner chain is not even returned to the outer
 /// one — so its callback fires exactly once on success and ZERO times on any
 /// failure, and nothing at all reaches the caller. Read in the SDK source
-/// (`sky_engine/lib/ui/painting.dart`); on Skia, which is what Windows runs
-/// in debug AND release, every decode failure funnels into
+/// (`sky_engine/lib/ui/painting.dart`); every decode failure funnels into
 /// `Codec.getNextFrame`'s null-image branch and completes with an error into
-/// that dropped chain.
+/// that dropped chain. That is the DART side of the call, so no backend
+/// escapes it — the sentence used to name Skia-on-Windows as the case that
+/// proved it, which stopped being true when 3.47 made Impeller the desktop
+/// default (2026-09-16) and was never the reason anyway.
 ///
 /// Seven places in `lib/` bridged that callback to a `Future` with a
 /// `Completer<ui.Image>` that had no `completeError`, so the only way any of

@@ -47,10 +47,14 @@ void main() {
 
   test('the tile picture upload follows the RENDERER, not the packaging', () {
     // The only row here whose non-primary state is normal rather than a
-    // problem: `decodeImageFromPixelsSync` is Impeller-only, and Windows
-    // runs Skia in every build. flutter_tester is Skia too, so this is
-    // what a Windows user sees — and the detail has to say why, or an
-    // amber row on every desktop install reads as a broken build.
+    // problem: `decodeImageFromPixelsSync` is Impeller-only and
+    // `flutter_tester` has no synchronous upload, so the report says
+    // "asynchronous" HERE.
+    // ⚠️2026-09-16: that is no longer what a Windows user sees. Since 3.47
+    // the desktop ships Impeller, so the shipped app reports the
+    // synchronous row as primary — this test pins the HARNESS's answer,
+    // and the detail still has to say why an amber row is not a broken
+    // build, because a user with no GPU context still lands here.
     final upload = collectRuntimePathReport().singleWhere(
       (entry) => entry.subsystem == 'Tile picture upload',
     );

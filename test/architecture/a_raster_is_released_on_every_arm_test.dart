@@ -11,7 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// line when it fails:
 ///
 ///   * `toImageSync` **throws** — `static_raster.dart` says so where it wraps
-///     the same call, and Skia is what Windows runs in debug AND release.
+///     the same call. ⚠️Not a Skia-only hazard: it throws where there is no
+///     GPU context or the size is refused, on any backend. The sentence used
+///     to end "and Skia is what Windows runs in debug AND release", which
+///     stopped being true when 3.47 made Impeller the desktop default
+///     (2026-09-16) and was never what made the `finally` necessary.
 ///   * `toImage` is **awaited**, and a throw inside an await skips every
 ///     statement after it.
 ///

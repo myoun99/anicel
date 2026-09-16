@@ -567,9 +567,14 @@ void main() {
     // the engine. One field for both would start a second full-canvas upload
     // every time a drag crossed back through identity.
     //
-    // 🚨The refusal comes through the seam because Windows runs Skia in
-    // every build and so does CI: on the machines this project develops on,
-    // the engine never refuses. See [debugRawRgbaUploader].
+    // 🚨The refusal comes through the seam because the engine under
+    // `flutter test` never refuses on its own — the harness is
+    // `flutter_tester`, and `tile_image_sync_upload_test` pins that by
+    // asserting `syncImageUploadSupported` is false there. (This used to
+    // say "because Windows runs Skia in every build"; that stopped being
+    // true when 3.47 made Impeller the desktop default, 2026-09-16, and the
+    // harness — not the platform — was always what this seam is for.)
+    // See [debugRawRgbaUploader].
     // ⚠️THE SEAM IS GLOBAL, and this widget uploads canvas TILES through it
     // too. Refusing everything wedges the fixture itself (measured: the test
     // ran to its ten-minute timeout), so the refusal is aimed: only the

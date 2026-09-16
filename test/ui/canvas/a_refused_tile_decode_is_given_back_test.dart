@@ -29,9 +29,12 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// patch of the finished stroke reverted to pre-stroke pixels — the exact
 /// failure the settle machinery exists to prevent.
 ///
-/// 🚨EVERY MACHINE THAT RUNS THIS TEST DECODES SUCCESSFULLY. Windows runs
-/// Skia in every build, CI included, and a genuine refusal wants an
-/// allocation to fail on a small device. `BitmapTile` also validates its own
+/// 🚨EVERY MACHINE THAT RUNS THIS TEST DECODES SUCCESSFULLY. The harness is
+/// `flutter_tester`, CI included, and a genuine refusal wants an
+/// allocation to fail on a small device. (This used to name Windows-is-Skia
+/// as the reason; 3.47 made Impeller the desktop default, 2026-09-16, and
+/// the harness is what actually decides here.)
+/// `BitmapTile` also validates its own
 /// pixel length, so the lying-descriptor fixture that reaches
 /// `uploadRawRgba` in `straight_rgba_image_test.dart` cannot be built here.
 /// So the refusal comes through [debugRawRgbaUploader], for the same reason
@@ -148,8 +151,9 @@ void main() {
     cache.ensureDecoded(tile);
     await pumpEventQueue();
 
-    // The sync path is Impeller-only and this machine is Skia, so it has
-    // its own injection point — the same argument, one layer down.
+    // The sync path is Impeller-only and the harness has no synchronous
+    // upload, so it has its own injection point — the same argument, one
+    // layer down.
     debugSyncImageUploadOverride = (pixels, width, height) => aSolidImage();
     final uploaded = cache.adoptSyncUpload(tile);
     debugSyncImageUploadOverride = null;
