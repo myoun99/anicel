@@ -525,6 +525,20 @@ class ExportDialogState extends State<ExportDialog> {
   /// The list's rows over the plan's flat entry order: one per bundle, then
   /// one per instruction row (its events are adjacent in the plan, so a run
   /// of the same layer is one row).
+  /// The list's rows, ordered the way the TIMELINE draws the stack.
+  ///
+  /// 🗣️유저 2026-09-16 (F-144): 「셀 출력의 왼쪽 출력될 셀 리스트, 타임라인은
+  /// 아래서부터 미술,A,B,C인데 셀 리스트는 C,B,A,미술임. 제대로 타임라인 방향
+  /// 따라서 그대로 재사용」. Measured on a cut whose model order is
+  /// 미술 · A · B · C: the timeline reads Camera · C · B · A · 미술 top to
+  /// bottom, and this list read A · B · C — the raw x-sheet order, exactly
+  /// the other way round.
+  ///
+  /// ⛔The PLAN keeps its own walk. Its order is the WRITE order, and the
+  /// namer hands out its de-dup suffix (`A1_2`) along it — reordering the
+  /// walk to fix a list would quietly rename exported files. Two questions,
+  /// two answers: [_CelBundleRow.first] still points into the plan, so a row
+  /// tapped here still jumps to that bundle's own entries.
   List<_CelBundleRow> _celBundleRows(ExportCelGroupPlan plan) {
     final rows = <_CelBundleRow>[];
     var index = 0;
@@ -556,7 +570,24 @@ class ExportDialogState extends State<ExportDialog> {
       ));
       i = end;
     }
-    return rows;
+    final drawn = horizontalLayerDisplayOrder(_activeCut.layers);
+    final drawnAt = <String, int>{
+      for (var at = 0; at < drawn.length; at += 1) drawn[at].id.value: at,
+    };
+    // ⚠️Sorted by (where the timeline draws it, where the plan met it): a
+    // row this cut does not draw — another cut's, under the project scope —
+    // keeps the plan's order after the drawn ones. `List.sort` is NOT
+    // stable in Dart, so the plan's index is IN the comparison rather than
+    // trusted to survive it.
+    final ordered = [for (var at = 0; at < rows.length; at += 1) (rows[at], at)];
+    final undrawn = drawn.length;
+    ordered.sort((a, b) {
+      final byRow = (drawnAt[a.$1.layer.id.value] ?? undrawn).compareTo(
+        drawnAt[b.$1.layer.id.value] ?? undrawn,
+      );
+      return byRow != 0 ? byRow : a.$2.compareTo(b.$2);
+    });
+    return [for (final entry in ordered) entry.$1];
   }
 
   Widget _celBundleItem(
@@ -2684,6 +2715,11 @@ class ExportDialogState extends State<ExportDialog> {
   static const double _queueDrawerWidth = 200;
   static const double _collapsedDrawerWidth = 22;
   static const double _previewColumnWidth = 330;
+
+  /// The Cels tab's left list. 유저 2026-09-16: 「최대한 컴팩트하게 줄이고」 —
+  /// it carries a dot, a name and a count, and every pixel it takes comes
+  /// straight out of the picture beside it.
+  static const double _celBundleListWidth = 132;
   static const double _settingsColumnWidth = 272;
 
   /// The window's size and whether each drawer still fits, for the room the
@@ -2695,9 +2731,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// drawer comes back the moment the room does.
   ({double width, double height, bool presetsOpen, bool queueOpen})
   _windowMetrics(BoxConstraints constraints) {
-    const inset = 64.0;
-    final availableWidth = constraints.maxWidth - inset;
-    final availableHeight = constraints.maxHeight - inset;
+    // ⚠️The window sits in a Material `Dialog`, whose own insetPadding is
+    // 40 a side horizontally and 24 vertically. Taking the full room means
+    // taking THAT room: ask for more and the window overflows its dialog.
+    const sideInset = 80.0;
+    const verticalInset = 64.0;
+    final availableWidth = constraints.maxWidth - sideInset;
+    final availableHeight = constraints.maxHeight - verticalInset;
     var presetsOpen = _presetsOpen;
     var queueOpen = _queueOpen;
     double widthFor() =>
@@ -2712,9 +2752,19 @@ class ExportDialogState extends State<ExportDialog> {
     if (widthFor() > availableWidth && presetsOpen) {
       presetsOpen = false;
     }
+    // 🗣️유저 2026-09-16: 「미리보기 셀 리스트 가로길이가 길어서 미리보기
+    // 프리뷰창이 너무 작아지거든? … 그냥 출력 공용창 크기 자체를 더 크게
+    // 키우는게 날거같기도? … 어차피 창은 이제 비율기준이니까 앱 전체 채워도
+    // 문제는없잖아」.
+    //
+    // The window used to be exactly the four columns' sum, so the preview —
+    // the only column that stretches — got whatever the fixed three left,
+    // and the cel list ate into that. It takes the room the screen leaves
+    // now; [widthFor] stays because it answers a different question: whether
+    // a drawer still fits.
     return (
-      width: math.min(widthFor(), availableWidth),
-      height: math.min(620.0, availableHeight),
+      width: availableWidth,
+      height: availableHeight,
       presetsOpen: presetsOpen,
       queueOpen: queueOpen,
     );
@@ -3057,7 +3107,10 @@ class ExportDialogState extends State<ExportDialog> {
                 ? Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(width: 190, child: _celBundleList(theme)),
+                      SizedBox(
+                        width: _celBundleListWidth,
+                        child: _celBundleList(theme),
+                      ),
                       const SizedBox(width: 8),
                       Expanded(child: _previewWell(theme)),
                     ],
