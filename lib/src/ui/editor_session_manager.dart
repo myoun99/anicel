@@ -2672,6 +2672,7 @@ class EditorSessionManager extends ChangeNotifier
     laneVerbs: laneVerbs,
     effectsAndFx: effectsAndFx,
     internals: this,
+    previewFormsOf: (row) => trackSe.previewFormsOf(row),
   );
 
   /// The layer a RANGE selection reads (cut-local DISPLAY indexes): cut

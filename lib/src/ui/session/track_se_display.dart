@@ -142,6 +142,26 @@ class TrackSeDisplay {
     ];
   }
 
+  /// A row as a drag step leaves it, on its OWN axis, in the two forms a
+  /// drag preview publishes: [shown] for the panels that draw the open cut
+  /// — a track-SE row as its cut-local display clone — and [global] for the
+  /// storyboard's track-global strips, which read the row's own axis, null
+  /// for a row keyed on the cut (nothing there reads a second form).
+  ///
+  /// 🚨ASKED HERE AND NOWHERE ELSE. Six drag steps wrote this pair out by
+  /// hand — the edge drag's single and bulk previews, the range move's
+  /// cross-row, multi-row and slide previews, the lane move's name tag —
+  /// and the lane move's transform and effect arms never wrote it at all:
+  /// they put the GLOBAL row in the channel that carries the cut's display
+  /// clones, which sits every diamond of a moving SE row a cut's start to
+  /// the right on any non-first cut. Copies that agree today are the ones
+  /// that part later, so the source scan
+  /// `a_drag_previews_a_track_se_row_in_one_place_test` keeps it here.
+  ({Layer shown, Layer? global}) previewFormsOf(Layer row) =>
+      isTrackSeLayerId(row.id)
+      ? (shown: trackSeWindow.displayLayer(row), global: row)
+      : (shown: row, global: null);
+
   /// The track SE rows whose display clone starts with a spill-in block —
   /// a sound carrying over from an earlier cut — each with how far into
   /// that block the cut starts.

@@ -8,7 +8,6 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
-import '../../../models/track_se_window.dart';
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/instruction_span_editing.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -220,7 +219,6 @@ class ExposureEdgeDrag implements EditorDragSession {
     required Layer before,
     required TimelineBlockEdge edge,
     required int blockStart,
-    required TrackSeWindow? window,
     required Map<LayerId, BulkRetimeRow>? bulk,
     required CutSyncCapture? cutSync,
   }) : _roles = roles,
@@ -228,7 +226,6 @@ class ExposureEdgeDrag implements EditorDragSession {
        _before = before,
        _edge = edge,
        _blockStart = blockStart,
-       _window = window,
        _bulk = bulk,
        _cutSync = cutSync;
 
@@ -289,7 +286,6 @@ class ExposureEdgeDrag implements EditorDragSession {
       before: layer,
       edge: grip.edge,
       blockStart: grip.blockStartIndex,
-      window: null,
       bulk: bulk,
       cutSync: _captureCutSync(roles: roles, bulk: bulk, anchor: layer),
     );
@@ -334,7 +330,6 @@ class ExposureEdgeDrag implements EditorDragSession {
       before: global,
       edge: grip.edge,
       blockStart: globalStart,
-      window: window,
       bulk: bulk,
       // The bulk can reach DOWN to the cut's storyboard row, and that row
       // brings its cut's length with it wherever the drag was anchored
@@ -385,7 +380,6 @@ class ExposureEdgeDrag implements EditorDragSession {
       before: row,
       edge: TimelineBlockEdge.end,
       blockStart: blockStartIndex,
-      window: null,
       bulk: null,
       cutSync: cutSyncSnapshotFor(
         project: roles.project,
@@ -428,9 +422,10 @@ class ExposureEdgeDrag implements EditorDragSession {
 
   final EdgeDragRoles _roles;
 
-  /// The CURRENT cut-local lens, asked per row: a bulk drag can carry SE
-  /// rows the press did not grab, and those preview through the window of
-  /// whatever cut is active — [_window] is the one the press itself grabbed.
+  /// Which rows are track-owned and what the open cut shows of them: every
+  /// preview here asks it for the row's two forms
+  /// ([TrackSeDisplay.previewFormsOf]). Asked PER ROW, because a bulk drag
+  /// can carry SE rows the press never grabbed.
   final TrackSeDisplay _trackSe;
 
   /// What the press grabbed — the row (GLOBAL form for track SE), the edge
@@ -440,10 +435,6 @@ class ExposureEdgeDrag implements EditorDragSession {
   final Layer _before;
   final TimelineBlockEdge _edge;
   final int _blockStart;
-
-  /// The cut-local lens this drag was begun through, or null off a track-SE
-  /// row — previews window through it before publishing.
-  final TrackSeWindow? _window;
 
   /// UI-R17 #3/#8: when the dragged edge belongs to a block INSIDE the frame
   /// range selection, the drag retimes EVERY selected block on EVERY spanned
@@ -507,10 +498,10 @@ class ExposureEdgeDrag implements EditorDragSession {
     // gates render cut-local clones) PLUS the global form for the
     // storyboard's track-global strips (UI-R7 #7); the commit uses
     // [_result].
-    final window = _window;
+    final forms = _trackSe.previewFormsOf(after);
     _roles.internals.dragPreview.value = ExposureEdgeDragPreview(
-      previewLayer: window == null ? after : window.displayLayer(after),
-      globalPreviewLayer: window == null ? null : after,
+      previewLayer: forms.shown,
+      globalPreviewLayer: forms.global,
     );
   }
 
@@ -534,9 +525,7 @@ class ExposureEdgeDrag implements EditorDragSession {
         edits.add((before: beforeLayer, after: after));
         // Track-SE rows preview in their DISPLAY form (cut-local axis); the
         // commit keeps the global form (UI-R18 #1 seam).
-        previews[entry.key] = _roles.project.isTrackSeLayerId(entry.key)
-            ? _trackSe.trackSeWindow.displayLayer(after)
-            : after;
+        previews[entry.key] = _trackSe.previewFormsOf(after).shown;
       }
     }
     if (edits.isEmpty) {

@@ -1,5 +1,5 @@
 import 'drags/lane_range_move_drag.dart';
-import '../../models/attached_layer_resolve.dart';
+import '../../models/layer.dart';
 import '../../models/transform_track.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart';
@@ -27,12 +27,14 @@ class LaneRangeMoveDragVerbs {
     required SessionInternals internals,
     required LaneVerbs laneVerbs,
     required EffectsAndFx effectsAndFx,
+    required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _internals = internals,
        _laneVerbs = laneVerbs,
-       _effectsAndFx = effectsAndFx;
+       _effectsAndFx = effectsAndFx,
+       _previewFormsOf = previewFormsOf;
 
   final EffectsAndFx _effectsAndFx;
 
@@ -41,6 +43,24 @@ class LaneRangeMoveDragVerbs {
   final ChangeSink _changes;
   final SessionInternals _internals;
   final LaneVerbs _laneVerbs;
+
+  /// What the open cut shows of a row — the preview's two forms, the pair
+  /// `TrackSeDisplay.previewFormsOf` decides.
+  ///
+  /// 🚨★★★THE FUNCTION, NOT THE OBJECT (2026-09-16). Two reasons, and the
+  /// second is why the first was not enough:
+  /// ⛔Taking the VALUE closed a cycle four links long — `trackSe` builds
+  ///   `transitions`, `transitions` takes `camera`, `camera` takes
+  ///   `laneMove` — so `laneMove` holding `trackSe` made every one of them
+  ///   build the next forever, and the first lane-move test died with a
+  ///   bare `Stack Overflow`. The session's `late final` members are built
+  ///   on first touch, so a value argument is an ORDER constraint.
+  /// ⛔Taking a `TrackSeDisplay Function()` fixed the ORDER and left the
+  ///   IMPORT: this file still named the class, and
+  ///   `no_import_cycles_test` read the same four files as a loop. Asking
+  ///   for the one method it calls needs no import at all — the record it
+  ///   returns is made of `Layer`, which this file already speaks.
+  final ({Layer shown, Layer? global}) Function(Layer row) _previewFormsOf;
 
   /// The lane range move in flight, or null (UI-R23 #3 part 2). ⛔The only
   /// thing this class keeps about one: the drag-start snapshot and the last
@@ -117,26 +137,7 @@ class LaneRangeMoveDragVerbs {
             }
           : null,
       previewSeNameTag: isSe
-          ? (next) {
-              // The subject layer is GLOBAL; previewLayers carries the
-              // ACTIVE-CUT DISPLAY CLONES (the SE block-move precedent) —
-              // a global-keyed entry here would jump every diamond by the
-              // cut's start on any non-first cut. The global form rides
-              // previewGlobalLayers for the storyboard's track-global
-              // strips.
-              final previewed = layer.copyWith(seNameTag: next);
-              final isTrackSe = _project.isTrackSeLayerId(layer.id);
-              return BlockMoveDragPreview(
-                previewLayers: {
-                  layer.id: isTrackSe
-                      ? _internals.trackSeWindow.displayLayer(previewed)
-                      : previewed,
-                },
-                previewGlobalLayers: isTrackSe
-                    ? {layer.id: previewed}
-                    : const {},
-              );
-            }
+          ? (next) => _previewOfRow(layer.copyWith(seNameTag: next))
           : null,
       commitTransform: isCamera
           ? (next) => _internals.updateActiveCutCameraTrack(
@@ -166,15 +167,29 @@ class LaneRangeMoveDragVerbs {
               previewLayers: const {},
               cameraMarkerLayer: _project.layerById(layer.id)?.copyWith(),
             )
-          : (next) => BlockMoveDragPreview(
-              previewLayers: {layer.id: layer.copyWith(transformTrack: next)},
-            ),
-      previewEffects: (next) => BlockMoveDragPreview(
-        previewLayers: {layer.id: layer.copyWith(effects: next)},
-      ),
+          : (next) => _previewOfRow(layer.copyWith(transformTrack: next)),
+      previewEffects: (next) => _previewOfRow(layer.copyWith(effects: next)),
       onPreviewTransform: isCamera
           ? (next) => _cameraLaneTrackPreview = next
           : null,
+    );
+  }
+
+  /// The step's preview of [row] — the subject row as this step leaves it,
+  /// on its OWN axis.
+  ///
+  /// ⛔ONE for all three arms (transform, effects, name tag). The name-tag
+  /// arm was fixed alone (d524af02) and the other two went on publishing
+  /// the GLOBAL row into the channel that carries the cut's display clones
+  /// — so on any non-first cut every diamond of a moving track-SE row sat a
+  /// cut's start to the right for the length of the drag, and the lane's
+  /// value column, which reads the global form, did not follow the hand at
+  /// all. `TrackSeDisplay.previewFormsOf` decides the pair.
+  BlockMoveDragPreview _previewOfRow(Layer row) {
+    final forms = _previewFormsOf(row);
+    return BlockMoveDragPreview(
+      previewLayers: {row.id: forms.shown},
+      previewGlobalLayers: {row.id: ?forms.global},
     );
   }
 

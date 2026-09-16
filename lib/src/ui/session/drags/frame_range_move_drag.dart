@@ -721,18 +721,18 @@ class FrameRangeMoveDrag {
         targetBefore: targetGlobal,
         targetAfter: plan.targetAfter,
       );
+      // C2: the plans ARE the global forms — the storyboard strips follow
+      // the cross-row drop live through the same one gate.
+      final sourceForms = _trackSe.previewFormsOf(plan.sourceAfter);
+      final targetForms = _trackSe.previewFormsOf(plan.targetAfter);
       _internals.dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
-          selection.layerId: _trackSe.trackSeWindow.displayLayer(
-            plan.sourceAfter,
-          ),
-          targetLayerId: _trackSe.trackSeWindow.displayLayer(plan.targetAfter),
+          selection.layerId: sourceForms.shown,
+          targetLayerId: targetForms.shown,
         },
-        // C2: the plans ARE the global forms — the storyboard strips
-        // follow the cross-row drop live through the same one gate.
         previewGlobalLayers: {
-          selection.layerId: plan.sourceAfter,
-          targetLayerId: plan.targetAfter,
+          selection.layerId: ?sourceForms.global,
+          targetLayerId: ?targetForms.global,
         },
       );
       followOutline();
@@ -1225,6 +1225,12 @@ class FrameRangeMoveDrag {
         ? null
         : instructionShifted;
     _camera.showCameraKeysDragPreview(cameraShifted);
+    final sePreviews = {
+      for (final se in sePlans) ...{
+        se.sourceId: _trackSe.previewFormsOf(se.sourceAfter),
+        se.targetId: _trackSe.previewFormsOf(se.targetAfter),
+      },
+    };
     _internals.dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
         if (plan != null)
@@ -1233,10 +1239,7 @@ class FrameRangeMoveDrag {
               entry.value,
               cutFrameCount: _project.activeCutFrameCount,
             ),
-        for (final se in sePlans) ...{
-          se.sourceId: _trackSe.trackSeWindow.displayLayer(se.sourceAfter),
-          se.targetId: _trackSe.trackSeWindow.displayLayer(se.targetAfter),
-        },
+        for (final entry in sePreviews.entries) entry.key: entry.value.shown,
         // R27 #8: the frame-axis riders preview their shifted spans in
         // place (the cells row renders straight off layer.instructions).
         // ⛔The TRANSITION stays OFF this map: on the ACTIVE track
@@ -1252,10 +1255,7 @@ class FrameRangeMoveDrag {
       },
       // C2: the SE passengers' global forms, for the storyboard strips.
       previewGlobalLayers: {
-        for (final se in sePlans) ...{
-          se.sourceId: se.sourceAfter,
-          se.targetId: se.targetAfter,
-        },
+        for (final entry in sePreviews.entries) entry.key: ?entry.value.global,
       },
       cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
       cameraKeyframes: cameraShifted,
@@ -1608,12 +1608,11 @@ class FrameRangeMoveDrag {
         plan.sourceAfter,
         cutFrameCount: _project.activeCutFrameCount,
       );
-      if (_project.isTrackSeLayerId(plan.sourceAfter.id)) {
-        previewLayers[plan.sourceAfter.id] = _trackSe.trackSeWindow
-            .displayLayer(commitForm);
-        previewGlobalLayers[plan.sourceAfter.id] = commitForm;
-      } else {
-        previewLayers[plan.sourceAfter.id] = commitForm;
+      final forms = _trackSe.previewFormsOf(commitForm);
+      previewLayers[commitForm.id] = forms.shown;
+      final global = forms.global;
+      if (global != null) {
+        previewGlobalLayers[commitForm.id] = global;
       }
     }
     // Instruction rows preview with their shifted spans — the cells row
