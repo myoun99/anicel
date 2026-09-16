@@ -1,3 +1,4 @@
+import 'widgets/empty_state_text.dart';
 import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
@@ -959,13 +960,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   child: timelineToolbar,
                 ),
                 Expanded(
-                  child: Center(
-                    child: ValueListenableBuilder(
-                      valueListenable: _session.languageSettings,
-                      builder: (context, settings, _) => Text(
-                        AppStrings.of(settings.programLanguage).noCutSelected,
-                        key: const ValueKey<String>('timeline-empty-no-cut'),
-                      ),
+                  child: ValueListenableBuilder(
+                    valueListenable: _session.languageSettings,
+                    builder: (context, settings, _) => EmptyStateText(
+                      AppStrings.of(settings.programLanguage).noCutSelected,
+                      key: const ValueKey<String>('timeline-empty-no-cut'),
+                      place: EmptyStatePlace.stage,
                     ),
                   ),
                 ),

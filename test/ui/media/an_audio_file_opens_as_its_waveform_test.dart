@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
@@ -253,10 +254,10 @@ void main() {
       final strings = AppText.strings;
       expect(
         tester
-            .widget<Text>(
+            .widget<EmptyStateText>(
               find.byKey(const ValueKey<String>('media-viewer-message')),
             )
-            .data,
+            .text,
         strings.mediaViewerNoAudioDecoder,
         reason: 'audio has a picture now, so an absence here is a conform '
             'that could not be built — the same shape the video arm has',

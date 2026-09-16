@@ -25,7 +25,7 @@ import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/trimmed_decimal.dart';
-import '../widgets/settings_prompt_text.dart';
+import '../widgets/empty_state_text.dart';
 import '../listenable_rebind.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
@@ -261,7 +261,10 @@ class _CutGrabSettings extends StatelessWidget {
       tool: 'cut-grab',
       scrolls: false,
       children: [
-        SettingsPromptText(AppText.strings.toolCutHint),
+        EmptyStateText(
+          AppText.strings.toolCutHint,
+          place: EmptyStatePlace.list,
+        ),
         _ClosePolygonButton(
           shapeKind: shapeKind,
           selectionCommands: selectionCommands,
@@ -348,7 +351,12 @@ class _CutStampSettings extends StatelessWidget {
           return ToolSettingsSection(
             tool: 'cut-stamp',
             scrolls: false,
-            children: [SettingsPromptText(AppText.strings.toolCutNothingHeld)],
+            children: [
+              EmptyStateText(
+                AppText.strings.toolCutNothingHeld,
+                place: EmptyStatePlace.list,
+              ),
+            ],
           );
         }
         return ToolSettingsSection(

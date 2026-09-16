@@ -14,7 +14,7 @@ import '../widgets/content_scrollbar.dart';
 import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
-import '../widgets/settings_prompt_text.dart';
+import '../widgets/empty_state_text.dart';
 
 /// A fresh symmetry guide for [canvasSize].
 ///
@@ -212,11 +212,9 @@ class GuideLibraryList extends StatelessWidget {
           if (guides.isEmpty)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(
+              child: EmptyStateText(
                 strings.guideLibraryEmpty,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+                place: EmptyStatePlace.list,
               ),
             ),
         ],
@@ -393,7 +391,10 @@ class GuideSettings extends StatelessWidget {
       return Padding(
         key: const ValueKey<String>('guide-settings-none'),
         padding: const EdgeInsets.all(12),
-        child: SettingsPromptText(strings.guideSelectPrompt),
+        child: EmptyStateText(
+          strings.noGuideSelected,
+          place: EmptyStatePlace.list,
+        ),
       );
     }
     final shape = guide.shape;

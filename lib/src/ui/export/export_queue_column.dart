@@ -5,6 +5,7 @@ import 'export_preset_rail.dart' show ExportPresetRail;
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/empty_state_text.dart';
 
 /// The right drawer: the render queue. EX2 ships the column and its
 /// collapsed strip; the executor (and the enabled Add to Queue) lands
@@ -93,13 +94,10 @@ class ExportQueueColumn extends StatelessWidget {
             if (jobs.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  'Queue is empty.',
+                child: EmptyStateText(
+                  AppText.strings.exportQueueEmpty,
                   key: const ValueKey<String>('export-queue-empty'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  place: EmptyStatePlace.list,
                 ),
               )
             else

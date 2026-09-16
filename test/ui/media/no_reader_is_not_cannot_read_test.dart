@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/media/viewer_document.dart';
@@ -91,10 +92,10 @@ void main() {
 
     /// The message the panel is showing, whatever it is made of.
     String shownMessage(WidgetTester tester) => tester
-        .widget<Text>(
+        .widget<EmptyStateText>(
           find.byKey(const ValueKey<String>('media-viewer-message')),
         )
-        .data!;
+        .text;
 
     testWidgets('🚨a file the engine refused says WHY, in the engine\'s own '
         'words, under the sentence that says what', (tester) async {

@@ -1,3 +1,4 @@
+import '../widgets/empty_state_text.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -1461,15 +1462,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
           ),
           if (message != null)
             Positioned.fill(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    message,
-                    key: ValueKey<String>(_key('message')),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: EmptyStateText(
+                  message,
+                  key: ValueKey<String>(_key('message')),
+                  place: EmptyStatePlace.stage,
                 ),
               ),
             )

@@ -81,7 +81,7 @@ Future<void> _pump(
 void main() {
   const foot = r'C:\snd\foot.wav';
 
-  testWidgets('empty pool shows the guidance text', (tester) async {
+  testWidgets('an empty pool says so', (tester) async {
     await _pump(tester, _Callbacks());
     expect(
       find.byKey(const ValueKey<String>('media-browser-empty')),

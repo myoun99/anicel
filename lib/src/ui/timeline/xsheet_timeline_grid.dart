@@ -1,3 +1,4 @@
+import '../widgets/empty_state_text.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -1139,17 +1140,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           ),
                           Expanded(
                             child: widget.layers.isEmpty
-                                ? Align(
-                                    alignment: Alignment.topLeft,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8),
-                                      child: Text(
-                                        AppText.strings.tlNoLayers,
-                                        style: TextStyle(
-                                          color:
-                                              colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
+                                ? Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: EmptyStateText(
+                                      AppText.strings.tlNoLayers,
+                                      place: EmptyStatePlace.list,
                                     ),
                                   )
                                 : ScrollConfiguration(

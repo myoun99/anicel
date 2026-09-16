@@ -320,7 +320,6 @@ class _LayerGridRailRows {
   /// unpacks below — that is what [_RowWindow] is for, and unpacking under
   /// the same names is what lets the tree below move verbatim.
   Widget buildLayerControlsRail(
-    ColorScheme colorScheme,
     List<TimelineDisplayRow> rows,
     double? availableRailExtent,
     _RowWindow window,
@@ -429,11 +428,9 @@ class _LayerGridRailRows {
                         height: _state._metrics.layerRowHeight,
                         child: Padding(
                           padding: const EdgeInsets.all(8),
-                          child: Text(
+                          child: EmptyStateText(
                             AppText.strings.tlNoLayers,
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            place: EmptyStatePlace.list,
                           ),
                         ),
                       ),

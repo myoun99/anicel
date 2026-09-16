@@ -182,6 +182,10 @@ enum AppStrings {
   /// R27 #31: the export window's empty state — the project has no cuts
   /// at all (standing in a GAP is not this; that anchors on the first cut).
   String get exportNoCuts => _s('exportNoCuts');
+  /// The render queue and the presets with nothing in them — one short line
+  /// each (유저 2026-09-15, empty-state-law-Q1).
+  String get exportQueueEmpty => _s('exportQueueEmpty');
+  String get exportPresetsEmpty => _s('exportPresetsEmpty');
 
   // --- The audio program's UI (Preferences ▸ Audio, 2D + AUDIO-PRO R4) ---
   String get audioOffsetTitle => _s('audioOffsetTitle');
@@ -360,7 +364,7 @@ enum AppStrings {
   String get guideActsOn => _s('guideActsOn');
   String get guideActsOff => _s('guideActsOff');
   String get guideLibraryEmpty => _s('guideLibraryEmpty');
-  String get guideSelectPrompt => _s('guideSelectPrompt');
+  String get noGuideSelected => _s('noGuideSelected');
   String get guideLineCount => _s('guideLineCount');
   String get guideMirrorMode => _s('guideMirrorMode');
   String get guideMirrorModeOn => _s('guideMirrorModeOn');
@@ -448,7 +452,6 @@ enum AppStrings {
   /// cannot tell that apart from a real cancel — the delegate is never
   /// called — so this is the only moment left to say it.
   String get folderPickDriveNotice => _s('folderPickDriveNotice');
-  String get projectChooserEmpty => _s('projectChooserEmpty');
   String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
   String get recentReconnect => _s('recentReconnect');
@@ -818,6 +821,7 @@ enum AppStrings {
 
   // --- The media pool ---
   String get mediaActions => _s('mediaActions');
+  String get mediaPoolEmpty => _s('mediaPoolEmpty');
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
 
@@ -974,7 +978,6 @@ enum AppStrings {
   String get autosaveSwitchHelp => _s('autosaveSwitchHelp');
   String get appContainerTitle => _s('appContainerTitle');
   String get appContainerHelp => _s('appContainerHelp');
-  String get containerEmpty => _s('containerEmpty');
   String get commonMinutesShort => _s('commonMinutesShort');
 
   // --- The export window ---
@@ -1363,6 +1366,7 @@ enum AppStrings {
   String get toolShapeFill => _s('toolShapeFill');
   String get toolCutHint => _s('toolCutHint');
   String get toolCutNothingHeld => _s('toolCutNothingHeld');
+  String get toolLibraryEmpty => _s('toolLibraryEmpty');
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
   String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
   String get toolCutFlipVertical => _s('toolCutFlipVertical');
@@ -1592,6 +1596,8 @@ enum AppStrings {
     'tlSharedDeselect': 'Deselect',
     'tlSharedColourEdit': 'Color Edit',
     'exportNoCuts': 'This project has no cuts to export yet.',
+    'exportQueueEmpty': 'No jobs queued',
+    'exportPresetsEmpty': 'No presets',
     'audioOffsetTitle': 'A/V offset',
     'audioOffsetHelp':
         'Fine-tunes when the picture is shown relative to the sound. The measurable part of the delay is corrected automatically; this removes what remains — wireless headphones commonly sit 150–300 ms behind and report nothing. Positive shows the picture LATER (sound arriving late is the common case).',
@@ -1715,8 +1721,8 @@ enum AppStrings {
     'guideShow': 'Show on canvas',
     'guideActsOn': 'Acting on strokes',
     'guideActsOff': 'Not acting',
-    'guideLibraryEmpty': 'No guides in this cut yet.',
-    'guideSelectPrompt': 'Pick a guide to edit its settings.',
+    'guideLibraryEmpty': 'No guides in this cut yet',
+    'noGuideSelected': 'No guide selected',
     'guideLineCount': 'Copies',
     'guideMirrorMode': 'Line symmetry',
     'guideMirrorModeOn': 'Copies alternate handedness (a true mirror).',
@@ -1784,7 +1790,6 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive cannot hand over a folder. Use iCloud Drive, Dropbox, '
         'or this device.',
-    'projectChooserEmpty': 'No Anicel projects in this folder.',
     'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
     'recentReconnect': 'Reconnect',
@@ -1971,6 +1976,7 @@ enum AppStrings {
     'cutMoveRight': 'Move cut right',
     'cutDelete': 'Delete cut',
     'mediaActions': 'Media actions',
+    'mediaPoolEmpty': 'No media',
     'mediaImportAudio': 'Import audio',
     'mediaRename': 'Rename media',
     'mediaPlace': 'Place…',
@@ -1996,9 +2002,7 @@ enum AppStrings {
     'mediaUsesHeading': 'Where it is used',
     'mediaOpenInViewer': 'Open in Viewer',
     'mediaOpenInSubViewer': 'Open in Sub Viewer',
-    'mediaViewerEmpty':
-        'Nothing to view yet.\nDouble-click a file in the media pool, '
-        'or open one with the folder button above.',
+    'mediaViewerEmpty': 'Nothing to view yet',
     'mediaViewerOpenFile': 'Open File…',
     'mediaViewerLoadFailed': 'Could not read this file.',
     'mediaViewerCutTooLarge':
@@ -2084,7 +2088,6 @@ enum AppStrings {
     'appContainerTitle': 'App container',
     'appContainerHelp':
         'What the app keeps outside your project files: settings and brush tips, media and audio an import brought in that no save has absorbed yet, and a diagnostics log.',
-    'containerEmpty': 'Empty',
     'commonMinutesShort': ' min',
     'exExport': 'Export',
     'exAddToQueue': 'Add to queue',
@@ -2331,8 +2334,8 @@ enum AppStrings {
     'toolShapeFill': 'Shape Fill',
     'toolCutHint':
         'Cut copies the pixels under the drag — the original stays.\nPick Stamp to place the piece you are holding.',
-    'toolCutNothingHeld':
-        'Nothing held yet.\nCut a piece with the rectangle or lasso tile first.',
+    'toolCutNothingHeld': 'Nothing held yet',
+    'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
     'toolCutFlipHorizontal': 'Flip horizontal',
     'toolCutFlipVertical': 'Flip vertical',
@@ -2632,6 +2635,8 @@ enum AppStrings {
     'tlSharedDeselect': '選択解除',
     'tlSharedColourEdit': '色編集',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
+    'exportQueueEmpty': 'キューにジョブがありません',
+    'exportPresetsEmpty': 'プリセットがありません',
     'audioOffsetTitle': 'A/Vオフセット',
     'audioOffsetHelp':
         '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、これは残りを取り除くための設定です — ワイヤレスイヤホンは150〜300ms遅れているのに何も報告しないのが普通です。正の値で絵が遅く表示されます（音が遅れて届くのが一般的なケース）。',
@@ -2749,8 +2754,8 @@ enum AppStrings {
     'guideShow': 'キャンバスに表示',
     'guideActsOn': '線に効いている',
     'guideActsOff': '効いていない',
-    'guideLibraryEmpty': 'このカットにはまだガイドがありません。',
-    'guideSelectPrompt': '設定するガイドを選んでください。',
+    'guideLibraryEmpty': 'このカットにはまだガイドがありません',
+    'noGuideSelected': 'ガイド未選択',
     'guideLineCount': '線の数',
     'guideMirrorMode': '線対称',
     'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
@@ -2869,7 +2874,6 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google ドライブはフォルダーを渡せません。iCloud Drive・Dropbox・'
         'この端末をお使いください。',
-    'projectChooserEmpty': 'このフォルダーにAnicelプロジェクトがありません。',
     'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
     'recentReconnect': '再接続',
@@ -3143,6 +3147,7 @@ enum AppStrings {
     'cutMoveRight': 'カットを右へ',
     'cutDelete': 'カットを削除',
     'mediaActions': 'メディア操作',
+    'mediaPoolEmpty': 'メディアがありません',
     'mediaImportAudio': '音声を読み込み',
     'mediaRename': 'メディア名を変更',
     'mediaPlace': '配置…',
@@ -3166,9 +3171,7 @@ enum AppStrings {
     'mediaUsesHeading': '使用箇所',
     'mediaOpenInViewer': 'ビューアで開く',
     'mediaOpenInSubViewer': 'サブビューアで開く',
-    'mediaViewerEmpty':
-        '表示するものがありません。\nメディアプールのファイルをダブルクリックするか、'
-        '上のボタンからファイルを開いてください。',
+    'mediaViewerEmpty': '表示するものがありません',
     'mediaViewerOpenFile': 'ファイルを開く…',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
     'mediaViewerCutTooLarge': 'メモリ許容量に収まらないため、原寸で切り取れません。',
@@ -3249,7 +3252,6 @@ enum AppStrings {
     'appContainerTitle': 'アプリコンテナ',
     'appContainerHelp':
         'プロジェクトファイルの外にアプリが持つもの — 設定とブラシ先端、読み込みが取り込んだまままだどの保存にも吸収されていないメディアと音声、そして診断ログです。',
-    'containerEmpty': '空',
     'commonMinutesShort': ' 分',
     'exExport': '書き出し',
     'exAddToQueue': 'キューに追加',
@@ -3517,7 +3519,8 @@ enum AppStrings {
     // TVPaint's own term for this verb in Japanese studios.
     'toolShapeFill': '図形の塗り',
     'toolCutHint': 'カットはドラッグした範囲のピクセルを複製します — 元は残ります。\n持っている断片を置くにはスタンプを選びます。',
-    'toolCutNothingHeld': 'まだ何も持っていません。\nまず矩形か投げ縄のタイルで断片をカットします。',
+    'toolCutNothingHeld': 'まだ何も持っていません',
+    'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
     'toolCutFlipHorizontal': '左右反転',
     'toolCutFlipVertical': '上下反転',
@@ -3918,6 +3921,8 @@ enum AppStrings {
     'tlSharedDeselect': '선택 해제',
     'tlSharedColourEdit': '색 편집',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
+    'exportQueueEmpty': '큐에 작업이 없습니다',
+    'exportPresetsEmpty': '프리셋이 없습니다',
     'audioOffsetTitle': 'A/V 오프셋',
     'audioOffsetHelp':
         '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 지연은 자동 보정되며, 이 설정은 그 잔차를 제거합니다 — 무선 이어폰은 150~300ms 늦으면서 아무것도 보고하지 않는 게 보통입니다. 양수면 그림이 더 늦게 표시됩니다(소리가 늦게 도착하는 경우가 일반적).',
@@ -4036,8 +4041,8 @@ enum AppStrings {
     'guideShow': '캔버스에 표시',
     'guideActsOn': '획에 작용 중',
     'guideActsOff': '작용 안 함',
-    'guideLibraryEmpty': '이 컷에는 아직 가이드가 없습니다.',
-    'guideSelectPrompt': '설정할 가이드를 고르세요.',
+    'guideLibraryEmpty': '이 컷에는 아직 가이드가 없습니다',
+    'noGuideSelected': '선택된 가이드 없음',
     'guideLineCount': '선 수',
     'guideMirrorModeOn': '사본이 좌우로 뒤집힙니다(진짜 거울).',
     'guideMirrorMode': '선대칭',
@@ -4156,7 +4161,6 @@ enum AppStrings {
     'folderPickDriveNotice':
         '구글 드라이브는 폴더를 넘겨주지 못합니다. iCloud Drive·Dropbox·'
         '이 기기를 사용하세요.',
-    'projectChooserEmpty': '이 폴더에 Anicel 프로젝트가 없습니다.',
     'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
     'recentReconnect': '다시 연결',
@@ -4430,6 +4434,7 @@ enum AppStrings {
     'cutMoveRight': '컷 오른쪽으로',
     'cutDelete': '컷 삭제',
     'mediaActions': '미디어 작업',
+    'mediaPoolEmpty': '미디어가 없습니다',
     'mediaImportAudio': '오디오 불러오기',
     'mediaRename': '미디어 이름 변경',
     'mediaPlace': '배치…',
@@ -4452,9 +4457,7 @@ enum AppStrings {
     'mediaUsesHeading': '쓰는 곳',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
-    'mediaViewerEmpty':
-        '표시할 것이 없습니다.\n미디어 풀의 파일을 더블클릭하거나 '
-        '위 버튼으로 파일을 여세요.',
+    'mediaViewerEmpty': '표시할 것이 없습니다',
     'mediaViewerOpenFile': '파일 열기…',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
     'mediaViewerCutTooLarge': '메모리 허용치 안에 들어가지 않아 원본 크기로 잘라낼 수 없습니다.',
@@ -4534,7 +4537,6 @@ enum AppStrings {
     'appContainerTitle': '앱 컨테이너',
     'appContainerHelp':
         '프로젝트 파일 바깥에 앱이 두는 것 — 설정과 브러시 팁, 가져오기가 들여왔지만 아직 어떤 저장에도 흡수되지 않은 미디어와 오디오, 그리고 진단 로그입니다.',
-    'containerEmpty': '비어 있음',
     'commonMinutesShort': '분',
     'exExport': '내보내기',
     'exAddToQueue': '큐에 추가',
@@ -4798,7 +4800,8 @@ enum AppStrings {
     'toolShapeFill': '도형 채우기',
     'toolCutHint':
         '잘라내기는 끈 자리의 픽셀을 복사합니다 — 원본은 남습니다.\n들고 있는 조각을 놓으려면 스탬프를 고르세요.',
-    'toolCutNothingHeld': '아직 든 것이 없습니다.\n먼저 사각형이나 올가미 타일로 조각을 잘라내세요.',
+    'toolCutNothingHeld': '아직 든 것이 없습니다',
+    'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
     'toolCutFlipHorizontal': '좌우 반전',
     'toolCutFlipVertical': '상하 반전',
@@ -5200,6 +5203,8 @@ enum AppStrings {
     'tlSharedDeselect': 'Désélectionner',
     'tlSharedColourEdit': 'Édition couleur',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
+    'exportQueueEmpty': 'Aucune tâche dans la file',
+    'exportPresetsEmpty': 'Aucun préréglage',
     'audioOffsetTitle': 'Décalage A/V',
     'audioOffsetHelp':
         'Ajuste finement le moment où l\'image s\'affiche par rapport au son. La part mesurable du retard est corrigée automatiquement ; ce réglage retire le reste — les écouteurs sans fil ont souvent 150 à 300 ms de retard sans rien signaler. Une valeur positive affiche l\'image PLUS TARD (le son en retard est le cas courant).',
@@ -5324,8 +5329,8 @@ enum AppStrings {
     'guideShow': 'Afficher sur le canevas',
     'guideActsOn': 'Agit sur les traits',
     'guideActsOff': 'N\'agit pas',
-    'guideLibraryEmpty': 'Aucun repère dans ce plan.',
-    'guideSelectPrompt': 'Choisissez un repère pour régler ses options.',
+    'guideLibraryEmpty': 'Aucun repère dans ce plan',
+    'noGuideSelected': 'Aucun repère sélectionné',
     'guideLineCount': 'Copies',
     'guideMirrorMode': 'Symétrie axiale',
     'guideMirrorModeOn': 'Les copies sont inversées (un vrai miroir).',
@@ -5448,7 +5453,6 @@ enum AppStrings {
     'folderPickDriveNotice':
         'Google Drive ne peut pas fournir de dossier. Utilisez iCloud Drive, '
         'Dropbox ou cet appareil.',
-    'projectChooserEmpty': 'Aucun projet Anicel dans ce dossier.',
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
     'recentReconnect': 'Reconnecter',
@@ -5733,6 +5737,7 @@ enum AppStrings {
     'cutMoveRight': 'Déplacer le plan à droite',
     'cutDelete': 'Supprimer le plan',
     'mediaActions': 'Actions média',
+    'mediaPoolEmpty': 'Aucun média',
     'mediaImportAudio': "Importer de l'audio",
     'mediaRename': 'Renommer le média',
     'mediaPlace': 'Placer…',
@@ -5752,9 +5757,7 @@ enum AppStrings {
         'fichier de projet, ensuite le dossier peut être supprimé.',
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
     'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
-    'mediaViewerEmpty':
-        'Rien à afficher.\nDouble-cliquez un fichier du pool de '
-        'médias, ou ouvrez-en un avec le bouton ci-dessus.',
+    'mediaViewerEmpty': 'Rien à afficher',
     'mediaViewerOpenFile': 'Ouvrir un fichier…',
     'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
     'mediaViewerCutTooLarge':
@@ -5849,7 +5852,6 @@ enum AppStrings {
     'appContainerTitle': 'Conteneur de l\'application',
     'appContainerHelp':
         'Ce que l\'application garde en dehors de vos fichiers de projet : réglages et pointes de brosse, les médias et l\'audio qu\'un import a apportés et qu\'aucun enregistrement n\'a encore absorbés, et un journal de diagnostic.',
-    'containerEmpty': 'Vide',
     'commonMinutesShort': ' min',
     'exExport': 'Exporter',
     'exAddToQueue': 'Ajouter à la file',
@@ -6156,8 +6158,8 @@ enum AppStrings {
     'toolShapeFill': 'Remplissage de forme',
     'toolCutHint':
         'La découpe copie les pixels sous le glissement — l\'original reste.\nChoisissez Tampon pour poser le morceau que vous tenez.',
-    'toolCutNothingHeld':
-        'Rien en main pour l\'instant.\nDécoupez d\'abord un morceau avec la tuile rectangle ou lasso.',
+    'toolCutNothingHeld': 'Rien en main pour l\'instant',
+    'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
     'toolCutFlipHorizontal': 'Miroir horizontal',
     'toolCutFlipVertical': 'Miroir vertical',
@@ -6546,6 +6548,8 @@ enum AppStrings {
     'tlSharedDeselect': '取消选择',
     'tlSharedColourEdit': '颜色编辑',
     'exportNoCuts': '此项目暂无可导出的镜头。',
+    'exportQueueEmpty': '队列中没有任务',
+    'exportPresetsEmpty': '没有预设',
     'audioOffsetTitle': 'A/V 偏移',
     'audioOffsetHelp':
         '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置用于消除剩余部分 — 无线耳机通常落后 150~300 毫秒且不作任何报告。正值让画面更晚显示（声音迟到是常见情况）。',
@@ -6657,8 +6661,8 @@ enum AppStrings {
     'guideShow': '在画布上显示',
     'guideActsOn': '正在作用于笔画',
     'guideActsOff': '未作用',
-    'guideLibraryEmpty': '此镜头还没有参考线。',
-    'guideSelectPrompt': '选择一条参考线以调整其设置。',
+    'guideLibraryEmpty': '此镜头还没有参考线',
+    'noGuideSelected': '未选择参考线',
     'guideLineCount': '份数',
     'guideMirrorMode': '轴对称',
     'guideMirrorModeOn': '副本左右翻转（真正的镜像）。',
@@ -6769,7 +6773,6 @@ enum AppStrings {
     'folderPickUnavailable': '无法打开文件夹选择器。',
     'folderPickDriveNotice':
         'Google 云端硬盘无法提供文件夹。请使用 iCloud Drive、Dropbox 或本设备。',
-    'projectChooserEmpty': '此文件夹中没有 Anicel 项目。',
     'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
     'recentReconnect': '重新连接',
@@ -7027,6 +7030,7 @@ enum AppStrings {
     'cutMoveRight': '镜头右移',
     'cutDelete': '删除镜头',
     'mediaActions': '媒体操作',
+    'mediaPoolEmpty': '没有媒体',
     'mediaImportAudio': '导入音频',
     'mediaRename': '重命名媒体',
     'mediaPlace': '放置…',
@@ -7047,7 +7051,7 @@ enum AppStrings {
     'mediaUsesHeading': '使用位置',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',
-    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体池中的文件，或用上方按钮打开文件。',
+    'mediaViewerEmpty': '暂无可查看的内容',
     'mediaViewerOpenFile': '打开文件…',
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCutTooLarge': '超出内存允许量，无法按原尺寸裁切。',
@@ -7126,7 +7130,6 @@ enum AppStrings {
     'appContainerTitle': '应用容器',
     'appContainerHelp':
         '应用保存在项目文件之外的内容：设置与笔尖、导入时带进来且尚未被任何一次保存吸收的媒体与音频，以及一份诊断日志。',
-    'containerEmpty': '空',
     'commonMinutesShort': ' 分钟',
     'exExport': '导出',
     'exAddToQueue': '加入队列',
@@ -7388,7 +7391,8 @@ enum AppStrings {
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
     'toolCutHint': '裁切会复制拖动范围内的像素 — 原图仍在。\n选择图章即可放下手中的碎片。',
-    'toolCutNothingHeld': '尚未持有任何内容。\n请先用矩形或套索图块裁切一块。',
+    'toolCutNothingHeld': '尚未持有任何内容',
+    'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',
     'toolCutFlipHorizontal': '水平翻转',
     'toolCutFlipVertical': '垂直翻转',

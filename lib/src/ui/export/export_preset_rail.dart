@@ -1,3 +1,4 @@
+import '../widgets/empty_state_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/envelope/cut_envelope_paper.dart';
@@ -133,12 +134,10 @@ class ExportPresetRail extends StatelessWidget {
               if (presets.isEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
-                  child: Text(
-                    'Saved setups appear here.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  child: EmptyStateText(
+                    AppText.strings.exportPresetsEmpty,
+                    key: const ValueKey<String>('export-presets-empty'),
+                    place: EmptyStatePlace.list,
                   ),
                 ),
             ],

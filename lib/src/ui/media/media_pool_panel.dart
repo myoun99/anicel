@@ -1,3 +1,4 @@
+import '../widgets/empty_state_text.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async' show unawaited;
 
@@ -509,16 +510,16 @@ class MediaPoolPanel extends StatelessWidget {
         _missingBanner(colorScheme),
         Expanded(
           child: assets.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text(
-                      'No media yet.\nImport a sound, or drag one from here '
-                      'onto an SE block to reuse it.',
-                      key: ValueKey<String>('media-browser-empty'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12),
-                    ),
+              // 유저 2026-09-15: 「공용 위젯 하나 + 짧은 한 줄」 — the usage
+              // sentence that followed went (「설명 문구 금지」), and the line
+              // moved from the middle to where the first row would be
+              // (「내용이 올 자리에」).
+              ? Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: EmptyStateText(
+                    AppText.strings.mediaPoolEmpty,
+                    key: const ValueKey<String>('media-browser-empty'),
+                    place: EmptyStatePlace.list,
                   ),
                 )
               : ListView.builder(

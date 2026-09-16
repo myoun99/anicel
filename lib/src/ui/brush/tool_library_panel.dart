@@ -8,7 +8,8 @@ import 'brush_tool_state.dart';
 import 'tool_press.dart';
 import 'transform_tool_options.dart';
 import '../widgets/content_scrollbar.dart';
-import '../widgets/settings_prompt_text.dart';
+import '../widgets/empty_state_text.dart';
+import '../text/app_strings.dart';
 
 /// The sub-tool tiles the tool library lists for a rail [group], in order,
 /// each with its glyph. Empty for the tools that have none.
@@ -183,25 +184,14 @@ class ToolLibraryPanel extends StatelessWidget {
           ),
         );
       case CanvasTool.eyedropper:
-        return const _ToolNote(
-          keyValue: 'tool-library-eyedropper',
-          note:
-              'Eyedropper picks the visible color under the pointer.\n'
-              'Hold Alt to pick temporarily while painting.',
-        );
+        return const _ToolNote(keyValue: 'tool-library-eyedropper');
       case CanvasTool.guide:
         // The cut's own guides, grouped by kind — the same shape the brush
         // library has (group, then entries), with one difference worth
         // knowing: the brush library is app-wide and permanent, while this
         // list belongs to the CUT and changes when you move to another one.
         return guideLibrary ??
-            const _ToolNote(
-              keyValue: 'tool-library-guide',
-              note:
-                  'Guides steer the other tools: symmetry copies a stroke, '
-                  'perspective holds it to a vanishing point.\n'
-                  'They belong to the cut, and 겸용 cuts share one set.',
-            );
+            const _ToolNote(keyValue: 'tool-library-guide');
     }
   }
 }
@@ -264,18 +254,26 @@ class _SubToolTile extends StatelessWidget {
   }
 }
 
+/// A tool with no library of its own — the eyedropper, and the guide tool
+/// when its host hands it none — says so in the one short line.
+///
+/// ↩️It carried usage sentences (how Alt picks while painting, what a guide
+/// steers). 유저 2026-09-15 (empty-state-law-Q1) chose 「공용 위젯 하나 +
+/// 짧은 한 줄」, and the sentences went with 「설명 문구 금지」.
 class _ToolNote extends StatelessWidget {
-  const _ToolNote({required this.keyValue, required this.note});
+  const _ToolNote({required this.keyValue});
 
   final String keyValue;
-  final String note;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       key: ValueKey<String>(keyValue),
       padding: const EdgeInsets.all(12),
-      child: SettingsPromptText(note),
+      child: EmptyStateText(
+        AppText.strings.toolLibraryEmpty,
+        place: EmptyStatePlace.list,
+      ),
     );
   }
 }

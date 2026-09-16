@@ -41,6 +41,7 @@ import 'property_lane_model.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
 import 'timeline_layer_frame_body_layout.dart';
+import '../widgets/empty_state_text.dart';
 import '../input/pen_friendly_scroll_controller.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
@@ -1335,7 +1336,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         ),
                                                     layerControlsRail:
                                                         _railRows.buildLayerControlsRail(
-                                                          colorScheme,
                                                           drawnRows,
                                                           availableRailExtent,
                                                           window,

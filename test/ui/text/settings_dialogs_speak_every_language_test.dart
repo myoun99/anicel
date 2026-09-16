@@ -183,7 +183,12 @@ void main() {
   /// lane. `tlTransformGroup` and `tlNameTagGroup` had been tabled in five
   /// languages and read by nobody, which is why a round that tables the
   /// lane vocabulary moves this number by three.
-  const untranslatedElsewhere = 92;
+  ///
+  /// 88 (empty-state-law, 2026-09-16 — 유저 empty-state-law-Q1: 「공용 위젯
+  /// 하나 + 짧은 한 줄」): the render queue, the presets and the media pool
+  /// stopped hardcoding the line they show when they are empty, and the
+  /// prompt widget they each wrote one of went with them.
+  const untranslatedElsewhere = 88;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

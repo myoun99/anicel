@@ -1,3 +1,4 @@
+import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -424,13 +425,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
               0,
               0,
             ),
-            content: (context, viewport) => Container(
+            content: (context, viewport) => ColoredBox(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
               color: colorScheme.surfaceContainerHighest,
-              alignment: Alignment.center,
-              child: Text(
+              child: EmptyStateText(
                 strings.noCutSelected,
-                style: TextStyle(color: colorScheme.onSurfaceVariant),
+                place: EmptyStatePlace.stage,
               ),
             ),
           );

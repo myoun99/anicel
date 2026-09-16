@@ -90,7 +90,7 @@ void main() {
         find.byKey(const ValueKey<String>('guide-settings-none')),
         findsOneWidget,
       );
-      expect(find.text(strings.guideSelectPrompt), findsOneWidget);
+      expect(find.text(strings.noGuideSelected), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('guide-line-count')),
         findsNothing,
