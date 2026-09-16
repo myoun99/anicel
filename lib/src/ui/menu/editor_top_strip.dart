@@ -43,6 +43,7 @@ import '../session/project_file_door.dart' show SaveAsked, StagedArchive;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
+import '../text/cloud_wait_line.dart';
 import '../theme/app_theme.dart';
 
 /// The editor's top strip: two icon buttons and the work's name, the way
@@ -1143,26 +1144,20 @@ class _CloudWait {
   final Completer<void> _started = Completer<void>();
   bool _cancelled = false;
 
-  /// After this, the line stops counting up quietly and says that
-  /// nothing has come — which is when a person starts deciding.
-  static const Duration _sayNothingArrivedAfter = Duration(seconds: 10);
 
   /// Completes the first time the work says it is WAITING — which is what
   /// a door raises its window on. A pick that reads straight away never
   /// completes it, and so never draws anything.
   Future<void> get started => _started.future;
 
-  void report(Duration waited) {
+  void report(Duration waited, FileArrival arrival) {
     if (!_started.isCompleted) {
       _started.complete();
     }
-    final seconds = waited.inSeconds;
-    final strings = AppText.strings;
-    status.value =
-        (waited >= _sayNothingArrivedAfter
-                ? strings.openWaitingStalledTemplate
-                : strings.openWaitingCloudTemplate)
-            .replaceAll('{sec}', '$seconds');
+    // The sentence is [cloudWaitLine]'s, here and in the import window
+    // (F-141): this file used to spell the threshold and the two templates
+    // out for itself, and so did that one.
+    status.value = cloudWaitLine(waited, arrival);
   }
 
   /// The bytes are here; whatever comes next is the app's own work.

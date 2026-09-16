@@ -24,6 +24,7 @@ import 'import_preview.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
+import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
@@ -421,18 +422,13 @@ class _ImportDialogState extends State<ImportDialog> {
       final source = await FolderPicker.materializeOpenedFile(
         path,
         within: null,
-        onWaiting: (waited) {
+        onWaiting: (waited, arrival) {
           if (!mounted) {
             return;
           }
-          final seconds = waited.inSeconds;
-          setState(() {
-            _status =
-                (waited >= const Duration(seconds: 10)
-                        ? AppText.strings.openWaitingStalledTemplate
-                        : AppText.strings.openWaitingCloudTemplate)
-                    .replaceAll('{sec}', '$seconds');
-          });
+          // The sentence is [cloudWaitLine]'s, here and in the top strip's
+          // open window (F-141) — one law, one place.
+          setState(() => _status = cloudWaitLine(waited, arrival));
         },
         isCancelled: () => _stopWaiting,
       );

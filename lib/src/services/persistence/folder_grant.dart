@@ -830,12 +830,14 @@ abstract final class FolderPicker {
   /// nobody can stop and no clock ends is a hang with a nice name. A door
   /// with a window passes null; a door without one keeps the default.
   ///
-  /// [step] is the poll spacing, named so tests can compress it.
+  /// [step] is the PROBE spacing, named so tests can compress it — how
+  /// often the file is asked, which backs off. What [onWaiting] reports is
+  /// the elapsed time and what has ARRIVED, on its own steady beat.
   static Future<({String path, bool staged})> materializeOpenedFile(
     String path, {
     Duration? within = const Duration(minutes: 10),
     Duration step = const Duration(milliseconds: 250),
-    void Function(Duration waited)? onWaiting,
+    void Function(Duration waited, FileArrival arrival)? onWaiting,
     bool Function()? isCancelled,
   }) async {
     if (within == null && isCancelled == null) {
@@ -861,38 +863,62 @@ abstract final class FolderPicker {
     // app's File Provider download (the subscriber API is macOS-only), so the
     // line says what is being waited for and for how long — never a number
     // it cannot know.
-    var waited = Duration.zero;
+    // 🚨★★★TWO QUESTIONS, TWO VALUES (F-141, 유저 2026-09-16: 「클라우드에서
+    // 내려받는중 표시가 1,2,3초가 아니라 1,3,5초마다? 보임」).
+    //
+    // 「얼마나 자주 물어볼까」와 「얼마나 지났나」는 다른 질문인데, 누적치
+    // 하나가 둘 다에 답하고 있었다: the probe spacing doubles so a slow fetch
+    // is not asked a hundred times a minute, and the window was shown that
+    // spacing's running total — so the line it drew skipped seconds (0 · 0 ·
+    // 1 · 3 · 5 · 7) as the spacing grew. The clock is the clock now, and
+    // the backoff is only the backoff.
+    final clock = Stopwatch()..start();
     var pause = step;
+    // What the last probe SAW, so the wait's sentence can be true instead of
+    // guessed from the clock ([cloudWaitLine]).
+    var seen = FileArrival.nothing;
     // One tick of the wait; false once [within] has passed. A wait that has
     // something to finish passes it as [sooner] and ends the tick early when
     // it does — and a tick ended that way reports nothing, because an
     // instant answer is not a wait. The timer goes with it, so nothing is
     // left ticking behind an answered question.
+    //
+    // ⚠️It sleeps in [_reportEvery] slices and reports each one, so the beat
+    // the window draws stays steady while [pause] backs off. A [sooner] that
+    // wins is the caller's [settled] to notice — the one caller raises its
+    // flag before that future completes, so the slice loop cannot spin on an
+    // already-finished future.
     Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
-      if (isCancelled?.call() ?? false) {
-        throw const MaterializeCancelled();
+      var slept = Duration.zero;
+      while (true) {
+        if (isCancelled?.call() ?? false) {
+          throw const MaterializeCancelled();
+        }
+        if (within != null && clock.elapsed >= within) {
+          return false;
+        }
+        final left = pause - slept;
+        final slice = left < _reportEvery ? left : _reportEvery;
+        final elapsed = Completer<void>();
+        final timer = Timer(slice, elapsed.complete);
+        await (sooner == null
+            ? elapsed.future
+            : Future.any<void>([sooner, elapsed.future]));
+        timer.cancel();
+        if (settled?.call() ?? false) {
+          return true;
+        }
+        slept += slice;
+        onWaiting?.call(clock.elapsed, seen);
+        if (slept >= pause) {
+          // Doubling, capped: the common case lands within a second or two.
+          pause = pause * 2;
+          if (pause > _materializeMaxStep) {
+            pause = _materializeMaxStep;
+          }
+          return true;
+        }
       }
-      if (within != null && waited >= within) {
-        return false;
-      }
-      final elapsed = Completer<void>();
-      final timer = Timer(pause, elapsed.complete);
-      await (sooner == null
-          ? elapsed.future
-          : Future.any<void>([sooner, elapsed.future]));
-      timer.cancel();
-      if (settled?.call() ?? false) {
-        return true;
-      }
-      waited += pause;
-      onWaiting?.call(waited);
-      // Doubling, capped: the common case lands within a second or two, and
-      // a slow fetch must not be asked a hundred times a minute.
-      pause = pause * 2;
-      if (pause > _materializeMaxStep) {
-        pause = _materializeMaxStep;
-      }
-      return true;
     }
 
     // 🎯THE PROVIDER IS ASKED BEFORE THE FILE IS BELIEVED. A materialised
@@ -915,15 +941,17 @@ abstract final class FolderPicker {
         }
       }
     }
-    if (await _plainlyReadable(path)) {
+    seen = await arrivalOf(path);
+    if (seen == FileArrival.whole) {
       return (path: path, staged: false);
     }
     if (await File(path).exists()) {
-      // Ask the platform to fetch it, then wait for the PICK to read — no
-      // copy anywhere in this wait.
+      // Ask the platform to fetch it, then wait for the PICK to be ALL here
+      // — no copy anywhere in this wait.
       await requestFileDownload(path);
       while (await tick()) {
-        if (await _plainlyReadable(path)) {
+        seen = await arrivalOf(path);
+        if (seen == FileArrival.whole) {
           return (path: path, staged: false);
         }
       }
@@ -936,13 +964,18 @@ abstract final class FolderPicker {
         '${Directory.systemTemp.path}${Platform.pathSeparator}'
         'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
     if (await readFileCoordinated(sourcePath: path, destinationPath: staged) &&
-        await _plainlyReadable(staged)) {
+        await arrivalOf(staged) == FileArrival.whole) {
       return (path: staged, staged: true);
     }
     throw FileSystemException('파일을 읽지 못했습니다', path);
   }
 
   static const Duration _materializeMaxStep = Duration(seconds: 2);
+
+  /// How often a waiting window is told the time. ⛔It does NOT back off
+  /// with [_materializeMaxStep]: a clock that skipped seconds is exactly
+  /// what F-141 reported.
+  static const Duration _reportEvery = Duration(seconds: 1);
 
   /// Test seam for [requestFileDownload]. ⚠️Reset in
   /// `test/flutter_test_config.dart`.
@@ -966,21 +999,74 @@ abstract final class FolderPicker {
     await _invoke('requestFileDownload', {'sourcePath': path}, GrantKind.file);
   }
 
-  /// Whether a plain read can actually produce bytes — a cloud
-  /// placeholder often EXISTS and then refuses the first read, so
-  /// existence alone answers the wrong question.
-  static Future<bool> _plainlyReadable(String path) async {
+  /// How much of [path] has actually ARRIVED.
+  ///
+  /// 🚨★★★「바이트가 하나 있다」와 「이 파일이 다 왔다」는 다른 질문이다
+  /// (F-142, 유저 2026-09-16: 「드라이브프로그램에서 아직 다운로드가
+  /// 안됬는데 … 그냥 열어버린 느낌이 있음. 제대로 확인」).
+  ///
+  /// This asked the FIRST byte and called that readable. A cloud
+  /// placeholder fills from the FRONT, so the first byte lands early and
+  /// the open believed a file whose tail was still in the cloud — and on
+  /// Windows there is no coordinator to appeal to ([hasFileCoordinator] is
+  /// Apple's only), so this probe is the WHOLE answer there.
+  ///
+  /// Both ends are asked now: the front says something is arriving, the
+  /// LAST byte says all of it has. ⚠️Existence was already known to answer
+  /// the wrong question; so did one byte.
+  static Future<FileArrival> arrivalOf(String path) async {
+    final override = debugArrival;
+    if (override != null) {
+      return override(path);
+    }
+    var front = false;
+    RandomAccessFile? file;
     try {
-      final file = await File(path).open();
-      try {
-        return (await file.read(1)).isNotEmpty;
-      } finally {
-        await file.close();
-      }
+      final open = file = await File(path).open();
+      return await arrivalFrom(
+        length: open.length,
+        byteAt: (offset) async {
+          await open.setPosition(offset);
+          final byte = await open.read(1);
+          if (offset == 0 && byte.isNotEmpty) {
+            front = true;
+          }
+          return byte.isNotEmpty;
+        },
+      );
     } on FileSystemException {
-      return false;
+      // The refusal came from the tail, so something IS here.
+      return front ? FileArrival.partway : FileArrival.nothing;
+    } finally {
+      await file?.close();
     }
   }
+
+  /// The two-ended question itself, over whatever can answer it.
+  ///
+  /// 🚨Split out so the LAW can be pinned. A placeholder that holds its
+  /// front and refuses its tail is the platform's behaviour and no local
+  /// filesystem can be made to imitate it — a test that goes through
+  /// [debugArrival] proves only that the seam works, and a probe that
+  /// quietly stopped asking the last byte would sail through it.
+  static Future<FileArrival> arrivalFrom({
+    required Future<int> Function() length,
+    required Future<bool> Function(int offset) byteAt,
+  }) async {
+    if (!await byteAt(0)) {
+      return FileArrival.nothing;
+    }
+    // The LAST byte, because a placeholder fills from the FRONT.
+    return await byteAt(await length() - 1)
+        ? FileArrival.whole
+        : FileArrival.partway;
+  }
+
+  /// Test seam for [arrivalOf]. A placeholder's refusal is the platform's
+  /// answer and no local filesystem can be made to give it — the same
+  /// reason [debugCoordinatedInPlaceReader] exists.
+  /// ⚠️Reset in `test/flutter_test_config.dart`.
+  static Future<FileArrival> Function(String path)? debugArrival;
 
   static Future<List<FolderGrant>> _invoke(
     String method,
@@ -1070,4 +1156,23 @@ abstract final class FolderPicker {
   }
 
   static String _normalize(String path) => path.replaceAll('\\', '/');
+}
+
+/// How much of a picked file is HERE — the three answers a cloud pick can
+/// give, and the reason 「읽을 수 있다」 was never the right question
+/// (F-142).
+///
+/// ⚠️[partway] is not a failure: it is a file on its way, and the wait's
+/// sentence keeps counting for it rather than claiming nothing arrived
+/// ([cloudWaitLine], F-141).
+enum FileArrival {
+  /// Not a byte of it. The placeholder exists and refuses the read it has
+  /// just started.
+  nothing,
+
+  /// The front reads and the end does not — it is coming down.
+  partway,
+
+  /// Both ends read, so what lies between them is here too.
+  whole,
 }

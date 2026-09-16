@@ -33,7 +33,8 @@ import '../../services/import/media_import_planner.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/import/tvp_import_planner.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
-import '../../services/persistence/folder_grant.dart' show FolderPicker;
+import '../../services/persistence/folder_grant.dart'
+    show FileArrival, FolderPicker;
 import 'active_cut_controllers.dart';
 import 'frame_clipboard.dart';
 import 'import_landing.dart';
@@ -315,7 +316,7 @@ class TvppImportDoor {
   Future<List<ImportWarning>?> openAsProject({
     required String tvppPath,
     void Function(double fraction)? onProgress,
-    void Function(Duration waited)? onWaiting,
+    void Function(Duration waited, FileArrival arrival)? onWaiting,
     bool Function()? isCancelled,
   }) async {
     // A read failure THROWS (FileSystemException, out of the

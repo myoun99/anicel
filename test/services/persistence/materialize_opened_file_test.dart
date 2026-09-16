@@ -83,7 +83,7 @@ void main() {
       path,
       within: null,
       step: const Duration(milliseconds: 5),
-      onWaiting: seen.add,
+      onWaiting: (waited, _) => seen.add(waited),
       isCancelled: () => false,
     );
     await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -139,7 +139,7 @@ void main() {
       path,
       within: null,
       step: const Duration(seconds: 3),
-      onWaiting: seen.add,
+      onWaiting: (waited, _) => seen.add(waited),
       isCancelled: () => false,
     );
 
@@ -277,7 +277,7 @@ void main() {
         path,
         within: const Duration(milliseconds: 20),
         step: const Duration(milliseconds: 5),
-        onWaiting: seen.add,
+        onWaiting: (waited, _) => seen.add(waited),
       ),
       throwsA(isA<FileSystemException>()),
     );

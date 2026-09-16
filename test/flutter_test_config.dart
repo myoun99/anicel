@@ -87,6 +87,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
       };
   FolderPicker.debugCoordinatedReader = null;
   FolderPicker.debugDownloadRequester = null;
+  FolderPicker.debugArrival = null;
   FolderPicker.debugCoordinatedInPlaceReader = (_) async => true;
   FolderPicker.debugCoordinatedToucher = (_) async => true;
   // Back to the PRODUCTION default, not to false — a reset that quietly
