@@ -465,6 +465,25 @@ final class TimelineRulerScale {
     return '${frameIndex % safeFps + 1}';
   }
 
+  /// The last frame before [endIndexExclusive] carrying the WIDEST number
+  /// this strip writes: in [showSeconds] the frame whose label is the fps
+  /// itself — the widest of the 1..fps run [frameNumberLabel] repeats — and
+  /// otherwise the window's last frame, whose absolute number is longest.
+  ///
+  /// 🚨★★★ONE PLACE, BESIDE [frameNumberLabel]. A surface that measured
+  /// this for itself would divide by the rate again, which is exactly the
+  /// copy `ruler_seconds_label_test` refuses — the timeline and the x-sheet
+  /// each carried that expression once before, and fixing one left the
+  /// other counting from 1. What the scale writes and how wide it can be
+  /// are the same object's question.
+  int widestNumberFrameBefore(int endIndexExclusive) {
+    if (!showSeconds) {
+      return endIndexExclusive - 1;
+    }
+    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    return (endIndexExclusive ~/ safeFps) * safeFps - 1;
+  }
+
   // Value-compared, never `identical`: Theme.of(context).colorScheme
   // hands back a fresh instance every build (AnimatedTheme), so an
   // identity check re-recorded this whole strip on every rebuild. The
