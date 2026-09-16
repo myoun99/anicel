@@ -29,6 +29,7 @@ import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
+part 'surface_paint/coordinate_picture.dart';
 part 'surface_paint/level_blocks.dart';
 part 'surface_paint/overlay_pass.dart';
 part 'surface_paint/surface_paint_pass.dart';

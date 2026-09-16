@@ -1,9 +1,6 @@
 import 'dart:ui' as ui;
 
 import '../../core/collection_equality.dart';
-import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'deferred_image_disposal.dart';
@@ -11,33 +8,37 @@ import 'level_image.dart';
 
 /// The active layer's pictures at the display's levels (render round 4c,
 /// 안 1 「선명」, 2026-09-16): the level-k tile at (cx, cy) stands for the
-/// 2^k × 2^k block of tiles at [cx·2^k, (cx+1)·2^k) × [cy·2^k, …), one
-/// picture a tile's own size, made by halving the four level-(k−1)
+/// 2^k × 2^k block of coordinates at [cx·2^k, (cx+1)·2^k) × [cy·2^k, …),
+/// one picture a tile's own size, made by halving the four level-(k−1)
 /// pictures under it into their quadrants ([halvingPicture]) — so a level
 /// buffer draws the active layer 1:1 from pictures that are exact box
-/// means of the artwork, the way it draws the other layers from their
-/// level images, instead of reducing tiles by nearest under the
+/// means of what level 0 draws, the way it draws the other layers from
+/// their level images, instead of reducing tiles by nearest under the
 /// recorder's scale.
+///
+/// 🚨★★★MADE FROM WHAT THE COORDINATES SHOW, AND KEYED BY IT (유저 절대규칙
+/// 2026-09-17, 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The leaf of the
+/// pyramid is the surface pass's one answer to 「what does this coordinate
+/// show right now」 ([LevelTileAsk.pictureAt]) — the live stroke's result
+/// tile, a held pre-stroke tile, a committed picture, a stand-in — and a
+/// level tile remembers what each coordinate under it was made from
+/// ([LevelTileAsk.keyAt]: the tile object for a committed truth, the
+/// picture object for anything standing at the coordinate instead). It is
+/// remade exactly when one of those would draw differently at level 0, and
+/// not otherwise: a truth key survives the eviction of its picture, so a
+/// zoomed-out screen keeps its level tiles while the pictures under them
+/// are let go ([TilePictureBudget]); a stroke frame remakes the blocks the
+/// stroke touched; pen-up hands the very images the user was looking at to
+/// the committed tiles, so the remade level tile is the same bytes.
 ///
 /// 🚨★★★MADE IN THE FRAME, FROM PICTURES ALREADY ON THE GPU. A level tile
 /// is `toImageSync` of a picture drawing four images — tens of
-/// microseconds — so a commit's dirty parents are remade on the next paint
-/// (the tiles under them are new objects, so the key misses) at the cost
-/// the plan measured, not a cel-wide rebuild. A block with a tile that has
-/// no picture yet (a decode still in flight, past the sync-upload ration)
-/// is not made: the caller draws that block's tiles as it always did and
+/// microseconds. A block with a coordinate that has bytes but no picture
+/// yet (a decode still in flight, past the sync-upload ration) is not
+/// made: the caller draws that block's coordinates as level 0 does and
 /// asks again next paint. The caller rations the making the way it rations
-/// sync uploads ([mayMake]); a block the ration stops mid-way keeps the
-/// level tiles it did make, so the next paint finishes it.
-///
-/// Keyed by the TILES under the block, by identity — structural sharing
-/// makes an unchanged tile the same object and a changed one a new one —
-/// so a level tile outlives the eviction of the pictures under it
-/// ([TilePictureBudget]): zoomed out, the level tiles are the pictures the
-/// screen needs and the tiles' own are not asked for. A level made over a
-/// stand-in ([BitmapTileImageCache.putProvisional]) is marked and remade
-/// once the tile's truth lands, or the stand-in would outlive its tile
-/// one level up.
+/// sync uploads ([LevelTileAsk.mayMake]); a block the ration stops mid-way
+/// keeps the level tiles it did make, so the next paint finishes it.
 ///
 /// 🚨★★★BOUNDED BY THE SCREEN, NOT BY A BUDGET. A level tile lives while
 /// a recent paint of its scope asked for it ([recentPaints]): the shown
@@ -91,64 +92,75 @@ class TilePyramid {
     });
   }
 
-  /// The level-[level] picture of the asked surface's block at [coord]:
-  /// the kept one while the tiles under it stand, else made now when every
-  /// tile under it has a picture and the ask allows each making — or null,
-  /// and the caller draws the block's tiles.
+  /// The level-[level] picture of the block at [coord]: the kept one while
+  /// every coordinate under it still shows what the kept one was made
+  /// from, else made now when every coordinate under it has its picture
+  /// and the ask allows each making — or null, and the caller draws the
+  /// block's coordinates as level 0 does (a block that shows nothing at all
+  /// is null too, and drawing its coordinates draws nothing).
   ui.Image? imageFor(
     LevelTileAsk ask, {
     required int level,
     required TileCoord coord,
-  }) {
-    final surface = ask.surface;
-    assert(surface.tileSize.isEven, 'a level tile halves the tile size');
-    if (level <= 0) {
-      final tile = surface.tileAt(coord);
-      return tile == null ? null : ask.picture((coord: coord, tile: tile));
-    }
-    final scoped = _scope(ask.scope);
-    final key = (level, coord);
-    final tiles = _tilesUnder(surface, level, coord);
-    final kept = scoped.tiles[key];
-    if (kept != null && kept.stillStands(tiles, ask.cache)) {
-      kept.lastAsked = scoped.paints;
-      return kept.image;
-    }
-    final under = _sourcesUnder(ask, scoped, level: level, coord: coord);
-    if (under == null || under.sources.isEmpty || !ask.mayMake()) {
-      return null;
-    }
-    final image = _rasterised(halvingPicture(under.sources), surface.tileSize);
-    kept?.release();
-    scoped.tiles[key] = _LevelTile(
-      image,
-      tiles,
-      overAStandIn: under.overAStandIn,
-      lastAsked: scoped.paints,
-    );
-    _liveBytes += image.width * image.height * 4;
-    return image;
-  }
+  }) => _answer(ask, level: level, coord: coord).image;
 
-  /// The level-(level−1) pictures under the block at [coord], each at its
-  /// quadrant, and whether any of them was made over a stand-in — or null
-  /// when one of them cannot be had yet.
-  ({List<LevelSource> sources, bool overAStandIn})? _sourcesUnder(
-    LevelTileAsk ask,
-    _ScopePyramid scoped, {
+  _LevelAnswer _answer(
+    LevelTileAsk ask, {
     required int level,
     required TileCoord coord,
   }) {
-    final surface = ask.surface;
+    assert(ask.tileSize.isEven, 'a level tile halves the tile size');
+    if (level <= 0) {
+      if (ask.keyAt(coord) == null) {
+        return const _LevelAnswer.nothing();
+      }
+      return _LevelAnswer(ask.pictureAt(coord));
+    }
+    final scoped = _scope(ask.scope);
+    final slot = (level, coord);
+    final madeFrom = _keysUnder(ask, level, coord);
+    if (madeFrom.every((key) => key == null)) {
+      return const _LevelAnswer.nothing();
+    }
+    final kept = scoped.tiles[slot];
+    if (kept != null && listsMatch(madeFrom, kept.madeFrom, identical)) {
+      kept.lastAsked = scoped.paints;
+      return _LevelAnswer(kept.image);
+    }
+    final sources = _sourcesUnder(ask, level: level, coord: coord);
+    if (sources == null || !ask.mayMake()) {
+      return const _LevelAnswer.pending();
+    }
+    final image = _rasterised(halvingPicture(sources), ask.tileSize);
+    kept?.release();
+    scoped.tiles[slot] = _LevelTile(
+      image,
+      // Read AFTER the sources: making them may have uploaded a truth the
+      // key-only read could not see, and the tile is made from that.
+      _keysUnder(ask, level, coord),
+      lastAsked: scoped.paints,
+    );
+    _liveBytes += image.width * image.height * 4;
+    return _LevelAnswer(image);
+  }
+
+  /// The level-(level−1) pictures under the block at [coord], each at its
+  /// quadrant, skipping quadrants that show nothing — or null when one of
+  /// them cannot be had yet.
+  List<LevelSource>? _sourcesUnder(
+    LevelTileAsk ask, {
+    required int level,
+    required TileCoord coord,
+  }) {
     final sources = <LevelSource>[];
-    var overAStandIn = false;
-    final half = surface.tileSize ~/ 2;
+    final half = ask.tileSize ~/ 2;
     for (final (dx, dy) in const [(0, 0), (1, 0), (0, 1), (1, 1)]) {
       final child = TileCoord(x: coord.x * 2 + dx, y: coord.y * 2 + dy);
-      if (!_anyTileUnder(surface, level - 1, child)) {
+      final under = _answer(ask, level: level - 1, coord: child);
+      if (under.nothing) {
         continue;
       }
-      final image = imageFor(ask, level: level - 1, coord: child);
+      final image = under.image;
       if (image == null) {
         return null;
       }
@@ -156,12 +168,8 @@ class TilePyramid {
         image: image,
         at: ui.Offset((dx * half).toDouble(), (dy * half).toDouble()),
       ));
-      overAStandIn = overAStandIn ||
-          (level == 1
-              ? ask.cache.imageFor(surface.tileAt(child)!) == null
-              : scoped.tiles[(level - 1, child)]!.overAStandIn);
     }
-    return (sources: sources, overAStandIn: overAStandIn);
+    return sources;
   }
 
   /// [recorded] as a [size] × [size] image, made in the frame, the picture
@@ -197,7 +205,7 @@ class TilePyramid {
   }
 
   /// The tile coordinates under the level-[level] block at [coord], row by
-  /// row: the 2^level × 2^level tiles the block stands for.
+  /// row: the 2^level × 2^level coordinates the block stands for.
   static Iterable<TileCoord> tilesOfBlock(int level, TileCoord coord) sync* {
     final span = 1 << level;
     for (var y = 0; y < span; y += 1) {
@@ -207,31 +215,41 @@ class TilePyramid {
     }
   }
 
-  /// The tiles under the level-[level] block at [coord], row by row, null
-  /// where the surface has none — the block's identity.
-  static List<BitmapTile?> _tilesUnder(
-    BitmapSurface surface,
-    int level,
-    TileCoord coord,
-  ) => [for (final at in tilesOfBlock(level, coord)) surface.tileAt(at)];
-
-  static bool _anyTileUnder(BitmapSurface surface, int level, TileCoord coord) =>
-      tilesOfBlock(level, coord).any((at) => surface.tileAt(at) != null);
+  /// What every coordinate under the level-[level] block at [coord] shows,
+  /// row by row, by key ([LevelTileAsk.keyAt]) — the block's identity.
+  static List<Object?> _keysUnder(LevelTileAsk ask, int level, TileCoord coord) =>
+      [for (final at in tilesOfBlock(level, coord)) ask.keyAt(at)];
 }
 
-/// What one paint hands the pyramid with every ask: the surface whose
-/// blocks are asked, the scope they are filed under, the cache whose truth
-/// tells a stand-in apart, and the paint's own two answers — a tile's
-/// picture within its ration (`picture`; null when it has none yet) and
-/// whether one more level tile may be made now (`mayMake`, asked once per
-/// level tile about to be made).
+/// What one paint hands the pyramid with every ask: the grid's tile size,
+/// the scope the level tiles are filed under, the paint's one answer to
+/// what a coordinate shows — as a key (`keyAt`: null where the coordinate
+/// shows nothing; the tile object for a committed truth, the picture
+/// object for anything standing at the coordinate instead; asked without
+/// making anything) and as the picture itself (`pictureAt`: null where the
+/// coordinate has bytes but no picture yet; may upload or compose within
+/// the paint's rations) — and whether one more level tile may be made now
+/// (`mayMake`, asked once per level tile about to be made).
 typedef LevelTileAsk = ({
-  BitmapSurface surface,
+  int tileSize,
   Object? scope,
-  BitmapTileImageCache cache,
-  ui.Image? Function(PlacedTile placed) picture,
+  Object? Function(TileCoord coord) keyAt,
+  ui.Image? Function(TileCoord coord) pictureAt,
   bool Function() mayMake,
 });
+
+/// One answer of the pyramid: a picture, nothing to show at all, or a
+/// picture that cannot be had yet.
+class _LevelAnswer {
+  const _LevelAnswer(this.image) : nothing = false;
+
+  const _LevelAnswer.nothing() : image = null, nothing = true;
+
+  const _LevelAnswer.pending() : image = null, nothing = false;
+
+  final ui.Image? image;
+  final bool nothing;
+}
 
 /// One scope's level tiles and its paint count.
 class _ScopePyramid {
@@ -239,39 +257,14 @@ class _ScopePyramid {
   final Map<(int, TileCoord), _LevelTile> tiles = <(int, TileCoord), _LevelTile>{};
 }
 
-/// One level picture, the tiles it was made over, and the paint that last
-/// asked for it.
+/// One level picture, what the coordinates under it showed when it was
+/// made, and the paint that last asked for it.
 class _LevelTile {
-  _LevelTile(
-    this.image,
-    this.tiles, {
-    required this.overAStandIn,
-    required this.lastAsked,
-  });
+  _LevelTile(this.image, this.madeFrom, {required this.lastAsked});
 
   final ui.Image image;
-  final List<BitmapTile?> tiles;
-
-  /// Whether a picture under it was a stand-in when it was made — then it
-  /// is remade once the truth lands, or the off-by-one-stroke stays for
-  /// the tile's life.
-  final bool overAStandIn;
-
+  final List<Object?> madeFrom;
   int lastAsked;
-
-  bool stillStands(List<BitmapTile?> now, BitmapTileImageCache cache) {
-    if (!listsMatch(now, tiles, identical)) {
-      return false;
-    }
-    if (overAStandIn) {
-      for (final tile in tiles) {
-        if (tile != null && cache.imageFor(tile) != null) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
 
   void release() {
     TilePyramid._liveBytes -= image.width * image.height * 4;

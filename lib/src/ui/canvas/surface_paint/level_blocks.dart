@@ -2,11 +2,16 @@ part of '../bitmap_surface_painter.dart';
 
 /// ONE PAINT'S WALK OF THE VISIBLE RECT IN LEVEL BLOCKS (render round 4c,
 /// 2026-09-16): above level 0 the surface pass draws each 2^k × 2^k block
-/// of tiles as its level tile ([TilePyramid]) — an exact box mean of the
-/// block, one tile's worth of pixels, 1:1 in a level buffer's pixels —
-/// and only a block no level tile can be made for yet, or that a live
-/// draw touches, falls back to its tiles under the caller's scale, exactly
+/// of coordinates as its level tile ([TilePyramid]) — an exact box mean of
+/// what the coordinates show, one tile's worth of pixels, 1:1 in a level
+/// buffer's pixels — and only a block no level tile can be made for yet
+/// falls back to its coordinates under the caller's scale, drawn exactly
 /// as level 0 draws them.
+///
+/// The pyramid's leaf is the pass's one answer to what a coordinate shows
+/// (`_SurfacePaintPass._coordinate`): the live stroke, a held tile, a
+/// stand-in and a committed picture all reach a level tile through it, so
+/// no block needs a route of its own.
 ///
 /// 🚨A collaborator of `_SurfacePaintPass`, constructed per paint like the
 /// pass itself; it reaches the paint's state through `_pass`.
@@ -17,11 +22,6 @@ class _LevelBlocks {
 
   BitmapSurfacePainter get _painter => _pass._painter;
 
-  /// ⛔A block the LIVE overlay or the settle hold touches keeps the tile
-  /// route: the overlay's result tile replaces its coordinate outright and
-  /// the hold pins the pre-stroke tile, and a level tile under either
-  /// would put the committed picture back beneath them — the double-
-  /// density ghost, one level down.
   void paint() {
     final surface = _painter.surface;
     final span = 1 << _pass._level;
@@ -39,22 +39,20 @@ class _LevelBlocks {
       tileSize: surface.tileSize * span,
     );
     final ask = (
-      surface: surface,
+      tileSize: surface.tileSize,
       scope: _painter.staleScope,
-      cache: _painter.tileImageCache,
-      // A tile's own picture, or one uploaded now within the paint's
-      // ration; null makes the block draw its tiles.
-      picture: _pass._ownOrUploadedPicture,
+      keyAt: (TileCoord at) =>
+          _pass._coordinates.of(at, withPicture: false)?.key,
+      pictureAt: (TileCoord at) =>
+          _pass._coordinates.of(at, withPicture: true)?.picture,
       mayMake: _mayMake,
     );
     for (final coord in tileCoordsIn(blocks)) {
-      final levelTile = _liveDrawTouches(coord)
-          ? null
-          : TilePyramid.instance.imageFor(
-              ask,
-              level: _pass._level,
-              coord: coord,
-            );
+      final levelTile = TilePyramid.instance.imageFor(
+        ask,
+        level: _pass._level,
+        coord: coord,
+      );
       if (levelTile != null) {
         // 1:1 in the level's pixels: the block is span × span tiles of
         // canvas, and the level tile is one tile's worth of pixels.
@@ -68,8 +66,8 @@ class _LevelBlocks {
         final tile = surface.tileAt(at);
         if (tile != null) {
           _painter.pictureBudget.shown(_painter.staleScope, tile);
-          _pass._paintTile((coord: at, tile: tile));
         }
+        _pass._coordinates.paint(at);
       }
     }
   }
@@ -77,8 +75,8 @@ class _LevelBlocks {
   /// The paint's ration of level tiles, each a `toImageSync` of four
   /// pictures — rationed like the sync uploads, for the same reason: a
   /// cold zoomed-out view is the whole visible grid at once, and the
-  /// blocks that miss out draw their tiles this frame and ask again on
-  /// the next. The same number ([BitmapSurfacePainter.decodeStartBudget])
+  /// blocks that miss out draw their coordinates this frame and ask again
+  /// on the next. The same number ([BitmapSurfacePainter.decodeStartBudget])
   /// because it is the same shape of cost being spread over frames; the
   /// seam probe measured a make at tens of microseconds, so one paint's
   /// ration is under two milliseconds.
@@ -88,18 +86,5 @@ class _LevelBlocks {
     }
     _pass._levelTileBudget -= 1;
     return true;
-  }
-
-  bool _liveDrawTouches(TileCoord blockCoord) {
-    final overlay = _pass._overlayReplacesCoords ? _pass._overlay : null;
-    final hold = _pass._settleHold;
-    if (overlay == null && hold == null) {
-      return false;
-    }
-    return TilePyramid.tilesOfBlock(_pass._level, blockCoord).any(
-      (at) =>
-          (overlay?.tileImages.containsKey(at) ?? false) ||
-          (hold?.containsKey(at) ?? false),
-    );
   }
 }

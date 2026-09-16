@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
@@ -66,6 +65,33 @@ void main() {
     );
   }
 
+  /// What the surface pass answers for a coordinate of [surface] with
+  /// [cache]'s pictures: the tile is the key of its own truth, a stand-in
+  /// picture is the key of itself, and a tile without any picture is the
+  /// key of a picture yet to come.
+  LevelTileAsk askOf(
+    BitmapSurface surface,
+    BitmapTileImageCache cache, {
+    bool Function()? mayMake,
+  }) => (
+    tileSize: surface.tileSize,
+    scope: 'cel',
+    keyAt: (TileCoord at) {
+      final tile = surface.tileAt(at);
+      if (tile == null) {
+        return null;
+      }
+      return cache.imageFor(tile) != null
+          ? tile
+          : (cache.displayImageFor(tile) ?? tile);
+    },
+    pictureAt: (TileCoord at) {
+      final tile = surface.tileAt(at);
+      return tile == null ? null : cache.displayImageFor(tile);
+    },
+    mayMake: mayMake ?? () => true,
+  );
+
   ui.Image? levelOne(
     TilePyramid pyramid,
     BitmapSurface surface,
@@ -73,13 +99,7 @@ void main() {
     TileCoord? coord,
     bool Function()? mayMake,
   }) => pyramid.imageFor(
-    (
-      surface: surface,
-      scope: 'cel',
-      cache: cache,
-      picture: (PlacedTile placed) => cache.displayImageFor(placed.tile),
-      mayMake: mayMake ?? () => true,
-    ),
+    askOf(surface, cache, mayMake: mayMake),
     level: 1,
     coord: coord ?? TileCoord(x: 0, y: 0),
   );
@@ -274,11 +294,9 @@ void main() {
       ui.Image? levelTwo(int ration) {
         var left = ration;
         return pyramid.imageFor(
-          (
-            surface: surface,
-            scope: 'cel',
-            cache: cache,
-            picture: (PlacedTile placed) => cache.displayImageFor(placed.tile),
+          askOf(
+            surface,
+            cache,
             mayMake: () {
               if (left <= 0) {
                 return false;

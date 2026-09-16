@@ -28,8 +28,10 @@ class _SurfacePaintPass {
   late final int _level;
   late int _levelTileBudget;
   late final Rect _visibleRect;
-  Set<TileCoord>? _committedWins;
   List<PlacedTile>? _pendingDecodes;
+
+  /// The one answer to what a coordinate shows ([_CoordinatePicture]).
+  late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
 
   /// The surface + live _overlay, onto a _canvas the CALLER has already
   /// viewport-transformed and clipped to [_pasteboardRect].
@@ -250,9 +252,11 @@ class _SurfacePaintPass {
     _pendingDecodes = _painter.tilesAwaitingDecode();
   }
 
-  /// Every tile under the visible rect — a committed image, a held pre-stroke
-  /// tile, or the live tile within the upload and pixel budgets — and each
-  /// one stamped as shown for the picture budget ([TilePictureBudget.shown]).
+  /// Every coordinate under the visible rect, drawn as what it shows
+  /// ([_coordinate]) — the committed tiles, each stamped as shown for the
+  /// picture budget ([TilePictureBudget.shown]), and the live stroke's
+  /// coordinates that have no committed tile yet (ink on blank paper),
+  /// which are coordinates like any other.
   ///
   /// Above level 0 the visible rect is walked in BLOCKS instead
   /// ([_LevelBlocks]): a block drawn as one level tile shows none of its
@@ -265,236 +269,42 @@ class _SurfacePaintPass {
     }
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
       _painter.pictureBudget.shown(_painter.staleScope, covered.tile);
-      _paintTile((coord: covered.coord, tile: covered.tile));
+      _coordinates.paint(covered.coord);
     }
-  }
-
-  /// The stroke overlay's tiles and stamp over the committed tiles —
-  /// except where a committed tile already won (a settled overlay tile).
-  /// One tile under the visible rect. Three ways to paint it, in order
-  /// of who owns the pixels right now: the overlay's settled image where
-  /// the overlay replaces the tile, the held pre-stroke tile while the
-  /// stroke settles, else the committed image — through a sync upload
-  /// or the pixel fallback while their budgets last, and marked unpainted
-  /// past them.
-  void _paintTile(PlacedTile placed) {
-    // The _overlay's result tile REPLACES this coordinate outright (it
-    // already contains the committed pixels blended with the stroke) —
-    // the committed tile is not drawn at all. The decode start ran in
-    // the collect pass above, so a freshly adopted tile's image is
-    // ready by the time the override releases.
-    if (_overlayReplacesCoords &&
-        _overlay != null &&
-        _overlay.tileImages.containsKey(placed.coord)) {
-      // While the _overlay is LIVE its image IS the stroke and the
-      // committed tile is still the pre-stroke surface, so the
-      // _overlay must win. Once it is SETTLING the commit has landed:
-      // a committed tile that has its OWN image holds the finished
-      // picture, and this _overlay is at best a revision behind it.
-      //
-      // The invariant that makes preferring the committed tile
-      // truthful rather than hopeful: images are keyed by tile
-      // OBJECT, a promoted tile is a fresh object, and only two
-      // things can give it one — a decode of its own bytes, or an
-      // adoption the handoff already revision-matched. There is no
-      // third path, so an image here is always the final picture.
-      //
-      // ⚠️ `imageFor`, deliberately: a stand-in WOULD be a third path
-      // and it is the weaker picture here. The _overlay tile this would
-      // displace holds the commit's own bytes exactly, so a composed
-      // approximation must never take its place — the stand-in exists
-      // for coordinates that have no such answer.
-      //
-      // Drawn HERE and skipped in the _overlay pass, never both: two
-      // draws of the same coordinate is the double-density ghost.
-      _paintReplacedTile(placed);
+    final overlay = _overlay;
+    if (overlay == null || !_overlayReplacesCoords) {
       return;
     }
-    if (_settleHold != null && _settleHold.containsKey(placed.coord)) {
-      _paintHeldTile(placed);
-      return;
-    }
-    // While this tile version's decode is pending, show the latest
-    // decoded image at the same coordinate (slightly stale content)
-    // instead of a per-pixel redraw: scanning up to 65k pixels per
-    // changed tile froze the UI after large strokes. The active
-    // _overlay keeps the in-progress stroke visible until the new tiles
-    // are decoded.
-    //
-    // What makes "slightly stale" true rather than a guess is the
-    // SCOPE: it must name a lineage in which this coordinate's last
-    // decode really is an older version of this tile. A surface whose
-    // content gets replaced empties its scope at that moment instead
-    // of borrowing across the replacement.
-    //
-    // N4: `displayImageFor`, so a picture OF THIS TILE outranks a
-    // picture of a DIFFERENT one. A stand-in is composed from what the
-    // screen already held, so it is at worst a rounding step away from
-    // this tile's own bytes; the coordinate fallback below is a
-    // previous GENERATION, which is where "the stroke landed and the
-    // artwork that was there before it appeared" comes from. Truth
-    // still wins over both — `displayImageFor` reads the real image
-    // first — and this order also keeps the stand-in out of the
-    // per-pixel budget, which is spent on coordinates that have
-    // nothing at all.
-    //
-    // N4 ⑤: and where the engine can upload bytes synchronously, the
-    // tile's OWN bytes become its picture right here — no borrow, no
-    // per-pixel path, no waiting a decode round. It costs 30-49 us
-    // for a 256 px tile against 24-103 ms for four tiles of the
-    // per-pixel fallback, and it ADOPTS, so a coordinate pays it
-    // once. Null on Skia (probed once per run), where the two
-    // fallbacks below stay the whole answer.
-    _paintLiveTile(placed);
-  }
-
-  /// A tile the overlay replaces: its settled image, if the overlay is
-  /// settling and the image has landed; nothing otherwise (the overlay's
-  /// own tile draws later). A drawn image wins over the overlay tile.
-  void _paintReplacedTile(PlacedTile placed) {
-    final settledImage = _overlay!.settling
-        ? _painter.tileImageCache.imageFor(placed.tile)
-        : null;
-    if (settledImage == null) {
-      return;
-    }
-    _drawTileImage(settledImage, placed);
-    (_committedWins ??= <TileCoord>{}).add(placed.coord);
-  }
-
-  /// A tile's own picture — the cache's (truth or stand-in), or its bytes
-  /// uploaded now within this paint's ration where the engine can
-  /// ([BitmapTileImageCache.adoptSyncUpload]) — else null.
-  ///
-  /// The ration is spent on the ANSWER, not the attempt — the same
-  /// correction the per-pixel budget needed. On Skia every call declines,
-  /// and charging for a decline would be charging for nothing.
-  ui.Image? _ownOrUploadedPicture(PlacedTile placed) {
-    var image = _painter.tileImageCache.displayImageFor(placed.tile);
-    if (image == null && _syncUploadBudget > 0) {
-      image = _painter.tileImageCache.adoptSyncUpload(
-        placed,
-        staleScope: _painter.staleScope,
-      );
-      if (image != null) {
-        _syncUploadBudget -= 1;
+    for (final coord in overlay.tileImages.keys) {
+      if (_painter.surface.tileAt(coord) == null && _coordIsVisible(coord)) {
+        _coordinates.paint(coord);
       }
     }
-    return image;
   }
 
-  /// [image] at [at]'s own origin, with the tile image paint.
-  void _drawTileImage(ui.Image image, PlacedTile at) =>
-      _drawImageAtTile(image, at.coord);
+  /// 🚨★★★**THE SAME VISIBLE-RECT LAW THE TILE WALK KEEPS**
+  /// (`tilesUnderRect` above), for coordinates the surface has no tile at.
+  /// The overlay's tiles ACCUMULATE for the whole life of a stroke —
+  /// nothing leaves the map until pen-up — so by the third dab that map is
+  /// the bounding box of the WHOLE stroke, and a long line paid its full
+  /// length in draws on every frame of every dab, off-screen coordinates
+  /// included.
+  bool _coordIsVisible(TileCoord coord) {
+    final tileSize = _painter.surface.tileSize.toDouble();
+    return _visibleRect.overlaps(
+      Rect.fromLTWH(coord.x * tileSize, coord.y * tileSize, tileSize, tileSize),
+    );
+  }
 
   /// THE tile draw: [image], one tile's worth of pixels, at [coord]'s
-  /// origin on the surface's grid — a committed tile's picture at level 0,
-  /// a level tile under its block's scale above it ([_LevelBlocks]).
+  /// origin on the surface's grid — a coordinate's picture at level 0, a
+  /// level tile under its block's scale above it ([_LevelBlocks]).
   void _drawImageAtTile(ui.Image image, TileCoord coord) =>
       _canvas.drawImage(
         image,
         tileCoordOriginOffset(coord, _painter.surface.tileSize),
         _tileImagePaint,
       );
-
-  /// A tile the settling stroke holds: the pre-stroke tile, its image or
-  /// its pixels.
-  void _paintHeldTile(PlacedTile placed) {
-    final preTile = _settleHold![placed.coord];
-    if (preTile != null) {
-      final preImage = _painter.tileImageCache.imageFor(preTile);
-      if (preImage != null) {
-        _drawTileImage(preImage, (coord: placed.coord, tile: preTile));
-      } else {
-        _painter._paintTilePixels(
-          _canvas,
-          (coord: placed.coord, tile: preTile),
-          _layerPaint,
-        );
-      }
-    }
-  }
-
-  /// The committed tile: its display image, a sync upload while that
-  /// budget lasts, the latest image of the coord, the pixel fallback
-  /// while its budget lasts — else marked unpainted.
-  void _paintLiveTile(PlacedTile placed) {
-    final tile = placed.tile;
-    var tileImage = _ownOrUploadedPicture(placed);
-    // 🚨★★★A KNOWN PREDECESSOR FORBIDS THE COORDINATE FALLBACK. The tile
-    // the commit replaced, plus the bytes that differ, is exact whichever
-    // way the edit went; the coordinate fallback is the last picture
-    // DECODED here, and for an edit that removed ink that is the removed
-    // ink — F-68 ①②③, every one. So a tile whose commit announced its
-    // predecessor composes from it, and when that does not fit this
-    // paint's budget it falls to the per-pixel path (exact, four a paint)
-    // and then to NOTHING — a blank tile for a frame is a gap, the old
-    // picture is a lie, and only one of those was a bug report. The
-    // coordinate fallback remains for tiles nobody announced: an import,
-    // a cold activation — content that ADDS, where it was always right.
-    final predecessor = tileImage == null
-        ? TilePredecessors.instance.of(tile)
-        : null;
-    if (predecessor != null) {
-      tileImage = _composeFromPredecessor(placed, predecessor);
-    } else {
-      tileImage ??= _painter.tileImageCache.latestImageForCoord(
-        placed.coord,
-        scope: _painter.staleScope,
-      );
-    }
-    if (tileImage != null) {
-      _drawTileImage(tileImage, placed);
-    } else if (_pixelFallbackBudget > 0) {
-      // First-ever content at this coordinate and not decoded yet:
-      // draw per pixel for this frame only — within the budget. Every
-      // coordinate here is visible, so the budget spends only where it
-      // shows (R27 #2).
-      //
-      // ⚠️ Spent only where it DREW. The walk is raster order, so a
-      // commit whose landing sits below empty rows hands the first
-      // four slots to tiles with no ink in them and the picture gets
-      // none: measured on a Ctrl+T confirm, all four went to the blank
-      // pasteboard row above the artwork and the float contributed
-      // zero pixels. A transparent tile costs the same scan either
-      // way — it just no longer costs a slot.
-      if (_painter._paintTilePixels(_canvas, placed, _layerPaint)) {
-        _pixelFallbackBudget -= 1;
-      }
-    } else {
-      // Nothing to draw with: no image, nothing to borrow, no budget
-      // left. This branch is the whole stale-tile family's event, and
-      // it is invisible because its answer is silence — see
-      // [MeasurementMode.showUnpaintedTiles].
-      _painter._markUnpainted(_canvas, placed);
-    }
-  }
-
-  /// [placed]'s stand-in composed from its predecessor, put in the cache
-  /// and returned — or null when there is no predecessor, its picture is
-  /// not on screen, or the composition would exceed what is left of this
-  /// paint's budgets (spent on the answer, not the attempt).
-  ui.Image? _composeFromPredecessor(
-    PlacedTile placed,
-    TilePredecessor predecessor,
-  ) {
-    if (_predecessorTileBudget <= 0 || _predecessorRectBudget <= 0) {
-      return null;
-    }
-    final cache = _painter.tileImageCache;
-    final composed = composePredecessorStandIn(
-      cache: cache,
-      placed: placed,
-      predecessor: predecessor,
-      rectBudget: _predecessorRectBudget,
-    );
-    if (composed.image == null) {
-      return null;
-    }
-    _predecessorTileBudget -= 1;
-    _predecessorRectBudget -= composed.rects;
-    return composed.image;
-  }
 
   /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
   /// overlay blits (src where it replaces the committed tiles), an erasing
