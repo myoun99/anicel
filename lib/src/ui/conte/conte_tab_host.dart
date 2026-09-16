@@ -340,6 +340,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
       fitFocusRect: metrics == null
           ? null
           : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
+      drawingOn: inkController != null && widget.inkEnabled,
       contentStrokeActive: inkController == null || !widget.inkEnabled
           ? null
           : _inkStrokeActive,

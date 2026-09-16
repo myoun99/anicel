@@ -43,6 +43,7 @@ class SheetCanvasPanel extends StatelessWidget {
     this.fitFocusRect,
     this.autoFrame,
     this.contentStrokeActive,
+    required this.drawingOn,
     required this.content,
   });
 
@@ -57,6 +58,15 @@ class SheetCanvasPanel extends StatelessWidget {
   final Rect? fitFocusRect;
   final CanvasAutoFrameRequest? autoFrame;
   final ValueListenable<bool>? contentStrokeActive;
+
+  /// Whether this sheet's DRAWING is on — the sheet's answer to
+  /// [BrushCanvasPanel.runsTheSelectedTool] (F-80).
+  ///
+  /// ⛔Asked separately from [contentStrokeActive] on purpose. That one says
+  /// a stroke is LIVE right now, and reading its NULLNESS as 「this sheet
+  /// takes no tool」 made one flag answer two questions (유저 2026-09-16:
+  /// 「법 통일할수있을거같은데」).
+  final bool drawingOn;
 
   /// The sheet's strata, laid over the SNAPPED viewport.
   final Widget Function(BuildContext context, CanvasViewport viewport) content;
@@ -80,15 +90,13 @@ class SheetCanvasPanel extends StatelessWidget {
       fitFocusRect: fitFocusRect,
       autoFrame: autoFrame,
       contentStrokeActive: contentStrokeActive,
-      // F-80 ①: a sheet whose drawing is OFF takes no strokes — the host
-      // hands it no stroke gate — so it is a canvas panel with no drawing
-      // mode, and answers as the viewer does (I-14): one finger pans, and so
-      // does a plain primary press that no control on the sheet has taken
-      // (a timesheet head cell, a conte cell).
-      oneFingerAction: contentStrokeActive == null
-          ? CanvasTouchDragAction.navigate
-          : null,
-      primaryPressPans: contentStrokeActive == null,
+      // F-80: a sheet runs the selected tool while its drawing is ON. With
+      // it off nothing here can act, so the panel makes a plain primary
+      // press pan — one that no control on the sheet has taken (a timesheet
+      // head cell, a conte cell) — and one finger pans as the viewer does
+      // (I-14).
+      oneFingerAction: drawingOn ? null : CanvasTouchDragAction.navigate,
+      runsTheSelectedTool: drawingOn,
       contentOverride: (context, rawViewport) => content(
         context,
         renderSnappedViewport(

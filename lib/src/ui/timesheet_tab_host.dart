@@ -399,6 +399,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           return SheetCanvasPanel(
             cacheInvalidationSink: _cacheInvalidationSink,
             canvasSize: const CanvasSize(width: 780, height: 1080),
+            // The GAP state has no cut, so there is no ink and no tool to
+            // run: a press moves the page (F-80), which is what this panel
+            // already did.
+            drawingOn: false,
             viewport: widget.viewport,
             viewportController: widget.viewportController,
             onViewportChanged: widget.onViewportChanged,
@@ -501,6 +505,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     // Fit frames the page on screen.
                     fitFocusRect: layout.pageRect(visiblePage),
                     autoFrame: autoFrame,
+                    drawingOn: inkController != null && widget.inkEnabled,
                     contentStrokeActive:
                         inkController == null || !widget.inkEnabled
                         ? null

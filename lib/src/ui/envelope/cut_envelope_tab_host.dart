@@ -155,6 +155,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
         paper.width.toDouble(),
         paper.height.toDouble(),
       ),
+      drawingOn: inking,
       contentStrokeActive: inking ? _strokeActive : null,
       content: (context, viewport) => LayoutBuilder(
         builder: (context, constraints) {

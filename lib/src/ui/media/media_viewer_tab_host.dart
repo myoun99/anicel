@@ -1204,13 +1204,16 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   // --- Cutting (I-14: the cut tool, at the page's own size) -------------
 
   /// The tool the viewer's panel runs: the CUT while the cut tool is armed,
-  /// and otherwise the inert default the viewer has always run — nothing
-  /// else has anything here to act on. One instance per outline, so a
-  /// rebuild hands the panel the SAME state.
-  static BrushToolState _toolStateFor(BrushToolState workspaceTool) {
+  /// and NULL otherwise — nothing else has anything here to act on. One
+  /// instance per outline, so a rebuild hands the panel the SAME state.
+  ///
+  /// 🗣️유저 2026-09-16 (F-80): 「작동 가능한 거면 해당 도구 작동시키고,
+  /// 불가능하면 팬」 — null IS that answer, and the panel turns it into a
+  /// press that moves the page ([BrushCanvasPanel.runsTheSelectedTool]).
+  static BrushToolState? _toolStateFor(BrushToolState workspaceTool) {
     final shape = armedCutShape(workspaceTool);
     return shape == null
-        ? BrushToolState.defaults
+        ? null
         : _cutTools.putIfAbsent(
             shape,
             () => BrushToolState.defaults.copyWith(
@@ -1363,7 +1366,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
     final message = request == null ? strings.mediaViewerEmpty : _message;
 
-    BrushCanvasPanel panelWith(BrushToolState toolState) => BrushCanvasPanel(
+    BrushCanvasPanel panelWith(BrushToolState? toolState) => BrushCanvasPanel(
       coordinator: null,
       availableFrameKeys: const [],
       cacheInvalidationSink: _cacheInvalidationSink,
@@ -1386,7 +1389,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 존재안하니 한손가락 핑거시 팬」 — whatever the one-finger slot says,
       // and so a finger drives no tool here: the cut takes a pen or a mouse.
       oneFingerAction: CanvasTouchDragAction.navigate,
-      brushToolState: toolState,
+      brushToolState: toolState ?? BrushToolState.defaults,
+      // F-80: with no cut armed nothing here can act on a press, so it
+      // moves the page instead.
+      runsTheSelectedTool: toolState != null,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       // Reframe ONCE per loaded document: the workspace-owned viewport
       // survives asset switches, and a deep zoom/pan from a large scan
@@ -1525,7 +1531,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     );
     final brushTool = widget.brushTool;
     final panel = brushTool == null
-        ? panelWith(BrushToolState.defaults)
+        ? panelWith(null)
         : SlicedValueListenableBuilder<BrushToolState, CanvasShapeKind?>(
             valueListenable: brushTool,
             slice: armedCutShape,

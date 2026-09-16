@@ -93,6 +93,9 @@ void main() {
         canvasSize: const CanvasSize(width: 600, height: 800),
         viewport: CanvasViewport(),
         onViewportChanged: onViewportChanged,
+        // H24 asks what a press inside the panel does, with no ink mounted
+        // — the sheet's drawing is off, as it always was here.
+        drawingOn: false,
         content: (context, viewport) => const SizedBox.expand(),
       );
 

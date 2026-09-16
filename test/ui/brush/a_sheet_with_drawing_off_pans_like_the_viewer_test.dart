@@ -48,6 +48,7 @@ void main() {
               canvasSize: const CanvasSize(width: 600, height: 800),
               viewport: CanvasViewport(),
               onViewportChanged: emitted.add,
+              drawingOn: drawing,
               contentStrokeActive: drawing ? stroke : null,
               content: (context, viewport) => Stack(
                 children: [

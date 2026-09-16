@@ -26,6 +26,8 @@ void main() {
             cacheInvalidationSink: sink,
             canvasSize: const CanvasSize(width: 200, height: 100),
             viewport: raw,
+            // This pin is about the SNAP, and it mounts no ink.
+            drawingOn: false,
             content: (context, viewport) {
               received = viewport;
               ratio = EffectiveDevicePixelRatio.of(context);

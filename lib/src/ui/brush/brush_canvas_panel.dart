@@ -199,7 +199,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.cutPieceSlot,
     this.onCutContent,
     this.oneFingerAction,
-    this.primaryPressPans = false,
+    this.runsTheSelectedTool = true,
     this.onStrokeInputActiveChanged,
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
@@ -668,11 +668,27 @@ class BrushCanvasPanel extends StatefulWidget {
   /// layer the same way.
   final CanvasTouchDragAction? oneFingerAction;
 
-  /// Whether a plain primary press pans this panel
-  /// ([CanvasViewportGestureLayer.primaryPressPans]) — for a host whose
-  /// content takes no strokes. The main canvas and the viewer (whose pen and
-  /// mouse drive the cut, I-14) leave it off.
-  final bool primaryPressPans;
+  /// Whether this surface can run the SELECTED tool right now.
+  ///
+  /// 🗣️유저 2026-09-16 (F-80): 「작동 가능한 거면 해당 도구 작동시키고,
+  /// 불가능하면 팬」 · 「법 통일할수있을거같은데」. It is ONE question, asked
+  /// here, and every host answers it from what it already knows: the main
+  /// canvas always runs the tool, a sheet runs it while its drawing is ON,
+  /// and the viewer runs the CUT and nothing else (I-14 — it has nothing to
+  /// draw on). False makes a plain primary press pan
+  /// ([CanvasViewportGestureLayer.primaryPressPans]): a press no tool here
+  /// can act on is a press asking to move the page.
+  ///
+  /// ⛔NOT [celEditable], NOT [rowAcceptsStrokes], and NOT 「there is no cel
+  /// under the playhead」. Those say what is PAINTED and what a press may do
+  /// to a ROW (H19 split them), and a press with no cel under it MAKES one
+  /// ([onPressNeedsCel], I-10) — folding any of them in here would turn
+  /// drawing on an empty frame into panning.
+  ///
+  /// ⚠️It does not decide what a FINGER does. That is [oneFingerAction],
+  /// which the tool door reads as well, and the viewer pans on one finger
+  /// even while the cut IS armed (I-14) — two questions, two answers.
+  final bool runsTheSelectedTool;
 
   /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
   /// stroke end/cancel — the session holds prerender warming while a
