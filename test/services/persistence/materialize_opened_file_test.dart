@@ -272,16 +272,34 @@ void main() {
     FolderPicker.debugDownloadRequester = (_) async {};
     final seen = <Duration>[];
 
+    // ⚠️A ROOMY deadline, because what is reported is now a CLOCK and not
+    // the probe spacing's running total (F-141). With 20ms here a loaded
+    // machine could spend the whole wait inside one tick and report once —
+    // and 「the last is greater than the first」 would be measuring the
+    // scheduler. The wait still ends the moment the deadline passes, so
+    // the room costs the suite nothing when it is not needed.
     await expectLater(
       FolderPicker.materializeOpenedFile(
         path,
-        within: const Duration(milliseconds: 20),
+        within: const Duration(milliseconds: 500),
         step: const Duration(milliseconds: 5),
         onWaiting: (waited, _) => seen.add(waited),
       ),
       throwsA(isA<FileSystemException>()),
     );
     expect(seen, isNotEmpty);
+    expect(
+      seen.first,
+      greaterThan(Duration.zero),
+      reason: 'it reports time that has actually passed',
+    );
+    for (var i = 1; i < seen.length; i += 1) {
+      expect(
+        seen[i],
+        greaterThanOrEqualTo(seen[i - 1]),
+        reason: 'a clock does not go backwards: $seen',
+      );
+    }
     expect(
       seen.last,
       greaterThan(seen.first),
