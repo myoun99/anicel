@@ -1665,7 +1665,8 @@ enum AppStrings {
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'This name is already used by another frame in this layer. Link to '
-        'the existing named frame so the same name shares the same material?',
+        'that frame? The same name then shares the same material, and this '
+        "frame's drawing is discarded.",
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
@@ -2698,8 +2699,9 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
-        'この名前はこのレイヤーの別のフレームで既に使われています。同じ名前が'
-        '同じ素材を共有するよう、既存のフレームにリンクしますか？',
+        'この名前はこのレイヤーの別のフレームで既に使われています。既存のフレームに'
+        'リンクしますか？リンクすると同じ名前が同じ素材を共有し、このフレームの絵は'
+        '破棄されます。',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
@@ -3968,8 +3970,9 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
-        '이 이름은 이 레이어의 다른 프레임이 이미 쓰고 있습니다. 같은 이름이 '
-        '같은 원화를 공유하도록 기존 프레임에 링크할까요?',
+        '이 이름은 이 레이어의 다른 프레임이 이미 쓰고 있습니다. 기존 프레임에 '
+        '링크할까요? 링크하면 같은 이름이 같은 원화를 공유하고, 이 프레임의 '
+        '그림은 버려집니다.',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
@@ -5239,7 +5242,8 @@ enum AppStrings {
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Ce nom est déjà utilisé par une autre image de ce calque. Lier à '
-        "l'image existante pour que le même nom partage le même dessin ?",
+        "l'image existante ? Le même nom partagera alors le même dessin, et le "
+        'dessin de cette image sera supprimé.',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
@@ -6563,8 +6567,8 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
-        '该名称已被此图层中的另一帧使用。是否链接到已有的同名帧，'
-        '让相同名称共用同一张原画？',
+        '该名称已被此图层中的另一帧使用。是否链接到已有的同名帧？'
+        '链接后相同名称共用同一张原画，此帧的原画将被舍弃。',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
