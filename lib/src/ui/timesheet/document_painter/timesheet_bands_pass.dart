@@ -68,7 +68,7 @@ class _TimesheetBandsPass {
       if (_painter._drawContent) {
         _painter._text(
           canvas,
-          _headerFieldValue(box.field, pageIndex),
+          headerFieldValue(box.field, pageIndex),
           Offset(box.rect.center.dx, box.rect.top + 26),
           fontSize: 14,
           bold: true,
@@ -95,7 +95,12 @@ class _TimesheetBandsPass {
     };
   }
 
-  String _headerFieldValue(TimesheetHeaderField field, int pageIndex) {
+  /// The value a header box prints — the CONTENT stratum's text.
+  ///
+  /// The length and the sheet count are read LIVE, so the header follows a
+  /// cut-length drag instead of waiting for the release (F-88); the rest
+  /// is the document's own.
+  String headerFieldValue(TimesheetHeaderField field, int pageIndex) {
     return switch (field) {
       TimesheetHeaderField.episode => _painter.document.episode,
       TimesheetHeaderField.title => _painter.document.title,
@@ -103,12 +108,14 @@ class _TimesheetBandsPass {
       TimesheetHeaderField.cut => _painter.document.cutName,
       // The sheet's 秒+コマ notation prints spaced ('2 + 6') like the
       // reference forms; the model label stays compact for row labels.
-      TimesheetHeaderField.time => _painter.document.durationLabel.replaceAll(
-        '+',
-        ' + ',
-      ),
+      TimesheetHeaderField.time => _painter.document
+          .frameLabel(_painter.livePlaybackFrameCount)
+          .replaceAll('+', ' + '),
       TimesheetHeaderField.name => _painter.document.artist,
-      TimesheetHeaderField.sheet => _painter.layout.pageLabel(pageIndex),
+      TimesheetHeaderField.sheet => _painter.layout.pageLabel(
+        pageIndex,
+        pageCount: _painter.livePageCount,
+      ),
     };
   }
 

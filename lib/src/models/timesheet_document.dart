@@ -4,12 +4,28 @@ import 'frame.dart' show celNumberOrMark;
 import 'frame_id.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
+
+/// How many paper pages [drawnFrameCount] rows fill at [pageFrameCount]
+/// rows a page — always at least one, and capped so junk data cannot ask
+/// for a million sheets.
+///
+/// 🚨ONE arithmetic. The document is BUILT with it and the header's page
+/// readout asks it again mid-drag with the live length (F-88), so the two
+/// can never disagree about when a trim adds a sheet.
+int timesheetPageCount(int drawnFrameCount, int pageFrameCount) =>
+    pageFrameCount <= 0
+    ? 1
+    : ((drawnFrameCount + pageFrameCount - 1) ~/ pageFrameCount).clamp(
+        1,
+        1 << 20,
+      );
 
 /// What a timesheet column represents on the paper form.
 enum TimesheetColumnKind {
@@ -284,11 +300,7 @@ class TimesheetDocument {
     );
     final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
     final pageFrameCount = pageSeconds * fps;
-    final pageCount =
-        ((drawnFrameCount + pageFrameCount - 1) ~/ pageFrameCount).clamp(
-          1,
-          1 << 20,
-        );
+    final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
     final rowCount = pageCount * pageFrameCount;
 
     final animationLayers = sources.celLayers;
@@ -527,15 +539,22 @@ class TimesheetDocument {
   /// This is the CONTE 尺 — the number that sums to the running time, and
   /// the one 撮ま! insists goes in the 尺 column: 「O.Lの中心までの尺を記入
   /// する（のりしろを含むと総尺計算の際に間違いのもとになる）」.
-  String get durationLabel => _frameLabel(playbackFrameCount);
+  String get durationLabel => frameLabel(playbackFrameCount);
 
   /// What the animator actually draws, in the same notation — the
   /// parenthesised half of `2+0 (2+12)`. Null when there is no のりしろ, so
   /// a sheet without transitions prints one number as it always did.
   String? get drawnDurationLabel =>
-      transitionHandles.isEmpty ? null : _frameLabel(drawnFrameCount);
+      transitionHandles.isEmpty ? null : frameLabel(drawnFrameCount);
 
-  String _frameLabel(int frames) => '${frames ~/ fps}+${frames % fps}';
+  /// Any frame count in this sheet's `초+コマ` notation — the conte's own
+  /// spelling ([secondsPlusFramesLabel]), asked with the sheet's fps.
+  ///
+  /// ⛔It used to spell the division out again here. The paint asks this
+  /// with the LIVE length while a cut-length drag is in flight (F-88), and
+  /// a second spelling is how the header and the conte would print one
+  /// number two ways.
+  String frameLabel(int frames) => secondsPlusFramesLabel(frames, fps);
 
   static int _slotCount(int fixedSlots, List<Object> layers) {
     return layers.length > fixedSlots ? layers.length : fixedSlots;

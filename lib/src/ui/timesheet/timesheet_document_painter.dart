@@ -18,7 +18,7 @@ import '../theme/app_theme.dart';
 import '../timeline/timeline_instruction_row_visual.dart'
     show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'
-    show timelineCutEndPreviewFrameCount;
+    show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
 import '../repaint_props.dart';
@@ -372,8 +372,12 @@ class TimesheetDocumentLayout {
   /// The sheet's page notation ('1/2'). The printed ページ header box and
   /// the panel's page readout (R26 #41) share this one spelling so they
   /// can never drift apart.
-  String pageLabel(int pageIndex) =>
-      continuous ? '1/1' : '${pageIndex + 1}/${document.pages.length}';
+  /// [pageCount] overrides the document's sheet count for a paint that is
+  /// following a cut-length drag (F-88) — the paper itself still re-flows
+  /// on the release.
+  String pageLabel(int pageIndex, {int? pageCount}) => continuous
+      ? '1/1'
+      : '${pageIndex + 1}/${pageCount ?? document.pages.length}';
 
   /// Logical size of the whole document — one paper in continuous and
   /// single-page (R26 #41) modes, the stack otherwise.
@@ -501,6 +505,27 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     playbackFrameCount: document.playbackFrameCount,
   );
 
+  /// The DRAWN length this paint should print by — the live cut end plus
+  /// the のりしろ handle, the same law the blue line reads.
+  int get liveDrawnFrameCount => timelineDrawnEndPreviewFrameCount(
+    preview: dragPreview?.value,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+    drawnFrameCount: document.drawnFrameCount,
+  );
+
+  /// How many sheets the cut fills as this paint should print it — the
+  /// header's ページ readout follows a cut-length drag (F-88, 유저:
+  /// 「타임라인 엔드라인 조절할때 타임시트헤더의 초수랑 페이지수같은것도
+  /// 갱신」).
+  ///
+  /// ⚠️The NUMBER follows; the paper does not. The document is memoized
+  /// against the committed cut, so the sheets themselves re-flow on the
+  /// release and a drag step stays one text repaint — the split the
+  /// content stratum exists for.
+  int get livePageCount =>
+      timesheetPageCount(liveDrawnFrameCount, document.pageFrameCount);
+
   // ── the cells pass: its own object, in its own file ─────────────────
   //
   // A collaborator (timesheet/document_painter/timesheet_cells_pass.dart, a part of this
@@ -509,6 +534,12 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
 
   List<TimesheetCell> displayCellsFor(TimesheetColumn column) =>
       _cells.displayCellsFor(column);
+
+  /// The text a header box prints on [pageIndex] — the same call the
+  /// content stratum paints with, so what a test reads is what the sheet
+  /// says (the length and the sheet count follow a drag live, F-88).
+  String headerValueFor(TimesheetHeaderField field, int pageIndex) =>
+      _bands.headerFieldValue(field, pageIndex);
 
   /// H4 (유저 2026-08-21): 「타임시트패널의 타임시트 바탕 용지색, 애매한
   /// 회색인데 **완전한 흰색으로**」.

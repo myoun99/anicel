@@ -24,6 +24,8 @@ import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import '../text/app_strings.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show CutTrimDragPreview, TimelineDragPreview;
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/static_raster.dart';
@@ -477,11 +479,19 @@ class _ConteTabHostState extends State<ConteTabHost> {
       // page on every sample.
       child: ValueListenableBuilder<bool>(
         valueListenable: _inkStrokeActive,
-        builder: (context, stroking, child) => StaticRaster(
-          debugLabel: 'conte-page',
-          enabled: !stroking,
-          child: child!,
-        ),
+        builder: (context, stroking, child) =>
+            ValueListenableBuilder<TimelineDragPreview?>(
+              valueListenable: _session.dragPreview,
+              // F-88: a cut-length drag re-prints the page's numbers on
+              // every step, so the bake stands down for it exactly as it
+              // does for a pen — capturing costs a full page copy a step.
+              builder: (context, preview, baked) => StaticRaster(
+                debugLabel: 'conte-page',
+                enabled: !stroking && preview is! CutTrimDragPreview,
+                child: baked!,
+              ),
+              child: child,
+            ),
         child: CustomPaint(
           key: const ValueKey<String>('conte-page'),
           painter: ContePagePainter(
@@ -505,13 +515,15 @@ class _ConteTabHostState extends State<ConteTabHost> {
             liveInkKeys: !widget.inkEnabled || inkController == null
                 ? const {}
                 : {for (final window in conteInkWindows(page)) window.key},
-            repaint: inkController == null
-                ? widget.thumbnailRepaint
-                : Listenable.merge([
-                    if (widget.thumbnailRepaint != null)
-                      widget.thumbnailRepaint!,
-                    inkController,
-                  ]),
+            // F-88: the numbers this page prints follow a cut-length drag,
+            // so the channel is both a VALUE the paint reads and a reason
+            // to repaint.
+            dragPreview: _session.dragPreview,
+            repaint: Listenable.merge([
+              if (widget.thumbnailRepaint != null) widget.thumbnailRepaint!,
+              ?inkController,
+              _session.dragPreview,
+            ]),
           ),
           child: const SizedBox.expand(),
         ),

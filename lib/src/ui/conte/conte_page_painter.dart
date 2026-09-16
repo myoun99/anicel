@@ -1,6 +1,8 @@
 import '../../models/conte/conte_ink_windows.dart';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
+
 import 'package:flutter/material.dart';
 
 import '../../core/contain_rect.dart';
@@ -8,12 +10,16 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/project_frame_rate.dart' show secondsPlusFramesLabel;
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../sheet_painting.dart';
 import 'conte_fonts.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import '../timeline/timeline_cut_end_handle.dart'
+    show timelineCutEndPreviewFrameCount;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
@@ -39,6 +45,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     this.layers,
     this.inkImageFor,
     this.liveInkKeys = const {},
+    this.dragPreview,
     // The thumbnail store (async pictures): a landed render must repaint
     // this painter even though none of the compared fields changed —
     // without it the cells stayed blank until the next pan/zoom.
@@ -47,6 +54,14 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   final ContePageLayout page;
   final ConteSheetSource source;
+
+  /// The session's drag channel, or null where nothing can be in flight
+  /// (the exports and focused tests, which print the built labels).
+  ///
+  /// The sheet's NUMBERS follow a cut-length drag through it (F-88); the
+  /// page geometry does not — the paper re-flows when the drag lands, so a
+  /// step costs one text repaint rather than a re-layout.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The panel's pan/zoom (the canvas-shell mount, #16): document space IS
   /// page space and this transform places it, exactly like the timesheet
@@ -239,10 +254,58 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// [band]'s length as this paint should print it: the in-flight drag's
+  /// duration while one is targeting that cut, the built label otherwise.
+  ///
+  /// 🚨The SAME law the timeline's end line and the timesheet already read
+  /// ([timelineCutEndPreviewFrameCount]) — a second answer here is how two
+  /// panels print one number differently for the length of a drag (F-88,
+  /// 유저: 「콘티패널의 초수도 똑같이」).
+  String lengthLabelFor(ContePlacedCutBand band) {
+    final live = _liveFramesOf(band.cutId);
+    return live == null
+        ? band.lengthLabel
+        : secondsPlusFramesLabel(live, source.framesPerSecond);
+  }
+
+  /// The page's running total as this paint should print it — the lengths
+  /// of the cuts ENDING on this page, each read live.
+  String footerTotalLabel() {
+    if (dragPreview?.value == null) {
+      return page.pageTotalLabel;
+    }
+    var total = 0;
+    for (final band in page.cutBands) {
+      if (band.showsLength) {
+        total += _liveFramesOf(band.cutId) ?? 0;
+      }
+    }
+    return secondsPlusFramesLabel(total, source.framesPerSecond);
+  }
+
+  /// The live length of the cut [cutId] names, or null with no drag
+  /// channel (exports and focused tests print the built labels).
+  int? _liveFramesOf(String cutId) {
+    final channel = dragPreview;
+    if (channel == null) {
+      return null;
+    }
+    for (final cut in source.cuts) {
+      if (cut.cutId.value == cutId) {
+        return timelineCutEndPreviewFrameCount(
+          preview: channel.value,
+          cutId: cut.cutId,
+          playbackFrameCount: cut.durationFrames,
+        );
+      }
+    }
+    return null;
+  }
+
   void _paintFooterValues(Canvas canvas) {
     _text(
       canvas,
-      page.pageTotalLabel,
+      footerTotalLabel(),
       Rect.fromLTRB(
         metrics.timeLeft,
         metrics.bodyBottom,
@@ -322,7 +385,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     if (band.showsLength) {
       _text(
         canvas,
-        band.lengthLabel,
+        lengthLabelFor(band),
         band.timeRect.deflate(3),
         _style(10),
         alignRight: true,
@@ -457,6 +520,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     viewport,
     effectiveRatio,
     BySet(liveInkKeys),
+    dragPreview,
   );
 }
 
