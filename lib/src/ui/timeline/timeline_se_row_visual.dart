@@ -453,20 +453,33 @@ class SeSpanVisual extends StatelessWidget {
     final seName = this.seName ?? '';
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Narrow spans drop the name box instead of overflowing it (the
-        // storyboard's zoomed-out blocks can be slimmer than the box —
-        // same rule as narrow cut blocks dropping their thumbnail slot).
+        // ↩️Narrow spans USED to DROP the name box instead of overflowing
+        // it (the storyboard's zoomed-out blocks can be slimmer than the
+        // box — same rule as narrow cut blocks dropping their thumbnail
+        // slot).
+        //
+        // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
+        // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
+        // the way the dialogue glyphs beside it narrow rather than vanish
+        // ([dialogueGlyphCondensation]). ⛔The half-span ceiling is not a new
+        // number: the old threshold `>= seNameBoxExtent * 2` already said the
+        // box may never take more than half the span, and that stands. The
+        // two meet at 32 — `32 / 2 == seNameBoxExtent` — so the chip narrows
+        // continuously instead of stepping.
         final mainExtent = axis == Axis.horizontal
             ? constraints.maxWidth
             : constraints.maxHeight;
-        final showName = seName.isNotEmpty && mainExtent >= seNameBoxExtent * 2;
+        final nameExtent = mainExtent >= seNameBoxExtent * 2
+            ? seNameBoxExtent
+            : mainExtent / 2;
         return Stack(
           children: [
             Flex(
               direction: axis,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (showName) _SeNameBox(axis: axis, name: seName),
+                if (seName.isNotEmpty)
+                  _SeNameBox(axis: axis, name: seName, extent: nameExtent),
                 Expanded(
                   child: DialogueFitText(
                     text: dialogue,
@@ -503,10 +516,19 @@ class SeSpanVisual extends StatelessWidget {
 }
 
 class _SeNameBox extends StatelessWidget {
-  const _SeNameBox({required this.axis, required this.name});
+  const _SeNameBox({
+    required this.axis,
+    required this.name,
+    required this.extent,
+  });
 
   final Axis axis;
   final String name;
+
+  /// How far the chip runs ALONG the block: [seNameBoxExtent] where the span
+  /// can afford it, half the span where it cannot (F-93). ⛔Never the whole
+  /// span — the dialogue keeps the rest.
+  final double extent;
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +582,7 @@ class _SeNameBox extends StatelessWidget {
         ),
       ),
     );
-    return alongBox(axis, seNameBoxExtent, child: box);
+    return alongBox(axis, extent, child: box);
   }
 }
 
