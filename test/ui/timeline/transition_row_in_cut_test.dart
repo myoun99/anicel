@@ -354,7 +354,13 @@ void main() {
     );
     // The printed SHEET carries only what applies — an animator must not
     // shoot material for a fade the compositor never runs.
-    expect(session.transitions.trackTransitionSheetLayer.instructions.keys, [2]);
+    expect(
+      session.transitions
+          .trackTransitionSheetLayerFor(cutStart: 0, duration: first.duration)
+          .instructions
+          .keys,
+      [2],
+    );
   });
 
   /// ③ Create / edit / delete are ONE verb — the instance editor.

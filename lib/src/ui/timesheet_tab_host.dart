@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
+import '../models/cut.dart';
 import '../models/timesheet_document.dart';
 import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
@@ -104,7 +105,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   TimesheetDocument? _document;
   TimesheetDocumentLayout? _layout;
   TimesheetDocumentLayout? _pagedLayout;
-  Object? _documentCut;
+  Cut? _documentCut;
   Object? _documentInfo;
   Object? _documentInstructionSet;
   Object? _documentTrackSe;
@@ -124,11 +125,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 
   /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
   /// bare sheet background instead of a document.
+  ///
+  /// F-90: the cut it prints is the cut UNDER THE PLAYHEAD — the one being
+  /// played or dragged over, which a scrub keeps apart from the cut open for
+  /// editing — so a drag over a gap prints that bare background too.
   TimesheetDocumentLayout? _resolveLayouts(EditorSessionManager session) {
-    final cut = session.activeCutOrNull;
-    if (cut == null) {
+    final at = session.cutUnderPlayhead.resolve();
+    if (at == null) {
       return null;
     }
+    final cut = at.cut;
     final info = session.timesheetInfo;
     final projectName = session.repository.requireProject().name;
     final instructionSet = session.camera.cameraInstructionSet;
@@ -138,7 +144,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // Same story for the transition row: track-owned, so an edit there
     // changes the track's identity rather than the cut's.
     final transitionLayer = session.activeTrack.transitionLayer;
-    final cutStartFrame = session.activeCutGlobalStartFrame;
+    final cutStartFrame = at.startFrame;
     if (_document == null ||
         !identical(_documentCut, cut) ||
         !identical(_documentInfo, info) ||
@@ -175,7 +181,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         // warning to sit on). Off = the slot stays blank form space,
         // the camera column's own precedent.
         transitionLayer: transitionLayer.onTimesheet
-            ? session.transitions.trackTransitionSheetLayer
+            ? session.transitions.trackTransitionSheetLayerFor(
+                cutStart: cutStartFrame,
+                duration: cut.duration,
+              )
             : null,
         dataSheet: _dataSheet,
       );
@@ -470,7 +479,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       : CanvasAutoFrameRequest(
                           token: (
                             'timesheet-reveal',
-                            session.requireActiveCut.id,
+                            _documentCut!.id,
                             playheadFrame,
                           ),
                           rect: Rect.fromLTWH(
@@ -597,7 +606,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                   // it was the one data line still printing the
                                   // committed length while the cells beside it
                                   // already previewed.
-                                  cutId: session.activeCutOrNull?.id,
+                                  cutId: _documentCut?.id,
                                   notation: TimesheetNotation.of(
                                     session
                                         .languageSettings
@@ -631,6 +640,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     repaint: Listenable.merge([
                                       session.editingFrameCursor,
                                       session.frameSeekCommitted,
+                                      session.gapParkingListenable,
                                       session
                                           .playbackRig
                                           .playback
@@ -673,7 +683,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                       controller: inkController,
                                       layout: layout,
                                       pagedLayout: pagedLayout,
-                                      cutId: session.requireActiveCut.id,
+                                      cutId: _documentCut!.id,
                                       brushToolState: toolState,
                                       historyManager: session.historyManager,
                                       viewport: viewport,
@@ -698,15 +708,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
 }
 
 /// The current sheet playhead frame: the playing local frame during
-/// playback, the editing playhead otherwise.
-int _resolvePlayheadFrame(EditorSessionManager session) {
-  final playbackGlobalFrame =
-      session.playbackRig.playback.globalFrameIndexListenable.value;
-  return playbackGlobalFrame == null
-      ? session.currentFrameIndex
-      : session.playbackRig.playback.position?.localFrameIndex ??
-            session.currentFrameIndex;
-}
+/// playback, the editing playhead otherwise — and, since F-90, a live
+/// scrub's parked frame inside the cut the sheet prints.
+int _resolvePlayheadFrame(EditorSessionManager session) =>
+    session.cutUnderPlayhead.localFrame;
 
 /// Token-gated host for the sheet panel's PLAYHEAD-derived facts (R13-2):
 /// the auto page turn, the Fit target page and the frame label need the

@@ -15,6 +15,7 @@ import '../../services/commands/update_project_camera_size_command.dart';
 import '../brush/brush_editor_selection.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'cut_under_playhead.dart';
 import 'session_roles.dart';
 import 'lane_range_move_drag.dart';
 
@@ -33,26 +34,26 @@ class Camera {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required LaneRangeMoveDragVerbs laneMove,
     required ActiveCutEdits activeCut,
+    required CutUnderPlayhead cutUnderPlayhead,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
        _laneMove = laneMove,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _cutUnderPlayhead = cutUnderPlayhead;
 
   final ActiveCutEdits _activeCut;
+  final CutUnderPlayhead _cutUnderPlayhead;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final LaneRangeMoveDragVerbs _laneMove;
 
   CutCamera get activeCutCamera => _project.requireActiveCut.camera;
@@ -136,26 +137,21 @@ class Camera {
   /// there is no cut here (a gap, or the V-row eye's hidden picture), and
   /// then there is nothing to frame. Null says exactly that.
   CameraPose? get displayedCameraPose {
-    final parked = _internals.frameScrubActive.value
-        ? _selection.gapGlobalFrame
-        : null;
+    final parked = _cutUnderPlayhead.liveParkedFrame;
     if (parked == null) {
       return _project.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
     }
-    // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
-    // purpose (its over-end runway) — it is an addressing rule, not a
-    // containment test. [TrackFrameAxis.isGap] is the containment test, and
-    // it is the same pair [selectGlobalFrame] asks, so what the drag frames
-    // and what the release lands cannot disagree.
-    final axis = _timeline.trackFrameAxis();
-    final owner = axis.isGap(parked) ? null : axis.ownerOf(parked);
-    if (owner == null) {
+    // ↩️F-90: the gap-versus-owner rule for a parked frame lives in
+    // [CutUnderPlayhead.atTrackFrame] now, its warning with it — the sheet
+    // asks the same question and must get the same answer.
+    final at = _cutUnderPlayhead.atTrackFrame(parked);
+    if (at == null) {
       return null;
     }
     // The RENDER route's resolver (fx bypass honoured), because the picture
     // under this rectangle came through it too: preview and camera frame
     // must not disagree about the same cut.
-    return cameraPoseForCut(owner.cut, parked - owner.startFrame);
+    return cameraPoseForCut(at.cut, at.localFrame);
   }
 
   bool get hasCameraKeyframeAtCurrentFrame =>

@@ -119,6 +119,7 @@ import 'session/visibility_solo.dart';
 import 'session/text_cel_bakes.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
+import 'session/cut_under_playhead.dart';
 import 'session/frame_scrub.dart';
 import 'session/row_selection.dart';
 import 'session/row_spans.dart';
@@ -217,6 +218,14 @@ class EditorSessionManager extends ChangeNotifier
     playbackRig.playback.globalFrameIndexListenable.addListener(
       followPlaybackCut,
     );
+    // F-90: the cut under the playhead re-answers wherever the playhead or
+    // the cut can move; [CutUnderPlayhead.sync] publishes crossings only.
+    playbackRig.playback.globalFrameIndexListenable.addListener(
+      cutUnderPlayhead.sync,
+    );
+    _gapGlobalFrameNotifier.addListener(cutUnderPlayhead.sync);
+    frameScrubActive.addListener(cutUnderPlayhead.sync);
+    addListener(cutUnderPlayhead.resync);
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
     // it.
@@ -1184,6 +1193,15 @@ class EditorSessionManager extends ChangeNotifier
     () => playbackRig.playback.globalFrameIndexListenable.removeListener(
       followPlaybackCut,
     ),
+    // F-90's listeners go before the rig and the two scrub notifiers they
+    // hang on are released, and the session's own before it stops.
+    () => playbackRig.playback.globalFrameIndexListenable.removeListener(
+      cutUnderPlayhead.sync,
+    ),
+    () => _gapGlobalFrameNotifier.removeListener(cutUnderPlayhead.sync),
+    () => frameScrubActive.removeListener(cutUnderPlayhead.sync),
+    () => removeListener(cutUnderPlayhead.resync),
+    cutUnderPlayhead.dispose,
     // The guard in [_hydrateShownMovieCels] is the belt and this the braces
     // — the same pair as the lane range above.
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
@@ -1369,8 +1387,21 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     controllers: activeCutControllers,
     laneMove: laneMove,
-    internals: this,
     activeCut: _activeCutEdits,
+    cutUnderPlayhead: cutUnderPlayhead,
+  );
+
+  // ── the cut under the playhead: its own object, in its own file ───────
+  //
+  // A collaborator (session/cut_under_playhead.dart, F-90). Callers name it —
+  // `session.cutUnderPlayhead.resolve()`.
+  late final CutUnderPlayhead cutUnderPlayhead = CutUnderPlayhead(
+    project: this,
+    selection: this,
+    timeline: this,
+    controllers: activeCutControllers,
+    internals: this,
+    playbackRig: playbackRig,
   );
 
   @override

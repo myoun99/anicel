@@ -87,6 +87,23 @@ class Transitions {
         cached.$3 == duration) {
       return cached.$4;
     }
+    final (display, crossing) = _projectOntoCut(
+      source,
+      cutStart: cutStart,
+      duration: duration,
+    );
+    _transitionDisplayClone = (source, cutStart, duration, display, crossing);
+    return display;
+  }
+
+  /// The projection walk onto the cut whose frames are `[cutStart,
+  /// cutStart + duration)`, with the projected keys of the one-sided spans
+  /// that cross it.
+  (Layer, Set<int>) _projectOntoCut(
+    Layer source, {
+    required int cutStart,
+    required int duration,
+  }) {
     final projected = SplayTreeMap<int, InstructionEvent>();
     // D26: the crossing answer is recorded under the PROJECTED key in the
     // same walk — the clone re-keys spans to cut-local starts, so a marker
@@ -111,9 +128,7 @@ class Transitions {
         crossing.add(mark.start);
       }
     }
-    final display = source.copyWith(instructions: projected);
-    _transitionDisplayClone = (source, cutStart, duration, display, crossing);
-    return display;
+    return (source.copyWith(instructions: projected), crossing);
   }
 
   (Layer, int, int, Layer, Set<int>)? _transitionDisplayClone;
@@ -141,9 +156,18 @@ class Transitions {
   /// cut-view ROW keeps drawing it — the red warning needs the block to
   /// sit on; the sheet has no warning channel, so it prints only what
   /// applies.
-  Layer get trackTransitionSheetLayer {
-    final display = trackTransitionDisplayLayer;
-    final crossing = _transitionDisplayClone?.$5 ?? const <int>{};
+  ///
+  /// F-90: for the cut the sheet PRINTS — a scrub over another cut makes it
+  /// a different one from the cut open for editing.
+  Layer trackTransitionSheetLayerFor({
+    required int cutStart,
+    required int duration,
+  }) {
+    final (display, crossing) = _projectOntoCut(
+      _selection.activeTrack.transitionLayer,
+      cutStart: cutStart,
+      duration: duration,
+    );
     if (crossing.isEmpty) {
       return display;
     }

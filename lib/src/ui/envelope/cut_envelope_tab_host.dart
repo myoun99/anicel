@@ -105,7 +105,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
-    final cut = session.activeCutOrNull;
+    // F-90: the cut under the playhead, like the sheet beside it.
+    final cut = session.cutUnderPlayhead.resolve()?.cut;
     final form = CutEnvelopePresets.byId(widget.formId);
 
     // The panel shows the CUT-fitted paper: that is the size the export

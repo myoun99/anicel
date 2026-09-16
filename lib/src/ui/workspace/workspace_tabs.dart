@@ -952,6 +952,9 @@ class _WorkspaceTabs {
               _state._views._envelopeInkEnabled,
               _state._views._envelopeFormId,
               _state._views._envelopeInk,
+              // F-90: the envelope of the cut under the playhead, turning
+              // over at a crossing like the sheet beside it.
+              _state.widget.session.cutUnderPlayhead.listenable,
               _state.widget.session.languageSettings,
             ]),
             builder: (context) => CutEnvelopeTabHost(
@@ -1001,6 +1004,9 @@ class _WorkspaceTabs {
               _state._views._timesheetPage,
               _state._views._timesheetViewport,
               _state._views._timesheetInkEnabled,
+              // F-90: a crossing, played or dragged over, turns the sheet
+              // over to the cut under the playhead.
+              _state.widget.session.cutUnderPlayhead.listenable,
               // The notation language reprints the sheet (UI-R10 #7).
               _state.widget.session.languageSettings,
             ]),
