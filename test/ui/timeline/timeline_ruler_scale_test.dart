@@ -1,7 +1,14 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 /// The frame SCALE the ruler and the X-sheet's rail both draw, as one value
 /// object (the audit's clone scan, 2026-09-06): the eleven inputs, their
@@ -26,6 +33,7 @@ void main() {
     ValueNotifier<int>? windowBucket,
     double viewportMainExtent = 0,
     Color? pastPlaybackWash,
+    TimelineRulerNumberType numberType = TimelineFrameRulerPainter.numberType,
   }) => TimelineRulerScale(
     axis: axis,
     frameStartIndex: frameStartIndex,
@@ -36,6 +44,7 @@ void main() {
     crossExtent: crossExtent,
     metrics: metrics,
     colorScheme: colorScheme ?? light,
+    numberType: numberType,
     framesPerSecond: framesPerSecond,
     showSeconds: showSeconds,
     windowBucket: windowBucket,
@@ -67,6 +76,7 @@ void main() {
         scale(axis: Axis.vertical),
         scale(crossExtent: 72),
         scale(pastPlaybackWash: const Color(0xFF123456)),
+        scale(numberType: XSheetFrameRailPainter.numberType),
       ]) {
         expect(other, isNot(base), reason: '$other');
       }
@@ -114,11 +124,12 @@ void main() {
   group('modelAt — the model the ruler and the rail both read', () {
     test('the label follows the cadence, and the seconds line the second '
         'boundaries', () {
-      // 8px cells put the ladder on its 6f rung (3 × 8 < 40 ≤ 6 × 8).
+      // 8px cells: two digits fit three of them, so every third frame
+      // carries its number (I-22 — the numbers are measured, not the cell).
       final wide = scale(
         metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 8),
       );
-      expect(wide.metrics.frameLabelEveryFrames, 6, reason: 'fixture premise');
+      expect(wide.labelEveryFrames, 3, reason: 'fixture premise');
       expect(wide.modelAt(0).label, '1');
       expect(wide.modelAt(6).label, '7');
       expect(wide.modelAt(7).label, '');
@@ -156,6 +167,58 @@ void main() {
       expect(washed.modelAt(31).background, wash);
       // And the wash reaches ONLY the frames past the range.
       expect(washed.modelAt(29).background, light.surface);
+    });
+  });
+
+  group('labelEveryFrames — a number thins only where it would touch the '
+      'next (I-22)', () {
+    double widest(TextStyle type, int digits) => [
+      for (var digit = 0; digit <= 9; digit += 1)
+        timelineGlyphPainter('$digit' * digits, type).width,
+    ].reduce(math.max);
+
+    test('the densest rung the widest number fits, with its gap', () {
+      for (final frames in [9, 30, 120, 1200]) {
+        for (final cell in [4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 23.0, 24.0, 36.0]) {
+          final ruler = scale(
+            frameEndIndexExclusive: frames,
+            playbackFrameCount: frames,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: cell,
+            ),
+          );
+          final digits = '$frames'.length;
+          bool fits(int stride) =>
+              widest(ruler.numberTypeAt(everyFrame: stride == 1), digits) +
+                  timelineMarkGap <=
+              stride * cell;
+          final every = ruler.labelEveryFrames;
+          final where = '$frames frames at ${cell}px';
+          expect(fits(every), isTrue, reason: '$where: the rung holds it');
+          final index = timelineFrameStrideLadder.indexOf(every);
+          if (index > 0) {
+            expect(
+              fits(timelineFrameStrideLadder[index - 1]),
+              isFalse,
+              reason: '$where: the denser rung would touch',
+            );
+          }
+        }
+      }
+    });
+
+    test('in seconds mode the longest number is the fps, not the frame '
+        'count', () {
+      TimelineRulerScale at8({required bool seconds}) => scale(
+        frameEndIndexExclusive: 1200,
+        playbackFrameCount: 1200,
+        showSeconds: seconds,
+        metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: 8),
+      );
+      expect(
+        at8(seconds: true).labelEveryFrames,
+        lessThan(at8(seconds: false).labelEveryFrames),
+      );
     });
   });
 
@@ -227,6 +290,9 @@ void main() {
 
   group('modelAt is one law, and the wash is a value', () {
     test('label, seconds line and states do not know the axis', () {
+      // At 24px both strips write every frame, so the labels agree across
+      // and down; the cadence is measured ALONG the axis (I-22), the one
+      // thing the axis may change about a label.
       for (final frame in [0, 1, 24, 25]) {
         final across = scale(currentFrameIndex: 24).modelAt(frame);
         final down = scale(

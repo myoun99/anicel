@@ -47,20 +47,20 @@ void main() {
       );
     });
 
-    test('frame label cadence follows the paper-timesheet stride ladder '
-        'anchored at frame 1 (user rule: all → 3f → 6f → 12f → 24f…)', () {
-      int cadenceAt(double width) =>
-          TimelineGridMetrics(frameCellWidth: width).frameLabelEveryFrames;
+    test('the stride ladder is the paper timesheet\'s, anchored at frame 1 '
+        '(user rule: all → 3f → 6f → 12f → 24f…)', () {
+      expect(timelineFrameStrideLadder, [1, 3, 6, 12, 24, 48, 96]);
+    });
 
-      expect(cadenceAt(48), 1);
-      expect(cadenceAt(24), 1);
-      expect(cadenceAt(20), 1);
-      expect(cadenceAt(19), 3);
-      expect(cadenceAt(14), 3);
-      expect(cadenceAt(8), 6);
-      expect(cadenceAt(4), 12);
-      expect(cadenceAt(2), 24);
-      expect(cadenceAt(1), 48);
+    // I-22: which rung stands is no longer a threshold on the cell here —
+    // each mark asks the ladder for the rung that holds its own extent.
+    test('a mark climbs to the densest rung whose span holds it', () {
+      expect(timelineStrideHolding(3, 8), 1);
+      expect(timelineStrideHolding(8, 8), 1, reason: 'a span that just holds');
+      expect(timelineStrideHolding(8.5, 8), 3);
+      expect(timelineStrideHolding(30, 8), 6);
+      expect(timelineStrideHolding(3, 2.4), 3);
+      expect(timelineStrideHolding(1000, 1), 96, reason: 'the top rung');
     });
 
     test('custom metrics can be created', () {

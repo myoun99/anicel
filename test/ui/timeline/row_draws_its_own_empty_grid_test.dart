@@ -141,10 +141,12 @@ void main() {
 
   test('the cadence still thins empty-space lines out at small zooms — the '
       'row did not grow a second grid rule', () {
+    // 10% (2.4px): a base line and its ground need three frames there
+    // (I-22), so frame 5 thins out while frame 6's beat stays.
     final painter = TimelineRowCellsPainter(
       layer: layer,
       geometry: testFrameGeometry(
-        frameCellExtent: 8,
+        frameCellExtent: 2.4,
         frameEndIndexExclusive: 40,
       ),
       crossAxisExtent: 28,

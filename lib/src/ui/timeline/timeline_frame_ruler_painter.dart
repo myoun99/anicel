@@ -1,7 +1,7 @@
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'axis_turn.dart' show offsetAlong;
+import 'axis_turn.dart' show extentAlong, offsetAlong;
 import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
@@ -173,31 +173,32 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     final writing = scale.writingAt(frameIndex, current: current);
     final rect = scale.cellRectFor(frameIndex);
     final colorScheme = scale.colorScheme;
-    final everyFrame = scale.metrics.frameLabelEveryFrames == 1;
+    final everyFrame = scale.labelEveryFrames == 1;
     final glyphs = <TimelineGlyphPlacement>[];
     if (writing.number.isNotEmpty) {
-      // Labels keep one ink whatever the playhead range (UI-R18 #9), and
-      // SHRINK rather than vanish at deep zoom-outs (R26 #38).
-      final style = everyFrame
-          ? TextStyle(
-              fontSize: timelineFittedGlyphFontSize(
-                11,
-                scale.metrics.frameCellWidth,
-                crossExtent: scale.crossExtent,
-              ),
-              color: colorScheme.onSurface,
-            )
-          : TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant);
+      // Labels keep one ink whatever the playhead range (UI-R18 #9), set in
+      // the type the cadence measured ([TimelineRulerScale.numberType]).
+      final style = scale
+          .numberTypeAt(everyFrame: everyFrame)
+          .copyWith(
+            color: everyFrame
+                ? colorScheme.onSurface
+                : colorScheme.onSurfaceVariant,
+          );
       final painter = timelineGlyphPainter(
         writing.number,
         scale.inkOf(style, current: current),
       );
       // Bottom line: in-cell centered when every cell labels itself, the
-      // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27).
+      // every-Nth overlay style (left-anchored) otherwise (UI-R10 #27). The
+      // overlay stands [timelineMarkGap] in from its cell: the ground the
+      // cadence keeps between one number and the next is this inset.
       glyphs.add((
         painter: painter,
         offset: Offset(
-          everyFrame ? rect.center.dx - painter.width / 2 : rect.left + 2,
+          everyFrame
+              ? rect.center.dx - painter.width / 2
+              : rect.left + timelineMarkGap,
           rect.bottom - painter.height - 1,
         ),
       ));
@@ -213,6 +214,23 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
     }
     return glyphs;
   }
+
+  /// The type the RULER sets its numbers in ([TimelineRulerScale.numberType]):
+  /// fitted into its cell while every cell carries one — SHRINKING rather
+  /// than vanishing at deep zoom-outs (R26 #38) — and the every-Nth overlay
+  /// at 10 (UI-R10 #27).
+  static TextStyle numberType(
+    TimelineRulerScale scale, {
+    required bool everyFrame,
+  }) => TextStyle(
+    fontSize: everyFrame
+        ? timelineFittedGlyphFontSize(
+            11,
+            scale.metrics.frameCellWidth,
+            crossExtent: scale.crossExtent,
+          )
+        : 10,
+  );
 
   // Labels come from the shared laid-out-TextPainter cache (UI-R16):
   // fresh layout per label per repaint was the priciest slice of a
@@ -232,6 +250,15 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
             : 'frame ${frameIndex + 1}',
       );
 }
+
+/// How a strip sets its frame NUMBER at a cadence: the type alone — the ink
+/// stays the painter's ([TimelineFrameRulerPainter.numberType] for the
+/// ruler, `XSheetFrameRailPainter.numberType` for the rail).
+typedef TimelineRulerNumberType =
+    TextStyle Function(TimelineRulerScale scale, {required bool everyFrame});
+
+/// [TimelineRulerScale.labelEveryFrames], measured once per scale.
+final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 
 /// The frame SCALE a frame-axis strip draws: the bounds, the playhead and
 /// playback range, the leading spacer along the main axis, the metrics and
@@ -260,6 +287,7 @@ final class TimelineRulerScale {
     required this.crossExtent,
     required this.metrics,
     required this.colorScheme,
+    required this.numberType,
     this.framesPerSecond = 24,
     this.showSeconds = false,
     this.windowBucket,
@@ -288,6 +316,16 @@ final class TimelineRulerScale {
 
   final TimelineGridMetrics metrics;
   final ColorScheme colorScheme;
+
+  /// The type this strip sets its numbers in — the ruler's or the rail's
+  /// (R10 R6: the corner is shared, the size is not).
+  ///
+  /// A VALUE on the scale rather than a style each painter keeps to itself
+  /// (I-22): [labelEveryFrames] measures the numbers in this type and both
+  /// painters set them in it, so what the cadence measured is what is
+  /// painted.
+  final TimelineRulerNumberType numberType;
+
   final int framesPerSecond;
 
   /// Seconds display mode: the bottom line repeats 1..fps per second
@@ -363,6 +401,58 @@ final class TimelineRulerScale {
       ? timelineRulerPlayheadInk(colorScheme).color!
       : colorScheme.onSurfaceVariant;
 
+  /// [numberType] at the cadence [everyFrame] names.
+  TextStyle numberTypeAt({required bool everyFrame}) =>
+      numberType(this, everyFrame: everyFrame);
+
+  /// Every how many frames a number is written, counted from frame 1: the
+  /// densest rung of the paper-timesheet ladder ([timelineFrameStrideLadder])
+  /// at which the widest number this strip writes, set in the type of that
+  /// rung and measured along [axis], keeps [timelineMarkGap] to the next.
+  ///
+  /// 🚨I-22 (유저 2026-09-12): 「33.3%배율에서 3f마다의 그리드 세로선이랑 글자,
+  /// 아직 존재해도 안겹칠거같은데 뭔가 벌써 사라져? … 1f마다 그리드선이랑
+  /// 글자도 똑같음. 최대한 버텨보자. 룰러 텍스트 글자가 겹칠때 생략한다는
+  /// 느낌으로」. ↩️The rung used to be a threshold on the cell alone (every
+  /// frame from 20px, then the first rung spanning 40px) that never looked at
+  /// a number: it gave up rungs the numbers still fit, and kept every frame
+  /// where four digits ran into each other.
+  ///
+  /// The widest number is the widest digit, as many times over as the
+  /// longest label has digits, so a face with proportional figures cannot
+  /// slip a wider run past the measure.
+  int get labelEveryFrames =>
+      _labelEveryFramesOf[this] ??= _measuredLabelEveryFrames();
+
+  int _measuredLabelEveryFrames() {
+    final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final longest = showSeconds
+        ? '$safeFps'
+        : '${frameEndIndexExclusive > 1 ? frameEndIndexExclusive : 1}';
+    final digits = longest.length;
+    double widestIn(TextStyle type) {
+      var widest = 0.0;
+      for (var digit = 0; digit <= 9; digit += 1) {
+        final glyph = timelineGlyphPainter('$digit' * digits, type);
+        final extent = extentAlong(axis, glyph.size);
+        widest = extent > widest ? extent : widest;
+      }
+      return widest;
+    }
+
+    final cell = metrics.frameCellWidth;
+    if (widestIn(numberTypeAt(everyFrame: true)) + timelineMarkGap <= cell) {
+      return 1;
+    }
+    // Past every frame the numbers are the every-Nth overlay: the rung that
+    // holds the overlay's widest number, and never the first — that is the
+    // every-frame writing the line above has already refused.
+    final overlay = widestIn(numberTypeAt(everyFrame: false)) + timelineMarkGap;
+    final stride = timelineStrideHolding(overlay, cell);
+    final overlayFloor = timelineFrameStrideLadder[1];
+    return stride > overlayFloor ? stride : overlayFloor;
+  }
+
   /// The paper under one cell: its ground, and on it THE boundary line —
   /// the grid law's ink composited onto that ground — turned by [axis]: down
   /// the ruler's cell edge, across the rail's row edge. Both strips lay their
@@ -413,9 +503,8 @@ final class TimelineRulerScale {
 
   /// The resolved per-cell model — the probe surface.
   ///
-  /// R9 #4: the cadence is the SHARED one
-  /// ([TimelineGridMetrics.frameLabelEveryFrames], the paper-timesheet
-  /// ladder anchored at frame 1). The rail was a transposed
+  /// R9 #4: the cadence is the SHARED one ([labelEveryFrames], on the
+  /// paper-timesheet ladder anchored at frame 1). The rail was a transposed
   /// re-implementation of the horizontal ruler and had never called it —
   /// so zooming out crowded every row's number into the next, while the
   /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
@@ -423,7 +512,7 @@ final class TimelineRulerScale {
   TimelineRulerHeaderModel modelAt(int frameIndex) {
     final selected = frameIndex == currentFrameIndex;
     final outside = frameIndex >= playbackFrameCount;
-    final labeled = frameIndex % metrics.frameLabelEveryFrames == 0;
+    final labeled = frameIndex % labelEveryFrames == 0;
     final ground = outside
         ? (pastPlaybackWash ?? colorScheme.surface)
         : colorScheme.surface;
@@ -502,6 +591,7 @@ final class TimelineRulerScale {
           other.playbackFrameCount == playbackFrameCount &&
           other.leadingFrameSpacer == leadingFrameSpacer &&
           other.metrics == metrics &&
+          other.numberType == numberType &&
           other.framesPerSecond == framesPerSecond &&
           other.showSeconds == showSeconds &&
           identical(other.windowBucket, windowBucket) &&
@@ -519,6 +609,7 @@ final class TimelineRulerScale {
     playbackFrameCount,
     leadingFrameSpacer,
     metrics,
+    numberType,
     framesPerSecond,
     showSeconds,
     identityHashCode(windowBucket),

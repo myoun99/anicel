@@ -39,6 +39,9 @@ void main() {
     crossExtent: 28,
     metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
     colorScheme: scheme,
+    numberType: axis == Axis.horizontal
+        ? TimelineFrameRulerPainter.numberType
+        : XSheetFrameRailPainter.numberType,
     showSeconds: showSeconds,
   );
 
@@ -66,6 +69,26 @@ void main() {
         current: false,
       ).singleWhere((glyph) => textOf(glyph) == text).rect;
 
+
+  /// A horizontal scale wide enough to write EVERY frame's number — ASKED
+  /// for, never assumed.
+  ///
+  /// 🚨I-22 (2026-09-16): the cadence used to be a threshold on the cell
+  /// alone (every frame from 20px), so a fixture could name a cell and know
+  /// the answer. It MEASURES the numbers now, and the test font's digits are
+  /// square — '120' comes out 33px where the app's face writes about half
+  /// that — so the cell at which every frame still fits is the FACE's
+  /// answer, not a constant. A case that needs neighbouring numbers asks for
+  /// a cell that has them.
+  TimelineRulerScale everyFrameScale() {
+    for (final cell in [24.0, 32.0, 48.0, 64.0, 96.0]) {
+      final scale = scaleOf(cell: cell);
+      if (scale.labelEveryFrames == 1) {
+        return scale;
+      }
+    }
+    fail('fixture: no cell in the zoom range writes every frame');
+  }
   group('the pair', () {
     test('is the number and the second at the playhead, bold on the full '
         'ink', () {
@@ -84,7 +107,7 @@ void main() {
 
     test('is written whatever the cadence and the boundary say', () {
       final scale = scaleOf(cell: 8);
-      expect(scale.metrics.frameLabelEveryFrames, 6, reason: 'fixture');
+      expect(scale.labelEveryFrames, 6, reason: 'fixture');
       expect(
         TimelineFrameRulerPainter.glyphsAt(scale, 8, current: false),
         isEmpty,
@@ -105,11 +128,16 @@ void main() {
     });
 
     test('the rail writes the pair on a frame its cadence skips', () {
-      final scale = scaleOf(axis: Axis.vertical, cell: 8);
+      // ↩️cell 8 → 4 (2026-09-16). The rail measures a number's HEIGHT and
+      // the type shrinks with the row, so an 8px row holds its own number
+      // and writes every one — a paper timesheet numbers every row. The
+      // thinning this case is about starts below that.
+      final scale = scaleOf(axis: Axis.vertical, cell: 4);
+      expect(8 % scale.labelEveryFrames, isNot(0), reason: 'fixture');
       expect(
         XSheetFrameRailPainter.glyphsAt(scale, 8, current: false),
         isEmpty,
-        reason: 'fixture: row 9 of a 6f cadence, off any second',
+        reason: 'fixture: row 9 is off the rail\'s cadence and any second',
       );
       final writing = timelineRulerPlayheadWriting(
         scale: scale,
@@ -141,7 +169,7 @@ void main() {
 
   group('what the pair stands on stands down, whole', () {
     test("the cell's own number goes; its neighbours stay", () {
-      final scale = scaleOf();
+      final scale = everyFrameScale();
       final writing = rulerWriting(scale, 30);
       expect(writing.covered, contains(rulerGlyph(scale, 30, '31')));
       expect(writing.covered, isNot(contains(rulerGlyph(scale, 29, '30'))));

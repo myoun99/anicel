@@ -118,13 +118,13 @@ void main() {
 
   test('D38: the cadence that thins the empty-space 1f lines thins the '
       'block seams identically — and the beats survive in both', () {
-    // 8px cells: the base cadence is coarser than 1 (the law test pins
-    // that premise), so a plain interior boundary goes silent…
+    // 10% (2.4px): the base cadence is every third frame (the law
+    // test pins that premise), so a plain interior boundary goes silent…
     final painter = painterFor(
       blockLayer({2: const TimelineExposure.drawing(FrameId('f1'), length: 8)}),
-      frameCellExtent: 8,
+      frameCellExtent: 2.4,
     );
-    expect(painter.heldSeamLineFor(3), isNull);
+    expect(painter.heldSeamLineFor(4), isNull);
     // …while the 6f boundary inside the same block keeps its stronger
     // line, exactly as it does in empty space.
     final beatSeam = painter.heldSeamLineFor(6)!;

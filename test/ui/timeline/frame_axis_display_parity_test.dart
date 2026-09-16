@@ -1,9 +1,16 @@
+import 'package:flutter/material.dart' show Axis, Rect, ThemeData;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineMarkGap;
+import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
+    show XSheetFrameRailPainter;
 
 /// R9 P4 — the frame axis reads the same on every surface.
 ///
@@ -128,19 +135,76 @@ void main() {
   });
 
   group('#4 — the x-sheet rail thins on the shared ladder', () {
+    TimelineRulerScale rail(double rowExtent, {int frames = 30}) =>
+        TimelineRulerScale(
+          axis: Axis.vertical,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+          currentFrameIndex: -1,
+          playbackFrameCount: frames,
+          leadingFrameSpacer: 0,
+          crossExtent: 28,
+          // frameCellWidth is the frame ROW HEIGHT in the transposed metrics.
+          metrics: TimelineGridMetrics(
+            frameCellWidth: rowExtent,
+            layerRowHeight: 164,
+          ),
+          colorScheme: ThemeData.light().colorScheme,
+          numberType: XSheetFrameRailPainter.numberType,
+        );
+
     test('a wide row labels every frame; a squeezed one climbs the '
         'paper-timesheet ladder anchored at frame 1', () {
-      // frameCellWidth is the frame ROW HEIGHT in the transposed metrics.
-      const wide = TimelineGridMetrics(frameCellWidth: 36, layerRowHeight: 164);
-      const tight = TimelineGridMetrics(frameCellWidth: 6, layerRowHeight: 164);
+      expect(rail(36).labelEveryFrames, 1);
+      final tight = rail(6);
+      expect(tight.labelEveryFrames, greaterThan(1));
+      expect(tight.modelAt(0).label, '1');
+    });
 
-      expect(wide.frameLabelEveryFrames, 1);
-      expect(tight.frameLabelEveryFrames, greaterThan(1));
-      expect(
-        (tight.frameLabelEveryFrames * 6).toDouble(),
-        greaterThanOrEqualTo(40),
-        reason: 'the ladder guarantees room for the glyph',
+    test('I-22: the rail measures its numbers DOWN the rail — a row tall '
+        'enough keeps its number, however wide the number is', () {
+      final type = XSheetFrameRailPainter.numberType(
+        rail(16),
+        everyFrame: true,
       );
+      final glyph = timelineGlyphPainter('00', type);
+      expect(
+        glyph.height + timelineMarkGap,
+        lessThanOrEqualTo(16),
+        reason: 'fixture: two digits stand in a 16px row',
+      );
+      expect(
+        glyph.width + timelineMarkGap,
+        greaterThan(16),
+        reason: 'fixture: and would not fit one across',
+      );
+      expect(rail(16).labelEveryFrames, 1);
+    });
+
+    test('I-22: whatever the row, neighbouring numbers never touch', () {
+      for (final row in [4.0, 6.0, 8.0, 12.0, 16.0, 24.0]) {
+        final scale = rail(row, frames: 1200);
+        Rect? previous;
+        for (var frame = 0; frame < 240; frame += 1) {
+          final number = XSheetFrameRailPainter.glyphsAt(
+            scale,
+            frame,
+            current: false,
+          ).where((glyph) => glyph.painter.plainText == '${frame + 1}');
+          if (number.isEmpty) {
+            continue;
+          }
+          final box = number.single.rect;
+          if (previous != null) {
+            expect(
+              box.top - previous.bottom,
+              greaterThanOrEqualTo(timelineMarkGap - 1e-9),
+              reason: '${row}px rows: number ${frame + 1}',
+            );
+          }
+          previous = box;
+        }
+      }
     });
   });
 }

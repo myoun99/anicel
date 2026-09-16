@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineBaseGridAlpha, timelineGridLineEveryFrames;
+    show timelineBaseGridAlpha;
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineFrameStrideLadder;
 
 /// D8/D32/D38 (2026-08-18): THE grid-line law — ink, position, cadence and
 /// the over-block treatment stated once, consulted by every drawer (the
@@ -63,13 +65,14 @@ void main() {
 
   test('cadence thins the base line but never the beats — the one answer '
       'D38 makes every surface share', () {
-    // At an 8px cell the cadence is > 1, so a plain boundary thins out…
-    final cadence = timelineGridLineEveryFrames(8);
+    // At 10% (2.4px) a line and its ground need three frames, so a plain
+    // boundary between them thins out…
+    final cadence = timelineGridLineEveryFrames(2.4);
     expect(cadence, greaterThan(1), reason: 'fixture premise');
     expect(
       timelineFrameBoundaryLineInk(
         frameIndex: 1,
-        frameCellExtent: 8,
+        frameCellExtent: 2.4,
         framesPerSecond: 24,
         colorScheme: scheme,
       ),
@@ -79,12 +82,30 @@ void main() {
     expect(
       timelineFrameBoundaryLineInk(
         frameIndex: 6,
-        frameCellExtent: 8,
+        frameCellExtent: 2.4,
         framesPerSecond: 24,
         colorScheme: scheme,
       ),
       isNotNull,
     );
+  });
+
+  test('I-22: a base line thins only where it would crowd the next — the '
+      'densest rung that holds its stroke and its ground', () {
+    const room = timelineGridBaseLineStroke + timelineMarkGap;
+    for (final cell in [1.0, 2.4, 3.0, 4.0, 8.0, 12.0, 16.0, 24.0]) {
+      final cadence = timelineGridLineEveryFrames(cell);
+      expect(cadence * cell, greaterThanOrEqualTo(room), reason: '${cell}px');
+      final index = timelineFrameStrideLadder.indexOf(cadence);
+      if (index > 0) {
+        expect(
+          timelineFrameStrideLadder[index - 1] * cell,
+          lessThan(room),
+          reason: '${cell}px: the denser rung would crowd',
+        );
+      }
+    }
+    expect(timelineGridLineEveryFrames(8), 1, reason: '33% keeps every line');
   });
 
   test('the over-block ink darkens the paper, never glows over it (D32)', () {

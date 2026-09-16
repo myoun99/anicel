@@ -98,12 +98,12 @@ void main() {
 
   testWidgets('zoomed out, a sound block keeps only the lines the timeline '
       'keeps, where the timeline puts them', (tester) async {
-    final (_, key) = await storyboardWithASound(tester, pixelsPerFrame: 8);
-    final kept = positionsTheLawKeeps(8);
+    final (_, key) = await storyboardWithASound(tester, pixelsPerFrame: 2.4);
+    final kept = positionsTheLawKeeps(2.4);
     expect(
       kept.length,
       lessThan(soundLength - 1),
-      reason: 'fixture: at 8px the law thins the grid',
+      reason: 'fixture: at 10% the law thins the grid',
     );
 
     expect(linesOf(tester, key).map((line) => line.along), kept);

@@ -88,6 +88,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       crossExtent: metrics.layerRowHeight,
       metrics: metrics,
       colorScheme: colorScheme,
+      numberType: TimelineFrameRulerPainter.numberType,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
       windowBucket: windowBucket,

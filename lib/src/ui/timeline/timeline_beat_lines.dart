@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_grid_metrics.dart' show timelineStrideHolding;
 import '../repaint_props.dart';
 
 /// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
@@ -81,12 +82,16 @@ class TimelineFrameAreaEdge extends StatelessWidget {
   }
 }
 
+/// The BASE line's stroke — what its cadence keeps ground beside
+/// ([timelineGridLineEveryFrames]).
+const double timelineGridBaseLineStroke = 1.0;
+
 /// BASE line — the faint per-cell cadence line.
 ({Color color, double strokeWidth}) timelineGridBaseLineInk(
   ColorScheme colorScheme,
 ) => (
   color: colorScheme.outlineVariant.withValues(alpha: timelineBaseGridAlpha),
-  strokeWidth: 1.0,
+  strokeWidth: timelineGridBaseLineStroke,
 );
 
 /// 6f BEAT line — the sheet convention, zoom-independent.
@@ -137,6 +142,29 @@ class TimelineFrameAreaEdge extends StatelessWidget {
 /// The position convention: a boundary line's center sits half a pixel
 /// past the boundary — the frame ruler's own snap, now the law's.
 const double timelineGridLineSnap = 0.5;
+
+/// The ground two neighbouring marks on the frame axis keep between them:
+/// two lines of the grid ([timelineGridLineEveryFrames]) and two numbers on
+/// a ruler (`TimelineRulerScale.labelEveryFrames`). I-22 「겹칠때 생략」: a
+/// mark thins out only where it would stand closer than this to the next.
+const double timelineMarkGap = 2.0;
+
+/// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
+/// storyboard recipe adopted everywhere): instead of alpha-fading away at
+/// small zooms, the per-cell lines THIN to every Nth frame and never
+/// disappear — "the grid is always there".
+///
+/// 🚨I-22 (유저 2026-09-12): 「33.3%배율에서 3f마다의 그리드 세로선이랑 글자,
+/// 아직 존재해도 안겹칠거같은데 뭔가 벌써 사라져? … 1f마다 그리드선이랑
+/// 글자도 똑같음. 최대한 버텨보자」. ↩️The Nth was the ruler's LABEL cadence
+/// below 16px, so lines 8px apart went wherever a number would have crowded.
+/// A line's measure is its own stroke: the rung that holds a base line and
+/// [timelineMarkGap] of ground beside it ([timelineStrideHolding]).
+int timelineGridLineEveryFrames(double frameCellExtent) =>
+    timelineStrideHolding(
+      timelineGridBaseLineStroke + timelineMarkGap,
+      frameCellExtent,
+    );
 
 /// Where the line at the boundary STARTING [frameIndex] is drawn, along
 /// the frame axis in content coordinates.

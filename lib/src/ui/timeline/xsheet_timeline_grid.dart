@@ -1265,6 +1265,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       crossExtent: metrics.layerControlsWidth,
       metrics: metrics,
       colorScheme: colorScheme,
+      numberType: XSheetFrameRailPainter.numberType,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
       windowBucket: windowBucket,
@@ -1387,22 +1388,14 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       glyphs.add(second);
     }
     if (writing.number.isNotEmpty) {
-      // R9 #4: the number SHRINKS to fit its row before it thins out — the
-      // horizontal ruler's rule, through the same helper. The 14 was
-      // hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
-      // slot.
-      final style = TextStyle(
-        // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the sheet's
-        // own number, affordable only while the rail was 72 wide.
-        fontSize: timelineFittedGlyphFontSize(
-          11,
-          scale.metrics.frameCellWidth,
-          crossExtent: scale.crossExtent,
-        ),
-        color: scale.modelAt(frameIndex).outsidePlaybackRange
-            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-            : colorScheme.onSurface,
-      );
+      // Set in the type the cadence measured ([TimelineRulerScale.numberType]).
+      final style = scale
+          .numberTypeAt(everyFrame: scale.labelEveryFrames == 1)
+          .copyWith(
+            color: scale.modelAt(frameIndex).outsidePlaybackRange
+                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                : colorScheme.onSurface,
+          );
       final painter = timelineGlyphPainter(
         writing.number,
         scale.inkOf(style, current: current),
@@ -1417,6 +1410,26 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
     }
     return glyphs;
   }
+
+  /// The type the RAIL sets its numbers in ([TimelineRulerScale.numberType]):
+  /// fitted into its row, at every cadence.
+  ///
+  /// R9 #4: the number SHRINKS to fit its row before it thins out — the
+  /// horizontal ruler's rule, through the same helper. The 14 was
+  /// hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
+  /// slot.
+  static TextStyle numberType(
+    TimelineRulerScale scale, {
+    required bool everyFrame,
+  }) => TextStyle(
+    // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the sheet's
+    // own number, affordable only while the rail was 72 wide.
+    fontSize: timelineFittedGlyphFontSize(
+      11,
+      scale.metrics.frameCellWidth,
+      crossExtent: scale.crossExtent,
+    ),
+  );
 
   // Shared laid-out-TextPainter cache (UI-R16): rail numbers repeat
   // across repaints — fresh layout per label was the debug hot spot.

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_on_ground.dart';
 import 'timeline_cell_exposure_state.dart';
-import 'timeline_grid_metrics.dart';
 
 class TimelineCellStyleColors {
   const TimelineCellStyleColors({
@@ -301,16 +300,6 @@ const double timelineSixGridAlpha = 0.85;
 /// picked here.
 const double timelineSecondGridAlpha = 1.0;
 
-/// The base grid's line CADENCE at [frameCellExtent] (UI-R18 #8/#12, the
-/// storyboard recipe adopted everywhere): instead of alpha-fading away at
-/// small zooms, the per-cell lines THIN to every Nth frame (the label
-/// cadence) and never disappear — "the grid is always there".
-int timelineGridLineEveryFrames(double frameCellExtent) => frameCellExtent >= 16
-    ? 1
-    : TimelineGridMetrics(
-        frameCellWidth: frameCellExtent,
-      ).frameLabelEveryFrames;
-
 /// The glyph size that FITS a cell of [frameCellExtent] (R26 #38/#4).
 ///
 /// Text used to blank out below ~14px cells; the user's rule is "엄청
@@ -345,7 +334,8 @@ double timelineFittedGlyphFontSize(
 // outline that could need a width.
 
 /// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
-/// gone; density is handled by [timelineGridLineEveryFrames]).
+/// gone; density is handled by `timelineGridLineEveryFrames`, the grid-line
+/// law's cadence).
 Color timelineBaseGridInk(
   ColorScheme colorScheme, {
   required double frameCellExtent,

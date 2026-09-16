@@ -66,6 +66,33 @@ const double timelineVerticalScrollbarWidth = AppScrollbarLane.wide;
 /// same viewport belongs to neither of them.
 const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
 
+/// The paper-timesheet stride LADDER a frame axis thins its marks on (user
+/// rule, R-toolbar slim round): every frame, then every 3rd (1, 4, 7, …),
+/// 6th (1, 7, 13, …), 12th (1, 13, 25) and 24th (1, 25), doubling on —
+/// always anchored at frame 1.
+///
+/// ↩️I-22 (유저 2026-09-12): 「룰러 텍스트 글자가 겹칠때 생략한다는
+/// 느낌으로」. The rungs are the user's; WHICH rung stood at a zoom was a
+/// threshold on the cell width here (every frame from 20px, then the first
+/// rung spanning 40px) that claimed "labels never crowd or overflow"
+/// without measuring one, and the grid's lines followed it down. Each mark
+/// now climbs the ladder on its own measure — a number by its measured
+/// extent (`TimelineRulerScale.labelEveryFrames`), a line by its stroke
+/// (`timelineGridLineEveryFrames`).
+const List<int> timelineFrameStrideLadder = [1, 3, 6, 12, 24, 48, 96];
+
+/// The densest rung of [timelineFrameStrideLadder] whose span, over cells of
+/// [cellExtent], holds a mark of [markExtent] — the one question both marks
+/// ask, each with its own extent.
+int timelineStrideHolding(double markExtent, double cellExtent) {
+  for (final stride in timelineFrameStrideLadder) {
+    if (markExtent <= stride * cellExtent) {
+      return stride;
+    }
+  }
+  return timelineFrameStrideLadder.last;
+}
+
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;
 
@@ -107,23 +134,6 @@ class TimelineGridMetrics {
       verticalScrollbarWidth: verticalScrollbarWidth,
       sectionLabelGutterWidth: sectionLabelGutterWidth,
     );
-  }
-
-  /// Frame-number label cadence for the header/rail: every frame when cells
-  /// are wide enough, then the paper-timesheet ladder anchored at frame 1
-  /// (user rule): 3f (1,4,7,…) → 6f (1,7,13,…) → 12f (1,13,25) → 24f
-  /// (1,25) → doubling on. Labels never crowd or overflow.
-  int get frameLabelEveryFrames {
-    if (frameCellWidth >= 20) {
-      return 1;
-    }
-    const strideLadder = [3, 6, 12, 24, 48, 96];
-    for (final stride in strideLadder) {
-      if (frameCellWidth * stride >= 40) {
-        return stride;
-      }
-    }
-    return strideLadder.last;
   }
 
   /// Minimum frame cells kept visible even when the cut has fewer frames.
