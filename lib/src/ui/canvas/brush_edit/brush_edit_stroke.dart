@@ -264,31 +264,31 @@ class _BrushEditStroke {
   /// drop the overlay — all inside this one pointer event, so the very
   /// next frame paints committed tiles that already have their pictures.
   ///
-  /// ⚠️ EXCEPT for the tiles whose image is not there to hand over, and
-  /// there are always some. The handoff is revision-gated, the revision is
-  /// written inside the decode callback, and `_flushPendingOverlayDabs()`
-  /// runs in this same synchronous handler — so a tile the final flush
-  /// touched cannot have recorded its new revision yet. For those the
-  /// settle window is still needed and still exists. Dropping the overlay
-  /// for them instead is what left a tile-shaped patch of the line missing
-  /// for a frame, showing the pre-stroke pixels the painter's stale
-  /// fallback answers with.
+  /// 🚨★★★EVERY TILE, ON AN ENGINE THAT UPLOADS SYNCHRONOUSLY (유저 절대규칙
+  /// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The overlay
+  /// records a coordinate's picture and its revision inside the flush that
+  /// pre-blended it, so the final flush — which runs in this same handler
+  /// — has already handed every promoted tile the image the user is
+  /// looking at, and a tile whose image is somehow not there gets its own
+  /// bytes uploaded right here ([BitmapTileImageCache.adoptSyncUpload]).
+  /// Nothing stands in for a committed tile, no settle window opens, and
+  /// the overlay retires in this pointer event.
   ///
-  /// ⚠️ "Only on a rare miss" would be the comfortable thing to write here
-  /// and it is false: on an ordinary two-segment stroke, 12 of 21 promoted
-  /// coordinates miss. A stroke with nothing pending at pen-up does take
-  /// the synchronous path, and that is pinned by a test — but the settle
-  /// window is the common case, not the exception.
-  ///
-  /// ⚠️ And it covers only PART of the hole. What the overlay still holds
-  /// is exactly the missed-WITH-an-older-image set, because
-  /// `takeTileImageAt` removes the ones it hands over. A coordinate the
-  /// final flush touched for the FIRST time was never decoded by the
-  /// overlay either, so if the cel already had artwork there the stale
-  /// fallback still answers with the pre-stroke tile: measured on a wide
-  /// in-canvas fixture, 62 promoted and 50 still painting pre-stroke
-  /// pixels. Closing that needs the painter to stop borrowing for the
-  /// settling coordinates — a change to a painter three surfaces share.
+  /// ⚠️ ON THE ASYNCHRONOUS ENGINE (Skia — the test runner) the miss is
+  /// what it was: the revision is written inside the decode callback, so a
+  /// tile the final flush touched cannot have recorded its new revision
+  /// yet, and for those the settle window is still needed and still
+  /// exists. Dropping the overlay for them instead is what left a
+  /// tile-shaped patch of the line missing for a frame, showing the
+  /// pre-stroke pixels the painter's stale fallback answers with. "Only on
+  /// a rare miss" would be the comfortable thing to write and it is false
+  /// there: on an ordinary two-segment stroke, 12 of 21 promoted
+  /// coordinates missed. And the window covers only PART of that hole:
+  /// what the overlay still holds is exactly the missed-WITH-an-older-image
+  /// set, because `takeTileImageAt` removes the ones it hands over; a
+  /// coordinate the final flush touched for the FIRST time was never
+  /// decoded by the overlay either — measured on a wide in-canvas fixture,
+  /// 62 promoted and 50 still painting pre-stroke pixels.
   ///
   /// ⚠️ The dates, because they say this IS the user's report rather than
   /// a neighbour of it. The stale fallback landed 2026-07-05; the settle
@@ -338,12 +338,23 @@ class _BrushEditStroke {
           entry.coord,
           revision: entry.revision,
         );
+        final placed = (coord: entry.coord, tile: entry.tile);
+        final scope = (_state.widget.layerId, _state.widget.frameId);
         if (image != null) {
           BitmapTileImageCache.instance.adoptDecoded(
-            (coord: entry.coord, tile: entry.tile),
+            placed,
             image,
-            staleScope: (_state.widget.layerId, _state.widget.frameId),
+            staleScope: scope,
           );
+        } else if (BitmapTileImageCache.instance.adoptSyncUpload(
+              placed,
+              staleScope: scope,
+            ) !=
+            null) {
+          // The tile's own bytes are its picture from this call on: the
+          // same door the overlay's flush takes, for the one coordinate
+          // it could not (a first touch in the final flush on an engine
+          // whose upload is synchronous never gets here at all).
         } else {
           // Its decode never landed (or landed a revision behind): start
           // one now, and REMEMBER, because the overlay must not be dropped
@@ -372,8 +383,8 @@ class _BrushEditStroke {
           // before its committed tile can paint.
           _state._overlay._overlayModel.markStandIn(entry.coord);
           BitmapTileImageCache.instance.ensureDecoded(
-            (coord: entry.coord, tile: entry.tile),
-            staleScope: (_state.widget.layerId, _state.widget.frameId),
+            placed,
+            staleScope: scope,
           );
         }
       }

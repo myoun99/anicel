@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../core/rgba_premultiply.dart';
+import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
@@ -34,15 +35,26 @@ import 'deferred_image_disposal.dart';
 /// widgets.
 ///
 /// The overlay displays through the EXACT pipeline the committed tiles use:
-/// straight-alpha buffer bytes are premultiplied and decoded with
-/// `decodeImageFromPixels` into tile images that the painter draws with
-/// nearest sampling. One rasterization path means live and committed pixels
-/// cannot diverge at any zoom — replaying the stroke as rect geometry (a
-/// previous representation) rasterized differently from nearest-sampled
-/// images at fractional zoom, visibly shifting the active stroke's pixels
-/// against committed strokes. Decode-based images also survive GPU context
-/// events (e.g. app focus switches) that corrupted synchronously created
-/// picture-to-image textures for a frame.
+/// straight-alpha buffer bytes are premultiplied and uploaded into tile
+/// images that the painter draws with nearest sampling. One rasterization
+/// path means live and committed pixels cannot diverge at any zoom —
+/// replaying the stroke as rect geometry (a previous representation)
+/// rasterized differently from nearest-sampled images at fractional zoom,
+/// visibly shifting the active stroke's pixels against committed strokes.
+///
+/// 🚨★★★UPLOADED INSIDE THE FLUSH WHERE THE ENGINE CAN (유저 절대규칙
+/// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The picture of
+/// a coordinate and the stroke revision it shows are recorded in the same
+/// synchronous call that pre-blended it ([uploadImageSync] — Impeller,
+/// every platform since 3.47), so the pen-up handoff finds an image at
+/// every promoted tile's revision and nothing has to stand in for a
+/// committed tile afterwards. Only an engine without the synchronous door
+/// (Skia: the test runner) still decodes asynchronously, and there the
+/// settle window and its stand-ins remain the cover for the frames until
+/// the decodes land. Decode-based images survive GPU context events (e.g.
+/// app focus switches) that corrupted synchronously created
+/// picture-to-image textures for a frame; a synchronous UPLOAD is a real
+/// texture, not a picture, and is not that case.
 class ActiveStrokeOverlayModel extends ChangeNotifier {
   ActiveStrokeOverlayModel({int tileSize = defaultCelTileSize})
     : _tileSize = tileSize;
@@ -407,28 +419,55 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     // ⚠️Safe to move because everything above is SYNCHRONOUS — there is no
     // await between the re-entry guard at the top and this line, so nothing
     // can start a second decode for this coordinate in between.
+    //
+    // The synchronous door first: the picture exists before this call
+    // returns, and the scratch is consumed inside the upload.
+    final upload = (bytes: bytes, width: width, height: height, revision: null);
+    if (_uploadNow(coord, upload)) {
+      scratch?.free();
+      return;
+    }
+    _uploadLater(coord, upload, source: source, free: () => scratch?.free());
+  }
+
+  /// THE DECODE ROUND, on an engine without the synchronous door: [bytes]
+  /// are uploaded off the frame and land through [_adoptDecodedTile] — or
+  /// [_refuseDecodedTile] — with the stroke [revision] they show; [free]
+  /// releases what was staged once the upload has consumed it. One body
+  /// for the plain tile and the pre-blended one.
+  ///
+  /// ⛔[uploadRawRgba], never `decodeStraightRgbaImage`: these bytes are
+  /// ALREADY premultiplied (by the caller, or by the fused kernel straight
+  /// into the scratch), and the straight-alpha door would premultiply a
+  /// second full copy — another 256 KB allocation and traversal per tile
+  /// per frame, on the path whose whole R25 round was about removing
+  /// exactly that.
+  void _uploadLater(
+    TileCoord coord,
+    _TileUpload upload, {
+    required ActiveStrokePixelSource source,
+    required void Function() free,
+  }) {
     _decoding.add(coord);
     _pendingDecodeCount += 1;
     final generation = _generation;
-    // ⛔[uploadRawRgba], never `decodeStraightRgbaImage`: these bytes are
-    // ALREADY premultiplied (above, or by the fused kernel straight into
-    // the scratch), and the straight-alpha door would premultiply a second
-    // full copy — another 256 KB allocation and traversal per tile per
-    // frame, on the path whose whole R25 round was about removing exactly
-    // that.
     unawaited(() async {
       final ui.Image image;
       try {
-        image = await uploadRawRgba(bytes, width: width, height: height);
+        image = await uploadRawRgba(
+          upload.bytes,
+          width: upload.width,
+          height: upload.height,
+        );
       } on Object catch (error, stack) {
         _refuseDecodedTile(coord, generation, error, stack);
         return;
       } finally {
-        scratch?.free();
+        free();
       }
       _adoptDecodedTile(coord, image, source, (
         generation: generation,
-        revision: null,
+        revision: upload.revision,
       ));
     }());
   }
@@ -505,20 +544,41 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       return;
     }
     _decoding.remove(coord);
+    _install(coord, image, revision: decode.revision);
+    if (_dirtyWhileDecoding.remove(coord)) {
+      _decodeTile(coord, source);
+    }
+    _finishDecode();
+  }
+
+  /// THE SYNCHRONOUS DOOR: [bytes] (premultiplied, [width] × [height])
+  /// become [coord]'s picture inside this call where the engine can
+  /// ([uploadImageSync]), and the caller is told so it can release what it
+  /// staged. False on an engine without it — the decode round follows.
+  bool _uploadNow(TileCoord coord, _TileUpload upload) {
+    final uploaded = uploadImageSync(upload.bytes, upload.width, upload.height);
+    if (uploaded == null) {
+      return false;
+    }
+    _install(coord, uploaded, revision: upload.revision);
+    return true;
+  }
+
+  /// [image] becomes [coord]'s picture — the one it showed before retired
+  /// DEFERRED (a frame may still be holding it), the stroke [revision] it
+  /// represents recorded beside it — and the painter is told. The landing
+  /// both uploads share: the synchronous one inside the flush, and the
+  /// asynchronous one when it arrives.
+  void _install(TileCoord coord, ui.Image image, {required int? revision}) {
     final previous = _tileImages[coord];
     if (previous != null) {
       DeferredImageDisposer.instance.retire(previous);
     }
     _tileImages[coord] = image;
-    final revision = decode.revision;
     if (revision != null) {
       _tileImageRevisions[coord] = revision;
     }
     notifyListeners();
-    if (_dirtyWhileDecoding.remove(coord)) {
-      _decodeTile(coord, source);
-    }
-    _finishDecode();
   }
 
   /// The PROMOTABLE decode: the rasterizer pre-blends the coordinate
@@ -549,34 +609,25 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   /// Uploads an already pre-blended tile (single or batched) and adopts
-  /// the decoded image as this coordinate's overlay picture.
+  /// the image as this coordinate's overlay picture — inside this call
+  /// where the engine uploads synchronously, with its revision recorded
+  /// beside it; a decode round later otherwise.
   void _decodePreBlendedTile(
     TileCoord coord,
     BrushLiveStrokeRasterizer source,
     PreBlendedOverlayTile blended,
   ) {
-    _decoding.add(coord);
-    _pendingDecodeCount += 1;
-    final generation = _generation;
-    unawaited(() async {
-      final ui.Image image;
-      try {
-        image = await uploadRawRgba(
-          blended.pixels,
-          width: tileSize,
-          height: tileSize,
-        );
-      } on Object catch (error, stack) {
-        _refuseDecodedTile(coord, generation, error, stack);
-        return;
-      } finally {
-        blended.free();
-      }
-      _adoptDecodedTile(coord, image, source, (
-        generation: generation,
-        revision: blended.revision,
-      ));
-    }());
+    final upload = (
+      bytes: blended.pixels,
+      width: tileSize,
+      height: tileSize,
+      revision: blended.revision,
+    );
+    if (_uploadNow(coord, upload)) {
+      blended.free();
+      return;
+    }
+    _uploadLater(coord, upload, source: source, free: blended.free);
   }
 
   /// One engine answer arrived — a picture, a stale one, or a refusal.
@@ -717,3 +768,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
   }
 }
+
+/// One tile's picture-to-be: premultiplied [bytes] of [width] × [height],
+/// and the stroke [revision] they show (null on the plain tile route).
+typedef _TileUpload = ({Uint8List bytes, int width, int height, int? revision});

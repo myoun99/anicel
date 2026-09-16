@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -504,6 +506,67 @@ void main() {
               'the overlay was dropped while a promoted tile had no '
               'picture — that coordinate now paints its PRE-STROKE tile, '
               'which is the hole the user reported',
+        );
+      },
+    );
+
+    testWidgets(
+      'on an engine that uploads synchronously, pen-up hands over every '
+      'tile: no stand-in, no settle window, the overlay gone in the turn',
+      (tester) async {
+        // 🚨★★★유저 절대규칙 2026-09-17 (「보이는 중이랑 결과랑 절대로 다르면
+        // 안 되」): the mirror of the miss test above. Same stroke, same
+        // final segment pending at pen-up — but the overlay makes a
+        // coordinate's picture inside the flush that pre-blended it, so
+        // the revision is recorded before the handoff compares, every
+        // promoted tile takes its image, and nothing has to stand in.
+        // The miss test keeps the asynchronous engine's truth; this one
+        // is the shipped engines' (Impeller everywhere since 3.47).
+        debugSyncImageUploadOverride = (_, _, _) => _aTileImage();
+        addTearDown(() => debugSyncImageUploadOverride = null);
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              inputSettings: BrushEditCanvasInputSettings(size: 4),
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1, 1)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 1)));
+        await tester.pump();
+        final overlay = tester
+            .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+            .overlayModel!;
+        expect(
+          overlay.tileImages,
+          isNotEmpty,
+          reason: 'the flush made the picture in the same call — no wait',
+        );
+        // The final segment: the flush at pen-up bumps the revision, and
+        // on the asynchronous engine that is the guaranteed miss.
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(9, 1)));
+        await gesture.up();
+
+        expect(results, hasLength(1), reason: 'the stroke committed');
+        expect(
+          overlay.hasStandIns,
+          isFalse,
+          reason: 'a promoted tile went without its picture — the handoff '
+              'missed on an engine whose flush makes the picture',
+        );
+        expect(
+          overlay.dabs,
+          isEmpty,
+          reason: 'the overlay must retire in the pointer event itself: a '
+              'settle window opened for a handoff that had nothing to wait '
+              'for',
         );
       },
     );
@@ -2311,4 +2374,18 @@ bool _isStrictlyIncreasing(Iterable<int> values) {
     previous = value;
   }
   return true;
+}
+
+/// A stand-in for the engine's synchronous upload: any picture a tile's
+/// size — the tests above ask WHEN a picture exists, not what it shows.
+ui.Image _aTileImage() {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawRect(
+    const ui.Rect.fromLTWH(0, 0, 4, 4),
+    ui.Paint()..color = const ui.Color(0xFF000000),
+  );
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(4, 4);
+  picture.dispose();
+  return image;
 }
