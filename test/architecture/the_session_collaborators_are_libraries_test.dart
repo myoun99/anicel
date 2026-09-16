@@ -66,8 +66,11 @@ const _mayNameTheSession = <String, String>{
 /// the cut/track surface, the media pool, the audio and SE rows); every
 /// member left is either a host verb with no owner yet or one of the nine
 /// edges that would close a construction CYCLE if injected — those are
-/// named in the tool's REFUSED list.
-const _sessionInternalsMembers = 51;
+/// named in the tool's REFUSED list. 51 → 49 (2026-09-16, ARCH-session-state's
+/// first family): the onion skin's settings and layer set moved into
+/// `OnionSkin`, the collaborator that plans with them, and the two getters
+/// that handed them over left with them.
+const _sessionInternalsMembers = 49;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

@@ -68,8 +68,6 @@ void main() {
       'transitionEdgeDragPreview': () => session.transitionEdgeDragPreview
           .addListener(() {}),
       'opacityDragPreview': () => session.opacityDragPreview.addListener(() {}),
-      'onionSkinSettings': () => session.onionSkinSettings.addListener(() {}),
-      'onionSkinLayerIds': () => session.onionSkinLayerIds.addListener(() {}),
       'trackFrameRangeSelection': () => session.trackFrameRangeSelection
           .addListener(() {}),
       'historyManager': () => session.historyManager.addListener(() {}),
@@ -108,6 +106,14 @@ void main() {
     expectReleased(
       'appSettings',
       () => session.appSettings.audioSyncSettings.addListener(() {}),
+    );
+    expectReleased(
+      'onionSkin.settings',
+      () => session.onionSkin.settings.addListener(() {}),
+    );
+    expectReleased(
+      'onionSkin.layerIds',
+      () => session.onionSkin.layerIds.addListener(() {}),
     );
   });
 

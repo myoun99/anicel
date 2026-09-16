@@ -52,7 +52,6 @@ import '../models/movie_cel.dart' show isMovieReference;
 import '../services/import/import_layer_spot.dart';
 import 'timeline/layer_drop_policy.dart' show newRowInsertionForSlot;
 import 'import/import_file_settings.dart' show importBakeAllowed;
-import '../models/onion_skin_settings.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/timeline_empty_gaps.dart';
@@ -1189,8 +1188,7 @@ class EditorSessionManager extends ChangeNotifier
     dragPreview.dispose,
     transitionEdgeDragPreview.dispose,
     opacityDragPreview.dispose,
-    onionSkinSettings.dispose,
-    onionSkinLayerIds.dispose,
+    onionSkin.dispose,
     trackFrameRangeSelection.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
@@ -3178,21 +3176,6 @@ class EditorSessionManager extends ChangeNotifier
     internals: this,
     playbackRig: playbackRig,
   );
-
-  // --- Onion skin (P2: Callipeg peg model) -----------------------------------
-
-  /// Session view state — a ValueNotifier so the canvas underlay and the
-  /// onion panel subscribe without whole-session notifies.
-  @override
-  final ValueNotifier<OnionSkinSettings> onionSkinSettings =
-      ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
-
-  /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
-  /// layers whose ghosts composite. The panel's master switch is GONE —
-  /// row/legend toggles drive this set.
-  @override
-  final ValueNotifier<Set<LayerId>> onionSkinLayerIds =
-      ValueNotifier<Set<LayerId>>(<LayerId>{});
 
   // ── the onion skin: its own object, in its own file ─────────────────
   //

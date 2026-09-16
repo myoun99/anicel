@@ -28,7 +28,7 @@ void main() {
     expect(requests.single.frameKey.layerId, s.activeLayer!.id);
 
     // Images mode drops the tint, keeps the ghost.
-    s.onionSkinSettings.value = s.onionSkinSettings.value.copyWith(
+    s.onionSkin.settings.value = s.onionSkin.settings.value.copyWith(
       mode: OnionSkinMode.images,
     );
     expect(s.onionSkin.onionSkinCanvasRequests().single.tint, isNull);

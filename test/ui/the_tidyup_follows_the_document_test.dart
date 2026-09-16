@@ -73,11 +73,11 @@ void main() {
     final session = sessionWithADrawing();
     addTearDown(session.dispose);
     final layerId = session.activeLayer!.id;
-    final before = session.onionSkinLayerIds.value.contains(layerId);
+    final before = session.onionSkin.layerIds.value.contains(layerId);
 
     session.onionSkin.toggleLayerOnionSkin(layerId);
     expect(
-      session.onionSkinLayerIds.value.contains(layerId),
+      session.onionSkin.layerIds.value.contains(layerId),
       !before,
       reason: 'fixture premise: the toggle toggled',
     );
@@ -85,7 +85,7 @@ void main() {
     session.undo();
 
     expect(
-      session.onionSkinLayerIds.value.contains(layerId),
+      session.onionSkin.layerIds.value.contains(layerId),
       before,
       reason: '🚨유저 2026-08-29: 「버튼 누르고 Ctrl+Z, 어니언이 돌아온다」 — '
           'staying silent about the DOCUMENT must not make the step itself '

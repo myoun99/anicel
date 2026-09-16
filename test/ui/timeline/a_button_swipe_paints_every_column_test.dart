@@ -134,7 +134,7 @@ void main() {
       'not the eye\'s', (tester) async {
     final s = await pump(tester);
     expect(
-      s.onionSkinLayerIds.value,
+      s.onionSkin.layerIds.value,
       isEmpty,
       reason: 'premise: nothing ghosting yet',
     );
@@ -142,7 +142,7 @@ void main() {
     await swipeDown(tester, 'timeline-layer-onion-l4', rows: 2);
 
     expect(
-      s.onionSkinLayerIds.value.length,
+      s.onionSkin.layerIds.value.length,
       greaterThan(1),
       reason:
           'I-1: 「타임시트버튼이든 뭐 그런것들」 — every toggle column, '
@@ -171,7 +171,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(visibility(s).every((on) => on), isTrue);
-    expect(s.onionSkinLayerIds.value, isEmpty);
+    expect(s.onionSkin.layerIds.value, isEmpty);
   });
 
   /// I-1 잔여 — the LEADING run.

@@ -71,7 +71,7 @@ class _WorkspaceRail {
       listenable: Listenable.merge([
         session,
         session.historyManager,
-        session.onionSkinLayerIds,
+        session.onionSkin.layerIds,
         // ㉜: the deselect button's enablement is the SELECTION's news, and
         // it arrives on that object's own channel — the selection layer
         // mutates inside builds and gesture handlers, so its notify is
@@ -93,7 +93,7 @@ class _WorkspaceRail {
         // switch), so this button is the active row's onion — the same
         // thing the `O` action toggles, not the legend's bulk sweep.
         final onionOn =
-            layer != null && session.onionSkinLayerIds.value.contains(layer.id);
+            layer != null && session.onionSkin.layerIds.value.contains(layer.id);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

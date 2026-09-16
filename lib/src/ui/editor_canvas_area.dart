@@ -390,8 +390,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         session,
         // Onion-skin pegs + the per-layer set re-plan the underlay
         // ghosts (P2 → UI-R17 #5).
-        session.onionSkinSettings,
-        session.onionSkinLayerIds,
+        session.onionSkin.settings,
+        session.onionSkin.layerIds,
         // Opacity drags preview through the editing stack per move (R4 #4)
         // — the canvas is the ONLY session-notify consumer that follows
         // live; everything else waits for the release commit.

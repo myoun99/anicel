@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
+
 import '../../services/commands/toggle_id_in_set_command.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
+import '../../models/onion_skin_settings.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/command.dart';
 import '../../services/onion_skin_plan.dart';
@@ -11,8 +14,16 @@ import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The ONION SKIN — which layers ghost, the sweep over the displayed ones,
-/// and what the canvas is asked to draw for them — as its own object. The
-/// settings and the layer set stay on the session: the UI reads them.
+/// and what the canvas is asked to draw for them — as its own object, and
+/// the two values all of that is planned from.
+///
+/// ↩️The settings and the layer set used to stay on the session, on the
+/// reading that "the UI reads them" (the 2026-09-02 cut). Reading them does
+/// not need the session to own them: this object is the one that plans with
+/// them, so it holds them, and the UI reads `session.onionSkin` — the first
+/// family of ARCH-session-state's state move (2026-09-16), which the
+/// session's `SessionInternals` ledger counts down by the two getters it no
+/// longer carries.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no private field of its own and
@@ -36,8 +47,26 @@ class OnionSkin {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
 
+  /// The peg settings — a ValueNotifier so the canvas underlay and the onion
+  /// panel subscribe without whole-session notifies.
+  final ValueNotifier<OnionSkinSettings> settings =
+      ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
+
+  /// PER-LAYER onion application (UI-R17 #5, TVPaint's light table): the
+  /// layers whose ghosts composite. The panel's master switch is GONE —
+  /// row/legend toggles drive this set.
+  final ValueNotifier<Set<LayerId>> layerIds = ValueNotifier<Set<LayerId>>(
+    <LayerId>{},
+  );
+
+  /// Releases the two values; the session's teardown calls it.
+  void dispose() {
+    settings.dispose();
+    layerIds.dispose();
+  }
+
   bool isLayerOnionSkinEnabled(LayerId layerId) =>
-      _internals.onionSkinLayerIds.value.contains(layerId);
+      layerIds.value.contains(layerId);
 
   void toggleLayerOnionSkin(LayerId layerId) {
     // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
@@ -48,7 +77,7 @@ class OnionSkin {
     // plumbing.
     _project.historyManager.execute(
       ToggleIdInSetCommand(
-        notifier: _internals.onionSkinLayerIds,
+        notifier: layerIds,
         layerId: layerId,
         debugLabel: 'Toggle onion skin',
       ),
@@ -109,7 +138,7 @@ class OnionSkin {
         commands: [
           for (final layerId in changing)
             ToggleIdInSetCommand(
-              notifier: _internals.onionSkinLayerIds,
+              notifier: layerIds,
               layerId: layerId,
               debugLabel: 'Toggle onion skin',
             ),
@@ -145,9 +174,9 @@ class OnionSkin {
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
-    final settings = _internals.onionSkinSettings.value;
+    final pegs = settings.value;
     final cut = _project.activeCutOrNull;
-    final enabledIds = _internals.onionSkinLayerIds.value;
+    final enabledIds = layerIds.value;
     if (cut == null || enabledIds.isEmpty) {
       return const [];
     }
@@ -162,7 +191,7 @@ class OnionSkin {
           for (final plan in planOnionSkin(
             layer: layer,
             frameIndex: _controllers.timelineController.currentFrameIndex,
-            settings: settings,
+            settings: pegs,
           ))
             CanvasLayerImageRequest(
               frameKey: _internals.brushFrameKeyForCut(

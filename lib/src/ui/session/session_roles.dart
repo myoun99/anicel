@@ -26,7 +26,6 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../models/layer_id.dart';
-import '../../models/onion_skin_settings.dart';
 import '../../models/delete_subject.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
@@ -183,8 +182,6 @@ abstract interface class SessionInternals {
   set lastMasterOpacity(double value);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   double layerOpacityAtFrame(Layer layer, int frameIndex);
-  ValueNotifier<Set<LayerId>> get onionSkinLayerIds;
-  ValueNotifier<OnionSkinSettings> get onionSkinSettings;
   ValueNotifier<({Set<LayerId> layerIds, double opacity})?>
   get opacityDragPreview;
   PixelVerbCanvas Function()? get pixelVerbCanvas;

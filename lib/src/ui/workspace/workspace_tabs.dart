@@ -562,12 +562,12 @@ class _WorkspaceTabs {
           icon: Icons.layers_outlined,
           locked: locked,
           builder: (context) => ValueListenableBuilder<OnionSkinSettings>(
-            valueListenable: _state.widget.session.onionSkinSettings,
+            valueListenable: _state.widget.session.onionSkin.settings,
             builder: (context, settings, _) => OnionSkinPanel(
               settings: settings,
               currentColorOf: () => _state._brushTool.value.color,
               onChanged: (next) =>
-                  _state.widget.session.onionSkinSettings.value = next,
+                  _state.widget.session.onionSkin.settings.value = next,
             ),
           ),
         );
