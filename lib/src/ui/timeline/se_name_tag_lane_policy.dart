@@ -124,7 +124,8 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
   return [
     PropertyLaneRow(
       laneId: seNameTagGroupLaneId,
-      label: 'Name Tag',
+      // F-37: `tlNameTagGroup` was tabled for this header and read by nobody.
+      label: AppText.strings.tlNameTagGroup,
       // The members' key union, the summary every group header shows.
       keyedFrames: keys.keyedFrames,
       showsKeyNavigator: false,
@@ -191,15 +192,20 @@ PropertyLaneValueKind seNameTagLaneValueKind(String laneId) => switch (laneId) {
 bool seNameTagLaneColorCanBeNone(String laneId) =>
     laneId == seNameTagBoxColorLaneId;
 
-/// The member's name in the rail. English here like every other lane label;
-/// the localized strings are for controls a person reads as prose.
+/// The member's name in the rail.
+///
+/// This said 「English here like every other lane label; the localized
+/// strings are for controls a person reads as prose.」 ↩️유저 2026-09-15
+/// (F-37-Q1): 「전부 번역 — 레인 이름도 한국어로」 — a lane's name is read in
+/// the program language like every other word. The two dialogue words were
+/// already tabled, for a name tag dialog that no longer exists.
 String seNameTagLaneLabel(String laneId) => switch (laneId) {
-  seNameTagSizeLaneId => 'Size',
-  seNameTagTrackingLaneId => 'Tracking',
-  seNameTagBoldLaneId => 'Bold',
-  seNameTagNameInkLaneId => 'Name Ink',
-  seNameTagBoxColorLaneId => 'Box Colour',
-  seNameTagLineInkLaneId => 'Dialogue Ink',
-  seNameTagShowLineLaneId => 'Show Dialogue',
+  seNameTagSizeLaneId => AppText.strings.seNameTagSizeLabel,
+  seNameTagTrackingLaneId => AppText.strings.seNameTagTrackingLabel,
+  seNameTagBoldLaneId => AppText.strings.seNameTagBoldLabel,
+  seNameTagNameInkLaneId => AppText.strings.seNameTagNameInkLabel,
+  seNameTagBoxColorLaneId => AppText.strings.seNameTagBoxColorLabel,
+  seNameTagLineInkLaneId => AppText.strings.seNameTagLineInkLabel,
+  seNameTagShowLineLaneId => AppText.strings.seNameTagShowLineLabel,
   _ => laneId,
 };

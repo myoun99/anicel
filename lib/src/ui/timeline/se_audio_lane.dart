@@ -10,6 +10,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
@@ -76,7 +77,9 @@ List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
   return [
     PropertyLaneRow(
       laneId: seAudioLaneId,
-      label: 'Audio',
+      // F-37: the word the storyboard's audio lane already read — the
+      // timeline said 'Audio' in every language beside it.
+      label: AppText.strings.tlAudioLane,
       keyedFrames: const {},
       showsKeyNavigator: false,
       valueLabel: !hasSpans

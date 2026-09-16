@@ -13,16 +13,24 @@ import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
 import 'effect_lane_policy.dart';
+import '../text/app_strings.dart';
 import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
 /// the twirl-down's structural spine: Transform first, Effects stack below
 /// on the same lane substrate later.
-const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
+///
+/// 🚨F-37 (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도 한국어로」 ·
+/// 「ae도 애초에 언어설정따라서 트랜스폼이나 싹 다 번역되있잖아. 그러니 법
+/// 하나로 다 번역」): the name is the program language's, so the row is built
+/// on each read rather than held as a `const` — a constant cannot ask the
+/// tables. `tlTransformGroup` sat tabled in five languages and read by
+/// nobody, while this row said 'Transform' in all of them.
+PropertyLaneRow get transformGroupHeaderLane => PropertyLaneRow(
   laneId: 'transform-group',
-  label: 'Transform',
-  keyedFrames: {},
+  label: AppText.strings.tlTransformGroup,
+  keyedFrames: const {},
   showsKeyNavigator: false,
   isGroupHeader: true,
 );
@@ -115,7 +123,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     if (includeAnchorAndOpacity)
       _lane(
         'anchor-point',
-        'Anchor Point',
+        AppText.strings.tlLaneAnchorPoint,
         track.anchorPoint,
         valueLabel: anchorAt == null
             ? null
@@ -128,7 +136,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
     _lane(
       'position',
-      'Position',
+      AppText.strings.tlLanePosition,
       track.position,
       valueLabel: poseAt == null
           ? null
@@ -138,7 +146,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     ),
     _lane(
       'scale',
-      'Scale',
+      AppText.strings.tlLaneScale,
       track.scale,
       valueLabel: poseAt == null
           ? null
@@ -148,7 +156,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     ),
     _lane(
       'rotation',
-      'Rotation',
+      AppText.strings.tlLaneRotation,
       track.rotation,
       valueLabel: poseAt == null
           ? null
@@ -159,7 +167,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     if (includeAnchorAndOpacity)
       _lane(
         'opacity',
-        'Opacity',
+        AppText.strings.tlLaneOpacity,
         track.opacity,
         valueLabel: opacityAt == null
             ? null

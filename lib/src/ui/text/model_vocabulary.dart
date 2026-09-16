@@ -47,6 +47,14 @@ extension EffectKindWords on EffectKind {
       AppStrings.of(language).effectKindName(jsonValue, label);
 }
 
+/// An effect parameter's lane name, by the id its spec carries — the spec
+/// holds its English for the reason the kinds do. F-37 (유저 2026-09-15,
+/// F-37-Q1): 「전부 번역 — 레인 이름도 한국어로」.
+extension EffectParameterSpecWords on EffectParameterSpec {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).effectParameterName(id, label);
+}
+
 extension SelectionCombineModeWords on SelectionCombineMode {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).selectionModeName(name, label);

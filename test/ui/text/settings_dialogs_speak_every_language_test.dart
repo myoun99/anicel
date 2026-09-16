@@ -177,7 +177,13 @@ void main() {
   /// English never showed here at all — it lives in interpolations and
   /// ternaries this scan cannot see (「Exported 2 frames.」), which is why
   /// seven is all a 84-string round moves the number.
-  const untranslatedElsewhere = 95;
+  /// 92 (F-37, 2026-09-15, the lanes — 유저 F-37-Q1: 「전부 번역 — 레인
+  /// 이름도 한국어로」): the Transform, Name Tag and Audio lane headers
+  /// stopped hardcoding their names and read the tables like every other
+  /// lane. `tlTransformGroup` and `tlNameTagGroup` had been tabled in five
+  /// languages and read by nobody, which is why a round that tables the
+  /// lane vocabulary moves this number by three.
+  const untranslatedElsewhere = 92;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

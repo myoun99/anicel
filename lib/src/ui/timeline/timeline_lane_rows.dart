@@ -886,7 +886,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return RailSwipeColumnPointer(
       child: AppIconButton(
         keyValue: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
-        tooltip: enabled ? 'Bypass ${lane.label}' : 'Apply ${lane.label}',
+        tooltip:
+            (enabled
+                    ? AppText.strings.tlBypassLaneTemplate
+                    : AppText.strings.tlApplyLaneTemplate)
+                .replaceAll('{name}', lane.label),
         onPressed: onToggle == null ? null : () => onToggle(layer, lane),
         icon: fxGlyph(context: context, active: enabled, fontSize: 11),
       ),

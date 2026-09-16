@@ -2,6 +2,8 @@ import 'dart:ui' show Offset;
 
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
+import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../text/trimmed_decimal.dart';
 import 'property_lane_model.dart';
 
@@ -78,7 +80,10 @@ List<PropertyLaneRow> effectPropertyLanes(
     rows.add(
       PropertyLaneRow(
         laneId: effectGroupLaneId(effect.id),
-        label: effect.kind.label,
+        // F-37 (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도
+        // 한국어로」): the effect's name in the program language — the same
+        // words its Add entry reads.
+        label: effect.kind.labelFor(AppText.language),
         // AE's per-effect eyeball: the header carries this effect's own
         // on/off switch as the shared `fx` glyph. A bypassed effect keeps
         // its keys and says so HERE, rather than looking like a broken
@@ -103,7 +108,7 @@ List<PropertyLaneRow> effectPropertyLanes(
       rows.add(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
-          label: spec.label,
+          label: spec.labelFor(AppText.language),
           keyedFrames: parameter.track.keys.keys.toSet(),
           holdOutFrames: {
             for (final entry in parameter.track.keys.entries)

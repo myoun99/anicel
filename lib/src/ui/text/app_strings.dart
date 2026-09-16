@@ -109,6 +109,12 @@ enum AppStrings {
   String effectKindName(String key, String fallback) =>
       _values['effectKind.$key'] ?? fallback;
 
+  /// An effect parameter's lane name, by the id its spec carries — F-37
+  /// (유저 2026-09-15, F-37-Q1: 「전부 번역 — 레인 이름도 한국어로」), on the
+  /// contract [effectKindName] follows.
+  String effectParameterName(String id, String fallback) =>
+      _values['effectParameter.$id'] ?? fallback;
+
   /// A selection mode's name, by the enum value's `name` — the same reversal;
   /// the ko rows are the user's own words (R26 #16).
   String selectionModeName(String name, String fallback) =>
@@ -638,6 +644,13 @@ enum AppStrings {
   String get tlAudioLane => _s('tlAudioLane');
   String get tlNameTagGroup => _s('tlNameTagGroup');
   String get tlTransformGroup => _s('tlTransformGroup');
+  String get tlLaneScale => _s('tlLaneScale');
+  String get tlLaneRotation => _s('tlLaneRotation');
+  String get tlLanePosition => _s('tlLanePosition');
+  String get tlLaneOpacity => _s('tlLaneOpacity');
+  String get tlLaneAnchorPoint => _s('tlLaneAnchorPoint');
+  String get tlBypassLaneTemplate => _s('tlBypassLaneTemplate');
+  String get tlApplyLaneTemplate => _s('tlApplyLaneTemplate');
   String get tlRunEdgeNone => _s('tlRunEdgeNone');
   String get tlRunEdgeHold => _s('tlRunEdgeHold');
   String get tlSelectedFrameRange => _s('tlSelectedFrameRange');
@@ -685,6 +698,11 @@ enum AppStrings {
   String get textCelBoldLabel => _s('textCelBoldLabel');
   String get seNameTagShowLineLabel => _s('seNameTagShowLineLabel');
   String get seNameTagLineInkLabel => _s('seNameTagLineInkLabel');
+  String get seNameTagTrackingLabel => _s('seNameTagTrackingLabel');
+  String get seNameTagSizeLabel => _s('seNameTagSizeLabel');
+  String get seNameTagNameInkLabel => _s('seNameTagNameInkLabel');
+  String get seNameTagBoxColorLabel => _s('seNameTagBoxColorLabel');
+  String get seNameTagBoldLabel => _s('seNameTagBoldLabel');
 
   /// The name-tag preview's FIXED samples (R5 #7) — it shows the look, not
   /// the block's own text, so these never change with the playhead.
@@ -695,13 +713,6 @@ enum AppStrings {
   String get textCelPositionLabel => _s('textCelPositionLabel');
 
   // --- The SE name tag editor (R5b) ---
-  String get seNameTagTitle => _s('seNameTagTitle');
-  String get seNameTagHint => _s('seNameTagHint');
-  String get seNameTagPositionLabel => _s('seNameTagPositionLabel');
-  String get seNameTagBoxLabel => _s('seNameTagBoxLabel');
-  String get seNameTagSampleName => _s('seNameTagSampleName');
-  String get seNameTagSampleLine => _s('seNameTagSampleLine');
-  String get seNameTagReset => _s('seNameTagReset');
 
   /// The cut-scoped camera row's DISPLAY name: "Direction layer". The code
   /// kind stays [LayerKind.instruction] (save compatibility) — only the word
@@ -2491,6 +2502,13 @@ enum AppStrings {
     'tlAudioLane': 'Audio',
     'tlNameTagGroup': 'Name Tag',
     'tlTransformGroup': 'Transform',
+    'tlLaneScale': 'Scale',
+    'tlLaneRotation': 'Rotation',
+    'tlLanePosition': 'Position',
+    'tlLaneOpacity': 'Opacity',
+    'tlLaneAnchorPoint': 'Anchor Point',
+    'tlBypassLaneTemplate': 'Bypass {name}',
+    'tlApplyLaneTemplate': 'Apply {name}',
     'tlRunEdgeNone': 'None',
     'tlRunEdgeHold': 'Hold',
     'tlSelectedFrameRange': 'selected frame range',
@@ -2530,23 +2548,18 @@ enum AppStrings {
     'textCelAlignRight': 'Right',
     'textCelColorLabel': 'Ink',
     'textCelBoldLabel': 'Bold',
-    'seNameTagShowLineLabel': 'Show dialogue',
-    'seNameTagLineInkLabel': 'Dialogue ink',
+    'seNameTagShowLineLabel': 'Show Dialogue',
+    'seNameTagLineInkLabel': 'Dialogue Ink',
+    'seNameTagTrackingLabel': 'Tracking',
+    'seNameTagSizeLabel': 'Size',
+    'seNameTagNameInkLabel': 'Name Ink',
+    'seNameTagBoxColorLabel': 'Box Colour',
+    'seNameTagBoldLabel': 'Bold',
     'seNameTagPreviewName': 'Name',
     'seNameTagPreviewLine': 'Line',
     'textCelOutlineLabel': 'Outline (white)',
     'textCelBackgroundLabel': 'Box (red)',
     'textCelPositionLabel': 'Position',
-    'seNameTagTitle': 'SE Name Tag',
-    'seNameTagHint':
-        'Where this row\'s speaker label sits on the picture. The text is '
-        'the block\'s own name and dialogue; the row\'s eye shows or hides '
-        'the tag.',
-    'seNameTagPositionLabel': 'Position',
-    'seNameTagBoxLabel': 'Box',
-    'seNameTagSampleName': 'Name',
-    'seNameTagSampleLine': 'dialogue',
-    'seNameTagReset': 'Reset',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -3098,6 +3111,18 @@ enum AppStrings {
     'effectKind.blur': 'ぼかし',
     'effectKind.deleteColor': '色削除',
     'effectKind.keepColor': '色残し',
+    'effectParameter.brightness': '明るさ',
+    'effectParameter.contrast': 'コントラスト',
+    'effectParameter.hue': '色相',
+    'effectParameter.saturation': '彩度',
+    'effectParameter.lightness': '明度',
+    'effectParameter.blurX': 'ぼかしの幅',
+    'effectParameter.blurY': 'ぼかしの高さ',
+    'effectParameter.keyRed': 'キー色の赤',
+    'effectParameter.keyGreen': 'キー色の緑',
+    'effectParameter.keyBlue': 'キー色の青',
+    'effectParameter.tolerance': '許容値',
+    'effectParameter.amount': '適用量',
     'selectionMode.replace': '新規選択',
     'selectionMode.add': '追加選択',
     'selectionMode.subtract': '部分解除',
@@ -3766,6 +3791,13 @@ enum AppStrings {
     'tlAudioLane': '音声',
     'tlNameTagGroup': 'ネームタグ',
     'tlTransformGroup': 'トランスフォーム',
+    'tlLaneScale': 'スケール',
+    'tlLaneRotation': '回転',
+    'tlLanePosition': '位置',
+    'tlLaneOpacity': '不透明度',
+    'tlLaneAnchorPoint': 'アンカーポイント',
+    'tlBypassLaneTemplate': '{name}をバイパス',
+    'tlApplyLaneTemplate': '{name}を適用',
     'tlRunEdgeNone': 'なし',
     'tlRunEdgeHold': 'ホールド',
     'tlSelectedFrameRange': '選択中のフレーム範囲',
@@ -3804,20 +3836,16 @@ enum AppStrings {
     'textCelBoldLabel': '太字',
     'seNameTagShowLineLabel': 'セリフを表示',
     'seNameTagLineInkLabel': 'セリフの色',
+    'seNameTagTrackingLabel': '字間',
+    'seNameTagSizeLabel': 'サイズ',
+    'seNameTagNameInkLabel': '名前の色',
+    'seNameTagBoxColorLabel': 'ボックスの色',
+    'seNameTagBoldLabel': '太字',
     'seNameTagPreviewName': '名前',
     'seNameTagPreviewLine': 'セリフ',
     'textCelOutlineLabel': 'フチ（白）',
     'textCelBackgroundLabel': 'ボックス（赤）',
     'textCelPositionLabel': '位置',
-    'seNameTagTitle': 'SE ネームタグ',
-    'seNameTagHint':
-        'この行の話者ラベルを画面のどこに出すか。文字はブロックの名前とセリフ、'
-        '表示・非表示は行の目で切り替えます。',
-    'seNameTagPositionLabel': '位置',
-    'seNameTagBoxLabel': 'ボックス',
-    'seNameTagSampleName': '名前',
-    'seNameTagSampleLine': 'セリフ',
-    'seNameTagReset': '既定に戻す',
     'tlKindInstruction': 'ディレクション',
     'tlNoriShiro': 'のりしろ',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
@@ -4368,6 +4396,18 @@ enum AppStrings {
     'effectKind.blur': '흐림 효과',
     'effectKind.deleteColor': '색 삭제',
     'effectKind.keepColor': '색 남기기',
+    'effectParameter.brightness': '밝기',
+    'effectParameter.contrast': '대비',
+    'effectParameter.hue': '색조',
+    'effectParameter.saturation': '채도',
+    'effectParameter.lightness': '명도',
+    'effectParameter.blurX': '흐림 너비',
+    'effectParameter.blurY': '흐림 높이',
+    'effectParameter.keyRed': '키 색 빨강',
+    'effectParameter.keyGreen': '키 색 초록',
+    'effectParameter.keyBlue': '키 색 파랑',
+    'effectParameter.tolerance': '허용차',
+    'effectParameter.amount': '적용량',
     // R26 #16 — the user's own words for the four selection modes
     // (「갱신/추가/삭제/선택중」), moved here from the enum.
     'selectionMode.replace': '갱신',
@@ -5029,8 +5069,15 @@ enum AppStrings {
     'tlReferenceSourceShort': '원본보다 {n}프레임 깁니다',
     'tlSelectedLayers': '선택한 레이어',
     'tlAudioLane': '오디오',
-    'tlNameTagGroup': '네임태그',
-    'tlTransformGroup': '트랜스폼',
+    'tlNameTagGroup': '이름표',
+    'tlTransformGroup': '변형',
+    'tlLaneScale': '비율',
+    'tlLaneRotation': '회전',
+    'tlLanePosition': '위치',
+    'tlLaneOpacity': '불투명도',
+    'tlLaneAnchorPoint': '기준점',
+    'tlBypassLaneTemplate': '{name} 우회',
+    'tlApplyLaneTemplate': '{name} 적용',
     'tlRunEdgeNone': '없음',
     'tlRunEdgeHold': '홀드',
     'tlSelectedFrameRange': '선택된 프레임 범위',
@@ -5070,20 +5117,16 @@ enum AppStrings {
     'textCelBoldLabel': '굵게',
     'seNameTagShowLineLabel': '대사 표시',
     'seNameTagLineInkLabel': '대사 잉크',
+    'seNameTagTrackingLabel': '자간',
+    'seNameTagSizeLabel': '크기',
+    'seNameTagNameInkLabel': '이름 잉크',
+    'seNameTagBoxColorLabel': '박스 색',
+    'seNameTagBoldLabel': '굵게',
     'seNameTagPreviewName': '이름',
     'seNameTagPreviewLine': '대사',
     'textCelOutlineLabel': '외곽선(흰색)',
     'textCelBackgroundLabel': '박스(빨강)',
     'textCelPositionLabel': '위치',
-    'seNameTagTitle': 'SE 이름표',
-    'seNameTagHint':
-        '이 행의 화자 이름표가 화면 어디에 놓일지. 글자는 블록의 이름과 대사이고, '
-        '표시 여부는 행의 눈으로 켜고 끕니다.',
-    'seNameTagPositionLabel': '위치',
-    'seNameTagBoxLabel': '박스',
-    'seNameTagSampleName': '이름',
-    'seNameTagSampleLine': '대사',
-    'seNameTagReset': '기본값으로',
     'tlKindInstruction': '디렉션',
     'tlNoriShiro': '여백',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
@@ -5658,6 +5701,18 @@ enum AppStrings {
     'effectKind.blur': 'Flou',
     'effectKind.deleteColor': 'Supprimer la couleur',
     'effectKind.keepColor': 'Conserver la couleur',
+    'effectParameter.brightness': 'Luminosité',
+    'effectParameter.contrast': 'Contraste',
+    'effectParameter.hue': 'Teinte',
+    'effectParameter.saturation': 'Saturation',
+    'effectParameter.lightness': 'Luminosité',
+    'effectParameter.blurX': 'Largeur du flou',
+    'effectParameter.blurY': 'Hauteur du flou',
+    'effectParameter.keyRed': 'Rouge de la clé',
+    'effectParameter.keyGreen': 'Vert de la clé',
+    'effectParameter.keyBlue': 'Bleu de la clé',
+    'effectParameter.tolerance': 'Tolérance',
+    'effectParameter.amount': 'Quantité',
     'selectionMode.replace': 'Nouvelle sélection',
     'selectionMode.add': 'Ajouter à la sélection',
     'selectionMode.subtract': 'Soustraire de la sélection',
@@ -6356,8 +6411,15 @@ enum AppStrings {
     'tlReferenceSourceShort': 'Dépasse la source de {n} images',
     'tlSelectedLayers': 'Calques sélectionnés',
     'tlAudioLane': 'Audio',
-    'tlNameTagGroup': 'Cartouche',
+    'tlNameTagGroup': 'Étiquette',
     'tlTransformGroup': 'Transformation',
+    'tlLaneScale': 'Échelle',
+    'tlLaneRotation': 'Rotation',
+    'tlLanePosition': 'Position',
+    'tlLaneOpacity': 'Opacité',
+    'tlLaneAnchorPoint': "Point d'ancrage",
+    'tlBypassLaneTemplate': 'Contourner {name}',
+    'tlApplyLaneTemplate': 'Appliquer {name}',
     'tlRunEdgeNone': 'Aucun',
     'tlRunEdgeHold': 'Maintien',
     'tlSelectedFrameRange': 'plage d\'images sélectionnée',
@@ -6400,21 +6462,16 @@ enum AppStrings {
     'textCelBoldLabel': 'Gras',
     'seNameTagShowLineLabel': 'Afficher le dialogue',
     'seNameTagLineInkLabel': 'Encre du dialogue',
+    'seNameTagTrackingLabel': 'Interlettrage',
+    'seNameTagSizeLabel': 'Taille',
+    'seNameTagNameInkLabel': 'Encre du nom',
+    'seNameTagBoxColorLabel': 'Couleur de la boîte',
+    'seNameTagBoldLabel': 'Gras',
     'seNameTagPreviewName': 'Nom',
     'seNameTagPreviewLine': 'Réplique',
     'textCelOutlineLabel': 'Contour (blanc)',
     'textCelBackgroundLabel': 'Boîte (rouge)',
     'textCelPositionLabel': 'Position',
-    'seNameTagTitle': 'Étiquette SE',
-    'seNameTagHint':
-        'Où se place l\'étiquette du locuteur sur l\'image. Le texte vient '
-        'du bloc (nom et dialogue) ; l\'œil de la ligne l\'affiche ou la '
-        'masque.',
-    'seNameTagPositionLabel': 'Position',
-    'seNameTagBoxLabel': 'Boîte',
-    'seNameTagSampleName': 'Nom',
-    'seNameTagSampleLine': 'dialogue',
-    'seNameTagReset': 'Réinitialiser',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -6938,6 +6995,18 @@ enum AppStrings {
     'effectKind.blur': '模糊',
     'effectKind.deleteColor': '删除颜色',
     'effectKind.keepColor': '保留颜色',
+    'effectParameter.brightness': '亮度',
+    'effectParameter.contrast': '对比度',
+    'effectParameter.hue': '色相',
+    'effectParameter.saturation': '饱和度',
+    'effectParameter.lightness': '明度',
+    'effectParameter.blurX': '模糊宽度',
+    'effectParameter.blurY': '模糊高度',
+    'effectParameter.keyRed': '键色红',
+    'effectParameter.keyGreen': '键色绿',
+    'effectParameter.keyBlue': '键色蓝',
+    'effectParameter.tolerance': '容差',
+    'effectParameter.amount': '数量',
     'selectionMode.replace': '新选区',
     'selectionMode.add': '添加到选区',
     'selectionMode.subtract': '从选区减去',
@@ -7550,8 +7619,15 @@ enum AppStrings {
     'tlReferenceSourceShort': '超出素材{n}帧',
     'tlSelectedLayers': '所选图层',
     'tlAudioLane': '音频',
-    'tlNameTagGroup': '名牌',
+    'tlNameTagGroup': '名字条',
     'tlTransformGroup': '变换',
+    'tlLaneScale': '缩放',
+    'tlLaneRotation': '旋转',
+    'tlLanePosition': '位置',
+    'tlLaneOpacity': '不透明度',
+    'tlLaneAnchorPoint': '锚点',
+    'tlBypassLaneTemplate': '旁通{name}',
+    'tlApplyLaneTemplate': '应用{name}',
     'tlRunEdgeNone': '无',
     'tlRunEdgeHold': '保持',
     'tlSelectedFrameRange': '选中的帧范围',
@@ -7590,18 +7666,16 @@ enum AppStrings {
     'textCelBoldLabel': '加粗',
     'seNameTagShowLineLabel': '显示台词',
     'seNameTagLineInkLabel': '台词颜色',
+    'seNameTagTrackingLabel': '字距',
+    'seNameTagSizeLabel': '大小',
+    'seNameTagNameInkLabel': '名字颜色',
+    'seNameTagBoxColorLabel': '底框颜色',
+    'seNameTagBoldLabel': '加粗',
     'seNameTagPreviewName': '名字',
     'seNameTagPreviewLine': '台词',
     'textCelOutlineLabel': '描边（白）',
     'textCelBackgroundLabel': '底框（红）',
     'textCelPositionLabel': '位置',
-    'seNameTagTitle': 'SE 名字条',
-    'seNameTagHint': '这一行说话者标签在画面上的位置。文字取自区块的名称与台词，显示与否由行的眼睛控制。',
-    'seNameTagPositionLabel': '位置',
-    'seNameTagBoxLabel': '底框',
-    'seNameTagSampleName': '名称',
-    'seNameTagSampleLine': '台词',
-    'seNameTagReset': '恢复默认',
     // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만
     // 원어/영어로 두기로 하자」). ja/ko already transliterate it rather than
     // translate it — ディレクション / 디렉션 — so zh standing alone with 指示
