@@ -272,7 +272,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     final edgeAntiAlias =
         resolvedViewport == null ||
         !standsInForEditing ||
-        displayEdgeAntiAliased(resolvedViewport);
+        displayEdgeAntiAliased(resolvedViewport, devicePixelRatio);
     if (pose == null) {
       _paintPaper(canvas, canvasRect, antiAlias: edgeAntiAlias);
     }
@@ -305,7 +305,8 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       // fractional device phase (DPR 1.25/1.5 makes even 100% zoom one).
       //
       // The law's premise is a canvas-resolution image (displayScaleOf's
-      // contract: "the buffer is at canvas resolution"). A Half/Quarter
+      // premise: the image is at canvas resolution, so zoom × ratio is
+      // the scale it is resampled by). A Half/Quarter
       // cache upscales to canvas size inside this same draw, and that
       // upscale keeps its bilinear sampling — today's value for the
       // degraded tiers, which can never be byte-equal to the editing
@@ -316,7 +317,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       final imagePaint = Paint()
         ..filterQuality = editingResample
             ? filterQualityForDisplayScale(
-                displayScaleOf(resolvedViewport?.zoom ?? 1),
+                displayScaleOf(resolvedViewport?.zoom ?? 1, devicePixelRatio),
               )
             : FilterQuality.low
         // The composite's edge is the canvas's edge: the same cut as the

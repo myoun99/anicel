@@ -73,7 +73,19 @@ class _LayerStackPaintPass {
   /// is what actually solves it (composite at canvas resolution, resample
   /// once), and that route already runs everywhere it can.
   ui.FilterQuality get _displayQuality =>
-      filterQualityForDisplayScale(displayScaleOf(_painter.viewport.zoom));
+      filterQualityForDisplayScale(_displayScale);
+
+  /// Device pixels per artwork pixel ([displayScaleOf]) — the one quantity
+  /// the display law, its edge, the sampling phase and a self-rasterising
+  /// group's raster scale all read.
+  double get _displayScale =>
+      displayScaleOf(_painter.viewport.zoom, _painter.devicePixelRatio);
+
+  /// The display law's edge ([displayEdgeAntiAliased]) for this paint's
+  /// view: the buffer's blit and the paper rect cut the canvas's edge by
+  /// the same rule.
+  bool get _displayEdgeAntiAliased =>
+      displayEdgeAntiAliased(_painter.viewport, _painter.devicePixelRatio);
 
   // One paint's geometry: set by [paint] before the walk below reads it.
   // The page rect, the on-screen part of the pasteboard, the content the
@@ -383,7 +395,7 @@ class _LayerStackPaintPass {
         // The direct walk draws under the viewport transform, so a group
         // that rasterises itself has to match the CTM it is drawn into.
         intoTheBuffer: false,
-        rasterScale: _painter.viewport.zoom.abs() * _painter.devicePixelRatio,
+        rasterScale: _displayScale,
       );
     } else {
       try {
@@ -392,14 +404,12 @@ class _LayerStackPaintPass {
           Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
           buffer.rect,
           Paint()
-            ..filterQuality = filterQualityForDisplayScale(
-              displayScaleOf(_painter.viewport.zoom),
-            )
+            ..filterQuality = _displayQuality
             // The buffer's edge IS the canvas's edge on screen, cut by the
             // same law as the paper's (F-67-paper-edge): under nearest on
             // an axis-aligned view it is one more texel boundary, decided
             // by pixel centres, not a blended line.
-            ..isAntiAlias = displayEdgeAntiAliased(_painter.viewport),
+            ..isAntiAlias = _displayEdgeAntiAliased,
         );
       } finally {
         // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
@@ -968,7 +978,7 @@ class _LayerStackPaintPass {
       // this rect is the canvas's edge; inside the s=1 buffer it is whole
       // and the flag cannot matter; under the scaled recording the view is
       // reduced and the law says anti-aliased, as it always was.
-      antiAlias: displayEdgeAntiAliased(_painter.viewport),
+      antiAlias: _displayEdgeAntiAliased,
     );
   }
 
@@ -1101,8 +1111,7 @@ class _LayerStackPaintPass {
     // (the above-cap arm has no such floor, which is why it returns).
     // At `s >= 1` this gate never fires, and that non-firing IS the
     // above-100% byte-invariance check-point: same code, same bytes.
-    if (MeasurementMode.kneeAtOne.value &&
-        _painter.viewport.zoom.abs() * _painter.devicePixelRatio < 1) {
+    if (MeasurementMode.kneeAtOne.value && _displayScale < 1) {
       final scaled = _composeScaledBuffer(rect);
       if (scaled != null) {
         return scaled;
@@ -1498,7 +1507,7 @@ class _LayerStackPaintPass {
         _painter.viewport.flipVertical) {
       return null;
     }
-    var s = _painter.viewport.zoom.abs() * _painter.devicePixelRatio;
+    var s = _displayScale;
     if (s >= 1) {
       s = 1;
     }

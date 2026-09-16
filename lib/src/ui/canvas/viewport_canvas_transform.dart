@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
+import 'display_resample.dart';
 
 export '../../services/viewport_transform_matrix.dart';
 
@@ -49,7 +50,9 @@ CanvasViewport renderSnappedViewport(
   if (viewport.rotationDegrees != 0) {
     return viewport;
   }
-  final phase = samplingPhaseFor(viewport.zoom.abs() * devicePixelRatio);
+  final phase = samplingPhaseFor(
+    displayScaleOf(viewport.zoom, devicePixelRatio),
+  );
   double snap(double pan) =>
       ((pan * devicePixelRatio - phase).roundToDouble() + phase) /
       devicePixelRatio;

@@ -259,6 +259,13 @@ void main() {
     // would be an expensive no-op. At 50% the old walk resamples every layer
     // separately with its own quality; the buffer resamples one image once,
     // so the pixels MUST differ.
+    //
+    // ⚠️50% ON SCREEN, so the ratio is pinned: the scale the law reads is
+    // zoom × ratio, and on the tester's default ratio of 3 a render zoom of
+    // 0.5 is 150% on screen — magnified, nearest on both routes, and the
+    // two pictures rightly agree there (2026-09-16).
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
     final nodes = [
       drawnRow('under'),
       const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
@@ -307,10 +314,32 @@ void main() {
       );
     });
 
-    test('the scale is the zoom — rotation and flips do not resample', () {
-      expect(displayScaleOf(0.5), 0.5);
-      expect(displayScaleOf(-2), 2, reason: 'a flip is not a reduction');
-    });
+    test(
+      'the scale is the DEVICE scale, zoom × ratio — rotation and flips do '
+      'not resample, and a tablet\'s ratio does not make 140% a reduction',
+      () {
+        expect(displayScaleOf(0.5, 1), 0.5);
+        expect(displayScaleOf(-2, 1), 2, reason: 'a flip is not a reduction');
+        expect(
+          displayScaleOf(0.7, 2),
+          moreOrLessEquals(1.4),
+          reason: 'render zoom 0.7 on a ratio-2 screen is 140% on screen — '
+              'magnified. Reading the zoom alone called it reduced and '
+              'filtered a magnified view (유저 09-16: 「표시배율 100%부터는 '
+              '필터가 걸리면안되」).',
+        );
+        expect(
+          filterQualityForDisplayScale(displayScaleOf(0.5, 2)),
+          ui.FilterQuality.none,
+          reason: 'device 100% is 1:1 whatever the render zoom says',
+        );
+        expect(
+          filterQualityForDisplayScale(displayScaleOf(0.4, 2)),
+          ui.FilterQuality.low,
+          reason: 'device 80% is a reduction',
+        );
+      },
+    );
 
     test(
       'the edge is one more texel boundary: cut on the pixel grid under '
@@ -318,31 +347,39 @@ void main() {
       '(F-67-paper-edge)',
       () {
         expect(
-          displayEdgeAntiAliased(CanvasViewport(zoom: 1.1)),
+          displayEdgeAntiAliased(CanvasViewport(zoom: 1.1), 1),
           isFalse,
           reason: 'magnified samples nearest: every boundary inside the '
               'image is decided by pixel centres, and the outer edge is '
               'one more of them — anti-aliasing it alone paints the '
               'blended line the phase snap made visible at 110%',
         );
-        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 1)), isFalse);
-        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 2)), isFalse);
+        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 1), 1), isFalse);
+        expect(displayEdgeAntiAliased(CanvasViewport(zoom: 2), 1), isFalse);
         expect(
           displayEdgeAntiAliased(
             CanvasViewport(zoom: 1.1, flipHorizontal: true),
+            1,
           ),
           isFalse,
           reason: 'a flip is axis-aligned',
         );
         expect(
-          displayEdgeAntiAliased(CanvasViewport(zoom: 0.5)),
+          displayEdgeAntiAliased(CanvasViewport(zoom: 0.5), 1),
           isTrue,
           reason: 'reduced samples bilinear: the boundaries inside blend, '
               'so the edge blends with them',
         );
         expect(
+          displayEdgeAntiAliased(CanvasViewport(zoom: 0.5), 2),
+          isFalse,
+          reason: 'device 100% on a ratio-2 screen samples nearest, so its '
+              'edge is cut on the grid like every other 1:1 view',
+        );
+        expect(
           displayEdgeAntiAliased(
             CanvasViewport(zoom: 1.1, rotationDegrees: 15),
+            1,
           ),
           isTrue,
           reason: 'a rotated edge is a diagonal',

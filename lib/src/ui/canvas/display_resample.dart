@@ -26,6 +26,9 @@ import '../../models/canvas_viewport.dart';
 ///  * **1:1** — no resampling happens at all; `none` avoids a pointless
 ///    filter pass.
 ///
+/// [scale] is [displayScaleOf]: device pixels per artwork pixel, the
+/// percentage the zoom readout shows.
+///
 /// ⚠️This only MEANS anything if there is one resample to apply it to.
 /// Applied per layer it would still be N resamples that merely agree with
 /// each other; the composite buffer is what turns it into the law
@@ -33,15 +36,28 @@ import '../../models/canvas_viewport.dart';
 ui.FilterQuality filterQualityForDisplayScale(double scale) =>
     scale < 1 ? ui.FilterQuality.low : ui.FilterQuality.none;
 
-/// The scale a canvas-space image is actually resampled by on screen.
+/// The scale a canvas-space image is actually resampled by on screen:
+/// DEVICE pixels per artwork pixel, `|zoom| × devicePixelRatio`.
 ///
 /// Rotation and flips do not change how many artwork pixels land on a
-/// screen pixel — only the zoom does — so the law reads the zoom and
-/// nothing else. Taken from the viewport rather than from the CTM because
-/// the CTM at paint time also carries the device pixel ratio, and a 2× DPR
-/// screen at 100% zoom is still 1:1 artwork-to-canvas: the buffer is at
-/// canvas resolution, so it is the canvas-to-view scale that decides.
-double displayScaleOf(double zoom) => zoom.abs();
+/// device pixel — only the zoom and the ratio do — so the law reads those
+/// two and nothing else. The image is at canvas resolution, so the whole
+/// CTM resamples it, and the CTM is the zoom times the ratio.
+///
+/// 🚨★★★THE ZOOM ALONE WAS THE WRONG QUANTITY (2026-09-16). Until then this
+/// returned `|zoom|`, reasoning that "a 2× DPR screen at 100% zoom is still
+/// 1:1 artwork-to-canvas". True of the render zoom, and beside the point:
+/// what the user calls 100% is the DEVICE zoom — the readout
+/// (`CanvasZoomScale.toDevice`: "the device zoom IS the percentage the user
+/// reads") — and at device 100% on a ratio-2 tablet the render zoom is
+/// 0.5, so the zoom-alone law filtered a 1:1 view and kept filtering up to
+/// device 200%: an iPad at 140% on screen got `low`, mush on a magnified
+/// view. 유저 09-16: 「표시배율 100%부터는 필터가 걸리면안되」. One quantity,
+/// `zoom × ratio`, now decides the filter, the edge, the sampling phase
+/// (`samplingPhaseFor`) and the scale a self-rasterising group draws at —
+/// a second spelling of the product anywhere is a copy.
+double displayScaleOf(double zoom, double devicePixelRatio) =>
+    zoom.abs() * devicePixelRatio;
 
 /// Whether the OUTER EDGE of what lands on the display — the display
 /// buffer's blit, the paper rect under it, the playback composite that
@@ -74,7 +90,12 @@ double displayScaleOf(double zoom) => zoom.abs();
 /// default on Windows in Flutter 3.47 and this repo moved to it, so the
 /// desktop now draws the edge the same engine the tablets do. ⚠️Still
 /// unverified: nobody has looked at the boundary since.
-bool displayEdgeAntiAliased(CanvasViewport viewport) =>
+bool displayEdgeAntiAliased(
+  CanvasViewport viewport,
+  double devicePixelRatio,
+) =>
     viewport.rotationDegrees != 0 ||
-    filterQualityForDisplayScale(displayScaleOf(viewport.zoom)) !=
+    filterQualityForDisplayScale(
+          displayScaleOf(viewport.zoom, devicePixelRatio),
+        ) !=
         ui.FilterQuality.none;

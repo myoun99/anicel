@@ -201,6 +201,19 @@ void main() {
     return false;
   }
 
+  /// Pixels that are neither the ink's black nor the paper's white: what
+  /// bilinear leaves along a hard edge at a fractional device phase, and
+  /// what nearest never produces.
+  int blendedPixels(Uint8List rgba) {
+    var blended = 0;
+    for (var i = 0; i < rgba.length; i += 4) {
+      if (rgba[i + 3] == 255 && rgba[i] > 16 && rgba[i] < 240) {
+        blended += 1;
+      }
+    }
+    return blended;
+  }
+
   int diffingPixels(Uint8List a, Uint8List b) {
     expect(a.length, b.length);
     var diffs = 0;
@@ -403,6 +416,21 @@ void main() {
       );
     });
 
+    testWidgets(
+      'at 150% on screen on a ratio-2 tablet (render zoom 0.75), fractional '
+      'pan',
+      (tester) async {
+        // The tablet's case: the render zoom is below 1 while the view is
+        // magnified. Both routes must read the same device scale.
+        await expectRouteParity(
+          tester,
+          zoom: 0.75,
+          dpr: 2,
+          pan: const Offset(1.3, 0.9),
+        );
+      },
+    );
+
     testWidgets('🚨inside a BLENDED FOLDER — the sub-tree raster itself', (
       tester,
     ) async {
@@ -420,6 +448,80 @@ void main() {
       );
     });
   });
+
+  testWidgets(
+    'the scale is the DEVICE scale: 140% on a ratio-2 tablet samples '
+    'nearest on both routes (유저 09-16 표시배율 100%부터는 필터가 걸리면안되)',
+    (tester) async {
+      // Render zoom 0.7 on a ratio-2 screen is 140% on screen. The
+      // zoom-alone law read 0.7, called it a reduction and filtered: the
+      // ink's edges — canvas 2..6, device 2.8..8.4, fractional — came out
+      // bilinear-blended on a MAGNIFIED view. The window sits inside the
+      // canvas, so only the ink's black and the paper's white can appear;
+      // a blended pixel is the filter.
+      const dpr = 2.0;
+      const logicalSize = Size(5, 5);
+      tester.view.devicePixelRatio = dpr;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final viewport = CanvasViewport(zoom: 0.7);
+
+      final store = storeWithInk();
+      final editing = await editingPainter(
+        tester,
+        store: store,
+        viewport: viewport,
+        logicalSize: logicalSize,
+      );
+      final editingBytes = await rasterize(
+        tester,
+        editing,
+        logicalSize: logicalSize,
+        dpr: dpr,
+      );
+      expect(hasInk(editingBytes), isTrue);
+      expect(
+        blendedPixels(editingBytes),
+        0,
+        reason: 'the editing route filtered a magnified view: the law read '
+            'the render zoom (0.7) instead of the device scale (1.4).',
+      );
+
+      final composites = CutFrameCompositeCache(
+        layerImages: LayerFrameImageCache(frameStore: store),
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      addTearDown(composites.dispose);
+      final composite = (await tester.runAsync(
+        () => composites.prepareComposite(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.full,
+        ),
+      ))!;
+      final playback = PlaybackFramePainter(
+        image: composite,
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: dpr,
+        paperBackground: background,
+      );
+      final playbackBytes = await rasterize(
+        tester,
+        playback,
+        logicalSize: logicalSize,
+        dpr: dpr,
+      );
+      expect(hasInk(playbackBytes), isTrue);
+      expect(
+        blendedPixels(playbackBytes),
+        0,
+        reason: 'the playback route filtered a magnified view: the law read '
+            'the render zoom (0.7) instead of the device scale (1.4).',
+      );
+      expect(diffingPixels(editingBytes, playbackBytes), 0);
+    },
+  );
 
   testWidgets(
     'a reduced-quality cache keeps its bilinear upscale (not the law\'s '
@@ -461,14 +563,8 @@ void main() {
         logicalSize: const Size(8, 8),
         dpr: 1.0,
       );
-      var intermediates = 0;
-      for (var i = 0; i < bytes.length; i += 4) {
-        if (bytes[i + 3] == 255 && bytes[i] > 16 && bytes[i] < 240) {
-          intermediates += 1;
-        }
-      }
       expect(
-        intermediates,
+        blendedPixels(bytes),
         greaterThan(0),
         reason: 'the half cache\'s upscale must stay bilinear — zero '
             'intermediate grays means the display law leaked into the '
