@@ -574,8 +574,8 @@ class _SeamProbe {
     String label, String stem, _Rgba ref, _Rgba got, _Rgba diff,
   ) async {
     final safe = label
-        .replaceAll(RegExp(r'[^A-Za-z0-9.=]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_');
+        .replaceAll(RegExp('[^A-Za-z0-9.=]+'), '_')
+        .replaceAll(RegExp('_+'), '_');
     final r = await _png(ref);
     final g = await _png(got);
     final d = await _png(diff);
@@ -815,7 +815,7 @@ class _SeamProbe {
               c.drawImage(base, Offset.zero, paint);
               c.save();
               c.clipRect(Rect.fromLTWH(200, 200, dirty.toDouble(), dirty.toDouble()));
-              final t0 = 200 ~/ _tile;
+              const t0 = 200 ~/ _tile;
               final t1 = (200 + dirty + _tile - 1) ~/ _tile;
               for (var ty = t0; ty < math.min(rows, t1); ty++) {
                 for (var tx = t0; tx < math.min(cols, t1); tx++) {
