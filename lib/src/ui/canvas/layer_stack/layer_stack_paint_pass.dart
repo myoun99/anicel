@@ -62,14 +62,14 @@ class _LayerStackPaintPass {
   /// differently is the T21 defect wearing a different hat: the artwork
   /// changed depending on which one the frame happened to take.
   ///
-  /// 🔜ONE RESIDUE, NAMED RATHER THAN FORGOTTEN. The active layer's TILES —
-  /// in the walk, and inside a level buffer until the tile pyramid (4c)
-  /// hands it level tiles — draw through `BitmapSurfacePainter` at `none`,
-  /// so a reduced view still aliases them beside filtered neighbours. It is
-  /// not a constant to change: a tile is filtered with no neighbours to
-  /// sample, so `low` there buys a seam at every tile boundary instead. The
-  /// buffered route is what actually solves it (composite once, resample
-  /// once), and that route already runs everywhere it can.
+  /// The active layer's TILES draw through `BitmapSurfacePainter` at `none`
+  /// on purpose — a tile is filtered with no neighbours to sample, so `low`
+  /// there buys a seam at every tile boundary — and below 100% they reach
+  /// the buffer as LEVEL TILES (4c, [TilePyramid]): exact box means drawn
+  /// 1:1 in the level's pixels, so the layer being drawn on and the layers
+  /// around it are the same picture at every zoom. Only the LIVE stroke's
+  /// overlay tiles still meet the recorder's scale directly, for the
+  /// frames of the stroke.
   ui.FilterQuality get _displayQuality =>
       filterQualityForDisplayScale(_displayScale);
 
@@ -811,6 +811,11 @@ class _LayerStackPaintPass {
         _painter.activeSurfacePainter!.paintContentInto(
           into,
           layerPaint: ridingPaint,
+          // 4c: into a level buffer the committed tiles are drawn as level
+          // tiles, 1:1 in the buffer's own pixels ([TilePyramid]); the
+          // safety-net walk (rasterScale = the device scale) draws the
+          // level its residual leaves.
+          level: displayLevelOf(rasterScale),
         );
       }
       // 🚨TS1: the selection's FLOAT belongs here, right on top of

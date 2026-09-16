@@ -7,16 +7,25 @@
 /// JSON-friendly.
 library;
 
-/// Returns `true` when [a] and [b] have the same length and equal elements in
-/// order, using each element's own `==`.
-bool listEquals<T>(List<T> a, List<T> b) {
-  if (identical(a, b)) return true;
+/// Whether [a] and [b] match element for element under [match]: the same
+/// length, and every pair at the same index matches.
+///
+/// ONE walk under [listEquals] and the two places that wrote it out again
+/// on 2026-09-16 — the stack view's tree comparison (node for node) and
+/// the tile pyramid's block identity (tile for tile, by `identical`) —
+/// where the clone ratchet caught the copies.
+bool listsMatch<T>(List<T> a, List<T> b, bool Function(T, T) match) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) return false;
+    if (!match(a[i], b[i])) return false;
   }
   return true;
 }
+
+/// Returns `true` when [a] and [b] have the same length and equal elements in
+/// order, using each element's own `==`.
+bool listEquals<T>(List<T> a, List<T> b) =>
+    identical(a, b) || listsMatch(a, b, (x, y) => x == y);
 
 /// Returns `true` when [a] and [b] hold the same elements, using each
 /// element's own `==` through the sets' `contains`.

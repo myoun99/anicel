@@ -63,7 +63,7 @@ void main() {
         };
         return [v, v, v, 255];
       });
-      final picture = halvingPicture(source);
+      final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
       final level = await picture.toImage(2, 2);
       picture.dispose();
       final px = await bytesOf(level);
@@ -87,7 +87,7 @@ void main() {
       // 3×2: the third column has no right-hand neighbour; clamped, its
       // level pixel is the texel itself.
       final source = await image(3, 2, (x, y) => [x * 100, 0, 0, 255]);
-      final picture = halvingPicture(source);
+      final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
       final level = await picture.toImage(2, 1);
       picture.dispose();
       final px = await bytesOf(level);

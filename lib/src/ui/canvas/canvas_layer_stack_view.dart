@@ -2029,17 +2029,7 @@ class _LayerStackPainter extends CustomPainter {
 bool _treesMatch(
   List<CompositeNode<_PaintRow>> a,
   List<CompositeNode<_PaintRow>> b,
-) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var index = 0; index < a.length; index += 1) {
-    if (!_nodesMatch(a[index], b[index])) {
-      return false;
-    }
-  }
-  return true;
-}
+) => listsMatch(a, b, _nodesMatch);
 
 /// [_treesMatch] as a VALUE, for the bake's key — the nodes' signatures
 /// folded in order ([_nodeSignature]).

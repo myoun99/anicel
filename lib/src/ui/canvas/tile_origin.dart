@@ -12,9 +12,16 @@ import '../../models/tile_coord.dart';
 /// ⚠️It takes the PAIR, not the tile: a tile does not know where it sits.
 /// Its place is the map key it was stored under, and [PlacedTile] is how
 /// that travels alongside it.
-Offset tileOriginOffset(PlacedTile placed) => Offset(
-  (placed.coord.x * placed.tile.size).toDouble(),
-  (placed.coord.y * placed.tile.size).toDouble(),
+Offset tileOriginOffset(PlacedTile placed) =>
+    tileCoordOriginOffset(placed.coord, placed.tile.size);
+
+/// Where the tile at [coord] on a [tileSize] grid has its top-left corner
+/// in canvas space — the product itself, for a draw that has a coordinate
+/// and a grid but no tile: a LEVEL TILE stands for a block of tiles and is
+/// drawn at the block's origin on the block's grid (4c, 2026-09-16).
+Offset tileCoordOriginOffset(TileCoord coord, int tileSize) => Offset(
+  (coord.x * tileSize).toDouble(),
+  (coord.y * tileSize).toDouble(),
 );
 
 /// The canvas-space bounds of the tiles at [coords] on a [tileSize] grid, or

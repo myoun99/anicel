@@ -407,7 +407,7 @@ class LayerFrameImageCache {
   /// [source] halved — the next level down, rasterised off the frame.
   Future<ui.Image> _halved(ui.Image source) async {
     final size = halvedSize(source.width, source.height);
-    final picture = halvingPicture(source);
+    final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
     try {
       return await picture.toImage(size.width, size.height);
     } finally {

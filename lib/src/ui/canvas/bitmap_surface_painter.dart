@@ -18,15 +18,19 @@ import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'display_resample.dart';
 import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
 import 'tile_predecessors.dart';
+import 'tile_pyramid.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
+part 'surface_paint/level_blocks.dart';
+part 'surface_paint/overlay_pass.dart';
 part 'surface_paint/surface_paint_pass.dart';
 
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
@@ -205,7 +209,18 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     // visible while editing (dimmed below); composite/export raster at
     // canvas size, so output still crops to the stage.
     canvas.clipRect(pasteboardRect);
-    paintContentInto(canvas);
+    // The standalone route reads the display law itself: below 100% the
+    // committed tiles are drawn as LEVEL TILES ([TilePyramid]) whose
+    // residual under the transform lies in (0.5, 1] — the pictures a level
+    // buffer draws 1:1 ([_LevelBlocks]).
+    paintContentInto(
+      canvas,
+      level: resolvedViewport == null
+          ? 0
+          : displayLevelOf(
+              displayScaleOf(resolvedViewport.zoom, devicePixelRatio),
+            ),
+    );
     canvas.restore();
   }
 
@@ -304,10 +319,19 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   // The content paint (Round 6): one paint of the surface, as its own object.
 
-  void paintContentInto(Canvas canvas, {Paint? layerPaint}) =>
+  /// [level] is the level of the display's pyramid the caller composes
+  /// at ([displayLevelOf]): 0 draws the tiles themselves; above it the
+  /// committed tiles are drawn as LEVEL TILES ([TilePyramid]), 1:1 in
+  /// level pixels, and only a block no level tile can be made for yet
+  /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
+  void paintContentInto(Canvas canvas, {Paint? layerPaint, int level = 0}) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
       // final` fields, and a painter paints more than once.
-      _SurfacePaintPass(this).paintContentInto(canvas, layerPaint: layerPaint);
+      _SurfacePaintPass(this).paintContentInto(
+        canvas,
+        layerPaint: layerPaint,
+        level: level,
+      );
 
   /// The stamp's ghost alone, for the active-slot route that draws the
   /// layer as ONE image instead of through [paintContentInto] — the

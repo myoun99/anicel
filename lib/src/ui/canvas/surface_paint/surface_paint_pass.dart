@@ -25,6 +25,8 @@ class _SurfacePaintPass {
   late int _syncUploadBudget;
   late int _predecessorRectBudget;
   late int _predecessorTileBudget;
+  late final int _level;
+  late int _levelTileBudget;
   late final Rect _visibleRect;
   Set<TileCoord>? _committedWins;
   List<PlacedTile>? _pendingDecodes;
@@ -50,10 +52,17 @@ class _SurfacePaintPass {
   /// ⛔Only legal when [_painter.drawsDisjointCoverage] — see its contract. Passing
   /// it otherwise applies the layer twice wherever two draws overlap, which
   /// looks like a darkened seam rather than an error.
-  void paintContentInto(Canvas canvas, {Paint? layerPaint}) {
+  ///
+  /// [level] is the display pyramid's level this paint composes at
+  /// ([BitmapSurfacePainter.paintContentInto]).
+  void paintContentInto(Canvas canvas, {Paint? layerPaint, int level = 0}) {
     _canvas = canvas;
     _layerPaint = layerPaint;
+    _level = level;
     _painter.pictureBudget.paintBegan(_painter.staleScope);
+    if (_level > 0) {
+      TilePyramid.instance.paintBegan(_painter.staleScope);
+    }
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,
       'A layer paint may only ride the individual draws when they cover '
@@ -137,6 +146,8 @@ class _SurfacePaintPass {
     // renderer this is developed on. That is precisely why it needs to be
     // reasoned about rather than measured here.
     _syncUploadBudget = BitmapSurfacePainter.decodeStartBudget;
+    // 4c: the level tiles made in this paint ([_LevelBlocks._mayMake]).
+    _levelTileBudget = BitmapSurfacePainter.decodeStartBudget;
     // The truthful stand-in's budgets (F-68 root fix). RECTS, because that
     // is what the composition costs: an erase is a few hundred long runs,
     // a soft gradient laid on nothing is tens of thousands of one-pixel
@@ -210,6 +221,9 @@ class _SurfacePaintPass {
     // shows at full brightness — the paper edge against the backdrop is
     // the stage boundary.
     _painter.pictureBudget.paintEnded();
+    if (_level > 0) {
+      TilePyramid.instance.paintEnded(_painter.staleScope);
+    }
   }
 
   /// The paper under a surface that shows no transparency.
@@ -239,7 +253,16 @@ class _SurfacePaintPass {
   /// Every tile under the visible rect — a committed image, a held pre-stroke
   /// tile, or the live tile within the upload and pixel budgets — and each
   /// one stamped as shown for the picture budget ([TilePictureBudget.shown]).
+  ///
+  /// Above level 0 the visible rect is walked in BLOCKS instead
+  /// ([_LevelBlocks]): a block drawn as one level tile shows none of its
+  /// tiles' pictures, so they are not stamped and the budget may let them
+  /// go — zoomed out, the level tiles are the pictures the screen needs.
   void _paintVisibleTiles() {
+    if (_level > 0) {
+      _LevelBlocks(this).paint();
+      return;
+    }
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
       _painter.pictureBudget.shown(_painter.staleScope, covered.tile);
       _paintTile((coord: covered.coord, tile: covered.tile));
@@ -339,9 +362,40 @@ class _SurfacePaintPass {
     (_committedWins ??= <TileCoord>{}).add(placed.coord);
   }
 
+  /// A tile's own picture — the cache's (truth or stand-in), or its bytes
+  /// uploaded now within this paint's ration where the engine can
+  /// ([BitmapTileImageCache.adoptSyncUpload]) — else null.
+  ///
+  /// The ration is spent on the ANSWER, not the attempt — the same
+  /// correction the per-pixel budget needed. On Skia every call declines,
+  /// and charging for a decline would be charging for nothing.
+  ui.Image? _ownOrUploadedPicture(PlacedTile placed) {
+    var image = _painter.tileImageCache.displayImageFor(placed.tile);
+    if (image == null && _syncUploadBudget > 0) {
+      image = _painter.tileImageCache.adoptSyncUpload(
+        placed,
+        staleScope: _painter.staleScope,
+      );
+      if (image != null) {
+        _syncUploadBudget -= 1;
+      }
+    }
+    return image;
+  }
+
   /// [image] at [at]'s own origin, with the tile image paint.
   void _drawTileImage(ui.Image image, PlacedTile at) =>
-      _canvas.drawImage(image, tileOriginOffset(at), _tileImagePaint);
+      _drawImageAtTile(image, at.coord);
+
+  /// THE tile draw: [image], one tile's worth of pixels, at [coord]'s
+  /// origin on the surface's grid — a committed tile's picture at level 0,
+  /// a level tile under its block's scale above it ([_LevelBlocks]).
+  void _drawImageAtTile(ui.Image image, TileCoord coord) =>
+      _canvas.drawImage(
+        image,
+        tileCoordOriginOffset(coord, _painter.surface.tileSize),
+        _tileImagePaint,
+      );
 
   /// A tile the settling stroke holds: the pre-stroke tile, its image or
   /// its pixels.
@@ -366,19 +420,7 @@ class _SurfacePaintPass {
   /// while its budget lasts — else marked unpainted.
   void _paintLiveTile(PlacedTile placed) {
     final tile = placed.tile;
-    var tileImage = _painter.tileImageCache.displayImageFor(tile);
-    if (tileImage == null && _syncUploadBudget > 0) {
-      tileImage = _painter.tileImageCache.adoptSyncUpload(
-        placed,
-        staleScope: _painter.staleScope,
-      );
-      // Spent on the ANSWER, not the attempt — the same correction
-      // the per-pixel budget needed. On Skia every call declines, and
-      // charging for a decline would be charging for nothing.
-      if (tileImage != null) {
-        _syncUploadBudget -= 1;
-      }
-    }
+    var tileImage = _ownOrUploadedPicture(placed);
     // 🚨★★★A KNOWN PREDECESSOR FORBIDS THE COORDINATE FALLBACK. The tile
     // the commit replaced, plus the bytes that differ, is exact whichever
     // way the edit went; the coordinate fallback is the last picture
@@ -499,74 +541,13 @@ class _SurfacePaintPass {
         : _tileImagePaint;
   }
 
-  Paint _overlayPaintFor(ActiveStrokeOverlayModel overlay) => _livePreviewPaint(
-    blendMode: overlay.blendMode,
-    erase: overlay.erase,
-    preBlended: overlay.preBlended,
-    replacesCoords: _overlayReplacesCoords,
-  );
-
+  /// The live stroke's tiles and stamp over the committed tiles
+  /// ([_OverlayPass]).
   void _paintOverlay() {
     if (_overlay != null) {
-      // The live stroke renders through the EXACT pipeline the committed
-      // tiles use — premultiplied bytes decoded to images, drawn with
-      // nearest sampling — so live and committed pixels rasterize
-      // identically at any zoom (one code path; rect-geometry replay
-      // diverged from image sampling at fractional zoom). Overlay tiles
-      // never overlap, so plain source-over per tile is exact. An ERASE
-      // stroke draws destination-out instead: the accumulated stroke alpha
-      // removes committed pixels exactly like the commit pass will.
-      // PROMOTION round: pre-blended tiles carry the COMMIT's finished
-      // pixels for their whole coordinate (base included). On the
-      // aligned-grid route the base pass SKIPPED those coordinates, so
-      // plain srcOver composes them over the paper exactly like the
-      // committed tiles will after pen-up; on a mismatched grid the
-      // isolation layer is up and the tiles REPLACE (BlendMode.src)
-      // instead. The erase/blend paints below serve only overlays that
-      // don't pre-blend (the fill stamp, and hosts driving the model
-      // directly).
-      final overlayPaint = _overlayPaintFor(_overlay);
-      // R26 #18 (the selection) is NOT clipped here any more: the
-      // selection mask rides the pre-blend kernel, so a tile's result
-      // already equals the base wherever the selection excludes it. The
-      // painter draws the same bytes the commit will hold — which is
-      // also what lets a selected stroke keep the whole-coordinate
-      // replacement path below instead of an isolation layer.
-      final overlayTileSize = _overlay.tileSize.toDouble();
-      for (final entry in _overlay.tileImages.entries) {
-        if (_committedWins?.contains(entry.key) ?? false) {
-          // The base pass already drew this coordinate's finished tile.
-          continue;
-        }
-        final origin = Offset(
-          entry.key.x * overlayTileSize,
-          entry.key.y * overlayTileSize,
-        );
-        if (!_overlayTileIsVisible(origin, overlayTileSize)) {
-          continue;
-        }
-        _canvas.drawImage(entry.value, origin, overlayPaint);
-      }
-      // R23: a fill tap's _overlay is ONE pre-decoded stamp image at the
-      // commit's exact placement (never coexists with stroke tiles).
-      final stampImage = _overlay.stampImage;
-      if (stampImage != null) {
-        _canvas.drawImage(stampImage, _overlay.stampOffset, overlayPaint);
-      }
+      _OverlayPass(this, _overlay).paint();
     }
   }
-
-  /// 🚨★★★**THE SAME VISIBLE-RECT LAW THE BASE PASS KEEPS**
-  /// (`tilesUnderRect` at [_paintVisibleTiles]), and the overlay pass was
-  /// the one place it was not applied. Overlay tiles ACCUMULATE for the
-  /// whole life of a stroke — nothing leaves the map until pen-up — so by
-  /// the third dab that map is the bounding box of the WHOLE stroke, and
-  /// a long line paid its full length in draws on every frame of every
-  /// dab, off-screen coordinates included.
-  bool _overlayTileIsVisible(Offset origin, double tileSize) =>
-      _visibleRect.overlaps(
-        Rect.fromLTWH(origin.dx, origin.dy, tileSize, tileSize),
-      );
 
   /// The cut-piece stamp preview, over everything.
   void _paintStampPreview() {

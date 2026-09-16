@@ -7,6 +7,7 @@ import '../../native/native_scratch.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
 import '../widgets/static_raster.dart';
 
@@ -189,10 +190,13 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
     // every decoded tile, alive as long as its tile is — the picture on
     // screen and, through the tiles it keeps, the undo history's. The
     // share had no row and read as engine overhead (C-ipad-crash,
-    // 2026-09-11).
+    // 2026-09-11). Since 4c (2026-09-16) the row also holds the LEVEL
+    // TILES — the same pictures halved for a zoomed-out screen
+    // ([TilePyramid]), screen-bounded, and let go with the paints that
+    // stop asking for them.
     MemoryCensusItem(
       id: 'tileImages',
-      bytes: BitmapTileImageCache.liveImageBytes,
+      bytes: BitmapTileImageCache.liveImageBytes + TilePyramid.liveBytes,
     ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
