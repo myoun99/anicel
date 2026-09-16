@@ -1,8 +1,10 @@
 // SEAM PROBE — does drawing a picture as TILES differ from drawing it as
 // ONE IMAGE, under the display filter law, on THIS engine?
 //
-//   flutter run -d windows -t lib/seam_probe_main.dart \
-//     --dart-define=SEAM_OUT=<dir> [--dart-define=SEAM_STAY=1]
+//   flutter run -d windows --release -t tool/probe/seam_probe_main.dart \
+//     --dart-define=SEAM_OUT=<dir> \
+//     [--dart-define=SEAM_MODE=seams|compare|policy|cost] \
+//     [--dart-define=SEAM_STAY=1]
 //
 // Writes `report.txt` and PNGs (reference / tiled / diff) into SEAM_OUT and
 // exits; with SEAM_STAY=1 it stays open showing the same pairs on screen.
