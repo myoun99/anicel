@@ -145,14 +145,26 @@ abstract final class MeasurementMode {
   ///  2. The T21 feel: active layer and neighbours under one filter —
   ///     the active layer must stop reading crisper/rougher than the
   ///     layers beside it while zoomed out.
-  ///  3. The ACCEPTED cost (결정 ①): semi-transparent overlaps may tint
-  ///     slightly differently below 100%. Expected, not a bug.
-  ///  4. AT/ABOVE 100%: nothing may change, byte for byte — the gate
-  ///     never fires at `s >= 1`, so any difference seen there is a
-  ///     defect.
+  ///  3. The cost 결정 ① named: semi-transparent overlaps tinting a
+  ///     little differently below 100% (유저 확정 2026-08-16). ⚠️결정 ①
+  ///     was REVERSED 2026-08-28, once content-bounded buffers kept an
+  ///     ordinary page at canvas resolution however far it zoomed out:
+  ///     「그땐 해결방법이 더 존재한다는걸 몰랐기때문에… 뒤집는거는 전혀
+  ///     문제없어」. Nothing re-accepts the tint for content past the
+  ///     cap, where the screen-scale buffer still runs.
+  ///  4. AT/ABOVE 100%: this SWITCH may change nothing, byte for byte —
+  ///     its gate never fires at `s >= 1`. ⚠️Not a promise about the
+  ///     canvas: the CAP has no zoom check, so a view wider than
+  ///     8192·zoom·dpr device pixels composes past it at any zoom, and
+  ///     there `_kneeScale` shrinks the buffer below screen resolution.
   ///
-  /// Flipping the default to ON later IS stage 6's landing; this switch
-  /// is how that decision gets its device evidence first.
+  /// ⛔Flipping the default WAS stage 6, and stage 6 was REJECTED on the
+  /// device (유저 직접 A/B, 2026-08-16): 「on하면 부드러워지고 뭉개지는
+  /// 느낌? aa건느낌… 팬할때 선이 지글지글하면서 움직여. off하면 제대로
+  /// 고정된 그림으로 팬한단느낌」 — inside the cap ON bought nothing
+  /// visible (OFF already composites every layer into one image) and cost
+  /// the shimmer. Default OFF is the decision; this switch stays only so
+  /// an iPad/Impeller build can re-judge it there.
   static final ValueNotifier<bool> kneeAtOne = ValueNotifier<bool>(
     startWithKneeAtOne,
   );

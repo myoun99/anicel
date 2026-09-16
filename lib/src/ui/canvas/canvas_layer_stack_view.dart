@@ -924,7 +924,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     //
     // 🧪Verified by walking every widget the buffer composites: the zoom's
     // `filterQuality` lands when the buffer is DRAWN, not inside it; group
-    // rasters inside run at `rasterScale: 1`; `BitmapSurfacePainter` reads
+    // rasters inside run at `rasterScale: 1` — ⚠️both hold for the
+    // CANVAS-RESOLUTION buffer only. Below the knee (past the cap, or
+    // `MeasurementMode.kneeAtOne`) the same walk records at `rasterScale:
+    // s` and leaf draws take the zoom's quality, so a slot recorded there
+    // and replayed after a zoom can carry the old scale. Unverified, and
+    // filed on the board (tile-commit-path-audit, defect candidate ⓐ);
+    // `BitmapSurfacePainter` reads
     // its viewport only in the standalone `paint()`, never in
     // `paintContentInto`; `layerPoseViewportWrapMatrix` belongs to the brush
     // panel's `Transform`, not to any composite route.

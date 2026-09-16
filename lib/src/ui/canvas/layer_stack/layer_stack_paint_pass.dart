@@ -1163,7 +1163,10 @@ class _LayerStackPaintPass {
     // separately, the active one at nearest beside its neighbours at
     // bilinear. A SCREEN-SPACE buffer draws every layer as one image
     // under one filter and costs what the screen costs, not what the
-    // canvas costs (유저 확정 ①: 무릎 아래는 균일 필터, 겹침 색차 수용).
+    // canvas costs (유저 확정 ① 2026-08-16: 무릎 아래는 균일 필터, 겹침
+    // 색차 수용 — ⚠️REVERSED 2026-08-28 for everything content bounds now
+    // keep under the cap; past the cap this path still runs, and no record
+    // accepts the tint there).
     // Null keeps the walk — rotation/flip, or an active layer the flat
     // projection refuses (settling, stand-ins, stamp, cold truth). The
     // walk was always correct; the buffer is only ever an optimisation.
@@ -1449,8 +1452,12 @@ class _LayerStackPaintPass {
   ///
   /// What makes this legal where every scale-in-the-recorder design died:
   /// the s=1 path above the knee is UNTOUCHED (same code, same bytes),
-  /// and below the knee the user closed the color question (결정 ① —
-  /// uniform filtering, overlap tint accepted). The active layer enters
+  /// and below the knee the user closed the color question (결정 ①,
+  /// 2026-08-16 — uniform filtering, overlap tint accepted). ⚠️결정 ① was
+  /// REVERSED 2026-08-28 once content-bounded buffers kept ordinary pages
+  /// at canvas resolution at every zoom; it stands for nothing under the
+  /// cap, and past the cap — the only place this path runs by default —
+  /// no record accepts the tint. The active layer enters
   /// as [ActiveLayerFlatProjection]'s single image; when the projection
   /// refuses (settling, stand-ins, stamp, missing truth) this returns
   /// null and the caller keeps the direct walk — correctness never
@@ -1466,13 +1473,25 @@ class _LayerStackPaintPass {
   /// raster — a 1:1 `none` blit under scale would nearest-downsample the
   /// whole backdrop.
   ///
-  /// ⏸5b: per-dab strokes below the knee currently rebuild flat+buffer
-  /// per batch (correct, unpatched). The flat's patch mechanism exists
-  /// ([ActiveLayerFlatProjection.patchOrNull]) and lands with the dirty
-  /// channel wiring.
+  /// ⏸5b: per-dab strokes below the knee rebuild flat+buffer per batch
+  /// (correct, unpatched). The flat's patch mechanism exists
+  /// ([ActiveLayerFlatProjection.patchOrNull]) and stays UNWIRED. A patch
+  /// makes another image the size of the whole ink extent and draws the
+  /// previous one into it first, so it saves draw calls, not raster: the
+  /// 2026-08-16 plan shelved it on that arithmetic, and 2026-09-16
+  /// measured it — patch 592 ms against a full build's 276 ms in the same
+  /// run (largest page, 512 inked tiles, zoom 0.09, widget-test renderer).
+  /// Whether the seam goes is board decision tile-commit-path-audit-Q1.
+  ///
   /// The scale the knee path renders [rect] at — min(1, zoom · dpr),
   /// shrunk further when even that overflows the buffer cap — or null
   /// when the view is rotated or flipped (the walk draws those).
+  ///
+  /// ⚠️That second shrink is the one way a view AT OR ABOVE 100% changes:
+  /// `s` starts at 1, the cap pulls it down to 8192/longest side, and the
+  /// blit magnifies that back at `none` (the display filter reads zoom
+  /// alone). Reaching it takes a view wider than 8192·zoom·dpr device
+  /// pixels over content that is itself past the cap — no test drives it.
   double? _kneeScale(Rect rect) {
     if (_painter.viewport.rotationDegrees != 0 ||
         _painter.viewport.flipHorizontal ||
@@ -1484,7 +1503,8 @@ class _LayerStackPaintPass {
       s = 1;
     }
     // A screen so large even zoom·dpr overflows the cap: shrink further.
-    // Still one uniform resample — softer, never seamed.
+    // Still one uniform resample and never seamed, but coarser than the
+    // screen — softer below 100%, blocky at or above it (`none`).
     return scaleFittingSide(
       scale: s,
       bounds: rect.size,
@@ -1533,8 +1553,11 @@ class _LayerStackPaintPass {
     }
     final cache = _painter.bufferCache;
     final baseKey = cache == null ? null : _painter._bufferKey();
-    // ② `s` is in the key: zoom already rides [compositeKey], but dpr does
-    // not exist anywhere else — fold the resolved scale itself.
+    // ② `s` is in the key: NEITHER zoom nor dpr reaches `compositeKey` —
+    // it carries the images' revision, the canvas size, the paper and the
+    // tree, and the viewport is left out of it on purpose (the extent is
+    // the guard there). Below the knee both change what the buffer holds,
+    // so fold the resolved scale, the one number that answers for both.
     final key = baseKey == null ? null : Object.hash(baseKey, s);
     final kept = _keptBuffer(cache, key, rect);
     if (kept != null) {
