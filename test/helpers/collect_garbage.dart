@@ -37,16 +37,46 @@ Future<void> collectGarbage({
 }) async {
   final target = reachabilityBarrier + 2;
   final clock = Stopwatch()..start();
-  final churn = <List<int>>[];
-  while (reachabilityBarrier < target && clock.elapsed < atMost) {
-    await Future<void>.delayed(Duration.zero);
-    churn.add(List<int>.filled(30000, 0));
-    if (churn.length > 100) {
-      churn.removeAt(0);
-    }
+  final held = <List<int>>[];
+  await churnUntil(
+    happened: () => reachabilityBarrier >= target,
+    elapsed: () => clock.elapsed,
+    atMost: atMost,
+    churn: () async {
+      await Future<void>.delayed(Duration.zero);
+      held.add(List<int>.filled(30000, 0));
+      if (held.length > 100) {
+        held.removeAt(0);
+      }
+    },
+  );
+  await Future<void>.delayed(Duration.zero);
+  await Future<void>.delayed(Duration.zero);
+}
+
+/// The bounded wait itself: churn until [happened], or until [elapsed]
+/// passes [atMost]. Answers whether it happened.
+///
+/// 🚨★★★SPLIT OUT BECAUSE THE BOUND WAS UNPINNABLE OTHERWISE, and a pin
+/// that cannot fail is worse than none (2026-09-16). The first cut of this
+/// round bounded the loop and pinned it by calling the real thing with a
+/// 40ms bound — but on an idle machine the barrier moves in about 100ms
+/// either way, so the test passed with the bound, without it, and with it
+/// made two hundred times looser. **Both mutants survived**, which is what
+/// said the pin was measuring nothing.
+///
+/// A VM cannot be told to stall, so the CLOCK and the CHURN are arguments
+/// here and a test can hold them still.
+Future<bool> churnUntil({
+  required bool Function() happened,
+  required Duration Function() elapsed,
+  required Future<void> Function() churn,
+  required Duration atMost,
+}) async {
+  while (!happened() && elapsed() < atMost) {
+    await churn();
   }
-  await Future<void>.delayed(Duration.zero);
-  await Future<void>.delayed(Duration.zero);
+  return happened();
 }
 
 /// Collects at least once, then again until [settled] holds — for what a
@@ -63,14 +93,25 @@ Future<void> collectGarbage({
 /// (five, across the three files that use this) settled in ONE collection —
 /// so six leaves room for a finalizer message a loaded machine delivers late,
 /// and still names a holder in seconds.
+/// [collect] is the seam the bound is pinned through: a VM cannot be told
+/// to stall, so a test hands in a collection that does nothing and reads
+/// the bounds it was given.
 Future<void> collectGarbageUntil(
   bool Function() settled, {
   int rounds = 6,
   Duration atMost = const Duration(seconds: 30),
+  Future<void> Function(Duration atMost)? collect,
 }) async {
+  // ⚠️ONE clock for the whole wait, not one per collection. The bound used
+  // to be handed to each round, so [rounds] × [atMost] was the real
+  // ceiling and a round that forgot to pass it down lost the caller's
+  // bound silently — an invariant nobody could see. There is nothing to
+  // forget now: what is left of [atMost] is what the next collection gets.
+  final clock = Stopwatch()..start();
+  final run = collect ?? (Duration left) => collectGarbage(atMost: left);
   var collected = 0;
   do {
-    await collectGarbage(atMost: atMost);
+    await run(atMost - clock.elapsed);
     collected += 1;
-  } while (!settled() && collected < rounds);
+  } while (!settled() && collected < rounds && clock.elapsed < atMost);
 }
