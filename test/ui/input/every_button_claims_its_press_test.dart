@@ -141,7 +141,7 @@ void main() {
     'lib/src/ui/brush/brush_settings_panel.dart': 2,
     'lib/src/ui/brush/guide_panels.dart': 1,
     'lib/src/ui/brush/tool_settings_panel.dart': 16,
-    'lib/src/ui/dialogs/audio_settings_section.dart': 7,
+    'lib/src/ui/dialogs/audio_settings_section.dart': 3,
     'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
     'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
     'lib/src/ui/dialogs/convert_to_linked_cut_dialog.dart': 1,

@@ -358,39 +358,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
             // RNNoise (the noise-suppression round): BAKED into the take
             // like the gain — speech-specific, so foley sessions turn it
             // off (the label says so).
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioDenoiseLabel,
-                    style: const TextStyle(fontSize: 12),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-denoise-voice'),
+              label: strings.audioDenoiseLabel,
+              value: settings.denoiseVoice,
+              onChanged: (enabled) => widget.session.appSettings
+                  .setAudioSyncSettings(
+                    settings.copyWith(denoiseVoice: enabled),
                   ),
-                ),
-                Switch(
-                  key: const ValueKey<String>('settings-denoise-voice'),
-                  value: settings.denoiseVoice,
-                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(denoiseVoice: value),
-                  ),
-                ),
-              ],
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioClippingNoticeLabel,
-                    style: const TextStyle(fontSize: 12),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-clipping-notice'),
+              label: strings.audioClippingNoticeLabel,
+              value: settings.clippingNotice,
+              onChanged: (enabled) => widget.session.appSettings
+                  .setAudioSyncSettings(
+                    settings.copyWith(clippingNotice: enabled),
                   ),
-                ),
-                Switch(
-                  key: const ValueKey<String>('settings-clipping-notice'),
-                  value: settings.clippingNotice,
-                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(clippingNotice: value),
-                  ),
-                ),
-              ],
             ),
             // ADR cueing (REC1-E): the stopped-⏺ count-in, the 3-beep
             // countdown into a punch, and the streamer wipe on the
@@ -422,39 +406,23 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                 ),
               ],
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioCueBeepsLabel,
-                    style: const TextStyle(fontSize: 12),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-cue-beeps'),
+              label: strings.audioCueBeepsLabel,
+              value: settings.cueBeeps,
+              onChanged: (enabled) => widget.session.appSettings
+                  .setAudioSyncSettings(
+                    settings.copyWith(cueBeeps: enabled),
                   ),
-                ),
-                Switch(
-                  key: const ValueKey<String>('settings-cue-beeps'),
-                  value: settings.cueBeeps,
-                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(cueBeeps: value),
-                  ),
-                ),
-              ],
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    strings.audioStreamerLabel,
-                    style: const TextStyle(fontSize: 12),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-streamer'),
+              label: strings.audioStreamerLabel,
+              value: settings.streamerEnabled,
+              onChanged: (enabled) => widget.session.appSettings
+                  .setAudioSyncSettings(
+                    settings.copyWith(streamerEnabled: enabled),
                   ),
-                ),
-                Switch(
-                  key: const ValueKey<String>('settings-streamer'),
-                  value: settings.streamerEnabled,
-                  onChanged: (value) => widget.session.appSettings.setAudioSyncSettings(
-                    settings.copyWith(streamerEnabled: value),
-                  ),
-                ),
-              ],
             ),
             const Divider(height: 24),
             Row(
