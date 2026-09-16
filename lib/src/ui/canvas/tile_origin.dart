@@ -22,8 +22,9 @@ Offset tileOriginOffset(PlacedTile placed) => Offset(
 ///
 /// 🚨ONE UNION OF TILE RECTS (review 2026-09-15). A surface's content
 /// (`surfaceContentWorldRect`), what the surface painter's live overlay
-/// covers, the flat projection's ink bounds and a buffer patch's dirty
-/// tiles each walked their coordinates and unioned the rects by hand — one
+/// covers, the knee's flat projection (gone 2026-09-16) and a buffer
+/// patch's dirty tiles each walked their coordinates and unioned the rects
+/// by hand — one
 /// in integers, the rest in doubles — and the painter's own tiles were about
 /// to become one more.
 Rect? tileCoordsWorldRect(Iterable<TileCoord> coords, int tileSize) {

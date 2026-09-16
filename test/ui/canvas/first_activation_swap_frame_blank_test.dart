@@ -40,7 +40,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///     (BrushFrameStore.bakedSurfaceOrNull) — every tile of the promoted
 ///     surface is a FRESH object.
 ///  3. BitmapTileImageCache keys images by tile identity, so it has none
-///     of them; the flat projection refuses; the only same-frame answers
+///     of them; the only same-frame answers
 ///     are the sync-upload budget (Impeller, 32/paint) and the per-pixel
 ///     budget (4). Everything past them was SILENT — the blank.
 ///  4. Decodes land within a few frames and the picture returns. A second

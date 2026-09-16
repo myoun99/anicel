@@ -170,14 +170,19 @@ class StaticCompositeBake {
   /// it is keyed like everything else here: [keepFor] drops it, so a changed
   /// layer, a new image revision or a viewport move all re-rasterise. Those
   /// are not stroke steps, which is what makes it the right trade.
+  ///
+  /// [rasterScale] is the buffer's own scale — 1 at canvas resolution,
+  /// 1/2^level inside a level buffer (2026-09-16): the raster is made in
+  /// the buffer's pixels so its blit back is 1:1 there, whatever the level.
   void drawRaster(
     Canvas canvas,
     String id,
     Rect rect,
-    void Function(Canvas canvas) record,
-  ) {
-    final width = rect.width.round();
-    final height = rect.height.round();
+    void Function(Canvas canvas) record, {
+    double rasterScale = 1,
+  }) {
+    final width = (rect.width * rasterScale).round();
+    final height = (rect.height * rasterScale).round();
     if (width <= 0 || height <= 0) {
       return;
     }
@@ -185,6 +190,7 @@ class StaticCompositeBake {
     if (held == null) {
       final recorder = ui.PictureRecorder();
       final into = Canvas(recorder);
+      into.scale(rasterScale);
       into.translate(-rect.left, -rect.top);
       record(into);
       _recordCount += 1;
@@ -200,11 +206,11 @@ class StaticCompositeBake {
     }
     canvas.drawImageRect(
       held,
-      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Rect.fromLTWH(0, 0, held.width.toDouble(), held.height.toDouble()),
       rect,
-      // 1:1 — the raster is at canvas resolution over the very rect it is
-      // drawn into, so there is no resampling here to have a quality. The
-      // one resample this stack is entitled to happens when the display
+      // 1:1 — the raster is in the buffer's own pixels over the very rect
+      // it is drawn into, so there is no resampling here to have a quality.
+      // The one resample this stack is entitled to happens when the display
       // buffer meets the viewport transform.
       Paint()..filterQuality = ui.FilterQuality.none,
     );

@@ -235,7 +235,15 @@ void main() {
 /// first landed with no line here and turned master red at 39; the second
 /// brought the number back with none either. Both are named so the number
 /// describes the tree it counts.
-const int _knownRawDraws = 38;
+/// **33** on 2026-09-16 (the render round, 안 1 「선명」): −5, all of them
+/// the knee's. Three in active_layer_flat_projection (the file went with
+/// the knee), one in layer_stack_paint_pass (the knee's scaled-buffer blit),
+/// one in layer_frame_image_cache (`_downscale`'s one-step reduction). Below
+/// 100% the display is now fed from a LEVEL — the artwork halved exactly
+/// (`displayLevelOf`) — and a level is made by an image SHADER over a rect
+/// (`level_image.dart`), which owns its quality explicitly and is not a raw
+/// image draw.
+const int _knownRawDraws = 33;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

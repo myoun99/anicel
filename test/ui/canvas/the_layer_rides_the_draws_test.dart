@@ -24,7 +24,6 @@ import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -356,12 +355,12 @@ void main() {
     // — that is the point — so a pixel comparison cannot say WHICH ran.
     const canvasSize = CanvasSize(width: 64, height: 64);
 
-    // 🚨ONE TILE OBJECT FOR EVERY PAINT, and it is what makes the FLAT
-    // route reachable at all (F-67). `BitmapTileImageCache` keys on the
-    // tile OBJECT, and `ActiveLayerFlatProjection.buildOrNull` reads the
-    // SINGLETON: a fixture that minted a fresh tile per paint left the
-    // singleton empty, the projection refused, and every comparison
-    // silently took the tile route — which the probe now says out loud.
+    // 🚨ONE TILE OBJECT FOR EVERY PAINT (F-67). `BitmapTileImageCache` keys
+    // on the tile OBJECT and the painter reads the SINGLETON: a fixture that
+    // minted a fresh tile per paint left the singleton empty, and every
+    // comparison silently drew the tile from the per-pixel fallback on one
+    // reading and from its picture on the next — which the probe now says
+    // out loud.
     var sharedTile = BitmapTile.blank(size: 16);
     sharedTile = writeRgbaColorToBitmapTile(
       tile: sharedTile,
@@ -513,8 +512,8 @@ void main() {
       // comment says the routes agree to the byte 「with the tile paint this
       // class actually uses (`isAntiAlias = false`, `FilterQuality.none`)
       // … 0 of 19200 pixels differ」 — and then names its limit:
-      // 「Antialiased draws do NOT agree」. A REDUCED view samples the flat
-      // active image bilinearly, which is not that paint.
+      // 「Antialiased draws do NOT agree」. A REDUCED view is blitted
+      // bilinearly from the level buffer, which is not that paint.
       //
       // ⚠️ZOOM 0.63, one of the values that measurement used, and reduced on
       // purpose: it is where the display law asks for filtering.
@@ -557,11 +556,10 @@ void main() {
           ghost ? isFalse : isTrue,
           reason: 'fixture premise: the ghost is what flips the route',
         );
-        // 🚨AND WHICH DRAW IT WAS. The active layer reaches the screen three
-        // ways and only one of them samples bilinearly; a comparison that
-        // silently took the tile route proves the half the painter's own
-        // measurement already proved. The first version of this test did
-        // exactly that and nothing in the result could say so.
+        // 🚨AND WHICH DRAW IT WAS. The active layer reaches the screen two
+        // ways (the stand-in, its tiles); a comparison must say which it
+        // took. The first version of this test could not, and nothing in
+        // the result could say so.
         expect(
           debugActiveSlotDraw,
           isNotNull,
@@ -593,28 +591,17 @@ void main() {
       }
 
       for (final disableBuffer in [false, true]) {
-      // ⛔AND THE KNEE IS ON FOR BOTH READINGS. Without it the scaled
-      // recording never runs at this size, `_activeFlatForRecording` stays
-      // null — it is 「null on every s=1 path」 — and the FLAT blit, the one
-      // draw in the active slot that samples bilinearly, is never executed.
-      // A first version of this test measured only the tile route, which
-      // the painter's own comment had already pinned, and passed without
-      // touching the thing it was written to ask about.
-      MeasurementMode.kneeAtOne.value = true;
-      addTearDown(() => MeasurementMode.kneeAtOne.value = false);
-      // ⛔AND THE DEVICE RATIO IS 1, WHICH IS NOT COSMETIC. The knee gate is
-      // `zoom · dpr < 1`, and a widget test's view reports 3 — so at zoom
-      // 0.63 the product is 1.89, the scaled recording never runs, and the
-      // paint falls to the s=1 buffer whose active slot draws TILES. That
-      // is exactly what the probe reported before this line existed, and it
-      // is why a comparison can look reduced while sampling like a
-      // magnified one.
+      // ⛔THE DEVICE RATIO IS 1, WHICH IS NOT COSMETIC. The display scale is
+      // `zoom · dpr`, and a widget test's view reports 3 — so at zoom 0.63
+      // the product would be 1.89, a MAGNIFIED view sampling nearest, and a
+      // comparison there says nothing about the reduced one this test is
+      // about. At ratio 1 the scale is 0.63: a level-1 buffer, blitted
+      // bilinearly by its residual (2026-09-16).
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetDevicePixelRatio);
-      // ⛔AND THE TILE HAS TO BE DECODED IN THE SINGLETON. The flat
-      // projection reads `BitmapTileImageCache.instance` and refuses when an
-      // operand is missing; a refusal falls all the way back to the walk,
-      // and the walk draws tiles. `runAsync` because the upload lands on the
+      // ⛔AND THE TILE HAS TO BE DECODED IN THE SINGLETON, or the slot draws
+      // it per pixel out of the fallback budget on one reading and from its
+      // picture on the next. `runAsync` because the upload lands on the
       // engine, which a widget test's fake clock never completes.
       await tester.runAsync(() async {
         BitmapTileImageCache.instance.ensureDecoded(
@@ -627,8 +614,7 @@ void main() {
       expect(
         BitmapTileImageCache.instance.imageFor(sharedTile),
         isNotNull,
-        reason: 'fixture premise: the flat projection refuses outright when '
-            'an operand has no decoded image, and it reads the SINGLETON',
+        reason: 'fixture premise: the tile draws from its own picture',
       );
       debugActiveSlotDraw = null;
       final rode = await capture(ghost: false, disableBuffer: disableBuffer);
@@ -668,10 +654,7 @@ void main() {
       );
 
       // 📏WHICH DRAW THIS COMPARED — the question the first version could
-      // not answer (F-67). The active layer reaches the screen three ways
-      // and only one of them samples BILINEARLY; a comparison that took the
-      // tile route proves the half the painter's own measurement already
-      // proved, and nothing in a green could say which it was.
+      // not answer (F-67), and nothing in a green could say which it was.
       //
       // ⛔BOTH RENDERS MUST HAVE TAKEN THE SAME ARM. Otherwise this compares
       // two rasterizers rather than two routes, and agreeing would be luck.
@@ -682,29 +665,21 @@ void main() {
             '($rodeDraw vs $bufferedDraw) — that is a comparison of two '
             'rasterizers, not of the two routes',
       );
-      // 📏WHICH DRAW EACH READING REACHES (corrected 2026-09-10).
-      //
-      // Buffer ON: both renders draw the active layer as the FLAT
-      // projection — the one draw in this slot that samples bilinearly,
-      // F-67's suspect — and the pixels above agree to the byte. Buffer
-      // OFF: there is no scaled recording to run inside, so the slot draws
-      // TILES, the painter's own byte-parity route.
+      // 📏WHICH DRAW EACH READING REACHES (corrected 2026-09-10, again
+      // 2026-09-16 when the knee's flat projection went with the level
+      // buffer). Buffer ON: the slot draws its TILES into the level-1
+      // buffer, and the buffer's one blit is the bilinear sample F-67
+      // suspected — the same blit for both renders, so the pixels above
+      // agree to the byte. Buffer OFF: the walk draws the same tiles under
+      // the CTM, the painter's own byte-parity route.
       //
       // 🪦The first probe run was recorded as "it says tiles", and F-67 was
       // left open on the flat blit because of it. It was reading this loop's
       // LAST reading — buffer off, whose answer is tiles by construction.
       // Naming the buffer state in the reason is what showed it.
-      //
-      // ⛔What it took to make the flat reachable, so it is not re-walked:
-      //  · the tile is decoded in the SINGLETON the projection reads — the
-      //    fixture used to mint a fresh tile per paint, which left the
-      //    cache empty and the projection refusing outright;
-      //  · the knee is forced on, and the view's ratio is forced to 1 —
-      //    a widget test reports 3, so `zoom · dpr` was 1.89 and the gate
-      //    (`< 1`) never opened at all.
       expect(
         rodeDraw,
-        disableBuffer ? ActiveSlotDraw.tiles : ActiveSlotDraw.flat,
+        ActiveSlotDraw.tiles,
         reason: 'buffer ${disableBuffer ? 'off' : 'on'}: the slot has to take '
             'the draw this reading exists to compare — it took $rodeDraw',
       );

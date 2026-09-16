@@ -26,8 +26,9 @@ import '../../models/canvas_viewport.dart';
 ///  * **1:1** — no resampling happens at all; `none` avoids a pointless
 ///    filter pass.
 ///
-/// [scale] is [displayScaleOf]: device pixels per artwork pixel, the
-/// percentage the zoom readout shows.
+/// [scale] is the scale of the resample in question: [displayScaleOf] for
+/// a canvas-resolution image, [displayResidualOf] for the display buffer's
+/// blit below 100%, which hands the screen a level, not the artwork.
 ///
 /// ⚠️This only MEANS anything if there is one resample to apply it to.
 /// Applied per layer it would still be N resamples that merely agree with
@@ -54,10 +55,61 @@ ui.FilterQuality filterQualityForDisplayScale(double scale) =>
 /// device 200%: an iPad at 140% on screen got `low`, mush on a magnified
 /// view. 유저 09-16: 「표시배율 100%부터는 필터가 걸리면안되」. One quantity,
 /// `zoom × ratio`, now decides the filter, the edge, the sampling phase
-/// (`samplingPhaseFor`) and the scale a self-rasterising group draws at —
-/// a second spelling of the product anywhere is a copy.
+/// (`samplingPhaseFor`), the level ([displayLevelOf]) and the scale a
+/// self-rasterising group draws at — a second spelling of the product
+/// anywhere is a copy.
 double displayScaleOf(double zoom, double devicePixelRatio) =>
     zoom.abs() * devicePixelRatio;
+
+/// 🚨★★★BELOW 100% THE DISPLAY IS FED FROM A LEVEL (render round,
+/// 2026-09-16 — 유저 결정 통합안 + 안 1 「선명」).
+///
+/// One composite image, one blit, stays the law at every zoom. What
+/// changes below 100% is what that image IS: not the artwork at canvas
+/// resolution reduced by the whole device scale in one bilinear pass —
+/// which undersamples past 2× and shimmers — but the artwork HALVED this
+/// many times (each halving an exact 2×2 box), reduced by the residual
+/// [displayResidualOf] in (0.5, 1]. Every level pixel then lies inside one
+/// bilinear window of the screen, and the buffer is at most 4× the
+/// screen's pixels (2× on average) instead of the visible canvas's.
+///
+/// 안 1 over 속도 우선 (a residual in (0.5, 1] over [0.5, 1)·2): the same
+/// images, a third fewer buffer pixels on the other side, a few
+/// milliseconds apart — 유저: 「선명이 좋은데, 애초에 메모리 딱히
+/// 안커지는데?」. Levels are IMAGES only — no reduced pixel store beside
+/// the tiles — so a level costs its picture and nothing else.
+///
+/// At or above 100% the level is 0 and the buffer's bytes are what they
+/// always were (유저: 「표시배율 100%부터는 필터가 걸리면안되」).
+///
+/// Capped at [maxDisplayLevel]: past it the residual falls under 0.5 and
+/// the blit undersamples, which is the reduction the display had
+/// everywhere before levels existed — an extreme zoom-out over a giant
+/// pasteboard, and no worse than the day before.
+int displayLevelOf(double scale) {
+  var level = 0;
+  var residual = scale.abs();
+  while (residual <= 0.5 && level < maxDisplayLevel) {
+    residual *= 2;
+    level += 1;
+  }
+  return level;
+}
+
+/// The deepest level the display composes at: 1/16 of the artwork.
+const int maxDisplayLevel = 4;
+
+/// The scale the display's ONE resample actually applies to what it is
+/// handed: the level image ([displayLevelOf]) reduced by this residual —
+/// in (0.5, 1] under [maxDisplayLevel] — or, at level 0, the
+/// canvas-resolution image by the device scale itself.
+///
+/// This, not the device scale, is what the blit's
+/// [filterQualityForDisplayScale] and [displayEdgeAntiAliased] read: at
+/// exactly 50% the level-1 image lands 1:1 on device pixels and samples
+/// `none`, sharp; at 45% it is reduced by 0.9 and samples `low`.
+double displayResidualOf(double scale) =>
+    scale.abs() * (1 << displayLevelOf(scale));
 
 /// Whether the OUTER EDGE of what lands on the display — the display
 /// buffer's blit, the paper rect under it, the playback composite that
@@ -83,6 +135,13 @@ double displayScaleOf(double zoom, double devicePixelRatio) =>
 /// rotated view's edges are diagonals, so anti-aliasing stays there. A
 /// flip is axis-aligned and changes nothing.
 ///
+/// [level] is the level the image being cut was composed at
+/// ([displayLevelOf]): the buffer's blit and the paper inside a level
+/// buffer are reduced by the residual, not the device scale, and at
+/// exactly 50% that residual is 1 — nearest, and the edge is cut on the
+/// grid like any 1:1 view's. Level 0 (the default) is the device scale
+/// itself: the walk, and playback's canvas-resolution composite.
+///
 /// ⚠️Impeller may not honour `isAntiAlias = false` at all. If it does not,
 /// those devices keep the blended line they have today, which is no worse;
 /// the phase snap does not depend on this either way.
@@ -92,10 +151,11 @@ double displayScaleOf(double zoom, double devicePixelRatio) =>
 /// unverified: nobody has looked at the boundary since.
 bool displayEdgeAntiAliased(
   CanvasViewport viewport,
-  double devicePixelRatio,
-) =>
+  double devicePixelRatio, {
+  int level = 0,
+}) =>
     viewport.rotationDegrees != 0 ||
     filterQualityForDisplayScale(
-          displayScaleOf(viewport.zoom, devicePixelRatio),
+          displayScaleOf(viewport.zoom, devicePixelRatio) * (1 << level),
         ) !=
         ui.FilterQuality.none;

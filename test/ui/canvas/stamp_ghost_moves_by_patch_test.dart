@@ -63,7 +63,6 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
-import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 void main() {
@@ -343,65 +342,6 @@ void main() {
     expect(cache.fullCount, fullBefore, reason: 'the second step must not raster the whole buffer');
     expect(cache.patchedCount, patchedBefore + 1, reason: 'it patches');
   });
-
-  testWidgets('below the knee the flat projection draws the ghost over its '
-      'image — the route stays flat, and the ghost is on screen', (
-    tester,
-  ) async {
-    // The flat projection's fixture, as `the_layer_rides_the_draws_test`
-    // found it has to be: the knee on, the view's ratio 1 (the gate is
-    // `zoom · dpr < 1`), and the tile decoded in the singleton the
-    // projection reads.
-    MeasurementMode.kneeAtOne.value = true;
-    addTearDown(() => MeasurementMode.kneeAtOne.value = false);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final tile = BitmapTile.blank(size: 16);
-    await tester.runAsync(() async {
-      BitmapTileImageCache.instance.ensureDecoded(
-        (coord: TileCoord(x: 0, y: 0), tile: tile),
-      );
-      while (BitmapTileImageCache.instance.imageFor(tile) == null) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    });
-    final image = (await tester.runAsync(decodedSquare))!;
-    addTearDown(image.dispose);
-    final preview = ValueNotifier<CutStampPreview?>(null);
-    addTearDown(preview.dispose);
-    final painter = BitmapSurfacePainter(
-      surface: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 16,
-        tiles: {TileCoord(x: 0, y: 0): tile},
-      ),
-      showTransparentBackground: false,
-      stampPreview: preview,
-    );
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
-
-    debugActiveSlotDraw = null;
-    await pumpView(tester, painter, cache, zoom: 0.63);
-    expect(
-      debugActiveSlotDraw,
-      ActiveSlotDraw.flat,
-      reason: 'fixture premise: without a ghost the knee path takes the flat',
-    );
-
-    preview.value = ghostAt(const Rect.fromLTWH(4, 4, 4, 4), image);
-    debugActiveSlotDraw = null;
-    await tester.pump();
-    expect(
-      debugActiveSlotDraw,
-      ActiveSlotDraw.flat,
-      reason: 'a ghost must not flip the slot to another draw (F-67)',
-    );
-    final shown = await bytesNow(tester);
-    // At zoom 0.63 the ghost's (4,4)-(8,8) lands around (2.5,2.5)-(5,5).
-    expect(alphaAt(shown, 3, 3), greaterThan(0), reason: 'the ghost is on screen');
-  });
-
   testWidgets('on the first-activation swap frame the stand-in draws the '
       'ghost over the held image — the route stays the stand-in, and the '
       'ghost is on screen', (tester) async {

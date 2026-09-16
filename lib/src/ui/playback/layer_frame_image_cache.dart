@@ -11,6 +11,7 @@ import '../../services/cel_source_effect_pass.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
+import '../canvas/level_image.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../../core/pin_counts.dart';
 
@@ -177,19 +178,29 @@ class LayerFrameImageCache {
       return null;
     }
     if (quality != PlaybackQuality.full) {
-      final scale =
-          scaledCanvasSize(canvasSize, quality).width / canvasSize.width;
-      final downscaled = await _downscale(
-        positioned.image,
-        width: (positioned.worldRect.width * scale).round().clamp(1, 1 << 24),
-        height: (positioned.worldRect.height * scale).round().clamp(1, 1 << 24),
-      );
-      positioned.image.dispose();
-      // The worldRect stays CANVAS-SPACE — consumers map src→worldRect,
-      // so the raster resolution is free to differ.
+      // A level of the display's pyramid: halved [PlaybackQuality.level]
+      // times, each an exact 2×2 box ([halvingPicture]) — never one
+      // reduction straight to the size, which aliases past 2× and, as
+      // `medium`, mipmaps on one engine and not the other.
+      var image = positioned.image;
+      for (var i = 0; i < quality.level; i += 1) {
+        final halved = await _halved(image);
+        image.dispose();
+        image = halved;
+      }
+      // The worldRect stays CANVAS-SPACE — consumers map src→worldRect, so
+      // the raster resolution is free to differ — but it is the level's
+      // extent: twice the image per level, one texel past an odd edge
+      // ([halvedSize]), so a level maps onto the canvas at exactly 1/2^k.
+      final extent = 1 << quality.level;
       positioned = PositionedSurfaceImage(
-        image: downscaled,
-        worldRect: positioned.worldRect,
+        image: image,
+        worldRect: ui.Rect.fromLTWH(
+          positioned.worldRect.left,
+          positioned.worldRect.top,
+          (image.width * extent).toDouble(),
+          (image.height * extent).toDouble(),
+        ),
       );
     }
 
@@ -393,22 +404,12 @@ class LayerFrameImageCache {
     }
   }
 
-  Future<ui.Image> _downscale(
-    ui.Image source, {
-    required int width,
-    required int height,
-  }) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    canvas.drawImageRect(
-      source,
-      ui.Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
-      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-      ui.Paint()..filterQuality = ui.FilterQuality.medium,
-    );
-    final picture = recorder.endRecording();
+  /// [source] halved — the next level down, rasterised off the frame.
+  Future<ui.Image> _halved(ui.Image source) async {
+    final size = halvedSize(source.width, source.height);
+    final picture = halvingPicture(source);
     try {
-      return await picture.toImage(width, height);
+      return await picture.toImage(size.width, size.height);
     } finally {
       picture.dispose();
     }

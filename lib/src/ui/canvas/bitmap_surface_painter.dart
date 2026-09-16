@@ -309,15 +309,15 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       // final` fields, and a painter paints more than once.
       _SurfacePaintPass(this).paintContentInto(canvas, layerPaint: layerPaint);
 
-  /// The stamp's ghost alone, for the two active-slot routes that draw the
-  /// layer as ONE image instead of through [paintContentInto] — the flat
-  /// projection below the knee and the first-activation stand-in. The
-  /// ghost is part of what this painter draws (F-33; [drawnWorldRect] says
-  /// so), and those routes replaced the only draw of it: past the cap or
-  /// under `QA_KNEE_AT_ONE` the ghost simply vanished (adversarial review,
-  /// 2026-09-15). Drawn AFTER the image, over it, the way the walk draws
-  /// it over everything; the slot's own buffer carries the layer's
-  /// opacity and blend over both.
+  /// The stamp's ghost alone, for the active-slot route that draws the
+  /// layer as ONE image instead of through [paintContentInto] — the
+  /// first-activation stand-in (and, until 2026-09-16, the knee's flat
+  /// projection). The ghost is part of what this painter draws (F-33;
+  /// [drawnWorldRect] says so), and that route replaced the only draw of
+  /// it: the ghost simply vanished there (adversarial review, 2026-09-15).
+  /// Drawn AFTER the image, over it, the way the walk draws it over
+  /// everything; the slot's own buffer carries the layer's opacity and
+  /// blend over both.
   void paintStampPreviewInto(Canvas canvas) {
     // The pass's opening for a draw with no layer paint riding it (the
     // callers' routes buffer the slot), set here rather than by a method of

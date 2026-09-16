@@ -256,14 +256,19 @@ void main() {
     tester,
   ) async {
     // 🚨The counterpart to the parity group: if these matched, the buffer
-    // would be an expensive no-op. At 50% the old walk resamples every layer
-    // separately with its own quality; the buffer resamples one image once,
-    // so the pixels MUST differ.
+    // would be an expensive no-op. Reduced, the old walk resamples every
+    // layer separately with its own quality; the buffer is a LEVEL blitted
+    // by its residual, one image once, so the pixels MUST differ.
     //
-    // ⚠️50% ON SCREEN, so the ratio is pinned: the scale the law reads is
+    // ⚠️40% ON SCREEN, so the ratio is pinned: the scale the law reads is
     // zoom × ratio, and on the tester's default ratio of 3 a render zoom of
-    // 0.5 is 150% on screen — magnified, nearest on both routes, and the
-    // two pictures rightly agree there (2026-09-16).
+    // 0.4 is 120% on screen — magnified, nearest on both routes, and the
+    // two pictures rightly agree there (2026-09-16). ⚠️And 40%, not 50%:
+    // at exactly 50% the level lands 1:1, and one bilinear step at exactly
+    // 0.5 IS the box filter the level is made of, so the walk's per-layer
+    // reduction over constant paper and the level agree pixel for pixel
+    // (the level round, 2026-09-16). At 40% the level is blitted by 0.8 and
+    // the walk samples a 2×2 window over 2.5-pixel blocks: two pictures.
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final nodes = [
@@ -271,7 +276,7 @@ void main() {
       const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
       drawnRow('over'),
     ];
-    final reduced = CanvasViewport(zoom: 0.5);
+    final reduced = CanvasViewport(zoom: 0.4);
     final buffered = await render(
       tester,
       nodes: nodes,
@@ -311,6 +316,71 @@ void main() {
         filterQualityForDisplayScale(1),
         ui.FilterQuality.none,
         reason: 'nothing is being resampled at all',
+      );
+    });
+
+    test(
+      'below 100% the display is fed from a level: halved until the residual '
+      'lies in (0.5, 1] (안 1 「선명」, 2026-09-16)',
+      () {
+        expect(displayLevelOf(1), 0);
+        expect(displayLevelOf(1.5), 0);
+        expect(displayLevelOf(0.75), 0, reason: 'one bilinear window away');
+        expect(displayLevelOf(0.51), 0);
+        expect(
+          displayLevelOf(0.5),
+          1,
+          reason: 'exactly half: the level lands 1:1',
+        );
+        expect(displayLevelOf(0.45), 1);
+        expect(displayLevelOf(0.26), 1);
+        expect(displayLevelOf(0.25), 2);
+        expect(displayLevelOf(0.13), 2);
+        expect(displayLevelOf(0.125), 3);
+        expect(displayLevelOf(1 / 32), maxDisplayLevel, reason: 'capped');
+        expect(displayLevelOf(0.01), maxDisplayLevel, reason: 'capped');
+        expect(displayLevelOf(-0.45), 1, reason: 'a flip is not a reduction');
+      },
+    );
+
+    test('the residual is what the one blit reduces by — in (0.5, 1] under '
+        'the cap, the device scale itself at level 0', () {
+      expect(displayResidualOf(0.45), moreOrLessEquals(0.9));
+      expect(displayResidualOf(0.5), 1.0);
+      expect(displayResidualOf(0.25), 1.0);
+      expect(displayResidualOf(0.26), moreOrLessEquals(0.52));
+      expect(displayResidualOf(0.7), 0.7);
+      expect(displayResidualOf(2), 2);
+      expect(
+        displayResidualOf(0.01),
+        moreOrLessEquals(0.16),
+        reason: 'past the cap the blit undersamples, as it always did',
+      );
+      for (var scale = 1 / 16; scale < 1; scale *= 1.0137) {
+        final residual = displayResidualOf(scale);
+        expect(residual, greaterThan(0.5), reason: 'scale $scale');
+        expect(residual, lessThanOrEqualTo(1), reason: 'scale $scale');
+      }
+    });
+
+    test('the blit samples the RESIDUAL: exactly 50% is a level landing 1:1 '
+        '(none), 45% is a level reduced by 0.9 (low)', () {
+      expect(
+        filterQualityForDisplayScale(displayResidualOf(0.5)),
+        ui.FilterQuality.none,
+      );
+      expect(
+        filterQualityForDisplayScale(displayResidualOf(0.45)),
+        ui.FilterQuality.low,
+      );
+      expect(
+        displayEdgeAntiAliased(CanvasViewport(zoom: 0.5), 1, level: 1),
+        isFalse,
+        reason: 'the level-1 image lands 1:1: its edge is cut on the grid',
+      );
+      expect(
+        displayEdgeAntiAliased(CanvasViewport(zoom: 0.45), 1, level: 1),
+        isTrue,
       );
     });
 

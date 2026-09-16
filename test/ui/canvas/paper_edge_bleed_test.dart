@@ -22,39 +22,28 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// Device observation (Windows, long-standing): a bright line rings the
 /// canvas at zoom <= ~29% and is gone at >= ~32%, even when EVERY canvas
 /// pixel holds opaque black ink — so the white cannot be uncovered paper
-/// inside the canvas. What discriminates 29% from 32% is not a zoom
-/// constant anywhere: it is the visible rect crossing the display
-/// buffer's 8192 cap. Above the crossover the s=1 buffer composites
-/// paper and ink JOINTLY at canvas resolution (both land on integral
-/// canvas pixels, one raster) and the single blit resamples finished
-/// pixels. Below it the SCALED buffer records at s < 1, where every
-/// element is resampled separately: the paper's edge is analytic rect
-/// coverage (~1 buffer px of ramp) while the ink's edge is a bilinear
-/// window over canvas-resolution texels (~s buffer px, steeper) — two
-/// rasterizations of the same geometric line that disagree in width and
-/// phase, so the composite keeps paper white where the ink has already
-/// thinned.
+/// inside the canvas. It was the knee's SCALED buffer (2026-08-16 →
+/// 2026-09-16), engaged past the 8192 cap: every element resampled
+/// separately at s < 1, the paper's edge as analytic rect coverage and the
+/// ink's as a bilinear window over canvas-resolution texels — two
+/// rasterizations of one line disagreeing in width and phase, so the
+/// composite kept paper white where the ink had already thinned.
 ///
-/// The fixture pins both sides of the crossover on one geometry: a
-/// 2016x1266 canvas filled with opaque black exactly to the canvas edge
-/// (the AA-off fill), a 2400px-wide view, pan chosen so the buffer's
-/// origin lands on whole buffer pixels while the canvas's far edges land
-/// at fractional ones (the phase where the bleed is strongest and the
-/// blit cannot dilute it). Over a dark backdrop, ink pixels read 0 and
-/// the backdrop 16 — ANY bright pixel is the bug.
+/// Since 2026-09-16 the display below 100% is a LEVEL buffer, and the
+/// mechanism is the same shape one level down: paper and ink rasterised at
+/// level resolution, where the canvas's edge can fall inside a level pixel
+/// and the ink there is a box-filtered half. The answer is the one the
+/// knee had — the paper yields one buffer pixel — and this pins it at
+/// level 1 (28%), with level 0 (60%) as the control that composites paper
+/// and ink jointly on whole canvas pixels.
+///
+/// The fixture: a 4096x1266 canvas filled with opaque black exactly to the
+/// canvas edge (the AA-off fill), a 2400px-wide view, pan chosen so the
+/// buffer's origin lands on whole buffer pixels while the canvas's far
+/// edges land at fractional ones (the phase where the bleed is strongest
+/// and the blit cannot dilute it). Over a dark backdrop, ink pixels read 0
+/// and the backdrop 16 — ANY bright pixel is the bug.
 void main() {
-  // ⚠️H2 (3×3 pasteboard, 2026-08-22): the canvas GREW from 2016. The
-  // scaled path engages only when the composed rect crosses the 8192 cap,
-  // and that rect is bounded by the pasteboard — three canvases wide now
-  // instead of five, so the old figure stopped reaching the cap and this
-  // fixture silently stopped testing the path it is named after.
-  //
-  // 🧪MEASURED, not derived: at 2016 and 3024 the engagement probe comes
-  // back null; at 4096 and 6016 it engages. I could not account for the
-  // threshold sitting between 3024 and 4096 from the source alone, and I
-  // will not pretend otherwise — the engagement pin below is precisely the
-  // guard that says so out loud. If it ever reads null again, this fixture
-  // has stopped measuring the path it is named after.
   const canvasSize = CanvasSize(width: 4096, height: 1266);
   final tileCache = BitmapTileImageCache.instance;
 
@@ -193,32 +182,32 @@ void main() {
   // 70/0.28 = 250, both integral), so the final blit is texel-exact and
   // cannot dilute the edge band — while the canvas's far edges land at
   // buffer 6016*0.28 = 1684.48 and 1516*0.28 = 424.48, the fractional
-  // phase where the two edge rasterizations disagree the most.
+  // phase where the two edge rasterizations disagree the most. At 60% the
+  // same arithmetic with 1200/60: 2000 and 100, integral.
   const screen = Size(2400, 500);
-  final belowCrossover = CanvasViewport(zoom: 0.28, panX: 1120, panY: 70);
-  final aboveCrossover = CanvasViewport(zoom: 0.33, panX: 1120, panY: 70);
+  final atLevelOne = CanvasViewport(zoom: 0.28, panX: 1120, panY: 70);
+  final atLevelZero = CanvasViewport(zoom: 0.6, panX: 1200, panY: 60);
 
-  testWidgets('below the cap crossover an opaque-black canvas keeps its '
-      'edge ink-dark — no paper white leaks around the rim (#15)',
+  testWidgets('at 28% — a level-1 buffer — an opaque-black canvas keeps its '
+      'edge ink-dark: no paper white leaks around the rim (#15)',
       (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     await tester.runAsync(() => decodeAll(surface));
-    final rig = await pump(tester, surface: surface, viewport: belowCrossover);
+    final rig = await pump(tester, surface: surface, viewport: atLevelOne);
 
     final bytes = await paintOverBackdrop(tester, rig.painter, screen);
 
-    // 🚨THE CROSSOVER MOVED, and that is the point of the change this pins.
-    // 2400/0.28 = 8571 canvas px of VIEW does cross the 8192 cap — but the
-    // buffer is bounded by CONTENT ∩ view now, and the page is 4096 wide, so
-    // this paint stays at canvas resolution instead of dropping to the
-    // screen-resolution fallback. #15 is checked on that path below.
+    // 🚨THE PATH THIS PINS. Below 50% the buffer is a level, and #15's
+    // mechanism lives there now — a fixture that quietly stayed at canvas
+    // resolution would prove nothing (this file's own history: the cap
+    // moved twice under it).
     expect(
-      rig.cache.lastBufferScale,
-      isNull,
-      reason: 'content bounds keep this view at canvas resolution — the '
-          'scaled fallback is no longer reached here',
+      rig.cache.lastBufferLevel,
+      1,
+      reason: '28% on a ratio-1 view is level 1 — the paint must have '
+          'composed the level buffer this test is named after',
     );
     expect(
       inkPixels(bytes),
@@ -233,22 +222,21 @@ void main() {
     );
   });
 
-  testWidgets('above the crossover the same geometry is clean — the s=1 '
-      'buffer composites paper and ink jointly (#15 control)',
+  testWidgets('at 60% — level 0 — the same geometry is clean: the canvas-'
+      'resolution buffer composites paper and ink jointly (#15 control)',
       (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     await tester.runAsync(() => decodeAll(surface));
-    final rig = await pump(tester, surface: surface, viewport: aboveCrossover);
+    final rig = await pump(tester, surface: surface, viewport: atLevelZero);
 
     final bytes = await paintOverBackdrop(tester, rig.painter, screen);
 
     expect(
-      rig.cache.lastBufferScale,
-      isNull,
-      reason: '2400/0.33 = 7273 canvas px fits the cap — the canvas-'
-          'resolution buffer serves this side of the crossover',
+      rig.cache.lastBufferLevel,
+      0,
+      reason: '60% is above the halving: the canvas-resolution buffer',
     );
     expect(rig.cache.fullCount, greaterThan(0));
     expect(inkPixels(bytes), greaterThan(100000));

@@ -127,57 +127,6 @@ abstract final class MeasurementMode {
     startWithShowRepaints,
   );
 
-  /// ⓔ 6단계 A/B — the compose KNEE at 1 (Settings ▸ Screen-Res Buffer).
-  ///
-  /// OFF (default, today): the screen-scale buffer runs only past the
-  /// 8192 cap, where the alternative was the direct walk. ON: it runs
-  /// whenever the artwork has more pixels than the screen (`zoom·dpr
-  /// < 1`), which is stage 6's whole content — one constant's worth of
-  /// change, behind a switch so a tablet can A/B it in the SAME build
-  /// without a rebuild and reinstall.
-  ///
-  /// What the device A/B is looking at, per the plan's four check-points
-  /// (유저 질문 「e6단계 확인은 어떻게하지?」, 2026-08-16):
-  ///
-  ///  1. BELOW 100%: overall lightness/weight of the picture — the
-  ///     buffer resamples ONCE uniformly where the walk resampled per
-  ///     layer.
-  ///  2. The T21 feel: active layer and neighbours under one filter —
-  ///     the active layer must stop reading crisper/rougher than the
-  ///     layers beside it while zoomed out.
-  ///  3. The cost 결정 ① named: semi-transparent overlaps tinting a
-  ///     little differently below 100% (유저 확정 2026-08-16). ⚠️결정 ①
-  ///     was REVERSED 2026-08-28, once content-bounded buffers kept an
-  ///     ordinary page at canvas resolution however far it zoomed out:
-  ///     「그땐 해결방법이 더 존재한다는걸 몰랐기때문에… 뒤집는거는 전혀
-  ///     문제없어」. Nothing re-accepts the tint for content past the
-  ///     cap, where the screen-scale buffer still runs.
-  ///  4. AT/ABOVE 100%: this SWITCH may change nothing, byte for byte —
-  ///     its gate never fires at `s >= 1`. ⚠️Not a promise about the
-  ///     canvas: the CAP has no zoom check, so a view wider than
-  ///     8192·zoom·dpr device pixels composes past it at any zoom, and
-  ///     there `_kneeScale` shrinks the buffer below screen resolution.
-  ///
-  /// ⛔Flipping the default WAS stage 6, and stage 6 was REJECTED on the
-  /// device (유저 직접 A/B, 2026-08-16): 「on하면 부드러워지고 뭉개지는
-  /// 느낌? aa건느낌… 팬할때 선이 지글지글하면서 움직여. off하면 제대로
-  /// 고정된 그림으로 팬한단느낌」 — inside the cap ON bought nothing
-  /// visible (OFF already composites every layer into one image) and cost
-  /// the shimmer. Default OFF is the decision; this switch stays only so
-  /// an iPad/Impeller build can re-judge it there.
-  static final ValueNotifier<bool> kneeAtOne = ValueNotifier<bool>(
-    startWithKneeAtOne,
-  );
-
-  /// Seeds [kneeAtOne]:
-  ///
-  /// ```
-  /// flutter run --dart-define=QA_KNEE_AT_ONE=true
-  /// ```
-  static const bool startWithKneeAtOne = bool.fromEnvironment(
-    'QA_KNEE_AT_ONE',
-  );
-
   /// Seeds [showRepaints]:
   ///
   /// ```
@@ -225,6 +174,5 @@ abstract final class MeasurementMode {
     showUnpaintedTiles.value = startWithUnpaintedTiles;
     frameStats.value = startWithFrameStats;
     showRepaints.value = startWithShowRepaints;
-    kneeAtOne.value = startWithKneeAtOne;
   }
 }

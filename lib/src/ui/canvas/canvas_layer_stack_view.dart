@@ -20,16 +20,13 @@ import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
-import '../debug/measurement_mode.dart';
 import '../../core/dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
-import 'active_layer_flat_projection.dart';
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
 import 'tiled_surface_compose.dart';
 import 'bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
-import 'deferred_image_disposal.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
 import 'selection_float_overlay.dart';
@@ -294,11 +291,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// covers — grown past the canvas when the cel has pasteboard tiles).
   /// Clones survive cache eviction (the cache may dispose its image at any
   /// time; a clone shares pixels with an independent lifetime).
-  final Map<
-    BrushFrameKey,
-    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision})
-  >
-  _images = {};
+  final Map<BrushFrameKey, _HeldImage> _images = {};
   bool _preparing = false;
   bool _rerunRequested = false;
 
@@ -386,10 +379,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       _reportHeldBytes();
     };
     _bake.onHeldBytesChanged = _reportHeldBytes;
-    _syncActiveStandIn();
-    _syncImagesWithCache();
+    // The first sweep runs in [didChangeDependencies]: the level it asks
+    // images at needs the effective ratio, which is a dependency.
     InputInspector.visible.addListener(_rebuildForInspector);
-    unawaited(_ensureImages());
   }
 
   @override
@@ -405,9 +397,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // swap into a full recompose (measured: the stroke-patch contract
     // went to zero on a fixture with no images at all).
     if (!identical(oldWidget.imageCache, widget.imageCache)) {
-      for (final key in _images.keys) {
-        oldWidget.imageCache.releasePin(key, PlaybackQuality.full);
-        widget.imageCache.retainPin(key, PlaybackQuality.full);
+      for (final entry in _images.entries) {
+        oldWidget.imageCache.releasePin(entry.key, entry.value.quality);
+        widget.imageCache.retainPin(entry.key, entry.value.quality);
       }
     }
     // ⛔BEFORE the sweep: arming borrows the image the just-activated
@@ -531,13 +523,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// impossible rather than merely unlikely.
   int _imagesRevision = 0;
 
-  void _dropImage(
-    BrushFrameKey key,
-    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision}) held,
-  ) {
+  void _dropImage(BrushFrameKey key, _HeldImage held) {
     // A6: the pin travels with the clone — held pixels are declared
     // pixels, and the declaration ends exactly when the hold does.
-    widget.imageCache.releasePin(key, PlaybackQuality.full);
+    widget.imageCache.releasePin(key, held.quality);
     held.clone.dispose();
     _imagesRevision += 1;
   }
@@ -556,10 +545,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ///
   /// ⛔Assigning to `_images` anywhere else puts the hole back. Both are
   /// methods so that the map and its revision cannot be moved apart.
-  void _holdImage(
-    BrushFrameKey key,
-    ({ui.Image source, ui.Image clone, Rect worldRect, int? revision}) held,
-  ) {
+  void _holdImage(BrushFrameKey key, _HeldImage held) {
     _images[key] = held;
     _imagesRevision += 1;
   }
@@ -568,7 +554,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
     for (final entry in _images.entries) {
-      widget.imageCache.releasePin(entry.key, PlaybackQuality.full);
+      widget.imageCache.releasePin(entry.key, entry.value.quality);
       entry.value.clone.dispose();
     }
     _images.clear();
@@ -600,20 +586,56 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// Holds [image] for [key] unless it is the one already held — the pin,
   /// the clone and the revision together — and says whether the held set
   /// changed. The sync sweep and the async pass both adopt through here.
-  bool _adoptImage(BrushFrameKey key, LayerFrameImage image, int? revision) {
+  bool _adoptImage(
+    BrushFrameKey key,
+    LayerFrameImage image,
+    int? revision,
+    PlaybackQuality quality,
+  ) {
     final held = _images[key];
     if (held != null && identical(held.source, image.image)) {
       return false;
     }
     if (held != null) _dropImage(key, held);
-    widget.imageCache.retainPin(key, PlaybackQuality.full);
+    widget.imageCache.retainPin(key, quality);
     _holdImage(key, (
       source: image.image,
       clone: image.image.clone(),
       worldRect: image.worldRect,
       revision: revision,
+      quality: quality,
     ));
     return true;
+  }
+
+  /// The quality — the level of the display's pyramid — this view asks the
+  /// other layers' images at: the level the display buffer composes at
+  /// ([displayLevelOf]), read from the viewport and the effective ratio.
+  /// Full at or above 100%, as always; half at 50–100% on screen, quarter
+  /// below, so a level buffer draws them 1:1 instead of reducing a
+  /// canvas-resolution picture by more than a bilinear window can hold.
+  PlaybackQuality get _quality => PlaybackQuality.forLevel(
+    displayLevelOf(displayScaleOf(widget.viewport.zoom, _devicePixelRatio)),
+  );
+
+  /// The effective ratio this view composes at ([EffectiveDevicePixelRatio]),
+  /// read where dependencies change — so [_quality] is right from the first
+  /// sweep, which therefore runs there and not in [initState].
+  double _devicePixelRatio = 1;
+  bool _dependenciesSeen = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    if (_dependenciesSeen && ratio == _devicePixelRatio) {
+      return;
+    }
+    _dependenciesSeen = true;
+    _devicePixelRatio = ratio;
+    _syncActiveStandIn();
+    _syncImagesWithCache();
+    unawaited(_ensureImages());
   }
 
   void _syncSweepBody() {
@@ -654,12 +676,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // rendered before it, which the cold-miss guard below would then
       // never recognise as stale. Same order in both twins, one law.
       final revision = _revisionOf(layer.frameKey);
+      final quality = _quality;
       final LayerFrameImage? image;
       try {
         image = widget.imageCache.prepareSyncOrNull(
           key: layer.frameKey,
           canvasSize: widget.canvasSize,
-          quality: PlaybackQuality.full,
+          quality: quality,
           sourceEffects: layer.sourceEffects,
         );
       } on Object catch (error, stack) {
@@ -696,7 +719,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         }
         continue;
       }
-      _adoptImage(layer.frameKey, image, revision);
+      _adoptImage(layer.frameKey, image, revision, quality);
     }
   }
 
@@ -721,12 +744,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // Read BEFORE the await — see the sync twin for why the order is
     // the law and not a detail.
     final revision = _revisionOf(layer.frameKey);
+    final quality = _quality;
     final LayerFrameImage? image;
     try {
       image = await widget.imageCache.prepare(
         key: layer.frameKey,
         canvasSize: widget.canvasSize,
-        quality: PlaybackQuality.full,
+        quality: quality,
         sourceEffects: layer.sourceEffects,
       );
     } on Object catch (error, stack) {
@@ -750,7 +774,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       }
       return false;
     }
-    return _adoptImage(layer.frameKey, image, revision);
+    return _adoptImage(layer.frameKey, image, revision, quality);
   }
 
   Future<void> _ensureImages() async {
@@ -923,28 +947,37 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // the guard.
     //
     // 🧪Verified by walking every widget the buffer composites: the zoom's
-    // `filterQuality` lands when the buffer is DRAWN, not inside it; group
-    // rasters inside run at `rasterScale: 1` — ⚠️both hold for the
-    // CANVAS-RESOLUTION buffer only. Below the knee (past the cap, or
-    // `MeasurementMode.kneeAtOne`) the same walk records at `rasterScale:
-    // s` and leaf draws take the zoom's quality, so a slot recorded there
-    // and replayed after a zoom can carry the old scale. Unverified, and
-    // filed on the board (tile-commit-path-audit, defect candidate ⓐ);
-    // `BitmapSurfacePainter` reads
-    // its viewport only in the standalone `paint()`, never in
-    // `paintContentInto`; `layerPoseViewportWrapMatrix` belongs to the brush
-    // panel's `Transform`, not to any composite route.
+    // `filterQuality` lands when the buffer is DRAWN, not inside it, and
+    // group rasters inside run at the buffer's own scale.
+    // `BitmapSurfacePainter` reads its viewport only in the standalone
+    // `paint()`, never in `paintContentInto`; `layerPoseViewportWrapMatrix`
+    // belongs to the brush panel's `Transform`, not to any composite route.
+    //
+    // 🚨WHAT A RECORDING DOES CARRY OF THE ZOOM IS IN THE KEY (2026-09-16,
+    // closing defect candidate ⓐ of the tile-commit-path audit): the LEVEL
+    // the buffer composes at ([displayLevelOf] — the recordings draw level
+    // images 1:1 and the backdrop raster is made in level pixels), and the
+    // filter class the leaf draws take ([filterQualityForDisplayScale]).
+    // Both are coarse functions of the zoom — a step at 100% and at each
+    // halving — so a pan or a zoom inside a level keeps every slot, and a
+    // slot recorded at one level never replays at another.
     //
     // ⇒ Panning or zooming REPAINTS (shouldRepaint still compares the
     // viewport, and the CTM did change) but no longer RE-COMPOSITES while
-    // the extent holds — which is exactly the posture where the page fits
-    // the screen and the buffer is at its biggest.
+    // the extent and the level hold — which is exactly the posture where
+    // the page fits the screen and the buffer is at its biggest.
+    final displayScale = displayScaleOf(
+      widget.viewport.zoom,
+      EffectiveDevicePixelRatio.of(context),
+    );
     final compositeKey = Object.hash(
       _imagesRevision,
       widget.canvasSize,
       widget.paintPaper,
       widget.paperBackground,
       _treeSignature(nodes),
+      displayLevelOf(displayScale),
+      filterQualityForDisplayScale(displayScale),
     );
     _bake.keepFor(compositeKey);
     return IgnorePointer(
@@ -1085,7 +1118,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           bake: widget.debugDisableBake ? null : _bake,
           bufferCache: widget.debugDisableBake ? null : _bufferCache,
           compositeKey: compositeKey,
-          // ⓔ 5단계: the knee's s = zoom·DPR, and the DPR is the one the
+          // The display scale is zoom·DPR, and the DPR is the one the
           // ROOT MATRIX uses — the effective ratio. It still tracks
           // monitor moves (this build re-runs) and still answers per
           // view, where the raw PlatformDispatcher singleton does
@@ -1101,6 +1134,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
   }
 }
+
+/// A cel image the stack holds: the cache's image, our clone of it (which
+/// survives the cache letting go), the canvas-space rect it covers, the
+/// revision it was built from, and the quality — the level of the pyramid
+/// — it was asked at, which is what its pin is released at.
+typedef _HeldImage = ({
+  ui.Image source,
+  ui.Image clone,
+  Rect worldRect,
+  int? revision,
+  PlaybackQuality quality,
+});
 
 /// The painter's own node shape: the request tree with images resolved.
 sealed class _PaintRow {
@@ -1437,14 +1482,11 @@ bool? debugLiveLayerRodeTheDraws;
 @visibleForTesting
 ActiveSlotDraw? debugActiveSlotDraw;
 
-/// The three ways the active layer's own content reaches a paint.
+/// The two ways the active layer's own content reaches a paint.
 @visibleForTesting
 enum ActiveSlotDraw {
-  /// The flat projection: one image, resampled by the CTM under the
-  /// display filter. ⚠️THE ONE THAT SAMPLES BILINEARLY at a reduced zoom.
-  flat,
-
-  /// The first-activation stand-in, same shape as [flat].
+  /// The first-activation stand-in: one image, resampled by the CTM under
+  /// the display filter.
   standIn,
 
   /// The surface painter's own tiles, at `FilterQuality.none`.
@@ -1475,13 +1517,15 @@ Paint _withLayerPaint(Paint draw, Paint? layer) {
 /// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
 /// far enough and that rect spans the whole pasteboard — 5×5 canvases then,
 /// 11700×8270 on a 2340×1654 page — which blew past [_maxBufferSide] and
-/// dropped the paint onto the SCREEN-resolution fallback (since H2's 3×3,
+/// dropped the paint onto the fallback past the cap (since H2's 3×3,
 /// 2026-08-22, that page's pasteboard is 7020×4962 and fits; a page more
 /// than 2730 on a side still does not). That fallback is how the editing
 /// canvas stopped compositing the way playback, the camera and the export
 /// do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
 /// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
-/// the only tool on the table).
+/// the only tool on the table; the screen-resolution "knee" that served the
+/// fallback from 2026-08-16 went with the level buffer on 2026-09-16, and
+/// past the cap the direct walk is the net).
 ///
 /// ★Content is not the pasteboard. For a cached row it is
 /// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
@@ -1618,13 +1662,9 @@ class _LayerStackPainter extends CustomPainter {
     this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
   }) : super(
-         // The knee A/B rides the repaint merge so flipping the switch
-         // repaints the SAME view — the whole point of an in-build A/B
-         // is two readings of one picture, not "pan until it rebuilds".
          repaint: Listenable.merge(<Listenable?>[
            activeSurfacePainter,
            floatOverlay,
-           MeasurementMode.kneeAtOne,
          ]),
        );
 
@@ -1667,54 +1707,18 @@ class _LayerStackPainter extends CustomPainter {
   /// See [CanvasLayerStackView.debugDisableSingleBuffer].
   final bool debugDisableSingleBuffer;
 
-  /// The EFFECTIVE ratio at build time (monitor × UI scale) — the knee's
-  /// `s = zoom·dpr` axis. A monitor move re-runs the build, so a fresh
-  /// painter always carries the current value.
+  /// The EFFECTIVE ratio at build time (monitor × UI scale) — the display
+  /// scale's axis (`zoom·dpr`, [displayScaleOf]). A monitor move re-runs
+  /// the build, so a fresh painter always carries the current value.
   final double devicePixelRatio;
 
-  /// ⓔ 5단계 — set ONLY while the SCALED buffer records, consumed by the
-  /// active-surface arm: below the knee every layer must be ONE image
-  /// under one uniform filter, and this is the active layer's
-  /// ([ActiveLayerFlatProjection]). Mutable painter state is safe here
-  /// because a painter lives one frame and paint is single-threaded; it
-  /// is cleared in the same call that set it, so the s=1 paths can never
-  /// see it.
-  ActiveLayerFlatImage? _activeFlatForRecording;
-
-  /// #15 — the paper inset, in CANVAS px, the scaled recording draws
-  /// with; null on every s=1 path. Same one-frame window and the same
-  /// safety argument as [_activeFlatForRecording] above.
+  /// The largest buffer side worth allocating, in the buffer's own pixels.
   ///
-  /// In the scaled recording every element is resampled SEPARATELY at
-  /// s < 1, so the paper's edge is analytic rect coverage (a ramp one
-  /// buffer px wide) while the ink's edge over it is a bilinear window
-  /// on canvas-resolution texels (a ramp s buffer px wide) — two
-  /// rasterizations of the same geometric line that disagree in width
-  /// and phase. Composited, the paper stays white where the ink has
-  /// already thinned: a 1px bright ring around a canvas whose every
-  /// pixel is opaque ink. The s=1 buffer cannot do this — paper and ink
-  /// land jointly on integral canvas pixels and the display resample
-  /// sees finished pixels — which is why the device saw the line appear
-  /// exactly where the visible rect crosses [_maxBufferSide] and this
-  /// path takes over (~29% on a ~2500px view) and vanish at ~32%.
-  ///
-  /// ONE BUFFER PIXEL bounds every edge mechanism this recording uses:
-  /// analytic coverage reaches half a pixel past the line, a sampling
-  /// window half a texel more — so a paper that ends one buffer pixel
-  /// early sits entirely under the ink's solid region wherever ink
-  /// covers the canvas, at every fractional phase. Where no ink covers,
-  /// the plate ends one buffer pixel short against the pasteboard — a
-  /// device-pixel concession, only below the knee.
-  double? _paperInsetForRecording;
-
-  /// The largest buffer side worth allocating, in canvas pixels.
-  ///
-  /// Not a quality setting — a floor under "is this still a good idea". A
-  /// viewport zoomed far out over the 3×3 pasteboard asks for a buffer many
-  /// times the screen, and rasterising that to resample it back down is
-  /// strictly worse than letting each layer draw itself. The direct walk is
-  /// always correct, so falling back to it costs only the sampling law, and
-  /// only in a view where everything is tiny anyway.
+  /// Not a quality setting — the safety net (유저 결정 2026-09-16). Below
+  /// 100% the buffer is a level of the artwork and at most 4× the screen,
+  /// so this binds only on a window past 16384 device pixels; at or above
+  /// 100% only on one past the cap itself. Past it the direct walk draws,
+  /// which is always correct and costs only the sampling law.
   static const int _maxBufferSide = 8192;
 
 
@@ -2012,8 +2016,8 @@ class _LayerStackPainter extends CustomPainter {
         // this costs an int compare, not an identity miss every frame — and
         // the sibling `playback_frame_painter` already gates on it.
         oldDelegate.paperBackground != paperBackground ||
-        // ⓔ 5단계: the knee's s reads this — a monitor move must repaint,
-        // not stretch the old scaled buffer.
+        // The display scale — and the level — read this: a monitor move
+        // must repaint, not stretch the old buffer.
         oldDelegate.devicePixelRatio != devicePixelRatio ||
         !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
@@ -2047,12 +2051,12 @@ int _treeSignature(List<CompositeNode<_PaintRow>> list) {
   return hash;
 }
 
-/// How many paints have fallen to the SCREEN-resolution buffer because a
-/// canvas-resolution one would have exceeded the editing stack's buffer cap.
+/// How many paints have fallen to the direct walk because the buffer would
+/// have exceeded the editing stack's buffer cap — the safety net.
 ///
-/// ★A COUNTER AND NOT A COMMENT. "Content bounds keep an ordinary page under
-/// the cap at every zoom" is a claim about a number, and this is the number —
-/// the one place the editing canvas stops compositing the way playback, the
-/// camera and the export do.
+/// ★A COUNTER AND NOT A COMMENT. "Content bounds and the level keep every
+/// ordinary view under the cap" is a claim about a number, and this is the
+/// number — the one place the editing canvas stops compositing the way
+/// playback, the camera and the export do.
 @visibleForTesting
 int debugCappedFallbacks = 0;

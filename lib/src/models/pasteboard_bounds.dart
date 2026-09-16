@@ -67,9 +67,10 @@ extension PasteboardBounds on CanvasSize {
   /// preview, a text or raster placement.
   ///
   /// ⛔ONE CONVERSION (F-85, 2026-09-15). This rect was typed out from the
-  /// four getters above in seven places, and an eighth — the active layer's
-  /// flat projection — typed the 3×3 NUMBERS instead, so it would have kept
-  /// the old wall the day [pasteboardCanvasesPerEdge] moves.
+  /// four getters above in seven places, and an eighth — the knee's flat
+  /// projection, gone since 2026-09-16 — typed the 3×3 NUMBERS instead, so
+  /// it would have kept the old wall the day [pasteboardCanvasesPerEdge]
+  /// moves.
   ui.Rect get pasteboardRect => ui.Rect.fromLTRB(
     pasteboardLeft.toDouble(),
     pasteboardTop.toDouble(),
