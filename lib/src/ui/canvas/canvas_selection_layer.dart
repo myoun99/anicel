@@ -50,10 +50,12 @@ import '../input/control_press_claim.dart';
 ///   freehand lasso — shown as marching ants.
 /// - Dragging INSIDE the region moves the selection's PIXELS (R19 pixel
 ///   model): the shape's raster lifts once (erase lands raw, the stamp
-///   floats), every drag/nudge/Ctrl+T only moves the float, and the
-///   CONFIRM adopts the whole session as ONE history entry.
-/// - A click (degenerate drag) deselects; Ctrl+D and arrow nudges arrive
-///   through [selectionCommands].
+///   floats), every drag/Ctrl+T only moves the float, and the CONFIRM
+///   adopts the whole session as ONE history entry.
+/// - A click (degenerate drag) deselects; Ctrl+D arrives through
+///   [selectionCommands].
+/// - A move to another frame, row or cut KEEPS the region (F-86); the next
+///   move lifts it afresh from the cel it then stands on.
 ///
 /// All region geometry lives in CANVAS coordinates, so the ants stay
 /// glued to the artwork through pan/zoom/rotation.
@@ -203,7 +205,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   final ValueChanged<bool>? onTransformDragActiveChanged;
 
   /// R14-④/R15-④ bitmap lift: called ONCE per selection shape when the
-  /// Move tool first drags (or nudges) it. The host commits the shape's
+  /// Move tool first drags it. The host commits the shape's
   /// ERASE (origin pixels vanish immediately) and returns that command's
   /// id plus the lifted STAMP dab, which the layer floats until the
   /// session confirms — so the original is never visible while moving and
@@ -692,10 +694,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// before the session opened (the transform `before` for re-opened
   /// sessions).
   ///
-  /// R16-① (TVP-style): the stamp stays floating through EVERY drag and
-  /// nudge — nothing lands and nothing is undoable until the user
-  /// CONFIRMS (button, Enter, tool switch, deselect, undo/redo hook),
-  /// which adopts the whole session as ONE history entry.
+  /// R16-① (TVP-style): the stamp stays floating through EVERY drag —
+  /// nothing lands and nothing is undoable until the user CONFIRMS
+  /// (button, Enter, tool switch, deselect, undo/redo hook), which adopts
+  /// the whole session as ONE history entry.
   int? _liftToken;
   BrushDab? _pendingLiftStamp;
 
@@ -990,7 +992,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (oldWidget.frameToken != widget.frameToken) {
       // Build-phase safety (R15-⑤): this runs inside didUpdateWidget —
       // the drag-end notify reaches ancestor setState and must defer.
-      _resetAll(deferDragNotify: true);
+      //
+      // 🚨F-86 (유저 2026-09-12: 「선택툴 선택한채로 프레임이나 인덱스
+      // 이동하면 사라지는데 뭘 하든 안사라지도록. 다른 컷 가도」): another
+      // frame, row or cut KEEPS the region, and the next move lifts it
+      // afresh from the cel it then stands on. ↩️This forgot the region
+      // along with everything else.
+      //
+      // ⚠️THE LANDING THIS PATH DOES IS NOT REACHED FROM HERE, and the
+      // comment used to claim it was. An open box folds its affine in and
+      // a pending lift lands (R28 #10) — but R15-⑤ refuses the seek, the
+      // row change and the cut switch OUTRIGHT while a selection
+      // interaction is held, and an open box or a pending move is one
+      // (`brush_canvas_panel` hands `onMoveSessionPendingChanged` to the
+      // same hold). 🧪Measured 2026-09-17: with a box open, next-frame
+      // left the playhead at 0 of 24. The landing stays because this reset
+      // is SHARED — the tool switch and the dispose reach it with floats
+      // in flight — not because a frame move ever arrives holding one.
+      _resetAll(deferDragNotify: true, keepRegion: true);
     }
     // Picking another mode (or another grid size) over an OPEN box widens
     // or narrows it in place — the whole point of holding the warp as
@@ -1135,7 +1154,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     widget.selectionCommands?.bind(
       this,
       hasSelection: () => _hasSelection,
-      nudge: _nudge,
       deselect: _deselect,
       closePolygon: _closeOpenPolygon,
       transformActive: () => _transform != null,
@@ -1320,7 +1338,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// Two terms because a session has two ways to hold a change and the four
   /// places that set [_moveSessionDirty] are all COMMIT points: closing a
-  /// box, a drag, a nudge. While a box is still OPEN nothing has been
+  /// box, a drag. While a box is still OPEN nothing has been
   /// committed yet, so that flag is false however far the user has dragged a
   /// handle — 유저 2026-08-27: 「**변형중일땐**. 그니까 변경사항이 있으면 …
   /// 빨간색」. [_boxIsTransformed] is the answer for exactly that window and
@@ -1402,7 +1420,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ),
   );
 
-  void _resetAll({bool deferDragNotify = false}) {
+  /// Ends every gesture and lands everything that floats — and, unless
+  /// [keepRegion], forgets the region too.
+  ///
+  /// [keepRegion] is F-86's frame, row and cut move: a REAL region stays and
+  /// the next move lifts it afresh from the cel under it. The implicit
+  /// whole-picture shape was never the user's selection (R26 #13), so it
+  /// goes either way.
+  void _resetAll({bool deferDragNotify = false, bool keepRegion = false}) {
     final wasDragging = _drag != null;
     setState(() {
       // A pending float must not lose its pixels: land it at its pending
@@ -1419,10 +1444,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _foldOpenTransformIntoPendingStamp();
       _landPendingLiftStamp();
       _endDrag(cancelled: true, notify: wasDragging && !deferDragNotify);
-      _setRegion(null);
-      _shapeIsImplicitWholePicture = false; // R26 #13
+      if (!keepRegion || _shapeIsImplicitWholePicture) {
+        _setRegion(null);
+        _shapeIsImplicitWholePicture = false; // R26 #13
+      }
       _clearLiftState();
       _clearTransform();
+      // A kept region's pixels were just landed where they floated, so the
+      // next move has to lift them again — from whatever cel is under it.
+      _shapeNeedsLift = _region != null;
     });
     if (deferDragNotify && wasDragging) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2243,36 +2273,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         commit(before, null);
       }
     }
-  }
-
-  /// Arrow nudge: one canvas pixel per call, one undo entry per call.
-  /// With an open Ctrl+T session the nudge rides the session's
-  /// translation instead (committed with the transform).
-  void _nudge(double dx, double dy) {
-    final transform = _transform;
-    if (transform != null) {
-      setState(() {
-        _transform = transform.copyWith(
-          tx: transform.tx + dx,
-          ty: transform.ty + dy,
-        );
-      });
-      // The preview is a resampled bitmap now, not a matrix evaluated in
-      // build, so a mutation that does not schedule a resample moves the
-      // ants and the box while the PICTURE stays where it was — and Enter
-      // then lands the ink where the outline is, not where the artwork
-      // was drawn. Every path that changes the open warp has to say so.
-      _preview.schedule();
-      return;
-    }
-    final region = _region;
-    if (region == null || widget.onLiftRequested == null) {
-      return;
-    }
-    if (!_ensureLifted(region)) {
-      return;
-    }
-    _commitMove(dx: dx, dy: dy);
   }
 
   /// R14-④/R15-④: lifts the shape's pixels once per selection-or-confirm
@@ -3429,8 +3429,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (region == null || pending == null || (dx == 0 && dy == 0)) {
       return;
     }
-    // R16-① TVP move session: a drag/nudge only moves the FLOAT — nothing
-    // lands and nothing is undoable until the confirm. The ants go red.
+    // R16-① TVP move session: a drag only moves the FLOAT — nothing lands
+    // and nothing is undoable until the confirm. The ants go red.
     setState(() {
       _pendingLiftStamp = pending.copyWith(
         center: CanvasPoint(x: pending.center.x + dx, y: pending.center.y + dy),

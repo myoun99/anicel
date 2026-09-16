@@ -316,7 +316,10 @@ class Standing {
             row,
             frameIndex ?? _selection.currentFrameIndex,
           )) {
-      _selection.clearAllSelections();
+      // ⚠️The TIMELINE's four, not the marquee (F-86, 유저 「뭘 하든
+      // 안사라지도록」): standing is a press about to work on THIS row, not a
+      // 선택 해제 — and the artwork's selection is a tool still in hand.
+      _selection.clearTimelineSelections();
     }
     switch (row) {
       case LayerRowAddress(:final layerId):

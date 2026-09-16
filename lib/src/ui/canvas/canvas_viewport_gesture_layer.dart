@@ -635,8 +635,8 @@ class _CanvasViewportGestureLayerState
                 ? (fine ? 'frame-walk-right' : 'drawing-next')
                 : (fine ? 'frame-walk-left' : 'drawing-previous'))
           : (forward
-                ? (fine ? 'frame-walk-down' : 'selection-nudge-down')
-                : (fine ? 'frame-walk-up' : 'selection-nudge-up'));
+                ? (fine ? 'frame-walk-down' : 'layer-down')
+                : (fine ? 'frame-walk-up' : 'layer-up'));
       widget.onInvokeAction?.call(actionId);
     }
     // The action has LANDED by now (the funnel is synchronous), so the

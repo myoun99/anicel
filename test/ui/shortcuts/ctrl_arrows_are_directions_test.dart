@@ -49,7 +49,11 @@ void main() {
       );
       final only = activators.single;
       expect(only.trigger, key);
-      expect(only.control, isTrue, reason: 'the plain arrow is a nudge');
+      expect(
+        only.control,
+        isTrue,
+        reason: 'the plain arrow walks a drawing, not a frame',
+      );
     });
   });
 

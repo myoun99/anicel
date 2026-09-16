@@ -107,8 +107,8 @@ void main() {
     final session = await pump(tester);
     await selectARange(tester, session);
 
-    // The entrance itself: `EditorActionIds.selectionNudgeDown` calls exactly
-    // this when no canvas selection is armed.
+    // The entrance itself: `EditorActionIds.layerDown` calls exactly this,
+    // canvas selection or none (F-86).
     //
     // ⚠️NOT a synthetic arrow key — measured, one never arrives in this
     // harness (nothing holds focus), and a test that sent one would be

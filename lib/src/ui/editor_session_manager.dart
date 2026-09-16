@@ -859,6 +859,8 @@ class EditorSessionManager extends ChangeNotifier
   bool get hasAnySelection => rangeSelections.hasAnySelection;
   @override
   void clearAllSelections() => rangeSelections.clearAllSelections();
+  @override
+  void clearTimelineSelections() => rangeSelections.clearTimelineSelections();
   void claimSelection(TimelineSelectionKind kind) =>
       rangeSelections.claimSelection(kind);
   void revealSelection() => rangeSelections.revealSelection();

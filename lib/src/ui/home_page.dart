@@ -195,14 +195,14 @@ class _HomePageState extends State<HomePage> {
     debugLabel: 'canvas-navigation-region',
   );
 
-  /// The selection channel (P9): Ctrl+D and the arrow nudges call in
-  /// here; without a live selection the arrows keep flipping frames.
+  /// The selection channel (P9): Ctrl+D, Enter and Escape call in here.
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
-  /// The ↑/↓ layer-nav channel (UI-R20 #14): without a live selection the
-  /// vertical arrows walk the timeline's DISPLAYED layer rows; the
-  /// workspace binds the handler (it owns the row filter view state).
+  /// The ↑/↓ layer-nav channel (UI-R20 #14): the arrows that cross the
+  /// frame axis walk the timeline's DISPLAYED layer rows, selection or no
+  /// selection (F-86); the workspace binds the handler (it owns the row
+  /// filter view state).
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
 
   /// The flip HUD's state (R10 hand-feel): shown while a one-finger flip
@@ -533,9 +533,9 @@ class _HomePageState extends State<HomePage> {
   /// very action ids — so the disagreement was never two mechanisms. It was
   /// one mechanism asked the question in only one of its two doorways.
   ///
-  /// ⛔The canvas NUDGE never reaches here and stays keyed to the arrow's own
-  /// direction: pushing a selection right is +x whatever the sheet is
-  /// reading. Only the timeline walk follows the sheet.
+  /// ↩️「⛔The canvas NUDGE never reaches here and stays keyed to the arrow's
+  /// own direction」 — there is no nudge any more (F-86, 유저 2026-09-12:
+  /// 「기능부터 잔존코드 싹 삭제」), so every plain arrow comes here.
   /// [byFrame] is the SIZE of the step along the frame axis — one FRAME
   /// (Ctrl+arrows, F-28) or one DRAWING (the plain arrows). It changes
   /// nothing about the axis question, which is exactly why it is a
@@ -647,10 +647,18 @@ class _HomePageState extends State<HomePage> {
         _walkTimeline(horizontal: false, forward: false, byFrame: true);
       case EditorActionIds.frameWalkDown:
         _walkTimeline(horizontal: false, forward: true, byFrame: true);
+      // The plain arrows WALK the sheet (TVP layer nav, UI-R20 #14; which
+      // way the frames run is the sheet's answer inside `_walkTimeline`,
+      // F-28). ↩️With a live canvas selection they used to NUDGE it instead
+      // — PS arbitration, standing down while a stroke was live (R16-③).
+      // 유저 2026-09-12: 「선택툴 선택한채로 화살표키누르면 그림 이동되는데 왜
+      // 멋대로 넣은거지? 기능부터 잔존코드 싹 삭제」 · 「화살표 이동하는거
+      // 변형툴일때도 작동하는거같은데 제발 멋대로 하지말고 그냥 싹 잔존 삭제」
+      // (F-86).
       case EditorActionIds.drawingPrevious:
-        _nudgeOrWalk(-1, 0);
+        _walkTimeline(horizontal: true, forward: false);
       case EditorActionIds.drawingNext:
-        _nudgeOrWalk(1, 0);
+        _walkTimeline(horizontal: true, forward: true);
       case EditorActionIds.playbackToggle:
         _togglePlayback();
       case EditorActionIds.voiceRecordToggle:
@@ -690,10 +698,10 @@ class _HomePageState extends State<HomePage> {
         _canvasViewCommands.toggleFlipHorizontal();
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
-      case EditorActionIds.selectionNudgeUp:
-        _nudgeOrWalk(0, -1);
-      case EditorActionIds.selectionNudgeDown:
-        _nudgeOrWalk(0, 1);
+      case EditorActionIds.layerUp:
+        _walkTimeline(horizontal: false, forward: false);
+      case EditorActionIds.layerDown:
+        _walkTimeline(horizontal: false, forward: true);
       case EditorActionIds.selectionTransformCommit:
         _confirmPolygonOrTransform();
       case EditorActionIds.selectionTransformCancel:
@@ -747,23 +755,6 @@ class _HomePageState extends State<HomePage> {
   /// bound film verb already dispatches against.
   ToolbarPanelContext get _timelinePanel =>
       TimelineToolbarPanelContext(_session);
-
-  /// A live selection claims the PLAIN arrow keys as nudges (PS
-  /// arbitration — the arbitration follows the KEYS, which walk
-  /// drawings since PEN-7c). Nudges stand down while a stroke is
-  /// live (R16-③: rewriting the lift under the pen froze both).
-  /// Without a selection the arrows walk the displayed rows (TVP layer
-  /// nav, UI-R20 #14) — along the frame axis for ←/→, across it for
-  /// ↑/↓: the same dispatch-level arbitration for all four.
-  void _nudgeOrWalk(int dx, int dy) {
-    if (_canvasSelectionCommands.hasSelection) {
-      if (!_session.brushInputActive.value) {
-        _canvasSelectionCommands.nudge(dx.toDouble(), dy.toDouble());
-      }
-      return;
-    }
-    _walkTimeline(horizontal: dy == 0, forward: dx + dy > 0);
-  }
 
   /// 🚨T28: play or stop, and nothing in between. The middle branch
   /// used to resume a paused transport — a state that no longer

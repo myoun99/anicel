@@ -155,8 +155,8 @@ abstract final class EditorActionIds {
   static const toolCut = 'tool-cut';
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
-  static const selectionNudgeUp = 'selection-nudge-up';
-  static const selectionNudgeDown = 'selection-nudge-down';
+  static const layerUp = 'layer-up';
+  static const layerDown = 'layer-down';
   static const selectionTransformCommit = 'selection-transform-commit';
   static const selectionTransformCancel = 'selection-transform-cancel';
   static const onionSkinToggle = 'onion-skin-toggle';
@@ -560,20 +560,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyD, control: true),
     ],
   ),
-  // The arrow keys are shared, with dispatch-level arbitration: with a
-  // live selection they NUDGE (Photoshop behavior); otherwise left/right
-  // flip frames and up/down walk the timeline's DISPLAYED layer rows
-  // (TVP layer nav, UI-R20 #14).
+  // The arrow keys walk the sheet: on the timeline left/right flip frames
+  // and up/down walk its DISPLAYED layer rows (TVP layer nav, UI-R20 #14),
+  // and the X-sheet swaps the two (F-28). ↩️With a live selection they used
+  // to NUDGE it (Photoshop behavior) — 유저 2026-09-12: 「선택툴 선택한채로
+  // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드 싹
+  // 삭제」 (F-86), so the pair lost the nudge's name and category with it.
   const EditorActionDefinition(
-    id: EditorActionIds.selectionNudgeUp,
-    label: 'Nudge Selection / Layer Up',
-    category: 'Selection',
+    id: EditorActionIds.layerUp,
+    label: 'Layer Up',
+    category: 'Navigation',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.selectionNudgeDown,
-    label: 'Nudge Selection / Layer Down',
-    category: 'Selection',
+    id: EditorActionIds.layerDown,
+    label: 'Layer Down',
+    category: 'Navigation',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
   // Enter/Escape only mean commit/cancel while a transform box is open

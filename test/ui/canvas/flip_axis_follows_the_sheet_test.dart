@@ -113,7 +113,7 @@ void main() {
     );
     expect(flip.actions, isNotEmpty);
     expect(
-      flip.actions.every((id) => id.startsWith('selection-nudge-')),
+      flip.actions.every((id) => id.startsWith('layer-')),
       isTrue,
     );
     expect(
@@ -132,7 +132,7 @@ void main() {
     );
     expect(flip.actions, isNotEmpty);
     expect(
-      flip.actions.every((id) => id.startsWith('selection-nudge-')),
+      flip.actions.every((id) => id.startsWith('layer-')),
       isTrue,
     );
     expect(flip.axis, FlipHudAxis.row);

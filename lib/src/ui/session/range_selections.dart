@@ -173,11 +173,29 @@ class RangeSelections {
       _selection.rowSelection.value.isNotEmpty ||
       (_internals.canvasHasSelection?.call() ?? false);
 
-  void clearAllSelections() {
+  /// The four TIMELINE selections — and NOT the marquee on the artwork.
+  ///
+  /// 🚨F-86 (유저 2026-09-12): 「선택툴 선택한채로 프레임이나 인덱스 이동하면
+  /// 사라지는데 **뭘 하든 안사라지도록. 다른 컷 가도**」. Standing on a row
+  /// (T10) and flipping a column (F-13) each let the timeline's selections
+  /// go, and those two laws stand — what they must not do is reach into the
+  /// ARTWORK. The marquee is a tool the user is still holding; moving the
+  /// playhead is not putting it down.
+  ///
+  /// ⛔This is NOT the deselect button's half. That button says 「let go」 and
+  /// means all five kinds ([clearAllSelections]) — the 2026-08-27 answer to
+  /// two buttons that each let go of a different half. The line drawn here is
+  /// between WHO asks: a button that says 선택 해제, or a verb that is about
+  /// to work somewhere else.
+  void clearTimelineSelections() {
     clearFrameRangeSelection();
     clearLaneRangeSelection();
     _selection.clearStoryboardCutSelection();
     _selection.clearRowSelection();
+  }
+
+  void clearAllSelections() {
+    clearTimelineSelections();
     // ⛔ALL of them, the marquee included. 유저 2026-08-27 found two buttons
     // both called 선택 해제, both wearing `Icons.deselect`, each letting go of
     // a different half — the rail's cleared the marquee, the timeline's

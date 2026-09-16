@@ -16,9 +16,8 @@ typedef SelectionTransformValues = ({
 });
 
 /// The imperative selection channel (P9): the app-level shortcuts
-/// (Ctrl+D deselect, arrow nudges) call in; the mounted selection layer
-/// binds the handlers. Unbound calls are no-ops and [hasSelection] is
-/// false — the arrow keys then keep their frame-flipping meaning.
+/// (Ctrl+D deselect) call in; the mounted selection layer binds the
+/// handlers. Unbound calls are no-ops and [hasSelection] is false.
 ///
 /// R17-U: also a [ChangeNotifier] — the layer pings [notifySessionChanged]
 /// on selection/transform mutations so the tool settings panel's numeric
@@ -161,7 +160,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   bool Function()? _closePolygon;
   bool Function()? _hasSelection;
-  void Function(double dx, double dy)? _nudge;
   VoidCallback? _deselect;
   bool Function()? _transformActive;
   VoidCallback? _beginTransform;
@@ -192,7 +190,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void bind(
     Object owner, {
     required bool Function() hasSelection,
-    required void Function(double dx, double dy) nudge,
     required VoidCallback deselect,
     bool Function()? closePolygon,
     bool Function()? transformActive,
@@ -222,7 +219,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyTransform = applyTransform;
     _canEditTransform = canEditTransform;
     _hasSelection = hasSelection;
-    _nudge = nudge;
     _deselect = deselect;
     _closePolygon = closePolygon;
     _transformActive = transformActive;
@@ -244,7 +240,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     }
     _owner = null;
     _hasSelection = null;
-    _nudge = null;
     _deselect = null;
     _closePolygon = null;
     _transformActive = null;
@@ -289,12 +284,14 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyRegion?.call(region);
   }
 
-  /// Whether a live selection exists — arrow keys NUDGE instead of
-  /// flipping frames while true (Photoshop arbitration).
+  /// Whether a live selection exists.
+  ///
+  /// ↩️While true the arrow keys NUDGED the selection instead of flipping
+  /// frames (Photoshop arbitration). 유저 2026-09-12: 「선택툴 선택한채로
+  /// 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드 싹
+  /// 삭제」 — the arrows walk the sheet whatever is selected, and the nudge
+  /// is gone.
   bool get hasSelection => _hasSelection?.call() ?? false;
-
-  /// Moves the selection by canvas pixels (one undo entry per call).
-  void nudge(double dx, double dy) => _nudge?.call(dx, dy);
 
   /// Records a region change as ONE undoable step. Set by the canvas
   /// panel (it owns the history manager); null applies changes directly.

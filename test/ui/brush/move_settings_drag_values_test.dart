@@ -29,7 +29,6 @@ void main() {
       Object(),
       hasSelection: () => false,
       canEditTransform: () => canEdit,
-      nudge: (_, _) {},
       deselect: () {},
       transformValues: () => null,
       setTransformValues:

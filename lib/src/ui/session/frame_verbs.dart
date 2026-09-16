@@ -436,7 +436,12 @@ class FrameVerbs {
     // ⛔It lives in the FLIP and not in [selectFrameIndex], which the ruler
     // scrub also goes through — 「룰러쪽 조작은 지금처럼 그대로 취소안되도록」.
     // Seeking is not the verb here; flipping is.
-    _selection.clearAllSelections();
+    //
+    // ⚠️The TIMELINE's four, not the marquee (F-86, 유저 2026-09-12: 「뭘
+    // 하든 안사라지도록. 다른 컷 가도」). F-13's rule is about the SELECTION
+    // RANGE on the sheet; the artwork's marquee is a tool in hand, and a
+    // flip is a move to another column, not a 선택 해제.
+    _selection.clearTimelineSelections();
     switch (_internals.currentRow) {
       case TrackRowAddress(:final trackId):
         _flipCuts(trackId, forward: forward);

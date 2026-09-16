@@ -87,6 +87,7 @@ abstract interface class SelectionAccess {
   void clearFrameRangeSelection();
   void clearRowSelection();
   void clearStoryboardCutSelection();
+  void clearTimelineSelections();
   int get currentFrameIndex;
   int get editingGlobalFrame;
   ValueNotifier<TimelineFrameRangeSelection?> get frameRangeSelection;

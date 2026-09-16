@@ -93,8 +93,8 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('1-finger vertical flip walks layers through the arrow '
-      'arbitration ids', (tester) async {
+  testWidgets('1-finger vertical flip walks layers through the arrow keys\' '
+      'own ids', (tester) async {
     final probes = await pumpEngine(tester);
 
     final finger = await tester.startGesture(
@@ -107,7 +107,7 @@ void main() {
     await finger.up();
     await tester.pump();
 
-    expect(probes.actions, contains('selection-nudge-up'));
+    expect(probes.actions, contains('layer-up'));
   });
 
   testWidgets('2-finger drag navigates (pan reaches the viewport); with '

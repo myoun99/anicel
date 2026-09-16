@@ -100,18 +100,18 @@ void main() {
     selection.bind(
       oldWorkspace,
       hasSelection: () => true,
-      nudge: (_, _) => calls.add('old'),
-      deselect: () {},
+      deselect: () => calls.add('old'),
     );
     selection.bind(
       newWorkspace,
       hasSelection: () => true,
-      nudge: (_, _) => calls.add('new'),
-      deselect: () {},
+      deselect: () => calls.add('new'),
     );
     selection.unbind(oldWorkspace);
 
-    selection.nudge(1, 0);
+    // F-86 took the nudge this example used to call; any handler on the
+    // channel answers the same owner question.
+    selection.deselect();
     expect(calls, ['new']);
   });
 }

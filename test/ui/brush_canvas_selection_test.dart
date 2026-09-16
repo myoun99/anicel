@@ -655,62 +655,13 @@ void main() {
     );
   });
 
-  testWidgets('P3a: an arrow-key nudge with the box open moves the '
-      'PICTURE, not just the outline', (tester) async {
-    // Caught by adversarial review, not by the suite. Once the preview is
-    // a resampled bitmap rather than a matrix evaluated in build, any
-    // mutation of the open warp that forgets to schedule a resample moves
-    // the ants and the box chrome while the artwork stays put — and Enter
-    // then lands the ink where the outline is, not where the picture was.
-    // Master could not have this bug: it recomputed the screen matrix on
-    // every build.
-    final env = await pumpSelectionPanel(tester);
-    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
-    await env.setTool(CanvasTool.move);
-
-    env.commands.beginTransform();
-    await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 24,
-      scale: 1,
-    );
-    await tester.pump();
-    final before = debugLastResampledFloat!.center;
-
-    await tester.runAsync(() async {
-      for (var i = 0; i < 10; i += 1) {
-        env.commands.nudge(1, 0);
-      }
-      // The decode from the rotation above is still in flight, so the
-      // nudges only mark the preview dirty; the callback runs the last
-      // state. Letting that settle is the realistic path, and asserting
-      // after it is what makes this test about the SCHEDULING rather than
-      // about how many resamples one drag happens to trigger.
-      //
-      // Waits for the EVENT, not for the clock. A fixed delay here failed
-      // in the full suite and passed on its own, which is the signature of
-      // a test that measures the machine: under load the resample had not
-      // landed in 100 ms. Polling for "the float moved at all" keeps the
-      // assertion honest — it can still be the wrong value, and a
-      // resample that never happens still times out and fails.
-      for (var waited = 0; waited < 60; waited += 1) {
-        if (debugLastResampledFloat!.center != before) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-    });
-    await tester.pump();
-
-    expect(
-      debugLastResampledFloat!.center.x,
-      before.x + 10,
-      reason: 'the resampled float must follow the nudge',
-    );
-    expect(debugLastResampledFloat!.center.y, before.y);
-  });
+  // ↩️「P3a: an arrow-key nudge with the box open moves the PICTURE, not just
+  // the outline」 stood here. It pinned the nudge's own `_preview.schedule()`
+  // — a mutation of the open warp that forgot to resample moved the ants
+  // while the artwork stayed put. The nudge is gone with its schedule call
+  // (F-86, 유저 2026-09-12: 「기능부터 잔존코드 싹 삭제」); the numbers and the
+  // handles that still move an open box are pinned by the resample tests
+  // above.
 
   testWidgets('the DEFAULT mode smooths — the guard that keeps the '
       'colour-preservation assertions from being vacuous', (tester) async {
@@ -1993,28 +1944,16 @@ void main() {
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
   });
 
-  testWidgets('click-away and Ctrl+D deselect; nudges move by one pixel', (
-    tester,
-  ) async {
+  testWidgets('click-away and Ctrl+D deselect', (tester) async {
     final env = await pumpSelectionPanel(tester);
 
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue);
 
-    // Arrow nudges move the SESSION's float only (R16-①); the confirm
-    // lands the accumulated result as one entry.
-    env.commands.nudge(1, 0);
-    env.commands.nudge(0, -1);
-    await tester.pump();
-    expect(env.commands.movePending, isTrue);
-    expect(inkAt(env.coordinator, 30, 30), 0, reason: 'origin erased');
-    env.commands.confirmPendingMove();
-    await tester.pump();
-    expect(
-      inkAt(env.coordinator, 31, 29),
-      isNonZero,
-      reason: 'pixels landed at the nudged position (+1,−1)',
-    );
+    // ↩️This test also nudged the session's float by one pixel and landed
+    // it with the confirm. The nudge is gone (F-86, 유저 2026-09-12:
+    // 「기능부터 잔존코드 싹 삭제」); a move session driven by a drag is pinned
+    // by the free-transform group below.
 
     // Ctrl+D (through the channel) deselects.
     env.commands.deselect();
@@ -2265,7 +2204,7 @@ void main() {
             'this defect — widen the marquee',
       );
 
-      // A NUDGE: the same picture, one pixel over.
+      // A SECOND MOVE: the same picture, ten pixels over.
       //
       // ⚠️ This test used to end differently, and the difference is the
       // point. It asserted that the nudge REBUILDS the float and that the
@@ -2282,18 +2221,22 @@ void main() {
       // and the offset is carried at draw time. So the invariant is no
       // longer "the rebuild can borrow" but "there is no rebuild", and
       // the defect the old assertion guarded cannot be expressed.
-      env.commands.nudge(1, 0);
+      //
+      // ↩️The second move was an arrow-key nudge. The nudge is gone (F-86,
+      // 유저 2026-09-12: 「기능부터 잔존코드 싹 삭제」), so it is a second drag
+      // through the same `_commitMove`.
+      await dragOnLayer(tester, const Offset(310, 258), const Offset(320, 258));
       await tester.pump();
-      final nudged = floatPainter();
+      final moved = floatPainter();
       expect(
-        identical(nudged.surface, lifted),
+        identical(moved.surface, lifted),
         isTrue,
         reason:
-            'a nudge rebuilt the float — it is a translation, not new '
+            'a second move rebuilt the float — it is a translation, not new '
             'pixels, and a rebuilt surface has no decoded tiles to paint',
       );
       var undecoded = 0;
-      for (final tile in nudged.surface.tiles.values) {
+      for (final tile in moved.surface.tiles.values) {
         if (BitmapTileImageCache.instance.imageFor(tile) == null) {
           undecoded += 1;
         }
@@ -2302,8 +2245,8 @@ void main() {
         undecoded,
         0,
         reason:
-            '$undecoded of the float\'s tiles cannot paint after a nudge; '
-            'the whole point of not rebuilding is that they already did',
+            '$undecoded of the float\'s tiles cannot paint after a second '
+            'move; the whole point of not rebuilding is that they already did',
       );
     });
 
@@ -3607,14 +3550,16 @@ void main() {
     await tester.pump();
 
     expect(env.commands.hasSelection, isTrue);
-    // The nudge lifts the lasso region's pixels into a pending session;
-    // the confirm lands them moved (+2,0) — the raster is the record.
-    env.commands.nudge(2, 0);
-    await tester.pump();
+    // A move drag lifts the lasso region's pixels into a pending session;
+    // the confirm lands them moved (+20,0) — the raster is the record.
+    // ↩️It was a (+2,0) arrow-key nudge until the nudge went (F-86, 유저
+    // 2026-09-12: 「기능부터 잔존코드 싹 삭제」).
+    await env.setTool(CanvasTool.move);
+    await dragOnLayer(tester, const Offset(40, 40), const Offset(60, 40));
     env.commands.confirmPendingMove();
     await tester.pump();
-    expect(inkAt(env.coordinator, 32, 30), isNonZero);
-    expect(inkAt(env.coordinator, 28, 30), 0);
+    expect(inkAt(env.coordinator, 50, 30), isNonZero);
+    expect(inkAt(env.coordinator, 30, 30), 0);
   });
 
   testWidgets('the ellipse shape drags out a round region, not a box', (
