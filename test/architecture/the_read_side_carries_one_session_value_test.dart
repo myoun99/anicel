@@ -26,8 +26,13 @@ void main() {
         'AnicelOpenResult',
       ],
     };
+    // ⚠️Anywhere in the line and with or without an initializer — a field
+    // declared as `final X resume = const {};`, or beside another on the
+    // same line, is the same field. The first shape of this pattern wanted
+    // the line to END in `resume;`, and a mutant with an initializer walked
+    // through it (2026-09-16).
     final ownField = RegExp(
-      r'^\s*final\s+\S.*\s(grants|mediaFingerprints|resume);\s*$',
+      r'\bfinal\s+[^;=]+\b(grants|mediaFingerprints|resume)\b\s*[=;]',
     );
     final offenders = <String>[];
     for (final entry in carriers.entries) {
