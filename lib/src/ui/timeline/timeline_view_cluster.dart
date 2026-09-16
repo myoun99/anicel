@@ -57,19 +57,21 @@ class TimelineViewCluster extends StatelessWidget {
 
   /// One −/+ button step (UI-R11 #11): multiplicative (×1.25) like editor
   /// zooms so a step feels equal at 4px and 96px, rounded to the whole-px
-  /// grid the slider already quantizes to, and never a no-op inside the
-  /// range.
-  double _steppedZoom({required bool zoomIn}) {
-    final scaled = zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25;
-    var next = scaled.roundToDouble();
-    if (next == pixelsPerFrame) {
-      next = zoomIn ? pixelsPerFrame + 1 : pixelsPerFrame - 1;
-    }
-    return next.clamp(
-      TimelineZoomLimits.minPixelsPerFrame,
-      TimelineZoomLimits.maxPixelsPerFrame,
-    );
-  }
+  /// grid the slider already quantizes to.
+  ///
+  /// ⛔THE ±1 FALLBACK IS GONE (2026-09-16). It read 「where ×1.25 lands back
+  /// on the same whole pixel, the step is that pixel」 — a guard against a
+  /// step that stands still. Measured across the WHOLE grid the quantizer
+  /// can produce ({2.4} ∪ 3…96): ×1.25 lands back on the same pixel only AT
+  /// THE TWO BOUNDS — 2.4 stepping out, 96 stepping in — and there the ±1
+  /// answer is the value the main line already gives, because
+  /// [TimelineZoomLimits.quantize] clamps. The branch could not change an
+  /// outcome, which is exactly why its mutant would not die: the gate said
+  /// so before anyone read the arithmetic.
+  double _steppedZoom({required bool zoomIn}) =>
+      TimelineZoomLimits.quantize(
+        zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25,
+      );
 
   /// R26 #42: the app's standard icon button — the disabled look is
   /// IconButton's own (no hand-mixed alpha), same as the canvas bar.
@@ -167,14 +169,20 @@ class TimelineViewCluster extends StatelessWidget {
             unit: '%',
             displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
             height: 18,
-            // Quantized to WHOLE pixels per frame (R4 #5): the raw drag
-            // emitted sub-pixel widths, rebuilding the entire grid many
-            // times per visually identical step — the drag felt heavy.
-            // The bar itself echoes the gesture smoothly either way.
+            // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of
+            // its length on 24→96px and left the whole narrow half — the
+            // half the user zooms out into — inside its first few pixels.
+            // Equal travel is equal RATIO here, as it is on every editor
+            // zoom in the app.
+            scale: FieldSliderScale.exponential,
+            // Quantized by the range's own law (R4 #5 kept: a sub-pixel
+            // drag above 1px rebuilt the entire grid for a visually
+            // identical step). The bar echoes the gesture smoothly either
+            // way.
             onChanged: onPixelsPerFrameChanged == null
                 ? null
                 : (value) {
-                    final stepped = value.roundToDouble();
+                    final stepped = TimelineZoomLimits.quantize(value);
                     if (stepped != pixelsPerFrame) {
                       onPixelsPerFrameChanged!(stepped);
                     }
