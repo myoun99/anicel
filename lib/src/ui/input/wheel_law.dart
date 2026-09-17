@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../canvas/canvas_touch_contacts.dart';
+
 /// 🚨★★★ ONE NOTCH, ONE CONSUMER (H23, 유저 2026-08-23: 「휠 줌이 패널과 띠에서
 /// 동시 발동」).
 ///
@@ -28,6 +30,32 @@ import 'package:flutter/widgets.dart';
 /// * [PlaybackActuationGate], whose whole law is that the first actuation of
 ///   any kind STOPS playback. It has to see every notch, including the ones a
 ///   deeper surface is about to win.
+///
+/// 🚨★★★**A WHEEL THAT A FINGER MADE IS NOBODY'S NOTCH** (유저 실기
+/// 2026-09-17, 보조 손가락 핀치 줌 스냅: 「100다음 200인데 **110**에 간다거나.
+/// 200다음 300인데 200에서 **220**에 가고 300간다거나. **1프레임정도 그렇게
+/// 튀는 순간이있음**」).
+///
+/// 110 and 220 are the stop times 1.1 — one notch of the canvas's wheel
+/// zoom. Windows promotes a touch PINCH to a legacy `mouse scroll` at the
+/// centroid and Flutter delivers it (the user's capture in
+/// [CanvasTouchContacts], 2026-08-23: 「mouse scroll #0 ← the pinch, promoted
+/// to a WHEEL」). The touch engine was holding the view on a stop; the echo
+/// zoomed the LIVE view a notch through a road that knows nothing of the
+/// constraint, and the engine's next update put the stop back — one frame
+/// of a zoom nobody asked for. A free pinch took the same blip (🧪150% →
+/// 165% in the pin), and a bar under the parked cursor stepped.
+///
+/// So while a finger is on the glass — ANYWHERE in the app: Windows parks
+/// the echo at the centroid, whichever panel that is over — the surface
+/// under the pointer still TAKES the notch, and drops it. ⛔Taking it is
+/// the point: a surface that stood aside would hand the echo to whatever
+/// registers next.
+///
+/// ⛔ONLY WHILE A FINGER IS DOWN — no time window after the lift. It is the
+/// rule the promoted mouse that may not aim a tool already keeps
+/// (`promoted_touch_aim_policy.dart`), for its reason: the contacts being
+/// DOWN is a fact, "recently" was a guess that swallowed real input.
 void handleWheelExclusively(
   PointerSignalEvent event,
   void Function(PointerScrollEvent event) handle,
@@ -35,8 +63,9 @@ void handleWheelExclusively(
   if (event is! PointerScrollEvent) {
     return;
   }
+  final echoOfATouch = CanvasTouchContacts.appWideCount > 0;
   GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
-    if (resolved is PointerScrollEvent) {
+    if (resolved is PointerScrollEvent && !echoOfATouch) {
       handle(resolved);
     }
   });
