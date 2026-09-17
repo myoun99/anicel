@@ -14,6 +14,7 @@ import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
@@ -300,6 +301,7 @@ class _HomePageState extends State<HomePage> {
       // before the first frame, because a late restore would lay the
       // window out at 100% and then jump.
       uiScaleStore: _unlessTesting(AppUiScaleStore.new),
+      onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
     );
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.

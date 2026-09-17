@@ -11,6 +11,8 @@ import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
+import 'package:anicel/src/services/persistence/app_onion_skin_settings_store.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
@@ -23,7 +25,9 @@ import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/models/app_workspace_colors.dart';
 
-/// The seven app-level settings families the session hands to
+import '../../helpers/library_source.dart';
+
+/// The EIGHT app-level settings families the session hands to
 /// `EditorAppSettings`: each has to be persisted through ITS OWN injected
 /// store and read back by the next session.
 ///
@@ -60,6 +64,7 @@ void main() {
       'memory',
       'av',
       'uiscale',
+      'onion',
     ];
     String path(String name) => '${directory.path}/$name.json';
 
@@ -73,6 +78,9 @@ void main() {
       memorySettingsStore: AppMemorySettingsStore(filePath: path('memory')),
       audioSyncSettingsStore: AudioSyncSettingsStore(filePath: path('av')),
       uiScaleStore: AppUiScaleStore(filePath: path('uiscale')),
+      onionSkinSettingsStore: AppOnionSkinSettingsStore(
+        filePath: path('onion'),
+      ),
     );
 
     final first = openSession();
@@ -104,6 +112,29 @@ void main() {
     // `store.save` in `EditorAppSettings.setUiScale` was green until this
     // line existed — the setting could have stopped persisting entirely
     // while the Preferences row went on looking like it worked.
+    // 🚨★★★F-150 (유저 2026-09-16): 「어니언 패널에서 세팅한 값이 **세션으로서
+    // 저장안됨. 세션이라기보다 유저설정?**」 — the eighth family, and the only
+    // one whose live value is NOT app-wide: it lives on the session's
+    // `onionSkin` because that is the object that plans with it
+    // (ARCH-session-state). ⇒ no reset is needed below, and the second
+    // session's own notifier is what has to come back carrying it.
+    appSettingsOf(first).setOnionSkinSettings(
+      const OnionSkinSettings(
+        beforePegs: [
+          OnionPeg(opacity: 0.9),
+          OnionPeg(opacity: 0.5),
+          OnionPeg(opacity: 0),
+          OnionPeg(opacity: 0),
+          OnionPeg(opacity: 0),
+          OnionPeg(opacity: 0),
+          OnionPeg(opacity: 0),
+          OnionPeg(opacity: 0),
+        ],
+        tintAfter: 0xFF0000FF,
+        mode: OnionSkinMode.images,
+        step: OnionSkinStep.frames,
+      ),
+    );
     first.setUiScale(1.25);
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
@@ -148,6 +179,21 @@ void main() {
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
+    // The onion's live value is the SESSION's, so it is read off the second
+    // session rather than an app-wide notifier — and nothing had to be reset
+    // for that to mean something.
+    await _settleUntil(
+      () => second.onionSkin.settings.value.mode == OnionSkinMode.images,
+    );
+    expect(second.onionSkin.settings.value.beforePegs.first.opacity, 0.9);
+    expect(second.onionSkin.settings.value.beforePegs[1].opacity, 0.5);
+    expect(second.onionSkin.settings.value.tintAfter, 0xFF0000FF);
+    expect(second.onionSkin.settings.value.step, OnionSkinStep.frames);
+    expect(
+      second.onionSkin.settings.value.beforePegs.length,
+      OnionSkinSettings.maxPegs,
+      reason: '⛔every slot exists — the panel draws all of them',
+    );
   });
 
   test('a set that changes nothing notifies nobody — the guard the seven '
@@ -205,6 +251,28 @@ void main() {
     expect(AppColors.accentSettings.value, const AppAccentSettings());
     expect(AppWorkspaceColors.settings.value, const AppWorkspaceColors());
     expect(appSettingsOf(session).audioSyncSettings.value, AudioSyncSettings.defaults);
+  });
+
+  /// ⛔**THE PANEL MUST NOT WRITE THE NOTIFIER.** 🧪A mutant that put
+  /// `onionSkin.settings.value = next` back in the workspace tab SURVIVED the
+  /// behaviour test above — of course it did: that test calls the setter
+  /// itself. And a panel that writes the live value directly is EXACTLY the
+  /// bug 유저 reported (「세팅한 값이 저장안됨」): the setting works all
+  /// session and is gone on the next launch.
+  test('the onion panel changes through the setter, never the notifier', () {
+    final source = librarySource('lib/src/ui/workspace/workspace_tabs.dart');
+    expect(
+      source,
+      contains('setOnionSkinSettings('),
+      reason: 'the panel\'s onChanged goes through the persisting setter',
+    );
+    expect(
+      source,
+      isNot(contains('onionSkin.settings.value =')),
+      reason:
+          '⛔a direct write publishes and saves NOTHING — it is the shape of '
+          'F-150 itself',
+    );
   });
 }
 

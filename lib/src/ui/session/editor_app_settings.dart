@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../../services/persistence/app_accent_settings_store.dart';
+import '../../services/persistence/app_onion_skin_settings_store.dart';
 import '../../services/persistence/app_input_settings_store.dart';
 import '../../services/persistence/app_language_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart';
@@ -18,6 +19,7 @@ import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
+import '../../models/onion_skin_settings.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/app_workspace_colors.dart';
 import '../ui_scale.dart';
@@ -48,6 +50,7 @@ class EditorAppSettings {
     AppMemorySettingsStore? memorySettingsStore,
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppUiScaleStore? uiScaleStore,
+    AppOnionSkinSettingsStore? onionSkinSettingsStore,
   }) : _languageSettingsStore = languageSettingsStore,
        _accentSettingsStore = accentSettingsStore,
        _workspaceColorsStore = workspaceColorsStore,
@@ -55,7 +58,8 @@ class EditorAppSettings {
        _saveSettingsStore = saveSettingsStore,
        _memorySettingsStore = memorySettingsStore,
        _audioSyncSettingsStore = audioSyncSettingsStore,
-       _uiScaleStore = uiScaleStore;
+       _uiScaleStore = uiScaleStore,
+       _onionSkinSettingsStore = onionSkinSettingsStore;
 
   /// Starts all six restores, in the order the session started them in.
   ///
@@ -70,8 +74,56 @@ class EditorAppSettings {
     unawaited(_restoreSaveSettings());
     unawaited(_restoreMemorySettings());
     unawaited(_restoreAudioSyncSettings());
+    unawaited(_restoreOnionSkinSettings());
   }
 
+
+  // --- Onion skin (F-150) ---------------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppOnionSkinSettingsStore? _onionSkinSettingsStore;
+
+  /// The live value, handed over by the session.
+  ///
+  /// ⚠️SET IN THE SESSION'S CONSTRUCTOR BODY, not passed in: `OnionSkin` is
+  /// `late final` on the session and this object is built in that same
+  /// initializer list, where `this` cannot be reached at all. Null until
+  /// then, and null forever in a host that has no onion skin — both of
+  /// which the two methods below simply stand down for.
+  ValueNotifier<OnionSkinSettings>? _onionSkinSettings;
+
+  /// Hands the live notifier over. ⛔Before [restore], or the restore has
+  /// nothing to write into.
+  void attachOnionSkin(ValueNotifier<OnionSkinSettings> live) {
+    _onionSkinSettings = live;
+  }
+
+  /// 🚨★★★F-150 (유저 2026-09-16): 「어니언 패널에서 세팅한 값이 **세션으로서
+  /// 저장안됨. 세션이라기보다 유저설정?**」 — so it restores and persists here,
+  /// beside the accents, through the same [_publish] the other seven use.
+  ///
+  /// ⛔**WHO OWNS THE LIVE VALUE DID NOT CHANGE.** `OnionSkin` still holds it
+  /// because it is the object that PLANS with it (ARCH-session-state's first
+  /// family, 2026-09-16 — the decision is written at the field). Moving it
+  /// here to persist it would have traded one law for another.
+  Future<void> _restoreOnionSkinSettings() async {
+    final live = _onionSkinSettings;
+    if (live == null) {
+      return;
+    }
+    final restored = await _onionSkinSettingsStore?.load();
+    if (restored != null) {
+      live.value = restored;
+    }
+  }
+
+  void setOnionSkinSettings(OnionSkinSettings settings) {
+    final live = _onionSkinSettings;
+    if (live == null) {
+      return;
+    }
+    _publish(live, settings, _onionSkinSettingsStore?.save);
+  }
   // --- UI scale (R11) -------------------------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory default.

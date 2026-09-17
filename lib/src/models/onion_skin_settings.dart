@@ -95,6 +95,67 @@ class OnionSkinSettings {
   final OnionSkinMode mode;
   final OnionSkinStep step;
 
+
+  /// 🚨★★★**F-150 — 어니언 값은 유저 설정이다.** 유저 2026-09-16: 「어니언
+  /// 패널에서 세팅한 값이 **세션으로서 저장안됨. 세션이라기보다 유저설정?**」.
+  /// It is: a light-table shape is how the animator works, not what the
+  /// project holds — so it rides with the app, beside the accents and the
+  /// input settings ([AppOnionSkinSettingsStore]).
+  ///
+  /// ⛔The pegs are written as PLAIN OPACITIES, not objects: [OnionPeg] is
+  /// one number and 「opacity 0 IS the off switch」 is the class's own law, so
+  /// a `{"opacity": …}` wrapper would be a second spelling of nothing.
+  /// ⚠️A file whose list is short or long is read to [maxPegs] all the same —
+  /// the panel shows every slot at once, so a settings file from a build
+  /// with a different count must not leave it with fewer boxes than rows.
+  Map<String, dynamic> toJson() => {
+    'beforePegs': [for (final peg in beforePegs) peg.opacity],
+    'afterPegs': [for (final peg in afterPegs) peg.opacity],
+    'tintBefore': tintBefore,
+    'tintAfter': tintAfter,
+    'mode': mode.name,
+    'step': step.name,
+  };
+
+  static OnionSkinSettings fromJson(Map<String, dynamic> json) {
+    const fallback = OnionSkinSettings();
+    return OnionSkinSettings(
+      beforePegs: _pegsFrom(json['beforePegs'], fallback.beforePegs),
+      afterPegs: _pegsFrom(json['afterPegs'], fallback.afterPegs),
+      tintBefore: json['tintBefore'] is int
+          ? json['tintBefore'] as int
+          : fallback.tintBefore,
+      tintAfter: json['tintAfter'] is int
+          ? json['tintAfter'] as int
+          : fallback.tintAfter,
+      mode: _enumFrom(OnionSkinMode.values, json['mode'], fallback.mode),
+      step: _enumFrom(OnionSkinStep.values, json['step'], fallback.step),
+    );
+  }
+
+  /// [maxPegs] pegs, whatever the file holds: missing ones take the
+  /// default's, extra ones are dropped.
+  static List<OnionPeg> _pegsFrom(Object? raw, List<OnionPeg> fallback) {
+    if (raw is! List) {
+      return fallback;
+    }
+    return [
+      for (var i = 0; i < maxPegs; i += 1)
+        if (i < raw.length && raw[i] is num)
+          OnionPeg(opacity: (raw[i] as num).toDouble().clamp(0.0, 1.0))
+        else
+          fallback[i],
+    ];
+  }
+
+  static T _enumFrom<T extends Enum>(List<T> values, Object? raw, T fallback) {
+    for (final value in values) {
+      if (value.name == raw) {
+        return value;
+      }
+    }
+    return fallback;
+  }
   OnionSkinSettings copyWith({
     List<OnionPeg>? beforePegs,
     List<OnionPeg>? afterPegs,

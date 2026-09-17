@@ -567,7 +567,7 @@ class _WorkspaceTabs {
               settings: settings,
               currentColorOf: () => _state._brushTool.value.color,
               onChanged: (next) =>
-                  _state.widget.session.onionSkin.settings.value = next,
+                  _state.widget.session.appSettings.setOnionSkinSettings(next),
             ),
           ),
         );
