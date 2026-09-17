@@ -55,13 +55,13 @@ int brushStrokePreviewRasterWidth(
 /// never a re-raster, which is what un-jams the brush list's scroll. The
 /// image bakes alpha only; the theme color tints it at paint time.
 class BrushStrokePreview extends StatefulWidget {
-  const BrushStrokePreview({super.key, required this.settings, this.overlay});
+  const BrushStrokePreview({super.key, required this.settings});
 
   final BrushSettings settings;
 
-  /// Laid over the sample: the row's name label (`BrushNameLabel`, F-82),
-  /// placed by the row.
-  final Widget? overlay;
+  /// 🪦An `overlay` slot stood here — the row's name label, laid over the
+  /// sample. F-82 (2026-09-16) gave the name a band of its own under the
+  /// stroke (유저: 「이름 공간 따로 할당」), and this was its only caller.
 
   @override
   State<BrushStrokePreview> createState() => _BrushStrokePreviewState();
@@ -156,7 +156,6 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         final rasterHeight = (height * devicePixelRatio).round();
         _resolve(rasterWidth, rasterHeight);
         final sample = _sample;
-        final overlay = widget.overlay;
         // 🚨THE PICTURE WE ALREADY HAVE STAYS UP while the next rung bakes
         // (유저 2026-09-10: 「재로드인가 재계산되던데」 — the blank-then-pop was
         // half of what that looked like). It is the same brush drawn at a
@@ -165,14 +164,8 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         // recycled onto another preset must never show the old brush.
         if (sample == null || _sampleSettings != widget.settings) {
           // The sample pops in when its raster lands; the box holds the
-          // row's layout meanwhile. ⚠️The OVERLAY does not wait for it — a
-          // list of blank rows tells the user nothing about which brush is
-          // which, so the name writes on the bare row until the ink arrives.
-          return SizedBox(
-            width: width.toDouble(),
-            height: height.toDouble(),
-            child: overlay,
-          );
+          // row's layout meanwhile.
+          return SizedBox(width: width.toDouble(), height: height.toDouble());
         }
         // ⛔NOT `ColorFiltered`, which is the same tint at a wildly
         // different price. That widget is a `ColorFilterLayer`, and
@@ -188,7 +181,7 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
         // allocates no layer at all. The premultiplied-white contract
         // the raster is built under (see BrushStrokePreviewCache) is
         // what makes srcIn mean the same thing either way.
-        final picture = RawImage(
+        return RawImage(
           image: sample.image,
           width: width.toDouble(),
           height: height.toDouble(),
@@ -197,10 +190,6 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
           color: strokeInk,
           colorBlendMode: BlendMode.srcIn,
         );
-        if (overlay == null) {
-          return picture;
-        }
-        return Stack(fit: StackFit.expand, children: [picture, overlay]);
       },
     );
   }

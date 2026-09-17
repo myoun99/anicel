@@ -16,12 +16,54 @@ const double brushPresetCellTargetWidth = 130.0;
 /// than the panel more useful.
 const int brushPresetMaxColumns = 4;
 
-/// The height one preset cell takes.
+/// The FLOOR a preset cell stands on: what the tip icon needs, and what
+/// every view but one has always measured.
+const double brushPresetRowHeight = 34.0;
+
+/// The gap a cell insets itself by, so two cells do not touch. ⚠️It is part
+/// of the ALLOTMENT and not of what gets drawn — the grid hands out
+/// [brushPresetRowHeightFor] and the row draws inside it less this twice.
+const double brushPresetCellGap = 1.0;
+
+/// The breathing room inside the drawn row, above and below its right area.
+const double brushPresetRowPadding = 2.0;
+
+/// The stroke sample's own height — 「크기는 지금과같음」 (유저 2026-09-16).
 ///
-/// ⚠️ONE NUMBER, because the cell is DRAWN at it and the drop slot is
+/// 🔬It is written as what it HAS been rather than a fresh number: 34 less
+/// the gap and the padding, twice each, is the 28 the sample has measured
+/// since the row was built. ⛔A leftover ("whatever the name does not take")
+/// would have shrunk the sample by exactly the band F-82 adds.
+const double brushPresetStrokeBandHeight =
+    brushPresetRowHeight - (brushPresetCellGap + brushPresetRowPadding) * 2;
+
+/// The band the NAME writes in, under the stroke (F-82).
+const double brushPresetNameBandHeight = 14.0;
+
+/// The height one preset cell is ALLOTTED, in the view it is drawn in.
+///
+/// ⚠️ONE ANSWER, because the cell is DRAWN at it and the drop slot is
 /// COMPUTED from it — two copies would aim the drag at a different gap than
 /// the one on screen.
-const double brushPresetRowHeight = 34.0;
+///
+/// 🚨★★★F-82 (유저 2026-09-16: 「이름 공간 따로 할당 … 위에 스트로크 프리뷰
+/// (크기는 지금과같음), 아래를 브러시 이름」). The right area stacks what the
+/// view has turned on, so a cell is as tall as its contents — and never
+/// shorter than the floor, which is what keeps every OTHER view exactly the
+/// height it already was: a stroke alone lands back on 34 to the pixel, and
+/// a bare tip or a lone name is held up by the floor.
+double brushPresetRowHeightFor({
+  required bool showName,
+  required bool showStrokePreview,
+}) {
+  final stacked =
+      (showStrokePreview ? brushPresetStrokeBandHeight : 0.0) +
+      (showName ? brushPresetNameBandHeight : 0.0);
+  return math.max(
+    brushPresetRowHeight,
+    stacked + (brushPresetCellGap + brushPresetRowPadding) * 2,
+  );
+}
 
 /// How long a cell takes to slide to its new slot during a REORDER.
 ///

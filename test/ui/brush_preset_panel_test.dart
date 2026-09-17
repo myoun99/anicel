@@ -1493,28 +1493,120 @@ void main() {
     expect(find.byType(BrushStrokePreview), findsOneWidget);
   });
 
-  testWidgets('🚨the name rides the stroke, DEAD CENTRE (H38)', (
-    tester,
-  ) async {
-    // 유저 2026-09-08 put the name over the stroke 「중앙 살짝아래」 — it used
-    // to sit at `centerRight` on a 78%-alpha plate — and 2026-09-11 (H38)
-    // moved it: 「텍스트 위치도 중앙아래가 아니라 완전중앙으로 해보자」.
-    // It still rides the stroke — on its plate again since F-82, centred.
+  /// 🚨★★★**F-82 — 이름은 제 칸을 갖는다.** 유저 2026-09-16: 「이것도
+  /// 아닌거같음. 그냥 **이름 공간 따로 할당**해서 두는게 좋아보임. 팁 프리뷰는
+  /// 왼쪽영역의 중앙정렬로 지금처럼 두는데, **오른쪽영역을 위에 스트로크
+  /// 프리뷰**(크기는 지금과같음), **아래를 브러시 이름**으로 위아래 영역 나눠서
+  /// 두도록. 브러시 이름 … 글자크기는 지금보다 **더 작아도될듯**. 이렇게 하고
+  /// **글자 뒤에 바탕넣은건 삭제**」.
+  ///
+  /// ↩️**뒤집힌 것 둘**, 그래서 여기 적어 둔다 — 안 적으면 다음에 읽는 쪽이 더
+  /// 오래된 답을 고른다. ①H38(2026-09-11)의 「텍스트 위치도 중앙아래가 아니라
+  /// **완전중앙**」은 이름이 **스트로크 위에 있을 때**의 자리였다. 이제 위에
+  /// 있지 않다. ②F-82 앞 라운드(09-11 19:28)가 되살린 **판(78% 알파 배경)**은
+  /// 「스트로크 위에서 안 읽힌다」의 답이었고, 칸을 나눈 지금은 읽을 것을 가릴
+  /// 스트로크가 없다 — 유저가 바로 그 판을 지우라고 했다.
+  ///
+  /// ⛔살아남은 법: **한 이름 UI**(「스트로크 프리뷰 없앨때의 이름이랑 있을떄의
+  /// 이름이랑 텍스트 ui가 다르지않도록 통일」) — 판만 빠지고 통일은 그대로다.
+  testWidgets('🚨F-82: the name has a band of its own UNDER the stroke, and '
+      'the tip sits centred beside them', (tester) async {
     await _pumpPanel(tester, presets: [_calligraphy()]);
 
     expect(
-      tester.getCenter(find.text('Calligraphy')),
-      tester.getCenter(find.byType(BrushStrokePreview)),
-      reason: '「중앙아래가 아니라 완전중앙」',
+      find.descendant(
+        of: find.byType(BrushStrokePreview),
+        matching: find.byType(BrushNameLabel),
+      ),
+      findsNothing,
+      reason:
+          '「이름 공간 따로 할당」 — a name laid OVER the stroke is the thing '
+          'being replaced, not a different spelling of it',
+    );
+
+    final stroke = tester.getRect(find.byType(BrushStrokePreview));
+    final name = tester.getRect(find.byType(BrushNameLabel));
+    expect(
+      name.top,
+      greaterThanOrEqualTo(stroke.bottom),
+      reason: '「위에 스트로크 프리뷰, 아래를 브러시 이름」',
+    );
+    expect(
+      name.left,
+      closeTo(stroke.left, 0.01),
+      reason: 'the two share the RIGHT AREA — one column, split top/bottom',
+    );
+
+    final tip = tester.getRect(find.byType(BrushTipPreview));
+    expect(
+      tip.right,
+      lessThanOrEqualTo(stroke.left),
+      reason: '「팁 프리뷰는 왼쪽영역」',
+    );
+    final row = tester.getRect(
+      find.byKey(
+        ValueKey<String>('brush-preset-chip-${_calligraphy().id.value}'),
+      ),
+    );
+    expect(
+      tip.center.dy,
+      closeTo(row.center.dy, 0.51),
+      reason: '「왼쪽영역의 중앙정렬로 지금처럼」 — the tip stays centred as the '
+          'row grows a band under the stroke',
     );
   });
 
-  testWidgets('🚨F-82: the name is ONE label in both rows — a plate under it, '
-      'and the row\'s own fixed ink', (tester) async {
-    // 유저 2026-09-11 19:28: 「스트로크 프리뷰에 있는 브러시 이름, 지금도
-    // 보기힘드니까 그냥 예전처럼 텍스트 배경색으로 뭔가 두고, 그 위에 고정색
-    // 텍스트 두도록. 그리고 스트로크 프리뷰 없앨때의 브러시 이름이랑 있을떄의
-    // 이름이랑 텍스트 ui가 다른데 다르지않도록 통일」.
+  testWidgets('🚨F-82: the stroke keeps the size it had, and the row grows '
+      'by the band instead', (tester) async {
+    await _pumpPanel(tester, presets: [_calligraphy()]);
+
+    expect(
+      tester.getRect(find.byType(BrushStrokePreview)).height,
+      brushPresetStrokeBandHeight,
+      reason:
+          '유저: 「스트로크 프리뷰(크기는 지금과같음)」 — 28 은 이 라운드 전에 '
+          '이 샘플이 재던 값이다(할당 34 − 셀 간격 1 − 안쪽 여백 2, 위아래)',
+    );
+    expect(
+      tester
+          .getRect(
+            find.byKey(
+              ValueKey<String>('brush-preset-entry-${_calligraphy().id.value}'),
+            ),
+          )
+          .height,
+      brushPresetRowHeightFor(showName: true, showStrokePreview: true),
+      reason:
+          '⛔그리는 높이와 드롭 슬롯이 **같은 한 수**를 읽는다 — 둘이 갈리면 '
+          '드래그가 화면에 없는 틈을 겨눈다',
+    );
+    expect(
+      brushPresetRowHeightFor(showName: false, showStrokePreview: true),
+      brushPresetRowHeight,
+      reason:
+          '⛔이름을 끈 행은 **한 픽셀도 안 바뀐다** — 띠를 더한 것이지 행을 '
+          '새로 잰 것이 아니다',
+    );
+  });
+
+  testWidgets('🚨F-82: nothing is painted behind the name any more', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, presets: [_calligraphy()]);
+
+    expect(
+      find.descendant(
+        of: find.byType(BrushNameLabel),
+        matching: find.byType(DecoratedBox),
+      ),
+      findsNothing,
+      reason: '유저: 「글자 뒤에 바탕넣은건 삭제」',
+    );
+  });
+
+  testWidgets('🚨F-82: the name is smaller, and ONE ui in both views', (
+    tester,
+  ) async {
     Future<void> toggle(String keyValue) async {
       await tester.tap(
         find.byKey(const ValueKey<String>('brush-preset-menu-button')),
@@ -1532,39 +1624,30 @@ void main() {
     final scheme = Theme.of(
       tester.element(find.byType(BrushPresetPanel)),
     ).colorScheme;
-    Finder labelOf(String name) =>
-        find.ancestor(of: find.text(name), matching: find.byType(BrushNameLabel));
     TextStyle? styleOf(String name) => tester
         .widget<Text>(
-          find.descendant(of: labelOf(name), matching: find.text(name)),
+          find.descendant(
+            of: find.ancestor(
+              of: find.text(name),
+              matching: find.byType(BrushNameLabel),
+            ),
+            matching: find.text(name),
+          ),
         )
         .style;
 
+    final withStroke = styleOf('Marker');
     expect(
-      find.descendant(
-        of: find.byType(BrushStrokePreview),
-        matching: find.byType(BrushNameLabel),
-      ),
-      findsNWidgets(2),
-      reason: 'the name over the stroke is the label',
+      withStroke?.fontSize,
+      lessThan(12),
+      reason: '유저: 「글자크기는 지금보다 더 작아도될듯」 — 12 was the size',
     );
-    final overStroke = styleOf('Marker');
-    expect(overStroke?.color, scheme.onSurface, reason: 'the selected row');
+    expect(withStroke?.color, scheme.onSurface, reason: 'the selected row');
     expect(styleOf('Calligraphy')?.color, scheme.onSurfaceVariant);
     expect(
-      overStroke?.foreground,
+      withStroke?.foreground,
       isNull,
       reason: '「고정색」 — one ink, not runs that follow the stroke',
-    );
-    final plate = tester.widget<DecoratedBox>(
-      find
-          .descendant(of: labelOf('Marker'), matching: find.byType(DecoratedBox))
-          .first,
-    );
-    expect(
-      (plate.decoration as ShapeDecoration).color,
-      scheme.surfaceContainerHigh.withValues(alpha: 0.78),
-      reason: '「예전처럼 텍스트 배경색」 — the plate in the row\'s own colour',
     );
 
     await toggle('brush-preset-view-stroke-toggle');
@@ -1576,8 +1659,8 @@ void main() {
     );
     expect(
       styleOf('Marker'),
-      overStroke,
-      reason: '「텍스트 ui가 다른데 다르지않도록 통일」',
+      withStroke,
+      reason: '「텍스트 ui가 다른데 다르지않도록 통일」 — 살아남은 법',
     );
   });
 }

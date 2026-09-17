@@ -979,7 +979,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       key: const ValueKey<String>('brush-preset-list'),
       scrollController: _scrollController,
       itemCount: visible.length,
-      cellHeight: brushPresetRowHeight,
+      cellHeight: brushPresetRowHeightFor(
+        showName: _showName,
+        showStrokePreview: _showStrokePreview,
+      ),
       cellTargetWidth: tipsOnly
           ? _BrushPresetRow.tipsOnlyWidth
           : brushPresetCellTargetWidth,
@@ -1417,7 +1420,7 @@ class _BrushPresetRow extends StatelessWidget {
   Widget _build(BuildContext context, {required bool selected}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.symmetric(vertical: brushPresetCellGap),
       child: Material(
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
         shape: AppShapes.container(AppShapes.windowRadius),
@@ -1427,7 +1430,16 @@ class _BrushPresetRow extends StatelessWidget {
           customBorder: AppShapes.container(AppShapes.windowRadius),
           onTap: onApplied == null ? null : () => onApplied!(preset),
           child: SizedBox(
-            height: brushPresetRowHeight,
+            // The ALLOTMENT less the gap this cell insets itself by — the
+            // height actually drawn in. ⛔Written out rather than left to
+            // the constraint to clamp: a silent clamp is what hid the two
+            // pixels the name band overflowed by when F-82 was wired up.
+            height:
+                brushPresetRowHeightFor(
+                  showName: showName,
+                  showStrokePreview: showStrokePreview,
+                ) -
+                brushPresetCellGap * 2,
             child: Row(
               children: [
                 SizedBox(
@@ -1472,35 +1484,48 @@ class _BrushPresetRow extends StatelessWidget {
     );
   }
 
+  /// The RIGHT AREA: a column of what the view has turned on.
+  ///
+  /// 🚨★★★F-82 (유저 2026-09-16): 「팁 프리뷰는 왼쪽영역의 중앙정렬로 지금처럼
+  /// 두는데, **오른쪽영역을 위에 스트로크 프리뷰**(크기는 지금과같음), **아래를
+  /// 브러시 이름**으로 위아래 영역 나눠서 두도록」.
+  ///
+  /// ↩️The name used to be laid OVER the stroke — `BrushStrokePreview` had an
+  /// `overlay` slot for exactly this and nothing else, so the slot went with
+  /// it. Every shape the name went through while it rode the stroke is in
+  /// [BrushNameLabel]'s own note; none of them made it readable, which is
+  /// why it has a band now instead of a treatment.
+  ///
+  /// ⛔The stroke's height is [brushPresetStrokeBandHeight], not what is left
+  /// after the name: 「크기는 지금과같음」. The ROW grows by the band instead
+  /// ([brushPresetRowHeightFor]), which is the same one answer the drop slot
+  /// is computed from.
+  ///
+  /// ⚠️CENTRED, not top-aligned, so the two views agree: with both bands on
+  /// the column exactly fills the cell and centring changes nothing, and with
+  /// the name alone it sits where the old row wrote it rather than clinging
+  /// to the top of a cell sized for a tip.
   Widget _rowBody(ColorScheme colorScheme, {required bool selected}) {
-    // 🚨F-82: ONE label in both rows — see [BrushNameLabel] for the plate,
-    // the fixed ink and every shape the name went through before it. What
-    // the row keeps is WHERE: at the start of a row that has nothing else
-    // to say, dead centre over a stroke (H38: 「완전중앙」).
-    final label = showName
-        ? BrushNameLabel(name: preset.name, selected: selected)
-        : null;
-    if (!showStrokePreview) {
-      if (label == null) {
-        return const SizedBox.shrink();
-      }
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(padding: const EdgeInsets.only(left: 2), child: label),
-      );
+    if (!showName && !showStrokePreview) {
+      return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: BrushStrokePreview(
-        settings: preset.settings,
-        overlay: label == null
-            ? null
-            : Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: label,
-                ),
-              ),
+      padding: const EdgeInsets.symmetric(vertical: brushPresetRowPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (showStrokePreview)
+            SizedBox(
+              height: brushPresetStrokeBandHeight,
+              child: BrushStrokePreview(settings: preset.settings),
+            ),
+          if (showName)
+            SizedBox(
+              height: brushPresetNameBandHeight,
+              child: BrushNameLabel(name: preset.name, selected: selected),
+            ),
+        ],
       ),
     );
   }
