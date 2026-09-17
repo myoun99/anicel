@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/frame.dart';
@@ -322,29 +321,14 @@ class FrameVerbs {
   int get currentFrameIndex =>
       _controllers.timelineController.currentFrameIndex;
 
-  /// Steps the playhead one frame back (flipping `,`) — a committed seek,
-  /// clamped at the cut start.
+  /// Steps the playhead one frame back (flipping `,`) — a committed seek.
   void selectPreviousFrame() {
-    final current = _controllers.timelineController.currentFrameIndex;
-    if (current <= 0) {
-      return;
-    }
-    _selection.selectFrameIndex(current - 1);
+    _stepOneFrame(forward: false);
   }
 
-  /// Steps the playhead one frame forward (flipping `.`), clamped at the
-  /// cut's last frame.
+  /// Steps the playhead one frame forward (flipping `.`).
   void selectNextFrame() {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      return; // Gap state: no cut axis to flip along.
-    }
-    final last = math.max(0, cut.duration - 1);
-    final current = _controllers.timelineController.currentFrameIndex;
-    if (current >= last) {
-      return;
-    }
-    _selection.selectFrameIndex(current + 1);
+    _stepOneFrame(forward: true);
   }
 
   /// 🚨★★★플립이 **어디에 내리는가** — 한 곳에서 정한다.
@@ -359,8 +343,14 @@ class FrameVerbs {
   /// 유저: 「fx 헤더, 멤버 행에 서있을때 화살표 플립으로 **컷 길이 넘어가는게
   /// 불가능** … 또 몇번째인지 모를 지긋지긋한 **통일미스**」. 맞았다.
   ///
-  /// ⚠️[selectNextFrame]·[selectPreviousFrame] 은 **컷 안에 갇힌 한 프레임
-  /// 이동**이고 그건 그것대로 옳다(플립이 아닌 호출자가 쓴다). 플립은 이쪽이다.
+  /// ↩️**뒤집혔다 — F-148** (유저 2026-09-16: 「컨트롤+화살표로 1프레임 이동이
+  /// **안먹힐때가 있는듯**. 로직 싹 점검하고 **법 통일할거 통일해서
+  /// 근본/구조적해결**」). 여기엔 「[selectNextFrame]·[selectPreviousFrame] 은
+  /// 컷 안에 갇힌 한 프레임 이동이고 그건 그것대로 옳다(플립이 아닌 호출자가
+  /// 쓴다)」고 적혀 있었는데, **그 「호출자」가 유저의 Ctrl+화살표와 `,`·`.`
+  /// 였다.** 걷기는 이 축 위의 한 걸음이고 축은 하나다 — 🧪컷의 마지막
+  /// 프레임에서 세 행 전부 제자리였다(2026-09-17). 걷기는 이제
+  /// [_stepOneFrame] 을 통해 같은 착지로 온다.
   /// The V-row half: the track's CUTS are its columns, on the global axis.
   ///
   /// The same column step the layer row takes, with the track's cuts as
@@ -421,6 +411,27 @@ class FrameVerbs {
     }
   }
 
+  /// 🚨★★★**한 프레임을 걷는다** — Ctrl+화살표와 `,`·`.`, 그리고 블록이 없는
+  /// 행의 플립까지 전부 여기로 온다 (F-148).
+  ///
+  /// ⛔**축을 먼저 정하고, 그 축 위에서 잰다.** 컷 위에 서 있으면 컷 지역
+  /// 프레임이고, 갭에 서 있으면 그런 축이 없으니 **전역 프레임**이다 — 컷 지역
+  /// 인덱스는 갭에서 0 이라 그걸로 재면 걸음이 어디로도 가지 않는다. [_flipCuts]
+  /// 가 「잰 축 위에 내린다」고 적어 둔 그 규칙의 나머지 절반이다.
+  void _stepOneFrame({required bool forward}) {
+    final direction = forward ? 1 : -1;
+    if (_project.activeCutOrNull == null) {
+      final landing = _selection.editingGlobalFrame + direction;
+      if (landing >= 0) {
+        _selection.selectGlobalFrame(landing);
+      }
+      return;
+    }
+    _flipToFrame(
+      _controllers.timelineController.currentFrameIndex + direction,
+    );
+  }
+
   /// Steps one BLOCK along the current row (Ctrl+`,` back, Ctrl+`.`
   /// forward). R10 #13, the user's flip rule: `flip_column_step.dart`.
   void flipRow({required bool forward}) {
@@ -464,12 +475,9 @@ class FrameVerbs {
         // it. Attaching the key jump later changes this arm and nothing
         // else.
         // F-44: **같은 착지 규칙**을 쓴다 — 여기가 [selectNextFrame] 을 불러
-        // 컷 끝에 갇혀 있던 자리다. 한 프레임 걷는 것은 그대로고, 그 한
-        // 프레임이 어디에 내리는지를 이제 두 행이 같이 답한다.
-        _flipToFrame(
-          _controllers.timelineController.currentFrameIndex +
-              (forward ? 1 : -1),
-        );
+        // 컷 끝에 갇혀 있던 자리다. F-148: 이제 [selectNextFrame] 자신이 그
+        // 착지로 오므로, 한 프레임을 걷는 입구는 [_stepOneFrame] 하나다.
+        _stepOneFrame(forward: forward);
     }
   }
 
