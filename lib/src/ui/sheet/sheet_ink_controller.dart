@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -26,12 +25,14 @@ import '../canvas/tiled_surface_compose.dart';
 /// every method below was written twice around that one lookup.
 ///
 /// 🚨THE COPIES HAD ALREADY DIVERGED, which is why this exists rather than
-/// a third copy of a guard. [displayImageFor] composes tiles
-/// asynchronously and notifies when the image lands; the envelope checks
+/// a third copy of a guard. [displayImageFor] then composed tiles
+/// asynchronously and notified when the image landed; the envelope checked
 /// `_disposed` first, because "the panel can close while a compose is in
 /// flight — a notify then would throw, and the image would leak". The
 /// conte never got that check: the fix arrived with the envelope and did
 /// not flow back. Closing the conte panel mid-compose threw and leaked.
+/// (The asynchronous compose itself went on 2026-09-17 — see
+/// [displayImageFor] — and the guard with it; the lesson is the merge.)
 ///
 /// ⛔SO THE FIX IS THE MERGE, not a guard added in a second place — a
 /// second place to remember is what produced the bug.
@@ -124,11 +125,24 @@ abstract class SheetInkController<P> extends ChangeNotifier {
       storeFor(plane).celHasRenderableContent(key);
 
   final Map<BrushFrameKey, (BitmapSurface, ui.Image)> _display = {};
-  final Set<BrushFrameKey> _composing = {};
-  bool _disposed = false;
 
-  /// The painter-side display image for a window, composed lazily from the
-  /// baked surface's tiles and cached until that surface changes.
+  /// The painter-side display image for a window: the baked surface's
+  /// tiles composed inside this call, and kept until that surface changes.
+  ///
+  /// 🚨★★★IT IS THE SURFACE'S PICTURE THE MOMENT IT IS THE SURFACE — a
+  /// stroke's pen-up, an undo, a redo, ink mode switched off (유저 절대규칙
+  /// 2026-09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」). A tile that has
+  /// no picture gets one made here, through the one door
+  /// ([composeTiledSurfaceImageNow]), so there is nothing to wait for.
+  ///
+  /// 🪦Until then a surface with an unpictured tile was composed
+  /// ASYNCHRONOUSLY and 「the stale image holds meanwhile」: an undo made
+  /// while ink mode was off left the undone stroke on the sheet for the
+  /// frames the compose took. That road is also what needed a `_disposed`
+  /// guard — the panel could close while a compose was in flight, a notify
+  /// then threw and the image leaked — and the guard existed on ONE of the
+  /// two copies this class replaced (the header's story). With nothing in
+  /// flight there is nothing to guard.
   ui.Image? displayImageFor(P plane, BrushFrameKey key) {
     final surface = storeFor(plane).bakedSurfaceOrNull(key);
     if (surface == null) {
@@ -138,47 +152,17 @@ abstract class SheetInkController<P> extends ChangeNotifier {
     if (cached != null && identical(cached.$1, surface)) {
       return cached.$2;
     }
-    final immediate = composeTiledSurfaceImageSyncOrNull(
+    final composed = composeTiledSurfaceImageNow(
       surface,
       reuse: BitmapTileImageCache.instance,
     );
-    if (immediate != null) {
-      cached?.$2.dispose();
-      _display[key] = (surface, immediate);
-      return immediate;
-    }
-    // Tile images not GPU-resident yet: compose async once and repaint via
-    // notify; the stale image holds meanwhile (the playback policy).
-    if (_composing.add(key)) {
-      unawaited(
-        composeTiledSurfaceImage(
-          surface,
-          reuse: BitmapTileImageCache.instance,
-        ).then((composed) {
-          _composing.remove(key);
-          if (composed == null) {
-            return;
-          }
-          // 🚨The panel can close while a compose is in flight — a notify
-          // then would throw, and the image would leak. This guard existed
-          // on ONE of the two copies this class replaced.
-          if (_disposed ||
-              !identical(storeFor(plane).bakedSurfaceOrNull(key), surface)) {
-            composed.dispose();
-            return;
-          }
-          _display[key]?.$2.dispose();
-          _display[key] = (surface, composed);
-          notifyListeners();
-        }),
-      );
-    }
-    return cached?.$2;
+    cached?.$2.dispose();
+    _display[key] = (surface, composed);
+    return composed;
   }
 
   @override
   void dispose() {
-    _disposed = true;
     // The stores can outlive the panel — the session keeps the envelope's
     // and the conte's for the life of the project.
     for (final slot in _planes.values) {

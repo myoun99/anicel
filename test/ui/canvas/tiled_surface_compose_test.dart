@@ -81,6 +81,62 @@ void main() {
     });
   });
 
+  testWidgets('the compose made NOW is the same picture: cold tiles pictured '
+      'inside the call, through the one door — and kept for the next one', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final surface = patternedSurface(
+        const CanvasSize(width: 300, height: 200),
+      );
+      debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
+      final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+
+      final cache = BitmapTileImageCache();
+      expect(
+        surface.tiles.values.every((tile) => cache.imageFor(tile) == null),
+        isTrue,
+        reason: 'fixture: nothing has pictured these tiles',
+      );
+      final now = composeTiledSurfaceImageNow(surface, reuse: cache);
+      expect(
+        surface.tiles.values.every((tile) => cache.imageFor(tile) != null),
+        isTrue,
+        reason: 'the pictures it made are the cache\'s: the next compose of '
+            'this cel — the next edit — pays for the tiles that changed',
+      );
+      expect(await bytesOf(now), reference);
+
+      // The positioned road, with the plain snapshot of the same recording.
+      // It rasters over the CONTENT extent — these 256px tiles reach past
+      // the 300×200 canvas — so its twin is the asynchronous positioned
+      // compose, not the canvas-sized reference.
+      final later = (await composePositionedSurfaceImage(surface))!;
+      final want = await bytesOf(later.image);
+      final positioned = composePositionedSurfaceImageSync(
+        surface,
+        reuse: BitmapTileImageCache(),
+        makePictures: true,
+        snapshot: true,
+      )!;
+      expect(positioned.deferred.worldRect, surfaceContentWorldRect(surface));
+      expect(positioned.deferred.worldRect, later.worldRect);
+      expect(await bytesOf(await positioned.real!), want);
+      expect(await bytesOf(positioned.deferred.image), want);
+
+      // And the FREE road refuses rather than makes.
+      expect(
+        composePositionedSurfaceImageSync(
+          surface,
+          reuse: BitmapTileImageCache(),
+          makePictures: false,
+          snapshot: false,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('positioned compose (pasteboard extent)', () {
     test('surfaceContentWorldRect is the canvas rect without pasteboard '
         'tiles and grows to cover them when present', () {

@@ -52,6 +52,18 @@ class _LayerFrameImageEntry {
 
   int lastUsed;
 
+  /// Pending while this entry holds a DEFERRED image — one the synchronous
+  /// road made ([LayerFrameImageCache.prepareSyncOrNull]) — and completes
+  /// when the plain snapshot of the same picture has taken the entry's
+  /// place, or could not be had. Null for an entry that was a snapshot from
+  /// the start.
+  ///
+  /// ⚠️A deferred image is a recipe that pins every tile picture it drew
+  /// for as long as it lives (`raster_picture.dart`), so it is only ever
+  /// the picture of the frame that needed it NOW: [prepare] waits here and
+  /// answers with the snapshot, which is what a holder keeps.
+  Future<void>? settling;
+
   ui.Image get image => positioned.image;
 }
 
@@ -120,7 +132,24 @@ class LayerFrameImageCache {
       sourceEffects: sourceEffects,
     );
     if (cached != null) {
-      return cached;
+      // A deferred image is the picture of the frame that needed it, not
+      // one to keep ([_LayerFrameImageEntry.settling]): wait for the
+      // snapshot that replaces it and answer with that.
+      final settling = _entries[(key, quality)]?.settling;
+      if (settling == null) {
+        return cached;
+      }
+      await settling;
+      final settled = validImageOrNull(
+        key,
+        quality,
+        canvasSize: canvasSize,
+        sourceEffects: sourceEffects,
+      );
+      if (settled != null) {
+        return settled;
+      }
+      // The cel moved on while the snapshot was out: build it like any miss.
     }
 
     // Content oracle, not a command check (R19 P3a): an OPENED cel's
@@ -188,20 +217,7 @@ class LayerFrameImageCache {
         image.dispose();
         image = halved;
       }
-      // The worldRect stays CANVAS-SPACE — consumers map src→worldRect, so
-      // the raster resolution is free to differ — but it is the level's
-      // extent: twice the image per level, one texel past an odd edge
-      // ([halvedSize]), so a level maps onto the canvas at exactly 1/2^k.
-      final extent = 1 << quality.level;
-      positioned = PositionedSurfaceImage(
-        image: image,
-        worldRect: ui.Rect.fromLTWH(
-          positioned.worldRect.left,
-          positioned.worldRect.top,
-          (image.width * extent).toDouble(),
-          (image.height * extent).toDouble(),
-        ),
-      );
+      positioned = _atLevel(positioned.worldRect, image, quality.level);
     }
 
     return _bank((key, quality), positioned, (
@@ -243,16 +259,42 @@ class LayerFrameImageCache {
     return result;
   }
 
-  /// Synchronous fast path for the editing canvas's layer-switch handoff:
-  /// the valid cached image, or — full quality only — a sync compose from
-  /// tiles already decoded in the shared tile cache (the just-deactivated
-  /// on-screen frame's tiles always are). `null` means the caller must
-  /// fall back to [prepare].
+  /// The synchronous road, for the editing canvas's sweep: the valid cached
+  /// image, or one composed inside this call. `null` means the caller must
+  /// fall back to [prepare] — or that the cel has nothing to show.
+  ///
+  /// 🚨★★★[makePictures] IS 「THIS CEL WAS ON SCREEN A FRAME AGO」 — as the
+  /// layer being drawn on (a layer switch, a step to the next frame with
+  /// onion skin on) or as this very row's picture before an edit (an undo
+  /// on a layer you have switched away from). Such a row may not go blank,
+  /// and may not keep the old picture, for the frames an asynchronous build
+  /// takes (유저 절대규칙 2026-09-17 「보이는 중이랑 결과랑 절대로 다르면 안
+  /// 되」), so its image is made HERE, at the quality asked: the tiles'
+  /// pictures through the one door, halved on the spot below 100%.
+  ///
+  /// False is every other row — a cel that was NOT on screen (a frame
+  /// scrubbed to, a project just opened). There the road is free or not
+  /// taken: full quality only, and only when every tile already has its
+  /// picture. Composing a whole cold stack inside a build is a stall
+  /// nobody asked for; those rows arrive over the next frames, as they
+  /// always have.
+  ///
+  /// ⛔REQUIRED, with no default, for [sourceEffects]' reason: a default
+  /// would let a new caller inherit the blank frame silently.
+  ///
+  /// 🪦Until 2026-09-17 only the free road existed, full quality only. It
+  /// was written when the display was always full quality and a background
+  /// pass kept every committed tile pictured; with levels below 100%
+  /// (2026-09-16) it answered null for every zoomed-out layer switch —
+  /// measured: all 8 tiles pictured, 0 of 32 columns on the first frame
+  /// after the switch at 50% — and with the one door (2026-09-17) also for
+  /// a cel the paint had reached only part of.
   LayerFrameImage? prepareSyncOrNull({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
   }) {
     final cached = validImageOrNull(
       key,
@@ -263,7 +305,7 @@ class LayerFrameImageCache {
     if (cached != null) {
       return cached;
     }
-    if (quality != PlaybackQuality.full) {
+    if (!makePictures && quality != PlaybackQuality.full) {
       return null;
     }
 
@@ -292,19 +334,116 @@ class LayerFrameImageCache {
       previewCache.previewSurface,
       sourceEffects,
     );
-    final positioned = composePositionedSurfaceImageSyncOrNull(
+    final composed = composePositionedSurfaceImageSync(
       preview,
       reuse: BitmapTileImageCache.instance,
+      makePictures: makePictures,
+      // The snapshot is of the picture that is KEPT: the cel itself at
+      // full quality, the last halving below it.
+      snapshot: quality == PlaybackQuality.full,
     );
-    if (positioned == null) {
+    if (composed == null) {
       return null;
     }
+    var image = composed.deferred.image;
+    var real = composed.real;
+    for (var i = 0; i < quality.level; i += 1) {
+      final halved = _halvedNow(image, snapshot: i == quality.level - 1);
+      // The halving keeps what it drew; only the handle is ours to drop.
+      image.dispose();
+      image = halved.deferred;
+      real = halved.real;
+    }
+    final at = (key, quality);
+    final banked = _bank(
+      at,
+      _atLevel(composed.deferred.worldRect, image, quality.level),
+      (
+        revision: revision,
+        canvasSize: canvasSize,
+        sourceEffects: sourceEffects,
+      ),
+    );
+    _settleWhenTheSnapshotLands(at, real!);
+    return banked;
+  }
 
-    return _bank((key, quality), positioned, (
-      revision: revision,
-      canvasSize: canvasSize,
-      sourceEffects: sourceEffects,
-    ));
+  /// [image] — a cel composed over [fullWorldRect], halved [level] times —
+  /// with the CANVAS-SPACE rect it covers.
+  ///
+  /// The worldRect stays canvas-space — consumers map src→worldRect, so the
+  /// raster resolution is free to differ — but it is the level's extent:
+  /// twice the image per level, one texel past an odd edge ([halvedSize]),
+  /// so a level maps onto the canvas at exactly 1/2^k.
+  static PositionedSurfaceImage _atLevel(
+    ui.Rect fullWorldRect,
+    ui.Image image,
+    int level,
+  ) {
+    final extent = 1 << level;
+    return PositionedSurfaceImage(
+      image: image,
+      worldRect: level == 0
+          ? fullWorldRect
+          : ui.Rect.fromLTWH(
+              fullWorldRect.left,
+              fullWorldRect.top,
+              (image.width * extent).toDouble(),
+              (image.height * extent).toDouble(),
+            ),
+    );
+  }
+
+  /// The entry at [at] holds a deferred image; [real] is the plain snapshot
+  /// of the same picture. When it lands it takes the entry's place — same
+  /// pixels, same validity — and the deferred image is retired, letting go
+  /// of every tile picture it pinned ([_LayerFrameImageEntry.settling]).
+  void _settleWhenTheSnapshotLands(
+    (BrushFrameKey, PlaybackQuality) at,
+    Future<ui.Image> real,
+  ) {
+    final entry = _entries[at]!;
+    entry.settling = real.then<void>(
+      (snapshot) {
+        if (!identical(_entries[at], entry)) {
+          // Replaced, dropped, or the cache is gone: nobody wants it.
+          snapshot.dispose();
+          return;
+        }
+        _entries[at] = _LayerFrameImageEntry(
+          positioned: LayerFrameImage(
+            image: snapshot,
+            worldRect: entry.positioned.worldRect,
+          ),
+          sourceRevision: entry.sourceRevision,
+          canvasSize: entry.canvasSize,
+          sourceEffectSignature: entry.sourceEffectSignature,
+          lastUsed: entry.lastUsed,
+        );
+        DeferredImageDisposer.instance.retire(entry.image);
+      },
+      // A snapshot the engine refused: the deferred image stays the entry.
+      onError: (Object _) => entry.settling = null,
+    );
+  }
+
+  /// [source] halved inside the call — the next level down, deferred on
+  /// the GPU — plus, when [snapshot], the plain snapshot of the same
+  /// halving. The asynchronous twin is [_halved].
+  static ({ui.Image deferred, Future<ui.Image>? real}) _halvedNow(
+    ui.Image source, {
+    required bool snapshot,
+  }) {
+    final size = halvedSize(source.width, source.height);
+    final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+    try {
+      return (
+        deferred: picture.toImageSync(size.width, size.height),
+        real: snapshot ? picture.toImage(size.width, size.height) : null,
+      );
+    } finally {
+      picture.dispose();
+    }
   }
 
   /// Eagerly drops every quality of one layer frame (sink-event eviction).

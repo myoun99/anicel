@@ -121,6 +121,16 @@ class EditingStackMap {
     activeSourceEffects = splitSourceEffects(entry.effects).source;
     return CanvasActiveLayerRow(
       opacity: entry.opacity,
+      // The active row's CEL key — the SAME key the image branch above
+      // asks with. The build in which this cel leaves the active slot, the
+      // stack reads it off the widget it replaces and composes the cel's
+      // image on the spot, so the row does not go blank for the frames an
+      // asynchronous build takes ([CanvasActiveLayerRow.frameKey]).
+      frameKey: _internals.brushFrameKeyForCut(
+        cut,
+        entry.layer.id,
+        entry.frame.id,
+      ),
       // The SAME entry the image branch above reads it from. It was
       // dropped right here — five fields arrived and four were forwarded,
       // so standing on a multiply row silently made it normal on the

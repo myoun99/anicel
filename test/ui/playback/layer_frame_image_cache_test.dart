@@ -229,42 +229,63 @@ void main() {
     });
   });
 
-  testWidgets('prepareSyncOrNull composes synchronously from decoded tiles '
-      'and falls back to null on cold tiles (layer-switch handoff)', (
-    tester,
-  ) async {
+  Future<List<int>> bytesOf(ui.Image image) async {
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    return data!.buffer.asUint8List();
+  }
+
+  testWidgets('the FREE synchronous road: a cel that was not on screen is '
+      'composed only when every tile already has its picture, at full '
+      'quality — and no picture is made for it', (tester) async {
     await tester.runAsync(() async {
       final (store, _) = storeWithStroke();
       final cache = LayerFrameImageCache(frameStore: store);
+      final preview = BrushFrameDisplayCacheService(
+        frameStore: store,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key('frame-a')).previewSurface;
 
-      // Cold tiles: nothing decoded in the shared tile cache yet.
+      // Cold tiles: nothing pictured in the shared tile cache yet.
       expect(
         cache.prepareSyncOrNull(
           key: key('frame-a'),
           canvasSize: canvasSize,
           quality: PlaybackQuality.full,
           sourceEffects: const [],
+          makePictures: false,
         ),
         isNull,
       );
+      expect(
+        preview.tiles.values.every(
+          (tile) => BitmapTileImageCache.instance.imageFor(tile) == null,
+        ),
+        isTrue,
+        reason: 'asking the free road makes nothing',
+      );
 
-      // Decode the frame's tiles the way the on-screen editing canvas
-      // keeps them (the just-deactivated layer's tiles are always warm).
-      final preview = BrushFrameDisplayCacheService(
-        frameStore: store,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key('frame-a')).previewSurface;
-      for (final entry in preview.tiles.entries) {
-        BitmapTileImageCache.instance.pictureFor(
-          entry.value,
-        );
+      // Pictured the way a canvas that painted them leaves them.
+      for (final tile in preview.tiles.values) {
+        BitmapTileImageCache.instance.pictureFor(tile);
       }
+      expect(
+        cache.prepareSyncOrNull(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          makePictures: false,
+        ),
+        isNull,
+        reason: 'a level is not free: it is halvings on top of the compose',
+      );
 
       final synced = cache.prepareSyncOrNull(
         key: key('frame-a'),
         canvasSize: canvasSize,
         quality: PlaybackQuality.full,
         sourceEffects: const [],
+        makePictures: false,
       );
       expect(synced, isNotNull);
       expect(synced!.image.width, 8);
@@ -280,6 +301,129 @@ void main() {
         ),
         isTrue,
         reason: 'the sync compose lands in the cache like prepare does',
+      );
+      cache.dispose();
+    });
+  });
+
+  testWidgets('🚨a cel that WAS on screen is composed inside the call, cold '
+      'tiles and all, at the quality asked — the same bytes the '
+      'asynchronous road makes', (tester) async {
+    await tester.runAsync(() async {
+      for (final quality in PlaybackQuality.values) {
+        final (store, _) = storeWithStroke();
+        final cache = LayerFrameImageCache(frameStore: store);
+        final reference = LayerFrameImageCache(frameStore: store);
+
+        final now = cache.prepareSyncOrNull(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: quality,
+          sourceEffects: const [],
+          makePictures: true,
+        );
+        expect(now, isNotNull, reason: '$quality: nothing to wait for');
+        final later = await reference.prepare(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: quality,
+          sourceEffects: const [],
+        );
+
+        expect(now!.image.width, later!.image.width, reason: '$quality');
+        expect(now.image.height, later.image.height, reason: '$quality');
+        expect(now.worldRect, later.worldRect, reason: '$quality');
+        expect(
+          await bytesOf(now.image),
+          await bytesOf(later.image),
+          reason: '$quality: the two roads are one picture',
+        );
+        cache.dispose();
+        reference.dispose();
+      }
+    });
+  });
+
+  testWidgets('a picture made inside the call is only that frame\'s: prepare '
+      'answers with the plain snapshot that takes its place', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+
+      final now = cache.prepareSyncOrNull(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.half,
+        sourceEffects: const [],
+        makePictures: true,
+      )!;
+      final nowBytes = await bytesOf(now.image);
+
+      final kept = await cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.half,
+        sourceEffects: const [],
+      );
+      expect(kept, isNotNull);
+      expect(
+        identical(kept!.image, now.image),
+        isFalse,
+        reason: 'the deferred image pins every tile picture it drew for as '
+            'long as it lives; what a holder KEEPS is the snapshot',
+      );
+      expect(await bytesOf(kept.image), nowBytes, reason: 'the same picture');
+      expect(kept.worldRect, now.worldRect);
+      expect(
+        identical(
+          cache.validImageOrNull(
+            key('frame-a'),
+            PlaybackQuality.half,
+            canvasSize: canvasSize,
+            sourceEffects: const [],
+          ),
+          kept,
+        ),
+        isTrue,
+        reason: 'and it is the entry now, under the same validity',
+      );
+      cache.dispose();
+    });
+  });
+
+  testWidgets('a snapshot that lands after the cel moved on is let go, and '
+      'prepare builds the cel as it is', (tester) async {
+    await tester.runAsync(() async {
+      final (store, coordinator) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+
+      cache.prepareSyncOrNull(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+        makePictures: true,
+      );
+      // An edit before the snapshot lands: the entry is stale either way.
+      coordinator.commitSourceStroke(sourceDabs: [dab(x: 6, y: 6)]);
+
+      final rebuilt = await cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+      final reference = await LayerFrameImageCache(frameStore: store).prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+      expect(
+        await bytesOf(rebuilt!.image),
+        await bytesOf(reference!.image),
+        reason: 'the cel WITH the second stroke — not the picture the '
+            'snapshot was of',
       );
       cache.dispose();
     });

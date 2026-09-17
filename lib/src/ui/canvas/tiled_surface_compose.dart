@@ -6,6 +6,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../../core/dev_profile.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'raster_picture.dart';
 import 'tile_origin.dart';
 
 /// A composed surface image plus the CANVAS-SPACE rect it covers.
@@ -137,13 +138,38 @@ Future<ui.Image?> _composeAsync(
   }
 }
 
-/// THE tile compose, sync: the same draw, but every tile must ALREADY be
-/// decoded in [reuse] — a miss returns null so the caller falls back to
-/// the async path. Rasterization stays deferred on the GPU
-/// ([ui.Picture.toImageSync]).
-ui.Image? _composeSync(
+/// THE tile compose, sync: the same draw, rastered deferred on the GPU —
+/// plus, when [snapshot], the plain snapshot of the same recording
+/// ([rasterPictureAndSnapshot]: what a holder keeps INSTEAD once it lands,
+/// because the deferred image pins every tile picture it drew for as long
+/// as it lives).
+///
+/// 🚨★★★[makePictures] IS WHETHER THE CEL WAS ON SCREEN. A tile that has no
+/// picture gets one made now, through the one door
+/// ([BitmapTileImageCache.pictureFor]) — so the compose cannot miss, and a
+/// row that was showing this cel a frame ago (as the layer being drawn on,
+/// or as its picture before an edit) shows it on THIS frame too: 유저 절대규칙
+/// 「보이는 중이랑 결과랑 절대로 다르면 안 되」, and a row that goes blank for
+/// the frames an asynchronous compose takes is neither. False is for a cel
+/// that was NOT on screen (a frame scrubbed to, a project just opened):
+/// making a whole cel's pictures inside a build, for every cold row at
+/// once, is a stall nobody asked for — so there a missing picture answers
+/// null and the caller takes the asynchronous road, as it always has.
+///
+/// 🪦Until 2026-09-17 there was only the second kind, and it stood on a
+/// premise the one door retired: 「the on-screen frame's tiles are always
+/// decoded」. They were while a background pass pre-warmed every committed
+/// tile; with a tile picturing itself inside the paint that shows it, a
+/// cel the paint reached only part of (the direct walk past the display
+/// buffer's cap paints the screen, not the cel) has pictures for that part
+/// only — and the layer you had just been drawing on vanished on the frame
+/// you switched away (measured on the walk: 0 of 32 columns on the first
+/// frame after the switch).
+({ui.Image deferred, Future<ui.Image>? real})? _composeSync(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
+  required bool makePictures,
+  required bool snapshot,
   required int width,
   required int height,
   ui.Offset origin = ui.Offset.zero,
@@ -155,7 +181,7 @@ ui.Image? _composeSync(
 
   for (final entry in surface.tiles.entries) {
     final tile = entry.value;
-    final image = reuse.imageFor(tile);
+    final image = makePictures ? reuse.pictureFor(tile) : reuse.imageFor(tile);
     if (image == null) {
       recorder.endRecording().dispose();
       return null;
@@ -166,42 +192,31 @@ ui.Image? _composeSync(
       paint,
     );
   }
-
-  final picture = recorder.endRecording();
-  try {
-    return picture.toImageSync(width, height);
-  } finally {
-    picture.dispose();
-  }
+  return rasterPictureAndSnapshot(recorder, width, height, snapshot: snapshot);
 }
 
-/// Synchronous variant for latency-critical swaps (the layer-switch
-/// handoff): composes ONLY when every tile is already decoded in [reuse] —
-/// the on-screen frame's tiles always are — via [ui.Picture.toImageSync]
-/// (rasterization stays deferred on the GPU). Returns null when any tile
-/// is missing so the caller falls back to the async path; byte parity
-/// matches [composeTiledSurfaceImage] (same tile images, same 1:1
-/// integer-offset draws). The caller owns the returned image.
-ui.Image? composeTiledSurfaceImageSyncOrNull(
+/// [surface]'s picture NOW, canvas-sized: every tile's own picture, made
+/// here if it has none — the sheets' display image, which shows a surface
+/// the moment it is the surface (a stroke's pen-up, an undo, a redo). Byte
+/// parity with [composeTiledSurfaceImage]: the same tile pictures, the same
+/// 1:1 integer-offset draws. The caller owns the returned image.
+ui.Image composeTiledSurfaceImageNow(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
 }) {
   return labProbe(
     'composeSync(${surface.tiles.length}t '
     '${surface.canvasSize.width}x${surface.canvasSize.height})',
-    () => _composeTiledSurfaceImageSyncOrNull(surface, reuse: reuse),
+    () => _composeSync(
+      surface,
+      reuse: reuse,
+      makePictures: true,
+      snapshot: false,
+      width: surface.canvasSize.width,
+      height: surface.canvasSize.height,
+    )!.deferred,
   );
 }
-
-ui.Image? _composeTiledSurfaceImageSyncOrNull(
-  BitmapSurface surface, {
-  required BitmapTileImageCache reuse,
-}) => _composeSync(
-  surface,
-  reuse: reuse,
-  width: surface.canvasSize.width,
-  height: surface.canvasSize.height,
-);
 
 /// The pasteboard-aware sibling of [composeTiledSurfaceImage]: rasters the
 /// surface over [surfaceContentWorldRect] and returns the image WITH that
@@ -228,23 +243,37 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
       : PositionedSurfaceImage(image: image, worldRect: worldRect);
 }
 
-/// Synchronous positioned variant (the layer-switch handoff): composes
-/// ONLY when every tile is already decoded in [reuse]; null otherwise.
-PositionedSurfaceImage? composePositionedSurfaceImageSyncOrNull(
+/// The synchronous positioned compose — the layer stack's, for the frame a
+/// row changes route or content ([_composeSync] says what [makePictures]
+/// and [snapshot] mean). Null only when [makePictures] is false and a tile
+/// has no picture.
+({PositionedSurfaceImage deferred, Future<ui.Image>? real})?
+composePositionedSurfaceImageSync(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
+  required bool makePictures,
+  required bool snapshot,
 }) {
   final worldRect = surfaceContentWorldRect(surface);
-  final image = _composeSync(
+  final composed = _composeSync(
     surface,
     reuse: reuse,
+    makePictures: makePictures,
+    snapshot: snapshot,
     width: worldRect.width.round(),
     height: worldRect.height.round(),
     origin: worldRect.topLeft,
   );
-  return image == null
-      ? null
-      : PositionedSurfaceImage(image: image, worldRect: worldRect);
+  if (composed == null) {
+    return null;
+  }
+  return (
+    deferred: PositionedSurfaceImage(
+      image: composed.deferred,
+      worldRect: worldRect,
+    ),
+    real: composed.real,
+  );
 }
 
 Future<ui.Image> _decodeTile(BitmapTile tile) async {

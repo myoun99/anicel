@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -44,6 +45,17 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// touches it. Both cases are pinned below, and the second one is what dies
 /// if anyone simplifies the guard away.
 ///
+/// 🚨★★★AND SINCE 2026-09-17 THE EDIT'S FRAME IS THE EDIT, NOT A BLANK
+/// (유저 절대규칙 「보이는 중이랑 결과랑 절대로 다르면 안 되」). H27's fix dropped
+/// the stale picture and painted NOTHING until the asynchronous build
+/// landed — 「painting nothing is honest for the frame a decode has not
+/// landed in」 was the best answer while a picture could not be had inside
+/// the frame. It can now: the same revision mismatch makes the sweep compose
+/// the cel on the spot (`prepareSyncOrNull`'s `makePictures`), so a layer
+/// you have switched away from shows an undo on the frame of the undo. The
+/// first test pins that with the REAL cache; the drop survives for the one
+/// case it is simply true of — an edited cel with nothing left to compose.
+///
 /// ⚠️#1218's lesson applies here: 「프리뷰 채널은 값을 계속 나르고 있어서
 /// 그걸 단언하면 옛 빌드에서도 통과한다」 — so these read the PIXELS the
 /// stack painter actually produced, never a channel's value.
@@ -59,6 +71,8 @@ void main() {
   );
   const canvasSize = CanvasSize(width: tileSize * tileCount, height: tileSize);
   const size = Size(tileSize * tileCount * 1.0, tileSize * 1.0);
+
+  final screen = GlobalKey();
 
   late Directory tempDir;
 
@@ -110,23 +124,26 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: CanvasLayerStackView(
-                nodes: const [
-                  CompositeLeaf<CanvasStackRow>(
-                    CanvasLayerImageRequest(frameKey: key, opacity: 1),
-                  ),
-                ],
-                imageCache: imageCache,
-                canvasSize: canvasSize,
-                viewport: CanvasViewport(),
-                // The law under test is what the paint BODY draws this
-                // frame. The kept composite buffer can re-serve yesterday's
-                // whole picture between cache notifications, which would
-                // hide the very frame this exists to pin.
-                debugDisableBake: true,
+            child: RepaintBoundary(
+              key: screen,
+              child: SizedBox(
+                width: size.width,
+                height: size.height,
+                child: CanvasLayerStackView(
+                  nodes: const [
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasLayerImageRequest(frameKey: key, opacity: 1),
+                    ),
+                  ],
+                  imageCache: imageCache,
+                  canvasSize: canvasSize,
+                  viewport: CanvasViewport(),
+                  // The law under test is what the paint BODY draws this
+                  // frame. The kept composite buffer can re-serve
+                  // yesterday's whole picture between cache notifications,
+                  // which would hide the very frame this exists to pin.
+                  debugDisableBake: true,
+                ),
               ),
             ),
           ),
@@ -135,33 +152,23 @@ void main() {
     );
   }
 
-  /// One frame's pixels through the stack painter, recorded synchronously so
-  /// no decode can land mid-record.
+  /// WHAT THE LAST PUMP PUT ON SCREEN, read off the layer tree.
+  ///
+  /// ⛔Not by calling the painter again (which this did until 2026-09-17).
+  /// A picture composed inside the build is only that frame's: its plain
+  /// snapshot lands a moment later, the view takes it and lets the first
+  /// one go — so the painter object of the frame under test holds a
+  /// disposed image by the time a test could call it, and a second paint
+  /// would be measuring a frame the app never shows anyway.
   Future<Uint8List> paintStack(WidgetTester tester) async {
-    final painted = tester
-        .widgetList<CustomPaint>(
-          find.descendant(
-            of: find.byType(CanvasLayerStackView),
-            matching: find.byType(CustomPaint),
-          ),
-        )
-        .where((paint) => paint.painter != null)
-        .toList();
-    expect(painted, isNotEmpty, reason: 'the stack view paints through one');
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Offset.zero & size);
-    painted.first.painter!.paint(canvas, size);
-    final picture = recorder.endRecording();
+    final render =
+        screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final bytes = await tester.runAsync(() async {
-      final image = await picture.toImage(
-        size.width.toInt(),
-        size.height.toInt(),
-      );
+      final image = await render.toImage();
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       image.dispose();
       return data!.buffer.asUint8List();
     });
-    picture.dispose();
     return bytes!;
   }
 
@@ -228,10 +235,16 @@ void main() {
 
   /// Mounts a store whose cel is drawn blue and a stack that has ADOPTED it.
   /// After this the held image is the blue picture — the state the device is
-  /// in before the transform is confirmed.
-  Future<(BrushFrameStore, LayerFrameImageCache)> stackHoldingBlue(
-    WidgetTester tester,
-  ) async {
+  /// in before the transform is confirmed. Answers the REAL cache the stack
+  /// holds it through, and one whose synchronous road is shut.
+  Future<
+    ({
+      BrushFrameStore store,
+      LayerFrameImageCache real,
+      LayerFrameImageCache syncShut,
+    })
+  >
+  stackHoldingBlue(WidgetTester tester) async {
     final store = blueStore();
 
     // Adopt through the REAL cache, the way the app does — the sweep can
@@ -245,33 +258,107 @@ void main() {
       reason: 'the fixture has to actually be holding the blue picture, or '
           'everything below is measuring an empty stack',
     );
+    return (
+      store: store,
+      real: warm,
+      syncShut: _SyncColdCache(frameStore: store),
+    );
+  }
 
-    // From here the synchronous door is shut, exactly as it is on the frame
-    // after a confirm: the new tiles are undecoded, so the sweep gets null.
-    return (store, _SyncColdCache(frameStore: store));
+  bool redAt(Uint8List rgba, int x, int y) {
+    final offset = (y * size.width.toInt() + x) * 4;
+    return rgba[offset] > 0xC8 &&
+        rgba[offset + 1] < 0x30 &&
+        rgba[offset + 2] < 0x30 &&
+        rgba[offset + 3] == 0xFF;
+  }
+
+  int redColumns(Uint8List rgba) {
+    var n = 0;
+    for (var x = 0; x < size.width.toInt(); x += 1) {
+      if (redAt(rgba, x, tileSize ~/ 2)) n += 1;
+    }
+    return n;
   }
 
   testWidgets(
-    'an EDIT drops the held picture even when nothing can replace it yet — '
-    '유저: 「이전 변형하기 전 그림이 남아있었음」',
+    '🚨an EDIT shows the NEW picture on the very next frame — not the '
+    'drawing as it was before it, and not a blank',
     (tester) async {
-      final (store, cold) = await stackHoldingBlue(tester);
+      final held = await stackHoldingBlue(tester);
 
-      // The confirm: new pixels, and the one signal every surface write makes.
-      store
+      // The edit: new pixels in new tile objects — nothing has pictured
+      // them — and the one signal every surface write makes. An undo on a
+      // layer you have switched away from is exactly this.
+      held.store
         ..storeBakedSurface(key, filledSurface(r: 0xFF, g: 0, b: 0))
         ..markCelEdited(key);
 
-      // ONE frame. ⛔Not pumpAndSettle — settling would let the async pass
-      // decode the new picture and heal the very frame under test.
-      await pumpStack(tester, cold);
+      // ONE frame, through the REAL cache. ⛔Not pumpAndSettle — settling
+      // would let the async pass land and heal the very frame under test.
+      await pumpStack(tester, held.real);
+      final frame = await paintStack(tester);
+
+      expect(
+        blueColumns(frame),
+        0,
+        reason: 'the cel no longer looks like that — 유저: 「이전 변형하기 전 '
+            '그림이 남아있었음」',
+      );
+      expect(
+        redColumns(frame),
+        size.width.toInt(),
+        reason: 'and it is not a blank either: the sweep composes an edited '
+            'row on the spot, every tile pictured inside the call, so the '
+            'frame after the edit IS the edit',
+      );
+    },
+  );
+
+  testWidgets(
+    'an edited cel with NOTHING left to compose drops the held picture',
+    (tester) async {
+      final held = await stackHoldingBlue(tester);
+
+      // Emptied: the surface is still there, and holds no ink.
+      held.store
+        ..storeBakedSurface(
+          key,
+          BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+        )
+        ..markCelEdited(key);
+      expect(held.store.celHasRenderableContent(key), isFalse);
+
+      await pumpStack(tester, held.real);
 
       expect(
         blueColumns(await paintStack(tester)),
         0,
-        reason: 'the cel no longer looks like that. Painting nothing is '
-            'honest for the frame a decode has not landed in; painting the '
-            'drawing as it was BEFORE the edit is the bug',
+        reason: 'there is nothing to compose, and the drawing as it was '
+            'BEFORE the edit is not an answer — here the drop is simply true',
+      );
+    },
+  );
+
+  testWidgets(
+    'an EDIT drops the held picture when the synchronous road cannot answer '
+    'at all — the stale drawing never paints',
+    (tester) async {
+      final held = await stackHoldingBlue(tester);
+
+      held.store
+        ..storeBakedSurface(key, filledSurface(r: 0xFF, g: 0, b: 0))
+        ..markCelEdited(key);
+
+      // A cache whose synchronous road is shut: H27's guard on its own,
+      // which the composing sweep above sits in front of but does not
+      // replace (a build that throws, a preview recorded at another size).
+      await pumpStack(tester, held.syncShut);
+
+      expect(
+        blueColumns(await paintStack(tester)),
+        0,
+        reason: 'painting the drawing as it was BEFORE the edit is the bug',
       );
     },
   );
@@ -309,7 +396,7 @@ void main() {
       await tester.pump();
 
       // A frame later the sweep looks again, and finds nothing to replace it
-      // with — the same cold door as the first test.
+      // with — the same shut road as the test above.
       await pumpStack(tester, cache);
 
       expect(
@@ -325,12 +412,12 @@ void main() {
     'a cold miss with NO edit keeps the picture — this is what the '
     'flicker-free layer switch is',
     (tester) async {
-      final (_, cold) = await stackHoldingBlue(tester);
+      final held = await stackHoldingBlue(tester);
 
       // Same shut door, no edit: the cache went cold, the pixels did not
       // move. ⛔An unconditional drop here would pass the test above and put
       // the vanish-and-return this sweep exists to prevent straight back.
-      await pumpStack(tester, cold);
+      await pumpStack(tester, held.syncShut);
 
       expect(
         blueColumns(await paintStack(tester)),
@@ -374,18 +461,21 @@ class _InFlightCache extends LayerFrameImageCache {
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
   }) => null;
 }
 
 /// A cache whose SYNCHRONOUS door is shut, with the asynchronous one left
 /// exactly as it is.
 ///
-/// That pairing is the device state and not a convenience: after a confirm
-/// the new tiles have no pictures, so `prepareSyncOrNull` genuinely returns
-/// null, while `prepare` is genuinely in flight and lands a frame or more
-/// later. Stubbing `prepare` to null as well would make the async pass drop
-/// the held image on its own, and both tests above would then pass with the
-/// guard deleted.
+/// 🪦Until 2026-09-17 that pairing WAS the device state after a confirm: the
+/// new tiles had no pictures, so `prepareSyncOrNull` genuinely returned
+/// null while `prepare` was genuinely in flight. The real cache composes an
+/// edited row on the spot now, so this stands for the roads that still
+/// cannot answer (a build that throws, a preview recorded at another size)
+/// and for H27's guard taken on its own. ⚠️Stubbing `prepare` to null as
+/// well would make the async pass drop the held image by itself, and the
+/// tests that use this would then pass with the guard deleted.
 class _SyncColdCache extends LayerFrameImageCache {
   _SyncColdCache({required super.frameStore});
 
@@ -395,5 +485,6 @@ class _SyncColdCache extends LayerFrameImageCache {
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
   }) => null;
 }

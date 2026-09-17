@@ -60,11 +60,27 @@ sealed class CanvasStackRow {
 final class CanvasActiveLayerRow extends CanvasStackRow {
   const CanvasActiveLayerRow({
     required this.opacity,
+    this.frameKey,
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
     this.effects = const [],
   });
+
+  /// The CEL this row is drawing — the same key its cached twin
+  /// [CanvasLayerImageRequest.frameKey] asks the image cache with. Null
+  /// when the row has nothing exposed here.
+  ///
+  /// 🚨What it is for: the build in which this cel LEAVES the active slot
+  /// (a layer switch; a step to the next frame with onion skin on) it
+  /// arrives in the stack as an image request, and it was on screen a frame
+  /// ago — so the sweep composes its image inside that build instead of
+  /// letting the row go blank until an asynchronous one lands
+  /// (`_syncSweepBody`, 유저 절대규칙 「보이는 중이랑 결과랑 절대로 다르면 안
+  /// 되」). 🪦A field of this name stood here until 2026-09-17 for the
+  /// opposite direction — finding the image to hold over a cel ENTERING the
+  /// slot, the first-activation stand-in — and went with it.
+  final BrushFrameKey? frameKey;
 
   /// The active row's effective opacity (the interactive view used to
   /// apply this itself, through the panel's content-opacity wrap).
@@ -252,6 +268,20 @@ class CanvasLayerStackView extends StatefulWidget {
     }
   }
 
+  /// The cels the ACTIVE rows under [nodes] are drawing
+  /// ([CanvasActiveLayerRow.frameKey]) — what the next build's sweep reads
+  /// off the widget it replaces, to know which cels were on screen as
+  /// tiles a frame ago.
+  Iterable<BrushFrameKey> get activeCels sync* {
+    for (final node in preorderNodes(nodes)) {
+      if (node case CompositeLeaf(
+        payload: CanvasActiveLayerRow(:final frameKey?),
+      )) {
+        yield frameKey;
+      }
+    }
+  }
+
   final LayerFrameImageCache imageCache;
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
@@ -372,7 +402,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         widget.imageCache.retainPin(entry.key, entry.value.quality);
       }
     }
-    _syncImagesWithCache();
+    _syncImagesWithCache(leftTheActiveSlot: oldWidget.activeCels.toSet());
     unawaited(_ensureImages());
   }
 
@@ -474,12 +504,23 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ///
   /// This is what keeps a layer switch flicker-free — the just-deactivated
   /// layer arrives here with a warm cache image (the prerender re-warms it
-  /// after every stroke), and the async pass alone would paint it one frame
+  /// once the editor goes idle after a stroke) or, when the switch beats
+  /// the prerender, has its image composed right here
+  /// ([leftTheActiveSlot]); the async pass alone would paint it one frame
   /// late at best: the artwork visibly vanished and reappeared. The
   /// just-activated layer leaves the same frame, so it never double-draws
   /// under the interactive view.
-  void _syncImagesWithCache() {
-    labProbe('layerStackSyncSweep(${widget.layers.length})', _syncSweepBody);
+  ///
+  /// [leftTheActiveSlot] is the cels the widget this build replaces was
+  /// drawing as ACTIVE rows ([CanvasLayerStackView.activeCels]) — empty
+  /// for the first sweep, which replaces nothing.
+  void _syncImagesWithCache({
+    Set<BrushFrameKey> leftTheActiveSlot = const {},
+  }) {
+    labProbe(
+      'layerStackSyncSweep(${widget.layers.length})',
+      () => _syncSweepBody(leftTheActiveSlot),
+    );
   }
 
   /// Holds [image] for [key] unless it is the one already held — the pin,
@@ -536,7 +577,23 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     unawaited(_ensureImages());
   }
 
-  void _syncSweepBody() {
+  /// Whether [key]'s cel was on screen a frame ago and is about to be
+  /// asked for as an image it may not have: it just LEFT the active slot,
+  /// or the image this row holds is of the cel before an EDIT
+  /// (`sourceRevision` moves on every surface write and on nothing else).
+  /// Such a row's image is composed inside the sweep
+  /// ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
+  bool _wasOnScreen(
+    BrushFrameKey key,
+    int? revision,
+    Set<BrushFrameKey> leftTheActiveSlot,
+  ) {
+    final held = _images[key];
+    return leftTheActiveSlot.contains(key) ||
+        (held != null && held.revision != revision);
+  }
+
+  void _syncSweepBody(Set<BrushFrameKey> leftTheActiveSlot) {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
     };
@@ -550,10 +607,10 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // stack no longer shows.
     _failedRevisions.removeWhere((key, _) => !wanted.contains(key));
     for (final layer in widget.layers) {
-      // Valid cache image, or a synchronous per-tile compose (the just-
-      // deactivated layer's on-screen tiles are already decoded) — either
-      // way the artwork paints THIS frame; only true cold misses fall to
-      // the async pass.
+      // Valid cache image, or a synchronous per-tile compose — either way
+      // the artwork paints THIS frame. A cel that was on screen a frame ago
+      // is composed whatever it takes ([_wasOnScreen]); any other row only
+      // when it is free, and a true cold miss falls to the async pass.
       // 🚨Same law as the async pass — and this walk runs FIRST, so
       // without it the guard down there never gets its turn: the throw
       // lands here instead, out of a build/layout callback, and every
@@ -577,6 +634,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           canvasSize: widget.canvasSize,
           quality: quality,
           sourceEffects: layer.sourceEffects,
+          makePictures: _wasOnScreen(
+            layer.frameKey,
+            revision,
+            leftTheActiveSlot,
+          ),
         );
       } on Object catch (error, stack) {
         _noteFailure(layer.frameKey, error, stack, 'sync sweep');
@@ -606,6 +668,16 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         // it on every surface write, a layer switch does not touch it. So a
         // held image whose revision no longer matches is stale and goes; one
         // that still matches stays, and the flicker-free switch is untouched.
+        //
+        // 🚨Since 2026-09-17 an edited row does not usually get HERE: the
+        // same mismatch is what makes the prepare above compose the new
+        // picture inside this sweep ([_wasOnScreen]), so the frame after
+        // an edit shows the edit — not the old drawing, and not the blank
+        // this drop used to leave until the async build landed (「빈 것이
+        // 정직하다」 was the best answer while a picture could not be had in
+        // the frame). What still arrives is an edited cel with nothing to
+        // compose — emptied, or recorded at another canvas size — and for
+        // that one the drop is simply true.
         final held = _images[layer.frameKey];
         if (held != null && held.revision != revision) {
           _dropImage(layer.frameKey, _images.remove(layer.frameKey)!);
@@ -1128,9 +1200,9 @@ final class _PaintImage extends _PaintRow {
 /// promotes a file-backed cel to a surface of all-fresh tile objects, and
 /// the picture disappeared for one frame per layer. A committed tile
 /// pictures itself inside the paint now, so the walk is whole on the
-/// activation frame itself and nothing stands in. The active row's
-/// `frameKey` went with it: it named the cel only so this could find the
-/// image to hold.
+/// activation frame itself and nothing stands in. (The active row's
+/// `frameKey` named the cel so this could find the image to hold; it has
+/// another reader now — see [CanvasActiveLayerRow.frameKey].)
 final class _PaintActiveSurface extends _PaintRow {
   const _PaintActiveSurface({
     required this.opacity,

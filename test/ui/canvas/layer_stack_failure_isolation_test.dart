@@ -36,6 +36,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
   }) {
     syncAttempts.add(key.frameId);
     if (failing.contains(key.frameId)) {

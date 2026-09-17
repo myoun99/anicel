@@ -213,12 +213,14 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepareSyncOrNull(
           key: key,
           canvasSize: canvasSize,
           quality: quality,
           sourceEffects: sourceEffects,
+          makePictures: makePictures,
         )
       : null;
 
