@@ -79,6 +79,9 @@ void main() {
     // A canvas SMALLER than the 800×600 test viewport, so pasteboard
     // coordinates are reachable by a pointer at all.
     CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
+    // F-116: the production wiring hands these edges to the session's
+    // counting EDIT HOLD. A case that watches the hold passes a recorder.
+    ValueChanged<bool>? onSelectionInteractionChanged,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -145,6 +148,8 @@ void main() {
                   ),
                 ),
                 transformOptions: transformOptions,
+                onSelectionInteractionChanged:
+                    onSelectionInteractionChanged,
               ),
             ),
           ),
@@ -4213,5 +4218,105 @@ void main() {
         reason: 'the corner ($x,$y) of the wall is inside the picture',
       );
     }
+  });
+
+  /// 🚨★★★**A PENDING MOVE DOES NOT HOLD THE TIMELINE** — F-116 and F-86,
+  /// 유저 2026-09-12: 「프레임 3개 그리고 … 버그나서 **타임라인쪽 조작이
+  /// 안먹힘. 룰러쪽 선택해도 드래그안되고 화살표이동도 안먹고**」, and on
+  /// 2026-09-17: 「둘다 해당 버그 상황에서 타임라인 조작 먹통되니까 원인 하나
+  /// 공통되는거 있을거로 예상되니 근본/구조적으로 해결하고 법 통일」.
+  ///
+  /// R15-⑤ refuses every seek, scrub, row press and cut switch while an
+  /// editing interaction is held, and that is right for a GESTURE: the
+  /// playhead moves when the pen lifts, never under it. A pending session
+  /// is not a gesture — the hand is already off it — and it was held only
+  /// because the lift committed its erase, so walking away left a HOLE.
+  /// `314aa6e8` stopped writing anything until the landing, and this is the
+  /// consequence: there is nothing left behind to protect.
+  ///
+  /// ⛔The DRAG still holds it, and this asks for that too: what must come
+  /// back to zero is the state after the hand lifts, not during it.
+  group('a pending move does not hold the timeline', () {
+    testWidgets('the hold is back to zero while the move is still pending', (
+      tester,
+    ) async {
+      var held = 0;
+      final env = await pumpSelectionPanel(
+        tester,
+        onSelectionInteractionChanged: (active) => held += active ? 1 : -1,
+      );
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: '🚨the session has to be OPEN or this proves nothing',
+      );
+      expect(
+        held,
+        0,
+        reason:
+            'the pending session is still holding the edit lock: every '
+            'seek, scrub, row press and cut switch is refused while a box '
+            'is open, which is 유저「타임라인쪽 조작이 안먹힘」',
+      );
+    });
+
+    /// 🚨★★★**AND WALKING THE SHEET DOES NOT LAND IT** — 유저 2026-09-17:
+    /// 「프레임이동이나 레이어이동등은 **착지시킬 이유가 없는것들은 착지안하고
+    /// 편집중 그대로 유지**. 근데 여기서 **다른 도구 선택하는 등만 착지**
+    /// 시키는거고」.
+    ///
+    /// ⛔This case only became possible with the lock gone: before it, the
+    /// seek was refused outright, so a frame move never arrived here at all
+    /// (🧪measured 2026-09-17: with a box open, next-frame left the playhead
+    /// at 0 of 24).
+    testWidgets('a cel change keeps the selection and lands NOTHING', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester);
+      final first = env.coordinator.activeFrameKey;
+      final before = surfacePixelRgba(
+        env.coordinator.currentSurfaceOf(first),
+        30,
+        30,
+      );
+      expect(before, isNonZero, reason: 'the fixture premise');
+
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+      expect(env.commands.movePending, isTrue, reason: 'the session opened');
+
+      // Walk to the next cel, the way a seek does.
+      final next = BrushCanvasFixture.createFrameKeys()[1];
+      env.coordinator.selectFrame(next);
+      await env.setTool(CanvasTool.move);
+
+      expect(
+        surfacePixelRgba(env.coordinator.currentSurfaceOf(first), 30, 30),
+        before,
+        reason:
+            'the frame we walked away from was WRITTEN: a seek is not an '
+            'ending, and landing here puts the user\'s edit into a frame '
+            'they were only passing through',
+      );
+      expect(
+        env.commands.hasSelection,
+        isTrue,
+        reason:
+            'F-86: 「선택툴 선택한채로 프레임이나 인덱스 이동하면 사라지는데 '
+            '뭘 하든 안사라지도록」 — the region walks with you',
+      );
+      expect(
+        env.commands.movePending,
+        isFalse,
+        reason:
+            'the float belonged to the cel we left; the next move lifts '
+            'afresh from the one we are standing on',
+      );
+    });
   });
 }

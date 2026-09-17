@@ -1556,13 +1556,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // cel's tight ink bounds.
               contentBoundsProvider:
                   _activeCelContentBounds,
-              // Pending move sessions hold the
-              // session's edit lock (seeks
-              // refused) WITHOUT locking
-              // viewport navigation.
-              onMoveSessionPendingChanged:
-                  widget
-                      .onSelectionInteractionChanged,
+              // ⛔A PENDING MOVE NO LONGER HOLDS THE EDIT LOCK, and the
+              // callback that said so went with it (2026-09-17). R15-⑤ is
+              // about a gesture IN FLIGHT — 「the playhead moves when the
+              // pen lifts, never under it」 — and a pending session is a
+              // state: the hand is already off it. What kept it locked was
+              // that the lift committed its erase, so leaving the frame
+              // left a HOLE behind; `314aa6e8` stopped writing anything
+              // until the landing, and with nothing left behind there is
+              // nothing to refuse a seek for. 유저 2026-09-12: 「타임라인쪽
+              // 조작이 안먹힘. 룰러쪽 선택해도 드래그안되고 화살표이동도
+              // 안먹고」 (F-116, and the same complaint on F-86).
               // The transform tool's whole knob
               // set. Read through the
               // listenable above, so changing

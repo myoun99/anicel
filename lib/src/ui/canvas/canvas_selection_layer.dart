@@ -75,7 +75,6 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onLiftLanded,
     this.onLiftConfirmed,
     this.onLiftReverted,
-    this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.transformOptions = TransformToolOptions.defaults,
@@ -218,10 +217,6 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// nothing lands in history.
   final void Function(int liftToken)? onLiftReverted;
 
-  /// True while a move session awaits its confirm — the host holds the
-  /// session's edit-interaction lock (seeks refused, warmer down) without
-  /// locking viewport navigation.
-  final ValueChanged<bool>? onMoveSessionPendingChanged;
 
   @override
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
@@ -673,7 +668,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       });
     }
-    widget.onMoveSessionPendingChanged?.call(false);
     _syncAnts();
   }
 
@@ -683,7 +677,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _pendingLiftStamp = null;
     _moveSessionDirty = false;
     if (wasPending) {
-      widget.onMoveSessionPendingChanged?.call(false);
     }
   }
 
@@ -738,7 +731,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _shapeNeedsLift = false;
       }
     }
-    widget.onMoveSessionPendingChanged?.call(false);
     _syncAnts();
   }
 
@@ -923,20 +915,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // 🚨F-86 (유저 2026-09-12: 「선택툴 선택한채로 프레임이나 인덱스
       // 이동하면 사라지는데 뭘 하든 안사라지도록. 다른 컷 가도」): another
       // frame, row or cut KEEPS the region, and the next move lifts it
-      // afresh from the cel it then stands on. ↩️This forgot the region
-      // along with everything else.
+      // afresh from the cel it then stands on.
       //
-      // ⚠️THE LANDING THIS PATH DOES IS NOT REACHED FROM HERE, and the
-      // comment used to claim it was. An open box folds its affine in and
-      // a pending lift lands (R28 #10) — but R15-⑤ refuses the seek, the
-      // row change and the cut switch OUTRIGHT while a selection
-      // interaction is held, and an open box or a pending move is one
-      // (`brush_canvas_panel` hands `onMoveSessionPendingChanged` to the
-      // same hold). 🧪Measured 2026-09-17: with a box open, next-frame
-      // left the playhead at 0 of 24. The landing stays because this reset
-      // is SHARED — the tool switch and the dispose reach it with floats
-      // in flight — not because a frame move ever arrives holding one.
-      _resetAll(deferDragNotify: true, keepRegion: true);
+      // 🚨★★★**AND IT DOES NOT LAND** (2026-09-17). 유저 asked for exactly
+      // this split: 「프레임이동이나 레이어이동등은 **착지시킬 이유가
+      // 없는것들은 착지안하고 편집중 그대로 유지**. 근데 여기서 **다른 도구
+      // 선택하는 등만 착지**시키는거고」. Walking the sheet is not leaving
+      // the session — the box stays open, the numbers it holds stay set,
+      // and the next drag lifts them out of whatever cel is under it.
+      //
+      // ↩️This called [_resetAll] until then, which LANDS a pending float.
+      // ⚠️The paragraph that stood here said the landing was unreachable
+      // 「because R15-⑤ refuses the seek while a selection interaction is
+      // held」 — measured 2026-09-17, with a box open next-frame left the
+      // playhead at 0 of 24. That refusal is gone now (a pending session
+      // leaves nothing behind to protect, `314aa6e8`), so this path DOES
+      // arrive holding a float, and landing it would write the user's edit
+      // into the frame they were walking away from.
+      //
+      // ⛔Dropping the float costs nothing to undo, and that is the whole
+      // reason this is allowed to be a drop: the session never wrote to
+      // the cel. Before `314aa6e8` the erase was already committed and
+      // letting go here would have left a hole with the pixels gone.
+      _carrySessionToAnotherCel();
     }
     // Picking another mode (or another grid size) over an OPEN box widens
     // or narrows it in place — the whole point of holding the warp as
@@ -1055,7 +1056,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         : (_preview.warped() ?? _pendingLiftStamp);
     final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
-      widget.onMoveSessionPendingChanged?.call(false);
       final onConfirmed = widget.onLiftConfirmed;
       final onLanded = widget.onLiftLanded;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1354,6 +1354,48 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the next move lifts it afresh from the cel under it. The implicit
   /// whole-picture shape was never the user's selection (R26 #13), so it
   /// goes either way.
+
+  /// Walking to another cel with a session open: the box, the region and
+  /// the numbers it holds all stay; only the FLOAT is let go, because its
+  /// pixels belong to the cel being left behind.
+  ///
+  /// 🚨★★★유저 2026-09-17, splitting the verbs by hand: 「프레임이동이나
+  /// 레이어이동등은 **착지시킬 이유가 없는것들은 착지안하고 편집중 그대로
+  /// 유지**. 근데 여기서 **다른 도구 선택하는 등만 착지**시키는거고」. So a
+  /// seek is not an ending — [_resetAll] is what endings go through, and
+  /// this is deliberately not it.
+  ///
+  /// ⛔**THE TRANSFORM IS KEPT ON PURPOSE.** It is the 「편집값」 the user
+  /// asked to survive the walk: scale the box on frame 1, step to frame 5,
+  /// and the same scale is waiting there — applied to frame 5's own pixels,
+  /// which [_shapeNeedsLift] is what arranges (F-86: 「the next move lifts
+  /// it afresh from the cel it then stands on」).
+  ///
+  /// ⛔**AND LETTING THE FLOAT GO IS FREE, which is why this is allowed to
+  /// be a drop at all.** A session writes nothing to the cel until it
+  /// lands (`314aa6e8`), so there is no erase to take back. Before that,
+  /// releasing here would have left the origin erased and the floating
+  /// pixels gone — which is exactly why the seek was refused instead.
+  void _carrySessionToAnotherCel() {
+    final wasDragging = _drag != null;
+    setState(() {
+      _endDrag(cancelled: true, notify: false);
+      _clearLiftState();
+      _shapeNeedsLift = _region != null;
+    });
+    // The resample on screen was computed from the cel we just left.
+    if (_transform != null) {
+      _preview.schedule();
+    }
+    if (wasDragging) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _notifyDragActive(false);
+        }
+      });
+    }
+    _syncAnts();
+  }
   void _resetAll({bool deferDragNotify = false, bool keepRegion = false}) {
     final wasDragging = _drag != null;
     setState(() {
@@ -2200,7 +2242,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
-    widget.onMoveSessionPendingChanged?.call(true);
     return true;
   }
 
