@@ -85,8 +85,6 @@ import 'timeline/timeline_cell_style.dart'
         storyboardPanelPictureGroundColor,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecoration,
-        timelineRowLabelHighlight,
-        timelineRowLabelSplash,
         timelineSelectedFrameBorderColor,
         timelineStandingCellDecoration;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
@@ -2433,8 +2431,6 @@ class _StoryboardLabelShell extends StatelessWidget {
       // the row's reorder, not a scroll).
       key: selectKey,
       onTap: onTap,
-      splashFactory: timelineRowLabelSplash,
-      highlightColor: timelineRowLabelHighlight,
       child: Container(
         key: rowKey,
         width: StoryboardPanel._trackLabelWidth,

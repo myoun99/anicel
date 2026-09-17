@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
@@ -16,6 +17,16 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// what the user saw was that InkWell's splash and highlight filling the row.
 /// The timeline and the x-sheet share one row widget, so the timeline's labels
 /// and the storyboard's are read here.
+///
+/// ↩️**IT ASKED HOW, AND THE HOW MOVED** (F-138, 2026-09-17). This read each
+/// InkWell's OWN `splashFactory`, which is where F-132 had put the answer —
+/// three widgets spelling it by hand. 유저 then widened the law to the whole
+/// app (「이 앱은 기본적으로 이런거 off임. 없는채로 통일」) and it went to the
+/// THEME, so the widget's own field is null now and this failed while the
+/// product was right. ⚠️The harness had the same shape of mistake: it pumped a
+/// bare `MaterialApp`, whose theme is Flutter's own — so it could never have
+/// noticed a label that stopped turning the ink off for itself either.
+/// ★It asks what the PRESS resolves to now, under the app's real theme.
 void main() {
   List<InkWell> labelInkWells(
     WidgetTester tester,
@@ -31,16 +42,22 @@ void main() {
       )
       .toList();
 
-  void expectInkless(List<InkWell> labels) {
+  void expectInkless(WidgetTester tester, List<InkWell> labels) {
     expect(labels, isNotEmpty, reason: 'fixture: the rail draws labels');
+    final theme = Theme.of(tester.element(find.byType(Scaffold)));
+    expect(
+      theme.splashFactory,
+      NoSplash.splashFactory,
+      reason: 'fixture: the harness must be wearing the APP theme',
+    );
     for (final label in labels) {
       expect(
-        label.splashFactory,
+        label.splashFactory ?? theme.splashFactory,
         NoSplash.splashFactory,
         reason: '${label.key}: no fill spreads from the press',
       );
       expect(
-        label.highlightColor,
+        label.highlightColor ?? theme.highlightColor,
         Colors.transparent,
         reason: '${label.key}: no highlight while held',
       );
@@ -56,6 +73,7 @@ void main() {
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Scaffold(
           body: TimelineTabHost(
             session: session,
@@ -72,6 +90,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
+      tester,
       labelInkWells(tester, (key) => key.startsWith('timeline-layer-row-')),
     );
 
@@ -91,6 +110,7 @@ void main() {
     addTearDown(session.dispose);
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Scaffold(
           body: ListenableBuilder(
             listenable: session,
@@ -109,6 +129,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
+      tester,
       labelInkWells(
         tester,
         (key) =>

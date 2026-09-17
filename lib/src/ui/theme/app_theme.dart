@@ -453,6 +453,27 @@ ThemeData buildAppTheme() {
     canvasColor: AppColors.surface,
     dividerColor: AppColors.hairline,
     visualDensity: VisualDensity.compact,
+    // 🚨★★★**THE APP PRESSES WITHOUT INK.**
+    //
+    // 유저 2026-09-14 (F-132), on seeing one rail that had none: 「x시트
+    // 레이어라벨만 클릭했을때 **흰색으로 채워지는 애니메이션 없는데, 이거
+    // 맘에듬**. 일단 그부분 타임라인이랑 스토리보드패널이랑 법 하나로
+    // 통일시키고, 애니메이션 없도록」 — and 2026-09-16 (F-138), widening it:
+    // 「눌림 흰색 채움 애니메이션 제거. **이 앱은 기본적으로 이런거 off임.
+    // 없는채로 통일**」.
+    //
+    // ⛔BOTH HALVES, because they are two different effects and turning off
+    // only one leaves the press half-lit: [splashFactory] is the ink that
+    // SPREADS from the touch point (M3's default is `InkSparkle`, which also
+    // sparkles), [highlightColor] is the flat fill that sits there WHILE the
+    // control is held.
+    //
+    // ⚠️Here and nowhere else. ↩️F-132 closed this with a pair of constants
+    // in `timeline_cell_style.dart` that three rail widgets spelled by
+    // hand — which is why it reopened: every control written since had to
+    // remember, and none of them did. A theme is what a default is.
+    splashFactory: NoSplash.splashFactory,
+    highlightColor: Colors.transparent,
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.surface,
       foregroundColor: AppColors.text,
