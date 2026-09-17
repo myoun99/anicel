@@ -35,15 +35,44 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// keep showing under every tool, and painting can clip to it.
   CanvasSelectionRegion? _region;
 
+  /// Whether [_region] is a shape a TOOL synthesized rather than one the
+  /// user chose.
+  ///
+  /// 🚨★★★**F-108** (유저 2026-09-12: 「선택툴 안하고 그냥 변형사용시 … 변형
+  /// 하고 확정하고 되돌리면 **선택툴의 개미행렬이 남아있음**. 그 상태에서
+  /// 컨트롤d눌러야 되는 그런상황발생 … **법 통합하되 그런부분은 제대로
+  /// 독립**」). R26 #13 had already decided that the move tool's implicit
+  /// whole-picture box is not a selection, and the confirm and the revert
+  /// both honoured it — but the box was written here all the same, and
+  /// this is where the lift captures `regionBefore`. So the UNDO restored
+  /// a selection the user never made, and it then clipped their strokes.
+  ///
+  /// ⛔**THE FIX IS THE NAMING, NOT A GUARD AT EACH READER.** [region] —
+  /// the name every consumer outside the layer already reads — now means
+  /// 「what the user selected」 and goes null while this is set. The raw
+  /// geometry is [liveShape], and the only thing that wants it is the
+  /// layer that draws the box. A new reader cannot pick the wrong one by
+  /// accident, which is the whole point of splitting the two questions
+  /// instead of adding a flag for readers to remember.
+  bool _regionIsImplicit = false;
+
   /// The mode a fresh marquee/lasso combines with [region] (R26 #16).
   /// Default = 추가 (the user's stated default).
   SelectionCombineMode _combineMode = SelectionCombineMode.defaultMode;
 
-  CanvasSelectionRegion? get region => _region;
+  /// 🚨THE SELECTION — what the USER chose. Null while the live shape is a
+  /// tool's own implicit target (F-108, see [_regionIsImplicit]).
+  CanvasSelectionRegion? get region => _regionIsImplicit ? null : _region;
+
+  /// The live SHAPE on the canvas, selection or not — the marquee's
+  /// outline, or the box the move tool synthesized with nothing selected.
+  /// ⚠️GEOMETRY. The layer that owns the box reads this to stay in step
+  /// with the channel; everyone else means [region].
+  CanvasSelectionRegion? get liveShape => _region;
 
   /// True when a region is selected — the single truth the shortcuts, the
   /// paint clip and the ants all read.
-  bool get hasRegion => _region != null;
+  bool get hasRegion => region != null;
 
   SelectionCombineMode get combineMode => _combineMode;
 
@@ -55,14 +84,23 @@ class CanvasSelectionCommands extends ChangeNotifier {
     notifySessionChanged();
   }
 
-  /// Installs [region] as the live selection. The mounted layer pushes
-  /// every committed change through here, and the history command's
-  /// execute/undo does the same — one write path, one truth.
-  void setRegion(CanvasSelectionRegion? region) {
-    if (_region == region) {
+  /// Installs [region] as the live shape. The mounted layer pushes every
+  /// committed change through here, and the history command's execute/undo
+  /// does the same — one write path, one truth.
+  ///
+  /// [implicit] marks a shape a tool synthesized (F-108): it draws and
+  /// lifts like any other, and it is not a selection. ⛔The default is
+  /// false because every OTHER writer is installing a real one — a history
+  /// command replaying a selection, a host handing one in — and a shape
+  /// that has to be declared implicit is one nobody can make by forgetting.
+  void setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
+    // Nothing is implicit about nothing: clearing always clears both.
+    final nextImplicit = region != null && implicit;
+    if (_region == region && _regionIsImplicit == nextImplicit) {
       return;
     }
     _region = region;
+    _regionIsImplicit = nextImplicit;
     notifySessionChanged();
   }
 

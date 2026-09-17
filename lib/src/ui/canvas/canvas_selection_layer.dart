@@ -525,10 +525,36 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Assigns the region and pushes it to the app-level channel. Callers
   /// wrap in setState; the channel's setter is idempotent, so the round
   /// trip back through [applyCommittedRegion] settles immediately.
-  void _setRegion(CanvasSelectionRegion? region) {
+  /// Installs [region] as the live shape, here and on the channel that
+  /// owns it (R28-S).
+  ///
+  /// 🚨★★★[implicit] is the MOVE tool's whole-picture box — a shape the
+  /// tool synthesized because nothing was selected (R26 #13). It draws and
+  /// lifts like any other shape and **it is not a selection**, which the
+  /// channel now says for every reader at once (F-108,
+  /// `CanvasSelectionCommands.region`).
+  ///
+  /// ⛔The flag is SET HERE and nowhere else. It used to be a second line
+  /// beside each call, and it went stale exactly the way a second line
+  /// does: the confirm cleared it, and the undo that came afterwards then
+  /// had nothing left to tell it the restored shape had never been chosen.
+  void _setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
     _region = region;
-    widget.selectionCommands?.setRegion(region);
+    _shapeIsImplicitWholePicture = region != null && implicit;
+    widget.selectionCommands?.setRegion(region, implicit: implicit);
   }
+
+  /// The SAME shape, somewhere else.
+  ///
+  /// 🚨★★★**WHETHER A SHAPE IS A SELECTION IS A FACT ABOUT THE SHAPE, NOT
+  /// ABOUT WHERE IT IS** (F-108). Every one of these callers is a transform
+  /// landing the outline where the pixels went, and each of them called
+  /// [_setRegion] with the default — so the MOVE TOOL's implicit
+  /// whole-picture box was reinstalled as a REAL selection the moment the
+  /// transform committed, right before the confirm that was supposed to end
+  /// it. 🔬Measured: pending `region=null`, confirmed `region=4pts`.
+  void _moveRegion(CanvasSelectionRegion region) =>
+      _setRegion(region, implicit: _shapeIsImplicitWholePicture);
 
   /// True whenever the shape's pixels are NOT already floating: from a
   /// USER selection (marquee commit, shape channel apply) until a Move
@@ -596,9 +622,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasSelectionShape shape,
   ) {
     final region = CanvasSelectionRegion.shape(shape);
-    _setRegion(region);
+    _setRegion(region, implicit: true);
     _shapeNeedsLift = true;
-    _shapeIsImplicitWholePicture = true;
     return region;
   }
 
@@ -610,7 +635,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _setRegion(null);
     _shapeNeedsLift = false;
-    _shapeIsImplicitWholePicture = false;
   }
 
   /// The lift command owning this selection's pixels (R15-④), the stamp
@@ -651,7 +675,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // selection — the user never selected anything.
         if (_shapeIsImplicitWholePicture) {
           _setRegion(null);
-          _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         } else {
           if (startShape != null) {
@@ -709,7 +732,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // simply ends — back to no selection.
         if (_shapeIsImplicitWholePicture) {
           _setRegion(null);
-          _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         }
         // The float goes with the session. Not under an open box — the
@@ -727,7 +749,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _shapeNeedsLift = true;
       if (_shapeIsImplicitWholePicture) {
         _setRegion(null);
-        _shapeIsImplicitWholePicture = false;
         _shapeNeedsLift = false;
       }
     }
@@ -840,7 +861,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R28-S: adopt whatever the app already has selected — the region
     // outlives this layer (tool switches unmount it), so mounting must
     // pick it back up instead of starting empty.
-    _region = widget.selectionCommands?.region;
+    _region = widget.selectionCommands?.liveShape;
     _shapeNeedsLift = _region != null;
     _bindCommands();
     widget.selectionCommands?.addListener(_adoptChannelRegion);
@@ -862,7 +883,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(() => _polygonTracePoints = tracePoints);
       _syncAnts();
     }
-    final channelRegion = widget.selectionCommands?.region;
+    final channelRegion = widget.selectionCommands?.liveShape;
     if (channelRegion == _region) {
       return;
     }
@@ -903,7 +924,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
       oldWidget.selectionCommands?.unbind(this);
       oldWidget.selectionCommands?.removeListener(_adoptChannelRegion);
-      _region = widget.selectionCommands?.region;
+      _region = widget.selectionCommands?.liveShape;
       _shapeNeedsLift = _region != null;
       _bindCommands();
       widget.selectionCommands?.addListener(_adoptChannelRegion);
@@ -1413,9 +1434,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _foldOpenTransformIntoPendingStamp();
       _landPendingLiftStamp();
       _endDrag(cancelled: true, notify: wasDragging && !deferDragNotify);
+      // R26 #13: an implicit shape never survives a reset — it was never
+      // chosen, so there is nothing to keep. ⚠️Clearing it through
+      // [_setRegion] is what also tells the CHANNEL it is gone; the line
+      // that used to sit under this one only told the layer.
       if (!keepRegion || _shapeIsImplicitWholePicture) {
         _setRegion(null);
-        _shapeIsImplicitWholePicture = false; // R26 #13
       }
       _clearLiftState();
       _clearTransform();
@@ -2113,7 +2137,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // A warped region collapses to its boundary polygon: the mesh
         // maps the LIFTED pixels, so what is selected afterwards is the
         // warped outline, not the old step list.
-        _setRegion(CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)));
+        _moveRegion(
+          CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)),
+        );
         _moveSessionDirty = true;
         _clearTransform(confirming: true);
       });
@@ -2135,7 +2161,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final h = base == null ? null : solveHomography(base, warpCorners);
       setState(() {
         _pendingLiftStamp = warped;
-        _setRegion(
+        _moveRegion(
           h == null
               ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
               : region.mapped((point) => _applyHomography(h, point)),
@@ -2150,7 +2176,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _recordTransformRecall(affine);
       setState(() {
         _pendingLiftStamp = _preview.warped() ?? pending;
-        _setRegion(region.mapped(affine.apply));
+        _moveRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
         _clearTransform(confirming: true);
       });
@@ -2340,7 +2366,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _pendingLiftStamp = _preview.warped() ?? pending;
     final region = _region;
     if (region != null) {
-      _setRegion(region.mapped(affine.apply));
+      _moveRegion(region.mapped(affine.apply));
     }
   }
 
@@ -3277,7 +3303,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // that could not. Measured on the confirm frame of a wide move:
       // 44% of the landing absent. A move is a translation; the surface
       // stays where it was built and [_floatDrawOffset] carries it.
-      _setRegion(region.translated(dx: dx, dy: dy));
+      _moveRegion(region.translated(dx: dx, dy: dy));
     });
     _syncAnts();
   }

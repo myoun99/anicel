@@ -4319,4 +4319,86 @@ void main() {
       );
     });
   });
+
+  /// 🚨★★★**F-108 — 암시적 모양은 선택이 아니다, 확정하고 되돌린 뒤에도.**
+  ///
+  /// > 「선택툴 안하고 그냥 변형사용시 … **변형하고 확정하고 되돌리면 선택툴의
+  /// > 개미행렬이 남아있음. 그 상태에서 컨트롤d눌러야 되는 그런상황발생.** 아마
+  /// > 그냥변형해도 선택툴이 작동되는게 로직인거같은데 그러지않도록. **법
+  /// > 통합하되 그런부분은 제대로 독립**」 (유저 2026-09-12)
+  ///
+  /// R26 #13 already decided this and the confirm and the revert both honour
+  /// it. What did not was everything DOWNSTREAM of the channel: the box was
+  /// written there as an ordinary region, and that channel is what the lift
+  /// captures as `regionBefore` and what the stroke clip reads. So the undo
+  /// faithfully restored a selection the user never made.
+  ///
+  /// ⛔**한 필드가 두 질문에 답하고 있었다** — 「무슨 모양이 그려져 있나」와
+  /// 「사용자가 무엇을 골랐나」. 이제 채널이 둘을 따로 답한다(`region` ·
+  /// `liveShape`), 그래서 **바깥에서 잘못된 쪽을 읽을 수가 없다.**
+  group('a transform with nothing selected is not a selection', () {
+    testWidgets('the box is on the canvas and NOT in the document', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester);
+      expect(env.commands.hasRegion, isFalse, reason: 'the premise');
+
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(30, 30), const Offset(40, 35));
+
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: '🚨the implicit session has to be OPEN or this proves nothing',
+      );
+      expect(
+        env.commands.liveShape,
+        isNotNull,
+        reason: 'the box IS on screen — that is what is being transformed',
+      );
+      expect(
+        env.commands.region,
+        isNull,
+        reason:
+            '유저: 「그냥변형해도 선택툴이 작동되는게 로직인거같은데 '
+            '그러지않도록」 — nothing was selected, so nothing clips a stroke '
+            'and nothing is captured as the undo\'s 「before」',
+      );
+    });
+
+    testWidgets('and confirming then undoing does not resurrect one', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(30, 30), const Offset(40, 35));
+      expect(env.commands.movePending, isTrue, reason: 'the session opened');
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      expect(
+        env.commands.hasRegion,
+        isFalse,
+        reason: 'R26 #13: the confirm ends it — the premise for the undo',
+      );
+
+      env.history.undo();
+      await tester.pump();
+      expect(
+        env.commands.hasRegion,
+        isFalse,
+        reason:
+            '유저: 「변형하고 확정하고 되돌리면 선택툴의 개미행렬이 남아있음. '
+            '그 상태에서 컨트롤d눌러야 되는」',
+      );
+
+      env.history.redo();
+      await tester.pump();
+      expect(
+        env.commands.hasRegion,
+        isFalse,
+        reason: '리두도 같은 순서 문제를 갖는다 — 되살릴 선택이 애초에 없다',
+      );
+    });
+  });
 }
