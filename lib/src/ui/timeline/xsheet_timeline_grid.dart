@@ -32,6 +32,7 @@ import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
+import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
@@ -321,6 +322,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController.addListener(_frameAxis.handleScroll);
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
+    widget.hooks.frameCursor.addListener(_reveal.handlePlaybackPage);
   }
 
   // ── revealing a selection: its own object ───────────────────────────
@@ -339,6 +341,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       );
       widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
     }
+    rebindListener(
+      oldWidget.hooks.frameCursor,
+      widget.hooks.frameCursor,
+      _reveal.handlePlaybackPage,
+    );
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
     // anchors. Same policy as the horizontal timeline (Axis rule).
@@ -353,6 +360,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_reveal.handleRevealSelection);
+    widget.hooks.frameCursor.removeListener(_reveal.handlePlaybackPage);
     _frameAxis.dispose();
     _frameScrollController
       ..removeListener(_frameAxis.handleScroll)

@@ -51,6 +51,7 @@ class TimelineGridHooks {
     required this.frameCursor,
     this.frameReadySignal,
     this.revealSelectionTick,
+    this.playbackFrame,
     required this.playbackFrameCount,
     this.drawnFrameCount,
     this.noriShiroLabel = '',
@@ -143,6 +144,19 @@ class TimelineGridHooks {
   /// leaves the grid scrolling only where the user put it, which is what a
   /// passive host wants.
   final ValueListenable<int>? revealSelectionTick;
+
+  /// F-110: WHETHER PLAYBACK IS RUNNING — the playback position, or null
+  /// while nothing plays. It is the gate on the frame axis turning its page
+  /// (유저 2026-09-12: 「**재생시에도** 플레이헤드 밖 나갈때 스크롤하도록.
+  /// **룰러 드래그랑은 다르게 다음 페이지? 로 간다는 느낌**임」).
+  ///
+  /// ⛔Not the tick, and not read for a number. The surface pages off its
+  /// own [frameCursor] — which is what already carries the playback frame
+  /// here, in the frames THIS axis counts in (the rail the cut's local ones,
+  /// the storyboard the track's global ones). Listening to this instead
+  /// would ask every surface to undo that mapping again, and would depend on
+  /// two listeners on one notifier firing in the order they were added.
+  final ValueListenable<int?>? playbackFrame;
 
   final int playbackFrameCount;
 

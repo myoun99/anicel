@@ -693,6 +693,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onCancel: _session.movieEnd.cancelMovieEndDrag,
                     ),
                     playheadFrame: _playheadGlobalFrame,
+                    // F-110: the gate on the page turn. Null while nothing
+                    // plays, which is what keeps a hand's seek on the walk.
+                    playbackFrame: _session
+                        .playbackRig
+                        .playback
+                        .globalFrameIndexListenable,
                     revealSelectionTick: _session.revealSelectionTick,
                     frameReadySignal: _frameReadySignal,
                     onSeekGlobalFrame: (frame) =>

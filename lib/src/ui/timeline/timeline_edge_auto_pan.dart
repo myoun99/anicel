@@ -61,12 +61,49 @@ double revealScrollOffset(ScrollWindow window, RevealedItem item) {
   return window.offset;
 }
 
-/// Jumps [controller] the least it can ([revealScrollOffset]) so [item] is
-/// on screen with its margin of the neighbour, within the scrollable's own
-/// range — and not at all when it already is.
-void jumpToReveal(ScrollController controller, RevealedItem item) {
+/// The scroll offset that PAGES a [window] to [item] — it stands at the
+/// window's start, or the window does not move at all.
+///
+/// 🚨F-110 (유저 2026-09-12): 「재생시에도 플레이헤드 밖 나갈때 스크롤하도록.
+/// **룰러 드래그랑은 다르게 다음 페이지? 로 간다는 느낌**임. 뭐냐면 넘어가면
+/// **룰러가 왼쪽에 오도록 스크롤바 한번만 이동**」.
+///
+/// ⛔THE OPPOSITE OF [revealScrollOffset], ON PURPOSE. A walk moves the
+/// least it can, so a step that only just goes off screen brings the view
+/// along by one step and you keep your place. Playback is not walking: the
+/// playhead crosses the whole window every few seconds, and a nearest-edge
+/// reveal would drag the view under it continuously. One jump per window,
+/// and the frame that left stands at the start of the new one.
+///
+/// ⚠️[RevealedItem.margin] is NOT read here, and that is the decision, not
+/// an oversight: a margin is exactly what makes a walk read as a walk
+/// rather than as a jump to the very edge, and this IS the jump to the very
+/// edge — 유저 asked for the ruler to come to the left. The type is shared
+/// because the callers already hold one and the two laws must be swappable
+/// at a call site.
+double pageScrollOffset(ScrollWindow window, RevealedItem item) {
+  if (window.viewport <= 0) {
+    return window.offset;
+  }
+  final inside =
+      item.start >= window.offset &&
+      item.start + item.extent <= window.offset + window.viewport;
+  return inside ? window.offset : item.start;
+}
+
+/// Applies [law] to [controller]'s live position, within the scrollable's
+/// own range, and not at all when it would not move.
+///
+/// ⛔The tail is written ONCE. [jumpToReveal] and [jumpToPage] differ in the
+/// offset they ask for and in nothing else; two copies of a clamp-and-jump
+/// is how the two laws start disagreeing about the range.
+void _jumpUsing(
+  ScrollController controller,
+  RevealedItem item,
+  double Function(ScrollWindow window, RevealedItem item) law,
+) {
   final position = controller.position;
-  final target = revealScrollOffset((
+  final target = law((
     offset: position.pixels,
     viewport: position.viewportDimension,
   ), item).clamp(position.minScrollExtent, position.maxScrollExtent);
@@ -74,6 +111,18 @@ void jumpToReveal(ScrollController controller, RevealedItem item) {
     controller.jumpTo(target);
   }
 }
+
+/// Jumps [controller] the least it can ([revealScrollOffset]) so [item] is
+/// on screen with its margin of the neighbour, within the scrollable's own
+/// range — and not at all when it already is.
+void jumpToReveal(ScrollController controller, RevealedItem item) =>
+    _jumpUsing(controller, item, revealScrollOffset);
+
+/// Turns the page under [controller] so [item] stands at the window's start
+/// ([pageScrollOffset]), within the scrollable's own range — and not at all
+/// when it is already inside.
+void jumpToPage(ScrollController controller, RevealedItem item) =>
+    _jumpUsing(controller, item, pageScrollOffset);
 
 double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
   if (extent <= 0) {
@@ -180,13 +229,46 @@ typedef RevealedStep = ({ScrollController controller, double extent, int at});
 /// [RevealedStep.at] is left where it is; the other still moves.
 void revealSelectionOnBothAxes(RevealedStep first, RevealedStep second) {
   for (final axis in [first, second]) {
-    if (axis.at < 0 || axis.extent <= 0 || !axis.controller.hasClients) {
-      continue;
+    if (_axisCanMove(axis)) {
+      jumpToReveal(axis.controller, _itemOf(axis));
     }
-    jumpToReveal(axis.controller, (
-      start: axis.at * axis.extent,
-      extent: axis.extent,
-      margin: axis.extent,
-    ));
+  }
+}
+
+/// Whether an axis can be moved at all: a scrollable with no clients, a
+/// non-positive extent, or a step that is not drawn on this axis
+/// ([RevealedStep.at] negative, which is what every row walk answers) is
+/// left exactly where it is.
+bool _axisCanMove(RevealedStep axis) =>
+    axis.at >= 0 && axis.extent > 0 && axis.controller.hasClients;
+
+/// Where a step stands along its axis, with ONE step of margin — the margin
+/// a walk reads by and a page ignores on purpose ([pageScrollOffset]).
+RevealedItem _itemOf(RevealedStep axis) => (
+  start: axis.at * axis.extent,
+  extent: axis.extent,
+  margin: axis.extent,
+);
+
+/// Turns the page under ONE axis so the playhead's frame stands at the
+/// window's start, and not at all while it is already inside (F-110).
+///
+/// 🚨유저 2026-09-12: 「재생시에도 플레이헤드 밖 나갈때 스크롤하도록. **룰러
+/// 드래그랑은 다르게 다음 페이지? 로 간다는 느낌**임. 뭐냐면 넘어가면 **룰러가
+/// 왼쪽에 오도록 스크롤바 한번만 이동**」.
+///
+/// ⛔ONE axis, where the reveal takes two, and that is the difference and
+/// not an omission: a reveal answers 「the selection moved」, which is a
+/// place on both of a grid's axes at once. A playback tick moves the
+/// playhead along the FRAME axis and nothing else — the rows do not move
+/// while a cut plays. Handing a second axis here would mean inventing a
+/// row for the tick to stand on.
+///
+/// Every surface that follows the playhead calls THIS — the timeline's
+/// frames, the x-sheet's (which run down, not across) and the storyboard's
+/// global strip — so the page law has one home, as the walk does.
+void pageToPlayhead(RevealedStep axis) {
+  if (_axisCanMove(axis)) {
+    jumpToPage(axis.controller, _itemOf(axis));
   }
 }

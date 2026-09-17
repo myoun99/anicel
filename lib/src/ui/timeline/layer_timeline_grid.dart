@@ -18,6 +18,7 @@ import 'timeline_frame_axis_follower.dart';
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
+import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
@@ -283,6 +284,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
+    widget.hooks.frameCursor.addListener(_handlePlaybackPage);
   }
 
   /// The reveal runs AFTER the frame the selection moved in: the rows this
@@ -296,6 +298,29 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     });
   }
 
+  /// F-110: the frame axis turns a PAGE when playback carries the playhead
+  /// out of the window — 유저 2026-09-12: 「넘어가면 룰러가 왼쪽에 오도록
+  /// 스크롤바 한번만 이동」.
+  ///
+  /// ⛔The cursor is what is listened to, not the playback listenable: the
+  /// cursor is the frame THIS axis counts in and it is already set when it
+  /// notifies, where two listeners on the playback notifier would have to
+  /// fire in the order they happened to be added.
+  ///
+  /// ⛔And only the FRAME axis. A cut plays down one row, so there is no row
+  /// for the tick to stand on — [pageToPlayhead] takes one axis for that
+  /// reason and the reveal takes two.
+  void _handlePlaybackPage() {
+    if (widget.hooks.playbackFrame?.value == null) {
+      return;
+    }
+    pageToPlayhead((
+      controller: _horizontalScrollController,
+      extent: _metrics.frameCellWidth,
+      at: widget.hooks.frameCursor.value,
+    ));
+  }
+
   @override
   void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -306,6 +331,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       );
       widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
     }
+    rebindListener(
+      oldWidget.hooks.frameCursor,
+      widget.hooks.frameCursor,
+      _handlePlaybackPage,
+    );
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise the leading-edge frame anchors.
     applyZoomAnchoredScroll(
@@ -319,6 +349,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   void dispose() {
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
+    widget.hooks.frameCursor.removeListener(_handlePlaybackPage);
     _frameAxis.dispose();
     _horizontalScrollController
       ..removeListener(_frameAxis.handleScroll)

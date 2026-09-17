@@ -442,6 +442,7 @@ class StoryboardPanel extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.revealSelectionTick,
+    this.playbackFrame,
     this.frameReadySignal,
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
@@ -726,6 +727,11 @@ class StoryboardPanel extends StatefulWidget {
   /// strips/blocks/rails. Null (or a null value) hides the line.
   final ValueListenable<int?>? playheadFrame;
 
+
+  /// F-110: WHETHER PLAYBACK IS RUNNING — the playback position, or null
+  /// while nothing plays. The gate on the strip turning its page; the frame
+  /// it pages to is [playheadFrame]'s, which is already global here.
+  final ValueListenable<int?>? playbackFrame;
   /// R5: the session's "bring the selection back into view" tick.
   final ValueListenable<int>? revealSelectionTick;
 
@@ -1135,6 +1141,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     super.initState();
     _horizontalController.addListener(_frameAxis.handleScroll);
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    widget.playheadFrame?.addListener(_handlePlaybackPage);
   }
 
   /// R5: the same "bring the selection back into view" tick the timeline
@@ -1164,6 +1171,30 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     });
   }
 
+  /// F-110: the strip turns a PAGE when playback carries the playhead out of
+  /// the window — 유저 2026-09-12: 「재생시에도 플레이헤드 밖 나갈때
+  /// 스크롤하도록 … 넘어가면 룰러가 왼쪽에 오도록 스크롤바 한번만 이동」.
+  ///
+  /// ⛔THE WALK ABOVE IS A DIFFERENT LAW, not a setting of this one. A
+  /// selection walk moves the least it can and keeps a neighbour in sight;
+  /// a page stands the playhead at the window's start and does nothing at
+  /// all until it leaves. [pageToPlayhead] is the other surfaces' too.
+  ///
+  /// ⛔And no post-frame hop: the page must land on the frame the tick
+  /// carried, and this listener already runs with [playheadFrame] set — the
+  /// row list a reveal waits for is not read here.
+  void _handlePlaybackPage() {
+    final frame = widget.playheadFrame?.value;
+    if (widget.playbackFrame?.value == null || frame == null) {
+      return;
+    }
+    pageToPlayhead((
+      controller: _horizontalController,
+      extent: widget.pixelsPerFrame,
+      at: frame,
+    ));
+  }
+
   @override
   void didUpdateWidget(covariant StoryboardPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1171,6 +1202,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       oldWidget.revealSelectionTick,
       widget.revealSelectionTick,
       _handleRevealSelection,
+    );
+    rebindListener(
+      oldWidget.playheadFrame,
+      widget.playheadFrame,
+      _handlePlaybackPage,
     );
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
@@ -1197,6 +1233,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   @override
   void dispose() {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
+    widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
     _frameAxis.dispose();
     _verticalController.dispose();

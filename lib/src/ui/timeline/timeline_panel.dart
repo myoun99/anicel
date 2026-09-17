@@ -55,6 +55,7 @@ class TimelinePanel extends StatefulWidget {
     required this.frameCursor,
     this.frameReadySignal,
     this.revealSelectionTick,
+    this.playbackFrame,
     required this.playbackFrameCount,
     this.drawnFrameCount,
     this.noriShiroLabel = '',
@@ -189,6 +190,11 @@ class TimelinePanel extends StatefulWidget {
   /// R5: the session's "bring the selection back into view" tick, handed
   /// to whichever grid this panel is showing.
   final ValueListenable<int>? revealSelectionTick;
+
+  /// F-110: the playback position, or null while nothing plays — handed
+  /// straight to both grids, which turn their frame axis a page at a time
+  /// while it is running. See [TimelineGridHooks.playbackFrame].
+  final ValueListenable<int?>? playbackFrame;
 
   final int playbackFrameCount;
 
@@ -547,6 +553,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       frameCursor: widget.frameCursor,
       frameReadySignal: widget.frameReadySignal,
       revealSelectionTick: widget.revealSelectionTick,
+      playbackFrame: widget.playbackFrame,
       playbackFrameCount: widget.playbackFrameCount,
       drawnFrameCount: widget.drawnFrameCount,
       noriShiroLabel: widget.noriShiroLabel,

@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/panels/panel_flash.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_editor_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_axis_follower.dart';
 import 'package:anicel/src/ui/timeline/timeline_scroll_offset_sync.dart';
+import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 
 /// The scroll-and-reveal machinery of the timeline, none of which a test
 /// named (the audit's untested-file pass, 2026-09-05). Each of these
@@ -391,6 +392,42 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(controller.requests.value, isNull);
+    });
+  });
+
+  group('the two ways a window comes to an item (F-110)', () {
+    // 🎯THE CONTRAST IS THE TEST. A walk moves the least it can; playback
+    // turns the page. Same window, same item, two answers — which is why
+    // they are two functions and not one with a flag (유저 2026-09-12:
+    // 「룰러 드래그랑은 다르게 다음 페이지? 로 간다는 느낌」).
+    const window = (offset: 0.0, viewport: 100.0);
+    const justPast = (start: 120.0, extent: 10.0, margin: 8.0);
+
+    test('a walk brings the item to the near edge, keeping its margin', () {
+      expect(revealScrollOffset(window, justPast), 38);
+    });
+
+    test('a page puts it at the window START, margin unread', () {
+      expect(pageScrollOffset(window, justPast), 120);
+    });
+
+    test('neither moves a window the item is already inside', () {
+      const inside = (start: 20.0, extent: 10.0, margin: 8.0);
+      expect(revealScrollOffset(window, inside), window.offset);
+      expect(pageScrollOffset(window, inside), window.offset);
+    });
+
+    test('an item straddling the far edge is OUT for the page, while the '
+        'walk only pulls its tail in', () {
+      const straddling = (start: 95.0, extent: 10.0, margin: 0.0);
+      expect(revealScrollOffset(window, straddling), 5);
+      expect(pageScrollOffset(window, straddling), 95);
+    });
+
+    test('a window with no length answers with itself, both ways', () {
+      const none = (offset: 40.0, viewport: 0.0);
+      expect(revealScrollOffset(none, justPast), 40);
+      expect(pageScrollOffset(none, justPast), 40);
     });
   });
 }
