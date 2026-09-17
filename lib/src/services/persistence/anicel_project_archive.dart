@@ -28,6 +28,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import '../../core/path_names.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
@@ -44,6 +45,20 @@ const String anicelProjectExtension = 'anicel';
 
 /// The same thing with the dot, for `endsWith` and filename building.
 const String anicelProjectSuffix = '.$anicelProjectExtension';
+
+/// What the USER calls the project at [path]: its file name with the
+/// `.anicel` taken off.
+///
+/// 🗣️유저 2026-09-16 (F-146): 「최근 연 프로젝트에 **.anicel 필요없으니까
+/// 안보이게**」. The top strip's own title already read this way, so the
+/// recent list showing the extension was one name spelled two ways — this
+/// is the one spelling.
+String projectDisplayName(String path) {
+  final file = fileNameOfPath(path);
+  return file.endsWith(anicelProjectSuffix)
+      ? file.substring(0, file.length - anicelProjectSuffix.length)
+      : file;
+}
 
 /// v3 (R20-A1 cold-cel tiering): cels persist as PRE-COMPRESSED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The

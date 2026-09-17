@@ -194,7 +194,6 @@ void main() {
     'menuBarHelp': (s) => s.menuBarHelp,
     'menuPlay': (s) => s.menuPlay,
     'menuPause': (s) => s.menuPause,
-    'menuAlphaPreview': (s) => s.menuAlphaPreview,
     'topStripProject': (s) => s.topStripProject,
     'topStripSettings': (s) => s.topStripSettings,
     'fileOpenTitle': (s) => s.fileOpenTitle,

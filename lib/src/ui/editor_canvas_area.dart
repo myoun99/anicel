@@ -37,7 +37,6 @@ import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/canvas_point_gizmo.dart';
 import 'canvas/layer_transform_box.dart';
 import 'editor_session_manager.dart';
-import 'canvas/paper_background.dart' show alphaPreviewEnabled;
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
@@ -406,10 +405,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.cameraDimOpacity,
         ?widget.expandedLaneLayerIds,
         // The pasteboard is PROJECT data now (R3b, R28 #9 reversed): its
-        // changes arrive through the session subscription above. The
-        // alpha-preview toggle is app VIEW state and repaints the stage
-        // floors here.
-        alphaPreviewEnabled,
+        // changes arrive through the session subscription above.
       ]),
       builder: (context, _) {
         // Playback swaps only the viewport CONTENT (via the panel's
@@ -503,7 +499,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       backdropNone: project.backdropNone,
       pasteboardArgb: project.pasteboardArgb,
       pasteboardNone: project.pasteboardNone,
-      showAlphaCheckerboard: alphaPreviewEnabled.value,
       trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
     );
   }

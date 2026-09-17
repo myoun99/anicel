@@ -57,7 +57,7 @@ import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter, alphaPreviewEnabled, paintAlphaCheckerboard;
+    show paintAlphaCheckerboard;
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
@@ -2811,11 +2811,13 @@ class _CanvasViewportPanbar extends StatelessWidget {
 }
 
 /// The stage's outer planes behind the artwork (R3b): the opaque backdrop
-/// with the RGBA pasteboard over it — or the alpha checkerboard in place
-/// of BOTH while [alphaPreviewEnabled] is on (an alpha export excludes
-/// them, so the preview must too; only the paper's own alpha stays real).
-/// Subscribed here so every BrushCanvasPanel shell (canvas, timesheet,
-/// conte) follows the toggle without leaning on an ancestor rebuild.
+/// with the RGBA pasteboard over it, and the checkerboard wherever one of
+/// them is ABSENT.
+///
+/// 🪦It used to subscribe to an ALPHA-PREVIEW toggle in the settings menu,
+/// which replaced BOTH planes with the checkerboard. 유저 2026-09-16: 「설정의
+/// 알파 미리보기 필요없어졌으니 잔재 싹 삭제」 — an absent plane already says
+/// the same thing in the place it means it ([_StagePlanesPainter], F-114).
 ///
 /// ★THE PASTEBOARD IS A PLACE, NOT A WASH (유저, R2 #3). Both planes used
 /// to fill the whole panel, one over the other — which is a stack for
@@ -2862,22 +2864,17 @@ class _StagePlanes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: alphaPreviewEnabled,
-      builder: (context, preview, _) => preview
-          ? CustomPaint(painter: const AlphaCheckerboardPainter(), child: child)
-          : CustomPaint(
-              painter: _StagePlanesPainter(
-                backdrop: Color(backdropArgb),
-                pasteboard: Color(pasteboardArgb),
-                backdropNone: backdropNone,
-                pasteboardNone: pasteboardNone,
-                paperNone: paperNone,
-                canvasSize: canvasSize,
-                viewport: viewport,
-              ),
-              child: child,
-            ),
+    return CustomPaint(
+      painter: _StagePlanesPainter(
+        backdrop: Color(backdropArgb),
+        pasteboard: Color(pasteboardArgb),
+        backdropNone: backdropNone,
+        pasteboardNone: pasteboardNone,
+        paperNone: paperNone,
+        canvasSize: canvasSize,
+        viewport: viewport,
+      ),
+      child: child,
     );
   }
 }

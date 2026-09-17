@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' show XTypeGroup;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
@@ -65,6 +66,30 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Opens the RECENT PROJECTS row's second level, with the Project popover
+  /// already up.
+  ///
+  /// 🗣️유저 2026-09-16 (F-146): 「프로젝트버튼의 최근 프로젝트는 **최근
+  /// 프로젝트라는 버튼안에** 넣고」 — the list used to be spilled straight
+  /// into the Project popover under a heading. It is the submenu axis I-4
+  /// built (hover-opened), so the rows need a mouse to be on the row.
+  Future<void> hoverRecents(WidgetTester tester) async {
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('menu-recent-projects')),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openRecents(WidgetTester tester) async {
+    await openProjectMenu(tester);
+    await hoverRecents(tester);
+  }
+
   /// Taps a Recent row and lets the open RUN, answering whether the wait
   /// window was seen on the way.
   ///
@@ -102,8 +127,7 @@ void main() {
     await openProjectMenu(tester);
     expect(find.text(AppText.strings.recentProjectsTitle), findsNothing);
   });
-
-  testWidgets('remembered projects appear as rows under a heading', (
+  testWidgets('remembered projects live inside the RECENT PROJECTS row', (
     tester,
   ) async {
     final a = writeProject('Cut 12.anicel');
@@ -113,12 +137,56 @@ void main() {
         .withOpened(RecentProject(path: b)));
 
     await openProjectMenu(tester);
+    // 🗣️F-146: one row, and the list is behind it.
+    expect(
+      find.byKey(const ValueKey<String>('menu-recent-projects')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(ValueKey<String>('menu-recent-$b')),
+      findsNothing,
+      reason: '두 번째 겹은 아직 화면에 없다 — 그게 겹이 둘인 이유다',
+    );
+
+    await hoverRecents(tester);
 
     expect(find.text(AppText.strings.recentProjectsTitle), findsOneWidget);
     expect(find.byKey(ValueKey<String>('menu-recent-$b')), findsOneWidget);
     expect(find.byKey(ValueKey<String>('menu-recent-$a')), findsOneWidget);
-    // The row says the file name, not the whole path.
-    expect(find.text('Cut 13.anicel'), findsOneWidget);
+    // 🗣️유저 2026-09-16 (F-146): 「최근 연 프로젝트에 **.anicel 필요없으니까
+    // 안보이게**」 — the row says what the user calls the work, and the
+    // strip's own title has said exactly that all along.
+    expect(find.text('Cut 13'), findsOneWidget);
+    expect(find.text('Cut 13.anicel'), findsNothing);
+  });
+
+  testWidgets('the CLOCK is the row that opens the list, not every row in it', (
+    tester,
+  ) async {
+    // 🗣️유저 2026-09-16 (F-146): 「시계아이콘?도 필요없고. **그걸 그냥 최근
+    // 프로젝트라는 버튼에 아이콘으로서** 넣고」. A glyph repeated down every
+    // row of a list of recent projects says only what the list already says.
+    final a = writeProject('Cut 12.anicel');
+    seed(const RecentProjects().withOpened(RecentProject(path: a)));
+
+    await openRecents(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('menu-recent-projects')),
+        matching: find.byIcon(Icons.history_outlined),
+      ),
+      findsOneWidget,
+      reason: '시계는 그 버튼의 아이콘이다',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey<String>('menu-recent-$a')),
+        matching: find.byIcon(Icons.history_outlined),
+      ),
+      findsNothing,
+      reason: '⛔행마다 반복되는 글리프는 아무 말도 하지 않는다',
+    );
   });
 
   testWidgets('a row that lost its folder wears the reconnect label', (
@@ -129,12 +197,12 @@ void main() {
         .withOpened(RecentProject(path: a))
         .withReconnectNeeded(a));
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
 
     // Kept, not dropped: the user still knows which project they meant.
     expect(find.byKey(ValueKey<String>('menu-recent-$a')), findsOneWidget);
     expect(
-      find.text('Cut 12.anicel — ${AppText.strings.recentReconnect}'),
+      find.text('Cut 12 — ${AppText.strings.recentReconnect}'),
       findsOneWidget,
     );
   });
@@ -147,7 +215,7 @@ void main() {
       RecentProject(path: path),
     ));
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
     // `tap` FAILS when the key is absent, so this line is the assertion that
     // matters: deleting `..._recentEntries(context)` from the popover — the
     // mutation that previously survived the whole suite — cannot get past it.
@@ -174,7 +242,7 @@ void main() {
       RecentProject(path: path),
     ));
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
     expect(
       await tapRecentAndLetItOpen(tester, path),
       isTrue,
@@ -211,7 +279,7 @@ void main() {
           return const [FolderGrant.cancelled()];
         };
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
     await tester.tap(find.byKey(ValueKey<String>('menu-recent-$missing')));
     await tester.pumpAndSettle();
 
@@ -242,7 +310,7 @@ void main() {
           kind: GrantKind.file,
         );
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
     await tapRecentAndLetItOpen(tester, path);
 
     expect(
@@ -266,7 +334,7 @@ void main() {
           bookmark: 'FRESH==',
         );
 
-    await openProjectMenu(tester);
+    await openRecents(tester);
     await tapRecentAndLetItOpen(tester, path);
 
     expect(AppRecent.projects.value.entries.single.needsReconnect, isFalse);

@@ -1,6 +1,7 @@
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -31,6 +32,31 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 /// The last two tests are that half.
 void main() {
   late Directory folder;
+  /// ONE mouse per test (see `editor_top_strip_test`): a second
+  /// `addPointer` for the same device trips `MouseTracker`'s assertion.
+  TestGesture? hoverMouse;
+
+  /// F-146: the recents moved INSIDE a 「최근 프로젝트」 row, and the flyout's
+  /// second level opens on hover.
+  Future<void> hoverRecents(WidgetTester tester) async {
+    final row = find.byKey(const ValueKey<String>('menu-recent-projects'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    if (hoverMouse == null) {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      hoverMouse = mouse;
+      addTearDown(() async {
+        await mouse.removePointer();
+        hoverMouse = null;
+      });
+    }
+    await hoverMouse!.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    await hoverMouse!.moveTo(tester.getCenter(row));
+    await tester.pumpAndSettle();
+  }
+
 
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_unsaved_gate_');
@@ -267,6 +293,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(projectButton);
     await tester.pumpAndSettle();
+    await hoverRecents(tester);
     await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
     await tester.pumpAndSettle();
 
@@ -396,6 +423,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(button);
       await tester.pumpAndSettle();
+      await hoverRecents(tester);
       await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
       // Frames, not a settle: the open stands behind the wait window from
       // its first frame (2026-09-13), and a turning spinner never settles.

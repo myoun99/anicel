@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
@@ -33,6 +34,35 @@ void main() {
     await tester.ensureVisible(item);
     await tester.pumpAndSettle();
     await tester.tap(item);
+    await tester.pumpAndSettle();
+  }
+
+  /// ONE mouse per test, held here: a second `addPointer` for the same
+  /// device trips `MouseTracker`'s add/remove assertion, and `createGesture`
+  /// gives every mouse device 0 however the pointer id is spelled.
+  TestGesture? hoverMouse;
+
+  /// Opens a row's SECOND level (F-146 / I-4): hover, because that is how
+  /// the flyout's submenu axis opens.
+  Future<void> hoverEntry(WidgetTester tester, String itemKey) async {
+    final item = find.byKey(ValueKey<String>(itemKey));
+    await tester.ensureVisible(item);
+    await tester.pumpAndSettle();
+    if (hoverMouse == null) {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      hoverMouse = mouse;
+      addTearDown(() async {
+        await mouse.removePointer();
+        hoverMouse = null;
+      });
+    }
+    // Away first: a popover that closed and reopened leaves the pointer
+    // sitting where it already was, and a move to the same place is no
+    // event at all.
+    await hoverMouse!.moveTo(Offset.zero);
+    await tester.pumpAndSettle();
+    await hoverMouse!.moveTo(tester.getCenter(item));
     await tester.pumpAndSettle();
   }
 
@@ -184,6 +214,45 @@ void main() {
     expect(find.byType(AboutDialog), findsOneWidget);
   });
 
+  testWidgets('Settings: the diagnosis switches live under DEBUG, and only '
+      'there', (tester) async {
+    // 🗣️유저 2026-09-16 (F-146): 「입력 인스펙터같은건 **디버그라는? 거기다**
+    // 넣기」. Five measurement switches used to sit in the settings list
+    // beside the panel switchboard.
+    addTearDown(InputInspector.reset);
+    await pumpHome(tester);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    expect(
+      find.byKey(const ValueKey<String>('menu-edit-debug')),
+      findsOneWidget,
+    );
+    for (final id in const [
+      'menu-edit-input-inspector',
+      'menu-edit-frame-timing-overlay',
+      'menu-edit-frame-stats',
+      'menu-edit-show-repaints',
+      'menu-edit-bake-panels',
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>(id)),
+        findsNothing,
+        reason: '⛔$id 는 첫 겹에 없다 — 그게 겹이 둘인 이유다',
+      );
+    }
+
+    await hoverEntry(tester, 'menu-edit-debug');
+    for (final id in const [
+      'menu-edit-input-inspector',
+      'menu-edit-frame-timing-overlay',
+      'menu-edit-frame-stats',
+      'menu-edit-show-repaints',
+      'menu-edit-bake-panels',
+    ]) {
+      expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
+    }
+  });
+
   testWidgets('Settings: Input Inspector toggles the diagnosis overlay', (
     tester,
   ) async {
@@ -191,6 +260,7 @@ void main() {
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-input-inspector');
     expect(
       find.byKey(const ValueKey<String>('input-inspector-card')),
@@ -198,6 +268,7 @@ void main() {
     );
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-input-inspector');
     expect(
       find.byKey(const ValueKey<String>('input-inspector-card')),
@@ -519,6 +590,7 @@ void main() {
     expect(MeasurementMode.frameTimingOverlay.value, isFalse);
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-frame-timing-overlay');
     expect(
       MeasurementMode.frameTimingOverlay.value,
@@ -527,6 +599,7 @@ void main() {
     );
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-edit-debug');
     await tapEntry(tester, 'menu-edit-frame-timing-overlay');
     expect(MeasurementMode.frameTimingOverlay.value, isFalse);
   });

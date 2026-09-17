@@ -29,7 +29,6 @@ import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/preferences_dialog.dart';
-import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../widgets/static_raster.dart';
@@ -116,6 +115,7 @@ class EditorTopStrip extends StatelessWidget {
     VoidCallback? onPressed,
     IconData? icon,
     bool? checked,
+    List<PanelFlyoutEntry> Function()? submenuBuilder,
     List<String> shortcuts = const [],
   }) => PanelFlyoutItem(
     keyValue: 'menu-$id',
@@ -125,8 +125,11 @@ class EditorTopStrip extends StatelessWidget {
     icon: icon,
     checked: checked,
     shortcuts: shortcuts,
-    enabled: onPressed != null,
+    // A row that opens a SECOND level takes no tap of its own, so it has no
+    // `onPressed` — and it must still be live (F-146).
+    enabled: onPressed != null || submenuBuilder != null,
     onSelected: onPressed,
+    submenuBuilder: submenuBuilder,
   );
 
   // --- File -----------------------------------------------------------------
@@ -359,10 +362,21 @@ class EditorTopStrip extends StatelessWidget {
     }
   }
 
-  /// PICK-4: the recent projects, or nothing at all.
+  /// PICK-4: the recent projects — ONE row that opens them, or nothing at
+  /// all.
   ///
-  /// Absent rather than empty-and-disabled when there is no history: a
-  /// heading over nothing is a menu row that only ever says "no".
+  /// 🗣️유저 2026-09-16 (F-146): 「프로젝트버튼의 최근 프로젝트는 **최근
+  /// 프로젝트라는 버튼안에** 넣고 … 시계아이콘?도 필요없고. **그걸 그냥 최근
+  /// 프로젝트라는 버튼에 아이콘으로서** 넣고」. So the clock that repeated
+  /// down every row is the row's own mark now, and the list it opens has a
+  /// clean leading slot — a glyph that never varies says nothing.
+  ///
+  /// ⛔It is [PanelFlyoutItem.submenuBuilder], not a popover of its own —
+  /// the second axis I-4 built for the colour labels (유저: 「추가
+  /// 앵커팝오버는 색라벨같은거에서 공용화했을테니 그거사용」).
+  ///
+  /// Absent rather than empty-and-disabled when there is no history: a row
+  /// that only ever says "no" is a row that should not be drawn.
   ///
   /// These do NOT go through [_item]. That helper localizes by id, and a
   /// project's file name is not a phrase in five languages — routing it
@@ -376,19 +390,25 @@ class EditorTopStrip extends StatelessWidget {
     final strings = AppText.strings;
     return [
       const PanelFlyoutDivider(),
-      PanelFlyoutHeader(strings.recentProjectsTitle),
-      for (final entry in recents)
-        PanelFlyoutItem(
-          keyValue: 'menu-recent-${entry.path}',
-          label: entry.needsReconnect
-              ? '${entry.name} — ${strings.recentReconnect}'
-              : entry.name,
-          icon: entry.needsReconnect
-              ? Icons.link_off_outlined
-              : Icons.history_outlined,
-          enabled: true,
-          onSelected: () => unawaited(_openRecent(context, entry)),
-        ),
+      PanelFlyoutItem(
+        keyValue: 'menu-recent-projects',
+        label: strings.recentProjectsTitle,
+        icon: Icons.history_outlined,
+        submenuBuilder: () => [
+          for (final entry in recents)
+            PanelFlyoutItem(
+              keyValue: 'menu-recent-${entry.path}',
+              label: entry.needsReconnect
+                  ? '${projectDisplayName(entry.path)} — '
+                        '${strings.recentReconnect}'
+                  : projectDisplayName(entry.path),
+              // ⛔Only the ones that need something: a broken link is news,
+              // "this is a recent project" is what the list already is.
+              icon: entry.needsReconnect ? Icons.link_off_outlined : null,
+              onSelected: () => unawaited(_openRecent(context, entry)),
+            ),
+        ],
+      ),
     ];
   }
 
@@ -648,90 +668,99 @@ class EditorTopStrip extends StatelessWidget {
       onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
     ),
     const PanelFlyoutDivider(),
-    // The pen program's diagnosis overlay (PEN-1): toggles the live
-    // pointer-event readout — kind/pressure/tilt straight from the
-    // platform, the driver-vs-app separator.
-    _item(
-      id: 'edit-input-inspector',
-      label: 'Input Inspector',
-      icon: Icons.bug_report_outlined,
-      checked: InputInspector.visible.value,
-      onPressed: () {
-        InputInspector.visible.value = !InputInspector.visible.value;
-      },
-    ),
-    // Its sibling measurement switch: the inspector says what the
-    // platform DELIVERED, this says what the app did with the frame it
-    // had. A toggle rather than a build flag because flipping a
-    // --dart-define on a tablet costs a rebuild and an install.
-    _item(
-      id: 'edit-frame-timing-overlay',
-      label: 'Frame Timing Overlay',
-      icon: Icons.speed_outlined,
-      checked: MeasurementMode.frameTimingOverlay.value,
-      onPressed: () {
-        MeasurementMode.frameTimingOverlay.value =
-            !MeasurementMode.frameTimingOverlay.value;
-      },
-    ),
-    // The same clock in numbers, and the one to believe when the two
-    // disagree: percentiles instead of max/avg, END-TO-END LATENCY,
-    // which the graphs have no line for, and the engine's raster-cache
-    // counts, which are the only way from Dart to ask whether a repaint
-    // boundary bought anything on the GPU. It is also six lines of text
-    // at 4 Hz, where the graphs are two full-width bars redrawn every
-    // frame inside the scene whose raster time they report.
-    _item(
-      id: 'edit-frame-stats',
-      label: 'Frame Stats',
-      icon: Icons.query_stats_outlined,
-      checked: MeasurementMode.frameStats.value,
-      onPressed: () {
-        MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
-      },
-    ),
-    // Krita ships `KisRepaintDebugger` in production and Blender tints
-    // every drawn region under `debug_value == 888`, both for the same
-    // reason this program keeps rediscovering: a panel paying full price
-    // looks exactly like a free one. The standing report says WHICH
-    // panels bake; this says WHEN, while you work. A surface that
-    // strobes as the pen moves is re-baking on your pointer.
-    _item(
-      id: 'edit-show-repaints',
-      label: 'Show Repaints',
-      icon: Icons.flare_outlined,
-      checked: MeasurementMode.showRepaints.value,
-      onPressed: () {
-        MeasurementMode.showRepaints.value =
-            !MeasurementMode.showRepaints.value;
-      },
-    ),
-    // The A/B. Turning the bakes off puts the app back the way it was
-    // before them, in the SAME build, so "what did this actually buy" is
-    // two readings a few seconds apart rather than an argument.
+    // 🗣️유저 2026-09-16 (F-146): 「입력 인스펙터같은건 **디버그라는? 거기다**
+    // 넣기」. Five measurement switches sat in the settings list beside the
+    // panel switchboard, which made a list of things you use every day and a
+    // list of things you use while hunting a jank read as one list.
     //
-    // 🚨 It existed as a `ValueNotifier` from the day the bakes shipped
-    // and was never wired to anything, so the one switch the whole
-    // measurement needs could not be reached without editing code. A
-    // debug affordance nobody can press is a debug affordance nobody has.
+    // ⛔The second level is [PanelFlyoutItem.submenuBuilder] — the axis I-4
+    // built for the colour labels — not a popover of its own (유저: 「추가
+    // 앵커팝오버는 색라벨같은거에서 공용화했을테니 그거사용」).
     _item(
-      id: 'edit-bake-panels',
-      label: 'Bake Static Panels',
-      icon: Icons.layers_outlined,
-      checked: StaticRaster.globallyEnabled.value,
-      onPressed: () {
-        StaticRaster.globallyEnabled.value =
-            !StaticRaster.globallyEnabled.value;
-      },
-    ),
-    // R3b: the BACKDROP plane rendered as the alpha checkerboard —
-    // display-only, showing exactly what an alpha export leaves open.
-    PanelFlyoutItem(
-      keyValue: 'menu-edit-alpha-preview',
-      label: AppText.strings.menuAlphaPreview,
-      icon: Icons.texture_outlined,
-      checked: alphaPreviewEnabled.value,
-      onSelected: () => alphaPreviewEnabled.value = !alphaPreviewEnabled.value,
+      id: 'edit-debug',
+      label: 'Debug',
+      icon: Icons.bug_report_outlined,
+      submenuBuilder: () => [
+        // The pen program's diagnosis overlay (PEN-1): toggles the live
+        // pointer-event readout — kind/pressure/tilt straight from the
+        // platform, the driver-vs-app separator.
+        _item(
+          id: 'edit-input-inspector',
+          label: 'Input Inspector',
+          // ⛔Not the bug glyph: that one is the DEBUG row above, and a
+          // child repeating its parent's mark says nothing. This one is
+          // about the pointer.
+          icon: Icons.touch_app_outlined,
+          checked: InputInspector.visible.value,
+          onPressed: () {
+            InputInspector.visible.value = !InputInspector.visible.value;
+          },
+        ),
+        // Its sibling measurement switch: the inspector says what the
+        // platform DELIVERED, this says what the app did with the frame it
+        // had. A toggle rather than a build flag because flipping a
+        // --dart-define on a tablet costs a rebuild and an install.
+        _item(
+          id: 'edit-frame-timing-overlay',
+          label: 'Frame Timing Overlay',
+          icon: Icons.speed_outlined,
+          checked: MeasurementMode.frameTimingOverlay.value,
+          onPressed: () {
+            MeasurementMode.frameTimingOverlay.value =
+                !MeasurementMode.frameTimingOverlay.value;
+          },
+        ),
+        // The same clock in numbers, and the one to believe when the two
+        // disagree: percentiles instead of max/avg, END-TO-END LATENCY,
+        // which the graphs have no line for, and the engine's raster-cache
+        // counts, which are the only way from Dart to ask whether a repaint
+        // boundary bought anything on the GPU. It is also six lines of text
+        // at 4 Hz, where the graphs are two full-width bars redrawn every
+        // frame inside the scene whose raster time they report.
+        _item(
+          id: 'edit-frame-stats',
+          label: 'Frame Stats',
+          icon: Icons.query_stats_outlined,
+          checked: MeasurementMode.frameStats.value,
+          onPressed: () {
+            MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
+          },
+        ),
+        // Krita ships `KisRepaintDebugger` in production and Blender tints
+        // every drawn region under `debug_value == 888`, both for the same
+        // reason this program keeps rediscovering: a panel paying full price
+        // looks exactly like a free one. The standing report says WHICH
+        // panels bake; this says WHEN, while you work. A surface that
+        // strobes as the pen moves is re-baking on your pointer.
+        _item(
+          id: 'edit-show-repaints',
+          label: 'Show Repaints',
+          icon: Icons.flare_outlined,
+          checked: MeasurementMode.showRepaints.value,
+          onPressed: () {
+            MeasurementMode.showRepaints.value =
+                !MeasurementMode.showRepaints.value;
+          },
+        ),
+        // The A/B. Turning the bakes off puts the app back the way it was
+        // before them, in the SAME build, so "what did this actually buy" is
+        // two readings a few seconds apart rather than an argument.
+        //
+        // 🚨 It existed as a `ValueNotifier` from the day the bakes shipped
+        // and was never wired to anything, so the one switch the whole
+        // measurement needs could not be reached without editing code. A
+        // debug affordance nobody can press is a debug affordance nobody has.
+        _item(
+          id: 'edit-bake-panels',
+          label: 'Bake Static Panels',
+          icon: Icons.layers_outlined,
+          checked: StaticRaster.globallyEnabled.value,
+          onPressed: () {
+            StaticRaster.globallyEnabled.value =
+                !StaticRaster.globallyEnabled.value;
+          },
+        ),
+      ],
     ),
     const PanelFlyoutDivider(),
     _item(
@@ -748,15 +777,13 @@ class EditorTopStrip extends StatelessWidget {
   /// like "Untitled" would be a label that never changes into anything —
   /// the empty middle is honest, and it is where the project SWITCHER goes
   /// once more than one project can be open at a time.
+  ///
+  /// ⛔It spelled the strip-the-extension walk out here, and the recent
+  /// list spelled a different one — [projectDisplayName] is the sentence
+  /// both ask now (F-146).
   String get _projectLabel {
     final path = session.projectFile.path;
-    if (path == null) {
-      return '';
-    }
-    final file = path.split(RegExp(r'[\\/]')).last;
-    return file.endsWith('.$anicelProjectExtension')
-        ? file.substring(0, file.length - anicelProjectExtension.length - 1)
-        : file;
+    return path == null ? '' : projectDisplayName(path);
   }
 
   @override

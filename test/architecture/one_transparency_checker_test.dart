@@ -54,4 +54,31 @@ void main() {
           'or CheckeredPicture — the one checker the app has',
     );
   });
+
+  /// 🗣️유저 2026-09-16 (F-146): 「설정의 알파 미리보기 **필요없어졌으니 잔재
+  /// 싹 삭제**」.
+  ///
+  /// The checker stayed — every OTHER caller draws real absent alpha — and
+  /// what went was the app-view TOGGLE that swapped the whole stage for it.
+  /// ⛔A ratchet rather than a behaviour test, because what was deleted
+  /// cannot be driven: the only proof left is that nothing spells its name.
+  test('⛔the ALPHA-PREVIEW toggle stays deleted', () {
+    final spelled = <String>[];
+    for (final file in Directory('lib/src')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))) {
+      if (file.readAsStringSync().contains('alphaPreviewEnabled')) {
+        spelled.add(file.path.replaceAll(r'\', '/'));
+      }
+    }
+    expect(
+      spelled,
+      isEmpty,
+      reason:
+          '⛔an ABSENT plane already says 「여기는 비어 있다」 in the place it '
+          'means it (F-114). A switch that says it about the WHOLE stage is '
+          'the thing 유저 asked to be rid of',
+    );
+  });
 }

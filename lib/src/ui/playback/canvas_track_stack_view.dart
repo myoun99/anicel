@@ -67,7 +67,6 @@ class CanvasTrackStackView extends StatefulWidget {
     this.backdropNone = false,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
-    this.showAlphaCheckerboard = false,
     this.transformTrackOf,
     this.trackEffectsOf,
   });
@@ -139,10 +138,6 @@ class CanvasTrackStackView extends StatefulWidget {
   /// each is the checkerboard where it would be.
   final bool backdropNone;
   final bool pasteboardNone;
-
-  /// Alpha preview (display-only): the backdrop renders as the alpha
-  /// checkerboard, showing what an alpha export leaves open.
-  final bool showAlphaCheckerboard;
 
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
@@ -289,10 +284,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         : widget.positionsOf(frame);
     _pruneStale([for (final position in positions) position.cutId]);
     // The BACKDROP floor (R3b): the void is retired — an uncovered frame
-    // shows the stage's floor (or the alpha checkerboard under the
-    // preview toggle), exactly what an opaque export bakes there. An ABSENT
-    // backdrop (F-114) is the same checkerboard, as on the editing canvas.
-    final floor = widget.showAlphaCheckerboard || widget.backdropNone
+    // shows the stage's floor, exactly what an opaque export bakes there.
+    // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
+    // canvas.
+    final floor = widget.backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
             painter: AlphaCheckerboardPainter(),

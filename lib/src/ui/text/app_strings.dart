@@ -472,9 +472,6 @@ enum AppStrings {
   String get canvasPresetDefault => _s('canvasPresetDefault');
   String get commonResize => _s('commonResize');
 
-  // --- Alpha preview ---
-  String get menuAlphaPreview => _s('menuAlphaPreview');
-
   // --- Input settings ---
   String get inputTitle => _s('inputTitle');
   String get inputPressureHeading => _s('inputPressureHeading');
@@ -1812,7 +1809,6 @@ enum AppStrings {
         'kept and reappear if the canvas grows again. ({min}–{max} px)',
     'canvasPresetDefault': 'Default',
     'commonResize': 'Resize',
-    'menuAlphaPreview': 'Alpha preview',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
     'inputPressureSoftHard': 'Soft ↔ Hard',
@@ -2855,6 +2851,7 @@ enum AppStrings {
     'menuAction.window-tool-rail-right': 'ツールバーを右端に',
     'menuAction.window-region-on-top': 'タイムライン領域を上に',
     'menuAction.window-reset-layout': 'ワークスペース配置をリセット',
+    'menuAction.edit-debug': 'デバッグ',
     'menuAction.edit-input-inspector': '入力インスペクタ',
     'menuAction.edit-frame-timing-overlay': 'フレームタイミングのオーバーレイ',
     'menuAction.edit-frame-stats': 'フレーム統計',
@@ -2900,7 +2897,6 @@ enum AppStrings {
         'カンバスを広げれば再び現れます。（{min}〜{max} px）',
     'canvasPresetDefault': '既定',
     'commonResize': 'サイズ変更',
-    'menuAlphaPreview': 'アルファプレビュー',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
     'inputPressureSoftHard': '柔らかい ↔ 硬い',
@@ -4147,6 +4143,7 @@ enum AppStrings {
     'menuAction.window-tool-rail-right': '툴 바를 오른쪽에',
     'menuAction.window-region-on-top': '타임라인 영역을 위로',
     'menuAction.window-reset-layout': '작업공간 배치 초기화',
+    'menuAction.edit-debug': '디버그',
     'menuAction.edit-input-inspector': '입력 인스펙터',
     'menuAction.edit-frame-timing-overlay': '프레임 타이밍 오버레이',
     'menuAction.edit-frame-stats': '프레임 통계',
@@ -4192,7 +4189,6 @@ enum AppStrings {
         '다시 넓히면 되살아납니다. ({min}~{max} px)',
     'canvasPresetDefault': '기본',
     'commonResize': '크기 변경',
-    'menuAlphaPreview': '알파 미리보기',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
     'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
@@ -5443,6 +5439,7 @@ enum AppStrings {
     'menuAction.window-tool-rail-right': "Barre d'outils à droite",
     'menuAction.window-region-on-top': 'Zone de timeline en haut',
     'menuAction.window-reset-layout': "Réinitialiser l'espace de travail",
+    'menuAction.edit-debug': 'Débogage',
     'menuAction.edit-input-inspector': "Inspecteur d'entrée",
     'menuAction.edit-frame-timing-overlay': 'Superposition du minutage des images',
     'menuAction.edit-frame-stats': 'Statistiques des images',
@@ -5489,7 +5486,6 @@ enum AppStrings {
         '({min}–{max} px)',
     'canvasPresetDefault': 'Par défaut',
     'commonResize': 'Redimensionner',
-    'menuAlphaPreview': 'Aperçu alpha',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
     'inputPressureSoftHard': 'Doux ↔ Dur',
@@ -6768,6 +6764,7 @@ enum AppStrings {
     'menuAction.window-tool-rail-right': '工具条在右侧',
     'menuAction.window-region-on-top': '时间轴区域置顶',
     'menuAction.window-reset-layout': '重置工作区布局',
+    'menuAction.edit-debug': '调试',
     'menuAction.edit-input-inspector': '输入检查器',
     'menuAction.edit-frame-timing-overlay': '帧时序叠加',
     'menuAction.edit-frame-stats': '帧统计',
@@ -6810,7 +6807,6 @@ enum AppStrings {
         '（{min}–{max} px）',
     'canvasPresetDefault': '默认',
     'commonResize': '调整尺寸',
-    'menuAlphaPreview': '透明度预览',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',
     'inputPressureSoftHard': '软 ↔ 硬',
