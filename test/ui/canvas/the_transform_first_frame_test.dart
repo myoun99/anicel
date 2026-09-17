@@ -9,6 +9,8 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -172,5 +174,75 @@ void main() {
             'never a piece. Saw: $seen (whole = $before)',
       );
     }
+  });
+
+  /// 🚨★★★**THE COMPOSITE IS HANDED THE SESSION'S HOLED PICTURE, NOT THE
+  /// CEL** (2026-09-17, the debt `314aa6e8` left behind).
+  ///
+  /// A move session writes nothing to the cel until it lands, so the drawing
+  /// it took out has to leave the picture some other way: the painter the
+  /// composite draws the active row with is built on the session's derived
+  /// surface instead ([_activeSurfacePainter]'s token). If that ever stops
+  /// happening the cel still holds the ink, the float draws it again where
+  /// the hand put it, and the user sees the picture TWICE — the defect
+  /// R28 #10 was filed for: 「원본그림 존재하고 변형된 그림도 존재」.
+  ///
+  /// ⛔**IT ASKS WHAT THE COMPOSITE WAS GIVEN, NOT WHAT CAME OUT, and that
+  /// is a retreat written down rather than a choice.** 🔬Two pixel-counting
+  /// attempts at this claim both stayed GREEN under the mutant that switches
+  /// the holed surface off — 36 pixels of ink before the move and 36 after
+  /// it, with and without the session surface — so neither was measuring the
+  /// thing it named. The rig that can answer in PIXELS is still owed; the
+  /// board carries it. This one bites, which is the whole difference.
+  testWidgets('the composite is handed the session\'s holed picture while a '
+      'move is pending', (tester) async {
+    final env = await pumpComposite(tester);
+    final key = env.coordinator.activeFrameKey;
+    final cel = env.coordinator.currentSurfaceOf(key);
+    expect(
+      tester.widget<CanvasLayerStackView>(
+        find.byType(CanvasLayerStackView),
+      ).activeSurfacePainter?.surface,
+      same(cel),
+      reason: 'at rest the composite draws the cel itself',
+    );
+
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 120, bottom: 120),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    final layer = find.byKey(const ValueKey<String>('canvas-selection-layer'));
+    expect(layer, findsOneWidget, reason: 'the move tool mounts the layer');
+    final origin = tester.getTopLeft(layer);
+    final drag = await tester.startGesture(origin + const Offset(40, 40));
+    await tester.pump();
+    await drag.moveTo(origin + const Offset(55, 55));
+    await tester.pump();
+    await drag.up();
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+      env.commands.movePending,
+      isTrue,
+      reason: '🚨the session has to be OPEN or this proves nothing',
+    );
+    expect(
+      env.coordinator.currentSurfaceOf(key),
+      same(cel),
+      reason: 'the session wrote nothing — the cel is the same object',
+    );
+
+    final shown = tester.widget<CanvasLayerStackView>(
+      find.byType(CanvasLayerStackView),
+    ).activeSurfacePainter?.surface;
+    expect(shown, isNotNull, reason: 'the active row still has a painter');
+    expect(
+      identical(shown, cel),
+      isFalse,
+      reason:
+          'the composite is still being handed the CEL while a move is '
+          'pending, so the origin ink is drawn under the float',
+    );
   });
 }
