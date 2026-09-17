@@ -1,6 +1,7 @@
 import '../../models/rgba_image_bytes.dart';
 import 'dart:ui' as ui;
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer_effect.dart';
@@ -334,38 +335,56 @@ class LayerFrameImageCache {
       previewCache.previewSurface,
       sourceEffects,
     );
+    final composed = _composedNow(
+      preview,
+      quality,
+      makePictures: makePictures,
+    );
+    if (composed == null) {
+      return null;
+    }
+    final at = (key, quality);
+    final banked = _bank(at, composed.now, (
+      revision: revision,
+      canvasSize: canvasSize,
+      sourceEffects: sourceEffects,
+    ));
+    _settleWhenTheSnapshotLands(at, composed.kept);
+    return banked;
+  }
+
+  /// [preview] composed inside the call at [quality] — the cel over its
+  /// content extent, then halved [PlaybackQuality.level] times — beside the
+  /// plain snapshot of the picture that is KEPT: the cel itself at full
+  /// quality, the last halving below it. Null only on the free road
+  /// ([makePictures] false and a tile without its picture).
+  ({PositionedSurfaceImage now, Future<ui.Image> kept})? _composedNow(
+    BitmapSurface preview,
+    PlaybackQuality quality, {
+    required bool makePictures,
+  }) {
     final composed = composePositionedSurfaceImageSync(
       preview,
       reuse: BitmapTileImageCache.instance,
       makePictures: makePictures,
-      // The snapshot is of the picture that is KEPT: the cel itself at
-      // full quality, the last halving below it.
       snapshot: quality == PlaybackQuality.full,
     );
     if (composed == null) {
       return null;
     }
     var image = composed.deferred.image;
-    var real = composed.real;
+    var kept = composed.real;
     for (var i = 0; i < quality.level; i += 1) {
       final halved = _halvedNow(image, snapshot: i == quality.level - 1);
       // The halving keeps what it drew; only the handle is ours to drop.
       image.dispose();
       image = halved.deferred;
-      real = halved.real;
+      kept = halved.real;
     }
-    final at = (key, quality);
-    final banked = _bank(
-      at,
-      _atLevel(composed.deferred.worldRect, image, quality.level),
-      (
-        revision: revision,
-        canvasSize: canvasSize,
-        sourceEffects: sourceEffects,
-      ),
+    return (
+      now: _atLevel(composed.deferred.worldRect, image, quality.level),
+      kept: kept!,
     );
-    _settleWhenTheSnapshotLands(at, real!);
-    return banked;
   }
 
   /// [image] — a cel composed over [fullWorldRect], halved [level] times —

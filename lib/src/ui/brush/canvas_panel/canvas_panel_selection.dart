@@ -76,6 +76,19 @@ class _CanvasPanelSelection {
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the erase
   /// lands raw, the stamp comes back to float. Null when the shape covers
   /// no pixels.
+  ///
+  /// 🪦Two things stood at the end of this until 2026-09-11, both about the
+  /// frame the lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에
+  /// 생겼다가 사라짐 … 매번 다른데」): the cel's stale-fallback bucket forgot
+  /// the coordinates the lift took whole, and the erased tiles were seeded
+  /// with the pre-lift picture cut by the erase's own bytes. From then until
+  /// 2026-09-17 the commit funnel announced both surfaces of every edit and
+  /// the painter composed each new tile from its predecessor plus the diff
+  /// (M5: with that on and both of these off, every lift pin stayed green)
+  /// — and the answer carried the pre-lift surface so the float's tiles had
+  /// predecessors too. A tile pictures itself inside the paint now, the
+  /// erased ones and the float's alike, so nothing is announced, composed
+  /// or carried.
   ({int liftToken, BrushDab stampDab})? handleSelectionLift(
     CanvasSelectionRegion region,
   ) {
@@ -126,18 +139,6 @@ class _CanvasPanelSelection {
       region: _state.widget.selectionCommands?.region,
     );
     _state._rebuild(() {});
-    // 🪦Two things stood here until 2026-09-11, both about the frame the
-    // lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에 생겼다가
-    // 사라짐 … 매번 다른데」): the cel's stale-fallback bucket forgot the
-    // coordinates the lift took whole, and the erased tiles were seeded
-    // with the pre-lift picture cut by the erase's own bytes. From then
-    // until 2026-09-17 the commit funnel announced both surfaces of every
-    // edit and the painter composed each new tile from its predecessor
-    // plus the diff (M5: with that on and both of these off, every lift
-    // pin stayed green) — and the answer below carried the pre-lift
-    // surface so the float's tiles had predecessors too. A tile pictures
-    // itself inside the paint now, the erased ones and the float's alike,
-    // so nothing is announced, composed or carried.
     return (liftToken: token, stampDab: lift.stampDab);
   }
 
