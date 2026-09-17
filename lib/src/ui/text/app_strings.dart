@@ -600,6 +600,12 @@ enum AppStrings {
   String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
   String get sheetExposureBarN => _s('sheetExposureBarN');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+  String get sheetInkBlock => _s('sheetInkBlock');
+  String get sheetInkAllow => _s('sheetInkAllow');
+  String get sheetModeNotation => _s('sheetModeNotation');
+  String get sheetModeData => _s('sheetModeData');
+  String get sheetViewPage => _s('sheetViewPage');
+  String get sheetViewContinuous => _s('sheetViewContinuous');
 
   // --- The instruction vocabulary and its events ---
   String get instructionsTitle => _s('instructionsTitle');
@@ -1364,7 +1370,6 @@ enum AppStrings {
   String get toolSelect => _s('toolSelect');
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
-  String get toolCutHint => _s('toolCutHint');
   String get toolCutNothingHeld => _s('toolCutNothingHeld');
   String get toolLibraryEmpty => _s('toolLibraryEmpty');
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
@@ -1946,6 +1951,12 @@ enum AppStrings {
         'Draw the hold bar from the (N+1)th comma of N+ holds',
     'sheetExposureBarN': 'N (industry standard 3)',
     'sheetSeEmptyFill': 'Gray out empty SE stretches',
+    'sheetInkBlock': 'Block Sheet Ink',
+    'sheetInkAllow': 'Allow Sheet Ink',
+    'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
+    'sheetModeData': 'Data Sheet (as exported)',
+    'sheetViewPage': 'Page View',
+    'sheetViewContinuous': 'Continuous View',
     'instructionsTitle': 'Instructions',
     'instructionEditTooltip': 'Edit instruction',
     'instructionDeleteTooltip': 'Delete instruction',
@@ -2332,8 +2343,6 @@ enum AppStrings {
     'toolSelect': 'Select',
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
-    'toolCutHint':
-        'Cut copies the pixels under the drag — the original stays.\nPick Stamp to place the piece you are holding.',
     'toolCutNothingHeld': 'Nothing held yet',
     'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
@@ -3012,6 +3021,12 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
     'sheetExposureBarN': 'N（業界標準は3）',
     'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
+    'sheetInkBlock': '用紙の手書きを禁止',
+    'sheetInkAllow': '用紙の手書きを許可',
+    'sheetModeNotation': '表記シート（リピート・止めの文字）',
+    'sheetModeData': 'データシート（書き出しのまま）',
+    'sheetViewPage': 'ページ表示',
+    'sheetViewContinuous': '連続表示',
     'instructionsTitle': '指示記号',
     'instructionEditTooltip': '指示記号を編集',
     'instructionDeleteTooltip': '指示記号を削除',
@@ -3518,7 +3533,6 @@ enum AppStrings {
     'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
     'toolShapeFill': '図形の塗り',
-    'toolCutHint': 'カットはドラッグした範囲のピクセルを複製します — 元は残ります。\n持っている断片を置くにはスタンプを選びます。',
     'toolCutNothingHeld': 'まだ何も持っていません',
     'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
@@ -4297,6 +4311,12 @@ enum AppStrings {
     'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
     'sheetExposureBarN': 'N (업계 표준 3)',
     'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
+    'sheetInkBlock': '용지 손글씨 잠금',
+    'sheetInkAllow': '용지 손글씨 허용',
+    'sheetModeNotation': '표기 시트(반복·止め 글자)',
+    'sheetModeData': '데이터 시트(내보내는 그대로)',
+    'sheetViewPage': '페이지 보기',
+    'sheetViewContinuous': '콘티너스 보기',
     'instructionsTitle': '지시 기호',
     'instructionEditTooltip': '지시 기호 편집',
     'instructionDeleteTooltip': '지시 기호 삭제',
@@ -4798,8 +4818,6 @@ enum AppStrings {
     'toolSelect': '선택',
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
-    'toolCutHint':
-        '잘라내기는 끈 자리의 픽셀을 복사합니다 — 원본은 남습니다.\n들고 있는 조각을 놓으려면 스탬프를 고르세요.',
     'toolCutNothingHeld': '아직 든 것이 없습니다',
     'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
@@ -5599,6 +5617,12 @@ enum AppStrings {
         'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
     'sheetExposureBarN': 'N (standard du métier : 3)',
     'sheetSeEmptyFill': 'Griser les plages sans dialogue',
+    'sheetInkBlock': "Bloquer l'écriture sur feuille",
+    'sheetInkAllow': "Autoriser l'écriture sur feuille",
+    'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
+    'sheetModeData': "Feuille de données (telle qu'exportée)",
+    'sheetViewPage': 'Vue page',
+    'sheetViewContinuous': 'Vue continue',
     'instructionsTitle': 'Indications',
     'instructionEditTooltip': "Modifier l'indication",
     'instructionDeleteTooltip': "Supprimer l'indication",
@@ -6154,8 +6178,6 @@ enum AppStrings {
     'toolSelect': 'Sélection',
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
-    'toolCutHint':
-        'La découpe copie les pixels sous le glissement — l\'original reste.\nChoisissez Tampon pour poser le morceau que vous tenez.',
     'toolCutNothingHeld': 'Rien en main pour l\'instant',
     'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
@@ -6894,6 +6916,12 @@ enum AppStrings {
     'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
     'sheetExposureBarN': 'N（行业标准为 3）',
     'sheetSeEmptyFill': '将无台词区间置灰',
+    'sheetInkBlock': '禁止纸面手写',
+    'sheetInkAllow': '允许纸面手写',
+    'sheetModeNotation': '标注表（重复·保持文字）',
+    'sheetModeData': '数据表（与导出一致）',
+    'sheetViewPage': '分页视图',
+    'sheetViewContinuous': '连续视图',
     'instructionsTitle': '指示记号',
     'instructionEditTooltip': '编辑指示记号',
     'instructionDeleteTooltip': '删除指示记号',
@@ -7388,7 +7416,6 @@ enum AppStrings {
     'toolSelect': '选择',
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
-    'toolCutHint': '裁切会复制拖动范围内的像素 — 原图仍在。\n选择图章即可放下手中的碎片。',
     'toolCutNothingHeld': '尚未持有任何内容',
     'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',

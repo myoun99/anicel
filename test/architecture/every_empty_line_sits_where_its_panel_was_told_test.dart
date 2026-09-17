@@ -17,7 +17,11 @@ import 'package:flutter_test/flutter_test.dart';
 const _panels = <String, List<String>>{
   'lib/src/ui/brush/guide_panels.dart': ['list', 'list'],
   'lib/src/ui/brush/tool_library_panel.dart': ['list'],
-  'lib/src/ui/brush/tool_settings_panel.dart': ['list', 'list'],
+  // ↩️Two until F-124 (2026-09-17): the cut tool's hint sat here wearing an
+  // empty line's clothes, and it was not one — it was two sentences under a
+  // control explaining what cutting does, which is what F-2 forbids. What is
+  // left is the real empty state, the one that says nothing is held yet.
+  'lib/src/ui/brush/tool_settings_panel.dart': ['list'],
   'lib/src/ui/export/export_preset_rail.dart': ['list'],
   'lib/src/ui/export/export_queue_column.dart': ['list'],
   'lib/src/ui/media/media_pool_panel.dart': ['list'],

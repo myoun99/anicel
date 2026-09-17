@@ -200,7 +200,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           onPressed: bindings.resetAll,
         ),
         AppWindowAction(
-          label: 'Close',
+          label: AppText.strings.commonClose,
           actionKey: const ValueKey<String>('shortcut-close-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
@@ -270,7 +270,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             entriesBuilder: () => [
               PanelFlyoutItem(
                 keyValue: 'shortcut-touch-${definition.id}-none',
-                label: 'None',
+                label: AppText.strings.commonNone,
                 selected: touchGesture == null,
                 onSelected: () =>
                     widget.bindings.setTouchGesture(definition.id, null),

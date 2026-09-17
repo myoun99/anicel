@@ -303,7 +303,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       if (widget.onInkEnabledChanged != null)
         AppIconButton(
           keyValue: 'timesheet-ink-toggle-button',
-          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
+          tooltip: widget.inkEnabled
+              ? AppText.strings.sheetInkBlock
+              : AppText.strings.sheetInkAllow,
           icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
           isSelected: widget.inkEnabled,
           size: AppIconButtonSize.strip,
@@ -336,15 +338,17 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       AppIconButton(
         keyValue: 'timesheet-data-mode-toggle-button',
         tooltip: _dataSheet
-            ? 'Notation Sheet (repeat/hold words)'
-            : 'Data Sheet (as exported)',
+            ? AppText.strings.sheetModeNotation
+            : AppText.strings.sheetModeData,
         icon: const Icon(Icons.receipt_long_outlined),
         isSelected: _dataSheet,
         onPressed: () => setState(() => _dataSheet = !_dataSheet),
       ),
       AppIconButton(
         keyValue: 'timesheet-page-mode-toggle-button',
-        tooltip: widget.continuous ? 'Page View' : 'Continuous View',
+        tooltip: widget.continuous
+            ? AppText.strings.sheetViewPage
+            : AppText.strings.sheetViewContinuous,
         icon: Icon(
           widget.continuous
               ? Icons.auto_stories_outlined

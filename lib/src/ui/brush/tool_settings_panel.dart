@@ -261,10 +261,6 @@ class _CutGrabSettings extends StatelessWidget {
       tool: 'cut-grab',
       scrolls: false,
       children: [
-        EmptyStateText(
-          AppText.strings.toolCutHint,
-          place: EmptyStatePlace.list,
-        ),
         _ClosePolygonButton(
           shapeKind: shapeKind,
           selectionCommands: selectionCommands,

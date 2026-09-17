@@ -188,7 +188,17 @@ void main() {
   /// 하나 + 짧은 한 줄」): the render queue, the presets and the media pool
   /// stopped hardcoding the line they show when they are empty, and the
   /// prompt widget they each wrote one of went with them.
-  const untranslatedElsewhere = 88;
+  ///
+  /// 86 (F-124, 2026-09-17, the sheet's toggles and the shortcut window):
+  /// the timesheet pill's three toggle pairs read the tables now, and the
+  /// shortcut window's Close and None read `commonClose` and `commonNone`,
+  /// which were already tabled in five languages and read by nobody here.
+  /// ⚠️Only TWO of those eight strings ever showed in this count: the six
+  /// on the sheet are the two arms of a ternary (`tooltip: on ? 'A' : 'B'`),
+  /// and the scan reads the first literal after the colon or nothing at
+  /// all. ★So the number is not the debt — it never was, and a round that
+  /// moves it by two can still be the round that translated eight.
+  const untranslatedElsewhere = 86;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
