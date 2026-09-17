@@ -788,14 +788,10 @@ class _CanvasViewportGestureLayerState
       // percent, the unit the list is written in and the one the ± buttons
       // step through (`_zoomStep`). Snapped as the RENDER zoom it is here,
       // a constrained pinch landed on list × effective ratio: a 150% stop
-      // read 225% on a 150% monitor (audit 2026-09-15).
-      nextZoom = scale.render(
-        AppInput.snapToList(
-              scale.display(nextZoom) * 100,
-              settings.zoomSnapPercents,
-            ) /
-            100,
-      );
+      // read 225% on a 150% monitor (audit 2026-09-15). 🪦The conversion
+      // stood here, typed out a second time beside `_zoomStep`'s; the list's
+      // unit is [CanvasZoomScale.snappedToStops]' to know now.
+      nextZoom = scale.snappedToStops(nextZoom, settings.zoomSnapPercents);
     }
     // Free or constrained, it LANDS — [CanvasZoomScale.zoomedTo] is the one
     // road a zoom verb takes (F-122 · I-27).

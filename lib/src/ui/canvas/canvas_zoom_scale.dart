@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../../models/app_input_settings.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -133,6 +134,49 @@ class CanvasZoomScale {
     required double nextZoom,
     required ViewportPoint anchor,
   }) => view.zoomedAround(nextZoom: landed(nextZoom), anchor: anchor);
+
+  /// THE USER'S ZOOM STOPS (`AppInputSettings.zoomSnapPercents`), as the
+  /// zooms the view can actually be on.
+  ///
+  /// The list is the user's own text: it is written in DISPLAY percent and
+  /// it takes any digits — the settings field parses `33.333` and shows it
+  /// as `33`. Its two readers ([steppedThroughStops], [snappedToStops]) each
+  /// converted the unit for themselves, and one of them got it wrong once
+  /// (audit 2026-09-15: snapped as a RENDER zoom, a 150% stop read 225% on a
+  /// 150% monitor). Both read it HERE now, in its own unit, on the grid a
+  /// zoom lands on.
+  List<double> _stopsTheViewCanBeOn(List<double> stopPercents) => [
+    for (final stop in stopPercents) CanvasViewport.onReadoutGrid(stop),
+  ];
+
+  /// The next of the user's stops past [renderZoom], [up] or down — null
+  /// where the list ends, which is where a step stops (I-19).
+  ///
+  /// 🚨READ ON THE GRID. From 33.33% the next stop "up" in a list holding
+  /// `33.333` was 33.333 — which lands on 33.33 again, so the + button did
+  /// nothing at that rung for ever.
+  double? steppedThroughStops(
+    double renderZoom,
+    List<double> stopPercents, {
+    required bool up,
+  }) {
+    final next = AppInput.stepThroughList(
+      display(renderZoom) * 100,
+      _stopsTheViewCanBeOn(stopPercents),
+      up: up,
+    );
+    return next == null ? null : render(next / 100);
+  }
+
+  /// [renderZoom] held on the nearest of the user's stops — the constrained
+  /// pinch.
+  double snappedToStops(double renderZoom, List<double> stopPercents) => render(
+    AppInput.snapToList(
+          display(renderZoom) * 100,
+          _stopsTheViewCanBeOn(stopPercents),
+        ) /
+        100,
+  );
 
   /// The identity view: artwork 1px = device 1px, whatever the monitor and
   /// the UI scale are.

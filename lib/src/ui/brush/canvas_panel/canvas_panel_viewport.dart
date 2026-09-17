@@ -289,17 +289,20 @@ class _CanvasPanelViewport {
   /// snap list now, in the direction pressed, read in DISPLAY percent — the
   /// unit that list and the readout are both written in. Past the list's
   /// last entry there is no next step, so the view stays where it is.
+  ///
+  /// The list's unit and its grid are [CanvasZoomScale.steppedThroughStops]'
+  /// to know, not this road's — the constrained pinch reads the same list
+  /// the same way.
   void _zoomStep({required bool zoomIn}) {
-    final scale = _state._zoomScale;
-    final next = AppInput.stepThroughList(
-      scale.display(_viewport.zoom) * 100,
+    final next = _state._zoomScale.steppedThroughStops(
+      _viewport.zoom,
       AppInput.settings.value.zoomSnapPercents,
       up: zoomIn,
     );
     if (next == null) {
       return;
     }
-    _zoomToAroundCenter(scale.render(next / 100));
+    _zoomToAroundCenter(next);
   }
 
   void _zoomToAroundCenter(double nextZoom) {

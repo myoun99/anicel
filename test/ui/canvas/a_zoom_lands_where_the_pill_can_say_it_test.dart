@@ -8,8 +8,10 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/viewport_point.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
+import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
@@ -270,6 +272,7 @@ void main() {
       CanvasSize canvasSize = const CanvasSize(width: 300, height: 300),
       CanvasViewport? viewport,
       ValueNotifier<CanvasViewport?>? controller,
+      CanvasViewCommands? commands,
     }) {
       final frameKeys = BrushCanvasFixture.createFrameKeys();
       return MediaQuery(
@@ -294,6 +297,7 @@ void main() {
                   canvasSize: canvasSize,
                   viewport: viewport,
                   viewportController: controller,
+                  viewCommands: commands,
                 ),
               ),
             ),
@@ -470,6 +474,91 @@ void main() {
       );
       await tester.pump();
       expect(await angleReadout(), '-15.37°');
+    });
+
+    testWidgets('🚨a stop the view cannot land on is not a rung a step '
+        'dies on', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1600, 1200);
+      addTearDown(tester.view.reset);
+      // The stop list is the user's own text and takes any digits — the
+      // settings field parses `33.333` and shows it as `33`.
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        zoomSnapPercents: const [25, 33.333, 50],
+      );
+      // The command channel is the road Shift+. and Shift+, take, and the
+      // pill's ± press the same step (I-19) — a panel off the floor has no
+      // ± of its own to press.
+      final commands = CanvasViewCommands();
+      await tester.pumpWidget(
+        harness(
+          uiScale: 1.0,
+          viewport: CanvasViewport(zoom: 0.25),
+          commands: commands,
+        ),
+      );
+      await tester.pump();
+      expect(zoomReadout(tester), '25.00%');
+
+      Future<void> step({required bool zoomIn}) async {
+        commands.zoomStep(zoomIn: zoomIn);
+        await tester.pump();
+      }
+
+      await step(zoomIn: true);
+      expect(zoomReadout(tester), '33.33%');
+      await step(zoomIn: true);
+      expect(
+        zoomReadout(tester),
+        '50.00%',
+        reason: 'from 33.33 the next stop "up" was 33.333 — which lands on '
+            '33.33 again, so the step did nothing at that rung for ever',
+      );
+      await step(zoomIn: false);
+      expect(zoomReadout(tester), '33.33%');
+      await step(zoomIn: false);
+      expect(zoomReadout(tester), '25.00%');
+    });
+  });
+
+  group('the user\'s stops', () {
+    // The list is written in DISPLAY percent. These two are the only
+    // readers it has, so the unit is converted in one place.
+    test('are stepped through on the grid the view lands on', () {
+      const scale = CanvasZoomScale(1.5);
+      const stops = <double>[25, 33.333, 50];
+      double percentOf(double? renderZoom) =>
+          scale.display(renderZoom!) * 100;
+
+      final first = scale.steppedThroughStops(
+        scale.render(0.25),
+        stops,
+        up: true,
+      );
+      expect(percentOf(first), closeTo(33.33, 1e-9));
+      final second = scale.steppedThroughStops(first!, stops, up: true);
+      expect(percentOf(second), closeTo(50, 1e-9));
+      expect(scale.steppedThroughStops(second!, stops, up: true), isNull);
+      expect(
+        percentOf(scale.steppedThroughStops(second, stops, up: false)),
+        closeTo(33.33, 1e-9),
+      );
+    });
+
+    test('are snapped to in DISPLAY percent, and the snap lands', () {
+      // 🚩The audit of 2026-09-15: snapped as a RENDER zoom, a 150% stop
+      // read 225% on a 150% monitor.
+      const scale = CanvasZoomScale(1.5);
+      final snapped = scale.snappedToStops(
+        scale.render(1.43),
+        const [100, 150, 200],
+      );
+      expect(scale.display(snapped) * 100, closeTo(150, 1e-9));
+      expect(
+        scale.display(scale.snappedToStops(scale.render(0.334), const [33.333])) *
+            100,
+        closeTo(33.33, 1e-9),
+      );
     });
   });
 
