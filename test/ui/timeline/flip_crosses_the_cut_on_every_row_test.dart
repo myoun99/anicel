@@ -120,7 +120,8 @@ void main() {
     // 행을 `_stepOneFrame` 뒤로 옮겼다: 그 행이 하는 일은 「한 프레임 걷기」이고
     // 유저의 Ctrl+화살표가 하는 일과 **같은 것**이라, 둘이 한 함수가 됐다.
     // 착지는 여전히 한 곳이다 — 한 겹 안쪽일 뿐이고, 그 한 겹은
-    // `the_one_frame_step_lands_where_the_flip_lands_test` 가 정확히 2로 잠근다.
+    // `the_one_frame_step_lands_where_the_flip_lands_test` 가 정확히 3으로 잠근다
+    // (정의 · 한 프레임 걷기 · 블록 걷기 — 프레임 축 위의 걸음은 그 둘뿐이다).
     expect(
       RegExp(r'_flipToFrame\(|_stepOneFrame\(').allMatches(source).length,
       greaterThanOrEqualTo(3),
