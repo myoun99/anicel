@@ -77,7 +77,7 @@ void main() {
       await tester.runAsync(() async {
         final all = [...frameA.tiles.entries, ...frameB.tiles.entries];
         for (final entry in all) {
-          tiles.pictureFor((coord: entry.key, tile: entry.value));
+          tiles.pictureFor(entry.value);
         }
         while (all.any((entry) => tiles.imageFor(entry.value) == null)) {
           await Future<void>.delayed(const Duration(milliseconds: 1));

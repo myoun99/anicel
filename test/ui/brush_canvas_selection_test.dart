@@ -569,17 +569,20 @@ void main() {
     //
     // 🚨The refusal comes through the seam because the engine under
     // `flutter test` never refuses on its own — the harness is
-    // `flutter_tester`, and `tile_image_sync_upload_test` pins that by
-    // asserting `syncImageUploadSupported` is false there. (This used to
-    // say "because Windows runs Skia in every build"; that stopped being
-    // true when 3.47 made Impeller the desktop default, 2026-09-16, and the
+    // `flutter_tester`, Skia, which
+    // `the_door_makes_the_same_picture_on_every_engine_test` pins by
+    // asserting `pictureOfUploads` is false there. (This used to say
+    // "because Windows runs Skia in every build"; that stopped being true
+    // when 3.47 made Impeller the desktop default, 2026-09-16, and the
     // harness — not the platform — was always what this seam is for.)
     // See [debugRawRgbaUploader].
-    // ⚠️THE SEAM IS GLOBAL, and this widget uploads canvas TILES through it
-    // too. Refusing everything wedges the fixture itself (measured: the test
-    // ran to its ten-minute timeout), so the refusal is aimed: only the
-    // float's own stamp, identified by not being one of the square canvas
-    // tiles the painter is asking for at the same moment.
+    // ⚠️THE SEAM IS GLOBAL, so the refusal is aimed: only the float's own
+    // stamp, identified by not being a square power-of-two upload. (Until
+    // 2026-09-17 this widget's canvas TILES went through the seam too, and
+    // refusing everything wedged the fixture itself — measured: the test
+    // ran to its ten-minute timeout. Tiles picture themselves through the
+    // door now; the aim stays, because anything else square that comes
+    // through here is still not the float.)
     final resampleSizes = <String>[];
     var resamples = 0;
     var refuseResample = false;
@@ -2032,8 +2035,9 @@ void main() {
       // scope, which put it in a bucket shared by every float ever lifted.
       // The second Ctrl+T of a session therefore drew the FIRST one's
       // artwork, at the first one's place and size, into this float's tile
-      // grid. (Since 2026-09-11 every float tile knows its predecessor and
-      // never reaches that fallback; the invariant below is what says so.)
+      // grid. (From 2026-09-11 every float tile knew its predecessor and
+      // never reached that fallback; since 2026-09-17 there is no fallback
+      // to reach — a tile pictures itself. The invariant below outlives both.)
       //
       // Stated as the invariant rather than the symptom: a painter may not
       // put ink where its own surface is empty. That holds whatever the
@@ -2698,7 +2702,7 @@ void main() {
           ),
           isTrue,
           reason:
-              'decodes did not land in the settle window — the bound below '
+              'a tile on screen has no picture — the bound below '
               'is measuring the fixture, not the confirm',
         );
       }
@@ -2886,16 +2890,18 @@ void main() {
     });
 
     testWidgets('Enter in the middle of a handle drag lands the picture on '
-        'screen: the WINDOW the preview decoded is handed to the base', (
+        'screen: the landed tiles ARE the confirm frame, window or not', (
       tester,
     ) async {
       // Mid-drag the preview resamples only the viewport's window of the
       // picture (ABI 26), and Enter can arrive while the drag is down. The
       // confirm recomputes the whole rect, so the decoded window is not
-      // `identical`ly what lands — and until 2026-09-11 a hold covered the
-      // base with it. Now it is composed onto the base's tiles the way the
-      // whole picture is, and this frame has to come out exact wherever
-      // the window reaches, which is everything on screen.
+      // `identical`ly what lands — until 2026-09-11 a hold covered the base
+      // with it, and from then until 2026-09-17 it was composed onto the
+      // base's tiles as their stand-in. Nothing stands in now: the landed
+      // tiles picture themselves inside the confirm frame's paint, and this
+      // frame has to come out exact wherever the window reached, which is
+      // everything on screen.
       //
       const big = CanvasSize(width: 1800, height: 1400);
       final env = await pumpSelectionPanel(

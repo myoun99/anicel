@@ -60,26 +60,11 @@ sealed class CanvasStackRow {
 final class CanvasActiveLayerRow extends CanvasStackRow {
   const CanvasActiveLayerRow({
     required this.opacity,
-    this.frameKey,
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
     this.effects = const [],
   });
-
-  /// The active row's CEL — the same key its cached twin
-  /// [CanvasLayerImageRequest.frameKey] carried the frame before this row
-  /// became active. Null when the row has nothing exposed here (nothing to
-  /// stand in for).
-  ///
-  /// This is what lets the stack keep the just-deactivated route's layer
-  /// image as the FIRST-ACTIVATION stand-in: activation promotes a
-  /// file-backed cel to a surface of all-fresh tile objects, the tile
-  /// image cache has no images for them, and the sync/pixel budgets leave
-  /// the rest of the cel SILENT for one frame. The held image is truth
-  /// pixels for exactly this cel, so drawing it while zero decoded tile
-  /// images exist closes the one-frame blank without a seam.
-  final BrushFrameKey? frameKey;
 
   /// The active row's effective opacity (the interactive view used to
   /// apply this itself, through the panel's content-opacity wrap).
@@ -1143,7 +1128,9 @@ final class _PaintImage extends _PaintRow {
 /// promotes a file-backed cel to a surface of all-fresh tile objects, and
 /// the picture disappeared for one frame per layer. A committed tile
 /// pictures itself inside the paint now, so the walk is whole on the
-/// activation frame itself and nothing stands in.
+/// activation frame itself and nothing stands in. The active row's
+/// `frameKey` went with it: it named the cel only so this could find the
+/// image to hold.
 final class _PaintActiveSurface extends _PaintRow {
   const _PaintActiveSurface({
     required this.opacity,
@@ -1529,8 +1516,8 @@ class _LayerStackPainter extends CustomPainter {
   /// the overlay replaces a tile's image only when a dab touched it, so an
   /// unchanged image object IS "this tile did not move".
   ///
-  /// Committed tiles: a commit replaces the tile, and a decode replaces its
-  /// image. Both are identity changes on the same coordinate.
+  /// Committed tiles: a commit replaces the tile — an identity change on
+  /// its coordinate.
   ///
   /// 🚨★★★**AND THIS WALK IS PER TILE, NOT PER SURFACE.** The rect is what
   /// gets repainted, so a coordinate missed here is a coordinate left
@@ -1636,11 +1623,14 @@ class _LayerStackPainter extends CustomPainter {
   ///
   ///  * the committed tiles, by identity — `BitmapSurface` is immutable, so
   ///    an edit is a new instance;
-  ///  * their DECODED images, because a decode ARRIVING changes the screen
-  ///    while the tile it came from never moved;
   ///  * the overlay's tile images and its stamp, by identity, which is how
-  ///    an in-flight stroke reaches the canvas at all;
-  ///  * the stand-in and settling passes, which redraw on their own clock.
+  ///    an in-flight stroke reaches the canvas at all.
+  ///
+  /// 🪦Until 2026-09-17 there were two more: the tiles' DECODED images (a
+  /// decode arriving changed the screen while the tile it came from never
+  /// moved) and the stand-in and settling passes, which redrew on their own
+  /// clock. A tile's picture is made from its bytes inside the paint now, so
+  /// nothing arrives later and nothing stands in.
   ///
   /// ⛔And null when the painter says it draws from state it does not
   /// publish ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no

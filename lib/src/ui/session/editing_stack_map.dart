@@ -121,15 +121,6 @@ class EditingStackMap {
     activeSourceEffects = splitSourceEffects(entry.effects).source;
     return CanvasActiveLayerRow(
       opacity: entry.opacity,
-      // The active row's CEL key — the SAME key the image branch above
-      // would have requested, so the stack can keep that route's image as
-      // the first-activation stand-in while the promoted surface's tiles
-      // decode.
-      frameKey: _internals.brushFrameKeyForCut(
-        cut,
-        entry.layer.id,
-        entry.frame.id,
-      ),
       // The SAME entry the image branch above reads it from. It was
       // dropped right here — five fields arrived and four were forwarded,
       // so standing on a multiply row silently made it normal on the

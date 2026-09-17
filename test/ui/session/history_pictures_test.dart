@@ -208,7 +208,7 @@ BitmapSurface _surfaceOf(List<int> fills) => BitmapSurface(
 
 void _givePictures(BitmapTileImageCache cache, BitmapSurface surface) {
   for (final entry in surface.tiles.entries) {
-    cache.adoptDecoded((coord: entry.key, tile: entry.value), _solid());
+    cache.adoptDecoded(entry.value, _solid());
   }
 }
 

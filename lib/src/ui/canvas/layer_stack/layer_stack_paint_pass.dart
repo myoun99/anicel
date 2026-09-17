@@ -167,7 +167,7 @@ class _LayerStackPaintPass {
     // verbatim would make every folder buffer 9× more expensive than the
     // picture it holds. Only what is ON SCREEN can matter, so intersect
     // with the visible canvas-space rect (the same rect the surface painter
-    // uses to prioritise decodes).
+    // walks its tiles under).
     final visibleRect = MatrixUtils.transformRect(
       // The inverse of the transform APPLIED above — the SNAPPED one.
       // Pulled back through the raw viewport, the coverage rect could stop
@@ -845,9 +845,10 @@ class _LayerStackPaintPass {
       //
       // The buffered route above has read [filterQualityForDisplayScale]
       // since it was written; this WALK is the fallback it leaves
-      // behind (rotation/flip, or an active layer the flat projection
-      // refuses), and a fallback that samples differently is a second
-      // answer to the same question.
+      // behind (rotation/flip — and, until the knee's flat projection
+      // went on 2026-09-16, an active layer that projection refused),
+      // and a fallback that samples differently is a second answer to
+      // the same question.
       filterQuality: _displayQuality,
       // Onion-skin Colors mode: the ghost CONVERTS fully to the
       // tint — every drawn pixel takes the tint's RGB, only alpha
@@ -1061,8 +1062,8 @@ class _LayerStackPaintPass {
   /// and about the wrong conversion. What this needs is DISPLAY LIST to
   /// image, which is synchronous from Dart and leaves the rasterisation
   /// deferred on the GPU. The repo already leans on that in the tile
-  /// compose (`tiled_surface_compose`) and in the provisional tile pictures,
-  /// where it is measured at 26-38us for a 256px tile.
+  /// compose (`tiled_surface_compose`) and, until 2026-09-17, leaned on it
+  /// in the provisional tile pictures, measured at 26-38us for a 256px tile.
   _DisplayBuffer? _composeDisplayBuffer(Rect bounds) {
     if (_painter.debugDisableSingleBuffer || bounds.isEmpty) {
       return null;

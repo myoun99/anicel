@@ -17,19 +17,22 @@ import '../timeline/memo_token.dart';
 /// ⛔It used to draw a 20-cell mosaic of alpha-weighted averages instead —
 /// the trick the tip previews use, on the reasoning that raw RGBA cannot
 /// reach a canvas synchronously and a decoding preview would flicker. The
-/// first half is true (there is no synchronous bytes→image path on Skia);
-/// the second half was borrowed from a different problem. Tip previews
+/// first half was taken as true (no synchronous bytes→image path was known
+/// on Skia then; tiles have had one since 2026-09-17, `pictureOf`); the
+/// second half was borrowed from a different problem. Tip previews
 /// change with every slider drag, so they cannot afford a decode. **A cut
 /// piece changes only when something is cut** — the pose knobs re-order
 /// bytes or scale the destination rect, neither of which is a new picture —
 /// so one decode per piece is enough, and the artwork shows at full
 /// resolution (유저: *"퀄리티 낮추지마. 원본그대로."*).
 ///
-/// Before the decode lands the previews draw NOTHING. That is this app's
-/// standing answer for "no image yet" (see the surface painter's fallback
-/// ladder, whose last rung is silence): show the artwork or show nothing,
-/// never a degraded stand-in. The window is one frame in practice — the
-/// decode starts when the piece arrives, not when a preview is looked at.
+/// Before the decode lands the previews draw NOTHING: show the artwork or
+/// show nothing, never a degraded stand-in. The window is one frame in
+/// practice — the decode starts when the piece arrives, not when a preview
+/// is looked at. (🪦The surface painter's fallback ladder this once pointed
+/// at, whose last rung was the same silence, went on 2026-09-17: a canvas
+/// tile pictures itself inside the paint. A piece is not a tile — any
+/// width by any height, straight bytes — and still decodes here.)
 class CutPieceImageHost extends StatefulWidget {
   const CutPieceImageHost({
     super.key,

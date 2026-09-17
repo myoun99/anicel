@@ -195,11 +195,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
   ///
-  /// `preLift` is the surface the lift copied from: the predecessor of
-  /// every tile of the float built from this stamp (F-68), which is how
-  /// that float paints on its first frame — see [_buildFloatSurface].
-  final ({int liftToken, BrushDab stampDab, BitmapSurface preLift})?
-  Function(CanvasSelectionRegion region)?
+  /// 🪦Until 2026-09-17 the answer also carried `preLift`, the surface the
+  /// lift copied from — the predecessor of every tile of the float built
+  /// from this stamp (F-68), which was how that float painted on its first
+  /// frame. A float's tiles picture themselves inside the paint now.
+  final ({int liftToken, BrushDab stampDab})? Function(
+    CanvasSelectionRegion region,
+  )?
   onLiftRequested;
 
   /// Raw landing of the floating stamp at its pending position (no
@@ -679,7 +681,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasPending = _movePending;
     _liftToken = null;
     _pendingLiftStamp = null;
-    _liftSource = null;
     _moveSessionDirty = false;
     if (wasPending) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -2196,10 +2197,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     _liftToken = lift.liftToken;
-    // Where the float about to be built from this lift got its pixels —
-    // the predecessor of each of its tiles, for its first frame (F-68).
-    // Consumed by [_buildFloatSurface].
-    _liftSource = lift.preLift;
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
@@ -3429,20 +3426,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The surface the lift that just happened took its pixels from — the
-  /// predecessor of every tile the NEXT float build makes, and only that
-  /// build's (F-68). Consumed by [_buildFloatSurface], and dropped by
-  /// [_clearLiftState] too: it is a whole surface, and must not outlive
-  /// the one build that reads it.
-  BitmapSurface? _liftSource;
-
   /// The float's surface: the pending stamp's IMAGE materialized once, at
   /// the centre the stamp had then.
   ///
   /// Asked again for the same image, it answers with the same surface. A
   /// move changes the stamp's centre and not its pixels, and
   /// [_floatDrawCanvasOffset] carries the difference — so the float's
-  /// tiles are made once per lift and decode once. Every site that used
+  /// tiles are made once per lift and pictured once. Every site that used
   /// to rebuild here (a second drag, Ctrl+T over a pending move, Escape
   /// out of it) was making new tile objects for the same pixels — the
   /// F-68 family's raw material, plus 651 ms to re-materialize a
@@ -3451,13 +3441,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   BitmapSurface _buildFloatSurface() {
     final pending = _pendingLiftStamp;
     final existing = _floatSurface;
-    if (_liftSource == null &&
-        existing != null &&
+    if (existing != null &&
         pending != null &&
         identical(pending.stamp, _floatSurfaceStamp)) {
       return existing;
     }
-    _liftSource = null;
     final surface = BitmapSurface(canvasSize: widget.canvasSize);
     // Recorded HERE so every build zeroes the drift by construction —
     // [_floatDrawCanvasOffset] measures from the place the surface was
@@ -3486,10 +3474,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// built — in CANVAS space (TS1).
   ///
   /// A move used to rebuild the surface at the new centre, which is what
-  /// made the confirm frame blank: the rebuilt tiles are new objects with
+  /// made the confirm frame blank: the rebuilt tiles were new objects with
   /// no decoded images, so the held float could paint only the painter's
-  /// four-tile budget and 44% of a wide landing was simply absent. The
-  /// surface's tiles decode ONCE now and a translation is a translation.
+  /// four-tile budget of the day and 44% of a wide landing was simply
+  /// absent. The surface's tiles are pictured ONCE now and a translation
+  /// is a translation — which still saves the rebuild and its pictures,
+  /// though no paint can come out blank any more (2026-09-17).
   ///
   /// The drag delta is measured on SCREEN and the drift on the canvas, so the
   /// two have to meet somewhere; they used to meet in screen space because

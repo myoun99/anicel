@@ -4,9 +4,10 @@ part of '../bitmap_surface_painter.dart';
 /// 2026-09-16): above level 0 the surface pass draws each 2^k × 2^k block
 /// of coordinates as its level tile ([TilePyramid]) — an exact box mean of
 /// what the coordinates show, one tile's worth of pixels, 1:1 in a level
-/// buffer's pixels — and only a block no level tile can be made for yet
-/// falls back to its coordinates under the caller's scale, drawn exactly
-/// as level 0 draws them.
+/// buffer's pixels. Every block that shows anything is drawn that way, in
+/// the paint that shows it: no block falls back to its coordinates under
+/// the caller's scale (the ration that once made some do is the pyramid's
+/// 🪦).
 ///
 /// The pyramid's leaf is the pass's one answer to what a coordinate shows
 /// ([_CoordinatePicture]): the live stroke's result tile and a committed
@@ -45,7 +46,6 @@ class _LevelBlocks {
           _pass._coordinates.of(at, withPicture: false)?.key,
       pictureAt: (TileCoord at) =>
           _pass._coordinates.of(at, withPicture: true)?.picture,
-      mayMake: _mayMake,
     );
     for (final coord in tileCoordsIn(blocks)) {
       final levelTile = TilePyramid.instance.imageFor(
@@ -53,33 +53,16 @@ class _LevelBlocks {
         level: _pass._level,
         coord: coord,
       );
-      if (levelTile != null) {
-        // 1:1 in the level's pixels: the block is span × span tiles of
-        // canvas, and the level tile is one tile's worth of pixels.
-        _pass._canvas.save();
-        _pass._canvas.scale(span.toDouble());
-        _pass._drawImageAtTile(levelTile, coord);
-        _pass._canvas.restore();
+      if (levelTile == null) {
+        // The block shows nothing.
         continue;
       }
-      for (final at in TilePyramid.tilesOfBlock(_pass._level, coord)) {
-        final tile = surface.tileAt(at);
-        if (tile != null) {
-          _painter.pictureBudget.shown(_painter.lineage, tile);
-        }
-        _pass._coordinates.paint(at);
-      }
+      // 1:1 in the level's pixels: the block is span × span tiles of
+      // canvas, and the level tile is one tile's worth of pixels.
+      _pass._canvas.save();
+      _pass._canvas.scale(span.toDouble());
+      _pass._drawImageAtTile(levelTile, coord);
+      _pass._canvas.restore();
     }
-  }
-
-  /// The paint's ration of level tiles
-  /// ([_SurfacePaintPass.levelTilesPerPaint]): the blocks that miss out
-  /// draw their coordinates this frame and ask again on the next.
-  bool _mayMake() {
-    if (_pass._levelTileBudget <= 0) {
-      return false;
-    }
-    _pass._levelTileBudget -= 1;
-    return true;
   }
 }

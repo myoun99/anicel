@@ -14,23 +14,22 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
-/// CANVAS lightening probe — the COLLECT pass's cost ceiling.
+/// CANVAS lightening probe — a paint must not cost what the CEL holds.
 ///
-/// The painter now DRAWS only the tile coordinates the view covers
+/// The painter DRAWS only the tile coordinates the view covers
 /// (O(visible), pinned by the "off-screen committed tile is not drawn"
-/// test in bitmap_surface_painter_test.dart). What still walks the whole
-/// cel is the DECODE-START collect pass: an Expando lookup per committed
-/// tile, kept whole so off-screen tiles pre-warm in the background and
-/// scroll in already decoded.
+/// test in bitmap_surface_painter_test.dart), and since 2026-09-17 nothing
+/// else in a paint walks the cel either, so the numbers below should be
+/// FLAT in the tile count. The number to watch is the ratio: if it grows
+/// with the count, something walks the whole cel per paint again.
 ///
-/// This times that collect walk at its WORST — no cache images, so every
-/// tile answers needsDecodeStart and gets appended. It is the ceiling: in
-/// production most committed tiles are already decoded, so the lookup
-/// returns false and nothing is appended. Before the draw path was made
-/// visible-only this walk ALSO issued a drawImage per tile and cost
-/// ~2.2ms at 1024 tiles; the collect-only walk is ~0.1ms there. The
-/// number to watch is that the collect walk stays cheap — if it ever
-/// creeps back toward milliseconds, the pre-warm is too eager.
+/// 🪦What it timed until then was the DECODE-START collect pass: an
+/// Expando lookup per committed tile, kept whole so off-screen tiles
+/// pre-warmed in the background and scrolled in already decoded (~0.1ms
+/// at 1024 tiles; ~2.2ms before the draw path was made visible-only,
+/// when the same walk also issued a drawImage per tile). A tile pictures
+/// itself inside the paint that shows it now, so there is no pass to
+/// collect for.
 ///
 /// Prints; ratios within a run only.
 void main() {

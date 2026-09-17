@@ -125,7 +125,7 @@ void main() {
     final image = picture.toImageSync(8, 8);
     picture.dispose();
     BitmapTileImageCache.instance.adoptDecoded(
-      (coord: coord, tile: tile),
+      tile,
       image,
     );
     return BitmapSurfacePainter(

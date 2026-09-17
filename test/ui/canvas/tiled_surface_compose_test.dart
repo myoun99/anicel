@@ -54,7 +54,7 @@ void main() {
     BitmapSurface surface,
   ) async {
     for (final entry in surface.tiles.entries) {
-      cache.pictureFor((coord: entry.key, tile: entry.value));
+      cache.pictureFor(entry.value);
     }
   }
 

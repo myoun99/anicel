@@ -11,11 +11,13 @@ import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 
 /// 🚨A LEVEL TILE IS ITS BLOCK HALVED (render round 4c, 2026-09-16): the
 /// level-1 picture at (cx, cy) is the four tiles at (2cx.., 2cy..) each
-/// halved into its quadrant — an exact box mean, made in the frame from
-/// the pictures the cache holds — kept while those tiles stand and a
-/// recent paint asked for it, remade when one of them is a new object or
-/// was a stand-in, never made over a tile that has no picture yet, and
-/// never made past the caller's ration.
+/// halved into its quadrant — an exact box mean, made in the ask from the
+/// tiles' own pictures (each made in the same ask if it has none) — kept
+/// while those tiles stand and a recent paint asked for it, remade when
+/// one of them is a new object, and made WHOLE by the one ask that needs
+/// it, however many level tiles that takes (🪦the ration and the "tile
+/// without a picture waits" rule both went on 2026-09-17: a block either
+/// of them stopped stayed nearest-sampled on screen, see [TilePyramid]).
 void main() {
   const size = 4;
   const canvasSize = CanvasSize(width: 16, height: 16);
@@ -59,36 +61,22 @@ void main() {
   void adopt(BitmapTileImageCache cache, TileCoord coord, BitmapTile tile,
       List<int> rgba) {
     cache.adoptDecoded(
-      (coord: coord, tile: tile),
+      tile,
       picture(rgba),
     );
   }
 
   /// What the surface pass answers for a coordinate of [surface] with
-  /// [cache]'s pictures: the tile is the key of its own truth, a stand-in
-  /// picture is the key of itself, and a tile without any picture is the
-  /// key of a picture yet to come.
-  LevelTileAsk askOf(
-    BitmapSurface surface,
-    BitmapTileImageCache cache, {
-    bool Function()? mayMake,
-  }) => (
+  /// [cache]'s pictures, the way `_CoordinatePicture` does: the tile is
+  /// the key, and its picture is the one it has or the one made now.
+  LevelTileAsk askOf(BitmapSurface surface, BitmapTileImageCache cache) => (
     tileSize: surface.tileSize,
     scope: 'cel',
-    keyAt: (TileCoord at) {
-      final tile = surface.tileAt(at);
-      if (tile == null) {
-        return null;
-      }
-      return cache.imageFor(tile) != null
-          ? tile
-          : (cache.imageFor(tile) ?? tile);
-    },
+    keyAt: (TileCoord at) => surface.tileAt(at),
     pictureAt: (TileCoord at) {
       final tile = surface.tileAt(at);
-      return tile == null ? null : cache.imageFor(tile);
+      return tile == null ? null : cache.pictureFor(tile);
     },
-    mayMake: mayMake ?? () => true,
   );
 
   ui.Image? levelOne(
@@ -96,9 +84,8 @@ void main() {
     BitmapSurface surface,
     BitmapTileImageCache cache, {
     TileCoord? coord,
-    bool Function()? mayMake,
   }) => pyramid.imageFor(
-    askOf(surface, cache, mayMake: mayMake),
+    askOf(surface, cache),
     level: 1,
     coord: coord ?? TileCoord(x: 0, y: 0),
   );
@@ -178,7 +165,7 @@ void main() {
       }
       final recorded = recorder.endRecording();
       cache.adoptDecoded(
-        (coord: coord, tile: tile),
+        tile,
         recorded.toImageSync(size, size),
       );
       recorded.dispose();
@@ -197,8 +184,10 @@ void main() {
     });
   });
 
-  testWidgets('kept while its tiles stand, remade when one is a new object, '
-      'and not made over a tile without a picture', (tester) async {
+  testWidgets('made over a tile that has no picture yet — the ask makes it '
+      '— kept while its tiles stand, remade when one is a new object', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final pyramid = TilePyramid();
@@ -209,14 +198,16 @@ void main() {
         tileSize: size,
         tiles: {coord: first},
       );
-      expect(
-        levelOne(pyramid, surface, cache),
-        isNull,
-        reason: 'the tile has no picture yet: the block waits',
-      );
-      adopt(cache, coord, first, black);
+      expect(cache.imageFor(first), isNull, reason: 'fixture: no picture yet');
       final made = levelOne(pyramid, surface, cache);
-      expect(made, isNotNull);
+      expect(
+        made,
+        isNotNull,
+        reason: 'the block does not wait for a picture: the ask makes the '
+            'tile\'s picture and halves it',
+      );
+      expect(at(await bytesOf(made!), 0, 0), black);
+      expect(cache.imageFor(first), isNotNull);
       expect(
         identical(levelOne(pyramid, surface, cache), made),
         isTrue,
@@ -224,14 +215,8 @@ void main() {
       );
 
       // A commit: a new tile object at the coordinate.
-      final second = solid(black);
+      final second = solid(white);
       surface = surface.copyWith(tiles: {coord: second});
-      expect(
-        levelOne(pyramid, surface, cache),
-        isNull,
-        reason: 'the new tile has no picture yet',
-      );
-      adopt(cache, coord, second, black);
       final remade = levelOne(pyramid, surface, cache);
       expect(remade, isNotNull);
       expect(
@@ -239,11 +224,14 @@ void main() {
         isFalse,
         reason: 'remade over the new tile',
       );
+      expect(at(await bytesOf(remade!), 0, 0), white);
     });
   });
 
-  testWidgets('the ration is the caller\'s: refused, nothing is made — and '
-      'what an earlier paint made is kept for the next', (tester) async {
+  testWidgets('one ask makes a level-2 tile WHOLE — its four level-1 '
+      'children and itself — with no ration to stop it half way', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       final pyramid = TilePyramid();
@@ -256,37 +244,24 @@ void main() {
         tileSize: size,
         tiles: tiles,
       );
-      for (final entry in tiles.entries) {
-        adopt(cache, entry.key, entry.value, black);
-      }
-      ui.Image? levelTwo(int ration) {
-        var left = ration;
-        return pyramid.imageFor(
-          askOf(
-            surface,
-            cache,
-            mayMake: () {
-              if (left <= 0) {
-                return false;
-              }
-              left -= 1;
-              return true;
-            },
-          ),
-          level: 2,
-          coord: TileCoord(x: 0, y: 0),
-        );
-      }
-
       final before = TilePyramid.liveBytes;
-      expect(levelTwo(0), isNull, reason: 'no ration, nothing made');
-      expect(TilePyramid.liveBytes, before);
-      // Two of the four level-1 children fit; the level-2 tile does not.
-      expect(levelTwo(2), isNull);
-      expect(TilePyramid.liveBytes - before, 2 * size * size * 4);
-      // The next paint's ration finishes it: two children + the parent.
-      expect(levelTwo(3), isNotNull);
-      expect(TilePyramid.liveBytes - before, 5 * size * size * 4);
+      final levelTwo = pyramid.imageFor(
+        askOf(surface, cache),
+        level: 2,
+        coord: TileCoord(x: 0, y: 0),
+      );
+      expect(levelTwo, isNotNull);
+      expect(
+        TilePyramid.liveBytes - before,
+        5 * size * size * 4,
+        reason: 'four level-1 children and the level-2 tile, in one ask',
+      );
+      final px = await bytesOf(levelTwo!);
+      for (var y = 0; y < size; y += 1) {
+        for (var x = 0; x < size; x += 1) {
+          expect(at(px, x, y), black, reason: '($x,$y): every tile is ink');
+        }
+      }
     });
   });
 

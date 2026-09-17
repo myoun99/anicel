@@ -89,7 +89,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       for (final entry in surface.tiles.entries) {
-        cache.pictureFor((coord: entry.key, tile: entry.value));
+        cache.pictureFor(entry.value);
       }
       while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
         await Future<void>.delayed(const Duration(milliseconds: 1));

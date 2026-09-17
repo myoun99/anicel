@@ -19,8 +19,9 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///
 /// Three hand-written pre-order walks sat over two sealed hierarchies —
 /// the signature's `layers`, the stack view's `layers` and its
-/// `_activeNodeFrameKey`. These pin what all three must answer: every leaf
-/// in depth-first bottom → top order, nested folders and adjustments
+/// `_activeNodeFrameKey` (gone 2026-09-17 with the first-activation
+/// stand-in, its only reader). These pin what the walks must answer: every
+/// leaf in depth-first bottom → top order, nested folders and adjustments
 /// descended into, and the non-leaf kinds contributing nothing of their
 /// own.
 void main() {
@@ -122,16 +123,9 @@ void main() {
           opacity: 1,
           blendMode: LayerBlendMode.normal,
           children: [
-            const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(
-              opacity: 1,
-              frameKey: BrushFrameKey(
-                projectId: ProjectId('p'),
-                trackId: TrackId('t'),
-                cutId: CutId('c'),
-                layerId: LayerId('active'),
-                frameId: FrameId('active-cel'),
-              ),
-            )),
+            const CompositeLeaf<CanvasStackRow>(
+              CanvasActiveLayerRow(opacity: 1),
+            ),
             CompositeAdjustment<CanvasStackRow>(
               effects: const [],
               mix: 1,

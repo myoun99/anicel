@@ -322,10 +322,10 @@ class _InteractiveBrushEditCanvasViewState
   CanvasPoint? _lastPenPosition;
 
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
-  /// (the exact commit-rasterizer math) and re-decode the touched overlay
-  /// tiles; decode completions repaint the canvas painter directly through
-  /// this model — no widget rebuild per move, and the pixels on screen are
-  /// the pixels the commit will keep.
+  /// (the exact commit-rasterizer math) and picture the touched overlay
+  /// tiles inside the same call; the model's notification repaints the
+  /// canvas painter directly — no widget rebuild per move, and the pixels
+  /// on screen are the pixels the commit will keep.
   ///
   /// OWNED here only when the host does not supply one. A host that draws
   /// the active layer inside its own composite tree owns it instead (see

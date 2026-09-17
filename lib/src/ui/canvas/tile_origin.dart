@@ -5,9 +5,8 @@ import '../../models/tile_coord.dart';
 
 /// Where [placed]'s top-left corner sits in canvas space: the ONE place the
 /// tile-coordinate-times-size product is turned into an [Offset] for a
-/// draw (the surface paint pass, the tiled compose, the provisional
-/// pictures, the painter's rects). Coordinates may be negative — the
-/// pasteboard's tiles are.
+/// draw (the surface paint pass, the tiled compose, the painter's rects).
+/// Coordinates may be negative — the pasteboard's tiles are.
 ///
 /// ⚠️It takes the PAIR, not the tile: a tile does not know where it sits.
 /// Its place is the map key it was stored under, and [PlacedTile] is how

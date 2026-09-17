@@ -59,7 +59,7 @@ class _CoordinatePicture {
     return (
       key: tile,
       picture: withPicture
-          ? _painter.tileImageCache.pictureFor((coord: coord, tile: tile))
+          ? _painter.tileImageCache.pictureFor(tile)
           : null,
     );
   }

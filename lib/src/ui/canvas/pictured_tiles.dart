@@ -1,10 +1,8 @@
 import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
-import '../../models/tile_coord.dart';
 
-/// Every tile that has been given a picture, and where a canvas draws it —
-/// the roll the budget walks when the pictures held add up to more than
-/// the device allows ([TilePictureBudget]).
+/// Every tile that has been given a picture — the roll the budget walks
+/// when the pictures held add up to more than the device allows
+/// ([TilePictureBudget]).
 ///
 /// 🚨★★★THE CACHE COULD NOT BE ASKED 「WHAT DO YOU HOLD」 (render round,
 /// 2026-09-16). Its pictures live in an `Expando` keyed by the tile object:
@@ -23,6 +21,10 @@ import '../../models/tile_coord.dart';
 /// A sibling of `BitmapTileImageCache` rather than a field on it: the roll
 /// is a walkable thing of its own, and the cache is the door pictures come
 /// through, not the census of them.
+///
+/// 🪦Until 2026-09-17 the roll also remembered WHERE a canvas drew each
+/// tile, because letting a picture go had to un-file it from its
+/// coordinate's fallback bucket. Nothing is filed by coordinate any more.
 class PicturedTiles {
   PicturedTiles();
 
@@ -30,33 +32,29 @@ class PicturedTiles {
 
   final List<WeakReference<BitmapTile>> _roll = [];
 
-  /// Where a canvas draws each tile — what the cache is asked with when the
-  /// picture goes. Refreshed on every [hold]: a tile object can be carried
-  /// to another coordinate by a whole-tile translate.
-  final Expando<TileCoord> _coordOf = Expando<TileCoord>('picturedTileCoords');
+  final Expando<bool> _onRoll = Expando<bool>('picturedTiles');
 
-  /// [placed]'s tile has a picture now. A tile joins
-  /// the roll once and stays on it for its life, whatever its picture does:
-  /// the walk asks the cache what it holds, not the roll.
-  void hold(PlacedTile placed) {
-    final first = _coordOf[placed.tile] == null;
-    _coordOf[placed.tile] = placed.coord;
-    if (first) {
-      _roll.add(WeakReference(placed.tile));
+  /// [tile] has a picture now. A tile joins the roll once and stays on it
+  /// for its life, whatever its picture does: the walk asks the cache what
+  /// it holds, not the roll.
+  void hold(BitmapTile tile) {
+    if (_onRoll[tile] ?? false) {
+      return;
     }
+    _onRoll[tile] = true;
+    _roll.add(WeakReference(tile));
   }
 
-  /// Every tile on the roll that is still alive, at its coordinate — and
-  /// the dead swept out as it goes, so the roll never grows past the tiles
-  /// that exist.
-  List<PlacedTile> alive() {
-    final result = <PlacedTile>[];
+  /// Every tile on the roll that is still alive — and the dead swept out
+  /// as it goes, so the roll never grows past the tiles that exist.
+  List<BitmapTile> alive() {
+    final result = <BitmapTile>[];
     _roll.removeWhere((ref) {
       final tile = ref.target;
       if (tile == null) {
         return true;
       }
-      result.add((coord: _coordOf[tile]!, tile: tile));
+      result.add(tile);
       return false;
     });
     return result;

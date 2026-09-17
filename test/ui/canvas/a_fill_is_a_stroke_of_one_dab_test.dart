@@ -72,7 +72,7 @@ void main() {
     final tile = BitmapTile(size: size, pixels: pixels);
     final picture = recorder.endRecording();
     cache.adoptDecoded(
-      (coord: coord, tile: tile),
+      tile,
       picture.toImageSync(size, size),
     );
     picture.dispose();
@@ -326,7 +326,7 @@ void main() {
       final image = overlay.takeTileImageAt(entry.coord, revision: entry.revision);
       expect(image, isNotNull);
       cache.adoptDecoded(
-        (coord: entry.coord, tile: entry.tile),
+        entry.tile,
         image!,
       );
       placed.add((coord: entry.coord, tile: entry.tile));

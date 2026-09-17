@@ -21,19 +21,10 @@ class _SurfacePaintPass {
   late final bool _overlayBlendsInLayer;
   late final Paint _tileImagePaint;
   late final int _level;
-  late int _levelTileBudget;
   late final Rect _visibleRect;
 
   /// The one answer to what a coordinate shows ([_CoordinatePicture]).
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
-
-  /// The level tiles one paint may make ([_LevelBlocks._mayMake]), each a
-  /// `toImageSync` of four pictures. A cold zoomed-out view is the whole
-  /// visible grid at once, and the blocks that miss out draw their
-  /// coordinates this frame and ask again on the next; the seam probe
-  /// measured a make at tens of microseconds, so one paint's ration is
-  /// under two milliseconds.
-  static const int levelTilesPerPaint = 32;
 
   /// The surface + live _overlay, onto a _canvas the CALLER has already
   /// viewport-transformed and clipped to [_pasteboardRect].
@@ -118,7 +109,6 @@ class _SurfacePaintPass {
         ..colorFilter = _layerPaint.colorFilter
         ..imageFilter = _layerPaint.imageFilter;
     }
-    _levelTileBudget = levelTilesPerPaint;
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _pasteboardRect);

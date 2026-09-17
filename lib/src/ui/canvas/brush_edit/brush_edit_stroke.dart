@@ -357,15 +357,14 @@ class _BrushEditStroke {
   ) {
     final overlay = _state._overlay._overlayModel;
     for (final entry in promoted) {
-      final placed = (coord: entry.coord, tile: entry.tile);
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
       );
       if (image != null) {
-        BitmapTileImageCache.instance.adoptDecoded(placed, image);
+        BitmapTileImageCache.instance.adoptDecoded(entry.tile, image);
       } else {
-        BitmapTileImageCache.instance.pictureFor(placed);
+        BitmapTileImageCache.instance.pictureFor(entry.tile);
       }
     }
     _state.widget.onSourceStrokeCommitted(data);

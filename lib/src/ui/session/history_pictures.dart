@@ -127,9 +127,9 @@ class HistoryPictures {
     if (!pictured || store.holdsTile(coord, tile)) {
       return;
     }
-    _cache.releasePicture(coord, tile);
+    _cache.releasePicture(tile);
     if (keyed != null && !identical(keyed, tile)) {
-      _cache.releasePicture(coord, keyed);
+      _cache.releasePicture(keyed);
     }
   }
 

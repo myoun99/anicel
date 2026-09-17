@@ -96,7 +96,7 @@ void main() {
   Future<void> decodeAll(WidgetTester tester, BitmapSurface surface) {
     return tester.runAsync(() async {
       for (final entry in surface.tiles.entries) {
-        tileCache.pictureFor((coord: entry.key, tile: entry.value));
+        tileCache.pictureFor(entry.value);
       }
       while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
         await Future<void>.delayed(const Duration(milliseconds: 1));

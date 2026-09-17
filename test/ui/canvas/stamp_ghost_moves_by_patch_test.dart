@@ -19,12 +19,13 @@
 // changes the buffer's RECT and the carry has to repaint the ghost's two
 // places as well as the exposed bands — adversarial review, 2026-09-15).
 //
-// And the two routes that replaced the walk — the flat projection below
+// 🪦The two routes that once replaced the walk — the flat projection below
 // the knee, and the first-activation stand-in — never drew the ghost at
-// all (the walk's `_paintStampPreview` was its only draw). Both draw it
-// now, over their image, on their own route — the route is asserted, so
-// a ghost cannot flip the slot to another draw and back (F-67's
-// half-pixel shift).
+// all (the walk's `_paintStampPreview` was its only draw), and for a week
+// each drew it over its own image. Both routes are gone (the projection
+// with the render round, the stand-in on 2026-09-17): the tiles are the
+// one draw the active slot has, so the last test pins the frame the
+// stand-in existed for — activation — with the ghost over the tiles.
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -480,7 +481,7 @@ void main() {
     );
     await pumpStack(
       nodes: const [
-        CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, frameKey: key)),
+        CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
       ],
       activeSurfacePainter: painter,
     );

@@ -53,7 +53,7 @@ void main() {
   });
 
   /// [placed]'s truth lands.
-  void land(PlacedTile placed) => cache.adoptDecoded(placed, picture());
+  void land(PlacedTile placed) => cache.adoptDecoded(placed.tile, picture());
 
   test('over budget, the never-shown go first, then the least recently '
       'shown — and the latest paint\'s stay', () {
@@ -150,12 +150,13 @@ void main() {
     expect(cache.imageFor(a.tile), isNotNull);
   });
 
-  test('a tile joins the roll once, and is asked for at its latest '
-      'coordinate', () {
+  test('a tile joins the roll once, however often it is pictured', () {
     final placed = tileAt(0);
     land(placed);
-    pictured.hold((coord: TileCoord(x: 7, y: 7), tile: placed.tile));
+    pictured.hold(placed.tile);
+    cache.releasePicture(placed.tile);
+    cache.pictureFor(placed.tile);
     expect(pictured.length, 1);
-    expect(pictured.alive().single.coord, TileCoord(x: 7, y: 7));
+    expect(identical(pictured.alive().single, placed.tile), isTrue);
   });
 }

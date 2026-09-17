@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../../core/sync_image_upload.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
-import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
 import 'deferred_image_disposal.dart';
 import 'pictured_tiles.dart';
@@ -37,7 +35,7 @@ import 'pictured_tiles.dart';
 ///
 /// Entries never need manual eviction: the [Expando] releases them with
 /// the tile, and a [Finalizer] disposes the picture afterwards. The
-/// picture budget lets pictures go EARLY ([evictPicture]) when the device
+/// picture budget lets pictures go EARLY ([releasePicture]) when the device
 /// cannot hold every one; a tile asked for again is simply pictured again.
 class BitmapTileImageCache {
   BitmapTileImageCache({PicturedTiles? pictured})
@@ -86,16 +84,21 @@ class BitmapTileImageCache {
   /// Callers deciding what to DRAW want [pictureFor].
   ui.Image? imageFor(BitmapTile tile) => _images[tile];
 
-  /// [placed]'s picture: the one it has, or the one made now from its own
+  /// [tile]'s picture: the one it has, or the one made now from its own
   /// bytes through the door and kept — the ONE way a committed tile gets a
   /// picture besides the pen-up handoff ([adoptDecoded]).
-  ui.Image pictureFor(PlacedTile placed) {
-    final existing = _images[placed.tile];
+  ///
+  /// 🪦Until 2026-09-17 this and its siblings took the tile WITH its
+  /// coordinate, because a picture was also filed under where it sat — the
+  /// coordinate fallback's bucket. Nothing is looked up by coordinate any
+  /// more, so the cache does not ask where a tile is.
+  ui.Image pictureFor(BitmapTile tile) {
+    final existing = _images[tile];
     if (existing != null) {
       return existing;
     }
-    final image = pictureOfTile(placed.tile);
-    _own(placed, image);
+    final image = pictureOfTile(tile);
+    _own(tile, image);
     return image;
   }
 
@@ -116,20 +119,19 @@ class BitmapTileImageCache {
   ///
   /// A tile that somehow already has a picture keeps it and the incoming
   /// one is retired — never two owners for one image.
-  void adoptDecoded(PlacedTile placed, ui.Image image) {
-    if (_images[placed.tile] != null) {
+  void adoptDecoded(BitmapTile tile, ui.Image image) {
+    if (_images[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
     }
-    _own(placed, image);
+    _own(tile, image);
   }
 
-  void _own(PlacedTile placed, ui.Image image) {
-    final tile = placed.tile;
+  void _own(BitmapTile tile, ui.Image image) {
     _images[tile] = image;
     _imageFinalizer.attach(tile, image, detach: tile);
     _hold(image);
-    pictured.hold(placed);
+    pictured.hold(tile);
   }
 
   /// Lets [tile]'s picture go while the tile itself lives on — the door
@@ -140,7 +142,7 @@ class BitmapTileImageCache {
   /// Detached first: without it the finalizer retires the same image a
   /// second time when the tile is eventually collected. Retired through
   /// the deferred disposer like every picture here.
-  void releasePicture(TileCoord coord, BitmapTile tile) {
+  void releasePicture(BitmapTile tile) {
     final image = _images[tile];
     if (image == null) {
       return;
@@ -148,13 +150,6 @@ class BitmapTileImageCache {
     _images[tile] = null;
     _imageFinalizer.detach(tile);
     _release(image);
-  }
-
-  /// [releasePicture] for the budget's walk ([TilePictureBudget]). True
-  /// when the picture went.
-  bool evictPicture(PlacedTile placed) {
-    releasePicture(placed.coord, placed.tile);
-    return _images[placed.tile] == null;
   }
 
   /// [tile]'s pixel bytes premultiplied for a raw rgba8888 upload, staged

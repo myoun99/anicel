@@ -154,7 +154,7 @@ void main() {
       final baseline = BitmapTileImageCache.liveImageBytes;
       for (final entry in surface.tiles.entries) {
         cache.adoptDecoded(
-          (coord: entry.key, tile: entry.value),
+          entry.value,
           _solid(2, const Color(0xFF00FF00)),
         );
       }
@@ -228,7 +228,7 @@ void main() {
     Future<BitmapTileImageCache> decodedCache(BitmapSurface surface) async {
       final cache = BitmapTileImageCache();
       for (final entry in surface.tiles.entries) {
-        cache.pictureFor((coord: entry.key, tile: entry.value));
+        cache.pictureFor(entry.value);
       }
       return cache;
     }

@@ -1,5 +1,4 @@
 import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
 import '../../services/memory_pressure_budget.dart';
 import 'after_frame_once.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -16,14 +15,17 @@ import 'pictured_tiles.dart';
 /// the screen needs a few megabytes of level images (안 1) — all of it
 /// stayed. 유저 09-16: 「메모리는 신경쓰고싶고, 렉(반응성)은 최우선」 — so the
 /// pictures the view is not using are what goes, and they are made again
-/// only when the view comes back to them (in the frame, where the engine
-/// uploads synchronously; over a few frames where it does not).
+/// only when the view comes back to them — inside the paint that shows
+/// them, like any tile that has no picture.
 ///
-/// ⚠️SHOWN, NOT DRAWN. Below 100% the screen is fed from level images, so
-/// the full-size pictures under the view are not drawn at all — and letting
-/// those go would make every zoom-in a blank that fills over frames. A
-/// canvas stamps the tiles under its VISIBLE rect whatever it draws for
-/// them ([shown]), so they are warm when the view comes back to 1:1.
+/// ⚠️WHAT A PAINT STAMPS ([shown]). At 100% and above, the tiles under the
+/// canvas's visible rect. Below 100% the screen is fed from level tiles
+/// ([TilePyramid]), which keep standing when the pictures under them go —
+/// so those paints stamp nothing, the full-size pictures may go, and the
+/// paint that zooms back to 1:1 makes the ones it shows. (🪦For a few hours
+/// of 2026-09-16, before the active layer had level tiles, a zoomed-out
+/// paint stamped the tiles under its view too, so that zooming in would
+/// not be a blank filling over frames; no paint can be a blank any more.)
 ///
 /// The law for the device: a sixteenth of RAM, clamped to [128MB, 512MB].
 /// A 4K view of 128px tiles is 32MB of pictures, so the ceiling is a dozen
@@ -107,21 +109,19 @@ class TilePictureBudget {
   /// first, then the least recently shown — until the pictures held fit
   /// [byteBudget] or none is left to let go. Returns how many went.
   ///
-  /// A picture the screen may still borrow stays whatever this says: the
-  /// cache refuses those itself ([BitmapTileImageCache.evictPicture]).
+  /// 🪦Until 2026-09-17 the cache could REFUSE one — a picture lent to a
+  /// coordinate as its stand-in stayed whatever this said. Nothing is lent
+  /// any more, so what this picks goes.
   int letGo() {
     if (!overBudget) {
       return 0;
     }
-    final candidates = <({int serial, PlacedTile placed})>[];
-    for (final placed in _pictured.alive()) {
-      if (_cache.imageFor(placed.tile) == null || _current(placed.tile)) {
+    final candidates = <({int serial, BitmapTile tile})>[];
+    for (final tile in _pictured.alive()) {
+      if (_cache.imageFor(tile) == null || _current(tile)) {
         continue;
       }
-      candidates.add((
-        serial: _shownAt[placed.tile]?.serial ?? -1,
-        placed: placed,
-      ));
+      candidates.add((serial: _shownAt[tile]?.serial ?? -1, tile: tile));
     }
     candidates.sort((a, b) => a.serial.compareTo(b.serial));
     var went = 0;
@@ -129,9 +129,8 @@ class TilePictureBudget {
       if (!overBudget) {
         break;
       }
-      if (_cache.evictPicture(candidate.placed)) {
-        went += 1;
-      }
+      _cache.releasePicture(candidate.tile);
+      went += 1;
     }
     _lastPaintOf.removeWhere(
       (_, serial) => _paintSerial - serial >= recentPaints,

@@ -107,21 +107,11 @@ void main() {
     );
   });
 
-  test('the active row is the SAME cel the image branch would have asked '
-      'for', () {
-    final s = sessionOnADressedRow();
-    final cut = s.activeCutOrNull!;
-    final (_, nodes) = stackOf(s);
-
-    expect(
-      activeRowIn(nodes).frameKey,
-      s.brushFrameKeyForCut(cut, s.activeLayerId!, s.selectedFrame!.id),
-      reason:
-          'the promoted surface decodes its tiles over a frame, and '
-          'the held image is truth pixels for exactly this cel — a '
-          'different key would be a stand-in for someone else',
-    );
-  });
+  // 🪦「the active row is the SAME cel the image branch would have asked
+  // for」 stood here until 2026-09-17: the row carried its cel's key so the
+  // stack could hold that cel's image as the first-activation stand-in.
+  // Nothing stands in any more — the tiles picture themselves inside the
+  // activation paint — and the field went with its one reader.
 
   test('the active row\'s CPU half is carried out with it — #1280', () {
     final s = sessionOnADressedRow();

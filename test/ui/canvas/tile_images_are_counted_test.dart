@@ -7,8 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/placed_tile.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -23,10 +21,7 @@ import '../../helpers/collect_garbage.dart';
 /// so the share read as engine overhead; the drawing engine's own parked
 /// tile blocks and grow-only scratch had none either.
 void main() {
-  PlacedTile tileAt(int x, int y) => (
-    coord: TileCoord(x: x, y: y),
-    tile: BitmapTile.blank(size: 4),
-  );
+  BitmapTile aTile() => BitmapTile.blank(size: 4);
 
   Future<ui.Image> anImage() {
     final recorder = ui.PictureRecorder();
@@ -50,8 +45,8 @@ void main() {
       await collectGarbage();
       final before = BitmapTileImageCache.liveImageBytes;
 
-      PlacedTile? adopted = tileAt(0, 0);
-      PlacedTile? made = tileAt(1, 0);
+      BitmapTile? adopted = aTile();
+      BitmapTile? made = aTile();
       cache.adoptDecoded(
         adopted,
         await anImage(),
@@ -90,7 +85,7 @@ void main() {
         initialProject: createDefaultProject(),
       );
       addTearDown(session.dispose);
-      PlacedTile? held = tileAt(0, 0);
+      BitmapTile? held = aTile();
       BitmapTileImageCache.instance.adoptDecoded(
         held,
         await anImage(),
@@ -123,7 +118,7 @@ void main() {
         reason: 'fixture: a grown scratch is on the books',
       );
       // Read after the census, so the tile outlives it.
-      expect(BitmapTileImageCache.instance.imageFor(held.tile), isNotNull);
+      expect(BitmapTileImageCache.instance.imageFor(held), isNotNull);
 
       // ⚠️And take this test's picture off the books before it ends. The
       // counter is one static for the whole file, so a release still in the
@@ -137,34 +132,27 @@ void main() {
     });
   });
 
-  testWidgets('a DECODED tile is on the books the same way, and off with it', (
-    tester,
-  ) async {
+  testWidgets('a tile PICTURED THROUGH THE DOOR is on the books the same '
+      'way, and off with it', (tester) async {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       // Settle what earlier tests let go of, so the baseline holds still.
       await collectGarbage();
       final before = BitmapTileImageCache.liveImageBytes;
-      PlacedTile? placed = (
-        coord: TileCoord(x: 0, y: 0),
-        tile: BitmapTile(
-          size: 4,
-          pixels: Uint8List(oneImage)..fillRange(0, oneImage, 0xFF),
-        ),
+      BitmapTile? tile = BitmapTile(
+        size: 4,
+        pixels: Uint8List(oneImage)..fillRange(0, oneImage, 0xFF),
       );
 
-      cache.pictureFor(placed);
-      for (var i = 0; i < 200 && cache.imageFor(placed.tile) == null; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
+      cache.pictureFor(tile);
       expect(
-        cache.imageFor(placed.tile),
+        cache.imageFor(tile),
         isNotNull,
-        reason: 'fixture: the decode landed',
+        reason: 'the picture is made inside the call',
       );
       expect(BitmapTileImageCache.liveImageBytes - before, oneImage);
 
-      placed = null;
+      tile = null;
       await collectGarbageUntil(
         () => BitmapTileImageCache.liveImageBytes == before,
       );

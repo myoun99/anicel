@@ -134,7 +134,7 @@ void main() {
 
   Future<void> decodeAll(BitmapSurface surface) async {
     for (final entry in surface.tiles.entries) {
-      cache.pictureFor((coord: entry.key, tile: entry.value));
+      cache.pictureFor(entry.value);
     }
     while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -563,7 +563,7 @@ void main() {
       // engine, which a widget test's fake clock never completes.
       await tester.runAsync(() async {
         BitmapTileImageCache.instance.pictureFor(
-          (coord: TileCoord(x: 0, y: 0), tile: sharedTile),
+          sharedTile,
         );
         while (BitmapTileImageCache.instance.imageFor(sharedTile) == null) {
           await Future<void>.delayed(const Duration(milliseconds: 1));

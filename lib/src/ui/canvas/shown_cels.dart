@@ -1,8 +1,8 @@
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
-import '../../models/placed_tile.dart';
 import 'after_frame_once.dart';
 import 'bitmap_tile_image_cache.dart';
 
@@ -73,7 +73,7 @@ class ShownCels {
   }
 
   /// Every tile [cels] would put on screen, on every canvas showing it.
-  Iterable<PlacedTile> _painted(Iterable<CelSurface> cels) sync* {
+  Iterable<BitmapTile> _painted(Iterable<CelSurface> cels) sync* {
     final canvases = _byCanvas.values.toList();
     for (final (key, surface) in cels) {
       final cel = (key.layerId, key.frameId);
@@ -81,9 +81,7 @@ class ShownCels {
         if (shown.cel != cel) {
           continue;
         }
-        for (final entry in shown.painted(surface).tiles.entries) {
-          yield (coord: entry.key, tile: entry.value);
-        }
+        yield* shown.painted(surface).tiles.values;
       }
     }
   }
@@ -100,26 +98,26 @@ class ShownCels {
   /// one it replaces is not next any more.
   void warm(Iterable<CelSurface> cels) {
     _queue = [
-      for (final placed in _painted(cels))
-        if (_cache.imageFor(placed.tile) == null) placed,
+      for (final tile in _painted(cels))
+        if (_cache.imageFor(tile) == null) tile,
     ];
     _pump();
   }
 
-  List<PlacedTile> _queue = const [];
+  List<BitmapTile> _queue = const [];
   final AfterFrameOnce _nextPump = AfterFrameOnce();
 
   void _pump() {
     var next = 0;
     var left = picturesPerFrame;
     while (next < _queue.length && left > 0) {
-      final placed = _queue[next];
+      final tile = _queue[next];
       next += 1;
-      if (_cache.imageFor(placed.tile) != null) {
+      if (_cache.imageFor(tile) != null) {
         continue;
       }
       left -= 1;
-      _cache.pictureFor(placed);
+      _cache.pictureFor(tile);
     }
     _queue = _queue.sublist(next);
     if (_queue.isNotEmpty) {

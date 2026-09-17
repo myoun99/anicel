@@ -256,7 +256,7 @@ void main() {
       ).prepareFramePreview(key('frame-a')).previewSurface;
       for (final entry in preview.tiles.entries) {
         BitmapTileImageCache.instance.pictureFor(
-          (coord: entry.key, tile: entry.value),
+          entry.value,
         );
       }
 

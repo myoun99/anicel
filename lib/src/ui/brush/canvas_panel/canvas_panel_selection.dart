@@ -76,14 +76,9 @@ class _CanvasPanelSelection {
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the erase
   /// lands raw, the stamp comes back to float. Null when the shape covers
   /// no pixels.
-  ///
-  /// `preLift` is the surface the lift copied from — the predecessor of
-  /// every tile the float built from this stamp will have (F-68), so the
-  /// float can draw on its first frame. The erased tiles need nothing
-  /// from here: the commit funnel announces both surfaces, and the painter
-  /// composes them from their predecessors like any other edit.
-  ({int liftToken, BrushDab stampDab, BitmapSurface preLift})?
-  handleSelectionLift(CanvasSelectionRegion region) {
+  ({int liftToken, BrushDab stampDab})? handleSelectionLift(
+    CanvasSelectionRegion region,
+  ) {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {
       return null;
@@ -135,11 +130,15 @@ class _CanvasPanelSelection {
     // lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에 생겼다가
     // 사라짐 … 매번 다른데」): the cel's stale-fallback bucket forgot the
     // coordinates the lift took whole, and the erased tiles were seeded
-    // with the pre-lift picture cut by the erase's own bytes. The commit
-    // funnel now announces both surfaces of every edit and the painter
-    // composes each new tile from its predecessor plus the diff — with
-    // that on and both of these off, every lift pin stayed green (M5).
-    return (liftToken: token, stampDab: lift.stampDab, preLift: preLift);
+    // with the pre-lift picture cut by the erase's own bytes. From then
+    // until 2026-09-17 the commit funnel announced both surfaces of every
+    // edit and the painter composed each new tile from its predecessor
+    // plus the diff (M5: with that on and both of these off, every lift
+    // pin stayed green) — and the answer below carried the pre-lift
+    // surface so the float's tiles had predecessors too. A tile pictures
+    // itself inside the paint now, the erased ones and the float's alike,
+    // so nothing is announced, composed or carried.
+    return (liftToken: token, stampDab: lift.stampDab);
   }
 
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands

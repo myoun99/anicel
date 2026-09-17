@@ -32,7 +32,7 @@ Future<ui.Image> _awaitDecode(
   BitmapTileImageCache cache,
   BitmapTile tile,
 ) async {
-  cache.pictureFor((coord: TileCoord(x: 0, y: 0), tile: tile));
+  cache.pictureFor(tile);
   for (var attempt = 0; attempt < 100; attempt += 1) {
     final image = cache.imageFor(tile);
     if (image != null) return image;
@@ -61,7 +61,7 @@ void main() {
       final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
 
       final first = await _awaitDecode(cache, tile);
-      cache.pictureFor((coord: TileCoord(x: 0, y: 0), tile: tile));
+      cache.pictureFor(tile);
       final second = cache.imageFor(tile);
 
       expect(identical(first, second), isTrue);

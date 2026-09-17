@@ -1718,7 +1718,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onInvokeAction: widget.onInvokeAction,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       // R22-A: the FILL tool runs through the view's stroke pipeline
-      // (instant overlay + settling hold) instead of the panel tap layer.
+      // (the result tiles on the tap frame, landed like a pen-up) instead
+      // of the panel tap layer.
       fillDabAt: widget.brushToolState.tool == CanvasTool.fill
           ? widget.fillDabAt
           : null,

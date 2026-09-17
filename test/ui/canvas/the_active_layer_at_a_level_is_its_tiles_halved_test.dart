@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -61,7 +62,7 @@ void main() {
     final tile = BitmapTile(size: size, pixels: pixels);
     final picture = recorder.endRecording();
     cache.adoptDecoded(
-      (coord: coord, tile: tile),
+      tile,
       picture.toImageSync(size, size),
     );
     picture.dispose();
@@ -172,9 +173,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // Level tiles are made within a paint's ration; two paints see the
-    // whole 8-block view made.
-    await paintBytes(tester, painterOf(tester), logicalSize);
     final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
     expect(buffers.lastBufferLevel, 2);
     for (var i = 0; i < bytes.length; i += 4) {
@@ -187,5 +185,115 @@ void main() {
             'the recorder\'s scale',
       );
     }
+  });
+
+  // 🚨★★★WHAT IS ON SCREEN AFTER ONE BUILD, read off the layer tree — not
+  // by calling the painter again, which would BE the second paint the old
+  // ration was waiting for and nothing in the app ever asked for.
+  //
+  // Measured before the ration went (2026-09-17, this fixture): 40 inked
+  // level-1 blocks against a ration of 32 a paint left 180 of 1080 sampled
+  // pixels nearest (0) beside box-mean neighbours (127) — after the first
+  // build, after another pump, and still a second later.
+  testWidgets('🚨a cold zoomed-out view is WHOLE in its first paint — more '
+      'blocks than the old ration, none of them left to a paint nobody '
+      'asks for', (tester) async {
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // 16 × 10 tiles → 8 × 5 = 40 level-1 blocks. COLD: no tile has a
+    // picture, so the paint makes all 160 of them and the 40 level tiles.
+    const wide = CanvasSize(width: 128, height: 80);
+    final surface = BitmapSurface(
+      canvasSize: wide,
+      tileSize: tileSize,
+      tiles: {
+        for (var ty = 0; ty * tileSize < wide.height; ty += 1)
+          for (var tx = 0; tx * tileSize < wide.width; tx += 1)
+            TileCoord(x: tx, y: ty): BitmapTile(
+              size: tileSize,
+              pixels: () {
+                final pixels = Uint8List(tileSize * tileSize * 4);
+                for (var y = 0; y < tileSize; y += 1) {
+                  for (var x = 0; x < tileSize; x += 1) {
+                    if ((tx * tileSize + x) % 4 == 0) {
+                      pixels[(y * tileSize + x) * 4 + 3] = 255;
+                    }
+                  }
+                }
+                return pixels;
+              }(),
+            ),
+      },
+    );
+    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+    addTearDown(images.dispose);
+    final buffers = DisplayBufferCache();
+    addTearDown(buffers.dispose);
+    final boundary = GlobalKey();
+    const logicalSize = Size(64, 40);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: RepaintBoundary(
+              key: boundary,
+              child: SizedBox(
+                width: logicalSize.width,
+                height: logicalSize.height,
+                child: CanvasLayerStackView(
+                  nodes: const [
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasActiveLayerRow(opacity: 1),
+                    ),
+                  ],
+                  imageCache: images,
+                  canvasSize: wide,
+                  viewport: CanvasViewport(zoom: 0.5),
+                  activeSurfacePainter: BitmapSurfacePainter(
+                    surface: surface,
+                    showTransparentBackground: false,
+                  ),
+                  paintPaper: true,
+                  paperBackground: ProjectBackground.defaultBackground,
+                  debugBufferCache: buffers,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final render =
+        boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final bytes = (await tester.runAsync(() async {
+      final image = await render.toImage();
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    }))!;
+    expect(buffers.lastBufferLevel, 1);
+    // Every EVEN device x covers canvas x = 2·dx and 2·dx + 1, and 2·dx is
+    // a multiple of four: one ink column of the two. A level tile reads
+    // the mean (127); nearest reads the column itself (0).
+    var mean = 0;
+    final nearest = <String>[];
+    for (var y = 2; y < 38; y += 1) {
+      for (var x = 2; x < 62; x += 2) {
+        final value = bytes[(y * 64 + x) * 4];
+        if (value >= 120 && value <= 135) {
+          mean += 1;
+        } else {
+          nearest.add('($x,$y)=$value');
+        }
+      }
+    }
+    expect(
+      nearest,
+      isEmpty,
+      reason: 'a block drawn as its coordinates under the recorder\'s '
+          'scale is nearest — and it stays on screen until something else '
+          'repaints, because nothing asks a painter to paint again',
+    );
+    expect(mean, 36 * 30, reason: 'every sampled pixel was read');
   });
 }
