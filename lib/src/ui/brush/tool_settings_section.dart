@@ -84,3 +84,51 @@ class ToolSettingsSection extends StatelessWidget {
     );
   }
 }
+
+/// THE preview at the top of the tool settings panel — one box, one size,
+/// whichever tool is showing.
+///
+/// 🚨★★★I-33 (유저 2026-09-16): 「도구 설정 패널에 **프리뷰 항목 신설**.
+/// 잘라내기도구의 스탬프도 이거 재사용? … **아무튼 통일하고 필요없어지는
+/// 잔재제거**. 프리뷰 항목은 일단 **스탬프도구, 브러시/지우개**의 도구설정에서
+/// 비추게. 위치는 **도구 설정의 맨 위**. **「프리뷰」라는 텍스트는 필요없음.**
+/// 세련되게」.
+///
+/// ⛔**NO LABEL**, and not only because the user said so: a box showing the
+/// brush you are holding does not need a word telling you it is a preview
+/// (⛔설명 문구 금지 is the same rule).
+///
+/// ⚠️It sits ABOVE the section rather than inside it, which is what makes it
+/// stay put while the settings scroll — 「맨 위」. The stamp used to write
+/// its own copy inside its list, and that copy scrolled away.
+class ToolSettingsPreview extends StatelessWidget {
+  const ToolSettingsPreview({super.key, required this.child});
+
+  /// One height for every tool: the stamp's own 88, kept, because a held
+  /// piece is the thing that most needs room and a stroke reads fine in it.
+  static const double height = 88;
+
+  /// The handle tests find the slot by — and the one that says a tool has
+  /// NO preview when it is absent.
+  static const Key slotKey = ValueKey<String>('tool-settings-preview');
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      key: slotKey,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: SizedBox(
+        height: height,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}

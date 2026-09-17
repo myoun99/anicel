@@ -21,6 +21,7 @@ import 'canvas_selection_commands.dart';
 import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
+import 'brush_stroke_live_preview.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
@@ -119,6 +120,40 @@ class ToolSettingsPanel extends StatelessWidget {
   final CanvasColorSampleSource eyedropperSource;
   final ValueChanged<CanvasColorSampleSource>? onEyedropperSourceChanged;
 
+  /// What the tool in hand shows in the slot at the top, or null for a tool
+  /// with nothing to preview.
+  ///
+  /// 🚨I-33: 「일단 **스탬프도구, 브러시/지우개**의 도구설정에서 비추게」 —
+  /// 「일단」 is why this is a switch with a default rather than a field every
+  /// section would have to remember to fill: adding the next tool is one arm.
+  Widget? _preview() => switch (state.tool) {
+    // 「브러시/지우개의 프리뷰는 스트로크를 보여줌. 설정하는거에 맞춰서 실시간
+    // 갱신되는」 — the brush in the HAND, not a preset (see
+    // [BrushStrokeLivePreview] for why it is not the list's widget).
+    CanvasTool.brush || CanvasTool.eraser => ToolSettingsPreview(
+      child: BrushStrokeLivePreview(settings: state.toBrushSettings()),
+    ),
+    // ↩️The stamp drew this INSIDE its own section until I-33, in a box it
+    // spelled itself. Same picture, same 88, one place now — and it no
+    // longer scrolls away with the knobs under it.
+    CanvasTool.cutStamp => switch (cutPieceSlot) {
+      final holder? => ListenableBuilder(
+        listenable: holder,
+        builder: (context, _) => ToolSettingsPreview(
+          child: switch (holder.piece) {
+            final piece? => CutPiecePreview(piece: piece),
+            // ⛔The BOX stays while the hand is empty: a slot that came and
+            // went would move every knob under it (없다가 생기는 UI 금지).
+            // What is held — or that nothing is — the section says.
+            _ => const SizedBox.shrink(),
+          },
+        ),
+      ),
+      _ => null,
+    },
+    _ => null,
+  };
+
   @override
   Widget build(BuildContext context) {
     // Own Material (the tool LIBRARY panel's rule, same reason): the dock
@@ -127,7 +162,8 @@ class ToolSettingsPanel extends StatelessWidget {
     // one Flutter asserts that those effects would be invisible. R26 #31
     // surfaced it by docking this panel open by default, so every tool's
     // settings now build for real instead of only when its tab is picked.
-    return Material(
+    final preview = _preview();
+    final settings = Material(
       type: MaterialType.transparency,
       child: switch (state.tool) {
         CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
@@ -192,6 +228,16 @@ class ToolSettingsPanel extends StatelessWidget {
           onGuidesCommitted: onGuidesCommitted ?? (_) {},
         ),
       },
+    );
+    if (preview == null) {
+      return settings;
+    }
+    // ⛔The preview is PINNED and the settings scroll under it — 「위치는
+    // 도구 설정의 맨 위」. Putting it inside the section would have let it
+    // scroll away, which is what the stamp's own copy did.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [preview, Expanded(child: settings)],
     );
   }
 }
@@ -362,18 +408,9 @@ class _CutStampSettings extends StatelessWidget {
               'Holding ${piece.image.width}×${piece.image.height} px',
               style: theme.textTheme.labelMedium,
             ),
-            const SizedBox(height: 6),
-            // What you are holding, so finding out does not require
-            // stamping it somewhere and undoing.
-            SizedBox(
-              height: 88,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
-                ),
-                child: CutPiecePreview(piece: piece),
-              ),
-            ),
+            // 🪦A copy of this preview stood here in its own 88-tall box —
+            // I-33 moved it to the panel's one slot, where it is pinned
+            // instead of scrolling away with the knobs.
             const SizedBox(height: 12),
             // ONE button, and the strip's blend decides whether the pixels
             // land over what is there or under it (TS8). The two buttons

@@ -118,6 +118,28 @@ class BrushStrokePreviewCache {
     return _store.ensure(key, () => _rasterize(settings, width, height));
   }
 
+  /// One raster through the shared WORKERS, kept out of the store.
+  ///
+  /// 🚨★★★**A VALUE NOBODY WILL ASK FOR TWICE DOES NOT GO IN A CACHE**
+  /// (I-33, 2026-09-16). The live preview in the tool settings draws the
+  /// brush in the hand, and that brush changes on every frame of a slider
+  /// drag — so its key is a CONTINUOUS value, which is the one thing this
+  /// cache's own width LADDER exists to keep out. Two hundred pixels of
+  /// drag would have minted two hundred entries, each ~25KB, evicting the
+  /// presets the list actually reuses.
+  ///
+  /// ⛔The WORKERS are still shared, and that is the half worth sharing: the
+  /// pool is the machine's budget (`_maxConcurrentRasters`), so a live
+  /// preview queues behind the roster instead of racing it.
+  ///
+  /// ⚠️THE CALLER OWNS THE IMAGE and must dispose it — there is no store to
+  /// retire it. [ensure] hands out cache-owned handles; this one does not.
+  Future<BrushStrokeSample> rasterizeUncached(
+    BrushSettings settings,
+    int width,
+    int height,
+  ) => _rasterize(settings, width, height);
+
   Future<BrushStrokeSample> _rasterize(
     BrushSettings settings,
     int width,
