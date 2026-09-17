@@ -82,6 +82,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/superellipse_clip.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/field_slider.dart' show sliderValueText;
 import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
@@ -1327,6 +1328,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// back, because pan is measured from the layout box's top-left. Fitting
   /// against the box instead would centre the artwork on the box and drop its
   /// lower edge under whatever floats there.
+  ///
+  /// 🚨EVERY framing this panel makes comes through here — the Fit button,
+  /// an owner's auto-frame and the unframed first read — so this is where a
+  /// fitted zoom lands on the grid the pill writes
+  /// ([CanvasZoomScale.landedToFit], F-122).
   CanvasViewport _fittedInto(Rect visible, {required Rect canvasRect}) {
     final fitted = CanvasViewport.fitToCanvasRect(
       left: canvasRect.left,
@@ -1335,6 +1341,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       height: canvasRect.height,
       viewportWidth: visible.width,
       viewportHeight: visible.height,
+      zoomLanding: _zoomScale.landedToFit,
     );
     return fitted.copyWith(
       panX: fitted.panX + visible.left,
@@ -2445,8 +2452,18 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// these are not budgets but measurements: the bar builds these widgets,
   /// so their widths are the widgets' own.
   static const double _ownIconWidth = 26; // AppIconButtonSize.bar.minWidth
-  static const double _zoomReadoutWidth = 44; // the DragValueLabel's width
-  static const double _rotationReadoutWidth = 40;
+
+  /// The two [DragValueLabel]s' widths — what the WIDEST number each can
+  /// write needs, since F-122 has them write every digit the view has.
+  ///
+  /// 🧪Measured in the app's own face (BIZ UDPGothic, 2026-09-17): `1600.00%`
+  /// at 12px is 68.9px and `-179.99°` at 11px is 52.9px, and the theme's
+  /// body letter spacing (0.25 a glyph) adds 2px to each. ⚠️The 44 that
+  /// stood here was already short of a plain `1600%` (46.9px). The test font
+  /// cannot tell — every glyph in it is a square — so the pin loads the real
+  /// one: `test/ui/brush/the_pill_readouts_fit_their_boxes_test.dart`.
+  static const double _zoomReadoutWidth = 74;
+  static const double _rotationReadoutWidth = 58;
   static const double _swatchWidth = 18; // ColorSwatchButton.diameter
   static const double _swatchGap = 4;
   static const double _dividerWidth = 13; // 1px rule, 6px margin each side

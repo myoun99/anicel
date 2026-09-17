@@ -24,6 +24,44 @@ class CanvasViewport {
   static const double minZoom = 0.0125;
   static const double maxZoom = 22.0;
 
+  /// 🚨THE DIGITS A VIEW'S NUMBERS TAKE AFTER THE POINT (F-122).
+  ///
+  /// 유저 2026-09-13: 「알약에 있는 줌 텍스트도 터치로 조작하면 미세하게
+  /// 조작되서 55%랑 56% 사이 숫자가 존재하는데 … **변형가능한만큼 텍스트로도
+  /// 표시** … 10.85 까진 가능해도 10.858 이렇게 **세자리째는 막는게**」 ·
+  /// 「소수점 조작하는 동작은 기본적으로 **최대치를 소수점 두자리로**」.
+  ///
+  /// The pill rounded the zoom and the angle to whole numbers while every
+  /// verb moved them continuously, so `55%` stood for every zoom from 54.5
+  /// to 55.5 and the number you read was not the view you had. ⛔Writing
+  /// more digits alone only moves that gap to the next place. So the VALUES
+  /// land on the grid their readouts write ([onReadoutGrid]) and the
+  /// readouts write every digit: what the pill says IS the view.
+  ///
+  /// The angle lands right here, in [rotatedAround]. The zoom is read in
+  /// DISPLAY percent, which takes a ratio this model does not have — it
+  /// lands in `CanvasZoomScale.landed`, on this same grid.
+  static const int readoutDecimals = 2;
+
+  static final double _readoutLinesPerUnit = math
+      .pow(10, readoutDecimals)
+      .toDouble();
+
+  /// [value] on the nearest line of the readout grid.
+  static double onReadoutGrid(double value) =>
+      (value * _readoutLinesPerUnit).roundToDouble() / _readoutLinesPerUnit;
+
+  /// [value] on the last line of the readout grid AT OR BELOW it — for a
+  /// number that must not grow by landing (a Fit).
+  ///
+  /// ⚠️The hair added before the floor is a float's worth, not a rule: a
+  /// value that IS on a line comes back through a multiply as
+  /// 4999.999999999999, and flooring that reads 49.99 for a fit of exactly
+  /// 50. A millionth of a line is far below anything a view can show.
+  static double belowOnReadoutGrid(double value) =>
+      (value * _readoutLinesPerUnit + 1e-6).floorToDouble() /
+      _readoutLinesPerUnit;
+
   CanvasViewport({
     this.zoom = 1.0,
     this.panX = 0.0,
@@ -103,8 +141,14 @@ class CanvasViewport {
     );
   }
 
-  /// Rotates the VIEW to [nextRotationDegrees], keeping the canvas point
-  /// under [anchor] (e.g. the viewport center or the gesture focal) fixed.
+  /// Rotates the VIEW to where [nextRotationDegrees] LANDS on the readout
+  /// grid ([readoutDecimals]), keeping the canvas point under [anchor] (e.g.
+  /// the viewport center or the gesture focal) fixed.
+  ///
+  /// 🚨Every road that turns the view comes through here — the twist, the
+  /// trackpad, the pill's buttons, its drag and a typed angle — so the
+  /// landing is HERE and none of them can keep an angle the pill cannot
+  /// write. The anchor is solved at the angle that was kept.
   CanvasViewport rotatedAround({
     required double nextRotationDegrees,
     required ViewportPoint anchor,
@@ -112,7 +156,7 @@ class CanvasViewport {
     _validateFinitePan(nextRotationDegrees, 'nextRotationDegrees');
     return _withAnchorPreserved(
       zoom: zoom,
-      rotationDegrees: nextRotationDegrees,
+      rotationDegrees: onReadoutGrid(nextRotationDegrees),
       flipHorizontal: flipHorizontal,
       flipVertical: flipVertical,
       anchor: anchor,
@@ -191,6 +235,12 @@ class CanvasViewport {
   /// Fits an arbitrary canvas-space rectangle (e.g. the camera frame's
   /// bounds) centered into the viewport. Rotation and flip RESET (v1: Fit
   /// is also the "straighten the view" gesture).
+  ///
+  /// [zoomLanding] is the caller's law for which zooms EXIST
+  /// (`CanvasZoomScale.landedToFit` — the unit it is written in takes a
+  /// ratio this model does not have). 🚨It runs BEFORE the rect is centred:
+  /// a zoom rounded afterwards leaves the rect centred for a zoom the view
+  /// no longer has.
   factory CanvasViewport.fitToCanvasRect({
     required double left,
     required double top,
@@ -199,6 +249,7 @@ class CanvasViewport {
     required double viewportWidth,
     required double viewportHeight,
     double padding = 24.0,
+    double Function(double zoom)? zoomLanding,
   }) {
     _validateFinitePan(left, 'left');
     _validateFinitePan(top, 'top');
@@ -223,7 +274,10 @@ class CanvasViewport {
     final zoom = (usableWidth / width) < (usableHeight / height)
         ? usableWidth / width
         : usableHeight / height;
-    final clampedZoom = zoom.clamp(minZoom, maxZoom).toDouble();
+    final railedZoom = zoom.clamp(minZoom, maxZoom).toDouble();
+    final clampedZoom = zoomLanding == null
+        ? railedZoom
+        : zoomLanding(railedZoom);
 
     return CanvasViewport(
       zoom: clampedZoom,

@@ -228,7 +228,7 @@ void main() {
         harness(uiScale: 1.0, viewport: CanvasViewport(zoom: 1.5)),
       );
       await tester.pump();
-      expect(readout(tester), '150%');
+      expect(readout(tester), '150.00%');
 
       // And the bare constructor is 100% here — the same value that, read
       // as a logical zoom, put the artwork at 150% and called it 100%.
@@ -236,7 +236,7 @@ void main() {
         harness(uiScale: 1.0, viewport: CanvasViewport()),
       );
       await tester.pump();
-      expect(readout(tester), '100%');
+      expect(readout(tester), '100.00%');
     });
 
     testWidgets('the UI scale does not touch what the document view shows', (
@@ -387,7 +387,7 @@ void main() {
 
       expect(
         readout(tester),
-        '400%',
+        '400.00%',
         reason: 'the percentage it was closed at, not that times the scale',
       );
       expect(
@@ -449,16 +449,16 @@ void main() {
       await tester.pump();
       // An uncontrolled panel already OPENS at the identity, so frame it
       // somewhere else first or the button has nothing to prove.
-      expect(readout(tester), '100%');
+      expect(readout(tester), '100.00%');
       await tester.tap(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
       );
       await tester.pump();
-      expect(readout(tester), isNot('100%'));
+      expect(readout(tester), isNot('100.00%'));
 
       // 1:1 folds into the gear on any pill that is not the floor's.
       await tapInViewSettings(tester, 'canvas-viewport-reset');
-      expect(readout(tester), '100%');
+      expect(readout(tester), '100.00%');
     });
   });
 }

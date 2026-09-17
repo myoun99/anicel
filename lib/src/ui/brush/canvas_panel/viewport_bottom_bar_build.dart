@@ -378,8 +378,14 @@ class _BottomBarBuild {
     );
   }
 
-  int _rotationDegreesOf(CanvasViewport v) =>
-      (((v.rotationDegrees + 180) % 360) - 180).round();
+  /// The view's angle as the pill reads it: wrapped into [-180, 180), on the
+  /// grid the view's angles land on.
+  ///
+  /// ⚠️The landing here is for the WRAP's float, not a second rounding of
+  /// the view: `(15.37 + 180) % 360 - 180` comes back as 15.370000000000005,
+  /// and the accent on the rotate buttons asks this number for its sign.
+  double _rotationDegreesOf(CanvasViewport v) =>
+      CanvasViewport.onReadoutGrid(((v.rotationDegrees + 180) % 360) - 180);
 
   Widget _divider() => Container(
     width: 1,
@@ -395,9 +401,14 @@ class _BottomBarBuild {
       if (_bar.onRotateByDrag != null)
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
-          text: '$rotationDegrees°',
+          // Every digit the angle has — the zoom readout's law (F-122).
+          text: sliderValueText(
+            rotationDegrees,
+            decimals: CanvasViewport.readoutDecimals,
+            unit: '°',
+          ),
           tooltip: AppText.strings.viewAngleDrag,
-          width: 40,
+          width: _CanvasViewportBottomBar._rotationReadoutWidth,
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: _bar.onRotateByDrag!,
           onEditSubmit: (text) {
@@ -429,7 +440,7 @@ class _BottomBarBuild {
 
   // R, Shift+R and H press these three (I-19), so each names its action —
   // the same one-button-one-method shape as the fit, 1:1 and zoom buttons.
-  Widget _rotateCcwButton(int rotationDegrees) => _bar._barIconButton(
+  Widget _rotateCcwButton(double rotationDegrees) => _bar._barIconButton(
     keyValue: 'canvas-viewport-rotate-ccw',
     tooltip: AppText.strings.viewRotateLeft,
     shortcuts: const [EditorActionIds.canvasRotateCcw],
@@ -438,7 +449,7 @@ class _BottomBarBuild {
     isSelected: rotationDegrees < 0,
   );
 
-  Widget _rotateCwButton(int rotationDegrees) => _bar._barIconButton(
+  Widget _rotateCwButton(double rotationDegrees) => _bar._barIconButton(
     keyValue: 'canvas-viewport-rotate-cw',
     tooltip: AppText.strings.viewRotateRight,
     shortcuts: const [EditorActionIds.canvasRotateCw],
@@ -494,14 +505,25 @@ class _BottomBarBuild {
     return DragValueLabel(
       keyValue: 'canvas-viewport-zoom-label',
       inputKeyValue: 'canvas-viewport-zoom-input',
-      text: '${displayPercent.round()}%',
+      // 🚨EVERY DIGIT THE ZOOM HAS (F-122, 유저 2026-09-13: 「55%랑 56% 사이
+      // 숫자가 존재하는데 … **변형가능한만큼 텍스트로도 표시**」 · 09-17:
+      // 「지금 100%인게 100.00%가 될거같은데 문제없어」). ⛔Not `round()`: it
+      // read `55%` for every zoom from 54.5 to 55.5. Every zoom verb LANDS
+      // on this grid ([CanvasZoomScale.landed]), so the digits written here
+      // are all the digits there are — and the count never changes under
+      // the finger, which is the slider's law too ([sliderValueText], F-34).
+      text: sliderValueText(
+        displayPercent,
+        decimals: CanvasViewport.readoutDecimals,
+        unit: '%',
+      ),
       tooltip: AppText.strings.viewZoomDrag,
       width: _CanvasViewportBottomBar._zoomReadoutWidth,
       enabled: _bar.viewEnabled,
       textStyle: const TextStyle(fontSize: 12),
-      // ⛔No second bound here. `_zoomToAroundCenter` clamps in display
-      // units for every absolute zoom verb, so the readout, the ± buttons
-      // and a typed value all stop at the same number this label shows.
+      // ⛔No second bound here. `_zoomToAroundCenter` lands every absolute
+      // zoom verb in display units, so the readout, the ± buttons and a
+      // typed value all stop at the same number this label shows.
       onDragDelta: (units) =>
           _bar.onZoomSet(_zoomScale.render((displayPercent + units) / 100)),
       onEditSubmit: (text) {

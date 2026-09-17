@@ -93,13 +93,13 @@ void main() {
       const ValueKey<String>('canvas-viewport-rotation-label'),
     );
     expect(label, findsOneWidget);
-    expect(find.text('0°'), findsOneWidget, reason: 'starts straight');
+    expect(find.text('0.00°'), findsOneWidget, reason: 'starts straight');
 
     await tester.drag(label, const Offset(40, 0));
     await tester.pumpAndSettle();
 
     expect(
-      find.text('0°'),
+      find.text('0.00°'),
       findsNothing,
       reason: 'the menu must not have swallowed the drag',
     );
@@ -236,7 +236,7 @@ void main() {
     expect(inkOf('canvas-viewport-flip'), AppColors.accent);
 
     // The readout is the same story told in numbers.
-    expect(find.text('15°'), findsOneWidget);
+    expect(find.text('15.00°'), findsOneWidget);
   });
 
   testWidgets('toolbar buttons rotate in 15° steps and toggle the flip', (
@@ -259,7 +259,7 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-viewport-rotation-label')),
       findsOneWidget,
     );
-    expect(find.text('0°'), findsOneWidget);
+    expect(find.text('0.00°'), findsOneWidget);
 
     await tapToolbarButton(tester, 'canvas-viewport-flip');
     expect(viewportOf(tester).flipHorizontal, isTrue);

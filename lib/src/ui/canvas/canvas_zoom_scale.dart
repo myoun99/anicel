@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_viewport.dart';
+import '../../models/viewport_point.dart';
 import '../effective_device_pixel_ratio.dart';
 
 /// The two units a document view's zoom is spoken in, and the one number
@@ -67,13 +68,71 @@ class CanvasZoomScale {
   static const double minDisplayZoom = 0.1;
   static const double maxDisplayZoom = 16.0;
 
-  /// [renderZoom] clamped to the advertised range.
+  /// 🚨★★★ONE LAW FOR WHERE A ZOOM LANDS (F-122 · I-27): [renderZoom] inside
+  /// the advertised range, on the grid the pill writes —
+  /// [CanvasViewport.readoutDecimals] digits of a DISPLAY percent.
   ///
-  /// Every absolute zoom verb goes through this — the ± buttons, the
-  /// readout's drag, a typed percentage — so all three stop at the same
-  /// number the label promises.
-  double clampRender(double renderZoom) =>
-      renderZoom.clamp(render(minDisplayZoom), render(maxDisplayZoom));
+  /// 유저 2026-09-13 (F-122): 「알약에 있는 줌 텍스트도 터치로 조작하면 미세하게
+  /// 조작되서 55%랑 56% 사이 숫자가 존재하는데 … **변형가능한만큼 텍스트로도
+  /// 표시** … **세자리째는 막는게**」 · 2026-09-17: 「캔버스 베이스 패널
+  /// 많을테니 **다 법 통일해서** 적용되면되」 · 「**근본/구조적으로**
+  /// 해결해줘. 증상만 해결말고」. 유저 2026-09-13 (I-27): 「확대 축소 로직이
+  /// 터치랑 추가될 키보드 숏컷이랑 여러곳에 나뉘어져있을 가능성 높으니 **법
+  /// 하나로 통일**」.
+  ///
+  /// It WAS two laws. The pill's verbs — the ± buttons and their keys, the
+  /// readout's drag, a typed percentage — stopped at the advertised range
+  /// (🪦`clampRender`, which this replaces: 「all three stop at the same
+  /// number the label promises」). The pinch, the wheel and the trackpad
+  /// stopped only at the model's sanity rail, so a wheel reached 2200% and
+  /// the readout's next one-percent nudge threw the view back to 1600%. And
+  /// NONE of them landed anywhere the pill could write: it rounded to a
+  /// whole percent, so `55%` stood for every zoom from 54.5 to 55.5.
+  ///
+  /// ⛔Widening the text alone would only move that gap to the third digit.
+  /// The ZOOM lands, and the pill writes every digit it has — what it says
+  /// IS the view.
+  double landed(double renderZoom) {
+    final percent = (display(renderZoom) * 100)
+        .clamp(minDisplayZoom * 100, maxDisplayZoom * 100)
+        .toDouble();
+    return render(CanvasViewport.onReadoutGrid(percent) / 100);
+  }
+
+  /// Where a FIT lands: DOWN onto the same grid. The next digit up would put
+  /// the edge of what was asked to fit outside the window it was fitted
+  /// into.
+  ///
+  /// ⛔Not held to the advertised range. A Fit has always been free to go
+  /// past it — a page far larger than its window fits below 10% — and
+  /// nobody has decided otherwise; an invented stop here would make Fit not
+  /// fit.
+  double landedToFit(double renderZoom) {
+    final percent = CanvasViewport.belowOnReadoutGrid(
+      display(renderZoom) * 100,
+    );
+    // Below the grid's first line there is nothing to land on.
+    return percent > 0 ? render(percent / 100) : renderZoom;
+  }
+
+  /// [view] zoomed to where [nextZoom] LANDS ([landed]), the artwork under
+  /// [anchor] held still.
+  ///
+  /// 🚨THE ONE ROAD A ZOOM VERB TAKES — the pinch, the wheel, the trackpad,
+  /// the ± buttons and their keys, the readout's drag, a typed percentage.
+  /// The anchor is solved AFTER the landing, at the zoom the view keeps:
+  /// rounding a view that was already anchored leaves the point under the
+  /// fingers anchored for a zoom the view no longer has (🧪0.007px off its
+  /// finger in the pin, a pinch at 142% — and it grows with the distance
+  /// from the canvas origin).
+  ///
+  /// ⛔Nothing under `lib/` calls [CanvasViewport.zoomedAround] but this —
+  /// `test/architecture/a_zoom_lands_through_one_law_test.dart`.
+  CanvasViewport zoomedTo(
+    CanvasViewport view, {
+    required double nextZoom,
+    required ViewportPoint anchor,
+  }) => view.zoomedAround(nextZoom: landed(nextZoom), anchor: anchor);
 
   /// The identity view: artwork 1px = device 1px, whatever the monitor and
   /// the UI scale are.

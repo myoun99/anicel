@@ -781,6 +781,7 @@ class _CanvasViewportGestureLayerState
   }
 
   CanvasViewport _pinchZoomed(CanvasViewport startViewport, double distance, double startDistance, bool modifier, AppInputSettings settings, CanvasViewport next, ViewportPoint focalAnchor) {
+    final scale = CanvasZoomScale.of(context);
     var nextZoom = startViewport.zoom * (distance / startDistance);
     if (modifier) {
       // Constrain: zoom snaps to the user's percent list — read in DISPLAY
@@ -788,7 +789,6 @@ class _CanvasViewportGestureLayerState
       // step through (`_zoomStep`). Snapped as the RENDER zoom it is here,
       // a constrained pinch landed on list × effective ratio: a 150% stop
       // read 225% on a 150% monitor (audit 2026-09-15).
-      final scale = CanvasZoomScale.of(context);
       nextZoom = scale.render(
         AppInput.snapToList(
               scale.display(nextZoom) * 100,
@@ -797,7 +797,9 @@ class _CanvasViewportGestureLayerState
             100,
       );
     }
-    return next.zoomedAround(nextZoom: nextZoom, anchor: focalAnchor);
+    // Free or constrained, it LANDS — [CanvasZoomScale.zoomedTo] is the one
+    // road a zoom verb takes (F-122 · I-27).
+    return scale.zoomedTo(next, nextZoom: nextZoom, anchor: focalAnchor);
   }
 
   void _updateBrushSize() {
@@ -865,7 +867,8 @@ class _CanvasViewportGestureLayerState
     }
     final factor = event.scrollDelta.dy < 0 ? 1.1 : 1 / 1.1;
     _emit(
-      _liveViewport.zoomedAround(
+      CanvasZoomScale.of(context).zoomedTo(
+        _liveViewport,
         nextZoom: _liveViewport.zoom * factor,
         anchor: ViewportPoint(
           x: event.localPosition.dx,
@@ -897,7 +900,8 @@ class _CanvasViewportGestureLayerState
     // accumulating.
     var next = base;
     if (event.scale != 1.0) {
-      next = base.zoomedAround(
+      next = CanvasZoomScale.of(context).zoomedTo(
+        base,
         nextZoom: base.zoom * event.scale,
         anchor: anchor,
       );

@@ -194,7 +194,7 @@ void main() {
 
     // LIVENESS — an entry that never committed would leave the token where
     // it was and prove nothing about the memo.
-    expect(find.text('250%'), findsOneWidget);
+    expect(find.text('250.00%'), findsOneWidget);
     expect(
       identical(pillBody(tester), before),
       isFalse,

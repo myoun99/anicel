@@ -1146,7 +1146,7 @@ void main() {
     expect(canvas.viewport.panX, CanvasViewport().panX);
     expect(canvas.viewport.panY, CanvasViewport().panY);
     expect(canvas.viewport.rotationDegrees, 0);
-    expect(find.text('100%'), findsOneWidget);
+    expect(find.text('100.00%'), findsOneWidget);
   });
 
   group('zoom label inline percent entry', () {
@@ -1217,7 +1217,7 @@ void main() {
         viewportOf(tester).zoom,
         closeTo(2.5 / tester.view.devicePixelRatio, 1e-12),
       );
-      expect(find.text('250%'), findsOneWidget);
+      expect(find.text('250.00%'), findsOneWidget);
     });
 
     testWidgets('Escape cancels the entry without committing', (tester) async {
@@ -1243,7 +1243,7 @@ void main() {
         viewportOf(tester).zoom,
         closeTo(1 / tester.view.devicePixelRatio, 1e-12),
       );
-      expect(find.text('100%'), findsOneWidget);
+      expect(find.text('100.00%'), findsOneWidget);
     });
 
     testWidgets('out-of-range entries clamp to the zoom bounds', (
@@ -1269,7 +1269,7 @@ void main() {
         viewportOf(tester).zoom,
         closeTo(16.0 / tester.view.devicePixelRatio, 1e-12),
       );
-      expect(find.text('1600%'), findsOneWidget);
+      expect(find.text('1600.00%'), findsOneWidget);
     });
   });
 

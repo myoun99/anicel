@@ -168,14 +168,14 @@ void main() {
       inMainCanvas(find.byKey(const ValueKey<String>('canvas-viewport-reset'))),
     );
     await tester.pumpAndSettle();
-    expect(readout(), '100%');
+    expect(readout(), '100.00%');
 
     await _press(tester, LogicalKeyboardKey.period, shift: true);
-    expect(readout(), '125%', reason: 'the next entry up, not ×1.25 by luck');
+    expect(readout(), '125.00%', reason: 'the next entry up, not ×1.25 by luck');
     await _press(tester, LogicalKeyboardKey.period, shift: true);
-    expect(readout(), '150%');
+    expect(readout(), '150.00%');
     await _press(tester, LogicalKeyboardKey.comma, shift: true);
-    expect(readout(), '125%');
+    expect(readout(), '125.00%');
 
     await tester.tap(
       inMainCanvas(
@@ -183,14 +183,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(readout(), '150%', reason: 'the button walks the same list');
+    expect(readout(), '150.00%', reason: 'the button walks the same list');
 
     for (var i = 0; i < 4; i++) {
       await _press(tester, LogicalKeyboardKey.period, shift: true);
     }
     expect(
       readout(),
-      '400%',
+      '400.00%',
       reason: '200, 300, 400 — and past the last entry there is no step',
     );
   });

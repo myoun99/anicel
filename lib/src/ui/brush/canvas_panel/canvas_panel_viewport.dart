@@ -313,8 +313,14 @@ class _CanvasPanelViewport {
       // RENDER rail while the readout stopped at 10–1600%, so on a 2×
       // tablet the buttons reached 3200% and then a one-pixel nudge of the
       // readout halved the view in a single step.
-      _viewport = _viewport.zoomedAround(
-        nextZoom: _state._zoomScale.clampRender(nextZoom),
+      //
+      // 🚨And since F-122 · I-27 (2026-09-17) it is not this road's own:
+      // [CanvasZoomScale.zoomedTo] is where EVERY zoom verb lands — the
+      // gesture layer's pinch, wheel and trackpad with these — in the range
+      // and on the grid the pill writes.
+      _viewport = _state._zoomScale.zoomedTo(
+        _viewport,
+        nextZoom: nextZoom,
         anchor: anchor,
       );
     });
@@ -366,18 +372,18 @@ class _CanvasPanelViewport {
     return ViewportPoint(x: center.dx, y: center.dy);
   }
 
-  /// Rotates the VIEW by [degrees] around the viewport center (P8). The
-  /// result snaps to 0° when within ±0.01° (float dust from gesture
-  /// accumulations must not leave the AABB slow path armed forever).
+  /// Rotates the VIEW by [degrees] around the viewport center (P8).
+  ///
+  /// 🪦A snap to 0° within ±0.01° stood here (「float dust from gesture
+  /// accumulations must not leave the AABB slow path armed forever」). The
+  /// angle lands on the readout grid inside [CanvasViewport.rotatedAround]
+  /// now (F-122, 2026-09-17), so dust cannot outlive a verb on ANY road, not
+  /// only this one — and a second rule for 「is this angle zero」 would have
+  /// said 0° where the pill's grid says 0.01°.
   void _rotateAroundCenter(double degrees) {
-    var next = _viewport.rotationDegrees + degrees;
-    final normalized = ((next + 180) % 360) - 180;
-    if (normalized.abs() < 0.01) {
-      next = next - normalized;
-    }
     setViewport(
       _viewport.rotatedAround(
-        nextRotationDegrees: next,
+        nextRotationDegrees: _viewport.rotationDegrees + degrees,
         anchor: _viewportCenterAnchor,
       ),
     );
