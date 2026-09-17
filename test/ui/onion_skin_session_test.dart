@@ -83,10 +83,18 @@ void main() {
 
     // Peg 1 (before) silences through the panel's light-table strip — the
     // bar's tooltip carries its state.
+    //
+    // ↩️It used to be silenced by tapping the BAR. F-150 ③ (유저 2026-09-16)
+    // moved the switch to the NUMBER at the column's floor — 「숫자 써있는곳
+    // 버튼으로만들어서 그거 누르면 on off 전환」 — so the bar could be
+    // nothing but a slider. The tooltip is still the bar's.
     final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
     expect(tester.widget<Tooltip>(peg1).message, '1 back · 40%');
-    await tester.tap(peg1);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('onion-peg-switch-before-1')),
+    );
     await tester.pumpAndSettle();
+    expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
     expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
 
     // Mode switch to Images through the panel's picker.
