@@ -148,9 +148,9 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           //
           // ⛔Folded into `drawings` rather than given a row: it is the
           // same store holding the same user's artwork, it is zero the
-          // moment the tool parks, and a row of its own would need a
+          // moment the tool lets go, and a row of its own would need a
           // fifth string in five languages to say "usually nothing".
-          session.renderCaches.brushFrameStore.liftedPixelBytes,
+          session.renderCaches.brushFrameStore.reclaimableViewBytes,
     ),
     MemoryCensusItem(
       id: 'sheetInk',

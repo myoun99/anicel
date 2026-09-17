@@ -371,76 +371,84 @@ class BrushFrameStore {
     // the hot tier is already over an ALREADY-low budget is exactly when
     // cooling matters most.
     _scheduleCooling();
-    // ⛔Not awaited, exactly as the cooling pass above is not: a memory
-    // warning is no place to wait on an isolate. Each snapshot joins its
-    // own park if one is already in flight, so a burst of warnings costs
-    // one encode.
-    // 🚨★★★**A COPY, AND `.values` WAS A CRASH.** `parkAll` awaits an
-    // isolate per snapshot, and `Map.values` is a LIVE view — so a lift
-    // that ended while its own payload was mid-encode (press Enter during
-    // a memory warning; the OS sends them in bursts) removed the entry the
-    // loop was standing on and the pass died with a
-    // ConcurrentModificationError, uncaught, inside a future nobody
-    // awaits. The list is taken once, here, where the warning arrives.
-    _activeLiftParking = UndoSurfaceSnapshot.parkAll(
-      _liftedPixels.values.toList(),
-    ).whenComplete(() => _activeLiftParking = null);
-  }
-
-  /// Pixels a TOOL has taken out of the picture and is holding until it
-  /// puts them back — a lifted selection under an open transform box, and
-  /// nothing else today.
-  ///
-  /// 🚨★★★**THE SAME BYTES WERE DISCIPLINED ON ONE SIDE OF A CONFIRM AND
-  /// NOT THE OTHER.** The moment a confirm turns a lift into a history
-  /// entry the pixels are budgeted and parkable ([UndoSurfacePair]); while
-  /// the box was still open they were a plain Map field in a widget's
-  /// State, with no budget, no cap and no spill — so a user who had NOT
-  /// confirmed was held to less discipline than one who had. Measured on a
-  /// 2340×1654 cel: a whole-picture Ctrl+T pins 17.5 MiB here, and the
-  /// image cache keys on these very tile objects, so up to 17.5 MiB of GPU
-  /// textures ride along. 유저 확정 2026-09-08 (`undo-41-hole-scope` = ①).
-  ///
-  /// 🔬**Krita's answer, and the reason this lives HERE.** Krita clears the
-  /// source device the moment the box opens, exactly as we do — the lifted
-  /// content becomes a `KisPaintDevice`, which is to say *a document device
-  /// like any other*, so the tile swapper spills it under pressure and the
-  /// transform tool contains no memory-pressure code at all. OpenToonz
-  /// holds the shape we used to: raw rasters on a global tool object,
-  /// outside the image cache, where a floating selection outlives pressure
-  /// while cold cels and undo entries die first.
-  ///
-  /// ⛔The TOOL still owns the lifetime — it mints the token and releases
-  /// it on confirm, revert or landing. This owns only the DISCIPLINE, the
-  /// way the tile store does for Krita: the two hold the same object.
-  final Map<int, UndoSurfaceSnapshot> _liftedPixels = {};
-
-  Future<void>? _activeLiftParking;
-
-  /// Completes when the warning's parking pass is done (tests).
-  ///
-  /// ⚠️It exists because a pin that awaited the SNAPSHOT instead did not
-  /// measure this class at all: `park()` called by hand does the same work,
-  /// so deleting the call above left every test green. The drain is the
-  /// only way to ask「did the STORE move them」.
-  Future<void> drainLiftedParking() async {
-    while (_activeLiftParking != null) {
-      await _activeLiftParking;
+    // ⛔NOT PARKED — RECLAIMED. What an open tool holds is a VIEW now (an
+    // open move session's holed cel), and a view can be rebuilt from the
+    // picture it was derived from. Parking it would encode bytes to disk
+    // that the very next paint needs back, and a painter reaching for a
+    // parked surface is the blank frame 유저 forbade outright for this
+    // round: 「조작 전/중/후가 빈 프레임 존재안하고 눈에 보이는 결과가
+    // 달라지지 않는건 절대조건」.
+    //
+    // 🚨★★★**A COPY OF THE LIST, AND `.values` WAS A CRASH** — kept from
+    // the parking pass this replaced, because the hazard is the same one:
+    // reclaiming can end a session, and `Map.values` is a LIVE view, so a
+    // loop standing on it died with a ConcurrentModificationError inside a
+    // future nobody awaits (press Enter during a memory warning; the OS
+    // sends them in bursts).
+    for (final view in _reclaimableViews.values.toList()) {
+      view.reclaim();
     }
   }
 
-  void holdLiftedPixels(int token, UndoSurfaceSnapshot pixels) {
-    _liftedPixels[token] = pixels;
+  /// Pictures a TOOL has DERIVED and is holding while it works — the cel
+  /// with the hole an open move session shows, and nothing else today.
+  ///
+  /// 🚨★★★**THE SAME BYTES WERE DISCIPLINED ON ONE SIDE OF A CONFIRM AND
+  /// NOT THE OTHER**, and that half of 유저 확정 2026-09-08
+  /// (`undo-41-hole-scope` = ①) SURVIVES the 09-17 reversal of the other
+  /// half. The moment a confirm turns a move into a history entry its
+  /// pixels are budgeted and parkable ([UndoSurfacePair]); while the box is
+  /// open they were a plain Map field in a widget's State, with no budget,
+  /// no cap and no spill — so a user who had NOT confirmed was held to less
+  /// discipline than one who had. Measured on a 2340×1654 cel: a
+  /// whole-picture Ctrl+T pins 17.5 MiB, and the image cache keys on these
+  /// very tile objects, so up to 17.5 MiB of GPU textures ride along.
+  ///
+  /// ↩️**What changed on 09-17 is WHICH bytes and HOW they come back.** The
+  /// session used to hold a pre-lift SNAPSHOT — the picture as it was
+  /// before an erase that had already been committed — and a snapshot can
+  /// only be given back by parking it to disk, because losing it loses the
+  /// user's pixels. A session holds a DERIVED surface now (the cel plus the
+  /// erase, computed and never written), and a derivation cannot be lost:
+  /// dropping it costs one recompute on the next paint. So the discipline
+  /// is the same and the recovery is cheaper and safer — no isolate, no
+  /// encode, no file, and nothing that can refuse to come back.
+  ///
+  /// 🔬**The 09-08 research still stands** and is why this is not a claim
+  /// about pro tools being non-destructive: Krita clears the source device
+  /// the moment the box opens, and the lifted content becomes a
+  /// `KisPaintDevice` — a document device like any other — so its tile
+  /// swapper spills it under pressure and the transform tool contains no
+  /// memory-pressure code at all. OpenToonz holds raw rasters on a global
+  /// tool object, outside the image cache, where a floating selection
+  /// outlives pressure while cold cels and undo entries die first.
+  ///
+  /// ⛔The TOOL still owns the lifetime — it mints the token and releases
+  /// it on confirm, revert or landing. This owns only the DISCIPLINE.
+  final Map<int, ({int Function() bytes, void Function() reclaim})>
+  _reclaimableViews = {};
+
+  /// Holds [token]'s derived view under the store's discipline: [bytes]
+  /// says what it is worth right now, [reclaim] gives it back.
+  ///
+  /// ⚠️[reclaim] must leave the holder able to rebuild — it is called on a
+  /// memory warning, not at the end of the session.
+  void holdReclaimableView(
+    int token, {
+    required int Function() bytes,
+    required void Function() reclaim,
+  }) {
+    _reclaimableViews[token] = (bytes: bytes, reclaim: reclaim);
   }
 
-  void releaseLiftedPixels(int token) {
-    _liftedPixels.remove(token);
+  void releaseReclaimableView(int token) {
+    _reclaimableViews.remove(token);
   }
 
-  /// Bytes a tool's lifted pixels are holding right now (diagnostics/tests)
-  /// — zero once they have parked.
-  int get liftedPixelBytes =>
-      _liftedPixels.values.fold(0, (sum, held) => sum + held.residentBytes);
+  /// Bytes a tool's derived views are holding right now
+  /// (diagnostics/tests) — zero once they have been reclaimed.
+  int get reclaimableViewBytes =>
+      _reclaimableViews.values.fold(0, (sum, view) => sum + view.bytes());
 
   /// Bytes currently resident in the hot tier (diagnostics/tests).
   int get hotBakedBytes => _hotBytes;

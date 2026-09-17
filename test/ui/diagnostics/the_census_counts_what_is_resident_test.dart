@@ -67,7 +67,7 @@ void main() {
     expect(
       rows['drawings'],
       caches.brushFrameStore.hotBakedBytes +
-          caches.brushFrameStore.liftedPixelBytes,
+          caches.brushFrameStore.reclaimableViewBytes,
       reason: 'a parked cel is a file on disk, not memory',
     );
     expect(

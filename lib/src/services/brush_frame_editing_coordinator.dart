@@ -162,6 +162,51 @@ class BrushFrameEditingCoordinator {
     frameStore.storeBakedSurface(key, surface);
   }
 
+  /// The active cel's surface AS IF [dabs] had been committed — and nothing
+  /// is committed.
+  ///
+  /// 🚨★★★**THE HOLE A FLOATING SELECTION SHOWS IS THIS, NOT AN EDIT**
+  /// (유저 2026-09-17: 「원본은 남기되, 일시적으로 구멍 픽셀 잘라내고 플로트
+  /// 띄운단거지? … 그 방식대로 구조/근본적으로 작업 가자」). A move session
+  /// used to commit its erase into the cel the moment the pixels were
+  /// lifted, and every piece of machinery around it — the pre-lift snapshot,
+  /// the lift anchors, the store's budget exception, the revert path —
+  /// existed to undo that. The session shows THIS instead: the same pixels
+  /// the erase would have produced, held by the session and thrown away
+  /// with it. The document is not touched until the move is confirmed.
+  ///
+  /// ⛔**IT GOES THROUGH THE COMMIT'S OWN FUNCTION, and that is the point.**
+  /// The bytes have to equal what the confirm will land — 유저's absolute
+  /// condition for this round was 「조작 전/중/후가 빈 프레임 존재안하고 눈에
+  /// 보이는 결과가 달라지지 않는 것」. Deriving them a second way is how two
+  /// paths start disagreeing at the mask's edge; this is the same
+  /// materialize [commitSourceStroke] runs, minus the three things that
+  /// make a commit a commit — the store update, the edited mark, and the
+  /// donation to the display caches.
+  ///
+  /// Returns null when the dabs change nothing, which is the same answer
+  /// [commitSourceStroke] gives a no-op stroke.
+  BitmapSurface? deriveSurfaceWith(
+    List<BrushDab> dabs, {
+    BrushBlendMode blendMode = BrushBlendMode.color,
+  }) {
+    if (dabs.isEmpty) {
+      throw ArgumentError.value(dabs, 'dabs', 'must not be empty');
+    }
+    final result = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
+      sessionState: activeSessionState,
+      sequence: BrushDabSequence(dabs, 1),
+      layerId: _activeFrameKey.layerId,
+      frameId: _activeFrameKey.frameId,
+      cacheInvalidationSink: _NoopCacheInvalidationSink(),
+      blendMode: blendMode,
+    );
+    if (result.affectedEntry == null) {
+      return null;
+    }
+    return result.sessionState.canvasState.currentSurface;
+  }
+
   /// Commits a finished stroke into the active cel's surface and returns
   /// its surface transition — the caller's undo payload (R19 P3b).
   ///

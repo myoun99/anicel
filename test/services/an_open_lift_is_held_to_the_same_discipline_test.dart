@@ -4,52 +4,50 @@ import 'dart:typed_data';
 import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
-import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 🚨★★★**THE SAME BYTES WERE DISCIPLINED ON ONE SIDE OF A CONFIRM AND NOT
-/// THE OTHER.** A confirmed transform's pre-lift picture is budgeted and
-/// parkable the moment it becomes a history entry; while the box was still
-/// open the identical pixels sat in a plain Map in a widget's State, with
-/// no budget, no cap and no spill. A user who had not confirmed was held
-/// to LESS discipline than one who had. 유저 확정 2026-09-08
-/// (`undo-41-hole-scope` = ①, Krita 식).
+/// THE OTHER.** A confirmed transform's picture is budgeted the moment it
+/// becomes a history entry; while the box was still open the pixels a tool
+/// held sat in a plain Map in a widget's State, with no budget, no cap and
+/// no way to get them back. A user who had not confirmed was held to LESS
+/// discipline than one who had. 유저 확정 2026-09-08 (`undo-41-hole-scope`).
 ///
-/// 🔬Krita clears the source device when the box opens exactly as we do,
-/// and the lifted content is a `KisPaintDevice` — a document device — so
-/// the tile swapper spills it under pressure while the transform tool
-/// contains no memory-pressure code at all. This is that, in our shapes.
+/// ↩️**That is the half of the 09-08 answer the 09-17 reversal KEPT.** The
+/// other half — committing the erase the moment the box opens — is gone: a
+/// move session writes nothing until it lands, so what it holds is no
+/// longer a pre-lift SNAPSHOT of pixels that only it has, but the cel with
+/// the hole, DERIVED from a picture that is still sitting right there.
+///
+/// 🎯**And that changes how the bytes come back, which is the whole of this
+/// file.** A snapshot can only be given back by parking it to disk, because
+/// losing it loses the user's pixels. A derivation is given back by
+/// DROPPING it: the holder rebuilds it on the next paint. No isolate, no
+/// encode, no file, and nothing that can refuse to come back.
+///
+/// ⛔**AND IT MUST NOT BE PARKED.** A parked surface is one the next paint
+/// cannot draw — the blank frame 유저 forbade outright when they chose this
+/// round: 「조작 전/중/후가 빈 프레임 존재안하고 눈에 보이는 결과가
+/// 달라지지 않는건 절대조건」. The last case here is that, measured on the
+/// 휘발성 room itself rather than on a flag.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const size = 8;
   const canvas = CanvasSize(width: 64, height: 64);
-  const key = BrushFrameKey(
-    projectId: ProjectId('p'),
-    trackId: TrackId('t'),
-    cutId: CutId('c'),
-    layerId: LayerId('l'),
-    frameId: FrameId('f'),
-  );
 
   PlacedTile tileOf(int x, int fill) {
     final coord = TileCoord(x: x, y: 0);
     return (
       coord: coord,
       tile: BitmapTile(
-      size: size,
-      pixels: Uint8List(BitmapTile.bytesFor(size))
-        ..fillRange(0, BitmapTile.bytesFor(size), fill),
+        size: size,
+        pixels: Uint8List(BitmapTile.bytesFor(size))
+          ..fillRange(0, BitmapTile.bytesFor(size), fill),
       ),
     );
   }
@@ -60,104 +58,90 @@ void main() {
     tiles: {for (final t in tiles) t.coord: t.tile},
   );
 
-  /// What a lift leaves behind: the picture as it was, measured against
-  /// the surface the erase produced.
-  ({UndoSurfaceSnapshot held, BitmapSurface preLift, BitmapSurface live})
-  lift() {
+  /// What an open move session holds: the cel with the hole, against the
+  /// cel it was derived from. The erase rebuilt ONE tile and left the other
+  /// alone, which is why the session owes one tile and not two.
+  ({BitmapSurface holed, BitmapSurface cel}) session() {
     final untouched = tileOf(0, 11);
-    final lifted = tileOf(1, 22);
-    final preLift = surfaceOf([untouched, lifted]);
-    // The erase rebuilt the lifted tile and left the other one alone. It is
-    // also the CEL while the box is open, which is what a revert reads the
-    // shared tiles back out of.
-    final afterErase = surfaceOf([untouched, tileOf(1, 0)]);
-    return (
-      held: UndoSurfaceSnapshot(
-        key: key,
-        snapshot: preLift,
-        sharedWith: afterErase,
-      ),
-      preLift: preLift,
-      live: afterErase,
-    );
+    final cel = surfaceOf([untouched, tileOf(1, 22)]);
+    final holed = surfaceOf([untouched, tileOf(1, 0)]);
+    return (holed: holed, cel: cel);
   }
 
-  test('an open lift reports its bytes, and a memory warning moves them '
-      'out of RAM', () async {
+  /// The store as a holder uses it: bytes on demand, and a reclaim that
+  /// drops the derivation.
+  ({BrushFrameStore store, bool Function() held}) holding(
+    ({BitmapSurface holed, BitmapSurface cel}) open,
+  ) {
     final store = BrushFrameStore();
-    final session = lift();
-
-    expect(
-      store.liftedPixelBytes,
-      0,
-      reason: 'nothing lifted yet',
+    BitmapSurface? holed = open.holed;
+    store.holdReclaimableView(
+      1,
+      bytes: () => holed?.bytesNotSharedWith(open.cel) ?? 0,
+      reclaim: () => holed = null,
     );
+    return (store: store, held: () => holed != null);
+  }
 
-    store.holdLiftedPixels(1, session.held);
+  test('an open session reports its bytes — only the tiles it does not '
+      'share with the cel', () {
+    final open = session();
+    final store = BrushFrameStore();
+    expect(store.reclaimableViewBytes, 0, reason: 'nothing open yet');
+
+    final view = holding(open);
     expect(
-      store.liftedPixelBytes,
+      view.store.reclaimableViewBytes,
       BitmapTile.bytesFor(size),
       reason: 'only the tile the erase rebuilt — the rest is the cel\'s own',
     );
+  });
 
-    store.respondToMemoryPressure();
-    await store.drainLiftedParking();
+  test('a memory warning takes them back, and the holder is told so it can '
+      'rebuild', () {
+    final view = holding(session());
+    expect(view.held(), isTrue);
+
+    view.store.respondToMemoryPressure();
 
     // ⛔This is the whole round: before it, the store had no idea these
     // bytes existed and a warning left every one of them in RAM.
-    expect(store.liftedPixelBytes, 0);
-    expect(session.held.isParked, isTrue);
+    expect(view.store.reclaimableViewBytes, 0);
+    expect(
+      view.held(),
+      isFalse,
+      reason: 'the holder let go — the next paint derives it again',
+    );
   });
 
-  test('and the picture still comes back byte for byte afterwards', () async {
-    final store = BrushFrameStore();
-    final session = lift();
-    store.holdLiftedPixels(1, session.held);
+  test('releasing takes it back from the store — a session that ended must '
+      'not go on being weighed for nobody', () {
+    final view = holding(session());
+    expect(view.store.reclaimableViewBytes, greaterThan(0));
 
-    store.respondToMemoryPressure();
-    await store.drainLiftedParking();
+    view.store.releaseReclaimableView(1);
 
-    final back = session.held.surfaceOver(session.live);
-    expect(back, isNotNull, reason: 'a revert has to be able to read this');
-    expect(back!.tiles.length, 2);
-    for (final coord in session.preLift.tiles.keys) {
-      expect(
-        back.tileAt(coord)!.pixels,
-        session.preLift.tileAt(coord)!.pixels,
-        reason: 'tile $coord',
-      );
-    }
+    expect(view.store.reclaimableViewBytes, 0);
+    expect(
+      view.held(),
+      isTrue,
+      reason: 'releasing is the tool saying「mine now」, not a reclaim',
+    );
   });
 
-  test('releasing takes it back from the store — a lift that ended must '
-      'not go on being parked for nobody', () {
-    final store = BrushFrameStore();
-    store.holdLiftedPixels(1, lift().held);
-    expect(store.liftedPixelBytes, greaterThan(0));
-
-    store.releaseLiftedPixels(1);
-
-    expect(store.liftedPixelBytes, 0);
-  });
-
-  test('🚨two warnings in a row write ONE file — a park in flight is joined, '
-      'not started again', () async {
-    final session = lift();
+  test('🚨and a warning writes NO file — a picture the next paint needs '
+      'must never go to disk', () {
+    final view = holding(session());
     final before = _volatilePaths();
 
-    final both = await Future.wait([
-      session.held.park(),
-      session.held.park(),
-    ]);
+    view.store.respondToMemoryPressure();
 
-    expect(both, [true, true]);
-    expect(session.held.isParked, isTrue);
-    // ⛔THE FILE COUNT IS THE ASSERTION, not the parked flag. Without the
-    // in-flight guard both calls encode the same tiles and each writes its
-    // own file, and only the second path is remembered — the flag is true
-    // and the surface reads back either way, while the first file is bytes
-    // on the user's disk nothing will ever read or remove.
-    expect(_volatilePaths().difference(before), hasLength(1));
+    // ⛔THE ROOM IS THE ASSERTION, not a flag. Parking a derivation would
+    // look like a success from every angle the old pass measured — the
+    // bytes fall, the flag flips, the surface reads back — while the next
+    // paint waits on a decode for a picture it could have rebuilt from the
+    // cel sitting beside it.
+    expect(_volatilePaths().difference(before), isEmpty);
   });
 }
 

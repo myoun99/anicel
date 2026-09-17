@@ -867,7 +867,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShownCels.instance.hide(this);
       return null;
     }
-    final token = widget._activeSurfaceIdentityFor(coordinator);
+    final identity = widget._activeSurfaceIdentityFor(coordinator);
+    // 🚨★★★**AN OPEN MOVE SESSION IS PART OF WHAT THIS PAINTER DRAWS**, so
+    // it is part of the token: the hole is a derived surface the session
+    // holds, and opening or closing one has to drop the memo exactly as a
+    // commit does. ⛔Substituting it AFTER the comparison would serve the
+    // cel's own pixels for one more frame — the flash 유저 named as the
+    // absolute condition of this round: 「조작 전/중/후가 빈 프레임
+    // 존재안하고 눈에 보이는 결과가 달라지지 않는건 절대조건」.
+    //
+    // ⛔And only the interactive painter reads it. The cel itself is
+    // untouched, so every other surface that shows this drawing — the
+    // timeline's thumbnail, the storyboard, playback, a neighbour's onion
+    // skin — keeps showing the picture as it stands, which is what an
+    // uncommitted edit should look like from outside the tool.
+    final holed = identity == null
+        ? null
+        : _lift.holedSurfaceFor(identity.key);
+    final token = identity == null || holed == null
+        ? identity
+        : (surface: holed, key: identity.key, fx: identity.fx);
     if (token == null) {
       _memoActiveSurfacePainter = null;
       _activeSurfacePainterToken = null;

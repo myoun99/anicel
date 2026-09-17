@@ -73,9 +73,34 @@ class _CanvasPanelSelection {
 
   int _liftTokenSeq = 0;
 
-  /// Lifts [region]'s pixels out of the cel (R19 pixel model): the erase
-  /// lands raw, the stamp comes back to float. Null when the shape covers
-  /// no pixels.
+  /// Lifts [region]'s pixels out of the cel (R19 pixel model): the stamp
+  /// comes back to float and the cel it came from shows the hole — **while
+  /// the document keeps every byte it had**.
+  ///
+  /// 🚨★★★**THE ERASE IS NOT COMMITTED ANY MORE** (유저 2026-09-17, which
+  /// REVERSED the 09-08 answer to `undo-41-hole-scope`: 「원본은 남기되,
+  /// 일시적으로 구멍 픽셀 잘라내고 플로트 띄운단거지? … 그 방식대로
+  /// 구조/근본적으로 작업 가자」). It used to land in the cel the moment the
+  /// pixels were lifted, and everything that made that survivable — the
+  /// pre-lift snapshot, the lift anchors, the store's budget exception, the
+  /// revert path, a history command of its own — existed to take it back.
+  /// ⇒ The session shows [BrushFrameEditingCoordinator.deriveSurfaceWith]'s
+  /// answer instead: the same pixels the erase would have written, held by
+  /// the session and dropped with it.
+  ///
+  /// 🎯**And that is what let the timeline move again.** A committed erase
+  /// means leaving the frame leaves a HOLE behind, which is why a seek, a
+  /// row press and a cut switch were all refused while a box was open
+  /// (F-116·F-86, 유저: 「타임라인쪽 조작이 안먹힘」). With nothing written
+  /// there is nothing to leave behind, so there is nothing to refuse.
+  ///
+  /// ⚠️The 09-08 card blocked this on a PLATFORM fact — an image hole needs
+  /// a synchronous upload, which was Impeller-only while Windows was Skia.
+  /// That expired on 09-16 (every platform is Impeller now), and this route
+  /// needs no upload at all: the hole is a surface, not a paint-time punch,
+  /// so there is no `saveLayer` and no `dstOut` over the layers below.
+  ///
+  /// Null when the shape covers no pixels.
   ///
   /// 🪦Two things stood at the end of this until 2026-09-11, both about the
   /// frame the lift opens on (F-68 ②, 「그림의 일부가 1프레임 이상한곳에
@@ -96,10 +121,9 @@ class _CanvasPanelSelection {
     if (coordinator == null) {
       return null;
     }
-    final preLift = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final lift = buildSelectionLiftDabs(
       region: region,
-      surface: preLift,
+      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
       liftId: '${DateTime.now().microsecondsSinceEpoch}',
       options:
           _state.widget.selectionMaskOptions?.value ??
@@ -108,35 +132,19 @@ class _CanvasPanelSelection {
     if (lift == null) {
       return null;
     }
-    final outcome = coordinator.commitSourceStroke(
-      sourceDabs: [lift.eraseDab],
-      cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-    );
-    if (outcome == null) {
+    // ⛔THE SAME DABS THE CONFIRM WILL LAND, through the same materialize:
+    // the hole the user sees and the erase the commit writes cannot drift
+    // apart at the mask's edge, because they are one computation.
+    final holed = coordinator.deriveSurfaceWith([lift.eraseDab]);
+    if (holed == null) {
       return null;
     }
     final token = ++_liftTokenSeq;
-    // ⚠️READ THE POST-ERASE SURFACE FIRST, because the anchor is measured
-    // against it: an [UndoSurfaceSnapshot] owes only the tiles the live
-    // surface no longer holds, and here that is exactly the set the erase
-    // rebuilt. Everything else the anchor names is a tile the cel still
-    // has, and holding it costs nothing.
-    final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
-    final held = UndoSurfaceSnapshot(
+    _state._lift.openSession(
+      token: token,
+      holed: holed,
+      eraseDab: lift.eraseDab,
       key: coordinator.activeFrameKey,
-      snapshot: preLift,
-      sharedWith: after,
-    );
-    // ⛔THE TOOL KEEPS THE LIFETIME, THE STORE KEEPS THE DISCIPLINE — one
-    // object, held by both. Without this the pixels are outside every
-    // budget for as long as the box stays open; see the store's own
-    // paragraph on [BrushFrameStore.holdLiftedPixels].
-    coordinator.frameStore.holdLiftedPixels(token, held);
-    _state._lift._liftAnchors[token] = (
-      pixels: held,
-      // The selection as the session finds it — captured at the same instant
-      // as the pixels, so undo can put both back exactly as they were.
-      region: _state.widget.selectionCommands?.region,
     );
     _state._rebuild(() {});
     return (liftToken: token, stampDab: lift.stampDab);

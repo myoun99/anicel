@@ -76,7 +76,7 @@ void main() {
         coordinator: coordinator,
         frameKey: key,
         preLiftSurface: coordinator.currentSurfaceOf(key),
-        stampDab: stampAt(x, colour),
+        landingDabs: [stampAt(x, colour)],
       );
       commands.add(command);
       history.execute(command);

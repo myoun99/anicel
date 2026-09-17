@@ -144,7 +144,7 @@ void main() {
           coordinator: coordinator,
           frameKey: key,
           preLiftSurface: coordinator.currentSurfaceOf(key),
-          stampDab: _stampAt(x, colour),
+          landingDabs: [_stampAt(x, colour)],
         ),
       );
     }

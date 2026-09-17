@@ -12,14 +12,24 @@ import 'cel_snapshot_restore.dart';
 /// Adopts a CONFIRMED move session (R16-①, TVP-style) into app history
 /// as ONE undoable step (R19 P3b surface-snapshot form).
 ///
-/// The session's ERASE was committed raw the moment the move began (the
-/// origin must vanish instantly, but nothing is undoable until the user
-/// confirms); the stamp floated un-committed through every drag, nudge
-/// and Ctrl+T. The first execute LANDS the stamp at its confirmed
-/// position and captures the post surface; [preLiftSurface] — captured
-/// by the host before the erase — is the undo target. One Ctrl+Z
-/// restores the pre-lift picture byte-exactly, session and cache state
-/// notwithstanding (the surfaces are self-contained references).
+/// The session writes NOTHING while it is open: it shows the cel with the
+/// hole the erase would make, derived and held by the panel, and the stamp
+/// floats over it through every drag and Ctrl+T. The first execute is
+/// therefore the first time the cel hears about either half — it lands
+/// [landingDabs] (the erase, then the stamp where it ended up) and captures
+/// the post surface; [preLiftSurface] is the picture the session opened on,
+/// which is simply the live surface, because nothing has touched it. One
+/// Ctrl+Z restores it byte-exactly, session and cache state notwithstanding
+/// (the surfaces are self-contained references).
+///
+/// ↩️Until 2026-09-17 the erase was committed the moment the move began
+/// (「the origin must vanish instantly, but nothing is undoable until the
+/// user confirms」), so this entry landed the stamp ALONE onto an
+/// already-erased base and its undo target had to be a snapshot the host
+/// captured before that erase and held for the whole session. 유저 reversed
+/// that on 09-17 — the hole the user sees is a view now, not an edit — and
+/// the two consequences meet here: the landing carries both dabs, and the
+/// undo target costs nothing to name.
 class BrushLiftMoveHistoryCommand
     implements
         Command,
@@ -30,13 +40,13 @@ class BrushLiftMoveHistoryCommand
     required this.coordinator,
     required this.frameKey,
     required BitmapSurface preLiftSurface,
-    required BrushDab stampDab,
+    required List<BrushDab> landingDabs,
     this.cacheInvalidationSink,
     this.regionBefore,
     this.restoreRegion,
     this.readRegion,
   }) : _preLiftSurface = preLiftSurface,
-       _stampDab = stampDab;
+       _landingDabs = landingDabs;
 
   final BrushFrameEditingCoordinator coordinator;
   final BrushFrameKey frameKey;
@@ -70,9 +80,9 @@ class BrushLiftMoveHistoryCommand
   CanvasSelectionRegion? _regionAfter;
 
   /// The pre-lift picture, held plainly until the landing: there is
-  /// nothing to weigh it against yet — the erase is already committed and
-  /// this still shares every tile with the live surface — and a snapshot
-  /// that cannot name its neighbour cannot say what it owns.
+  /// nothing to weigh it against yet — it IS the live surface until the
+  /// landing, sharing every tile with it — and a snapshot that cannot name
+  /// its neighbour cannot say what it owns.
   ///
   /// 🚨★★★**"UNTIL THE LANDING" WAS THE INTENT AND `final` WAS THE BUG.**
   /// It was never released, so a confirmed transform pinned its entire
@@ -84,7 +94,7 @@ class BrushLiftMoveHistoryCommand
   /// [UndoSurfaceSnapshot] fixed one file over for the SHARED tiles, and
   /// here the fraction still pinned was 100%, not 35%.
   ///
-  /// ⚠️It is the neighbour of [_stampDab], which is nulled two lines down
+  /// ⚠️It is the neighbour of [_landingDabs], which is nulled two lines down
   /// with「the stamp's RGBA payload is megabytes」as the reason. This is
   /// the larger of the two.
   BitmapSurface? _preLiftSurface;
@@ -92,7 +102,7 @@ class BrushLiftMoveHistoryCommand
   /// Dropped after the landing — the stamp's RGBA payload is megabytes,
   /// and redo restores the post SURFACE instead (same retention
   /// discipline as BrushStrokeHistoryCommand).
-  BrushDab? _stampDab;
+  List<BrushDab>? _landingDabs;
   UndoSurfacePair? _surfaces;
   bool _landed = false;
 
@@ -147,10 +157,10 @@ class BrushLiftMoveHistoryCommand
       restoreRegion?.call(_regionAfter);
       return;
     }
-    // First execute = the confirm itself: land the floating stamp (the
-    // base surface is the post-erase state throughout the session).
+    // First execute = the confirm itself: the cel hears about BOTH halves
+    // here — the session showed its hole without ever writing it (F-116).
     coordinator.commitSourceStroke(
-      sourceDabs: [_stampDab!],
+      sourceDabs: _landingDabs!,
       cacheInvalidationSink: cacheInvalidationSink,
     );
     _surfaces = UndoSurfacePair(
@@ -162,7 +172,7 @@ class BrushLiftMoveHistoryCommand
     // it can weigh it, park it and give it back. Holding a second
     // reference here would make every one of those answers a lie.
     _preLiftSurface = null;
-    _stampDab = null;
+    _landingDabs = null;
     _landed = true;
     // Read AFTER the landing, so a redo restores the shape the confirm
     // actually produced rather than the one it started from.

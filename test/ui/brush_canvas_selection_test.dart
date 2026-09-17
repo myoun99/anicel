@@ -758,10 +758,16 @@ void main() {
     final entriesBeforeMove = env.history.undoCount;
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
 
+    // 🚨★★★**THE CEL KEEPS ITS INK WHILE THE BOX IS OPEN** (2026-09-17).
+    // This read the opposite until then — 「pending: the base holds only the
+    // erase — origin is blank」 — because the lift committed its erase at
+    // once. A move session writes nothing until it lands now, so the
+    // document still holds the original and the hole lives only in what the
+    // panel DRAWS. The screen half is pinned by 「전/중/후 같은 그림」 below.
     expect(
       inkAt(env.coordinator, 30, 30),
-      0,
-      reason: 'pending: the base holds only the erase — origin is blank',
+      isNonZero,
+      reason: 'pending: nothing is written yet, so the cel is untouched',
     );
     expect(env.commands.movePending, isTrue);
     expect(
@@ -919,8 +925,9 @@ void main() {
     expect(env.commands.movePending, isTrue);
     expect(
       inkAt(env.coordinator, 30, 30),
-      0,
-      reason: 'the whole picture lifted — the origin is blank while pending',
+      isNonZero,
+      reason: 'pending: nothing is written yet, so the cel is untouched '
+          '(2026-09-17 — the hole lives in what the panel DRAWS)',
     );
 
     env.commands.confirmPendingMove();
@@ -1118,12 +1125,15 @@ void main() {
       isTrue,
       reason: 'R28 #10: the second transform must actually OPEN',
     );
+    // ↩️This asked the CEL until 2026-09-17 — 「the second lift has to ERASE
+    // its origin too」 — and the defect it guards is the user's: 「원본그림
+    // 존재하고 변형된 그림도 존재」. A session writes nothing now, so the cel
+    // legitimately holds the original while the box is open; what must not
+    // show the ink twice is the SCREEN, which 「전/중/후 같은 그림」 pins.
     expect(
       inkAt(env.coordinator, 40, 30),
-      0,
-      reason:
-          'R28 #10: the second lift has to ERASE its origin too — '
-          'leaving it is how the user saw "원본그림 존재하고 변형된 그림도 존재"',
+      isNonZero,
+      reason: 'the second lift wrote nothing either — the cel is untouched',
     );
 
     // The picture moved +10, so the box did too — grab it where it now is.
@@ -1817,17 +1827,26 @@ void main() {
     final origin = tester.getTopLeft(find.byKey(layerKey));
     final gesture = await tester.startGesture(origin + const Offset(45, 45));
     await tester.pump();
-    // Mid-drag: the base carries the erase but NOT the stamp — the base
-    // never shows the moving pixels (no double image).
-    expect(inkAt(env.coordinator, 30, 30), 0);
-    expect(inkAt(env.coordinator, 45, 45), 0);
+    // Mid-drag: the DOCUMENT is untouched — the session shows its hole and
+    // its float without writing either (2026-09-17). ↩️Until then the base
+    // carried the erase from the moment of the lift, and these two read 0.
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
+    expect(
+      inkAt(env.coordinator, 45, 45),
+      isNonZero,
+      reason: 'the pixels under the grab are still the cel own pixels',
+    );
 
     // Zero-move release: the session STAYS pending (the float keeps
-    // showing the pixels); the base still holds only the erase.
+    // showing the pixels); the document is still untouched.
     await gesture.up();
     await tester.pump();
     expect(env.commands.movePending, isTrue);
-    expect(inkAt(env.coordinator, 45, 45), 0);
+    expect(
+      inkAt(env.coordinator, 45, 45),
+      isNonZero,
+      reason: 'the release did not land anything either',
+    );
 
     // Confirm: the stamp lands at its origin — byte-identical picture
     // (the R14-④ zero-move lift-and-drop pin, now at the widget level).
@@ -1860,49 +1879,159 @@ void main() {
     expect(env.history.undoCount, entriesBefore, reason: 'nothing recorded');
   });
 
-  /// 🚨★★★**THE OPEN BOX IS THE STORE'S BUSINESS TOO.** 유저 확정
-  /// 2026-09-08 (`undo-41-hole-scope` = ①, Krita 식): the pixels a lift
-  /// takes out of the picture are budgeted and parkable the moment a
-  /// confirm turns them into a history entry, and were budgeted by
-  /// NOTHING while the box was open — a user who had not confirmed was
-  /// held to less discipline than one who had.
+
+
+  /// 🪦**A 「the hole is DRAWN」 case stood here for one afternoon and was
+  /// taken out, because it could not see the thing it claimed to measure**
+  /// (2026-09-17). It read the composited panel at the origin and found it
+  /// blank while a float was up — but the mutant that switches the
+  /// session's holed surface off entirely left it GREEN, which is the only
+  /// honest verdict on a pin: it was measuring something else.
   ///
-  /// ⛔The unit pin next door drives [BrushFrameStore] directly, so it
-  /// cannot see whether the TOOL hands the bytes over and takes them back
-  /// again. This one drives the panel, which is the only way to catch a
-  /// lift that ends without releasing — a leak that shows up as the store
-  /// parking pixels nobody will ever read.
+  /// 🔬Why, measured: this harness passes no `viewportUnderlayBuilder`, so
+  /// the panel draws its own `_canvasView` and never reaches the layer-stack
+  /// composite — and the stack is exactly where an open session's holed
+  /// surface is served ([_activeSurfacePainter]'s token). A fixture that
+  /// mounts no underlay cannot answer a question about the underlay.
+  ///
+  /// ⇒ The document half of that law IS pinned, all through this file: the
+  /// cel keeps every byte while a box is open, and the landing carries the
+  /// erase with the stamp. The DRAWING half needs a host that composites —
+  /// the board carries it as its own round rather than a green test that
+  /// proves nothing.
+  /// 🚨★★★**전/중/후 같은 그림 — THE ABSOLUTE CONDITION OF THIS ROUND.**
+  /// 유저 2026-09-17, choosing the non-destructive session: 「**조작 전/중/후가
+  /// 빈 프레임 존재안하고 눈에 보이는 결과가 달라지지 않는건 절대조건**」.
+  ///
+  /// The round moved WHERE the hole lives — out of the cel and into what the
+  /// panel draws — and the whole risk of that is a seam frame: one paint in
+  /// which the hole has arrived and the float has not, or the document has
+  /// changed and the view has not caught up. Either reads as the picture
+  /// flickering, and this file's own rule is that the raster is the oracle.
+  ///
+  /// ⛔**THE SCREEN, NOT THE CEL.** `inkAt` asks the document, which is
+  /// exactly what this round stopped changing; a pin written against it
+  /// cannot see a flash at all. [screenInkMask] is 「what the user's eye
+  /// gets」 — base, hole, float and all.
+  ///
+  /// Two seams, because there are two moments a picture could jump:
+  /// ① the GRAB — a zero-move lift must leave the screen exactly as it was
+  /// ② the CONFIRM — which this mask CANNOT answer; the reason is measured
+  ///    and written at the end of the case.
+  testWidgets('🚨전/중/후 같은 그림: the GRAB leaves the screen exactly as '
+      'it was — a hole without its float is a blank frame', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    expect(env.commands.hasSelection, isTrue, reason: 'fixture premise');
+    await settle(tester);
+    final before = await screenInkMask(tester);
+    final beforeInk = before.where((on) => on).length;
+    expect(beforeInk, greaterThan(0), reason: 'there is a picture to watch');
+
+    // ① THE GRAB: press inside the box and let go without moving. The lift
+    // happens, the float opens, and nothing may move on screen.
+    await env.setTool(CanvasTool.move);
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final grab = await tester.startGesture(origin + const Offset(45, 45));
+    await tester.pump();
+    await grab.up();
+    await tester.pump();
+    expect(env.commands.movePending, isTrue, reason: 'the session opened');
+    await settle(tester);
+    final atGrab = await screenInkMask(tester);
+    final grabDelta = inkDelta(before, atGrab);
+    expect(
+      grabDelta.hole + grabDelta.ghost,
+      lessThan((beforeInk * 0.02).round() + 1),
+      reason:
+          'the grab changed the picture: ${grabDelta.hole} pixels lost, '
+          '${grabDelta.ghost} appeared — a hole without its float is the '
+          'blank frame this round exists to make impossible',
+    );
+
+    // ⛔**THE CONFIRM SEAM CANNOT BE ASKED OF THIS MASK, AND THAT IS
+    // MEASURED, NOT ASSUMED** (2026-09-17). A frame with the box open and a
+    // frame after it closed differ by the box's own CHROME, which is ink to
+    // a red predicate: 🔬moved=860 landed=48 here, and on master — with none
+    // of this round in it — moved=822 landed=48. The 774 the old code
+    // already 「loses」 at that seam are the outline and handles going away,
+    // not artwork. ⚠️This file's own rule says so in [screenInkMask]:
+    // 「Counting is not enough, and believing a count cost this file a wrong
+    // conclusion once」.
+    //
+    // ⇒ The landing's correctness is a question about PIXELS, and the pins
+    // that ask it are already here: 「the confirm lands ONE undoable pixel
+    // move」 and 「a zero-move confirm is a byte-identical landing」. What
+    // the screen can answer is the GRAB seam above, where both frames wear
+    // the same chrome — and that is the one this round could have broken.
+  });
+  /// 🚨★★★**A WARNING MID-SESSION TAKES THE DERIVED PICTURE BACK, AND THE
+  /// BOX GOES ON WORKING** (2026-09-17). The store's discipline over what an
+  /// open tool holds is the half of 유저 확정 2026-09-08 that survived the
+  /// reversal — what changed is that the held thing is a DERIVATION now, so
+  /// it is given back by dropping it rather than by parking it to disk.
+  ///
+  /// ⛔**BYTES ALONE CANNOT SAY 「registered」**, and that is why this drives
+  /// the warning instead of reading a number: a session whose hole empties
+  /// its tiles legitimately owes ZERO (the holed picture holds FEWER tiles
+  /// than the cel), so 「bytes > 0」 was the old world's shape and would
+  /// have passed for the wrong reason here. 🔬Measured 2026-09-17 on this
+  /// very fixture: `bytesNotSharedWith` = 0, because the marquee covers the
+  /// whole stroke and the erased tile is dropped rather than rebuilt.
   for (final ending in const ['확정', '되돌리기']) {
-    testWidgets('the store carries an OPEN lift, and $ending gives it back', (
-      tester,
-    ) async {
+    testWidgets('a memory warning mid-session gives the picture back, and '
+        '$ending still lands correctly', (tester) async {
       final env = await pumpSelectionPanel(tester);
       final store = env.coordinator.frameStore;
-      expect(store.liftedPixelBytes, 0, reason: 'nothing lifted yet');
 
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
       await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
       expect(env.commands.movePending, isTrue);
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        isNonZero,
+        reason: 'the session wrote nothing — the premise of this round',
+      );
+
+      // The OS says memory is tight while the box is open.
+      store.respondToMemoryPressure();
+      await tester.pump();
 
       expect(
-        store.liftedPixelBytes,
-        greaterThan(0),
-        reason: 'the pre-lift picture is held, and the store can name it',
+        env.commands.movePending,
+        isTrue,
+        reason: 'a warning must not end the user\'s session',
       );
 
       if (ending == '확정') {
         env.commands.confirmPendingMove();
+        await tester.pump();
+        expect(env.commands.movePending, isFalse);
+        expect(
+          inkAt(env.coordinator, 30, 30),
+          0,
+          reason: 'the landing carries the erase too — the origin is free',
+        );
+        expect(
+          inkAt(env.coordinator, 45, 45),
+          isNonZero,
+          reason: 'and the pixels are where the move put them',
+        );
       } else {
         env.commands.revertPendingMove();
+        await tester.pump();
+        expect(env.commands.movePending, isFalse);
+        expect(
+          inkAt(env.coordinator, 30, 30),
+          isNonZero,
+          reason: 'a revert has nothing to put back — it never left',
+        );
       }
-      await tester.pump();
-
-      expect(env.commands.movePending, isFalse);
       expect(
-        store.liftedPixelBytes,
+        store.reclaimableViewBytes,
         0,
-        reason: 'the lift ended — going on holding these is a leak',
+        reason: 'the session ended — going on weighing it is a leak',
       );
     });
   }
@@ -1996,8 +2125,9 @@ void main() {
       expect(env.commands.transformActive, isTrue);
       expect(
         inkAt(env.coordinator, 30, 30),
-        0,
-        reason: 'Ctrl+T opened a lift session — the base holds the erase',
+        isNonZero,
+        reason: 'Ctrl+T opened a session — and a session writes NOTHING '
+            '(2026-09-17; it read 0 while the erase landed at lift time)',
       );
 
       // Drag inside the box: rides the session (nothing committed yet —

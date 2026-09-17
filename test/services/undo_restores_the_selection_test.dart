@@ -65,7 +65,7 @@ void main() {
       coordinator: coordinator,
       frameKey: coordinator.activeFrameKey,
       preLiftSurface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      stampDab: stampAt(20),
+      landingDabs: [stampAt(20)],
       regionBefore: before,
       readRegion: () => live,
       restoreRegion: (region) => live = region,
@@ -104,7 +104,7 @@ void main() {
       coordinator: coordinator,
       frameKey: coordinator.activeFrameKey,
       preLiftSurface: pre,
-      stampDab: stampAt(20),
+      landingDabs: [stampAt(20)],
     );
 
     // ⛔The hooks are optional on purpose — headless hosts (focused tests,
@@ -128,7 +128,7 @@ void main() {
       coordinator: coordinator,
       frameKey: coordinator.activeFrameKey,
       preLiftSurface: pre,
-      stampDab: stampAt(20),
+      landingDabs: [stampAt(20)],
     );
 
     // Nothing landed yet, so nothing is uniquely held: the erase was
@@ -164,7 +164,7 @@ void main() {
       coordinator: coordinator,
       frameKey: coordinator.activeFrameKey,
       preLiftSurface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-      stampDab: stampAt(20),
+      landingDabs: [stampAt(20)],
       regionBefore: found,
       readRegion: () => live,
       restoreRegion: (region) => live = region,

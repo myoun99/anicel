@@ -196,7 +196,7 @@ void main() {
         'footprint': engine?.processFootprintBytes ?? ProcessInfo.currentRss,
         'tileImages': BitmapTileImageCache.liveImageBytes,
         'undo': history.retainedBytes,
-        'drawings': store.hotBakedBytes + store.liftedPixelBytes,
+        'drawings': store.hotBakedBytes + store.reclaimableViewBytes,
         'uploads': engine?.nativeUploadBytes ?? 0,
         'brushTips': BrushTipStampCache.instance.residentBytes,
         'enginePool': engine?.tilePoolParkedBytes ?? 0,

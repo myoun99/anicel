@@ -329,17 +329,19 @@ void main() {
         coordinator: coordinator,
         frameKey: key,
         preLiftSurface: red,
-        stampDab: BrushDab(
-          center: CanvasPoint(x: 192, y: 192),
-          color: 0xFF0000FF,
-          size: 100,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.square,
-          pressure: 1,
-          sequence: 0,
-        ),
+        landingDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 192, y: 192),
+            color: 0xFF0000FF,
+            size: 100,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.square,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
       );
       history.execute(move);
       expect(await move.parkPayload(), isTrue);

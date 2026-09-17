@@ -427,10 +427,14 @@ void main() {
       isNonZero,
       reason: 'the hole was never selected, so its ink never lifted',
     );
+    // ↩️This read 0 until 2026-09-17, when the lift stopped committing its
+    // erase: a move session writes NOTHING until it lands, so the cel keeps
+    // the selected ink too while the box is open. What the composite shows
+    // is the session's holed picture; what the document holds is this.
     expect(
       inkAt(env.coordinator, 24, 40),
-      0,
-      reason: 'selected ink lifted away from the origin',
+      isNonZero,
+      reason: 'nothing is written yet — the cel is untouched at the origin',
     );
   });
 
