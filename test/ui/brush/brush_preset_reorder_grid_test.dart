@@ -320,7 +320,10 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
       );
-      await gesture.moveBy(const Offset(0, 10));
+      // ⚠️PAST THE CELL, not 10px: a preset cell is a thing you STAND on, so
+      // its drag begins when the pointer LEAVES it (F-138, 유저 확정
+      // 2026-09-18). 10px was inside.
+      await gesture.moveBy(const Offset(0, brushPresetRowHeight + 6));
       await tester.pump();
       expect(starts, 1, reason: 'the spring-loaded tabs need to know');
       expect(ends, 0);
@@ -330,45 +333,68 @@ void main() {
       expect(ends, 1, reason: 'and they need to be let go of');
     });
 
-    testWidgets('F-126: a pen lifts a cell on its FIRST move, even where the '
-        'grid scrolls', (tester) async {
+    testWidgets('F-126: a pen lifts a cell the same move a mouse does, even '
+        'where the grid scrolls', (tester) async {
       // 유저 2026-09-13 (F-126): a drag source starts for a pen the way it
       // does for a mouse. Forty cells overflow the box, so the grid's own
       // scroller is in the arena — a Draggable alone in it wins by default
       // and would prove nothing.
-      var starts = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 260,
-              height: 200,
-              child: BrushPresetReorderGrid(
-                itemCount: 40,
-                cellHeight: brushPresetRowHeight,
-                itemKey: (index) => ValueKey<String>('cell-$index'),
-                onReorder: (_, _) {},
-                onDragStart: () => starts += 1,
-                itemBuilder: (context, index) =>
-                    ColoredBox(color: Colors.blue, child: Text('$index')),
-              ),
+      //
+      // ↩️**IT USED TO SAY 「ON ITS FIRST MOVE」, AND THAT HALF IS GONE**
+      // (F-138, 유저 확정 2026-09-18, `F-138-Q1` 답 ①): 「브러시처럼 서있어야
+      // 하는곳은 **누른 상자 벗어나면 시작**으로」. A preset cell is stood on
+      // — pressing it picks the brush — and 유저 reported the first-move
+      // start as the bug: 「브러시 버튼은 **그냥 누르는순간 드래그가 발동**됨」.
+      //
+      // ⛔**WHAT F-126 BOUGHT IS STILL PINNED HERE**, and it is the part that
+      // matters: the pen and the mouse leave the cell in the SAME move, and
+      // the scroller under them takes neither. The device never decides.
+      var penStarts = 0;
+      var mouseStarts = 0;
+      Widget gridCounting(void Function() onStart) => MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 260,
+            height: 200,
+            child: BrushPresetReorderGrid(
+              itemCount: 40,
+              cellHeight: brushPresetRowHeight,
+              itemKey: (index) => ValueKey<String>('cell-$index'),
+              onReorder: (_, _) {},
+              onDragStart: onStart,
+              itemBuilder: (context, index) =>
+                  ColoredBox(color: Colors.blue, child: Text('$index')),
             ),
           ),
         ),
       );
 
-      final pen = await tester.startGesture(
-        tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
-        kind: PointerDeviceKind.stylus,
-      );
-      await tester.pump();
-      expect(starts, 0, reason: 'fixture premise: a press alone lifts nothing');
-      await pen.moveBy(const Offset(0, 2));
-      await tester.pump();
-      expect(starts, 1);
+      for (final (kind, count) in <(PointerDeviceKind, void Function())>[
+        (PointerDeviceKind.stylus, () => penStarts += 1),
+        (PointerDeviceKind.mouse, () => mouseStarts += 1),
+      ]) {
+        await tester.pumpWidget(gridCounting(count));
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byKey(const ValueKey<String>('cell-0'))),
+          kind: kind,
+        );
+        await tester.pump();
+        await gesture.moveBy(const Offset(0, 2));
+        await tester.pump();
+        await gesture.moveBy(const Offset(0, brushPresetRowHeight + 6));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
 
-      await pen.up();
-      await tester.pumpAndSettle();
+      expect(penStarts, 1, reason: 'the pen lifts it');
+      expect(
+        mouseStarts,
+        penStarts,
+        reason:
+            '유저 F-126: 「마우스로는 움직여서 … 펜으로는 불가능」 — the device '
+            'may not be what decides',
+      );
     });
   });
 }

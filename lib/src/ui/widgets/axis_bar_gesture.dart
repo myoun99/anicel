@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
         HorizontalDragGestureRecognizer,
         MultiDragGestureRecognizer,
         MultiDragPointerState,
+        Offset,
         PanGestureRecognizer,
         PointerDeviceKind,
         PointerDownEvent,
@@ -117,11 +118,38 @@ class OwningMultiDragGestureRecognizer extends MultiDragGestureRecognizer {
     super.debugOwner,
     super.supportedDevices,
     super.allowedButtonsFilter,
+    this.stillOnTheThing,
   });
+
+  /// 🚨★★★**WAIT UNTIL THE POINTER LEAVES WHAT IT PRESSED** — 유저 확정
+  /// 2026-09-18 (`F-138-Q1`, 답 ①):
+  ///
+  /// > 「**미디어풀처럼 선택할 필요, 서있는 로직이 없는곳은 지금처럼 바로
+  /// > 드래그, 브러시처럼 서있어야 하는곳은 누른 상자 벗어나면 시작으로**」
+  ///
+  /// The report was 「브러시 버튼은 **그냥 누르는순간 드래그가 발동**됨」 while
+  /// the brush GROUP tolerated a shaky pen — a cell you must first STAND on
+  /// cannot lose its press to a tremor.
+  ///
+  /// ⛔**AND IT IS NOT A DISTANCE.** 유저 2026-08-30, on finding the device's
+  /// slop still being consulted for this kind of question: 「**1px 이동했는지
+  /// 같은 px 이동으로 판단하는거** 설마 아직도 남아있나? … 싹 깔끔하게
+  /// 걷어내」. This asks the SAME question `ControlPressClaim` asks to decide
+  /// a click — 「is the pointer inside the box it pressed」 — so one predicate
+  /// answers both halves and no threshold comes back.
+  ///
+  /// Null (the default) is 「start on the first movement」, which is what
+  /// [F-126] bought and what every drag source without standing logic keeps.
+  final bool Function(Offset globalPosition)? stillOnTheThing;
 
   @override
   MultiDragPointerState createNewPointerState(PointerDownEvent event) =>
-      _FirstMovePointerState(event.position, event.kind, gestureSettings);
+      _FirstMovePointerState(
+        event.position,
+        event.kind,
+        gestureSettings,
+        stillOnTheThing,
+      );
 
   @override
   String get debugDescription => 'owning multidrag';
@@ -132,13 +160,50 @@ class _FirstMovePointerState extends MultiDragPointerState {
     super.initialPosition,
     super.kind,
     super.gestureSettings,
+    this._stillOnTheThing,
   );
 
+  final bool Function(Offset globalPosition)? _stillOnTheThing;
+
+  /// The starter held back while the pointer has not left yet.
+  ///
+  /// 🚨**BOTH HALVES WAIT, and the second one is not obvious.** Winning the
+  /// arena and STARTING the drag are two moments: when this recogniser is
+  /// the arena's only member — no tap, no scroller under the pointer — the
+  /// arena grants it the moment it closes, and [accepted] runs before a
+  /// single move has happened. 🧪Measured: holding back only
+  /// [checkForResolutionAfterMove] left a tremor dragging exactly as before.
+  GestureMultiDragStartCallback? _held;
+
+  bool get _stillOn {
+    final stillOn = _stillOnTheThing;
+    return stillOn != null &&
+        stillOn(initialPosition + (pendingDelta ?? Offset.zero));
+  }
+
   @override
-  void checkForResolutionAfterMove() => resolve(GestureDisposition.accepted);
+  void checkForResolutionAfterMove() {
+    if (_stillOn) {
+      // Not a drag yet — the finger has not gone anywhere. ⛔A press that
+      // ends here is still a press: nothing is resolved, so the tap under
+      // it is untouched.
+      return;
+    }
+    final held = _held;
+    if (held != null) {
+      _held = null;
+      held(initialPosition);
+      return;
+    }
+    resolve(GestureDisposition.accepted);
+  }
 
   @override
   void accepted(GestureMultiDragStartCallback starter) {
+    if (_stillOn) {
+      _held = starter;
+      return;
+    }
     starter(initialPosition);
   }
 }

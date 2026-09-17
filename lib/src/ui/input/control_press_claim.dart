@@ -4,6 +4,28 @@ import 'package:flutter/widgets.dart';
 import '../widgets/axis_bar_gesture.dart';
 import 'value_control_pointers.dart';
 
+/// 「Is [globalPosition] still inside the box [context] draws?」 — the ONE
+/// predicate a click and a drag start both ask.
+///
+/// 🚨★★★**IT IS THE SAME SENTENCE, SO IT IS THE SAME FUNCTION.** A press
+/// that comes up inside the box is a click ([_ControlPressClaimState.
+/// _releasedInside]); a press that leaves it is a drag ([OwningDraggable.
+/// stillOnTheThing], F-138). One question, two answers, no threshold —
+/// which is what 유저 2026-08-30 asked for when they had every px
+/// comparison taken out of this decision: 「**1px 이동했는지 같은 px 이동으로
+/// 판단하는거** 설마 아직도 남아있나? … 싹 깔끔하게 걷어내」.
+///
+/// ⛔It was written twice first, and the clone ratchet said so
+/// (`one_algorithm_one_place_test`, 90 → 91) while the doc comment on the
+/// second copy was already claiming the two were the same question.
+bool pointerIsStillOn(BuildContext context, Offset globalPosition) {
+  final box = context.findRenderObject() as RenderBox?;
+  if (box == null || !box.hasSize) {
+    return false;
+  }
+  return box.size.contains(box.globalToLocal(globalPosition));
+}
+
 /// When a claimed control acts. There are exactly two families, and 유저
 /// stated the split in one line on 2026-08-30:
 ///
@@ -207,11 +229,7 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
     if (!mounted) {
       return false;
     }
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) {
-      return false;
-    }
-    return box.size.contains(box.globalToLocal(position));
+    return pointerIsStillOn(context, position);
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart' show pointerIsStillOn;
 import '../widgets/owning_draggable.dart';
 
 /// How wide one preset cell wants to be, in logical pixels.
@@ -270,46 +271,57 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
                 ? child
                 // F-126: a pen lifts a cell on its first move, as a mouse
                 // does ([OwningDraggable]).
-                : OwningDraggable<int>(
-                    data: index,
-                    dragAnchorStrategy: childDragAnchorStrategy,
-                    feedback: Material(
-                      color: Colors.transparent,
-                      child: SizedBox(
+                : Builder(
+                    // 🚨★★★F-138 (유저 확정 2026-09-18, `F-138-Q1` 답 ①):
+                    // 「브러시처럼 **서있어야 하는곳**은 누른 상자 벗어나면
+                    // 시작으로」. A preset cell is a thing you STAND on —
+                    // pressing it picks the brush — so a pen's tremor must
+                    // stay a press. ⛔The Builder is here for its CONTEXT:
+                    // the predicate needs the cell's own box, and a const
+                    // widget cannot reach one.
+                    builder: (cellContext) => OwningDraggable<int>(
+                      stillOnTheThing: (global) =>
+                          pointerIsStillOn(cellContext, global),
+                      data: index,
+                      dragAnchorStrategy: childDragAnchorStrategy,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: SizedBox(
+                          width: cellWidth,
+                          height: widget.cellHeight,
+                          child: Opacity(opacity: 0.85, child: child),
+                        ),
+                      ),
+                      // ⛔The SPACE stays and only the CONTENT changes (「자리는
+                      // 항상 예약하고 내용만 바꾼다」): the slot keeps the cell's
+                      // exact size so nothing after it jumps, and shows the gap
+                      // the drop is aiming at.
+                      //
+                      // ⚠️It is a bare box rather than a dimmed copy of the
+                      // row, and that is not cosmetic: `Draggable` BUILDS the
+                      // feedback as a second subtree, so a copy would put every
+                      // key inside the row — the cell's own tap key included —
+                      // into the tree twice.
+                      childWhenDragging: SizedBox(
                         width: cellWidth,
                         height: widget.cellHeight,
-                        child: Opacity(opacity: 0.85, child: child),
                       ),
+                      onDragStarted: () {
+                        setState(() {
+                          _dragIndex = index;
+                          _targetIndex = index;
+                        });
+                        widget.onDragStart?.call();
+                      },
+                      onDraggableCanceled: (_, _) => _endDrag(accepted: false),
+                      onDragEnd: (details) {
+                        if (details.wasAccepted) {
+                          return;
+                        }
+                        _endDrag(accepted: false);
+                      },
+                      child: child,
                     ),
-                    // ⛔The SPACE stays and only the CONTENT changes (「자리는
-                    // 항상 예약하고 내용만 바꾼다」): the slot keeps the cell's
-                    // exact size so nothing after it jumps, and shows the gap
-                    // the drop is aiming at.
-                    //
-                    // ⚠️It is a bare box rather than a dimmed copy of the
-                    // row, and that is not cosmetic: `Draggable` BUILDS the
-                    // feedback as a second subtree, so a copy would put every
-                    // key inside the row — the cell's own tap key included —
-                    // into the tree twice.
-                    childWhenDragging: SizedBox(
-                      width: cellWidth,
-                      height: widget.cellHeight,
-                    ),
-                    onDragStarted: () {
-                      setState(() {
-                        _dragIndex = index;
-                        _targetIndex = index;
-                      });
-                      widget.onDragStart?.call();
-                    },
-                    onDraggableCanceled: (_, _) => _endDrag(accepted: false),
-                    onDragEnd: (details) {
-                      if (details.wasAccepted) {
-                        return;
-                      }
-                      _endDrag(accepted: false);
-                    },
-                    child: child,
                   ),
           );
         }
