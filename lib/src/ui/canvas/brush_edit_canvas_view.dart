@@ -21,7 +21,7 @@ class BrushEditCanvasView extends StatelessWidget {
     this.viewport,
     this.showTransparentBackground = true,
     this.overlayModel,
-    this.staleScope,
+    this.lineage,
   });
 
   final BrushEditSessionState sessionState;
@@ -35,9 +35,9 @@ class BrushEditCanvasView extends StatelessWidget {
   /// the painter through this model without rebuilding widgets.
   final ActiveStrokeOverlayModel? overlayModel;
 
-  /// Surface lineage identity for the stale tile fallback; see
-  /// [BitmapSurfacePainter.staleScope].
-  final Object? staleScope;
+  /// The lineage the painter names its cel by; see
+  /// [BitmapSurfacePainter.lineage].
+  final Object? lineage;
 
 
 
@@ -84,7 +84,7 @@ class BrushEditCanvasView extends StatelessWidget {
           viewport: viewport,
           overlayModel: overlayModel,
           showTransparentBackground: showTransparentBackground,
-          staleScope: staleScope,
+          lineage: lineage,
           // The pan-phase snap's device grid — the EFFECTIVE ratio, the
           // same source the merged stack painter reads, so this route and
           // the merged route snap to the same phase. ⛔Do not "restore

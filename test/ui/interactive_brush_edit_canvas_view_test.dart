@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,6 @@ import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_session_state.dart';
@@ -26,10 +24,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
-import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -38,7 +33,6 @@ import '../helpers/library_source.dart';
 import 'brush_canvas_test_helpers.dart';
 
 void main() {
-  _settlingTileGroup();
   group('InteractiveBrushEditCanvasView', () {
     const layerId = LayerId('layer-a');
     const frameId = FrameId('frame-a');
@@ -98,72 +92,6 @@ void main() {
         expect(canvasView.showTransparentBackground, isFalse);
       },
     );
-
-    testWidgets('the next pen-down does not take away what is covering for '
-        'the last stroke', (tester) async {
-      // The pen-up handoff misses by construction — the tile revision is
-      // written inside the decode callback and the final flush runs in
-      // the same synchronous handler — so after a commit the overlay is
-      // holding images that stand in for COMMITTED tiles which cannot
-      // paint themselves yet. Resetting it at the next pen-down put those
-      // coordinates back on the painter's stale fallback, the PRE-stroke
-      // tile, and the stroke the user had just finished vanished in
-      // tile-shaped patches. Measured: 2 of 5 promoted coordinates went
-      // overlay → stale at a 0 ms inter-stroke gap.
-      //
-      // The oracle is the model's own state rather than the raster,
-      // because this harness reports commits instead of applying them, so
-      // there is no committed surface to composite against. What it pins
-      // is the mechanism: an image kept here is one the painter draws
-      // (the overlay-replaces-coordinate path is pinned in
-      // active_stroke_overlay_parity_test), and one dropped here is one
-      // nothing can draw.
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
-
-      ActiveStrokeOverlayModel overlay() => tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<BitmapSurfacePainter>()
-          .map((painter) => painter.overlayModel)
-          .whereType<ActiveStrokeOverlayModel>()
-          .first;
-
-      await _pressureStroke(
-        tester,
-        canvasPoints: const [Offset(1.5, 1.5), Offset(6.5, 4.5)],
-        pressure: 1,
-      );
-      expect(
-        overlay().hasStandIns,
-        isTrue,
-        reason:
-            'the handoff did not miss, so there is nothing to lose — this '
-            'test proves nothing without it',
-      );
-
-      // One frame, then the next stroke begins: the whole window.
-      await tester.pump();
-      tester.binding.handlePointerEvent(
-        PointerDownEvent(
-          pointer: 2,
-          kind: PointerDeviceKind.stylus,
-          position: canvasGlobalOffset(tester, const Offset(12.5, 12.5)),
-          pressure: 1,
-          pressureMin: 0,
-          pressureMax: 1,
-        ),
-      );
-      await tester.pump();
-
-      expect(
-        overlay().hasStandIns,
-        isTrue,
-        reason:
-            'starting a stroke took away the cover for the previous one, so '
-            'those coordinates fall back to their pre-stroke pixels',
-      );
-    });
 
     testWidgets('pointer down does not throw', (tester) async {
       final results = <List<BrushDab>>[];
@@ -416,101 +344,6 @@ void main() {
     });
 
     testWidgets(
-      'pen-up never leaves a promoted tile with no picture anywhere',
-      (tester) async {
-        // The user's long-standing report: finishing a stroke leaves a
-        // RECTANGULAR patch of the line missing for a frame.
-        //
-        // Promotion hands each committed tile the image the overlay was
-        // already showing, and where that works the handoff is invisible.
-        // But it is revision-gated, and the revision is written inside the
-        // decode CALLBACK, while `_flushPendingOverlayDabs()` and
-        // `_commitStroke()` run in ONE synchronous handler — so a tile the
-        // final flush touched cannot have recorded its new revision by the
-        // time the handoff compares. Those tiles reach the committed
-        // surface with no picture, and dropping the overlay in the same
-        // turn left the painter's stale fallback to answer for them with
-        // the PRE-STROKE tile. Tile-shaped, one frame, and worst on short
-        // strokes because then the whole line lives in the tiles that
-        // final flush touched.
-        //
-        // ⚠️ WHAT THIS DOES AND DOES NOT SAY. It says the overlay is
-        // RETAINED — that the miss took the settle branch instead of
-        // dropping the overlay. It does NOT say every promoted coordinate
-        // is covered, and that stronger claim is FALSE on this branch.
-        //
-        // `takeTileImageAt` removes the images it hands over, so what the
-        // overlay still holds is exactly the missed-with-an-older-image
-        // set. A coordinate the final flush touched for the FIRST time was
-        // never decoded by the overlay, so the overlay has nothing for it
-        // either — and if the cel already had artwork there, the painter's
-        // stale fallback still answers with the pre-stroke tile. Measured
-        // on a wide in-canvas fixture: 62 promoted, 50 of them still
-        // painting pre-stroke pixels.
-        //
-        // So this fix closes one class of the hole and not the other. The
-        // remaining class needs the painter to stop borrowing for the
-        // settling coordinates, which is a change to a painter three
-        // surfaces share and is not a rider on this one.
-        final results = <List<BrushDab>>[];
-        await tester.pumpWidget(
-          _app(
-            _view(
-              _sessionState(),
-              results.add,
-              inputSettings: BrushEditCanvasInputSettings(size: 4),
-            ),
-          ),
-        );
-
-        final gesture = await tester.startGesture(
-          canvasGlobalOffset(tester, const Offset(1, 1)),
-          pointer: 1,
-        );
-        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 1)));
-        await tester.pump();
-        // Let the overlay's decode LAND. Without this the tile has no
-        // image at any revision, the overlay has nothing to show either,
-        // and the test would be measuring a harness that never yields
-        // rather than the handoff. In the app this always happens — the
-        // user has been looking at those pixels.
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-        final overlay = tester
-            .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
-            .overlayModel!;
-        expect(
-          overlay.tileImages,
-          isNotEmpty,
-          reason: 'the mid-stroke decode never landed — bad premise',
-        );
-
-        // One more segment, so the flush at pen-up bumps the revision
-        // past the one the landed image recorded. That is the miss, and it
-        // is guaranteed rather than racy: the new revision is written
-        // inside a decode callback that cannot run before the handoff
-        // compares against it, in this same synchronous handler.
-        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(9, 1)));
-        await gesture.up();
-
-        final canvasView = tester.widget<BrushEditCanvasView>(
-          find.byType(BrushEditCanvasView),
-        );
-        expect(results, hasLength(1), reason: 'the stroke did not commit');
-        expect(
-          canvasView.overlayModel!.tileImages,
-          isNotEmpty,
-          reason:
-              'the overlay was dropped while a promoted tile had no '
-              'picture — that coordinate now paints its PRE-STROKE tile, '
-              'which is the hole the user reported',
-        );
-      },
-    );
-
-    testWidgets(
       'on an engine that uploads synchronously, pen-up hands over every '
       'tile: no stand-in, no settle window, the overlay gone in the turn',
       (tester) async {
@@ -522,8 +355,6 @@ void main() {
         // promoted tile takes its image, and nothing has to stand in.
         // The miss test keeps the asynchronous engine's truth; this one
         // is the shipped engines' (Impeller everywhere since 3.47).
-        debugSyncImageUploadOverride = (_, _, _) => _aTileImage();
-        addTearDown(() => debugSyncImageUploadOverride = null);
         final results = <List<BrushDab>>[];
         await tester.pumpWidget(
           _app(
@@ -555,12 +386,6 @@ void main() {
         await gesture.up();
 
         expect(results, hasLength(1), reason: 'the stroke committed');
-        expect(
-          overlay.hasStandIns,
-          isFalse,
-          reason: 'a promoted tile went without its picture — the handoff '
-              'missed on an engine whose flush makes the picture',
-        );
         expect(
           overlay.dabs,
           isEmpty,
@@ -712,7 +537,6 @@ void main() {
           reason: 'the overlay never released after the commit',
         );
         expect(canvasView.overlayModel!.tileImages, isEmpty);
-        expect(canvasView.overlayModel!.settleHoldTiles, isNull);
         expect(canvasView.overlayModel!.preBlended, isFalse);
 
         await tester.pump();
@@ -2153,43 +1977,6 @@ Future<void> _timedStroke(
   await tester.pump();
 }
 
-void _settlingTileGroup() {
-  group('settlingTilesForBounds', () {
-    BitmapTile tile(int x, int y) => BitmapTile.blank(
-      size: 2,
-    );
-
-    test('narrows the gate to the tiles the stroke touched', () {
-      final surface = BitmapSurface(
-        canvasSize: const CanvasSize(width: 8, height: 8),
-        tileSize: 2,
-        tiles: {
-          TileCoord(x: 0, y: 0): tile(0, 0),
-          TileCoord(x: 3, y: 3): tile(3, 3),
-        },
-      );
-
-      final touched = settlingTilesForBounds(
-        surface: surface,
-        bounds: DirtyRegion(
-          left: 0,
-          top: 0,
-          rightExclusive: 3,
-          bottomExclusive: 3,
-        ),
-      );
-      expect(
-        touched.map((tile) => tile.coord),
-        [TileCoord(x: 0, y: 0)],
-        reason: 'the far tile must not gate the overlay handoff',
-      );
-
-      final all = settlingTilesForBounds(surface: surface, bounds: null);
-      expect(all, hasLength(2), reason: 'unknown bounds fall back to all');
-    });
-  });
-
-}
 
 /// A session whose cel is already painted a solid straight-RGBA [rgba], so
 /// a mixing brush has something to lift.
@@ -2334,18 +2121,4 @@ bool _isStrictlyIncreasing(Iterable<int> values) {
     previous = value;
   }
   return true;
-}
-
-/// A stand-in for the engine's synchronous upload: any picture a tile's
-/// size — the tests above ask WHEN a picture exists, not what it shows.
-ui.Image _aTileImage() {
-  final recorder = ui.PictureRecorder();
-  ui.Canvas(recorder).drawRect(
-    const ui.Rect.fromLTWH(0, 0, 4, 4),
-    ui.Paint()..color = const ui.Color(0xFF000000),
-  );
-  final picture = recorder.endRecording();
-  final image = picture.toImageSync(4, 4);
-  picture.dispose();
-  return image;
 }

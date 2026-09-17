@@ -32,7 +32,7 @@ Future<ui.Image> _awaitDecode(
   BitmapTileImageCache cache,
   BitmapTile tile,
 ) async {
-  cache.ensureDecoded((coord: TileCoord(x: 0, y: 0), tile: tile));
+  cache.pictureFor((coord: TileCoord(x: 0, y: 0), tile: tile));
   for (var attempt = 0; attempt < 100; attempt += 1) {
     final image = cache.imageFor(tile);
     if (image != null) return image;
@@ -61,23 +61,12 @@ void main() {
       final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
 
       final first = await _awaitDecode(cache, tile);
-      cache.ensureDecoded((coord: TileCoord(x: 0, y: 0), tile: tile));
+      cache.pictureFor((coord: TileCoord(x: 0, y: 0), tile: tile));
       final second = cache.imageFor(tile);
 
       expect(identical(first, second), isTrue);
       expect(first.width, tile.size);
       expect(first.height, tile.size);
-    });
-
-    test('notifies listeners when a decode completes', () async {
-      final cache = BitmapTileImageCache();
-      final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
-      var notified = 0;
-      cache.addListener(() => notified += 1);
-
-      await _awaitDecode(cache, tile);
-
-      expect(notified, 1);
     });
 
     test(

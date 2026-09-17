@@ -134,7 +134,7 @@ void main() {
 
   Future<void> decodeAll(BitmapSurface surface) async {
     for (final entry in surface.tiles.entries) {
-      cache.ensureDecoded((coord: entry.key, tile: entry.value));
+      cache.pictureFor((coord: entry.key, tile: entry.value));
     }
     while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -301,7 +301,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 0, y: 0, width: 8, height: 8),
       );
-      await overlay.waitForPendingDecodes();
       final painter = BitmapSurfacePainter(
         surface: surface,
         showTransparentBackground: false,
@@ -524,15 +523,6 @@ void main() {
           ghost ? isFalse : isTrue,
           reason: 'fixture premise: the ghost is what flips the route',
         );
-        // 🚨AND WHICH DRAW IT WAS. The active layer reaches the screen two
-        // ways (the stand-in, its tiles); a comparison must say which it
-        // took. The first version of this test could not, and nothing in
-        // the result could say so.
-        expect(
-          debugActiveSlotDraw,
-          isNotNull,
-          reason: 'the active slot painted nothing at all',
-        );
         final painted = tester
             .widgetList<CustomPaint>(
               find.descendant(
@@ -572,7 +562,7 @@ void main() {
       // picture on the next. `runAsync` because the upload lands on the
       // engine, which a widget test's fake clock never completes.
       await tester.runAsync(() async {
-        BitmapTileImageCache.instance.ensureDecoded(
+        BitmapTileImageCache.instance.pictureFor(
           (coord: TileCoord(x: 0, y: 0), tile: sharedTile),
         );
         while (BitmapTileImageCache.instance.imageFor(sharedTile) == null) {
@@ -584,11 +574,8 @@ void main() {
         isNotNull,
         reason: 'fixture premise: the tile draws from its own picture',
       );
-      debugActiveSlotDraw = null;
       final rode = await capture(ghost: false, disableBuffer: disableBuffer);
-      final rodeDraw = debugActiveSlotDraw;
       final buffered = await capture(ghost: true, disableBuffer: disableBuffer);
-      final bufferedDraw = debugActiveSlotDraw;
 
       // ⛔ONLY THE PIXELS NEITHER ROUTE WAS ASKED TO CHANGE. The ghost sits
       // at canvas (0,0,4,4); at 0.63 that is a handful of screen pixels in
@@ -621,36 +608,6 @@ void main() {
             'and disappears when it flips back. First: $first',
       );
 
-      // 📏WHICH DRAW THIS COMPARED — the question the first version could
-      // not answer (F-67), and nothing in a green could say which it was.
-      //
-      // ⛔BOTH RENDERS MUST HAVE TAKEN THE SAME ARM. Otherwise this compares
-      // two rasterizers rather than two routes, and agreeing would be luck.
-      expect(
-        rodeDraw,
-        bufferedDraw,
-        reason: 'the two renders took different draws in the active slot '
-            '($rodeDraw vs $bufferedDraw) — that is a comparison of two '
-            'rasterizers, not of the two routes',
-      );
-      // 📏WHICH DRAW EACH READING REACHES (corrected 2026-09-10, again
-      // 2026-09-16 when the knee's flat projection went with the level
-      // buffer). Buffer ON: the slot draws its TILES into the level-1
-      // buffer, and the buffer's one blit is the bilinear sample F-67
-      // suspected — the same blit for both renders, so the pixels above
-      // agree to the byte. Buffer OFF: the walk draws the same tiles under
-      // the CTM, the painter's own byte-parity route.
-      //
-      // 🪦The first probe run was recorded as "it says tiles", and F-67 was
-      // left open on the flat blit because of it. It was reading this loop's
-      // LAST reading — buffer off, whose answer is tiles by construction.
-      // Naming the buffer state in the reason is what showed it.
-      expect(
-        rodeDraw,
-        ActiveSlotDraw.tiles,
-        reason: 'buffer ${disableBuffer ? 'off' : 'on'}: the slot has to take '
-            'the draw this reading exists to compare — it took $rodeDraw',
-      );
       }
     });
 

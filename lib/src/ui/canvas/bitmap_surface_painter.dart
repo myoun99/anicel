@@ -1,28 +1,21 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_blend_mode.dart';
-import '../../models/bitmap_tile.dart';
-import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
-import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
-import 'provisional_tile_pictures.dart';
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
-import 'tile_predecessors.dart';
 import 'tile_pyramid.dart';
 import 'tiles_under_rect.dart';
 import 'viewport_canvas_transform.dart';
@@ -53,23 +46,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     this.overlayModel,
     this.stampPreview,
     this.showTransparentBackground = true,
-    this.staleScope,
+    this.lineage,
     this.devicePixelRatio = 1.0,
     BitmapTileImageCache? tileImageCache,
     TilePictureBudget? pictureBudget,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        pictureBudget = pictureBudget ?? TilePictureBudget.instance,
-       super(
-         repaint: Listenable.merge([
-           tileImageCache ?? BitmapTileImageCache.instance,
-           ?overlayModel,
-           ?stampPreview,
-           // So toggling Settings ▸ Show Unpainted Tiles repaints instead of
-           // waiting for the next edit — a diagnosis switch that needs a
-           // gesture before it takes effect is one nobody trusts.
-           MeasurementMode.showUnpaintedTiles,
-         ]),
-       );
+       super(repaint: Listenable.merge([?overlayModel, ?stampPreview]));
 
   final BitmapSurface surface;
 
@@ -105,19 +88,14 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   final bool showTransparentBackground;
 
-  /// Identifies this surface's lineage so the stale tile fallback never
-  /// shows another lineage's artwork; see
-  /// [BitmapTileImageCache.latestImageForCoord].
+  /// The lineage this painter names its cel by — what the level pyramid
+  /// keeps its level tiles under ([TilePyramid]) and the picture budget
+  /// counts a paint's shown tiles against ([TilePictureBudget.shown]).
   ///
-  /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` must
-  /// pass one: the transform float went without, which put it in a bucket
-  /// shared by every float ever lifted, so opening a second transform drew
-  /// the FIRST one's artwork at the first one's place and size.
-  ///
-  /// The fallback is the last resort, not the first: a tile that knows its
-  /// predecessor (`TilePredecessors`, F-68) composes its own stand-in and
-  /// never reaches it. It answers only for tiles nobody told about.
-  final Object? staleScope;
+  /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` passes
+  /// one; a painter of a surface that is nobody's cel (the selection
+  /// float) passes [TilePyramid.noLineage].
+  final Object? lineage;
 
   final BitmapTileImageCache tileImageCache;
 
@@ -132,7 +110,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   /// 🚨★★★EVERYTHING THIS PAINTER DRAWS, in canvas space — its surface's
   /// content and whatever it draws over that surface this frame: the stroke
-  /// in flight, a fill's stamp, the stamp ghost.
+  /// in flight, the stamp ghost.
   ///
   /// F-85 (유저 2026-09-11): 「펜 그리는 도중, 페이스트보드의 일부?까지
   /// 그려지는데 정확히 페이스트보드 끝까지 그림 그려지지않음. 그 상태에서 손
@@ -219,7 +197,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   }
 
   /// Whether everything this painter draws can be LOCATED from the state it
-  /// publishes — [surface]'s tiles, their decoded images, and the overlay's.
+  /// publishes — [surface]'s tiles, their pictures, and the overlay's.
   ///
   /// 🚨★★★This exists so a cache can ask before trusting itself. (v)'s
   /// composite buffer holds the live surface inside it, which is only sound
@@ -277,13 +255,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// to a caller guessing.
   ///
   /// False for the three ways a pixel gets touched twice: the paper rect
-  /// under every tile, a fill stamp placed OVER whatever a coordinate
+  /// under every tile, a stamp ghost placed OVER whatever a coordinate
   /// already holds, and an overlay that cannot replace a whole coordinate
   /// (its isolation layer exists precisely because it composes against the
   /// committed pixels).
   bool get drawsDisjointCoverage {
     // 🚨★★★F-33: a stamp ghost lands OVER whatever the coordinate already
-    // holds, exactly like the fill stamp below — so this must say false.
+    // holds — so this must say false.
     //
     // ⚠️And saying false is what MAKES the ghost obey the layer, which is
     // the whole point of moving it here. False means the stack takes the
@@ -321,100 +299,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
         level: level,
       );
 
-  /// The stamp's ghost alone, for the active-slot route that draws the
-  /// layer as ONE image instead of through [paintContentInto] — the
-  /// first-activation stand-in (and, until 2026-09-16, the knee's flat
-  /// projection). The ghost is part of what this painter draws (F-33;
-  /// [drawnWorldRect] says so), and that route replaced the only draw of
-  /// it: the ghost simply vanished there (adversarial review, 2026-09-15).
-  /// Drawn AFTER the image, over it, the way the walk draws it over
-  /// everything; the slot's own buffer carries the layer's opacity and
-  /// blend over both.
-  void paintStampPreviewInto(Canvas canvas) {
-    // The pass's opening for a draw with no layer paint riding it (the
-    // callers' routes buffer the slot), set here rather than by a method of
-    // the pass: that class stands at the long-class ceiling.
-    final tileImagePaint = Paint()
-      ..filterQuality = FilterQuality.none
-      ..isAntiAlias = false;
-    final pass = _SurfacePaintPass(this)
-      .._canvas = canvas
-      .._layerPaint = null
-      .._tileImagePaint = tileImagePaint;
-    pass._paintStampPreview();
-  }
-
-  /// Maximum decode STARTS per paint. Completions notify → repaint → the
-  /// next chunk starts, so pending tiles always drain; the value trades
-  /// per-frame UI-thread cost (copy + premultiply per start) against how
-  /// many frames a full-canvas convergence takes.
-  static const int decodeStartBudget = BitmapTileImageCache.decodeStartBudget;
-
-  /// Rects one paint may spend composing predecessor stand-ins (F-68 root
-  /// fix). 32k: an eighth of what the per-pixel fallback spends on its four
-  /// tiles, so a cheaper answer tried first and never a new ceiling.
-  ///
-  /// Settable so a test can push a composition over budget and pin what
-  /// happens then — the per-pixel path, never the coordinate picture.
-  static int debugPredecessorRectBudget = 32768;
-
-  /// Starts the decode work [paintContentInto]'s collect pass would have
-  /// started — budgeted and visible-first exactly the same way — WITHOUT
-  /// drawing anything.
-  ///
-  /// For the frame(s) the merged stack covers this surface with the
-  /// first-activation stand-in: the walk is skipped there, and the
-  /// stand-in can only ever hand off if the decodes it is waiting on
-  /// actually begin. [canvas] provides the visibility priority (the same
-  /// clip read the paint itself uses).
-  void startPendingDecodes(Canvas canvas) {
-    final pending = tilesAwaitingDecode();
-    if (pending == null) {
-      return;
-    }
-    _startPrioritizedDecodes(
-      pending,
-      _visibleCanvasRect(canvas, pasteboardRect),
-    );
-  }
-
-  int? _noPendingAtRevision;
-
-  /// The tiles whose decode has not started, or null when there are none.
-  ///
-  /// ⛔**ONE WALK, NOT TWO.** [startPendingDecodes] and the paint pass's
-  /// collect step each wrote this loop out — same iteration, same
-  /// predicate, same nullable accumulation. Different text, one algorithm.
-  ///
-  /// 🚨★★★**AND A CONVERGED CEL STOPS PAYING FOR IT.** The walk costs two
-  /// `Expando` probes per tile the cel holds ([BitmapTileImageCache
-  /// .needsDecodeStart] tests two slots), and it runs on EVERY paint —
-  /// including the overwhelming case where every tile decoded long ago and
-  /// it finds nothing. [surface] is final on this painter, so the only way
-  /// the answer can change is the cache admitting it changed, which is
-  /// exactly what its revision counts. So an EMPTY answer is remembered
-  /// against that revision and the walk is skipped until it moves.
-  ///
-  /// ⛔Only the empty answer is remembered. A non-empty one is a list the
-  /// caller is about to act on, and acting on it changes what is pending —
-  /// caching that would be caching a thing in flight.
-  List<PlacedTile>? tilesAwaitingDecode() {
-    final revision = tileImageCache.revision;
-    if (_noPendingAtRevision == revision) {
-      return null;
-    }
-    List<PlacedTile>? pending;
-    for (final entry in surface.tiles.entries) {
-      if (tileImageCache.needsDecodeStart(entry.value)) {
-        (pending ??= <PlacedTile>[]).add((coord: entry.key, tile: entry.value));
-      }
-    }
-    if (pending == null) {
-      _noPendingAtRevision = revision;
-    }
-    return pending;
-  }
-
   /// The part of CANVAS space this paint can actually reach, read off the
   /// canvas's own clip.
   ///
@@ -438,133 +322,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
       return Rect.zero;
     }
     return clip.intersect(pasteboardRect);
-  }
-
-  /// Starts up to [decodeStartBudget] of [pending]'s decodes — when over
-  /// budget, tiles overlapping [visibleRect] go first (nearest the view
-  /// center), off-screen tiles strictly after.
-  void _startPrioritizedDecodes(List<PlacedTile> pending, Rect visibleRect) {
-    var ordered = pending;
-    if (pending.length > decodeStartBudget) {
-      final center = visibleRect.center;
-      // Dominates any real distance² (canvas diagonals stay far below),
-      // so off-screen tiles sort after every visible one.
-      const offscreenBias = 1e18;
-      double score(PlacedTile placed) {
-        final tileSize = placed.tile.size.toDouble();
-        final rect = Rect.fromLTWH(
-          placed.coord.x * tileSize,
-          placed.coord.y * tileSize,
-          tileSize,
-          tileSize,
-        );
-        final distance = (rect.center - center).distanceSquared;
-        return rect.overlaps(visibleRect) ? distance : distance + offscreenBias;
-      }
-
-      final scored = [
-        for (final placed in pending) (score: score(placed), tile: placed),
-      ];
-      scored.sort((a, b) => a.score.compareTo(b.score));
-      ordered = [for (final entry in scored) entry.tile];
-    }
-    final startCount = ordered.length < decodeStartBudget
-        ? ordered.length
-        : decodeStartBudget;
-    for (var i = 0; i < startCount; i += 1) {
-      tileImageCache.ensureDecoded(ordered[i], staleScope: staleScope);
-    }
-  }
-
-  /// Fills [tile]'s rect with magenta when Settings ▸ Show Unpainted Tiles is
-  /// on, so a coordinate the painter could not draw stops being silent.
-  ///
-  /// Inert otherwise: one bool read per undrawable coordinate, and those
-  /// are the coordinates that were about to cost nothing anyway.
-  void _markUnpainted(Canvas canvas, PlacedTile placed) {
-    if (!MeasurementMode.showUnpaintedTiles.value) {
-      return;
-    }
-    canvas.drawRect(
-      tileOriginOffset(placed) & Size.square(placed.tile.size.toDouble()),
-      Paint()..color = const Color(0x99FF00FF),
-    );
-  }
-
-  /// Draws [tile] a pixel at a time; true when it put anything on the
-  /// canvas. The caller spends its budget on the answer, not on the
-  /// attempt.
-  bool _paintTilePixels(Canvas canvas, PlacedTile placed, Paint? layerPaint) {
-    // `readPixels`, not the `pixels` getter: that getter is a defensive
-    // 256 KB COPY per call, and this path already runs on the frames
-    // where there is least room for it — the budget above is spent
-    // exactly when nothing has decoded yet.
-    return placed.tile.readPixels(
-      (_, pixels) => _paintTilePixelsFrom(canvas, placed, pixels, layerPaint),
-    );
-  }
-
-  bool _paintTilePixelsFrom(
-    Canvas canvas,
-    PlacedTile placed,
-    Uint8List pixels,
-    Paint? layerPaint,
-  ) {
-    final tile = placed.tile;
-    var drew = false;
-    final pixelPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = false;
-    // 🚨THE ONE DRAW THAT CANNOT TAKE THE LAYER PAINT DIRECTLY. `Paint.color`
-    // already carries the PIXEL's own colour here, so folding the layer's
-    // alpha into it quantises to 8 bits BEFORE the composite where the
-    // buffer quantises after — 🧪measured at 55 pixels of 4096, worst
-    // channel 1. A tile-sized layer restores the buffer's order exactly,
-    // and this path is the undecoded-tile fallback with a budget of four.
-    if (layerPaint != null) {
-      canvas.saveLayer(
-        tileOriginOffset(placed) & Size.square(tile.size.toDouble()),
-        layerPaint,
-      );
-    }
-    final tileOriginX = placed.coord.x * tile.size;
-    final tileOriginY = placed.coord.y * tile.size;
-
-    for (var localY = 0; localY < tile.size; localY += 1) {
-      final globalY = tileOriginY + localY;
-      if (globalY < surface.canvasSize.pasteboardTop ||
-          globalY >= surface.canvasSize.pasteboardBottomExclusive) {
-        continue;
-      }
-
-      for (var localX = 0; localX < tile.size; localX += 1) {
-        final globalX = tileOriginX + localX;
-        if (globalX < surface.canvasSize.pasteboardLeft ||
-            globalX >= surface.canvasSize.pasteboardRightExclusive) {
-          continue;
-        }
-
-        final offset = (localY * tile.size + localX) * 4;
-        final r = pixels[offset];
-        final g = pixels[offset + 1];
-        final b = pixels[offset + 2];
-        final a = pixels[offset + 3];
-        if (a == 0) {
-          continue;
-        }
-
-        pixelPaint.color = Color.fromARGB(a, r, g, b);
-        canvas.drawRect(
-          Rect.fromLTWH(globalX.toDouble(), globalY.toDouble(), 1, 1),
-          pixelPaint,
-        );
-        drew = true;
-      }
-    }
-    if (layerPaint != null) {
-      canvas.restore();
-    }
-    return drew;
   }
 
   @override

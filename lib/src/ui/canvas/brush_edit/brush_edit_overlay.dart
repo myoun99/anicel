@@ -98,46 +98,20 @@ class _BrushEditOverlay {
     );
   }
 
-  /// Starts a stroke without taking away what is covering for the LAST
-  /// one's committed tiles.
+  /// Starts a stroke: whatever the overlay still holds belonged to the
+  /// stroke that just ended and was handed over at its commit.
   ///
-  /// An unconditional reset here was the pen-up hole. What remains in the
-  /// overlay after a commit is exactly the coordinates whose handoff
-  /// missed, so dropping them put those coordinates back on the painter's
-  /// stale fallback — the PRE-stroke tile — and the stroke the user had
-  /// just finished vanished in tile-shaped patches until its decodes
-  /// landed. Measured: stroke 1 pen-up, one frame, stroke 2 pen-down, 2
-  /// of 5 promoted coordinates overlay → stale. The window is the gap
-  /// between one pen-up and the next pen-down, which is why short strokes
-  /// drawn one after another are the case that shows it.
-  ///
-  /// The settle WINDOW still ends here — its timer and its release both
-  /// reset the whole overlay, which would now take the live stroke with
-  /// them. The stand-ins outlive it, which is why they are tracked
-  /// separately from the stroke's own tiles, and they are let go per
-  /// coordinate from [_state._onTileImagesChanged] as each committed tile
-  /// becomes able to paint itself.
-  void beginStrokeOverlay() {
-    if (!_overlayModel.hasStandIns) {
-      resetOverlay();
-      return;
-    }
-    _endSettleWindowAndFillDecode();
-    _overlayModel.beginStrokeKeepingStandIns();
-  }
+  /// 🪦Until 2026-09-17 this had to KEEP the tiles covering for committed
+  /// tiles whose pen-up handoff had missed (the "stand-ins"), because
+  /// dropping them put those coordinates back on the painter's stale
+  /// fallback — the PRE-stroke tile — and the stroke the user had just
+  /// finished vanished in tile-shaped patches until its decodes landed. A
+  /// committed tile pictures itself inside the paint now, so nothing is
+  /// covering for anything and a reset takes nothing away.
+  void beginStrokeOverlay() => resetOverlay();
 
-  /// Clears the visible overlay (live or settling) and its tile images.
-  void resetOverlay() {
-    _endSettleWindowAndFillDecode();
-    _overlayModel.reset();
-  }
-
-  /// Everything both of the above do before they part company: end the
-  /// settle window (a fill, since 2026-09-17, lands the way a stroke does
-  /// and has no decode of its own to invalidate — `promoteFillDab`).
-  void _endSettleWindowAndFillDecode() {
-    _state._settlingState.endWindow();
-  }
+  /// Clears the visible overlay and its tile images.
+  void resetOverlay() => _overlayModel.reset();
 
   void _appendOverlayDabs(List<BrushDab> newDabs) {
     if (newDabs.isEmpty) {

@@ -52,12 +52,8 @@ void main() {
     baseline = BitmapTileImageCache.liveImageBytes;
   });
 
-  /// [placed]'s truth lands, filed under [scope] — nowhere by default.
-  void land(PlacedTile placed, {Object? scope}) => cache.adoptDecoded(
-    placed,
-    picture(),
-    staleScope: scope ?? BitmapTileImageCache.unfiled,
-  );
+  /// [placed]'s truth lands.
+  void land(PlacedTile placed) => cache.adoptDecoded(placed, picture());
 
   test('over budget, the never-shown go first, then the least recently '
       'shown — and the latest paint\'s stay', () {
@@ -80,18 +76,18 @@ void main() {
     budget.byteBudget = baseline + 2 * oneImage;
     expect(budget.letGo(), 2);
     expect(
-      cache.displayImageFor(never.tile),
+      cache.imageFor(never.tile),
       isNull,
       reason: 'a picture no paint ever showed goes first',
     );
     expect(
-      cache.displayImageFor(old.tile),
+      cache.imageFor(old.tile),
       isNull,
       reason: 'then the least recently shown',
     );
-    expect(cache.displayImageFor(recent.tile), isNotNull);
+    expect(cache.imageFor(recent.tile), isNotNull);
     expect(
-      cache.displayImageFor(onScreen.tile),
+      cache.imageFor(onScreen.tile),
       isNotNull,
       reason: 'the latest paint\'s tile is on screen',
     );
@@ -109,8 +105,8 @@ void main() {
     budget.shown('cel', b.tile);
     budget.byteBudget = baseline;
     expect(budget.letGo(), 0);
-    expect(cache.displayImageFor(a.tile), isNotNull);
-    expect(cache.displayImageFor(b.tile), isNotNull);
+    expect(cache.imageFor(a.tile), isNotNull);
+    expect(cache.imageFor(b.tile), isNotNull);
   });
 
   test('an idle canvas keeps its visible pictures through recentPaints '
@@ -126,7 +122,7 @@ void main() {
     expect(budget.letGo(), 0, reason: 'its latest paint is still recent');
     budget.paintBegan('busy-cel');
     expect(budget.letGo(), 1, reason: 'and now it is not');
-    expect(cache.displayImageFor(idle.tile), isNull);
+    expect(cache.imageFor(idle.tile), isNull);
   });
 
   test('a tile shown by an EARLIER paint of its own canvas is not current: '
@@ -142,28 +138,8 @@ void main() {
     budget.shown('cel', right.tile);
     budget.byteBudget = baseline;
     expect(budget.letGo(), 1);
-    expect(cache.displayImageFor(left.tile), isNull);
-    expect(cache.displayImageFor(right.tile), isNotNull);
-  });
-
-  test('a picture the coordinate fallback filed is struck from the filing '
-      'as it goes — the cache would refuse to let a filed one go', () {
-    final filed = tileAt(0);
-    land(filed, scope: 'cel');
-    expect(cache.latestImageForCoord(filed.coord, scope: 'cel'), isNotNull);
-    budget.byteBudget = baseline;
-    expect(budget.letGo(), 1);
-    expect(cache.displayImageFor(filed.tile), isNull);
-    expect(cache.latestImageForCoord(filed.coord, scope: 'cel'), isNull);
-  });
-
-  test('a stand-in is on the roll like a truth, and goes the same way', () {
-    final standIn = tileAt(0);
-    cache.putProvisional(standIn, picture());
-    expect(cache.hasProvisional(standIn.tile), isTrue);
-    budget.byteBudget = baseline;
-    expect(budget.letGo(), 1);
-    expect(cache.hasProvisional(standIn.tile), isFalse);
+    expect(cache.imageFor(left.tile), isNull);
+    expect(cache.imageFor(right.tile), isNotNull);
   });
 
   test('under budget nothing goes, shown or not', () {
@@ -171,7 +147,7 @@ void main() {
     land(a);
     budget.byteBudget = baseline + oneImage;
     expect(budget.letGo(), 0);
-    expect(cache.displayImageFor(a.tile), isNotNull);
+    expect(cache.imageFor(a.tile), isNotNull);
   });
 
   test('a tile joins the roll once, and is asked for at its latest '

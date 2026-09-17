@@ -20,9 +20,9 @@ import '../../models/tile_coord.dart';
 /// would pin every tile that ever had a picture — the undo history's
 /// included — for the life of the run.
 ///
-/// A sibling of `BitmapTileImageCache` rather than a field on it, for the
-/// reason `TilePredecessors` gives: the cache sits at the long-class
-/// ceiling.
+/// A sibling of `BitmapTileImageCache` rather than a field on it: the roll
+/// is a walkable thing of its own, and the cache is the door pictures come
+/// through, not the census of them.
 class PicturedTiles {
   PicturedTiles();
 
@@ -35,7 +35,7 @@ class PicturedTiles {
   /// to another coordinate by a whole-tile translate.
   final Expando<TileCoord> _coordOf = Expando<TileCoord>('picturedTileCoords');
 
-  /// [placed]'s tile has a picture now — truth or stand-in. A tile joins
+  /// [placed]'s tile has a picture now. A tile joins
   /// the roll once and stays on it for its life, whatever its picture does:
   /// the walk asks the cache what it holds, not the roll.
   void hold(PlacedTile placed) {

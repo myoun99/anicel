@@ -255,14 +255,9 @@ void main() {
         canvasSize: canvasSize,
       ).prepareFramePreview(key('frame-a')).previewSurface;
       for (final entry in preview.tiles.entries) {
-        BitmapTileImageCache.instance.ensureDecoded(
+        BitmapTileImageCache.instance.pictureFor(
           (coord: entry.key, tile: entry.value),
         );
-      }
-      final deadline = DateTime.now().add(const Duration(seconds: 5));
-      while (!BitmapTileImageCache.instance.allDecoded(preview.tiles.values)) {
-        expect(DateTime.now().isBefore(deadline), isTrue);
-        await Future<void>.delayed(const Duration(milliseconds: 5));
       }
 
       final synced = cache.prepareSyncOrNull(

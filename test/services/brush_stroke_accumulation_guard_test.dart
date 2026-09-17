@@ -133,7 +133,7 @@ void main() {
     test('🚨the standalone recorder keeps WHICH change, never the surfaces '
         'it went between', () async {
       final sink = BrushEditCacheInvalidationSink();
-      final before = _recordATransition(sink);
+      final before = _recordAChange(sink);
 
       await collectGarbage();
 
@@ -145,22 +145,20 @@ void main() {
             'before-and-after picture alive for the life of the host',
       );
       expect(sink.brushFrames.single.wholeFrame, isTrue);
-      expect(sink.brushFrames.single.transition, isNull);
     });
   });
 }
 
 /// Records one change that carries its transition and hands back only a
 /// WEAK hold on the "before" surface, so nothing here keeps it alive.
-WeakReference<BitmapSurface> _recordATransition(
+WeakReference<BitmapSurface> _recordAChange(
   BrushEditCacheInvalidationSink sink,
 ) {
   const size = CanvasSize(width: 8, height: 8);
   final before = BitmapSurface(canvasSize: size);
-  final after = BitmapSurface(canvasSize: size);
   sink.invalidateBrushFrame(
-    BrushFrameCacheInvalidation(
-      frameKey: const BrushFrameKey(
+    const BrushFrameCacheInvalidation(
+      frameKey: BrushFrameKey(
         projectId: ProjectId('p'),
         trackId: TrackId('t'),
         cutId: CutId('c'),
@@ -168,7 +166,6 @@ WeakReference<BitmapSurface> _recordATransition(
         frameId: FrameId('f'),
       ),
       wholeFrame: true,
-      transition: (before: before, after: after),
     ),
   );
   return WeakReference(before);

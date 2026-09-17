@@ -61,7 +61,6 @@ void main() {
     cache.adoptDecoded(
       (coord: coord, tile: tile),
       picture(rgba),
-      staleScope: BitmapTileImageCache.unfiled,
     );
   }
 
@@ -83,11 +82,11 @@ void main() {
       }
       return cache.imageFor(tile) != null
           ? tile
-          : (cache.displayImageFor(tile) ?? tile);
+          : (cache.imageFor(tile) ?? tile);
     },
     pictureAt: (TileCoord at) {
       final tile = surface.tileAt(at);
-      return tile == null ? null : cache.displayImageFor(tile);
+      return tile == null ? null : cache.imageFor(tile);
     },
     mayMake: mayMake ?? () => true,
   );
@@ -181,7 +180,6 @@ void main() {
       cache.adoptDecoded(
         (coord: coord, tile: tile),
         recorded.toImageSync(size, size),
-        staleScope: BitmapTileImageCache.unfiled,
       );
       recorded.dispose();
       final level = levelOne(pyramid, surface, cache);
@@ -240,36 +238,6 @@ void main() {
         identical(remade, made),
         isFalse,
         reason: 'remade over the new tile',
-      );
-    });
-  });
-
-  testWidgets('a level made over a stand-in is remade once the truth lands',
-      (tester) async {
-    await tester.runAsync(() async {
-      final cache = BitmapTileImageCache();
-      final pyramid = TilePyramid();
-      final tile = solid(black);
-      final coord = TileCoord(x: 0, y: 0);
-      final surface = BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: size,
-        tiles: {coord: tile},
-      );
-      cache.putProvisional((coord: coord, tile: tile), picture(black));
-      final overStandIn = levelOne(pyramid, surface, cache);
-      expect(overStandIn, isNotNull, reason: 'a stand-in is a picture too');
-      expect(
-        identical(levelOne(pyramid, surface, cache), overStandIn),
-        isTrue,
-        reason: 'kept while the stand-in is all there is',
-      );
-      adopt(cache, coord, tile, black);
-      final overTruth = levelOne(pyramid, surface, cache);
-      expect(
-        identical(overTruth, overStandIn),
-        isFalse,
-        reason: 'the truth landed: remade over it',
       );
     });
   });

@@ -74,7 +74,6 @@ void main() {
     cache.adoptDecoded(
       (coord: coord, tile: tile),
       picture.toImageSync(size, size),
-      staleScope: BitmapTileImageCache.unfiled,
     );
     picture.dispose();
     return tile;
@@ -205,7 +204,6 @@ void main() {
       final region = rasterizer.blendFrom(dabs, from: 0);
       overlay.dabs.addAll(dabs);
       overlay.updateRegion(source: rasterizer, region: region!);
-      await overlay.waitForPendingDecodes();
     });
     expect(
       overlay.tileImages.keys.toSet(),
@@ -270,7 +268,6 @@ void main() {
       cache.adoptDecoded(
         (coord: entry.coord, tile: entry.tile),
         image!,
-        staleScope: BitmapTileImageCache.unfiled,
       );
       placed.add((coord: entry.coord, tile: entry.tile));
     }

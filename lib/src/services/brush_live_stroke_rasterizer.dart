@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../core/floor_math.dart';
 import '../core/rgba_premultiply.dart';
+import '../core/sync_image_upload.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_blend_mode.dart';
@@ -27,19 +28,72 @@ import 'brush_stroke_blend.dart'
         strokeCoverageMask,
         strokeOpacityCoverage;
 
-/// A pre-blended overlay tile: the premultiplied bytes to upload, and the
-/// stroke [revision] they were blended at (pen-up hands the DECODED image
-/// of a matching revision straight to the adopted tile — a stale one
-/// would pin wrong pixels forever, so the number travels with it).
-class PreBlendedOverlayTile {
-  PreBlendedOverlayTile._(this.pixels, this.revision, this._scratch);
+/// The premultiplied form of a pre-blended tile made on demand, with the
+/// release that goes with it (a native scratch, or nothing).
+typedef _PremultipliedTile = ({Uint8List view, void Function() free});
 
-  final Uint8List pixels;
+/// A pre-blended overlay tile — the bytes the door ([pictureOf]) turns
+/// into the coordinate's picture — and the stroke [revision] they were
+/// blended at (pen-up hands the picture of a matching revision straight to
+/// the adopted tile — a stale one would pin wrong pixels forever, so the
+/// number travels with it).
+///
+/// Reads STRAIGHT from the resident result as it stands (the door's Skia
+/// road), and PREMULTIPLIED from the scratch the batch kernel already
+/// wrote — fused into the blend, no extra pass — or, on the routes that
+/// have no such scratch, from a premultiply made only when asked (the
+/// door's Impeller road). Either way the engine's form is made once and
+/// the other never.
+class PreBlendedOverlayTile implements PictureBytes {
+  PreBlendedOverlayTile._fused(
+    this._straight,
+    this.size,
+    this.revision,
+    QaStampScratch scratch,
+  ) : _scratch = scratch,
+      _premultiplyNow = null;
+
+  PreBlendedOverlayTile._lazy(
+    this._straight,
+    this.size,
+    this.revision,
+    _PremultipliedTile Function() premultiplyNow,
+  ) : _scratch = null,
+      _premultiplyNow = premultiplyNow;
+
+  /// The resident straight result — a view onto the rasterizer's own
+  /// buffer, valid until the next blend at this coordinate.
+  final Uint8List _straight;
+  final int size;
   final int revision;
   final QaStampScratch? _scratch;
+  final _PremultipliedTile Function()? _premultiplyNow;
 
-  /// Releases the native scratch (call once the decode has consumed the
-  /// bytes); a no-op on the Dart route.
+  @override
+  int get width => size;
+
+  @override
+  int get height => size;
+
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) => use(_straight);
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
+    final fused = _scratch;
+    if (fused != null) {
+      return use(fused.view);
+    }
+    final made = _premultiplyNow!();
+    try {
+      return use(made.view);
+    } finally {
+      made.free();
+    }
+  }
+
+  /// Releases the fused native scratch, read or not (the door reads it on
+  /// Impeller only); a no-op on the routes that premultiply on demand.
   void free() => _scratch?.free();
 }
 
@@ -436,26 +490,31 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           continue;
         }
         if (existing != null && existing.revision == revision) {
-          // Already current: re-premultiply for the upload only.
+          // Already current: the resident result stands, and its
+          // premultiplied form is made only if the door asks for it.
           _results.remove(entry.key);
           _results[entry.key] = existing;
           if (!existing.changed) {
             continue; // Equal to the base: nothing to show (see below).
           }
           final buffer = existing.native;
-          results[entry.slot] = buffer != null
-              ? _scratchTile(
-                  native.premultipliedTileScratch(
-                    buffer.pointer,
-                    tileSize * tileSize,
+          results[entry.slot] = PreBlendedOverlayTile._lazy(
+            existing.bytes,
+            tileSize,
+            revision,
+            buffer != null
+                ? () {
+                    final scratch = native.premultipliedTileScratch(
+                      buffer.pointer,
+                      tileSize * tileSize,
+                    );
+                    return (view: scratch.view, free: scratch.free);
+                  }
+                : () => (
+                    view: premultipliedRgbaCopy(existing.bytes),
+                    free: _nothing,
                   ),
-                  revision,
-                )
-              : PreBlendedOverlayTile._(
-                  premultipliedRgbaCopy(existing.bytes),
-                  revision,
-                  null,
-                );
+          );
           continue;
         }
         final reused = existing?.native;
@@ -518,7 +577,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
             entry.scratch.free();
             continue;
           }
-          results[entry.slot] = _scratchTile(entry.scratch, entry.revision);
+          results[entry.slot] = PreBlendedOverlayTile._fused(
+            entry.buffer.view,
+            tileSize,
+            entry.revision,
+            entry.scratch,
+          );
         }
       }
       // Base tiles were read by the kernel through raw pointers: this use
@@ -540,8 +604,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     return results;
   }
 
-  PreBlendedOverlayTile _scratchTile(QaStampScratch scratch, int revision) =>
-      PreBlendedOverlayTile._(scratch.view, revision, scratch);
+  static void _nothing() {}
 
   /// Which composite the stroke lands with — the eraser and the plain
   /// colour brush ride the stamp kernels, everything else the brush
@@ -585,10 +648,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (!result.changed) {
       return null; // Equal to the base: the committed tile already shows it.
     }
-    return PreBlendedOverlayTile._(
-      premultipliedRgbaCopy(result.bytes),
+    return PreBlendedOverlayTile._lazy(
+      result.bytes,
+      tileSize,
       result.revision,
-      null,
+      () => (view: premultipliedRgbaCopy(result.bytes), free: _nothing),
     );
   }
 

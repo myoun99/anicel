@@ -96,7 +96,7 @@ void main() {
   Future<void> decodeAll(WidgetTester tester, BitmapSurface surface) {
     return tester.runAsync(() async {
       for (final entry in surface.tiles.entries) {
-        tileCache.ensureDecoded((coord: entry.key, tile: entry.value));
+        tileCache.pictureFor((coord: entry.key, tile: entry.value));
       }
       while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
         await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -332,30 +332,13 @@ void main() {
         bottomExclusive: 11,
       ),
     );
-    await tester.runAsync(overlay.waitForPendingDecodes);
-    report('first-dab(patch)', await paintBytes(tester, painter1));
 
-    // 4. pen-up: commit lands (tile 0,0 replaced by an identical-bytes new
-    //    tile), overlay flips to settling with a stand-in and the
-    //    pre-stroke pin — _bufferKey() answers null, so every paint here
-    //    is an UNCACHED full compose.
-    overlay.settling = true;
-    overlay.markStandIn(coord00);
-    overlay.holdPreStrokeTiles({coord00: tilesV1[coord00]});
+    // 4. pen-up: the commit lands (tile 0,0 replaced by an identical-bytes
+    //    new tile) and the overlay drops in the same turn.
     final painter2 = await pumpWith(painterFor(surface2));
-    final settling1 = await paintBytes(tester, painter2);
-    report('pen-up-settling#1(uncached-full)', settling1);
-    final settling2 = await paintBytes(tester, painter2);
-    report('pen-up-settling#2(uncached-full)', settling2);
-    debugPrint(
-      'PROBE[$tag] settling#1 vs settling#2 identical: '
-      '${_bytesEqual(settling1, settling2)}',
-    );
-
-    // 5. settle release: overlay drops, the kept buffer is a stroke
-    //    behind — the next paint patches the released coordinate back.
+    // 5. the next paint patches the released coordinate back.
     overlay.reset();
-    report('settle-release(patch)', await paintBytes(tester, painter2));
+    report('pen-up-release(patch)', await paintBytes(tester, painter2));
 
     // 6. layer switch analogue: a different painter instance carrying a
     //    surface with identical bytes but all-new tile identities. Every
@@ -425,17 +408,6 @@ void main() {
   });
 }
 
-bool _bytesEqual(Uint8List a, Uint8List b) {
-  if (a.length != b.length) {
-    return false;
-  }
-  for (var i = 0; i < a.length; i += 1) {
-    if (a[i] != b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
 
 /// A stroke source whose every pixel is transparent: the pre-blend of
 /// "no ink yet" against the committed tile is exactly the committed tile,

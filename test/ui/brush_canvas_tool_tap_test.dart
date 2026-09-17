@@ -19,7 +19,6 @@ import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -615,14 +614,6 @@ void main() {
         TileCoord(x: 0, y: 0),
       },
       reason: 'the stamp lands on the pasteboard as it lands on the canvas',
-    );
-    final overlay = tester
-        .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
-        .overlayModel!;
-    expect(
-      overlay.settleHoldTiles,
-      isNull,
-      reason: 'a fill pins nothing: its result tiles ARE what it shows',
     );
   });
 

@@ -159,7 +159,7 @@ void main() {
       // the ceiling moves and the only one premultiplication leaves alone.
       for (var i = 0; i < 64; i += 1) {
         expect(
-          live!.pixels[i * 4 + 3],
+          live!.readPremultiplied(Uint8List.fromList)[i * 4 + 3],
           expected[i * 4 + 3],
           reason: 'pixel $i: what is on screen IS what commits',
         );
@@ -222,7 +222,7 @@ void main() {
       )!;
 
       expect(
-        live.pixels[(2 * 8 + 2) * 4 + 3],
+        live.readPremultiplied(Uint8List.fromList)[(2 * 8 + 2) * 4 + 3],
         lessThanOrEqualTo(128),
         reason:
             'the mask is built from the ceiling alone when there is no '
@@ -251,7 +251,7 @@ void main() {
 
       // (2, 2) is outside a selection that ends at x = 2.
       expect(
-        live?.pixels[(2 * 8 + 2) * 4 + 3] ?? 0,
+        live?.readPremultiplied(Uint8List.fromList)[(2 * 8 + 2) * 4 + 3] ?? 0,
         0,
         reason: 'the selection is not softened into a 50% edge by the fold',
       );

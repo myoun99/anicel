@@ -67,8 +67,6 @@ import 'brush_cursor_painter.dart' show brushCursorLook;
 import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
 import 'tool_cursor_look.dart';
 import 'tool_cursor_sprite.dart';
-import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/provisional_tile_pictures.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../../services/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -900,7 +898,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.
       showTransparentBackground: false,
-      staleScope: (token.key.layerId, token.key.frameId),
+      lineage: (token.key.layerId, token.key.frameId),
       stampPreview: _stampPreview,
     );
   }
@@ -1532,15 +1530,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // cel's tight ink bounds.
               contentBoundsProvider:
                   _activeCelContentBounds,
-              // The float's own picture, composed
-              // onto the tiles a landing creates,
-              // so the base paints the landing on
-              // the frame it lands — its
-              // destination tiles are new objects
-              // with no decoded image for a frame
-              // or two.
-              composeCommittedRegionPictures:
-                  _lift._composeCommittedRegionPictures,
               // Pending move sessions hold the
               // session's edit lock (seeks
               // refused) WITHOUT locking

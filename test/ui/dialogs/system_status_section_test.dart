@@ -47,20 +47,18 @@ void main() {
 
   test('the tile picture upload follows the RENDERER, not the packaging', () {
     // The only row here whose non-primary state is normal rather than a
-    // problem: `decodeImageFromPixelsSync` is Impeller-only and
-    // `flutter_tester` has no synchronous upload, so the report says
-    // "asynchronous" HERE.
-    // ⚠️2026-09-16: that is no longer what a Windows user sees. Since 3.47
-    // the desktop ships Impeller, so the shipped app reports the
-    // synchronous row as primary — this test pins the HARNESS's answer,
-    // and the detail still has to say why an amber row is not a broken
-    // build, because a user with no GPU context still lands here.
+    // problem: `decodeImageFromPixelsSync` is Impeller-only, so on
+    // `flutter_tester` (Skia) the door DRAWS the picture instead — the
+    // same bytes, inside the same frame. The shipped app (Impeller
+    // everywhere since 3.47) reports the upload row as primary; this test
+    // pins the HARNESS's answer, and the detail still has to say why an
+    // amber row is not a broken build.
     final upload = collectRuntimePathReport().singleWhere(
       (entry) => entry.subsystem == 'Tile picture upload',
     );
-    expect(upload.isPrimary, syncImageUploadSupported);
+    expect(upload.isPrimary, pictureOfUploads);
     expect(upload.isPrimary, isFalse, reason: 'flutter_tester runs Skia');
-    expect(upload.active, contains('Asynchronous'));
+    expect(upload.active, contains('Synchronous draw'));
     expect(upload.detail, contains('Impeller'));
   });
 

@@ -9,9 +9,9 @@ part of '../bitmap_surface_painter.dart';
 /// as level 0 draws them.
 ///
 /// The pyramid's leaf is the pass's one answer to what a coordinate shows
-/// (`_SurfacePaintPass._coordinate`): the live stroke, a held tile, a
-/// stand-in and a committed picture all reach a level tile through it, so
-/// no block needs a route of its own.
+/// ([_CoordinatePicture]): the live stroke's result tile and a committed
+/// picture both reach a level tile through it, so no block needs a route
+/// of its own.
 ///
 /// 🚨A collaborator of `_SurfacePaintPass`, constructed per paint like the
 /// pass itself; it reaches the paint's state through `_pass`.
@@ -40,7 +40,7 @@ class _LevelBlocks {
     );
     final ask = (
       tileSize: surface.tileSize,
-      scope: _painter.staleScope,
+      scope: _painter.lineage,
       keyAt: (TileCoord at) =>
           _pass._coordinates.of(at, withPicture: false)?.key,
       pictureAt: (TileCoord at) =>
@@ -65,21 +65,16 @@ class _LevelBlocks {
       for (final at in TilePyramid.tilesOfBlock(_pass._level, coord)) {
         final tile = surface.tileAt(at);
         if (tile != null) {
-          _painter.pictureBudget.shown(_painter.staleScope, tile);
+          _painter.pictureBudget.shown(_painter.lineage, tile);
         }
         _pass._coordinates.paint(at);
       }
     }
   }
 
-  /// The paint's ration of level tiles, each a `toImageSync` of four
-  /// pictures — rationed like the sync uploads, for the same reason: a
-  /// cold zoomed-out view is the whole visible grid at once, and the
-  /// blocks that miss out draw their coordinates this frame and ask again
-  /// on the next. The same number ([BitmapSurfacePainter.decodeStartBudget])
-  /// because it is the same shape of cost being spread over frames; the
-  /// seam probe measured a make at tens of microseconds, so one paint's
-  /// ration is under two milliseconds.
+  /// The paint's ration of level tiles
+  /// ([_SurfacePaintPass.levelTilesPerPaint]): the blocks that miss out
+  /// draw their coordinates this frame and ask again on the next.
   bool _mayMake() {
     if (_pass._levelTileBudget <= 0) {
       return false;

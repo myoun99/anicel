@@ -173,34 +173,4 @@ void main() {
     }
   });
 
-  test('the tile-image cache pins at most retainedScopeLimit scopes', () async {
-    final cache = BitmapTileImageCache();
-    final coord = TileCoord(x: 0, y: 0);
-
-    Future<void> decodeInScope(Object scope) async {
-      final tile = BitmapTile.blank(size: 8);
-      cache.ensureDecoded(
-        (coord: TileCoord(x: 0, y: 0), tile: tile),
-        staleScope: scope,
-      );
-      while (cache.imageFor(tile) == null) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-    }
-
-    const scopeCount = BitmapTileImageCache.retainedScopeLimit + 3;
-    for (var scope = 0; scope < scopeCount; scope += 1) {
-      await decodeInScope('scope-$scope');
-    }
-
-    expect(
-      cache.latestImageForCoord(coord, scope: 'scope-${scopeCount - 1}'),
-      isNotNull,
-    );
-    expect(
-      cache.latestImageForCoord(coord, scope: 'scope-0'),
-      isNull,
-      reason: 'the least-recent scope evicted',
-    );
-  });
 }

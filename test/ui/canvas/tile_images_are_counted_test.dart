@@ -42,34 +42,33 @@ void main() {
 
   const oneImage = 4 * 4 * 4;
 
-  testWidgets('🚨a tile image is on the books while its tile lives — truths '
-      'and stand-ins — and comes off with it', (tester) async {
+  testWidgets('🚨a tile image is on the books while its tile lives, and '
+      'comes off with it', (tester) async {
     await tester.runAsync(() async {
       final cache = BitmapTileImageCache();
       // Settle what earlier tests let go of, so the baseline holds still.
       await collectGarbage();
       final before = BitmapTileImageCache.liveImageBytes;
 
-      PlacedTile? truth = tileAt(0, 0);
-      PlacedTile? standIn = tileAt(1, 0);
+      PlacedTile? adopted = tileAt(0, 0);
+      PlacedTile? made = tileAt(1, 0);
       cache.adoptDecoded(
-        truth,
+        adopted,
         await anImage(),
-        staleScope: BitmapTileImageCache.unfiled,
       );
-      cache.putProvisional(standIn, await anImage());
+      cache.pictureFor(made);
       expect(BitmapTileImageCache.liveImageBytes - before, 2 * oneImage);
 
-      // Its truth landing retires the stand-in: one off, one on.
+      // A second adoption for a tile that has its picture is retired, not
+      // counted twice.
       cache.adoptDecoded(
-        standIn,
+        made,
         await anImage(),
-        staleScope: BitmapTileImageCache.unfiled,
       );
       expect(BitmapTileImageCache.liveImageBytes - before, 2 * oneImage);
 
-      truth = null;
-      standIn = null;
+      adopted = null;
+      made = null;
       await collectGarbageUntil(
         () => BitmapTileImageCache.liveImageBytes == before,
       );
@@ -77,9 +76,7 @@ void main() {
       expect(
         BitmapTileImageCache.liveImageBytes,
         before,
-        reason:
-            'a collected tile takes its picture off the books — and an '
-            'unfiled one is pinned by no bucket',
+        reason: 'a collected tile takes its picture off the books',
       );
     });
   });
@@ -97,7 +94,6 @@ void main() {
       BitmapTileImageCache.instance.adoptDecoded(
         held,
         await anImage(),
-        staleScope: BitmapTileImageCache.unfiled,
       );
       final scratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
       addTearDown(scratch.release);
@@ -157,7 +153,7 @@ void main() {
         ),
       );
 
-      cache.ensureDecoded(placed, staleScope: BitmapTileImageCache.unfiled);
+      cache.pictureFor(placed);
       for (var i = 0; i < 200 && cache.imageFor(placed.tile) == null; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }

@@ -96,7 +96,7 @@ class _BrushEditFill {
       return;
     }
     _state._pendingFill = (dab: dab, base: surface, tiles: promoted);
-    unawaited(overlay.showResultTiles(promoted));
+    overlay.showResultTiles(promoted);
     // Commit AFTER the tap frame renders, so the reveal and the commit's
     // frame overlap instead of stacking; the commit is a tile PUT of the
     // objects made above.
@@ -112,7 +112,6 @@ class _BrushEditFill {
     if (pending == null || !_state.mounted) {
       return;
     }
-    final stamp = pending.dab.stamp;
     _state._stroke.landPromoted(
       pending.tiles,
       BrushStrokeCommitData(
@@ -124,12 +123,6 @@ class _BrushEditFill {
             (coord: entry.coord, tile: entry.tile),
         ],
       ),
-      // The CANVAS wall, not the pasteboard: a settle window (the
-      // asynchronous engine only) covers what the base paints, and the
-      // base paints the canvas.
-      settlingBounds: stamp
-          ?.landingRect(pending.dab.center)
-          .intersection(pending.base.canvasSize.canvasRegion),
     );
   }
 }

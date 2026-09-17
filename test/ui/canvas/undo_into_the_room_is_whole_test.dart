@@ -1,11 +1,9 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -29,21 +27,22 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/shown_cels.dart';
-import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★UNDO INTO AN ENTRY THE BUDGET PARKED SHOWS NO BLANK FRAME
-/// (undo-held-tile-pictures, stage 1, 2026-09-11).
+/// (undo-held-tile-pictures, stage 1, 2026-09-11 — and the one door,
+/// 2026-09-17: a tile pictures itself inside the paint that shows it).
 ///
 /// A parked payload comes back as NEW tile objects, and a tile's picture is
 /// keyed on the object — so the step used to land on tiles with no picture
-/// at all. Measured on a 225-tile cel: 204 of them blank on the first frame
-/// (Settings ▸ Show Unpainted Tiles paints each one magenta), filling in
-/// over several. The control at the bottom keeps that measurement honest:
-/// if it ever reads zero, the cases above it prove nothing.
+/// at all. Measured on a 225-tile cel: 204 of them blank on the first frame,
+/// filling in over several. The oracle is the stroke's own ink: a whole
+/// frame shows as much of it as the settled picture does, and the control
+/// at the bottom keeps that measurement honest — if the oracle could not
+/// tell one stroke's colour from another, the cases above it prove nothing.
 ///
 /// ⚠️TWO CANVASES, because they register differently. The ink view paints
 /// the cel's own tiles; the DRAWING canvas hands its painter to the layer
@@ -51,20 +50,17 @@ import '../../helpers/native_engine_path.dart';
 /// screen are other objects than the cel's. A walk on the first alone left
 /// the second's registration untested — a mutant deleting it survived.
 ///
-/// The cel is 64 tiles because the composed stand-in covers sixteen a paint
-/// — on a smaller cel it hides the defect this exists to catch.
+/// The cel is 64 tiles: a parked entry brings back sixty-four new tile
+/// objects at once, which is what a blank first frame was made of.
 ///
 /// Stage 2 (2026-09-15) lets the pictures of entries deeper than the next
 /// step go, so the cases below also pin what must NOT go on screen: a
-/// fork's picture. The two a tile not ready yet borrows are pinned at the
-/// cache's door (`a_lent_tile_picture_is_not_let_go_test`) — ⚠️a widget
-/// walk cannot reach them: without real time no decode lands and nothing
-/// schedules the paint that would borrow, so the frame it would look at is
-/// the same with the release on and off (measured).
+/// fork's picture.
 void main() {
-  testWidgets('🚨OUTRUN, where the engine cannot upload on the spot (Skia): '
-      'an undo into a parked entry WAITS for its pictures, and no frame on '
-      'the way is blank', (tester) async {
+  testWidgets('🚨OUTRUN: an undo into a parked entry lands AT THE PRESS, '
+      'and the first frame of every step on the way is whole', (
+    tester,
+  ) async {
     await _outrun(tester, await _Walk.draw(tester));
   });
 
@@ -73,34 +69,17 @@ void main() {
     await _outrun(tester, await _Walk.draw(tester, drawingCanvas: true));
   });
 
-  testWidgets('at a human pace the next undo is ready BEFORE the press: it '
-      'lands at once, and whole', (tester) async {
+  testWidgets('at a human pace the next undo is pictured BEFORE the press, '
+      'and the frame that shows it is whole', (tester) async {
     final walk = await _Walk.draw(tester);
 
     for (final k in [5, 4, 3, 2, 1]) {
       walk.press();
-      // ⛔Mutation: no warm after a landing → the parked ones wait.
       expect(walk.history.undoCount, k, reason: 'undo $k landed at the press');
       await tester.pump();
       await walk.expectWhole(showing: k - 1, why: 'the first frame of undo $k');
       await walk.settle(); // The user looks at it for a moment.
     }
-  });
-
-  testWidgets('where the engine uploads on the spot (Impeller), an undo into '
-      'a parked entry lands AT ONCE, and whole', (tester) async {
-    debugSyncImageUploadOverride = _uploadUniformTile;
-    addTearDown(() => debugSyncImageUploadOverride = null);
-    final walk = await _Walk.draw(tester);
-
-    for (final k in [5, 4, 3, 2, 1]) {
-      walk.press();
-      // ⛔Mutation: pictures started a ration at a time → the parked ones
-      // wait a frame, and the press has not landed here.
-      expect(walk.history.undoCount, k, reason: 'undo $k landed at the press');
-    }
-    await tester.pump();
-    await walk.expectWhole(showing: 0, why: 'the first frame of undo 1');
   });
 
   testWidgets('🚨stage 2: an entry DEEPER than the next step keeps its tiles '
@@ -177,26 +156,6 @@ void main() {
     expect(_pictured(walk.surfaces[3]), 0, reason: 'stroke 4 is deep again');
   });
 
-  testWidgets('🚨stage 2: a stand-in on a deep entry goes too — the picture a '
-      'confirm composes for a tile whose truth never lands', (tester) async {
-    final walk = await _Walk.draw(tester, cels: 8);
-    final cache = BitmapTileImageCache.instance;
-    // Stroke 1's tiles sit under entry 2, deep, and their truth has gone.
-    // Give one the stand-in a confirm composes for a tile off screen.
-    final placed = walk.surfaces[0].tiles.entries.first;
-    final tile = placed.value;
-    expect(cache.imageFor(tile), isNull, reason: 'premise: its truth went');
-    cache.putProvisional(
-      (coord: placed.key, tile: tile),
-      _uploadUniformTile(Uint8List(4), tile.size, tile.size),
-    );
-    walk.press();
-    await tester.pump();
-    // ⛔Mutation: the pass asks after truth only → a tile holding nothing
-    // but a stand-in is passed over, and keeps it as long as the history.
-    expect(cache.hasProvisional(tile), isFalse);
-  });
-
   testWidgets('control: with no store to ask, every entry keeps its pictures', (
     tester,
   ) async {
@@ -228,55 +187,34 @@ void main() {
   });
 
 
-  testWidgets('control: straight to the history, an undo into a parked entry '
-      'DOES land blank — the measurement can see it', (tester) async {
+  testWidgets('control: the oracle tells one stroke\'s colour from another, '
+      'so a frame that lost the picture would be seen', (tester) async {
     final walk = await _Walk.draw(tester);
     walk.history.undo(); // 5
     walk.history.undo(); // 4
     await walk.settle();
 
-    walk.history.undo(); // 3: parked, read back inside the step
-    await tester.pump();
-
-    final seen = await walk.look(showing: 2);
-    expect(seen.magenta, greaterThan(20000));
+    final seen = await walk.look(showing: 3);
+    expect(seen.ink, greaterThan(20000), reason: 'stroke 4 is on screen');
+    final gone = await walk.look(showing: 4);
+    expect(gone.ink, lessThan(seen.ink ~/ 20), reason: 'stroke 5 is not');
   });
 }
 
-/// Undoes 5 (the next step, ready), then straight on into 4 (in RAM, its
-/// pictures let go while it was deeper) and 3, 2 and 1 (parked), faster
-/// than any warm-up could go — and looks at every frame on the way.
+/// Undoes 5 (the next step, pictured ahead), then straight on into 4 (in
+/// RAM, its pictures let go while it was deeper) and 3, 2 and 1 (parked),
+/// faster than any warm-up could go — and looks at the first frame of
+/// every step on the way.
 Future<void> _outrun(WidgetTester tester, _Walk walk) async {
-  walk.press();
-  expect(walk.history.undoCount, 5);
-  await tester.pump();
-  await walk.expectWhole(showing: 4, why: 'the first frame of undo 5');
-  // ↩️Undo 4 used to land at this press too: resident, so its pictures
-  // lived as long as its tiles. Stage 2 holds only the next step each way
-  // (the 2026-09-11 plan), so it waits for them like the parked ones.
-  for (final k in [4, 3, 2, 1]) {
+  for (final k in [5, 4, 3, 2, 1]) {
     walk.press();
-    // ⛔Mutation: land at once → the next frame is mostly magenta.
-    expect(walk.history.undoCount, k + 1, reason: 'undo $k waits');
-    var frames = 0;
-    while (walk.history.undoCount == k + 1) {
-      expect(frames, lessThan(80), reason: 'undo $k never landed');
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      frames += 1;
-      if (walk.history.undoCount == k + 1) {
-        // Still the picture from before the press — whole.
-        await walk.expectWhole(
-          showing: k,
-          why: 'waiting on undo $k, frame $frames',
-        );
-      }
-    }
+    // ⛔Mutation: wait for the pictures → the press has not landed here.
+    expect(walk.history.undoCount, k, reason: 'undo $k landed at the press');
+    await tester.pump();
+    // ⛔Mutation: draw nothing for a tile with no picture → the parked
+    // entries' first frames are blank where their tiles are new objects.
+    await walk.expectWhole(showing: k - 1, why: 'the first frame of undo $k');
   }
-  await tester.pump();
-  await walk.expectWhole(showing: 0, why: 'the first frame of undo 1');
 }
 
 /// Six whole-cel strokes in six colours on a 1024² cel (64 tiles), under an
@@ -349,8 +287,6 @@ class _Walk {
   }) async {
     debugQaEngineLibraryPathOverride = nativeEngineLibraryPathOrNull();
     addTearDown(() => debugQaEngineLibraryPathOverride = null);
-    MeasurementMode.showUnpaintedTiles.value = true;
-    addTearDown(() => MeasurementMode.showUnpaintedTiles.value = false);
 
     final keys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -451,6 +387,8 @@ class _Walk {
           if (k < _colours.length - cels) 0 else _cel,
       ],
     );
+    // The last stroke, settled: the measure of a whole frame.
+    walk.wholeInk = (await walk.look(showing: _colours.length - 1)).ink;
     return walk;
   }
 
@@ -491,9 +429,8 @@ class _Walk {
     }
   }
 
-  /// The frame on screen: magenta pixels — a tile the painter had nothing
-  /// for — and pixels of stroke [showing]'s colour.
-  Future<({int magenta, int ink})> look({required int showing}) async {
+  /// The frame on screen: pixels of stroke [showing]'s colour.
+  Future<({int ink})> look({required int showing}) async {
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(_capture),
     );
@@ -502,7 +439,6 @@ class _Walk {
     final r0 = (colour >> 16) & 0xFF;
     final g0 = (colour >> 8) & 0xFF;
     final b0 = colour & 0xFF;
-    var magenta = 0;
     var ink = 0;
     await tester.runAsync(() async {
       final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -511,24 +447,27 @@ class _Walk {
         final r = bytes[i];
         final g = bytes[i + 1];
         final b = bytes[i + 2];
-        if (r > 140 && b > 140 && g + 60 < r && (r - b).abs() < 40) {
-          magenta += 1;
-        }
         if ((r - r0).abs() < 8 && (g - g0).abs() < 8 && (b - b0).abs() < 8) {
           ink += 1;
         }
       }
     });
     image.dispose();
-    return (magenta: magenta, ink: ink);
+    return (ink: ink);
   }
 
-  /// No blank pixel on screen, and stroke [showing]'s picture on it — the
-  /// second half is what says the first measured anything.
+  /// How much of a stroke's ink a WHOLE frame shows: every stroke covers
+  /// the cel the same way, so the settled picture of the last one is the
+  /// measure for every step.
+  late final int wholeInk;
+
+  /// Stroke [showing]'s whole picture on screen: as much of its ink as the
+  /// settled picture shows — a tile drawn from nothing takes a tile's worth
+  /// of it away.
   Future<void> expectWhole({required int showing, required String why}) async {
     final seen = await look(showing: showing);
-    expect(seen.magenta, 0, reason: why);
-    expect(seen.ink, greaterThan(20000), reason: '$why: the canvas is seen');
+    expect(wholeInk, greaterThan(20000), reason: 'fixture: the canvas is seen');
+    expect(seen.ink, greaterThanOrEqualTo(wholeInk - 64), reason: why);
   }
 }
 
@@ -536,19 +475,3 @@ class _Walk {
 int _pictured(BitmapSurface surface) => surface.tiles.values
     .where((tile) => BitmapTileImageCache.instance.imageFor(tile) != null)
     .length;
-
-/// Impeller's synchronous upload, for tiles of one colour: the picture of
-/// the colour the bytes hold. Enough for a measurement that only asks
-/// whether each tile has the right picture or none.
-ui.Image _uploadUniformTile(Uint8List pixels, int width, int height) {
-  final recorder = ui.PictureRecorder();
-  ui.Canvas(recorder).drawRect(
-    Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
-    Paint()
-      ..color = Color.fromARGB(pixels[3], pixels[0], pixels[1], pixels[2]),
-  );
-  final picture = recorder.endRecording();
-  final image = picture.toImageSync(width, height);
-  picture.dispose();
-  return image;
-}

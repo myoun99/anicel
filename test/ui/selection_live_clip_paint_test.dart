@@ -87,7 +87,7 @@ void main() {
       showTransparentBackground: false,
       // A fresh scope keeps another test's tile at the same coordinate out
       // of the stale-image fallback (the parity suite's rule).
-      staleScope: Object(),
+      lineage: Object(),
     ).paint(Canvas(recorder), const Size(40, 40));
     final image = await recorder.endRecording().toImage(40, 40);
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -115,7 +115,6 @@ void main() {
       ..preBlendBase = base;
     addTearDown(model.dispose);
     model.updateRegion(source: rasterizer, region: dirty);
-    await model.waitForPendingDecodes();
     return (model, rasterizer);
   }
 

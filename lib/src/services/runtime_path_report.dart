@@ -149,24 +149,22 @@ List<RuntimePathEntry> collectRuntimePathReport() {
     ),
   );
 
-  // --- Tile picture upload: whether a tile's bytes can become a drawable
-  // picture INSIDE the frame that needs it, or only a frame or two later.
+  // --- Tile picture upload: which road a tile's bytes take to become its
+  // picture INSIDE the frame that needs it — they always do, on either.
   entries.add(
     RuntimePathEntry(
       subsystem: 'Tile picture upload',
-      active: syncImageUploadSupported
-          ? 'Synchronous (Impeller, decodeImageFromPixelsSync)'
-          : 'Asynchronous only (Skia) — freshly edited tiles paint a '
-                'frame or two late',
-      isPrimary: syncImageUploadSupported,
+      active: pictureOfUploads
+          ? 'Synchronous upload (Impeller, decodeImageFromPixelsSync)'
+          : 'Synchronous draw (Skia, a picture rasterized in the call)',
+      isPrimary: pictureOfUploads,
       detail:
           'An edit produces new tile pixels, and the canvas can only '
-          'draw a picture of them. Impeller can make one immediately; '
-          'Skia cannot, so those tiles show slightly older content or '
-          'wait. Impeller is the default everywhere as of Flutter 3.47, '
-          'so this row says no only where the engine genuinely has no '
-          'synchronous upload — it is the renderer showing through, not '
-          'a packaging problem.',
+          'draw a picture of them. Impeller uploads the bytes as they '
+          'are; Skia draws them into a picture instead — the same bytes '
+          'either way, inside the same frame. Impeller is the default '
+          'everywhere as of Flutter 3.47, so the draw road is the test '
+          'runner\'s, and this row says which one the engine took.',
     ),
   );
 

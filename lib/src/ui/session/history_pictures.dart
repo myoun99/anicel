@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show VoidCallback;
-import 'package:flutter/gestures.dart';
 
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
@@ -10,26 +9,21 @@ import '../canvas/after_frame_once.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/shown_cels.dart';
 
-/// Undo and redo whose first frame is whole.
+/// Undo and redo whose first frame is whole — and whose pictures are made
+/// ahead, so that frame is also quick.
 ///
 /// 🚨★★★**NO STEP MAY SHOW A BLANK TILE WHERE THE PICTURE WAS WHOLE — AND
 /// NOT THE OLD PICTURE EITHER** (F-68: a blank is a gap, the old picture is
-/// a lie). So the pictures a step will show are made ready BEFORE it lands:
+/// a lie). Since 2026-09-17 the paint that shows a step makes every picture
+/// it needs inside itself, so the step lands at once and its first frame
+/// is whole by construction — nothing here waits. What this still does:
 ///
 /// - After every step, the next one each way is read and its pictures
-///   started a few tiles a frame — a press at a human pace finds them
-///   ready and lands at once.
-/// - A press that outruns that is answered on the spot where the engine
-///   can upload synchronously (Impeller — every platform we ship, since
-///   3.47 made it the desktop default too).
-/// - Where it cannot the step WAITS for its pictures, then lands. The
-///   model does not move until the screen can show where it moved to, so
-///   the two never disagree. ⛔This arm is NOT dead code now that the
-///   desktop has Impeller: the upload is a runtime probe, and it also
-///   answers no on an engine with no GPU context.
+///   made a ration a frame — a press at a human pace finds them ready and
+///   the frame that shows it pays nothing.
 /// - Pictures no step can reach next are let go: an entry deeper than the
 ///   next step each way keeps its tiles, not their pictures — a press that
-///   gets there before the warm-up does takes the wait above.
+///   gets there before the warm-up does has them made in its own paint.
 ///
 /// The plan on the undo-held-tile-pictures card, approved 2026-09-11
 /// (「전부 확인했으니 진행해도되」).
@@ -54,21 +48,8 @@ class HistoryPictures {
   final BrushFrameStore? _store;
   final BitmapTileImageCache _cache;
 
-  /// Takes one undo — or, with [undo] false, one redo — through [apply]: at
-  /// once when every picture it will show is ready, as soon as they are
-  /// otherwise.
+  /// Takes one undo — or, with [undo] false, one redo — through [apply].
   void step({required bool undo, required VoidCallback apply}) {
-    final waiting = _waitingUndo;
-    if (waiting != null) {
-      // Pressed again while a step waits. The SAME way is still one step,
-      // not a queue — a key held down would otherwise go on undoing after
-      // it was let go. The OTHER way takes the waiting one back: the two
-      // presses cancel, and nothing happens that the user did not see.
-      if (waiting != undo) {
-        _endWait();
-      }
-      return;
-    }
     // The adoption the step runs first, run HERE — so what is read below
     // is what the step will actually put back.
     history.onBeforeUndoRedo?.call();
@@ -77,75 +58,6 @@ class HistoryPictures {
       // clears redo); the step itself would stop here too.
       return;
     }
-    final waitFor = <CelSurface>[];
-    final ahead = history.readAhead(undo: undo, wants: _shown.isShown);
-    for (final MapEntry(:key, value: cel) in ahead.entries) {
-      final now = cel.now;
-      // Only a picture that is WHOLE now can be broken by the step. One
-      // still coming in (the cel was switched to a moment ago) is made no
-      // less whole by it, and waiting would hold the press for nothing.
-      if (now != null &&
-          _shown.drawable([(key, now)]) &&
-          !_shown.drawable([(key, cel.next)])) {
-        waitFor.add((key, cel.next));
-      }
-    }
-    if (waitFor.isEmpty) {
-      _land(apply);
-      return;
-    }
-    // Where the engine uploads on the spot (Impeller) the wait ends before
-    // it begins: [ShownCels.whenDrawable] makes the pictures and lands the
-    // step inside this call. There is no second path for that engine.
-    _wait(undo, waitFor, apply);
-  }
-
-  /// Which way the waiting step goes — null while none waits.
-  bool? _waitingUndo;
-  VoidCallback? _stopWaiting;
-
-  void _wait(bool undo, List<CelSurface> cels, VoidCallback apply) {
-    final revision = history.revision;
-    // Reached only with a canvas showing a cel, so the bindings are up.
-    final pointers = GestureBinding.instance.pointerRouter;
-    VoidCallback? stopDrawable;
-    _waitingUndo = undo;
-    _stopWaiting = () {
-      stopDrawable?.call();
-      pointers.removeGlobalRoute(_onPointerWhileWaiting);
-    };
-    // 🚨★★★A PRESS IS HONOURED ONLY WHILE THE USER IS STILL WAITING ON IT.
-    // A step nobody has seen yet, landing after they moved on, would land
-    // ON what they did next — under a stroke begun after the press, or
-    // over a lift whose erase it would put back. So a touch anywhere drops
-    // it, and when the pictures arrive it still stands down if the history
-    // moved or there is work the adoption would take.
-    pointers.addGlobalRoute(_onPointerWhileWaiting);
-    stopDrawable = _shown.whenDrawable(cels, () {
-      _endWait();
-      if (_disposed ||
-          history.revision != revision ||
-          (history.pendingBeforeUndoRedo?.call() ?? false)) {
-        return;
-      }
-      _land(apply);
-    });
-  }
-
-  void _endWait() {
-    final stop = _stopWaiting;
-    _stopWaiting = null;
-    _waitingUndo = null;
-    stop?.call();
-  }
-
-  void _onPointerWhileWaiting(PointerEvent event) {
-    if (event is PointerDownEvent) {
-      _endWait();
-    }
-  }
-
-  void _land(VoidCallback apply) {
     apply();
     _warmAheadAfterTheFrame();
   }
@@ -153,7 +65,7 @@ class HistoryPictures {
   final AfterFrameOnce _warmAhead = AfterFrameOnce();
 
   /// After a step lands, the NEXT one each way is read and its pictures
-  /// started — a few tiles a frame, while the user looks at this one.
+  /// made — a ration a frame, while the user looks at this one.
   ///
   /// ⚠️After the frame, not inside the step: a parked payload comes back
   /// through a synchronous disk read, and paying it inside the step would
@@ -186,9 +98,7 @@ class HistoryPictures {
   ///
   /// ⚠️A tile a cel still holds keeps its picture: a paste, a duplicate and
   /// an unlink store the same tile objects under a second key, so a tile
-  /// one entry holds alone can be another cel's picture on screen. The ways
-  /// the screen borrows a picture for a tile not ready yet are the cache's
-  /// to refuse ([BitmapTileImageCache.releasePicture]).
+  /// one entry holds alone can be another cel's picture on screen.
   ///
   /// After the frame, for the warm's reason: inside the change, the walk
   /// would hold up the frame that shows it.
@@ -208,13 +118,12 @@ class HistoryPictures {
 
   /// The pictures of what a canvas paints for [tile] go — the tile's own,
   /// and on a row drawn through colour keys its keyed copy's, which lives
-  /// exactly as long as the tile does; truth and stand-in alike — unless a
-  /// cel still holds [tile].
+  /// exactly as long as the tile does — unless a cel still holds [tile].
   void _letGo(BrushFrameStore store, TileCoord coord, BitmapTile tile) {
     final keyed = keyedCopyOf(tile);
     final pictured =
-        _cache.displayImageFor(tile) != null ||
-        (keyed != null && _cache.displayImageFor(keyed) != null);
+        _cache.imageFor(tile) != null ||
+        (keyed != null && _cache.imageFor(keyed) != null);
     if (!pictured || store.holdsTile(coord, tile)) {
       return;
     }
@@ -228,7 +137,6 @@ class HistoryPictures {
 
   void dispose() {
     _disposed = true;
-    _endWait();
     history.removeListener(_letDeepPicturesGoAfterTheFrame);
   }
 }

@@ -115,8 +115,7 @@ class TilePictureBudget {
     }
     final candidates = <({int serial, PlacedTile placed})>[];
     for (final placed in _pictured.alive()) {
-      if (_cache.displayImageFor(placed.tile) == null ||
-          _current(placed.tile)) {
+      if (_cache.imageFor(placed.tile) == null || _current(placed.tile)) {
         continue;
       }
       candidates.add((

@@ -678,7 +678,7 @@ class _LayerStackPaintPass {
     _PaintActiveSurface row,
     double rasterScale,
   ) {
-    final _PaintActiveSurface(:opacity, :blendMode, :effects, :standIn) = row;
+    final _PaintActiveSurface(:opacity, :blendMode, :effects) = row;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
     // viewport-transformed, so only the content body runs.
@@ -753,61 +753,6 @@ class _LayerStackPaintPass {
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
-      if (standIn != null &&
-          standIn.shouldStandInFor(_painter.activeSurfacePainter!)) {
-        assert(() {
-          debugActiveSlotDraw = ActiveSlotDraw.standIn;
-          return true;
-        }());
-        // The FIRST-ACTIVATION swap window: while any of the
-        // promoted surface's tiles is still undecoded, the walk
-        // could show only its budgets' worth and leave the rest
-        // silent — the blank (whole on the swap frame, per-tile
-        // once the first decodes landed). The held image is the
-        // SAME pixels the previous frame drew for this cel at
-        // the same rect with the same sampling, so standing in
-        // is seamless; the paint-time predicate above hands
-        // back to the walk once every tile can speak for itself
-        // — and instantly the moment an edit could exist.
-        if (_painter.activeSurfacePainter!.showTransparentBackground) {
-          // Parity with [BitmapSurfacePainter.paintContentInto]'s
-          // own opening block (the merged stack passes false and
-          // paints paper itself; standalone hosts rely on this).
-          into.drawRect(
-            _painter.canvasSize.canvasRect,
-            Paint()..color = const Color(ProjectBackground.defaultPaperArgb),
-          );
-        }
-        into.drawImageRect(
-          standIn.image,
-          Rect.fromLTWH(
-            0,
-            0,
-            standIn.image.width.toDouble(),
-            standIn.image.height.toDouble(),
-          ),
-          standIn.worldRect,
-          // The display law, exactly like the cached-image route this
-          // image was drawn by one frame ago — the handoff into
-          // the stand-in must be byte-identical.
-          _withLayerPaint(
-            Paint()..filterQuality = _displayQuality,
-            ridingPaint,
-          ),
-        );
-        // ⛔The stand-in can only hand off if the decodes it is
-        // waiting on actually start — the walk's collect pass is
-        // skipped this frame, so its decode starts must not be.
-        _painter.activeSurfacePainter!.startPendingDecodes(into);
-        // 🚨F-33 / F-130: the ghost, over the held image — the same
-        // reason as on the flat route above. A hover during the swap
-        // window is not an edit, so the window stays open.
-        _painter.activeSurfacePainter!.paintStampPreviewInto(into);
-      } else {
-        assert(() {
-          debugActiveSlotDraw = ActiveSlotDraw.tiles;
-          return true;
-        }());
         _painter.activeSurfacePainter!.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -817,7 +762,6 @@ class _LayerStackPaintPass {
           // level its residual leaves.
           level: displayLevelOf(rasterScale),
         );
-      }
       // 🚨TS1: the selection's FLOAT belongs here, right on top of
       // the surface it was lifted out of and UNDER everything
       // above that row. Drawn inside this slot's clip and its

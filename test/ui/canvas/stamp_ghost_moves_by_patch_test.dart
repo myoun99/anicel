@@ -325,7 +325,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 2, y: 4, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     await settle(tester, cache);
     final fullBefore = cache.fullCount;
@@ -336,19 +335,17 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 6, y: 4, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     await tester.pump();
     expect(cache.fullCount, fullBefore, reason: 'the second step must not raster the whole buffer');
     expect(cache.patchedCount, patchedBefore + 1, reason: 'it patches');
   });
-  testWidgets('on the first-activation swap frame the stand-in draws the '
-      'ghost over the held image — the route stays the stand-in, and the '
-      'ghost is on screen', (tester) async {
-    // `first_activation_swap_frame_blank_test`'s fixture: a file-backed
-    // cel shown as a cached image, then promoted with a tile cache that
-    // knows none of its fresh tile objects — the frame the stand-in
-    // exists for.
+  testWidgets('on the activation frame the tiles draw themselves and the '
+      'ghost is drawn over them', (tester) async {
+    // A file-backed cel shown as a cached image, then promoted with a tile
+    // cache that knows none of its fresh tile objects — the frame the
+    // first-activation stand-in used to exist for; every tile pictures
+    // itself inside this paint now (2026-09-17).
     const tileSize = 16;
     const tileCount = 4;
     const key = BrushFrameKey(
@@ -477,7 +474,7 @@ void main() {
     final painter = BitmapSurfacePainter(
       surface: store.bakedSurfaceOrNull(key)!,
       showTransparentBackground: false,
-      staleScope: 'ghost-stand-in-under-test',
+      lineage: 'ghost-stand-in-under-test',
       tileImageCache: BitmapTileImageCache(),
       stampPreview: preview,
     );
@@ -487,14 +484,8 @@ void main() {
       ],
       activeSurfacePainter: painter,
     );
-    debugActiveSlotDraw = null;
     final swapFrame = await paintStack();
-    expect(
-      debugActiveSlotDraw,
-      ActiveSlotDraw.standIn,
-      reason: 'fixture premise: the swap frame draws the held image',
-    );
-    expect(rgbaAt(swapFrame, 8, 8), [0, 0, 255, 255], reason: 'the held artwork stands in');
+    expect(rgbaAt(swapFrame, 8, 8), [0, 0, 255, 255], reason: 'the tiles draw the artwork on the activation frame');
     expect(rgbaAt(swapFrame, 22, 6), [255, 0, 0, 255], reason: 'the ghost is drawn over it');
   });
 }

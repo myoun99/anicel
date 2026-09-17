@@ -89,7 +89,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       for (final entry in surface.tiles.entries) {
-        cache.ensureDecoded((coord: entry.key, tile: entry.value));
+        cache.pictureFor((coord: entry.key, tile: entry.value));
       }
       while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
         await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -263,7 +263,6 @@ void main() {
         await tester.runAsync(() async {
           final region = rasterizer.blendFrom(dabs, from: dabs.length - 1);
           overlay.updateRegion(source: rasterizer, region: region!);
-          await overlay.waitForPendingDecodes();
         });
       },
     );
@@ -291,18 +290,16 @@ void main() {
       tester,
       what: 'a fill\'s result tile',
       stack: stack,
-      draw: (where) => tester.runAsync(
-        () => overlay.showResultTiles([
-          PromotedStrokeTile(
-            TileCoord(
-              x: (where.center.dx / tileSize).floor(),
-              y: (where.center.dy / tileSize).floor(),
-            ),
-            BitmapTile(size: tileSize, pixels: redRgba()),
-            fillPromotionRevision,
+      draw: (where) async => overlay.showResultTiles([
+        PromotedStrokeTile(
+          TileCoord(
+            x: (where.center.dx / tileSize).floor(),
+            y: (where.center.dy / tileSize).floor(),
           ),
-        ]),
-      ),
+          BitmapTile(size: tileSize, pixels: redRgba()),
+          fillPromotionRevision,
+        ),
+      ]),
     );
   });
 

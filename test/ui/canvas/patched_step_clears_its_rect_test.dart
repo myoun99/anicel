@@ -136,7 +136,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     await bytesNow(tester);
     await tester.runAsync(() async {
@@ -145,7 +144,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 3, y: 2, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     final afterPatch = await bytesNow(tester);
     expect(

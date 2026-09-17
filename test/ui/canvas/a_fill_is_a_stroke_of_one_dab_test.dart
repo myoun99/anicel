@@ -74,7 +74,6 @@ void main() {
     cache.adoptDecoded(
       (coord: coord, tile: tile),
       picture.toImageSync(size, size),
-      staleScope: BitmapTileImageCache.unfiled,
     );
     picture.dispose();
     return tile;
@@ -286,7 +285,7 @@ void main() {
       ..preBlendBase = base
       ..blendMode = BrushBlendMode.color;
     addTearDown(overlay.dispose);
-    await tester.runAsync(() => overlay.showResultTiles(promoted));
+    overlay.showResultTiles(promoted);
     expect(overlay.tileImages, hasLength(4));
 
     // 32×32 canvas px in an 8×8 view: one device pixel per 4×4 block.
@@ -329,7 +328,6 @@ void main() {
       cache.adoptDecoded(
         (coord: entry.coord, tile: entry.tile),
         image!,
-        staleScope: BitmapTileImageCache.unfiled,
       );
       placed.add((coord: entry.coord, tile: entry.tile));
     }

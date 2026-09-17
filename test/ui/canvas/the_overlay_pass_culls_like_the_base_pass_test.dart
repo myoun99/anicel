@@ -111,7 +111,7 @@ void main() {
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
       overlayModel: model,
       showTransparentBackground: false,
-      staleScope: Object(),
+      lineage: Object(),
     ).paintContentInto(canvas);
 
     expect(

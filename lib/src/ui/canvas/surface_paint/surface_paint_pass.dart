@@ -1,11 +1,11 @@
 part of '../bitmap_surface_painter.dart';
 
-/// ONE PAINT OF A BITMAP SURFACE'S CONTENT — the paper, the visible tiles
-/// (a committed image, a held pre-stroke tile, or the live tile within its
-/// upload and pixel-fallback budgets), the stroke overlay, the stamp preview.
-/// 🚨Carved out of `BitmapSurfacePainter` (the audit's cognitive cut, Round
-/// 6, 2026-09-03: `paintContentInto` was 418 lines scoring 80). Constructed
-/// PER PAINT; it reaches the painter through `_painter`.
+/// ONE PAINT OF A BITMAP SURFACE'S CONTENT — the paper, the visible
+/// coordinates (each drawn as the one picture it shows, [_CoordinatePicture]),
+/// the stroke overlay, the stamp preview. 🚨Carved out of
+/// `BitmapSurfacePainter` (the audit's cognitive cut, Round 6, 2026-09-03:
+/// `paintContentInto` was 418 lines scoring 80). Constructed PER PAINT; it
+/// reaches the painter through `_painter`.
 class _SurfacePaintPass {
   _SurfacePaintPass(this._painter);
 
@@ -20,18 +20,20 @@ class _SurfacePaintPass {
   late final bool _overlayReplacesCoords;
   late final bool _overlayBlendsInLayer;
   late final Paint _tileImagePaint;
-  late final Map<TileCoord, BitmapTile?>? _settleHold;
-  late int _pixelFallbackBudget;
-  late int _syncUploadBudget;
-  late int _predecessorRectBudget;
-  late int _predecessorTileBudget;
   late final int _level;
   late int _levelTileBudget;
   late final Rect _visibleRect;
-  List<PlacedTile>? _pendingDecodes;
 
   /// The one answer to what a coordinate shows ([_CoordinatePicture]).
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
+
+  /// The level tiles one paint may make ([_LevelBlocks._mayMake]), each a
+  /// `toImageSync` of four pictures. A cold zoomed-out view is the whole
+  /// visible grid at once, and the blocks that miss out draw their
+  /// coordinates this frame and ask again on the next; the seam probe
+  /// measured a make at tens of microseconds, so one paint's ration is
+  /// under two milliseconds.
+  static const int levelTilesPerPaint = 32;
 
   /// The surface + live _overlay, onto a _canvas the CALLER has already
   /// viewport-transformed and clipped to [_pasteboardRect].
@@ -61,9 +63,9 @@ class _SurfacePaintPass {
     _canvas = canvas;
     _layerPaint = layerPaint;
     _level = level;
-    _painter.pictureBudget.paintBegan(_painter.staleScope);
+    _painter.pictureBudget.paintBegan(_painter.lineage);
     if (_level > 0) {
-      TilePyramid.instance.paintBegan(_painter.staleScope);
+      TilePyramid.instance.paintBegan(_painter.lineage);
     }
     assert(
       _layerPaint == null || _painter.drawsDisjointCoverage,
@@ -116,72 +118,10 @@ class _SurfacePaintPass {
         ..colorFilter = _layerPaint.colorFilter
         ..imageFilter = _layerPaint.imageFilter;
     }
-    // While a stroke settles, coordinates it touched draw their pinned
-    // PRE-stroke tile (or nothing if the coordinate was empty) instead of
-    // the committed tile: post-commit decodes land one by one, and drawing
-    // them under the still-visible _overlay flashed the stroke at double
-    // density in tile-shaped patches. The pin and the _overlay clear in one
-    // notification, so the swap to committed pixels is atomic.
-    _settleHold = _painter.overlayModel?.settleHoldTiles;
-    // Per-pixel fallback budget (R17 measured): the first paint after a
-    // FULL-CANVAS commit (a fill/lift stamp) used to draw ~130 undecoded
-    // tiles pixel-by-pixel — 65k rects per tile, the multi-second "first
-    // fill" freeze. A few tiles are fine; past the budget the tile waits
-    // for its decode (it lands within a few frames — the repaint hook
-    // brings it in).
-    _pixelFallbackBudget = 4;
-    // N4 ⑤: the SAME rationing for synchronous uploads, and for the same
-    // reason. An upload costs the tile copy + premultiply a decode START
-    // costs, plus the upload itself — so doing it for every undrawable
-    // visible coordinate would rebuild, inside one frame, exactly the
-    // burst [decodeStartBudget] exists to spread over several. Zoomed out
-    // on a large cel that is the whole visible grid at once.
-    //
-    // Same number as the decode-start budget, because it is the same cost
-    // being rationed and the two are alternatives for one coordinate. Any
-    // tile that misses out is not lost: it keeps today's answer for this
-    // frame, its decode was already started by the collect pass, and the
-    // next paint offers it the upload again.
-    //
-    // ⚠️ Skia never reaches this — `adoptSyncUpload` returns on a cached
-    // bool before the budget is consulted — so nothing here changes the
-    // renderer this is developed on. That is precisely why it needs to be
-    // reasoned about rather than measured here.
-    _syncUploadBudget = BitmapSurfacePainter.decodeStartBudget;
-    // 4c: the level tiles made in this paint ([_LevelBlocks._mayMake]).
-    _levelTileBudget = BitmapSurfacePainter.decodeStartBudget;
-    // The truthful stand-in's budgets (F-68 root fix). RECTS, because that
-    // is what the composition costs: an erase is a few hundred long runs,
-    // a soft gradient laid on nothing is tens of thousands of one-pixel
-    // ones. 32k rects is an eighth of what the per-pixel fallback below
-    // already spends on its four tiles, so nothing here is a new cost
-    // ceiling — it is a cheaper answer tried first. And a tile cap, because
-    // the byte walk is ~1 ms a tile in Dart and a whole-canvas commit is a
-    // thousand tiles: the walk is visible-first, so the tiles that miss
-    // out are off-screen ones, and they keep today's answer this frame.
-    _predecessorRectBudget = BitmapSurfacePainter.debugPredecessorRectBudget;
-    _predecessorTileBudget = 16;
-    // R27 #2: the budget goes to tiles the user can actually SEE. Since
-    // the walk below is now visible-only, every coordinate it reaches
-    // already shows — no separate visibility test is needed.
+    _levelTileBudget = levelTilesPerPaint;
+    // R27 #2: the walk below is visible-only, so every coordinate it
+    // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _pasteboardRect);
-    // Decode-start chunking (R18 B-1): STARTING a decode costs a
-    // synchronous tile copy + 65k-pixel premultiply on the UI thread, and
-    // a full-_canvas commit used to start every changed tile in one paint
-    // (~130+ tiles — the post-commit hitch the R17 probe measured).
-    // Pending tiles are collected here and at most [decodeStartBudget]
-    // start per paint, visible tiles center-out first; each completion
-    // notifies (coalesced per frame), which repaints this painter and
-    // starts the next chunk, so the surface converges over a few frames
-    // while the stale/settle-hold fallbacks keep on-screen content stable.
-    // Decode STARTS are collected across the WHOLE cel (cheap: an Expando
-    // lookup per tile), so off-screen tiles keep pre-warming in the
-    // background and scroll in already decoded — the visibility priority
-    // lives in _startPrioritizedDecodes.
-    // Coordinates the base pass drew from the COMMITTED tile even though
-    // the _overlay holds a stand-in for them; the _overlay pass leaves
-    // these alone.
-    _collectPendingDecodes();
 
     // DRAWING walks only the tile COORDINATES the view covers, not every
     // committed tile. This paint runs per stroke frame (the _overlay's
@@ -197,10 +137,6 @@ class _SurfacePaintPass {
     // a cliff, not a smoothness question. 2d0478fb (2026-09-09) stopped the
     // copy, so both lookups are O(1) now; `tileAt` stays the one meant here.
     _paintVisibleTiles();
-    final pendingDecodes = _pendingDecodes;
-    if (pendingDecodes != null) {
-      _painter._startPrioritizedDecodes(pendingDecodes, _visibleRect);
-    }
 
     _paintOverlay();
 
@@ -224,7 +160,7 @@ class _SurfacePaintPass {
     // the stage boundary.
     _painter.pictureBudget.paintEnded();
     if (_level > 0) {
-      TilePyramid.instance.paintEnded(_painter.staleScope);
+      TilePyramid.instance.paintEnded(_painter.lineage);
     }
   }
 
@@ -241,19 +177,8 @@ class _SurfacePaintPass {
     }
   }
 
-  /// The tiles whose decode has not started yet — started after the
-  /// paint, nearest to the visible rect first.
-  ///
-  /// ⛔The walk itself is the painter's ([BitmapSurfacePainter
-  /// .tilesAwaitingDecode]) — it was written out here AND there, same
-  /// iteration and same predicate, and a converged cel now stops paying
-  /// for either.
-  void _collectPendingDecodes() {
-    _pendingDecodes = _painter.tilesAwaitingDecode();
-  }
-
   /// Every coordinate under the visible rect, drawn as what it shows
-  /// ([_coordinate]) — the committed tiles, each stamped as shown for the
+  /// ([_coordinates]) — the committed tiles, each stamped as shown for the
   /// picture budget ([TilePictureBudget.shown]), and the live stroke's
   /// coordinates that have no committed tile yet (ink on blank paper),
   /// which are coordinates like any other.
@@ -268,7 +193,7 @@ class _SurfacePaintPass {
       return;
     }
     for (final covered in tilesUnderRect(_painter.surface, _visibleRect)) {
-      _painter.pictureBudget.shown(_painter.staleScope, covered.tile);
+      _painter.pictureBudget.shown(_painter.lineage, covered.tile);
       _coordinates.paint(covered.coord);
     }
     final overlay = _overlay;
@@ -351,8 +276,7 @@ class _SurfacePaintPass {
         : _tileImagePaint;
   }
 
-  /// The live stroke's tiles and stamp over the committed tiles
-  /// ([_OverlayPass]).
+  /// The live stroke's tiles over the committed tiles ([_OverlayPass]).
   void _paintOverlay() {
     if (_overlay != null) {
       _OverlayPass(this, _overlay).paint();

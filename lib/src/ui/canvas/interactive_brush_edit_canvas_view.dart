@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../../models/placed_tile.dart';
 import '../../models/bitmap_surface.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
@@ -15,7 +13,6 @@ import '../../models/brush_dab.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../models/dirty_region.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
@@ -47,7 +44,6 @@ part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
 part 'brush_edit/brush_edit_overlay.dart';
-part 'brush_edit/brush_edit_settling.dart';
 part 'brush_edit/brush_edit_hold.dart';
 part 'brush_edit/brush_edit_cel_press.dart';
 part 'brush_edit/brush_edit_press.dart';
@@ -59,32 +55,6 @@ part 'brush_edit/brush_edit_press.dart';
 /// ⚠️A FUNCTION rather than the press object: what leaves this view is the
 /// one verb a save needs, not a handle onto its input state.
 typedef StrokeLander = bool Function();
-
-/// The committed-surface tiles inside [bounds] (every stored tile when the
-/// bounds are unknown): the set whose decodes gate the settling overlay
-/// handoff, so a just-committed stroke never trades its overlay for stale
-/// pre-stroke tile images.
-@visibleForTesting
-List<PlacedTile> settlingTilesForBounds({
-  required BitmapSurface surface,
-  required DirtyRegion? bounds,
-}) {
-  if (bounds == null) {
-    return [
-      for (final entry in surface.tiles.entries)
-        (coord: entry.key, tile: entry.value),
-    ];
-  }
-  final box = bounds.tileRange(tileSize: surface.tileSize);
-  return [
-    for (final entry in surface.tiles.entries)
-      if (entry.key.x >= box.firstX &&
-          entry.key.x <= box.lastX &&
-          entry.key.y >= box.firstY &&
-          entry.key.y <= box.lastY)
-        (coord: entry.key, tile: entry.value),
-  ];
-}
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
@@ -212,10 +182,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
   /// primary tap builds the flood's stamp dab here and the view runs it
-  /// through the STROKE pipeline: the overlay shows the filled region
-  /// the very next frame (native stamp blend into the live rasterizer),
-  /// the commit rides [onSourceStrokeCommitted], and the overlay holds
-  /// until the committed tiles decode (the settling contract) — no more
+  /// as a stroke of one dab (`promoteFillDab`): the overlay shows the
+  /// result tiles the very next frame and the commit lands them through
+  /// [onSourceStrokeCommitted] with their pictures already made — no
   /// tile-by-tile reveal on big fills.
   final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
   fillDabAt;
@@ -383,16 +352,9 @@ class _InteractiveBrushEditCanvasViewState
   final List<BrushDab> _pendingOverlayDabs = <BrushDab>[];
   bool _overlayFlushScheduled = false;
 
-  // After pointer-up the overlay stays visible ("settling") until the
-  // committed tiles finish decoding, so the stroke never flashes away while
-  // the display switches to the materialized bitmap.
-  // Settling (Round 6): the decode window after a stroke lands.
-  late final _BrushEditSettling _settlingState = _BrushEditSettling(this);
-
   @override
   void initState() {
     super.initState();
-    BitmapTileImageCache.instance.addListener(_onTileImagesChanged);
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
   }
@@ -405,7 +367,7 @@ class _InteractiveBrushEditCanvasViewState
     // flip, and that element + render-tree rebuild summed to a 40-80ms
     // UI-thread hitch — the constant flip lag. A cel identity change now
     // resets the per-stroke state in place; everything else (session
-    // state, stale scope) flows through the ordinary rebuild.
+    // state, lineage) flows through the ordinary rebuild.
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       // R13-4: this runs inside the build/update phase. The stroke-end
@@ -436,8 +398,6 @@ class _InteractiveBrushEditCanvasViewState
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
     ShownCels.instance.hide(this);
-    BitmapTileImageCache.instance.removeListener(_onTileImagesChanged);
-    _settlingState._settlingFallbackTimer?.cancel();
     // Only OUR model — a host-owned one outlives this view (it survives
     // the layer switches that rebuild us).
     if (widget.overlayModel == null) {
@@ -518,7 +478,7 @@ class _InteractiveBrushEditCanvasViewState
                       showTransparentBackground:
                           widget.showTransparentBackground,
                       overlayModel: _overlay._overlayModel,
-                      staleScope: (widget.layerId, widget.frameId),
+                      lineage: (widget.layerId, widget.frameId),
                     ),
                   )
                 : const SizedBox.expand(),
@@ -629,28 +589,6 @@ class _InteractiveBrushEditCanvasViewState
   late final _BrushEditPressure _pressure = _BrushEditPressure(this);
 
   final math.Random _spacingRandom = math.Random();
-
-  /// Whether [buttons] is a drawing contact.
-  ///
-  void _onTileImagesChanged() {
-    // BEFORE the settle gate: a stand-in outlives the window that made
-    // it, so once a new stroke is live this is the only thing that lets
-    // it go.
-    _settlingState.releaseSettledStandIns();
-    if (!_settlingState._settling || !mounted) {
-      return;
-    }
-    final settling = _settlingState.settlingTiles();
-    if (BitmapTileImageCache.instance.allDecoded([
-      for (final placed in settling) placed.tile,
-    ])) {
-      _overlay.resetOverlay();
-    } else {
-      // Not done yet — start the next decode chunk off this notification
-      // (the 50ms timer stays as the belt-and-braces fallback).
-      _settlingState.requestSettlingDecodes();
-    }
-  }
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {

@@ -221,10 +221,6 @@ class BrushFrameEditingCoordinator {
         cacheInvalidationSink,
         _activeFrameKey,
         dirtyTiles: affectedEntry.dirtyTiles,
-        transition: (
-          before: preSurface,
-          after: committedState.canvasState.currentSurface,
-        ),
       ),
     );
     return BrushStrokeCommitOutcome(
@@ -257,9 +253,6 @@ class BrushFrameEditingCoordinator {
     if (surface.canvasSize != sessionStore.canvasSize) {
       return;
     }
-    // Read BEFORE the reset: this is the one moment the pre-restore
-    // surface is still the cel's, and the display side needs the pair.
-    final preSurface = currentSurfaceOf(key);
     final blank = sessionStore.reset(key);
     final state = sessionStore.update(
       key,
@@ -267,31 +260,23 @@ class BrushFrameEditingCoordinator {
     );
     frameStore.markCelEdited(key);
     _donateSessionSurfaceToDisplayCache(key, state);
-    _invalidateBrushFrame(
-      cacheInvalidationSink,
-      key,
-      transition: (before: preSurface, after: surface),
-    );
+    _invalidateBrushFrame(cacheInvalidationSink, key);
   }
 
   /// 🚨★★★THE ONE DOOR EVERY SURFACE REPLACEMENT LEAVES THROUGH. Both
-  /// funnels above end here, so a record that carries the surfaces the
-  /// change went between reaches the display side for a stroke, a lift's
-  /// erase, a landing, an undo, a redo and a pixel verb alike — and for
-  /// every verb written after this comment. The display side seeds each
-  /// changed tile's stand-in from that pair; nothing per path is needed.
+  /// funnels above end here, for a stroke, a lift's erase, a landing, an
+  /// undo, a redo and a pixel verb alike — and for every verb written
+  /// after this comment.
   void _invalidateBrushFrame(
     CacheInvalidationSink? sink,
     BrushFrameKey key, {
     DirtyTileSet? dirtyTiles,
-    SurfaceTransition? transition,
   }) {
     (sink ?? _NoopCacheInvalidationSink()).invalidateBrushFrame(
       BrushFrameCacheInvalidation(
         frameKey: key,
         dirtyTiles: dirtyTiles,
         wholeFrame: dirtyTiles == null || dirtyTiles.isEmpty,
-        transition: transition,
       ),
     );
   }

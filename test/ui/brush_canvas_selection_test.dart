@@ -2139,7 +2139,7 @@ void main() {
       // test that asserted only the scope would pass a painter that had one
       // and borrowed across a lift anyway.
       expect(
-        painter.staleScope,
+        painter.lineage,
         isNotNull,
         reason: 'a scopeless painter shares the bucket every float writes to',
       );
@@ -2694,7 +2694,7 @@ void main() {
         expect(
           surface.tiles.values.every(
             (tile) =>
-                BitmapTileImageCache.instance.displayImageFor(tile) != null,
+                BitmapTileImageCache.instance.imageFor(tile) != null,
           ),
           isTrue,
           reason:
@@ -2897,17 +2897,6 @@ void main() {
       // whole picture is, and this frame has to come out exact wherever
       // the window reaches, which is everything on screen.
       //
-      // ⚠️ The predecessor path is switched OFF for the measurement (rect
-      // budget 0). With it on, a picture of small hard squares composes
-      // exactly from the diff and the window contributes nothing, so the
-      // pin would stay green with the window refused. A soft landing blows
-      // that budget in the app; a zero budget is the same state, reached
-      // without a fixture that takes seconds to materialise.
-      final budget = BitmapSurfacePainter.debugPredecessorRectBudget;
-      BitmapSurfacePainter.debugPredecessorRectBudget = 0;
-      addTearDown(
-        () => BitmapSurfacePainter.debugPredecessorRectBudget = budget,
-      );
       const big = CanvasSize(width: 1800, height: 1400);
       final env = await pumpSelectionPanel(
         tester,
@@ -3112,27 +3101,27 @@ void main() {
       );
     });
 
-    testWidgets('what the composition costs the EYE: at most one channel '
-        'step, against the screen and against the truth', (tester) async {
-      // N4 ②, and it is the judgement that closes the Skia side.
-      //
-      // The parity suite measures composed-vs-COMMIT and answers "may we
-      // adopt this?" (no — up to two channel steps, so it stays
-      // provisional). That is not the question a USER has. Theirs is: on
-      // the frame my edit lands, does the picture change under me? So
-      // this measures the composed stand-in against BOTH neighbours — the
-      // frame before it and the settled truth after — through the panel's
-      // own capture, which is what the eye gets.
+    testWidgets('🚨the confirm frame IS the settled truth, byte for byte — '
+        'and the float the user saw is within a channel step of it', (
+      tester,
+    ) async {
+      // 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」.
+      // The question a USER has: on the frame my edit lands, does the
+      // picture change under me? Until 2026-09-17 the confirm frame was a
+      // composed stand-in (N4 ②: srcOver of the float over the base, up to
+      // two channel steps from the commit, one on this fixture) and the
+      // truth arrived a decode round later. The landing's tiles picture
+      // themselves inside the paint that lands them now, so the confirm
+      // frame is measured against the settled truth and must BE it.
       //
       // ⚠️ THE FIXTURE IS THE WHOLE TEST. Every other confirm test here
-      // lifts the WHOLE picture with hard opaque dabs, and both halves of
-      // that are exact by construction: composing over an emptied tile is
-      // exact, and srcOver of an opaque source is exact. So none of them
-      // has ever exercised a blend. This one lifts a SUB-REGION of a
+      // lifts the WHOLE picture with hard opaque dabs, and that is exact by
+      // construction: srcOver of an opaque source is exact. So none of
+      // them has ever exercised a blend. This one lifts a SUB-REGION of a
       // soft, semi-transparent picture and drops it back on top of the
-      // rest, which is the only shape where the two rounding orders can
-      // disagree at all — and the anti-vacuity assertion below fails if a
-      // future change makes it stop blending.
+      // rest, which is the only shape where the float's GPU blend and the
+      // commit's kernel can disagree at all — and the anti-vacuity
+      // assertion below fails if a future change makes it stop blending.
       final env = await pumpSelectionPanel(tester, sourceDabs: blendedPicture);
       await dragOnLayer(tester, const Offset(120, 120), const Offset(430, 380));
       await env.setTool(CanvasTool.move);
@@ -3150,7 +3139,7 @@ void main() {
       // whole-panel diff of live-vs-confirm is dominated by chrome —
       // measured 2105 pixels at a full 255. A pixel counts as chrome when
       // live disagrees with SETTLED by more than a rounding step, since
-      // the settled frame has neither chrome nor stand-ins.
+      // the settled frame has no chrome.
       var chrome = 0;
       var vsScreen = 0;
       var vsScreenWorst = 0;
@@ -3184,14 +3173,16 @@ void main() {
         }
       }
 
-      // ANTI-VACUITY. Zero differing pixels would mean the landing never
-      // blended and the bounds below are statements about nothing.
+      // ANTI-VACUITY. The float the user was looking at is the GPU's blend
+      // and the landing is the commit kernel's: if no pixel differed
+      // between them the landing never blended, and the judgement below
+      // would be a statement about nothing.
       expect(
-        vsTruth,
+        vsScreen,
         greaterThan(500),
         reason:
-            'only $vsTruth pixels differ from the settled frame — the '
-            'landing is not blending, so this measures nothing',
+            'only $vsScreen pixels differ between the float and the landing '
+            '— the landing is not blending, so this measures nothing',
       );
       expect(
         chrome,
@@ -3199,25 +3190,27 @@ void main() {
         reason: 'no chrome was masked — the session was not pending',
       );
 
-      // THE JUDGEMENT. One step is invisible and it is on the FIDELITY
-      // axis, which this program's invariant permits trading; coverage is
-      // the axis it never trades, and the coverage assertions live in the
-      // neighbouring tests. Measured: 2674 pixels against the screen,
-      // 3509 against the truth, worst channel 1 on both.
+      // THE JUDGEMENT. The confirm frame is the result: not one byte of it
+      // moves when the frame settles.
+      // ⛔Mutation: stand anything in for a landed tile (its predecessor's
+      // picture, a composition, a blank) → this frame is not the truth.
+      expect(
+        vsTruth,
+        0,
+        reason:
+            '$vsTruth pixels of the confirm frame differ from the settled '
+            'truth (worst channel $vsTruthWorst) — a frame that is not the '
+            'result',
+      );
+      // And the float preview the user confirmed is within one channel step
+      // of what landed (the GPU blends premultiplied operands, the kernel
+      // blends straight and premultiplies once).
       expect(
         vsScreenWorst,
         lessThanOrEqualTo(1),
         reason:
             'the confirm frame moved the picture under the user by '
             '$vsScreenWorst channel steps on $vsScreen pixels',
-      );
-      expect(
-        vsTruthWorst,
-        lessThanOrEqualTo(1),
-        reason:
-            'the stand-in is $vsTruthWorst channel steps from the truth on '
-            '$vsTruth pixels — the sweep allows two, but the screen has '
-            'never shown more than one and a regression should say so',
       );
     });
 

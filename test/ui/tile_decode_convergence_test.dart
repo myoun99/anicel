@@ -44,7 +44,7 @@ void main() {
 
     Widget host(BitmapSurface s) => MaterialApp(
       home: CustomPaint(
-        painter: BitmapSurfacePainter(surface: s, staleScope: ('l', 'f')),
+        painter: BitmapSurfacePainter(surface: s, lineage: ('l', 'f')),
         child: const SizedBox(width: 200, height: 200),
       ),
     );

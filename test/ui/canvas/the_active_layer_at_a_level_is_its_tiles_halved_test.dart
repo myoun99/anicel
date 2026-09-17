@@ -11,7 +11,6 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -64,7 +63,6 @@ void main() {
     cache.adoptDecoded(
       (coord: coord, tile: tile),
       picture.toImageSync(size, size),
-      staleScope: BitmapTileImageCache.unfiled,
     );
     picture.dispose();
     return tile;
@@ -189,63 +187,5 @@ void main() {
             'the recorder\'s scale',
       );
     }
-  });
-
-  testWidgets('a block the settle hold touches keeps the tile route: the '
-      'held pre-stroke tile shows, not the level tile of the commit',
-      (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
-    addTearDown(images.dispose);
-    const size = CanvasSize(width: 16, height: 16);
-    // Four black tiles — one level-1 block — every one pictured.
-    final surface = BitmapSurface(
-      canvasSize: size,
-      tileSize: tileSize,
-      tiles: {
-        for (var ty = 0; ty < 2; ty += 1)
-          for (var tx = 0; tx < 2; tx += 1)
-            TileCoord(x: tx, y: ty): pictured(
-              TileCoord(x: tx, y: ty),
-              tileSize,
-              (_, _) => black,
-            ),
-      },
-    );
-    // The stroke that made (0,0) black is settling: its pre-stroke tile
-    // was empty, and the hold pins that until the commit's decodes land.
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
-      ..settling = true
-      ..holdPreStrokeTiles({
-        TileCoord(x: 0, y: 0): BitmapTile.blank(size: tileSize),
-      });
-    final live = BitmapSurfacePainter(
-      surface: surface,
-      overlayModel: overlay,
-      showTransparentBackground: false,
-    );
-    // 50%: level 1, the whole 16×16 canvas in an 8×8 view — one block.
-    const logicalSize = Size(8, 8);
-    await tester.pumpWidget(
-      stackAt(
-        viewport: CanvasViewport(zoom: 0.5),
-        logicalSize: logicalSize,
-        live: live,
-        images: images,
-      ),
-    );
-    await tester.pumpAndSettle();
-    final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
-    int red(int x, int y) => bytes[(y * 8 + x) * 4];
-    expect(
-      red(1, 1),
-      255,
-      reason: 'the held tile (canvas 0..8) shows its pre-stroke emptiness '
-          'over white paper — a level tile here would show the commit\'s '
-          'black under the settling stroke (the double-density ghost, '
-          'one level down)',
-    );
-    expect(red(6, 6), 0, reason: 'the untouched tiles are black');
   });
 }

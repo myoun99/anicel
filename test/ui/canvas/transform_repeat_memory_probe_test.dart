@@ -30,7 +30,6 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:anicel/src/ui/canvas/tile_predecessors.dart';
 import 'package:anicel/src/ui/session/history_pictures.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
@@ -223,14 +222,10 @@ void main() {
     String whoHolds() {
       final cache = BitmapTileImageCache.instance;
       final key = coordinator.activeFrameKey;
-      final scope = (key.layerId, key.frameId);
       final counted = Set<BitmapTile>.identity();
       int bytesOf(BitmapTile tile) => tile.size * tile.size * 4;
-      // A stand-in is a picture too — `liveImageBytes` counts both — and a
-      // tile can hold one with no truth behind it, so the buckets count both.
       int picturedBytes(BitmapTile tile) =>
-          (cache.imageFor(tile) != null ? bytesOf(tile) : 0) +
-          (cache.hasProvisional(tile) ? bytesOf(tile) : 0);
+          cache.imageFor(tile) != null ? bytesOf(tile) : 0;
       var screen = 0;
       for (final tile in coordinator.currentSurfaceOf(key).tiles.values) {
         if (counted.add(tile)) {
@@ -244,43 +239,21 @@ void main() {
         }
       }
       var held = 0;
-      var lent = 0;
-      var filed = 0;
       var other = 0;
-      var standIns = 0;
       history.visitDeepHeldTiles((coord, tile) {
-        if (!counted.add(tile)) {
+        if (!counted.add(tile) || cache.imageFor(tile) == null) {
           return;
         }
-        if (cache.hasProvisional(tile)) {
-          standIns += bytesOf(tile);
-        }
-        final image = cache.imageFor(tile);
-        if (image == null) {
-          return;
-        }
-        final bytes = bytesOf(tile);
         if (store.holdsTile(coord, tile)) {
-          held += bytes;
-        } else if (TilePredecessors.instance.lends(
-          tile,
-          hasPicture: (successor) => cache.displayImageFor(successor) != null,
-        )) {
-          lent += bytes;
-        } else if (identical(
-          cache.latestImageForCoord(coord, scope: scope),
-          image,
-        )) {
-          filed += bytes;
+          held += bytesOf(tile);
         } else {
-          other += bytes;
+          other += bytesOf(tile);
         }
       });
       final live = BitmapTileImageCache.liveImageBytes;
-      final deep = held + lent + filed + other + standIns;
+      final deep = held + other;
       return 'who: live=${mb(live)} screen=${mb(screen)} next=${mb(next)} '
-          'deep=${mb(deep)} (held ${mb(held)} lent ${mb(lent)} '
-          'filed ${mb(filed)} other ${mb(other)} stand-ins ${mb(standIns)}) '
+          'deep=${mb(deep)} (held ${mb(held)} other ${mb(other)}) '
           'outside=${mb(live - screen - next - deep)}';
     }
 

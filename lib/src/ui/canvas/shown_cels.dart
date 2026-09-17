@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show VoidCallback;
-
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/frame_id.dart';
@@ -20,15 +18,18 @@ typedef _Shown = ({
 });
 
 /// The cels the canvases are painting with tile pictures right now — and
-/// the pictures a change to one of them will need, so the change can have
-/// them ready before it lands.
+/// the pictures a change to one of them will need, made AHEAD so the paint
+/// that shows the change finds them ready.
 ///
-/// 🚨★★★**A STEP MUST NOT BREAK A WHOLE PICTURE** (undo-held-tile-pictures,
+/// 🚨★★★A STEP MUST NOT BREAK A WHOLE PICTURE (undo-held-tile-pictures,
 /// stage 1, 2026-09-11). A tile's picture is keyed on the tile OBJECT, so a
-/// surface made of new objects has no pictures until they are made — and an
-/// undo into an entry the budget had parked is exactly that. Measured on a
-/// 225-tile cel: 204 tiles blank on the first frame, filling in over
-/// several.
+/// surface made of new objects has no pictures until they are made — and
+/// an undo into an entry the budget had parked is exactly that. Since
+/// 2026-09-17 the paint makes every picture it needs inside itself, so no
+/// step can show a blank whatever this did; what warming still buys is
+/// the frame's TIME: a cel's worth of pictures made a ration a frame
+/// while the user looks at the current step, rather than all at once in
+/// the paint that shows the next one.
 ///
 /// ⚠️**THE CANVASES REGISTER THEMSELVES** ([show], [hide]) under the scope
 /// their painter already names the cel by, and each says how it paints a
@@ -87,112 +88,43 @@ class ShownCels {
     }
   }
 
-  /// Whether every tile of [cels], painted the way the canvases paint them,
-  /// has a picture to draw — or never will through the decoder, which
-  /// refused it: waiting on that one would be waiting forever.
-  bool drawable(Iterable<CelSurface> cels) {
-    for (final placed in _painted(cels)) {
-      if (_cache.displayImageFor(placed.tile) == null &&
-          !_cache.decodeRefused(placed.tile)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// Starts making [cels] drawable, [BitmapTileImageCache.decodeStartBudget]
-  /// tiles a frame — the painter's own ration, for the painter's reason: a
-  /// start copies a tile on the UI thread, and a whole cel of them in one
+  /// Pictures a warm makes per frame. A picture is a tile copy +
+  /// premultiply + upload on the UI thread, and a whole cel of them in one
   /// frame is the hitch the ration exists to prevent.
+  static const int picturesPerFrame = 32;
+
+  /// Starts making [cels]' pictures, [picturesPerFrame] a frame, through
+  /// the same door the paint would take ([BitmapTileImageCache.pictureFor]).
   ///
   /// ⚠️REPLACES whatever was queued. A warm is for the NEXT step, and the
   /// one it replaces is not next any more.
   void warm(Iterable<CelSurface> cels) {
     _queue = [
       for (final placed in _painted(cels))
-        if (_needsPicture(placed)) placed,
+        if (_cache.imageFor(placed.tile) == null) placed,
     ];
-    _pump(BitmapTileImageCache.decodeStartBudget);
+    _pump();
   }
 
   List<PlacedTile> _queue = const [];
   final AfterFrameOnce _nextPump = AfterFrameOnce();
 
-  bool _needsPicture(PlacedTile placed) =>
-      _cache.displayImageFor(placed.tile) == null &&
-      _cache.needsDecodeStart(placed.tile);
-
-  /// Starts up to [budget] of the queue — through the engine's synchronous
-  /// upload where it has one, so no tile is left IN FLIGHT there: a tile
-  /// the asynchronous decoder is holding can only be waited for, even on an
-  /// engine that could have made its picture on the spot.
-  ///
-  /// ⛔UNFILED, both ways. These pictures are for a surface nobody shows
-  /// yet, and filing them under the cel's scope would offer them to the
-  /// coordinate fallback as "the latest picture here" — the NEXT step's
-  /// picture drawn for this one.
-  void _pump(int budget) {
+  void _pump() {
     var next = 0;
-    var left = budget;
+    var left = picturesPerFrame;
     while (next < _queue.length && left > 0) {
       final placed = _queue[next];
       next += 1;
-      if (!_needsPicture(placed)) {
+      if (_cache.imageFor(placed.tile) != null) {
         continue;
       }
       left -= 1;
-      final uploaded = _cache.adoptSyncUpload(
-        placed,
-        staleScope: BitmapTileImageCache.unfiled,
-      );
-      if (uploaded == null) {
-        _cache.ensureDecoded(placed, staleScope: BitmapTileImageCache.unfiled);
-      }
+      _cache.pictureFor(placed);
     }
     _queue = _queue.sublist(next);
     if (_queue.isNotEmpty) {
-      _scheduleNextPump();
+      // The rest of the queue goes on after the frame, a ration at a time.
+      _nextPump.ask(_pump);
     }
   }
-
-  /// The rest of the queue goes on after the frame, a ration at a time.
-  void _scheduleNextPump() =>
-      _nextPump.ask(() => _pump(BitmapTileImageCache.decodeStartBudget));
-
-  /// Calls [then] once [cels] are drawable, and returns what stops the
-  /// wait.
-  ///
-  /// Every picture they still need is started AT ONCE: somebody is waiting
-  /// on these, which is the one case the per-frame ration is not for. Where
-  /// the engine uploads synchronously (Impeller) that makes them drawable
-  /// before this returns, and [then] runs at once — the on-the-spot answer
-  /// is this same call, not a second path beside it.
-  VoidCallback whenDrawable(Iterable<CelSurface> cels, VoidCallback then) {
-    final waitingOn = cels.toList();
-    warm(waitingOn);
-    _pump(_queue.length);
-    if (drawable(waitingOn)) {
-      then();
-      return _nothing;
-    }
-    var waiting = true;
-    late final VoidCallback check;
-    void stop() {
-      if (waiting) {
-        waiting = false;
-        _cache.removeListener(check);
-      }
-    }
-
-    check = () {
-      if (drawable(waitingOn)) {
-        stop();
-        then();
-      }
-    };
-    _cache.addListener(check);
-    return stop;
-  }
-
-  static void _nothing() {}
 }

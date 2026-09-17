@@ -148,14 +148,13 @@ class _BrushEditPress {
     // off-canvas artwork; only the pasteboard wall stops them.
     final startsInsidePasteboard = _state._isInsidePasteboard(canvasPosition);
 
-    // FILL tap (R22-A / R23): the flood's stamp becomes ONE overlay
-    // image at the commit's exact placement, and the commit itself
-    // DEFERS past the tap frame — the finished fill shows while the
-    // heavy commit (~0.5s at 8K) runs behind a complete-looking
-    // picture; settling then holds the overlay until the committed
-    // tiles decode. (The R22-A live-raster blend re-snapshotted and
-    // re-decoded thousands of 128px overlay tiles — the 8K
-    // settle-frame stall.)
+    // FILL tap (R22-A / R23, a stroke of one dab since 2026-09-17): the
+    // flood's result tiles become the overlay's pictures on the tap frame,
+    // and the commit itself DEFERS past it — the finished fill shows while
+    // the commit's tile put runs behind a complete picture, and lands the
+    // same tile objects with their pictures already made. (The R22-A
+    // live-raster blend re-snapshotted and re-decoded thousands of 128px
+    // overlay tiles — the 8K settle-frame stall.)
     if (_pressAsFillTap(
       event,
       canvasPosition,

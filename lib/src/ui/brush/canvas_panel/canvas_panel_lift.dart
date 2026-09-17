@@ -87,116 +87,6 @@ class _CanvasPanelLift {
     return (pixels: surface, region: anchor.region);
   }
 
-  /// The cel as it stood just before a lift session's landing committed —
-  /// the base half of a composed stand-in.
-  ///
-  /// Captured at the call rather than read back, because by the time the
-  /// selection layer asks, the commit has already replaced it. Consumed
-  /// once; a stale one would compose the wrong artwork under the landing.
-  ///
-  /// 🚨 Released on the NEXT FRAME whether or not anyone consumed it, and
-  /// that is not tidiness. Three ordinary endings land a stamp and never
-  /// reach the composer — a tool switch that confirms from the unmounting
-  /// layer's `dispose`, a cel change that lands the pending stamp through
-  /// `_resetAll`, and a confirm with no ink to compose from — and a
-  /// [BitmapSurface] holds every tile the landing replaced, whose pixels
-  /// are NATIVE allocations plus their GPU images. On a whole-picture
-  /// transform of a 2340×1654 cel that is tens of megabytes pinned for
-  /// the rest of the session, which is the same "every edit pins its last
-  /// generation" term [BitmapTileImageCache.retainedScopeLimit] exists to
-  /// bound. The compose runs synchronously inside the same landing, so a
-  /// post-frame release can never take it away early.
-  BitmapSurface? _preLandingSurface;
-
-  /// Captures the pre-landing cel and schedules its release, so the slot
-  /// cannot outlive the landing that filled it.
-  void _holdPreLandingSurface(BrushFrameEditingCoordinator coordinator) {
-    _preLandingSurface = coordinator.currentSurfaceOf(
-      coordinator.activeFrameKey,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _preLandingSurface = null;
-    });
-  }
-
-  /// Gives the tiles a landing just created a picture of themselves,
-  /// composed from what the float is already showing — the whole landing
-  /// painted by the canvas on the frame it lands.
-  ///
-  /// Silent about coordinates it cannot answer for, deliberately: the
-  /// painter composes those from their predecessor (`TilePredecessors`,
-  /// F-68) as far as its budget reaches, and the rest wait for the decode.
-  /// ⛔IT NO LONGER TAKES THE LANDING RECT, AND THAT IS THE FIX, NOT A
-  /// TIDY-UP (F-68). While the rect was in scope the wrong coordinate set
-  /// was one expression away — `tileCoordsIn(landing.tileRange(...))` — and
-  /// that expression is what shipped. Removing the parameter makes it
-  /// unwritable here: the only geometry this method can reach is the two
-  /// surfaces, and they answer the whole question.
-  void _composeCommittedRegionPictures(ProvisionalInkPainter paintInk) {
-    final coordinator = _state.widget._editableCoordinator;
-    final preSurface = _preLandingSurface;
-    _preLandingSurface = null;
-    if (coordinator == null || preSurface == null) {
-      return;
-    }
-    final postSurface = coordinator.currentSurfaceOf(
-      coordinator.activeFrameKey,
-    );
-    if (identical(postSurface, preSurface) ||
-        postSurface.tileSize != preSurface.tileSize) {
-      return;
-    }
-    // 🚨★★★A LANDING CHANGES TWO PLACES, AND THIS USED TO ASK ABOUT ONE
-    // (유저 2026-09-10, F-68).
-    //
-    // 「크기를 기존보다 키울때는 문제없는거같음 … 근데 문제는 기존보다 축소시
-    // 축소 바깥의 기존그림영역의 그림이 1프레임 생겼다가 사라지는듯. 심지어
-    // 안사라질때도있음. 그럴땐 다시 변형시작하거나 그림 갱신하는 동작하면
-    // 사라짐.」
-    //
-    // A transform lands pixels in one rect and EMPTIES the one it lifted
-    // them from. This asked `landing.tileRange(...)` — the destination —
-    // so the emptied coordinates got no picture of themselves, and the
-    // painter fell through to `BitmapTileImageCache.latestImageForCoord`,
-    // which is documented as answering 「with a DIFFERENT tile's picture …
-    // the reason a stroke could land and show the artwork that was there
-    // before it」. The artwork the transform had just erased was drawn back
-    // in its old place until the new empty tile's decode landed — for a
-    // frame, or for as long as the decode budget deferred it, which is
-    // 유저's 「안 사라질 때도 있음」.
-    //
-    // ⚠️ENLARGING HID IT. The destination covers the source when the
-    // transform grows, so the stale coordinates were repainted anyway. Only
-    // a shrink leaves the vacated ring outside — which is exactly where and
-    // only where 유저 saw it.
-    //
-    // 🎯THE DIFF, NOT A SECOND RECT — see [tileCoordsChangedBetween], which
-    // is where that reasoning lives now.
-    final coords = tileCoordsChangedBetween(preSurface, postSurface);
-    // Under the probe because it is the one part of a confirm whose cost
-    // scales with the LANDING rather than with the change: a whole-canvas
-    // stamp is every tile of the cel, at a `toImageSync` each.
-    //
-    // ✏️It scales with what the landing CHANGED now, which is the landing
-    // plus whatever it emptied (F-68). A whole-canvas stamp is the same
-    // number it always was — every tile — and a small one pays for its own
-    // vacated ring, which is precisely the work that was missing.
-    final activeKey = coordinator.activeFrameKey;
-    labProbe(
-      'confirm.composeStandIns',
-      () => seedProvisionalTilePictures(
-        preSurface: preSurface,
-        postSurface: postSurface,
-        coords: coords,
-        ink: paintInk,
-        // The cel's lineage. Only the synchronous-upload path inside
-        // reaches the bucket, but it puts TRUTH there, and truth in the
-        // null bucket is the shared-tin defect the float once had.
-        staleScope: (activeKey.layerId, activeKey.frameId),
-      ),
-    );
-  }
-
   /// R16-① confirm: lands the floating stamp and adopts the whole move
   /// session (raw lift + landed stamp) into app history as ONE undo
   /// entry — a surface-snapshot command whose undo target is the exact
@@ -213,9 +103,6 @@ class _CanvasPanelLift {
     // unrelated rebuild). Mounted guard: the layer's unmount path
     // confirms post-frame, possibly after this panel went with it.
     void run() {
-      // The base the landing is about to be blended onto, for the
-      // composed stand-ins the layer asks for immediately after this.
-      _holdPreLandingSurface(coordinator);
       final historyManager = _state.widget.historyManager;
       // ⚠️READING THE ANCHOR CAN NOW REFUSE, and「no entry」is the honest
       // answer to that. The pre-lift picture may be parked in the run's
@@ -328,7 +215,6 @@ class _CanvasPanelLift {
       return;
     }
     void run() {
-      _holdPreLandingSurface(coordinator);
       coordinator.commitSourceStroke(
         sourceDabs: [stampDab],
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,

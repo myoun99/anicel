@@ -724,22 +724,6 @@ class EditorTopStrip extends StatelessWidget {
             !StaticRaster.globallyEnabled.value;
       },
     ),
-    // And the marker for where the canvas painter had NO picture for a
-    // coordinate it was asked to draw. The whole stale-tile family is
-    // that one event, and it is invisible because the painter's answer
-    // to "I have nothing here" is to draw nothing — so every instance
-    // had to be found by hand, from a real session, one report at a
-    // time. Magenta means "no picture", never "no artwork".
-    _item(
-      id: 'edit-show-unpainted-tiles',
-      label: 'Show Unpainted Tiles',
-      icon: Icons.grid_off_outlined,
-      checked: MeasurementMode.showUnpaintedTiles.value,
-      onPressed: () {
-        MeasurementMode.showUnpaintedTiles.value =
-            !MeasurementMode.showUnpaintedTiles.value;
-      },
-    ),
     // R3b: the BACKDROP plane rendered as the alpha checkerboard —
     // display-only, showing exactly what an alpha export leaves open.
     PanelFlyoutItem(

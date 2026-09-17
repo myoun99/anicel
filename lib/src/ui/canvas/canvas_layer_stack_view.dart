@@ -5,8 +5,6 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
 import '../../core/collection_equality.dart';
-import '../../models/bitmap_surface.dart';
-import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/composite_tree.dart';
@@ -25,7 +23,6 @@ import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
 import 'tiled_surface_compose.dart';
-import 'bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import 'display_buffer_cache.dart';
 import 'display_resample.dart';
@@ -356,18 +353,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
   }
 
-  /// The FIRST-ACTIVATION stand-in (device report 2026-08-17): activation
-  /// promotes a file-backed cel to a surface of all-fresh tile objects,
-  /// [BitmapTileImageCache] keys images by tile identity so it has none of
-  /// them, and the sync-upload/per-pixel budgets leave everything else
-  /// SILENT — the picture disappeared for one frame per layer. The image
-  /// this stack held for that very cel the frame before (the
-  /// [CanvasLayerImageNode] route) is truth pixels for it, so the active
-  /// slot draws it until EVERY tile's decode has landed — and dies the
-  /// instant an edit could exist (overlay activity, a new surface
-  /// instance; see [_ActiveLayerStandIn.shouldStandInFor]).
-  _ActiveLayerStandIn? _activeStandIn;
-
   @override
   void initState() {
     super.initState();
@@ -402,80 +387,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         widget.imageCache.retainPin(entry.key, entry.value.quality);
       }
     }
-    // ⛔BEFORE the sweep: arming borrows the image the just-activated
-    // layer held on the previous frame, and the sweep is exactly what
-    // would drop it (the activated layer leaves the request set).
-    _syncActiveStandIn();
     _syncImagesWithCache();
     unawaited(_ensureImages());
   }
-
-  /// Arms the stand-in on the activation frame, keeps it while its window
-  /// is open, and drops it the build after it dies.
-  ///
-  /// Arming asks the promoted surface itself: a stand-in exists only when
-  /// ZERO of the surface's committed tiles have any picture yet — which is
-  /// precisely the first-activation swap frame. A hot re-activation (tile
-  /// objects still hold their decoded images) or an edited cel (commit
-  /// adoption gave its tiles pictures) never arms.
-  void _syncActiveStandIn() {
-    final painter = widget.activeSurfacePainter;
-    final key = _activeNodeFrameKey(widget.nodes);
-    final current = _activeStandIn;
-    if (current != null) {
-      if (painter != null &&
-          key == current.frameKey &&
-          identical(painter.surface, current.surface) &&
-          current.isLive) {
-        return; // The same swap window, still open.
-      }
-      _activeStandIn = null;
-    }
-    if (painter == null || key == null) {
-      return;
-    }
-    final held = _images[key];
-    if (held == null) {
-      return;
-    }
-    final surface = painter.surface;
-    if (surface.tiles.isEmpty) {
-      return;
-    }
-    // ⛔Captured ONCE: the surface is immutable, and `surface.tiles` is a
-    // defensive whole-map copy per read — per-paint reads of it are the
-    // measured 82.7ms cliff the painter's own walk had to leave behind.
-    final tiles = List<BitmapTile>.of(surface.tiles.values);
-    final tileImages = painter.tileImageCache;
-    for (final tile in tiles) {
-      if (tileImages.displayImageFor(tile) != null) {
-        // Some picture already exists: not the first-activation frame.
-        return;
-      }
-    }
-    _activeStandIn = _ActiveLayerStandIn(
-      frameKey: key,
-      image: held.clone,
-      worldRect: held.worldRect,
-      surface: surface,
-      tiles: tiles,
-      tileImages: tileImages,
-    );
-  }
-
-  /// The active node's cel key, wherever the node sits in the tree.
-  /// The ACTIVE row's cel, wherever in the tree its node sits. There is
-  /// exactly one active row, so the first node found is the answer —
-  /// including its `null` key, which means the row has nothing exposed
-  /// here.
-  static BrushFrameKey? _activeNodeFrameKey(
-    List<CompositeNode<CanvasStackRow>> nodes,
-  ) => preorderNodes(nodes)
-      .whereType<CompositeLeaf<CanvasStackRow>>()
-      .map((leaf) => leaf.payload)
-      .whereType<CanvasActiveLayerRow>()
-      .firstOrNull
-      ?.frameKey;
 
   /// 🚨(v) — the recording of everything a stroke cannot change.
   final StaticCompositeBake _bake = StaticCompositeBake();
@@ -633,7 +547,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
     _dependenciesSeen = true;
     _devicePixelRatio = ratio;
-    _syncActiveStandIn();
     _syncImagesWithCache();
     unawaited(_ensureImages());
   }
@@ -641,11 +554,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void _syncSweepBody() {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
-      // The stand-in borrows the just-activated layer's held image, whose
-      // request left the set on this very frame — hold it while the swap
-      // window is open, or the sweep disposes the one truth the active
-      // slot can draw.
-      ?_activeStandIn?.frameKey,
     };
     for (final key in _images.keys.toList()) {
       if (!wanted.contains(key)) {
@@ -798,12 +706,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           }
           changed = changed || refreshed;
         }
-        final standInHold = _activeStandIn?.frameKey;
-        if (standInHold != null) {
-          // The same hold the sync sweep applies — the async pass must not
-          // drop what the paint phase is standing in with.
-          wanted.add(standInHold);
-        }
         for (final key in _images.keys.toList()) {
           if (!wanted.contains(key)) {
             _dropImage(key, _images.remove(key)!);
@@ -858,7 +760,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // The PAINT half only — like the cached row above. A leading
           // key is already on the surface this node draws.
           effects: active.paintEffects,
-          standIn: _activeStandIn,
         );
     }
   }
@@ -1236,112 +1137,13 @@ final class _PaintImage extends _PaintRow {
   );
 }
 
-/// The first-activation stand-in: the just-deactivated route's layer image,
-/// plus everything needed to answer — at PAINT time, on every paint — "is
-/// the swap window still open".
-///
-/// The window opens armed (zero pictures existed at arm time) and the latch
-/// is ONE-WAY: it dies for good, never re-arms. What kills it —
-/// - an overlay with anything to show, or a different surface instance,
-///   INSTANTLY (those are the only doors an edit can arrive through);
-/// - EVERY committed tile having a picture (the walk is whole from there).
-///
-/// ⛔Not "the first picture" (device report 2026-08-17, second round): an
-/// any-decode death handed the walk a partially decoded surface, and the
-/// budgets' silence re-appeared as per-tile holes. Holding through the
-/// partial states is sound precisely because the window armed pre-edit —
-/// the held image and the landing decodes are the same committed bytes,
-/// and anything that could make them differ kills the window in the same
-/// paint that shows it.
-///
-/// Paint-time, not build-time, because decodes land between builds: the
-/// tile cache notifies, the painter repaints, and the very same repaint
-/// must already answer with the walk once it can draw everything. A
-/// build-time answer would keep serving the stand-in until some unrelated
-/// rebuild came along.
-class _ActiveLayerStandIn {
-  _ActiveLayerStandIn({
-    required this.frameKey,
-    required this.image,
-    required this.worldRect,
-    required this.surface,
-    required this.tiles,
-    required this.tileImages,
-  });
-
-  final BrushFrameKey frameKey;
-
-  /// The held clone from the state's `_images` — owned THERE (the wanted
-  /// hold keeps the record alive while this object does), never disposed
-  /// here.
-  final ui.Image image;
-  final Rect worldRect;
-
-  /// The promoted surface this window belongs to, by identity.
-  final BitmapSurface surface;
-
-  /// The surface's committed tiles, captured once (the surface is
-  /// immutable; `surface.tiles` was a defensive whole-map copy per read
-  /// until 2d0478fb, 2026-09-09 — it hands over the stored view now, and the
-  /// capture stays the list this window compares by).
-  final List<BitmapTile> tiles;
-
-  final BitmapTileImageCache tileImages;
-
-  bool _dead = false;
-
-  /// Whether the window has not been killed yet (bookkeeping for the
-  /// state's keep/drop decision — the paint-time question is
-  /// [shouldStandInFor]).
-  bool get isLive => !_dead;
-
-  /// The paint-time predicate: draw the stand-in instead of the tile walk?
-  bool shouldStandInFor(BitmapSurfacePainter painter) {
-    if (_dead) {
-      return false;
-    }
-    if (!identical(painter.surface, surface)) {
-      _dead = true;
-      return false;
-    }
-    final overlay = painter.overlayModel;
-    if (overlay != null &&
-        (overlay.hasStrokeContent ||
-            overlay.settling ||
-            overlay.hasStandIns ||
-            (overlay.settleHoldTiles?.isNotEmpty ?? false))) {
-      // In-flight ink (or a settle window) must reach the screen, and the
-      // walk is the only body that draws it — and a settle window means
-      // this was never the first-activation frame to begin with.
-      _dead = true;
-      return false;
-    }
-    // The window closes when EVERY committed tile has a picture — not on
-    // the first one (device report 2026-08-17, second round: the one-way
-    // any-decode latch handed off after the FIRST landing, and the walk
-    // then showed the budgets' worth and left the rest as holes: "whole
-    // picture blank" had merely become "some tiles blank").
-    //
-    // What keeps the longer hold truthful: this stand-in only ever ARMS
-    // when zero pictures exist — pre-edit, so the held image IS the
-    // committed bytes — and an edit can only arrive through the overlay
-    // or through a commit's new surface instance, both of which kill the
-    // window above INSTANTLY. So every decode that lands while it is open
-    // is a decode of the very pixels already on screen; holding over a
-    // partial set of them changes nothing per-pixel, and the handoff
-    // below swaps to a walk that can draw every coordinate.
-    for (final tile in tiles) {
-      if (tileImages.displayImageFor(tile) == null) {
-        return true;
-      }
-    }
-    // Every tile can speak for itself now: the walk is whole from here,
-    // and the stand-in must never outlive that.
-    _dead = true;
-    return false;
-  }
-}
-
+/// 🪦The first-activation stand-in (device report 2026-08-17 → 2026-09-17)
+/// held the just-deactivated route's layer image over the active slot
+/// until every tile of the promoted surface had decoded: activation
+/// promotes a file-backed cel to a surface of all-fresh tile objects, and
+/// the picture disappeared for one frame per layer. A committed tile
+/// pictures itself inside the paint now, so the walk is whole on the
+/// activation frame itself and nothing stands in.
 final class _PaintActiveSurface extends _PaintRow {
   const _PaintActiveSurface({
     required this.opacity,
@@ -1349,7 +1151,6 @@ final class _PaintActiveSurface extends _PaintRow {
     required this.pose,
     required this.anchorPoint,
     required this.effects,
-    this.standIn,
   });
 
   /// ㊱: the active row's display opacity. It reached the node all along and
@@ -1365,16 +1166,6 @@ final class _PaintActiveSurface extends _PaintRow {
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
   final List<ResolvedLayerEffect> effects;
-
-  /// The first-activation stand-in, or null outside the swap window.
-  ///
-  /// ⛔Deliberately absent from [_LayerStackPainter._treesMatch] and
-  /// [_LayerStackPainter.treeSignature], for the same reason the active
-  /// surface's pixels are: this IS active-slot content, its every visible
-  /// change rides the tile cache's notification (arming coincides with the
-  /// activation rebuild; the latch dies exactly when a decode notifies),
-  /// and the bake never records the slot it is drawn in.
-  final _ActiveLayerStandIn? standIn;
 
   // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
   // NOTHING else about this node, so leaving it out would paint the new
@@ -1461,53 +1252,11 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
 @visibleForTesting
 bool? debugLiveLayerRodeTheDraws;
 
-/// Which draw the active slot actually used, for the frame just painted —
-/// null until one paints.
-///
-/// 🚨★★★A COMPARISON CANNOT SAY WHICH DRAW IT COMPARED (F-67, 2026-09-10).
-/// The active layer has three ways to reach the screen and they do not
-/// sample alike: the FLAT projection is one image drawn through the display
-/// filter (bilinear at a reduced zoom), the STAND-IN likewise, and TILES go
-/// through `BitmapSurfacePainter` at `FilterQuality.none`. The painter's own
-/// byte-parity measurement covers the tile paint and names its limit —
-/// 「Antialiased draws do NOT agree」 — so a pixel comparison that silently
-/// took the tile route proves the half that was already proven.
-///
-/// That is exactly what happened: `the_layer_rides_the_draws_test`'s first
-/// F-67 comparison passed without touching the flat blit, and nothing in
-/// the result could say so. This is the answer to that.
-///
-/// ⚠️Written under `assert`, so a release build pays nothing.
-@visibleForTesting
-ActiveSlotDraw? debugActiveSlotDraw;
-
-/// The two ways the active layer's own content reaches a paint.
-@visibleForTesting
-enum ActiveSlotDraw {
-  /// The first-activation stand-in: one image, resampled by the CTM under
-  /// the display filter.
-  standIn,
-
-  /// The surface painter's own tiles, at `FilterQuality.none`.
-  tiles,
-}
-
-/// [draw] with [layer]'s opacity/blend/colour chain folded in, or [draw]
-/// unchanged when a buffer is carrying the layer instead.
-///
-/// ⛔The draw keeps its OWN sampling. A layer paint says how the layer
-/// composites, never how a picture is resampled — writing `filterQuality`
-/// from it would be one paint answering two questions.
-Paint _withLayerPaint(Paint draw, Paint? layer) {
-  if (layer == null) {
-    return draw;
-  }
-  return draw
-    ..color = layer.color
-    ..blendMode = layer.blendMode
-    ..colorFilter = layer.colorFilter
-    ..imageFilter = layer.imageFilter;
-}
+/// 🪦`debugActiveSlotDraw` (F-67, 2026-09-10 → 2026-09-17) said which of
+/// the active slot's draws a paint used, because the FLAT projection, the
+/// first-activation STAND-IN and the TILES did not sample alike and a
+/// comparison could not say which it had compared. The tiles are the one
+/// draw left, so there is nothing to tell apart.
 
 /// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
 ///
@@ -1783,29 +1532,23 @@ class _LayerStackPainter extends CustomPainter {
   /// Committed tiles: a commit replaces the tile, and a decode replaces its
   /// image. Both are identity changes on the same coordinate.
   ///
-  /// 🚨★★★**AND THIS WALK CANNOT BE GATED BY THE CACHE'S REVISION** — I
-  /// tried, 2026-09-09, and `stroke_dirty_rect_is_the_dab_test` caught it
-  /// in one run. `revision` is bumped inside `notifyListeners`, and the
-  /// cache SCHEDULES that for the next frame (`_scheduleNotify`), so a
-  /// decode that landed during this frame has already changed
-  /// `imageFor(tile)` while the revision still reads what it read last
-  /// paint. `_bufferKey` can live with that — a stale key costs one frame
-  /// of a reused buffer — but a dirty RECT cannot: the rect is what gets
-  /// repainted, so a coordinate missed here is a coordinate left showing
-  /// the frame before. The walk stays, per-tile identity and all.
+  /// 🚨★★★**AND THIS WALK IS PER TILE, NOT PER SURFACE.** The rect is what
+  /// gets repainted, so a coordinate missed here is a coordinate left
+  /// showing the frame before — a stroke's commit swaps the tiles it
+  /// touched and nothing else, and only a walk that sees each tile's
+  /// identity can name exactly those. (Until 2026-09-17 the walk also had
+  /// to see each tile's PICTURE, because a decode could land between two
+  /// paints and change what a tile drew; a picture is made from its bytes
+  /// inside the paint now, so the tile's identity is the whole story.)
   LiveSurfaceTokens? _liveSurfaceTokens() {
     final surfacePainter = activeSurfacePainter;
     if (surfacePainter == null || !surfacePainter.drawsOnlyFromPublishedState) {
       return null;
     }
     final overlay = surfacePainter.overlayModel;
-    if (overlay != null && (overlay.hasStandIns || overlay.settling)) {
-      return null;
-    }
     if (!_liveSurfaceIsSpatiallyStable(nodes)) {
       return null;
     }
-    final cache = surfacePainter.tileImageCache;
     // F-130: the stamp's ghost is part of what the live surface looks like
     // (F-33 draws it inside this painter), so it is part of the tokens —
     // by value, with the rect it covers, so a hover can be patched.
@@ -1816,7 +1559,7 @@ class _LayerStackPainter extends CustomPainter {
       },
       tiles: <TileCoord, Object>{
         for (final entry in surfacePainter.surface.tiles.entries)
-          entry.key: cache.imageFor(entry.value) ?? entry.value,
+          entry.key: entry.value,
       },
       ghost: ghost == null ? null : (value: ghost, rect: ghost.canvasRect),
     );
@@ -1930,17 +1673,12 @@ class _LayerStackPainter extends CustomPainter {
     // ⛔ONE int, not a walk. This used to hash every tile's decoded image:
     // it costs a lookup per tile PER PAINT and — measured — never produced
     // a stable key, so the buffer paid the walk and missed anyway. The
-    // cache's own revision says the same thing for free, because it is
-    // bumped at exactly the moments the cache tells anyone it changed.
-    var live = Object.hash(
-      identityHashCode(surfacePainter.surface),
-      surfacePainter.tileImageCache.revision,
-    );
+    // surface's identity says the same thing for free: a tile's picture
+    // is made from its bytes inside the paint that needs it, so what a
+    // surface draws can change only when the surface does.
+    var live = identityHashCode(surfacePainter.surface);
     final overlay = surfacePainter.overlayModel;
     if (overlay != null) {
-      if (overlay.hasStandIns || overlay.settling) {
-        return null;
-      }
       for (final entry in overlay.tileImages.entries) {
         live = Object.hash(live, entry.key, identityHashCode(entry.value));
       }

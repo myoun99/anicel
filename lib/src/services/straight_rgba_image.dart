@@ -231,15 +231,13 @@ Future<ui.Image> uploadRawRgba(
 
 /// Stands in for the engine's ASYNCHRONOUS upload in tests.
 ///
-/// 🚨Not a convenience — it is [debugSyncImageUploadOverride]'s argument word
-/// for word, for the same reason: a refusal road that nothing exercises is
-/// not a road. The one fixture that stages a genuine refusal without a
-/// device — a descriptor that lies about its buffer's length — reaches
-/// [uploadRawRgba] only where the CALLER's bytes can lie, and the two
-/// hottest callers build their own: a `BitmapTile` validates its own pixel
-/// length, and the stroke overlay allocates `width * height * 4` itself. On
-/// every machine this project develops and CIs on, the engine simply never
-/// refuses.
+/// 🚨Not a convenience: a refusal road that nothing exercises is not a
+/// road. The one fixture that stages a genuine refusal without a device —
+/// a descriptor that lies about its buffer's length — reaches
+/// [uploadRawRgba] only where the CALLER's bytes can lie, and the callers
+/// build their own (the stroke preview and the timeline tile store size
+/// their buffers themselves). On every machine this project develops and
+/// CIs on, the engine simply never refuses.
 ///
 /// ⚠️IT DOES NOT REPLACE THE GENUINE-REFUSAL TESTS. That the ENGINE rejects
 /// is pinned against the real path by the lying-descriptor fixture in

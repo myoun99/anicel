@@ -25,7 +25,6 @@ import 'dart:io';
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../canvas/tile_predecessors.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'session_roles.dart';
@@ -151,17 +150,8 @@ class RenderCaches {
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.
-  ///
-  /// 🚨★★★AND THE TILE IMAGE CACHE LISTENS HERE TOO (F-68 root fix,
-  /// 2026-09-11). Every surface replacement — stroke, erase, landing, undo,
-  /// redo, pixel verb — leaves the coordinator through one door that
-  /// carries the surfaces it went between, and this listener hands each
-  /// changed tile its predecessor. The painter composes the tile's stand-in
-  /// from that (predecessor's picture + byte diff) before its decode lands,
-  /// so no edit path has to seed its own picture and none can forget to.
   late final EditorCacheInvalidationHub cacheInvalidationHub =
-      EditorCacheInvalidationHub()
-        ..addBrushFrameListener(notePredecessorsFromInvalidation);
+      EditorCacheInvalidationHub();
 
   // --- Playback render cache stack (all non-notifying; see plan R2-R4) -----
 

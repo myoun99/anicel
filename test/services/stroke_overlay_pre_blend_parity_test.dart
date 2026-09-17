@@ -263,7 +263,7 @@ void main() {
         }
 
         expect(
-          blended!.pixels,
+          blended!.readPremultiplied(Uint8List.fromList),
           expected,
           reason: '${mode.name}: masked kernel == masked Dart reference',
         );
@@ -404,7 +404,7 @@ void main() {
         }
 
         expect(
-          blended!.pixels,
+          blended!.readPremultiplied(Uint8List.fromList),
           expected,
           reason: '${mode.name}: native overlay tile == Dart overlay tile',
         );

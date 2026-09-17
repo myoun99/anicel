@@ -127,7 +127,6 @@ void main() {
     BitmapTileImageCache.instance.adoptDecoded(
       (coord: coord, tile: tile),
       image,
-      staleScope: BitmapTileImageCache.unfiled,
     );
     return BitmapSurfacePainter(
       surface: BitmapSurface(

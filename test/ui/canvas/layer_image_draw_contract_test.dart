@@ -243,7 +243,11 @@ void main() {
 /// (`displayLevelOf`) — and a level is made by an image SHADER over a rect
 /// (`level_image.dart`), which owns its quality explicitly and is not a raw
 /// image draw.
-const int _knownRawDraws = 32;
+/// **27** at the one-door round (2026-09-17): -5. provisional_tile_pictures
+/// went whole (its three seeder draws and the predecessor compose), and
+/// the first-activation stand-in blit went with the stand-in - a tile
+/// pictures itself inside the paint now, so nothing stands in for one.
+const int _knownRawDraws = 27;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

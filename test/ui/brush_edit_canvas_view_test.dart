@@ -80,7 +80,7 @@ void main() {
               viewport: viewport,
               overlayModel: overlayModel,
               showTransparentBackground: false,
-              staleScope: 'scope-a',
+              lineage: 'scope-a',
             ),
           ),
         );
@@ -99,7 +99,7 @@ void main() {
         expect(painter.viewport, viewport);
         expect(identical(painter.overlayModel, overlayModel), isTrue);
         expect(painter.showTransparentBackground, isFalse);
-        expect(painter.staleScope, 'scope-a');
+        expect(painter.lineage, 'scope-a');
         expect(painter.overlayModel!.dabs, hasLength(1));
       },
     );

@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import '../../core/collection_equality.dart';
 import '../../models/tile_coord.dart';
-import 'bitmap_tile_image_cache.dart';
 import 'deferred_image_disposal.dart';
 import 'level_image.dart';
 
@@ -55,14 +54,19 @@ class TilePyramid {
 
   static final TilePyramid instance = TilePyramid();
 
-  /// Scopes are the painter's lineage (a cel), as the tile cache's stale
-  /// fallback files them; the same number of them, for the same reason.
-  static const int retainedScopeLimit = BitmapTileImageCache.retainedScopeLimit;
+  /// Scopes are the painter's lineage (a cel) — eight of them, the recently
+  /// edited cels, least recently painted first.
+  static const int retainedScopeLimit = 8;
 
   /// How many paints of its scope a level tile outlives its last asking —
   /// a stroke's frames keep remaking one block's parents, and the three
   /// siblings under each parent are asked again every frame.
   static const int recentPaints = 16;
+
+  /// The scope of a painter whose surface is nobody's cel — the selection
+  /// float. Its level tiles live here, shared by every float, for as long
+  /// as a float is painted; a float has no pictures filed anywhere else.
+  static final Object noLineage = Object();
 
   final Map<Object?, _ScopePyramid> _byScope = <Object?, _ScopePyramid>{};
 

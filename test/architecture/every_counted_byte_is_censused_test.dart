@@ -239,8 +239,6 @@ const _imageHolders = <String, String>{
       'block only carries them into a paint',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
       'counted:liveImageBytes',
-  'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _provisional':
-      'counted:liveImageBytes',
   'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
       'counted:heldBytes',
   'lib/src/ui/envelope/envelope_image_cache.dart → _images':

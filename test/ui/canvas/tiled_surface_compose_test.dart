@@ -54,10 +54,7 @@ void main() {
     BitmapSurface surface,
   ) async {
     for (final entry in surface.tiles.entries) {
-      cache.ensureDecoded((coord: entry.key, tile: entry.value));
-    }
-    while (!cache.allDecoded(surface.tiles.values)) {
-      await Future<void>.delayed(const Duration(milliseconds: 2));
+      cache.pictureFor((coord: entry.key, tile: entry.value));
     }
   }
 

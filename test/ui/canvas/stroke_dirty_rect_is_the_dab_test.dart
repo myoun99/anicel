@@ -135,7 +135,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 0, y: 2, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     await paintOnce();
     final firstDirty = cache.lastDirtyRect;
@@ -145,15 +144,19 @@ void main() {
     // them — a posed sibling or a rounded edge can put ink a fraction over
     // the line, and a patch trusting the exact rect leaves a hairline of
     // the previous frame.
-    // 🚨MEASURED, BOTH WAYS (2026-09-04): the union here is 24 wide and
-    // this rect is 26 — one pixel added on each side. A `greaterThan(8)`
-    // bound was the first try and it never failed, because the union
+    // 🚨MEASURED, BOTH WAYS (2026-09-04): the dab's tile is 8 wide and
+    // this rect is 10 — one pixel added on each side. A `greaterThan(8)`
+    // bound was the first try and it never failed, because the tile
     // already clears 8: a bound the mutation cannot cross pins nothing.
+    // (Until 2026-09-17 the union was 24: the committed tiles' pictures
+    // landed between the warm paints and this one, and a token that read
+    // the picture called every tile dirty. A tile's token is the tile now
+    // — its picture is made from its own bytes inside the paint.)
     expect(
       firstDirty!.width,
-      26.0,
+      10.0,
       reason:
-          'the 24-wide union plus the hairline inflate — an exact-rect '
+          'the 8-wide tile plus the hairline inflate — an exact-rect '
           'patch leaves a line of the frame before along the dab',
     );
 
@@ -165,7 +168,6 @@ void main() {
         source: rasterizer,
         region: DirtyRegion.fromXYWH(x: 19, y: 2, width: 5, height: 5),
       );
-      await overlay.waitForPendingDecodes();
     });
     await paintOnce();
 
