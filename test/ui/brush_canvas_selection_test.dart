@@ -806,6 +806,83 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), isNonZero);
   });
 
+  /// 🚨★★★**F-164 — 유저 2026-09-18 실기**: 「변형중에 다른프레임가면 변형
+  /// 실루엣 초록색되고 **돌아가면 그림사라져있는데**」.
+  ///
+  /// A move session lives in TWO places: the layer holds the float, the
+  /// panel holds the HOLE it draws in that cel's place
+  /// (`CanvasPanelLift`). Walking the sheet drops the float (유저 확정
+  /// 2026-09-17: 「프레임이동 … 착지안하고」) — and the host has to be told,
+  /// or its session stays open for the rest of the run: its derived view
+  /// stays held under the store's discipline, and the cel it was cut from
+  /// keeps drawing a hole nothing can close.
+  ///
+  /// ⛔`inkAt` cannot see it — the cel is untouched until the confirm
+  /// (`314aa6e8`). The release is the thing to measure.
+  testWidgets('F-164: an OPEN transform box that walks to another frame and '
+      'back still shows the picture, and still reads as changed',
+      (tester) async {
+    /// The panel's DARK pixels — the fixture's committed stroke paints
+    /// near-black. ⛔Not [screenInkMask], whose threshold is red: that
+    /// counts the marching ANTS, and measured 16 px of an 800×600 panel
+    /// while saying nothing at all about the picture.
+    Future<int> drawnInk() async {
+      final bytes = await screenBytes(tester);
+      var dark = 0;
+      for (var i = 0; i + 3 < bytes.length; i += 4) {
+        if (bytes[i] < 80 && bytes[i + 1] < 80 && bytes[i + 2] < 80) {
+          dark += 1;
+        }
+      }
+      return dark;
+    }
+
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final settled = await drawnInk();
+    expect(
+      settled,
+      greaterThan(100),
+      reason: '⛔fixture premise: the panel DRAWS the committed stroke',
+    );
+
+    // The user's state: a box OPEN and already dragged — 변형중, and red.
+    env.commands.beginTransform();
+    await tester.pump();
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    expect(env.commands.transformActive, isTrue);
+    expect(
+      antsOnScreen(tester)?.sessionHasChanges,
+      isTrue,
+      reason: '⛔fixture premise: a dragged box is red (H28)',
+    );
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    expect(
+      await drawnInk(),
+      greaterThan(settled ~/ 2),
+      reason:
+          '🚨유저 2026-09-18: 「돌아가면 그림사라져있는데」 — the cel this box '
+          'was cut from must not still be drawn with its hole',
+    );
+    expect(
+      antsOnScreen(tester)?.sessionHasChanges,
+      isTrue,
+      reason:
+          '🚨유저: 「변형중이면 빨간색 유지여야하고」 — the box is still open '
+          'and still holds an unconfirmed change, so it still reads red',
+    );
+    expect(
+      env.history.undoCount,
+      0,
+      reason: '⛔and nothing landed on the way — 「착지안하고」',
+    );
+  });
+
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
   // 안이라면 언제든 작동하도록).
   testWidgets('the move tool grabs anywhere inside the BOX it draws, not '

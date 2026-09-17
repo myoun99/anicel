@@ -3770,7 +3770,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // ants painter is already repainting for its dashes.
             cursor: _tapsVertices ? _cursor : null,
             transformChrome: chrome,
-            sessionHasChanges: _movePending && _sessionHasChanges,
+            // 🚨★★★**THE SAME VALUE THE CONFIRM BUTTON WEARS**, which is
+            // the whole of H28 (「the box says the same thing the ants
+            // say」). ↩️It read `_movePending && _sessionHasChanges` until
+            // F-164, and that extra term was a PREMISE that stopped being
+            // true: when H28 was written a box could not outlive its
+            // float, so 「there is a float」 and 「this is a live session」
+            // were one fact. 유저 확정 2026-09-17 split them — a frame walk
+            // lets the float go and KEEPS the box and its numbers — and
+            // from then on the term quietly turned a box that would still
+            // change pixels green.
+            //
+            // 🗣️유저 2026-09-18 (F-164): 「변형중에 다른프레임가면 변형
+            // 실루엣 초록색되고 … **변형중이면 빨간색 유지**여야하고」.
+            sessionHasChanges: _sessionHasChanges,
           ),
           child: const SizedBox.expand(),
         ),
