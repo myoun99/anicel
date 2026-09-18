@@ -145,6 +145,7 @@ class _CanvasPanelSelection {
       holed: holed,
       eraseDab: lift.eraseDab,
       key: coordinator.activeFrameKey,
+      region: region,
     );
     _state._rebuild(() {});
     return (liftToken: token, stampDab: lift.stampDab);

@@ -10,6 +10,7 @@ import 'package:anicel/src/services/straight_rgba_image.dart'
     show debugRawRgbaUploader;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
@@ -83,6 +84,9 @@ void main() {
     // F-116: the production wiring hands these edges to the session's
     // counting EDIT HOLD. A case that watches the hold passes a recorder.
     ValueChanged<bool>? onSelectionInteractionChanged,
+    // F-116-b: the cel ladder a confirm lands on. Null = the standing cel,
+    // which is what the session answers with no range live.
+    List<BrushFrameKey> Function()? transformTargetKeys,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
@@ -142,6 +146,7 @@ void main() {
                 canvasSize: canvasSize,
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
+                transformTargetKeys: transformTargetKeys,
                 historyManager: history,
                 brushToolState: BrushToolState.defaults.copyWith(
                   tool: tool,
@@ -1032,6 +1037,204 @@ void main() {
 
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
   // 안이라면 언제든 작동하도록).
+  /// 🚨★★★**F-116-b / F-164 — 여러 행·프레임 확정.**
+  ///
+  /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
+  /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」, and 2026-09-18:
+  /// 「**여러프레임 확정가능**하게한다던가」. Rows and frames are one law —
+  /// `pixelVerbCellKeys()` is that law, and it already skips what cannot
+  /// take the edit.
+  ///
+  /// ⛔**AND THE SAME AFFINE, NOT THE SAME STAMP.** The float carries the
+  /// pixels lifted from the cel it started on; stamping it onto another cel
+  /// would paste the first cel's drawing there. Each cel lifts its OWN
+  /// pixels through the same region and takes the same transform.
+  testWidgets('a confirm over a frame RANGE moves every cel in it, each by '
+      'its own pixels, as ONE undo', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      // The ladder the session would hand in. ⚠️A FUNCTION, because the
+      // range changes under the panel and a list would be the state as it
+      // was when the panel was built.
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+
+    // Each frame gets ink of its OWN, in its own place — and each keeps a
+    // witness OUTSIDE the selection. 🚨That witness is the whole point: a
+    // landing derives against a BASE, and only pixels the move does not
+    // touch can say which cel's base it was. Frame two's own is (70,20),
+    // where frame one has nothing; frame one's is the fixture's (60,60).
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(40, 40), dab(70, 20)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    // ⛔A PARTIAL region, not the implicit whole picture: a whole-picture
+    // erase clears the base before the stamp lands, so every cel would
+    // come out the same however wrong the base was.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 25, top: 25, right: 55, bottom: 55),
+      ),
+    );
+    await tester.pump();
+
+    final entriesBefore = env.history.undoCount;
+    // ⚠️The transform's own door rather than a pointer drag: a drag is in
+    // LAYER coordinates and the region above is in CANVAS coordinates, so
+    // a press written as a canvas point would only look like it landed
+    // inside the outline. Stating the displacement says what is meant.
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 5,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      env.history.undoCount,
+      entriesBefore + 1,
+      reason: '유저: 한 번의 확정은 한 번의 언두다',
+    );
+
+    // Frame ONE moved.
+    expect(inkAt(env.coordinator, 40, 35), isNonZero);
+    // And frame TWO moved by the same amount — its OWN ink, not frame
+    // one's. ⛔The check that says so is WHERE: frame two's stroke started
+    // at (40,40), so a correct move puts it at (50,40); frame one's pixels
+    // pasted in would land somewhere else entirely.
+    env.coordinator.selectFrame(keys[1]);
+    expect(
+      inkAt(env.coordinator, 50, 45),
+      isNonZero,
+      reason: '같은 아핀이 이 셀의 제 그림에 적용됐다',
+    );
+    expect(
+      inkAt(env.coordinator, 40, 40),
+      0,
+      reason: '그리고 원래 자리는 비었다 — 복사가 아니라 이동이다',
+    );
+    // 🚨★★★THE BASE WAS THIS CEL'S. Both witnesses sit outside the
+    // selection, so the move must not have touched either: frame two keeps
+    // its own, and frame one's never arrives. ⛔A landing derived against
+    // the standing cel passes every check above and fails exactly these
+    // two — measured 2026-09-18, which is why they exist.
+    expect(
+      inkAt(env.coordinator, 70, 20),
+      isNonZero,
+      reason: '선택 밖은 그대로다 — 이 셀 자신의 그림 위에 착지했다',
+    );
+    expect(
+      inkAt(env.coordinator, 60, 60),
+      0,
+      reason: '⛔프레임1의 선택 밖 그림이 여기 올 리 없다',
+    );
+
+    env.history.undo();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 40, 40),
+      isNonZero,
+      reason: '⛔ONE undo takes BOTH cels back, or it was two entries',
+    );
+  });
+
+  /// ⛔**A LADDER THAT NAMES THE STANDING CEL COSTS THE SAME.** The range a
+  /// user selects normally DOES include the cel they are standing on, so
+  /// the confirm must not land that one twice.
+  ///
+  /// 🧪The picture cannot report this — measured 2026-09-18, a duplicate
+  /// landing draws the identical result, because the second erase clears
+  /// the second stamp's ground and the stamp puts the same pixels back.
+  /// What doubles is history: a second resample and a second pre-landing
+  /// surface held for that cel. So the axis is BYTES, with the same
+  /// confirm run twice and only the ladder differing.
+  testWidgets('⛔the standing cel lands ONCE even when the ladder names it '
+      'too — same bytes either way', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+
+    Future<int> bytesAfterConfirm(List<BrushFrameKey> ladder) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        transformTargetKeys: () => ladder,
+      );
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(
+        sourceDabs: [dab(40, 40), dab(50, 50)],
+      );
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      return env.history.retainedBytes;
+    }
+
+    final without = await bytesAfterConfirm([keys[1]]);
+    final with_ = await bytesAfterConfirm([keys[0], keys[1]]);
+
+    expect(
+      without,
+      isNonZero,
+      reason: '⛔a pin that compares two zeros measures nothing',
+    );
+    expect(
+      with_,
+      without,
+      reason: '유저의 범위는 서 있는 셀을 포함한다 — 그 셀은 한 번만 착지한다',
+    );
+  });
+
+  testWidgets('⛔a cel that cannot take it is skipped, and the rest still '
+      'land — 유저: 「불가능하면 그냥 무시」', (tester) async {
+    // The ladder is allowed to name a cel with nothing in it; the walk that
+    // builds it already refuses those, and this is the belt: a target that
+    // yields no lift must not take the whole confirm down with it.
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      // keys[2] is EMPTY — no stroke was ever committed there.
+      transformTargetKeys: () => [keys[0], keys[2]],
+    );
+
+    final entriesBefore = env.history.undoCount;
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+
+    expect(env.history.undoCount, entriesBefore + 1);
+    expect(
+      inkAt(env.coordinator, 40, 35),
+      isNonZero,
+      reason: 'the cel that COULD take it still did',
+    );
+  });
+
+  testWidgets('⛔with no range the ladder is the standing cel, so nothing '
+      'about a single confirm changed', (tester) async {
+    // 🎯THE REASON THERE IS NO 「여러 개일 때만」 BRANCH. `pixelVerbCellKeys`
+    // answers `[the cel you stand on]` when no range is live, so the
+    // multi-cel path IS the single-cel path. A branch here would be the
+    // second rule this round exists to avoid.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+
+    expect(env.history.undoCount, entriesBefore + 1);
+    expect(inkAt(env.coordinator, 40, 35), isNonZero);
+    expect(inkAt(env.coordinator, 28, 28), 0);
+  });
+
   testWidgets('the move tool grabs anywhere inside the BOX it draws, not '
       'only inside the outline', (tester) async {
     // A lasso triangle: its bounding box has corners the outline does not

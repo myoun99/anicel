@@ -57,12 +57,14 @@ class _CanvasPanelLift {
   }
 
   void openSession({
+    required CanvasSelectionRegion region,
     required int token,
     required BitmapSurface holed,
     required BrushDab eraseDab,
     required BrushFrameKey key,
   }) {
     final session = _MoveSession(
+      region: region,
       token: token,
       key: key,
       eraseDab: eraseDab,
@@ -92,7 +94,7 @@ class _CanvasPanelLift {
   }
 
   /// Takes the session back, or null when [liftToken] is not the open one.
-  ({BrushDab eraseDab, BrushFrameKey key})? _closeSession(int liftToken) {
+  _MoveSession? _closeSession(int liftToken) {
     final session = _session;
     if (session == null || session.token != liftToken) {
       return null;
@@ -101,7 +103,7 @@ class _CanvasPanelLift {
     _state.widget._editableCoordinator?.frameStore.releaseReclaimableView(
       liftToken,
     );
-    return (eraseDab: session.eraseDab, key: session.key);
+    return session;
   }
 
   /// The dabs a landing writes, in the order that makes the picture: the
@@ -116,6 +118,97 @@ class _CanvasPanelLift {
     eraseDab,
     stampDab,
   ];
+
+  /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
+  /// whole block (F-116-b / F-164).
+  ///
+  /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
+  /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
+  /// 「**여러프레임 확정가능**하게한다던가」.
+  ///
+  /// ⛔**THE SAME MOVE, NOT THE SAME PIXELS.** The float carries what was
+  /// lifted from the cel the session started on; stamping it onto another
+  /// cel would paste that drawing into this one. Each cel lifts its OWN
+  /// pixels through the session's region and takes the same displacement.
+  ///
+  /// 🚨★★★**ONE LANDING PER CEL, AND THE MAP IS WHAT SAYS SO.** [landOn] —
+  /// the standing cel's, carrying the float the preview already resampled —
+  /// SEEDS the result under its own key, so the loop cannot add a second
+  /// landing for that cel however the ladder is spelled. ⛔It is not a
+  /// `key == session.key` skip: the ladder may also name one cel twice
+  /// (two frame keys can fold onto one physical cel), and a skip that
+  /// names only the session would let that through.
+  ///
+  /// 🧪A duplicate is invisible in the picture — the second erase wipes the
+  /// second stamp's ground and the stamp puts back the same pixels, both
+  /// built from the same pre-landing surface — so nothing on screen would
+  /// ever have reported it. What it costs is a whole second resample and a
+  /// whole second pre-landing surface held in history for that cel, which
+  /// is what `retainedBytes` is pinned on.
+  ///
+  /// 「불가능하면 그냥 무시」 is the two nulls: a cel the ladder names but
+  /// that yields no lift (nothing in it, nothing under the outline) simply
+  /// contributes no landing.
+  Map<BrushFrameKey, Command> _landingsPerCel(
+    _MoveSession session,
+    BrushDab stampDab,
+    Command landOn,
+  ) {
+    final ladder = _state.widget.transformTargetKeys?.call();
+    final coordinator = _state.widget._editableCoordinator;
+    if (ladder == null || coordinator == null) {
+      return {session.key: landOn};
+    }
+    // 🚨★★★**KEYED BY THE PHYSICAL CEL.** `pixelVerbCellKeys` deliberately
+    // does NOT dedupe — 「the one that owns the surfaces owns this」 — and
+    // linked rows are windows onto one bank, so the ladder can name one
+    // cel under two row keys. `CelPixelOverwriteCommand` answers that with
+    // `canonicalKeyOf`; this is the same answer, not a second one.
+    final store = coordinator.frameStore;
+    final landings = {store.canonicalKeyOf(session.key): landOn};
+    // What the move DID, read off the float: where the lifted pixels ended
+    // up against where they were cut from. ⛔Read from the dabs rather than
+    // taken as a parameter — the layer's affine is one description of this
+    // and the stamp is another, and a confirm that trusted the affine could
+    // land pixels the screen never showed.
+    final moved = Offset(
+      stampDab.center.x - session.eraseDab.center.x,
+      stampDab.center.y - session.eraseDab.center.y,
+    );
+    for (final key in ladder) {
+      final cel = store.canonicalKeyOf(key);
+      if (landings.containsKey(cel)) {
+        continue;
+      }
+      final lift = buildSelectionLiftDabs(
+        region: session.region,
+        surface: coordinator.currentSurfaceOf(key),
+        liftId: '${session.token}-${landings.length}',
+        options:
+            _state.widget.selectionMaskOptions?.value ??
+            SelectionMaskOptions.none,
+      );
+      if (lift == null) {
+        continue;
+      }
+      landings[cel] = BrushLiftMoveHistoryCommand(
+        coordinator: coordinator,
+        frameKey: key,
+        preLiftSurface: coordinator.currentSurfaceOf(key),
+        landingDabs: _landingDabs(
+          lift.eraseDab,
+          lift.stampDab.copyWith(
+            center: CanvasPoint(
+              x: lift.stampDab.center.x + moved.dx,
+              y: lift.stampDab.center.y + moved.dy,
+            ),
+          ),
+        ),
+        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+      );
+    }
+    return landings;
+  }
 
   /// R16-① confirm: lands the move as ONE undo entry whose undo target is
   /// the picture the session opened on — which is simply the cel as it
@@ -142,25 +235,32 @@ class _CanvasPanelLift {
         return;
       }
       final doors = _selectionDoors();
+      final landOn = BrushLiftMoveHistoryCommand(
+        coordinator: coordinator,
+        frameKey: session.key,
+        // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
+        // snapshot taken before the erase and held for the whole session,
+        // outside every budget; there is nothing to take a snapshot of
+        // ahead of time when the session writes nothing.
+        preLiftSurface: coordinator.currentSurfaceOf(session.key),
+        landingDabs: dabs,
+        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+        // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
+        // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
+        // transform moves the outline as much as the drawing, and one
+        // confirm has to come back as one undo.
+        regionBefore: _state.widget.selectionCommands?.region,
+        readRegion: doors.read,
+        restoreRegion: doors.restore,
+      );
+      final landings = _landingsPerCel(session, stampDab, landOn);
       historyManager.execute(
-        BrushLiftMoveHistoryCommand(
-          coordinator: coordinator,
-          frameKey: session.key,
-          // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
-          // snapshot taken before the erase and held for the whole session,
-          // outside every budget; there is nothing to take a snapshot of
-          // ahead of time when the session writes nothing.
-          preLiftSurface: coordinator.currentSurfaceOf(session.key),
-          landingDabs: dabs,
-          cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-          // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
-          // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
-          // transform moves the outline as much as the drawing, and one
-          // confirm has to come back as one undo.
-          regionBefore: _state.widget.selectionCommands?.region,
-          readRegion: doors.read,
-          restoreRegion: doors.restore,
-        ),
+        landings.length == 1
+            ? landOn
+            : CompositeCommand(
+                description: landOn.description,
+                commands: landings.values.toList(),
+              ),
       );
     }
 
@@ -246,12 +346,32 @@ class _MoveSession {
   _MoveSession({
     required this.token,
     required this.key,
+    required this.region,
     required this.eraseDab,
     required this.holed,
   });
 
   final int token;
   final BrushFrameKey key;
+
+  /// The region this session was cut from.
+  ///
+  /// 🚨★★★**IT IS WHAT THE OTHER CELS ARE CUT FROM TOO** (F-116-b / F-164).
+  /// A confirm over a frame range moves every cel in it, and each one lifts
+  /// its OWN pixels through this same outline — the float carries the
+  /// pixels of the cel it started on, so stamping it elsewhere would paste
+  /// that cel's drawing into the others.
+  ///
+  /// ⛔**THE SESSION'S OWN RECORD, NOT THE LIVE CHANNEL** — even though the
+  /// two carry the same shape at confirm time today. 🧪Measured 2026-09-18:
+  /// reading `selectionCommands.region` instead changes nothing, because
+  /// the live region is still the pre-transform one when the confirm runs
+  /// — which is exactly what `regionBefore` depends on to put the outline
+  /// back on undo. That equality is a fact about the current confirm
+  /// ORDER, not about what this field means: what the other cels must be
+  /// cut through is where this session started, and only the session can
+  /// answer that without the order having to stay put.
+  final CanvasSelectionRegion region;
   final BrushDab eraseDab;
 
   /// Null after a memory warning took it — never a lost edit, only a lost

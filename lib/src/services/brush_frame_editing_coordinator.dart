@@ -186,18 +186,28 @@ class BrushFrameEditingCoordinator {
   ///
   /// Returns null when the dabs change nothing, which is the same answer
   /// [commitSourceStroke] gives a no-op stroke.
+  /// ⚠️[key] names the cel to derive AGAINST, and defaults to the one being
+  /// edited. It is not a second door — the same materialize runs either way
+  /// — but a cel the panel is not standing on has a session of its own, and
+  /// deriving against the active one would answer with the wrong picture.
+  ///
+  /// 🚨F-116-b needs it: a transform confirmed over a frame range moves
+  /// every cel in the range, and each one takes the same displacement
+  /// applied to ITS OWN pixels.
   BitmapSurface? deriveSurfaceWith(
     List<BrushDab> dabs, {
     BrushBlendMode blendMode = BrushBlendMode.color,
+    BrushFrameKey? key,
   }) {
     if (dabs.isEmpty) {
       throw ArgumentError.value(dabs, 'dabs', 'must not be empty');
     }
+    final target = key ?? _activeFrameKey;
     final result = commitBrushDabSequenceToBrushEditSessionWithCacheInvalidation(
-      sessionState: activeSessionState,
+      sessionState: _sessionFor(target),
       sequence: BrushDabSequence(dabs, 1),
-      layerId: _activeFrameKey.layerId,
-      frameId: _activeFrameKey.frameId,
+      layerId: target.layerId,
+      frameId: target.frameId,
       cacheInvalidationSink: _NoopCacheInvalidationSink(),
       blendMode: blendMode,
     );

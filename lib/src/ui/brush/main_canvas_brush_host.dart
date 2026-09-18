@@ -103,6 +103,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onAutoFrameSettled,
     this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
+    this.transformTargetKeys,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -333,6 +334,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// verb refuses for one reason and the shared cursor notice explains it.
   final bool rowAcceptsStrokes;
 
+  /// Which cels a transform confirm lands on (F-116-b) — passed straight
+  /// through to the panel, which is where the law is written down.
+  final List<BrushFrameKey> Function()? transformTargetKeys;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -506,6 +511,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // refuse on a property lane, the artwork still shows.
       rowAcceptsStrokes: widget.rowAcceptsStrokes,
       availableFrameKeys: _frameKeys,
+      transformTargetKeys: widget.transformTargetKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
       guides: widget.guides,

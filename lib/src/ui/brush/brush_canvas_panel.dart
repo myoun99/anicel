@@ -143,6 +143,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.coordinator,
     this.celEditable = true,
     this.rowAcceptsStrokes = true,
+    this.transformTargetKeys,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -263,6 +264,23 @@ class BrushCanvasPanel extends StatefulWidget {
   BrushFrameEditingCoordinator? get _editableCoordinator =>
       celEditable && rowAcceptsStrokes ? coordinator : null;
 
+  /// 🚨★★★**WHICH CELS A CONFIRM LANDS ON** — the frame range's whole
+  /// block, or just the cel you stand on.
+  ///
+  /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
+  /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
+  /// 「**여러프레임 확정가능**하게한다던가」. Rows and frames are ONE law and
+  /// the session already writes it — `CellVerbs.pixelVerbCellKeys`, which
+  /// skips a hidden row, an empty cel or a row that takes no brush.
+  ///
+  /// ⛔A FUNCTION, not a list: the range changes under this panel, and a
+  /// list would be the state as it stood when the panel was built.
+  ///
+  /// ⚠️Null = the cel you stand on, which is also what the ladder answers
+  /// with no range live. That is why there is no 「여러 개일 때만」 branch
+  /// anywhere below: the many-cel path IS the one-cel path. Hosts with no
+  /// cel ladder at all (the viewer, the sheet) simply pass nothing.
+  final List<BrushFrameKey> Function()? transformTargetKeys;
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;

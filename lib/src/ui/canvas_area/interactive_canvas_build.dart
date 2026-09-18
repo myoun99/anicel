@@ -289,6 +289,15 @@ class _InteractiveCanvasBuild {
       activeStrokeOverlayModel: _isPlaybackActive
           ? null
           : _state._activeStrokeOverlay,
+      // 🚨F-116-b / F-164: which cels a transform confirm lands on. The
+      // panel does not know the session, and this is the layer that does —
+      // so the LADDER is handed down rather than a second walk being
+      // written where it could drift from the pixel verbs'.
+      //
+      // 🗣️유저: 「몇 행에 걸쳐서 적용하던 동시적용은 가능하게 … 여러프레임
+      // 확정가능하게」. ⚠️With no range live this answers 「the cel you stand
+      // on」, which is why nothing downstream has a case for 「many」.
+      transformTargetKeys: session.cells.pixelVerbCellKeys,
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,

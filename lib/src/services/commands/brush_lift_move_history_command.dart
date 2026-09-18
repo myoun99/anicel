@@ -159,10 +159,19 @@ class BrushLiftMoveHistoryCommand
     }
     // First execute = the confirm itself: the cel hears about BOTH halves
     // here — the session showed its hole without ever writing it (F-116).
-    coordinator.commitSourceStroke(
-      sourceDabs: _landingDabs!,
-      cacheInvalidationSink: cacheInvalidationSink,
-    );
+    //
+    // 🚨★★★**ON [frameKey], WHICHEVER CEL THAT IS.** ↩️It used to call
+    // `commitSourceStroke`, which writes to the cel the panel is STANDING
+    // on — so this command took a `frameKey`, recorded its undo against
+    // that key, and landed the pixels somewhere else. That was invisible
+    // while only the standing cel was ever confirmed, and F-116-b is where
+    // it stops being invisible: a confirm over a frame range lands on every
+    // cel in it, and the second one would have overwritten the first.
+    //
+    // 🧪Measured, not reasoned: the first multi-cel pin came back with the
+    // standing cel ERASED and nothing stamped — the range's second command
+    // had landed its own (empty) lift on top of it.
+    _landOnFrameKey();
     _surfaces = UndoSurfacePair(
       key: frameKey,
       before: _preLiftSurface!,
@@ -177,6 +186,43 @@ class BrushLiftMoveHistoryCommand
     // Read AFTER the landing, so a redo restores the shape the confirm
     // actually produced rather than the one it started from.
     _regionAfter = readRegion?.call();
+  }
+
+  /// Lands [_landingDabs] on [frameKey] — derive, then write THAT cel.
+  ///
+  /// ⛔Two calls rather than `commitSourceStroke`, because that one names
+  /// the cel the panel is STANDING on by construction and this command
+  /// names its own. The keyed pair — `deriveSurfaceWith(key:)` then
+  /// `restoreSurfaceSnapshot(key)` — is the same materialize, and the same
+  /// pair the pixel verbs already write several cels with
+  /// (`CelPixelOverwriteCommand`).
+  ///
+  /// 🚨★★★**AND THE STANDING CEL GOES THROUGH IT TOO — NO BRANCH.** A
+  /// `frameKey == activeFrameKey` shortcut sat here for one round on the
+  /// belief that the pair skipped「the three things that make a commit a
+  /// commit」. It skips none of them: [BrushFrameEditingCoordinator
+  /// .restoreSurfaceSnapshot] marks the cel edited, donates to the display
+  /// cache and invalidates, which is why it is also what every undo of a
+  /// stroke leaves through. ⛔The measurement that had justified the
+  /// branch — 「R28 #10 goes red the keyed way」 — was a pin I had edited
+  /// myself; with the pin restored the whole file is green with one door.
+  /// The only real difference is that the pair invalidates the FRAME where
+  /// a commit can name its dirty tiles, the same coarser bill undo pays.
+  void _landOnFrameKey() {
+    final derived = coordinator.deriveSurfaceWith(
+      _landingDabs!,
+      key: frameKey,
+    );
+    if (derived == null) {
+      // The dabs changed nothing, which is the answer a no-op stroke gets
+      // everywhere else too.
+      return;
+    }
+    coordinator.restoreSurfaceSnapshot(
+      frameKey,
+      derived,
+      cacheInvalidationSink: cacheInvalidationSink,
+    );
   }
 
   @override
