@@ -763,6 +763,52 @@ void main() {
     );
   });
 
+  testWidgets('🆕F-139: an EMPTY folder dropped on a drawing row attaches '
+      'too — 유저: 「아무것도 없으면 안되. 규칙 다른거 두지않도록」', (tester) async {
+    // 유저 2026-09-18: 「폴더에 내용물이 있으면, 레이어가 들어가있으면
+    // 드래그드롭으로 어태치 장착되는데 아무것도 없으면 안되」. The case above
+    // is the WITH-members half; this is the half that was refused, and the
+    // refusal was nobody's order (see `layer_drop_policy_test`).
+    await _pump(tester, project: _emptyFolderProject());
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'f').attachedToLayerId, isNull);
+
+    final row = find.byKey(const ValueKey<String>('timeline-folder-row-f'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    // ⑨'s select first. The folder row's LEFT edge is buttons, so the grab
+    // goes through the middle of the row like the pointer would.
+    final rect = tester.getRect(row);
+    final grab = Offset(rect.left + rect.width * 0.3, rect.center.dy);
+    await tester.dragFrom(grab, const Offset(30, 0));
+    await tester.pumpAndSettle();
+    expect(session.rowSelection.value, isNotEmpty);
+
+    // Rail top-down: F, C, B, A. Two rows down from F's centre puts the
+    // pointer in the MIDDLE of B — the on-row band.
+    final gesture = await tester.startGesture(grab);
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, 28 * 2));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
+      findsOneWidget,
+      reason: 'B is what would swallow the folder, so B is what lights up',
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      _layerOf(session, 'f').attachedToLayerId,
+      const LayerId('b'),
+      reason:
+          'with no leaf to carry the relation the folder row carries it — '
+          '`attachGroupBaseOf` reads a row\'s own field before deriving one',
+    );
+  });
+
   testWidgets('F-31① on the OTHER axis: the x-sheet\'s caret is a COLUMN '
       'boundary, and the badge must not push that either', (tester) async {
     // The same `_caret` draws both rails, so the badge that displaced the

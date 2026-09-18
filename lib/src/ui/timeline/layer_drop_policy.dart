@@ -596,10 +596,16 @@ LayerAttachDrop? _attachPlan(
 /// 규칙). 불가능한 경우는 「어태치 폴더 안에 폴더」 구조뿐이고 그때는
 /// 안내문을 낸다」.
 ///
-/// A folder never becomes a rider itself — an organizer folder IS its
-/// members riding one base ([attachOrganizerBaseOf]) — so a folder run
-/// mounts the rows it carries and the folder follows by derivation. That
-/// is why this is a LIST of riders rather than "the moved row".
+/// A folder with something in it does not become a rider — an organizer
+/// folder IS its members riding one base ([attachOrganizerBaseOf]) — so a
+/// folder run mounts the rows it carries and the folder follows by
+/// derivation. That is why this is a LIST of riders rather than "the moved
+/// row".
+///
+/// ↩️**AND AN EMPTY ONE DOES** (F-139, 유저 2026-09-18). It has no leaf to
+/// carry the relation, so the folder row carries it — see [_mountsOn].
+/// ⛔That was never an exception anyone asked for: ⑦ said 「동일 규칙」 and
+/// named exactly one impossible shape, which was lifted in 2026-08-29.
 ///
 /// 🪦⑦ used to exclude one more shape here — a folder carrying a folder,
 /// because «an organizer folder is FLAT». That ban lived in the model
@@ -608,10 +614,20 @@ LayerAttachDrop? _attachPlan(
 /// drawing required it, and plain folders already nest. The walk reads
 /// the subtree's leaves now, so a carried folder is just structure and
 /// its leaves are the riders.
-List<Layer> _ridersOf(_Lift lift) {
+/// 🚨★★★**NULL AND EMPTY ARE DIFFERENT ANSWERS, AND THAT IS F-139.** Null is
+/// 「this run cannot ride at all」 — a plain row that brings a group with it,
+/// which would make the relation chain. Empty is 「there is nothing INSIDE
+/// to ride」, which only a folder can say and which is not a refusal.
+///
+/// They were one answer (`const <Layer>[]` for both) and the caller read it
+/// as a refusal, so an empty folder could not be attached. 유저 2026-09-18:
+/// 「폴더에 내용물이 있으면 … 드래그드롭으로 어태치 장착되는데 **아무것도
+/// 없으면 안되. 규칙 다른거 두지않도록**」. One value answering two
+/// questions is the shape this repo forbids by name.
+List<Layer>? _ridersOf(_Lift lift) {
   final moving = lift.moving;
   if (!moving.kind.groupsLayers) {
-    return lift.carried.length == 1 ? [moving] : const <Layer>[];
+    return lift.carried.length == 1 ? [moving] : null;
   }
   return lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
 }
@@ -632,9 +648,32 @@ List<_Mount>? _mountsOn(_Lift lift, _Target target) {
   final carriesAttaches = lift.stack.any(
     (other) => lift.carriedIds.contains(other.attachedToLayerId),
   );
-  if (riders.isEmpty ||
-      carriesAttaches ||
-      riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
+  if (riders == null || carriesAttaches) {
+    return null;
+  }
+  if (riders.isEmpty) {
+    // An EMPTY folder (F-139). There is no leaf to carry the relation, so
+    // the folder ROW carries it — which is not a new way to be attached:
+    // `attachGroupBaseOf` reads a row's own `attachedToLayerId` BEFORE it
+    // derives one from leaves, and this is the case that field is for on a
+    // folder. The moment a row lands inside, the derivation agrees with it.
+    //
+    // ⛔It is not put through [canMountLayerOnBase]: that predicate asks
+    // 「may this DRAWING row ride that base」 (「on the riding side the same
+    // drawing-kind rule applies」), and a folder is not riding as a picture
+    // — it is naming its group. Forcing it through would mean loosening a
+    // drawing rule to admit something that was never a drawing.
+    return canCarryAttachedLayers(base)
+        ? [
+            (
+              layerId: lift.moving.id,
+              baseId: target.baseId,
+              placement: target.placement,
+            ),
+          ]
+        : null;
+  }
+  if (riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
     return null;
   }
   return [

@@ -234,15 +234,31 @@ void main() {
         _row('se', kind: LayerKind.se),
       ];
       expect(folderStructureProblem(stack), isNull, reason: 'fixture is sound');
-      // A FOLDER cannot be somebody's attach row, so the slot between the
-      // base and its attach row refuses it rather than cutting the run.
+      // ↩️**IT USED TO SAY 「A FOLDER CANNOT BE SOMEBODY'S ATTACH ROW」** and
+      // refused this slot. 🗣️유저 2026-09-18 (F-139) named this landing
+      // too: 「폴더를 드래그로 다른 레이어에 어태치장착할수없게됨. **어태치로
+      // 사이에 넣는것도**」. An empty folder joining the group EXTENDS the
+      // run rather than cutting it, which is what the old rule was
+      // protecting.
       expect(
         resolveLayerDrop(
           stack: stack,
           movingId: const LayerId('F'),
           insertAt: 2,
         ),
+        isNotNull,
+        reason: '빈 폴더는 그룹 안으로 들어간다 — 규칙은 하나다',
+      );
+      // ⛔The protection itself is untouched: an SE row still cannot join,
+      // and the slot inside the group is where that is refused.
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('se'),
+          insertAt: 2,
+        ),
         isNull,
+        reason: 'the group stays unsplittable for a row that cannot ride',
       );
       // Its outer edges stay open: "next to the group" is always reachable.
       expect(
@@ -588,24 +604,44 @@ void main() {
       expect(sweep('u'), 'DXXaaD');
     });
 
-    test('a row that cannot ride anything is refused in the inner slots, '
-        'never silently split', () {
+    String sweepRefusals(List<Layer> rows, String movingId) => [
+      for (var slot = 0; slot <= rows.length; slot += 1)
+        if (resolveLayerDrop(
+              stack: rows,
+              movingId: LayerId(movingId),
+              insertAt: slot,
+            ) ==
+            null)
+          'X'
+        else
+          '.',
+    ].join();
+
+    test('🆕an EMPTY folder reaches the inner slots too — 유저: 「어태치로 '
+        '사이에 넣는것도」', () {
       final withFolder = [...stack(), _row('F', kind: LayerKind.folder)];
-      final answers = [
-        for (var slot = 0; slot <= withFolder.length; slot += 1)
-          if (resolveLayerDrop(
-                stack: withFolder,
-                movingId: const LayerId('F'),
-                insertAt: slot,
-              ) ==
-              null)
-            'X'
-          else
-            '.',
-      ].join();
-      // The folder sits LAST, so its own two gaps are the final pair — X for
-      // the same reason as above (④), not because a folder is refused there.
-      expect(answers, '..XX.XX');
+      // ↩️It read '..XX.XX' until F-139: the two inner slots were X because
+      // 「a folder cannot be somebody's attach row」. That rule was nobody's
+      // order — ⑦ (2026-08-12) said 「폴더도 드래그 드롭으로 어태치 장착
+      // 가능(**동일 규칙**)」 and named ONE exception, which was lifted on
+      // 2026-08-29.
+      //
+      // The folder sits LAST, so the final pair is its own two gaps — X for
+      // ④'s reason, not because a folder is refused there.
+      expect(sweepRefusals(withFolder, 'F'), '.....XX');
+    });
+
+    test('⛔a row that cannot ride anything is still refused in the inner '
+        'slots, never silently split', () {
+      // The protection F-139 did NOT touch. ⚠️A STORYBOARD row, because it
+      // is the one kind that re-orders in the cut and still cannot ride a
+      // base — a cut holds exactly one, so it can never be somebody's
+      // attach row ([canMountLayerOnBase]'s singleton clause). 🧪An SE,
+      // camera or instruction row answers X at every slot: they are section
+      // rows and cannot land here at all, so they would prove nothing about
+      // the group.
+      final withBoard = [...stack(), _row('B', kind: LayerKind.storyboard)];
+      expect(sweepRefusals(withBoard, 'B'), '..XX.XX');
     });
   });
 
@@ -927,16 +963,94 @@ void main() {
       );
     });
 
-    test('an EMPTY folder has no members to mount, so it does not', () {
+    /// ↩️**IT USED TO READ THE OTHER WAY** — 「an EMPTY folder has no members
+    /// to mount, so it does not」. 🗣️유저 2026-09-18 (`F-139-Q1`): 「폴더에
+    /// 내용물이 있으면 … 드래그드롭으로 어태치 장착되는데 **아무것도 없으면
+    /// 안되. 규칙 다른거 두지않도록**」.
+    ///
+    /// ⛔And nobody ever ordered that refusal. The round that wrote it
+    /// (`ac7a2736`) was carrying out 유저's ⑦ — 「폴더도 드래그 드롭으로
+    /// 어태치 장착 가능(**동일 규칙**). 불가능한 경우는 「어태치 폴더 안에
+    /// 폴더」 구조뿐」 — and that one named exception was lifted on
+    /// 2026-08-29. The empty case fell out of 「a folder attaches by
+    /// attaching its MEMBERS」 and was never anyone's decision.
+    test('🆕an EMPTY folder attaches too — it names the base itself', () {
       final stack = [_row('base'), folder('f')];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('f'),
+        targetId: const LayerId('base'),
+      );
+
+      expect(plan, isNotNull, reason: '유저: 「규칙 다른거 두지않도록」');
+      expect(
+        [for (final mount in plan!.attach.mounts) mount.layerId.value],
+        ['f'],
+        reason:
+            'a folder with leaves lets the LEAVES ride and follows by '
+            'derivation — with none, there is no leaf to carry the relation, '
+            'so the folder row carries it (`attachGroupBaseOf` has always '
+            'read a row\'s own field before deriving one)',
+      );
+      expect(
+        plan.attach.mounts.single.baseId,
+        const LayerId('base'),
+      );
+    });
+
+    /// 🚨★★★**THE SPLIT IS LOAD-BEARING, AND A MUTANT PROVED IT WAS NOT
+    /// PINNED.** F-139 made `_ridersOf` answer null ("this run cannot ride")
+    /// apart from empty ("nothing inside to ride"). Merging them back broke
+    /// no test — and it should: a SELECTION of two plain rows carries more
+    /// than the held row, so the "empty" arm would mount only the row under
+    /// the finger and silently leave the other one behind.
+    ///
+    /// ⚠️A base carrying its own attaches takes the same branch but is
+    /// refused a step earlier (`carriesAttaches`), which is why the mutant
+    /// looked harmless: the redundant guard hid the case that is not.
+    test('⛔a SELECTION dropped on a base is refused, not half-mounted', () {
+      final stack = [_row('base'), _row('p'), _row('q')];
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('p'),
+          targetId: const LayerId('base'),
+          alsoMoving: {const LayerId('p'), const LayerId('q')},
+        ),
+        isNull,
+        reason:
+            '㊵ says a selection travels TOGETHER — mounting the held row '
+            'alone would be the drop quietly doing something else',
+      );
+      // The same drag with no selection is the ordinary one-rider case.
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('p'),
+          targetId: const LayerId('base'),
+        ),
+        isNotNull,
+        reason: '⛔fixture premise: nothing else about this drop refuses it',
+      );
+    });
+
+    test('⛔but a base that cannot carry riders still refuses it', () {
+      // The base-side gate is untouched: an attach row is never itself a
+      // base ([canCarryAttachedLayers]).
+      final stack = [
+        _row('base'),
+        _row('rider', attachedTo: 'base'),
+        folder('f'),
+      ];
       expect(
         resolveLayerDropOnRow(
           stack: stack,
           movingId: const LayerId('f'),
-          targetId: const LayerId('base'),
+          targetId: const LayerId('rider'),
         ),
         isNull,
-        reason: 'nothing would ride, so there is no attach to make',
+        reason: '⛔the relation would chain, which is the one thing it may '
+            'never do',
       );
     });
 
