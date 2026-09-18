@@ -29,6 +29,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     required Animation<double> repaint,
     required this.viewport,
     required this.committedRegion,
+    this.startShape,
     required this.screenOffset,
     required this.marqueeShapes,
     required this.openTrail,
@@ -50,6 +51,25 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
   /// The committed selection — its composite outline is the ants.
   final CanvasSelectionRegion? committedRegion;
+
+  /// 🚨★★★**WHERE THE SESSION STARTED**, drawn while a transform is live and
+  /// gone the moment it is confirmed (I-38).
+  ///
+  /// > 「변형 도구 사용시, 자유든 일반이든 뭐든 묻지말고 변형도구 사용시
+  /// > **기존의 실루엣**(사각형 라인이나 메시워프든 **낡지 않을 구조로**)을
+  /// > **초록색 선**(변형하지 않았다는 그 선 ui 그대로)으로 보여줌. 확정시
+  /// > 사라짐. 즉 변형중에는 보이도록」 (유저 2026-09-16)
+  ///
+  /// ⛔**NOT A RECTANGLE, and that is the 「낡지 않을 구조로」**: it is the
+  /// session's own [CanvasSelectionRegion], so a lasso starts as a lasso and
+  /// a warped one starts as whatever it was. Nothing here knows the shapes
+  /// apart, which is why nothing here can go stale when a new one arrives.
+  ///
+  /// The colour is the one the ants and the confirm button already speak —
+  /// `selectionSession(changed: false)`, the 「hasn't been touched」 green —
+  /// because that is precisely what this line means: here is the untouched
+  /// thing, and the red chrome beside it is what you are doing to it.
+  final CanvasSelectionRegion? startShape;
   final Offset screenOffset;
 
   /// The polygon being dragged right now (not yet folded into the region),
@@ -167,6 +187,25 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
     final phase = _phase.value * (_dashOn + _dashOff);
+
+    // I-38: where this session started, UNDER everything else — it is what
+    // the live outline is being compared against, so the live one is what
+    // sits on top when they cross.
+    //
+    // ⚠️`pathIn`, like every other live outline here: it is on screen only
+    // while a session is open, and 유저 already ruled that a live line need
+    // not be settled onto pixels (F-65). Walking the pixels would rasterise
+    // a whole-selection mask for one line that is about to move anyway.
+    final start = startShape;
+    if (start != null) {
+      canvas.drawPath(
+        start.pathIn((point) => _map(point) + screenOffset),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = AppColors.selectionSession(changed: false),
+      );
+    }
 
     final committed = committedRegion;
     if (committed != null) {
@@ -326,6 +365,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     outlineIsLive,
     viewport,
     committedRegion,
+    startShape,
     screenOffset,
     ByList(marqueeShapes),
     // The live trail is a fresh list per pointer sample, and it is compared

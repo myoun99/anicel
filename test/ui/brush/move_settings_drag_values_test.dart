@@ -253,4 +253,69 @@ void main() {
       findsOneWidget,
     );
   });
+
+  /// 🚨★★★**F-164 ③④ — 유저 2026-09-18**: 「변형중에 툴도구의 X,Y값같은거
+  /// **실시간으로 바뀌게**해주고. **무겁지 않을 구조로 패널리빌드하지말고
+  /// 글자만 바꾸게**」.
+  testWidgets('the numbers follow the live box, and ONLY the digits rebuild', (
+    tester,
+  ) async {
+    final commands = await pumpMoveSettings(tester, applied: []);
+
+    expect(find.text('0'), findsWidgets, reason: '⛔fixture premise: identity');
+
+    // What the LAYER publishes while a handle is being dragged.
+    commands.publishTransformValues((
+      tx: 12,
+      ty: -4,
+      rotationDegrees: 0,
+      scale: 1,
+    ));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('move-x-field')),
+      findsOneWidget,
+    );
+    expect(find.text('12'), findsOneWidget, reason: 'X followed the box');
+    expect(find.text('-4'), findsOneWidget, reason: 'Y followed the box');
+  });
+
+  testWidgets('⛔and the digits are the only thing listening', (tester) async {
+    // 🎯THE HALF THAT IS A PERFORMANCE RULE. A transform drag is a
+    // pointer-rate event; the panel learning through its own `setState`
+    // would rebuild every row of every section on every sample, which is
+    // exactly what 유저 ruled out in the same sentence they asked for the
+    // numbers.
+    //
+    // ⛔A STRUCTURAL assertion, and deliberately so. A test that counted
+    // "rebuilds" here would have to invent a counter the panel does not
+    // have, and this file has already been taught what an invented
+    // instrument is worth. What is checkable is where the listening
+    // happens: the number sits inside a builder that listens to the live
+    // values, and the panel above it does not.
+    await pumpMoveSettings(tester, applied: []);
+    final label = find.byKey(const ValueKey<String>('move-x-field'));
+    expect(label, findsOneWidget, reason: '⛔fixture premise');
+
+    expect(
+      find.ancestor(
+        of: label,
+        matching: find.byType(ValueListenableBuilder<SelectionTransformValues?>),
+      ),
+      findsOneWidget,
+      reason: 'the digits read the live values themselves',
+    );
+    // ⚠️And that builder is BELOW the sections, not wrapped around them —
+    // one around the panel would rebuild everything and still pass the
+    // assertion above.
+    expect(
+      find.descendant(
+        of: find.byType(ValueListenableBuilder<SelectionTransformValues?>),
+        matching: find.byType(ToolSettingsPanel),
+      ),
+      findsNothing,
+      reason: '⛔a builder around the whole panel is the thing being avoided',
+    );
+  });
 }

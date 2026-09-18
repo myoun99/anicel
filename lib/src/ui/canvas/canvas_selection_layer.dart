@@ -1233,22 +1233,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       },
       revertPendingMove: _revertMoveSession,
-      transformValues: () {
-        final transform = _transform;
-        // The channels read the AFFINE, which every mode has — a quad or a
-        // mesh is displacements ON one, not a replacement for it. They
-        // used to blank out here, back when the warp WAS the whole state
-        // and there was no affine left to report.
-        if (transform == null) {
-          return null;
-        }
-        return (
-          tx: transform.tx,
-          ty: transform.ty,
-          rotationDegrees: transform.rotationDegrees,
-          scale: transform.sx,
-        );
-      },
+      transformValues: _transformValuesNow,
       setTransformValues: _setTransformValues,
       canEditTransform: _canEditTransform,
       flipTransform: _flipTransform,
@@ -2316,6 +2301,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   bool _reportedTransformDrag = false;
 
+  /// What the open box reads as, or null when no box is up (the settings
+  /// fields then show the identity).
+  ///
+  /// The channels read the AFFINE, which every mode has — a quad or a mesh
+  /// is displacements ON one, not a replacement for it. They used to blank
+  /// out here, back when the warp WAS the whole state and there was no
+  /// affine left to report.
+  ///
+  /// ⛔ONE computation, two readers: the pull ([CanvasSelectionCommands.
+  /// transformValues]) and the live push ([_publishTransformValues]). A
+  /// second spelling is how the panel and the box would come to disagree
+  /// about the number they are both showing.
+  SelectionTransformValues? _transformValuesNow() {
+    final transform = _transform;
+    if (transform == null) {
+      return null;
+    }
+    return (
+      tx: transform.tx,
+      ty: transform.ty,
+      rotationDegrees: transform.rotationDegrees,
+      scale: transform.sx,
+    );
+  }
+
   void _syncAnts() {
     final animate = _hasSelection || _drag is MarqueeDrag;
     if (animate && !_ants.isAnimating) {
@@ -2323,10 +2333,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     } else if (!animate && _ants.isAnimating) {
       _ants.stop();
     }
+    _publishTransformValues();
     // Every mutation path funnels through here — the settings panel's
     // numeric fields track the session via this (deferred) ping.
     widget.selectionCommands?.notifySessionChanged();
   }
+
+  /// 🗣️유저 2026-09-18 (F-164): 「변형중에 툴도구의 X,Y값같은거 **실시간으로
+  /// 바뀌게**」 — and 「**패널리빌드하지말고 글자만 바꾸게**」, which is why
+  /// this is a notifier the digits read rather than a ping the panel
+  /// rebuilds on.
+  ///
+  /// ⚠️Called from the drag as well as from [_syncAnts]: a transform drag
+  /// deliberately does NOT funnel through the ants (a rebuild per pointer
+  /// move on this layer is the R4 #3 hazard), so the numbers would
+  /// otherwise sit still until the drag ended — which is the symptom.
+  void _publishTransformValues() =>
+      widget.selectionCommands?.publishTransformValues(_transformValuesNow());
 
   void _deselect() {
     if (!_hasSelection && _drag == null) {
@@ -2962,6 +2985,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ),
         );
     }
+    _publishTransformValues();
   }
 
   /// Where the grabbed [handle] would be if it moved exactly as far as the
@@ -3838,6 +3862,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             repaint: _ants,
             viewport: widget.viewport,
             committedRegion: displayShape,
+            // I-38 (유저 2026-09-16): 「변형도구 사용시 기존의 실루엣을
+            // 초록색 선으로 보여줌. **확정시 사라짐.** 즉 변형중에는
+            // 보이도록」.
+            //
+            // ⛔The condition is the BOX, not the float: 「변형중」 is what
+            // the user said, and a confirm closes the box, which is what
+            // makes it go. The session already carries the shape it began
+            // with — nothing new is remembered for this.
+            startShape: _transform == null ? null : _moveSessionStartShape,
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
             // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
             //

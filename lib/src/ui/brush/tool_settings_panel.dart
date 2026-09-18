@@ -718,8 +718,42 @@ class _MoveSettingsState extends State<_MoveSettings> {
     required String text,
     required void Function(double units) onDrag,
     required void Function(double parsed) onSubmit,
+
+    /// 🚨★★★**THE DIGITS, LIVE — and ONLY the digits.**
+    ///
+    /// 🗣️유저 2026-09-18 (F-164): 「변형중에 툴도구의 X,Y값같은거 **실시간
+    /// 으로 바뀌게**해주고. **무겁지 않을 구조로 패널리빌드하지말고 글자만
+    /// 바꾸게**」.
+    ///
+    /// Given, this channel's number comes from
+    /// [CanvasSelectionCommands.liveTransformValues] through a
+    /// `ValueListenableBuilder`, so a transform drag repaints one `Text`
+    /// and nothing above it. ⛔The alternative — this panel's own
+    /// `setState` on the channel's ping — rebuilds every row of every
+    /// section on every pointer sample, which is the one thing the user
+    /// ruled out in the same sentence they asked for the numbers.
+    String Function(SelectionTransformValues? values)? live,
   }) {
     final theme = Theme.of(context);
+    final notifier = widget.selectionCommands?.liveTransformValues;
+    Widget readout(String shown) => DragValueLabel(
+      keyValue: keyValue,
+      text: shown,
+      tooltip: AppText.strings.viewDragDoubleTap,
+      width: 72,
+      textAlign: TextAlign.right,
+      textStyle: const TextStyle(fontSize: 12),
+      onDragDelta: onDrag,
+      onEditSubmit: (raw) {
+        final parsed = double.tryParse(
+          raw.replaceAll('%', '').replaceAll('°', '').trim(),
+        );
+        if (parsed != null) {
+          onSubmit(parsed);
+        }
+      },
+    );
+
     return Row(
       children: [
         SizedBox(
@@ -730,23 +764,13 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // readout is shared with the canvas bar, the conte page field and
         // the timesheet, and those are a UI-session decision, not this
         // round's.
-        DragValueLabel(
-          keyValue: keyValue,
-          text: text,
-          tooltip: AppText.strings.viewDragDoubleTap,
-          width: 72,
-          textAlign: TextAlign.right,
-          textStyle: const TextStyle(fontSize: 12),
-          onDragDelta: onDrag,
-          onEditSubmit: (raw) {
-            final parsed = double.tryParse(
-              raw.replaceAll('%', '').replaceAll('°', '').trim(),
-            );
-            if (parsed != null) {
-              onSubmit(parsed);
-            }
-          },
-        ),
+        if (live == null || notifier == null)
+          readout(text)
+        else
+          ValueListenableBuilder<SelectionTransformValues?>(
+            valueListenable: notifier,
+            builder: (context, values, _) => readout(live(values)),
+          ),
       ],
     );
   }
@@ -793,6 +817,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
           keyValue: 'move-x-field',
           label: 'X',
           text: formatTrimmedDecimal(_tx, fractionDigits: 2),
+          live: (v) => formatTrimmedDecimal(v?.tx ?? _tx, fractionDigits: 2),
           onDrag: (units) {
             setState(() => _tx += units);
             _apply();
@@ -807,6 +832,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
           keyValue: 'move-y-field',
           label: 'Y',
           text: formatTrimmedDecimal(_ty, fractionDigits: 2),
+          live: (v) => formatTrimmedDecimal(v?.ty ?? _ty, fractionDigits: 2),
           onDrag: (units) {
             setState(() => _ty += units);
             _apply();
@@ -821,6 +847,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
           keyValue: 'move-angle-field',
           label: AppText.strings.brAngle,
           text: '${formatTrimmedDecimal(_angleDeg, fractionDigits: 2)}°',
+          live: (v) =>
+              '${formatTrimmedDecimal(v?.rotationDegrees ?? _angleDeg, fractionDigits: 2)}°',
           onDrag: (units) {
             setState(() => _angleDeg += units);
             _apply();
@@ -835,6 +863,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
           keyValue: 'move-scale-field',
           label: AppText.strings.brScale,
           text: '${formatTrimmedDecimal(_scalePct, fractionDigits: 2)}%',
+          live: (v) =>
+              '${formatTrimmedDecimal((v?.scale ?? _scalePct / 100) * 100, fractionDigits: 2)}%',
           onDrag: (units) {
             setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
             _apply();

@@ -390,6 +390,33 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// (the settings fields then show the identity).
   SelectionTransformValues? get transformValues => _transformValues?.call();
 
+  /// 🚨★★★**THE SAME NUMBERS, LIVE — and a notifier so that only the DIGITS
+  /// rebuild.**
+  ///
+  /// 🗣️유저 2026-09-18 (F-164): 「변형중에 툴도구의 X,Y값같은거 **실시간으로
+  /// 바뀌게** 해주고. **무겁지 않을 구조로 패널리빌드하지말고 글자만 바꾸게**」.
+  ///
+  /// ⛔It is deliberately NOT a `notifyListeners` on this channel: that is
+  /// how the settings panel already learns things, and it rebuilds the
+  /// whole panel. A transform drag is a pointer-rate event, and the layer
+  /// beside it learned this the hard way — 「a rebuild per pointer move on
+  /// this layer is the R4 #3 hazard」 — which is why its own cursor band is
+  /// a listenable the painter reads and not state anybody sets.
+  ///
+  /// ⚠️Same source as [transformValues], never a second computation: the
+  /// layer publishes here with the value it would answer with.
+  final ValueNotifier<SelectionTransformValues?> liveTransformValues =
+      ValueNotifier<SelectionTransformValues?>(null);
+
+  /// The layer publishing what the box is showing right now.
+  void publishTransformValues(SelectionTransformValues? values) {
+    final current = liveTransformValues.value;
+    if (current == values) {
+      return;
+    }
+    liveTransformValues.value = values;
+  }
+
   /// Applies numeric transform values to the live selection (R17-U): the
   /// layer opens a session if none is up, sets the affine, and shows the
   /// result on the float — Enter confirms, Escape reverts, as always.

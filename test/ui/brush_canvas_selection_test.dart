@@ -64,6 +64,7 @@ void main() {
       Future<void> Function(CanvasTool tool) setTool,
       Future<void> Function(CanvasViewport viewport) setViewport,
       ValueNotifier<TransformToolOptions> transformOptions,
+      BrushEditCacheInvalidationSink cacheSink,
     })
   >
   pumpSelectionPanel(
@@ -90,6 +91,17 @@ void main() {
     );
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
+    // 🚨★★★**ONE SINK, HELD.** It was built inline in `pumpWith`, so every
+    // pump handed the panel a NEW one and nothing outside could tell the
+    // panel a cel had changed.
+    //
+    // 🧪That is not a tidiness point — it made a whole class of case
+    // unmeasurable, and cost F-164 a wrong conclusion: committing a stroke
+    // through the coordinator moved the panel's drawn pixels by exactly
+    // zero, which reads as 「the picture is gone」 and is actually 「this
+    // fixture never repaints a commit」. A control caught it; the sink is
+    // what fixes it.
+    final cacheSink = BrushEditCacheInvalidationSink();
     final transformOptions = ValueNotifier(
       TransformToolOptions(mode: transformMode),
     );
@@ -129,7 +141,7 @@ void main() {
                 // put every reachable pointer position back on canvas.
                 canvasSize: canvasSize,
                 availableFrameKeys: frameKeys,
-                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                cacheInvalidationSink: cacheSink,
                 historyManager: history,
                 brushToolState: BrushToolState.defaults.copyWith(
                   tool: tool,
@@ -169,6 +181,7 @@ void main() {
         await pumpWith(liveTool);
       },
       transformOptions: transformOptions,
+      cacheSink: cacheSink,
     );
   }
 
@@ -998,22 +1011,23 @@ void main() {
       reason: '④유저: 「프레임1가면 프레임1의 그림이 사라짐」',
     );
 
-    // ⛔**⑤ IS NOT PINNED HERE, AND THIS FIXTURE CANNOT PIN IT.** 유저's
-    // last symptom is 「새로 선을 그어도 긋고나서 커밋하면 사라짐」 — ordinary
-    // drawing on that cel afterwards.
+    // ⛔**⑤ IS PINNED BY ITS CAUSE, NOT BY ITS PICTURE — and that is a
+    // measurement, not a shrug.** 유저's last symptom is 「새로 선을 그어도
+    // 긋고나서 커밋하면 사라짐」: a cel still drawn through a stale hole
+    // swallows whatever is drawn on it next. The hole exists only while the
+    // HOST's session is open, and the assertion above says it is not — which
+    // is the same fact one step earlier, and the step a mutant can reach.
     //
-    // 🧪Measured, with a CONTROL: committing a stroke straight through the
-    // coordinator moves this panel's drawn ink by exactly zero even when no
-    // transform was ever opened. So an assertion here would be measuring
-    // nothing, the way two earlier attempts at this pin were — the red ink
-    // mask that counted the ANTS, and `reclaimableViewBytes`, which an open
-    // session reports as 0 because its holed surface shares every tile it
-    // did not hole.
-    //
-    // ⇒ The next attempt needs a rig that DRAWS the way the app draws (the
-    // brush host, not this selection fixture), and it must run a control
-    // first: commit a stroke with no session in sight and prove the screen
-    // moves at all.
+    // 🧪Why not the picture too, with a CONTROL rather than a guess: commit
+    // a stroke through the coordinator on a cel this panel has ALREADY
+    // drawn, and its pixels do not move — with the cache sink wired, which
+    // this fixture could not even reach until this round built ONE instead
+    // of a fresh one per pump. (A cel it has NOT drawn yet does show, which
+    // is how the two-frame setup above works at all.) Nothing pokes the
+    // panel the way the brush host does, so the picture half needs a rig
+    // that DRAWS — and that rig must open with this same control, because
+    // an instrument that cannot move satisfies 「the ink went up」 by
+    // failing, and satisfies nothing at all by passing.
   });
 
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
@@ -1278,6 +1292,103 @@ void main() {
       reason: 'and so did the in-canvas one — one picture, one move',
     );
     expect(inkAt(env.coordinator, 28, 28), 0, reason: 'nothing stayed behind');
+  });
+
+  /// 🚨★★★**I-38 — 유저 2026-09-16**: 「변형 도구 사용시, 자유든 일반이든
+  /// 뭐든 묻지말고 변형도구 사용시 **기존의 실루엣**(사각형 라인이나
+  /// 메시워프든 **낡지 않을 구조로**)을 **초록색 선**(변형하지 않았다는 그
+  /// 선 ui 그대로)으로 보여줌. **확정시 사라짐.** 즉 변형중에는 보이도록」.
+  testWidgets('I-38: the box shows where it STARTED while it is open, and '
+      'that line goes on the confirm', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    expect(
+      antsOnScreen(tester)?.startShape,
+      isNull,
+      reason: '⛔fixture premise: nothing to show before a box is open',
+    );
+
+    env.commands.beginTransform();
+    await tester.pump();
+    final started = antsOnScreen(tester)?.startShape;
+    expect(started, isNotNull, reason: '변형중에는 보이도록');
+
+    // Moving the box does not move the line — that is the whole point of
+    // it: it says where this started, against what the chrome now shows.
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 50));
+    expect(
+      antsOnScreen(tester)?.startShape,
+      same(started),
+      reason:
+          '🚨it is the shape the SESSION began with, not the live one — a '
+          'line that followed the drag would be saying nothing',
+    );
+
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      antsOnScreen(tester)?.startShape,
+      isNull,
+      reason: '유저: 「확정시 사라짐」',
+    );
+  });
+
+  testWidgets('I-38: ⛔and a plain MOVE draws no before-line — 유저 said '
+      '「변형도구 사용시」', (tester) async {
+    // 🧪A mutant is why this exists. Dropping the 「is a box open」 guard
+    // broke nothing, because a confirm ends the session and the shape goes
+    // with it either way — the case the guard is actually for is a session
+    // with NO box, which nothing was asking about.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    expect(env.commands.movePending, isTrue, reason: '⛔fixture premise');
+    expect(env.commands.transformActive, isFalse, reason: '⛔and no box');
+
+    expect(
+      antsOnScreen(tester)?.startShape,
+      isNull,
+      reason:
+          'the before-line belongs to the transform TOOL. A move already '
+          'shows where it started — the ants are still on the old outline '
+          'until it lands',
+    );
+  });
+
+  testWidgets('I-38: and it is whatever shape the session began with — a '
+      'LASSO starts as a lasso', (tester) async {
+    // 🎯유저: 「사각형 라인이나 메시워프든 **낡지 않을 구조로**」. Nothing in
+    // the painter knows the shapes apart, which is what makes that true —
+    // so the case that would break a rectangle assumption is the pin.
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.lasso,
+    );
+    // A lasso needs a PATH — a straight two-point drag encloses nothing.
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + const Offset(20, 20));
+    await tester.pump();
+    for (final point in const [Offset(120, 20), Offset(120, 120)]) {
+      await gesture.moveTo(origin + point);
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+    expect(env.commands.hasSelection, isTrue);
+
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    final started = antsOnScreen(tester)?.startShape;
+    expect(started, isNotNull);
+    expect(
+      started!.singleShape?.points.length,
+      3,
+      reason:
+          '⛔the TRIANGLE the drag traced, corner for corner. A rectangle '
+          'would read 4, so this is what says nothing between the session '
+          'and the painter flattened the shape into a box',
+    );
   });
 
   testWidgets('H28: an OPEN box that has moved already reads as changed — 유저: '
