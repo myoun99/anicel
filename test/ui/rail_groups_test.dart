@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/settings_flyout.dart';
 
 /// A rail button is a GROUP of panels, and the rail is a column of them.
 ///
@@ -627,19 +628,8 @@ void main() {
 
       // The tab has no X any more — 패널 프레임 최소화 took it — so the
       // settings list IS the switch, in both directions.
-      Future<void> togglePanel() async {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('top-strip-settings-button')),
-        );
-        await tester.pumpAndSettle();
-        final entry = find.byKey(
-          const ValueKey<String>('panels-menu-item-brush-settings'),
-        );
-        await tester.ensureVisible(entry);
-        await tester.pumpAndSettle();
-        await tester.tap(entry);
-        await tester.pumpAndSettle();
-      }
+      Future<void> togglePanel() =>
+          tapPanelsDrawerRow(tester, 'panels-menu-item-brush-settings');
 
       // Hide it, then ask for it back. Its home group is still closed.
       await togglePanel();

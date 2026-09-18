@@ -584,15 +584,20 @@ class EditorTopStrip extends StatelessWidget {
 
   // --- Settings -------------------------------------------------------------
 
-  /// The SETTINGS popover: the app's own knobs, the panel switchboard, and
-  /// the three diagnosis overlays.
+  /// The SETTINGS popover: the app's own knobs, then two drawers — the
+  /// WORKSPACE (`window-panels`) and the measurement switches
+  /// (`edit-debug`).
   ///
   /// Undo, redo and the six frame verbs used to head this list. They were
   /// never settings — they are things you do to the work — and they now
   /// live on the tool rail and the timeline's command bar respectively.
   ///
-  /// The panel rows are the old Window menu, behaviour unchanged: a closed
-  /// panel has no other way back, so that list is load-bearing.
+  /// ↩️The panel switchboard and the three layout choices were siblings of
+  /// Preferences and About until F-146, which made a list of what the
+  /// WORKSPACE is read as a list of what the APP is. They are one drawer
+  /// now (유저: 「도구 버튼부터 작업공간 배치 초기화까지 싹 다 패널설정
+  /// 버튼안으로」). ⛔Behaviour unchanged where it is load-bearing: a closed
+  /// panel still has no other way back than that list, one level in.
   List<PanelFlyoutEntry> _settingsEntries(BuildContext context) => [
     _item(
       id: 'edit-keyboard-shortcuts',
@@ -625,47 +630,72 @@ class EditorTopStrip extends StatelessWidget {
       },
     ),
     const PanelFlyoutDivider(),
-    // The old Window menu. Every panel with its visibility — a closed
-    // (X-ed) panel reopens ONLY from here, so this list is the one path
-    // back and cannot be dropped with the rest of the menus.
-    for (final entry in panelsMenu.entries)
-      PanelFlyoutItem(
-        keyValue: 'panels-menu-item-${entry.tabId}',
-        label: entry.label,
-        icon: Icons.space_dashboard_outlined,
-        checked: entry.visible,
-        onSelected: () => panelsMenu.toggle(entry.tabId),
-      ),
-    // The left-handed choice. It was a tab drag until 고정 도킹 took the
-    // grip away, and a strip you cannot move is the wrong answer for half
-    // the people holding the stylus.
+    // 🗣️유저 2026-09-16 (F-146 ①): 「지금 툴/서브뷰어 이런게 흩뿌려져있는데,
+    // **패널 이라는 곳에** 추가앵커팝오버로 해당 패널관련 설정들 넣고」, and
+    // on being asked WHICH (`F-146-Q1`): 「그냥 **패널 관련 싹 다**야. **도구
+    // 버튼부터 작업공간 배치 초기화까지 싹 다 패널설정 버튼안으로**」.
+    //
+    // So the switchboard and the three layout choices are one drawer. They
+    // were siblings of Preferences and About, which made a list of what the
+    // WORKSPACE is read as a list of what the APP is.
+    //
+    // ⛔The second level is [PanelFlyoutItem.submenuBuilder] — the axis I-4
+    // built for the colour labels (유저: 「추가 앵커팝오버는 색라벨같은거에서
+    // 공용화했을테니 그거사용」) — and the panel rows keep their keys, so a
+    // closed panel's one path back is where it always was, one level in.
     _item(
-      id: 'window-tool-rail-right',
-      label: 'Tool strip on the right',
-      icon: Icons.flip,
-      checked: panelsMenu.toolRailOnRight,
-      onPressed: panelsMenu.canMoveToolRail
-          ? () => panelsMenu.setToolRailOnRight(!panelsMenu.toolRailOnRight)
-          : null,
-    ),
-    // 아래 도킹 영역은 위/아래 설정 가능 (유저 확정). What flips with it —
-    // the resize handle to the other edge, the 문턱 with it, the square
-    // corners to whichever side is against the frame — needed no new rule:
-    // 「기하는 캔버스 향한 변에, 정체성은 창틀 향한 변에」 decides all of it.
-    _item(
-      id: 'window-region-on-top',
-      label: 'Timeline region on top',
-      icon: Icons.vertical_align_top,
-      checked: panelsMenu.regionOnTop,
-      onPressed: panelsMenu.canMoveRegion
-          ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
-          : null,
-    ),
-    _item(
-      id: 'window-reset-layout',
-      label: 'Reset workspace layout',
-      icon: Icons.restart_alt,
-      onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
+      id: 'window-panels',
+      label: 'Panels',
+      icon: Icons.space_dashboard_outlined,
+      submenuBuilder: () => [
+        // The old Window menu. Every panel with its visibility — a closed
+        // (X-ed) panel reopens ONLY from here, so this list is the one path
+        // back and cannot be dropped with the rest of the menus.
+        //
+        // ⛔No glyph: it was `space_dashboard_outlined` on every row, which
+        // is now the mark of the row they all live behind. A glyph that
+        // never varies says only what the list already says.
+        for (final entry in panelsMenu.entries)
+          PanelFlyoutItem(
+            keyValue: 'panels-menu-item-${entry.tabId}',
+            label: entry.label,
+            checked: entry.visible,
+            onSelected: () => panelsMenu.toggle(entry.tabId),
+          ),
+        const PanelFlyoutDivider(),
+        // The left-handed choice. It was a tab drag until 고정 도킹 took the
+        // grip away, and a strip you cannot move is the wrong answer for
+        // half the people holding the stylus.
+        _item(
+          id: 'window-tool-rail-right',
+          label: 'Tool strip on the right',
+          icon: Icons.flip,
+          checked: panelsMenu.toolRailOnRight,
+          onPressed: panelsMenu.canMoveToolRail
+              ? () => panelsMenu.setToolRailOnRight(!panelsMenu.toolRailOnRight)
+              : null,
+        ),
+        // 아래 도킹 영역은 위/아래 설정 가능 (유저 확정). What flips with it —
+        // the resize handle to the other edge, the 문턱 with it, the square
+        // corners to whichever side is against the frame — needed no new
+        // rule: 「기하는 캔버스 향한 변에, 정체성은 창틀 향한 변에」 decides
+        // all of it.
+        _item(
+          id: 'window-region-on-top',
+          label: 'Timeline region on top',
+          icon: Icons.vertical_align_top,
+          checked: panelsMenu.regionOnTop,
+          onPressed: panelsMenu.canMoveRegion
+              ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
+              : null,
+        ),
+        _item(
+          id: 'window-reset-layout',
+          label: 'Reset workspace layout',
+          icon: Icons.restart_alt,
+          onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
+        ),
+      ],
     ),
     const PanelFlyoutDivider(),
     // 🗣️유저 2026-09-16 (F-146): 「입력 인스펙터같은건 **디버그라는? 거기다**

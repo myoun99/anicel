@@ -10,6 +10,7 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/scaled_test_binding.dart';
+import '../../helpers/settings_flyout.dart';
 
 /// 🎯**The round's headline.** The chain from the window origin to the
 /// canvas must land the canvas on a whole device pixel, at any effective
@@ -357,10 +358,7 @@ void main() {
         );
 
         // Opening the menu is setup, not the moment under test.
-        await tester.tap(
-          find.byKey(const ValueKey<String>('top-strip-settings-button')),
-        );
-        await tester.pumpAndSettle();
+        await openPanelsDrawer(tester);
         final entry = find.byKey(
           const ValueKey<String>('panels-menu-item-media'),
         );

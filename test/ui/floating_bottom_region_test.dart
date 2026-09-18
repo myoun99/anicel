@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/panel_finders.dart';
+import '../helpers/settings_flyout.dart';
 
 /// The timeline came OFF the canvas.
 ///
@@ -188,17 +189,7 @@ void main() {
 
       // Which 30px the grips leave alone is not a rule of their own: it
       // follows the threshold, so it flips with the region.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
-      );
-      await tester.pumpAndSettle();
-      final row = find.byKey(
-        const ValueKey<String>('menu-window-region-on-top'),
-      );
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
-      await tester.pumpAndSettle();
+      await tapPanelsDrawerRow(tester, 'menu-window-region-on-top');
 
       expect(grip('bottom-inset-left').overlaps(leadingTab()), isFalse);
       expect(grip('bottom-inset-right').overlaps(collapseButton()), isFalse);
@@ -257,17 +248,7 @@ void main() {
       final canvas = tester.getRect(mainCanvasPanelShell());
       expect(low.bottom, closeTo(canvas.bottom, 0.5));
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
-      );
-      await tester.pumpAndSettle();
-      final row = find.byKey(
-        const ValueKey<String>('menu-window-region-on-top'),
-      );
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
-      await tester.pumpAndSettle();
+      await tapPanelsDrawerRow(tester, 'menu-window-region-on-top');
 
       // Both edges flip, and neither needed a rule of its own.
       final high = regionRect();

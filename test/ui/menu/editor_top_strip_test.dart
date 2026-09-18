@@ -1,6 +1,6 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -37,34 +37,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// ONE mouse per test, held here: a second `addPointer` for the same
-  /// device trips `MouseTracker`'s add/remove assertion, and `createGesture`
-  /// gives every mouse device 0 however the pointer id is spelled.
-  TestGesture? hoverMouse;
-
-  /// Opens a row's SECOND level (F-146 / I-4): hover, because that is how
-  /// the flyout's submenu axis opens.
-  Future<void> hoverEntry(WidgetTester tester, String itemKey) async {
-    final item = find.byKey(ValueKey<String>(itemKey));
-    await tester.ensureVisible(item);
-    await tester.pumpAndSettle();
-    if (hoverMouse == null) {
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: Offset.zero);
-      hoverMouse = mouse;
-      addTearDown(() async {
-        await mouse.removePointer();
-        hoverMouse = null;
-      });
-    }
-    // Away first: a popover that closed and reopened leaves the pointer
-    // sitting where it already was, and a move to the same place is no
-    // event at all.
-    await hoverMouse!.moveTo(Offset.zero);
-    await tester.pumpAndSettle();
-    await hoverMouse!.moveTo(tester.getCenter(item));
-    await tester.pumpAndSettle();
-  }
+  /// Opens a row's SECOND level (F-146 / I-4). ⛔The hover lives in
+  /// `helpers/settings_flyout.dart` — five other files reach these same
+  /// drawers, and each having its own would be five dialects of one gesture.
+  Future<void> hoverEntry(WidgetTester tester, String itemKey) =>
+      hoverFlyoutRow(tester, itemKey);
 
   testWidgets('the strip carries two buttons and none of the old menus', (
     tester,
@@ -121,6 +98,7 @@ void main() {
     // this list is not just the way BACK any more — it is the only switch
     // in either direction.
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'panels-menu-item-brushes');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
@@ -128,6 +106,7 @@ void main() {
     );
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'panels-menu-item-brushes');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
@@ -138,9 +117,18 @@ void main() {
   testWidgets('Settings: Reset Workspace Layout restores closed panels', (
     tester,
   ) async {
+    // ⚠️A REAL WINDOW, because the drawer is now as tall as the panel list.
+    // 🧪Measured at the default 800×600: `Reset workspace layout` centres at
+    // y=632 — off the bottom, and the tap lands on nothing. The flyout has
+    // never scrolled at either level (`panel_flyout.dart` has no scrollable
+    // anywhere), so a list taller than the screen simply runs off it; F-146
+    // moved twenty rows behind one row and made that easy to reach.
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'panels-menu-item-brushes');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
@@ -148,6 +136,7 @@ void main() {
     );
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'menu-window-reset-layout');
 
     expect(
@@ -180,12 +169,14 @@ void main() {
       findsNothing,
     );
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'menu-window-region-on-top');
     final movedTimeline = tester.getRect(
       find.byKey(const ValueKey<String>('floating-bottom-region')),
     );
 
     await openStrip(tester, 'top-strip-settings-button');
+    await hoverEntry(tester, 'menu-window-panels');
     await tapEntry(tester, 'menu-window-reset-layout');
 
     expect(
@@ -212,6 +203,57 @@ void main() {
     await tapEntry(tester, 'menu-help-about');
 
     expect(find.byType(AboutDialog), findsOneWidget);
+  });
+
+  testWidgets('Settings: the workspace lives under PANELS — the switchboard '
+      'and every layout choice', (tester) async {
+    // 🗣️유저 2026-09-18 (`F-146-Q1`): 「그냥 패널 관련 싹 다야. **도구
+    // 버튼부터 작업공간 배치 초기화까지 싹 다 패널설정 버튼안으로**」.
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    await openStrip(tester, 'top-strip-settings-button');
+    expect(
+      find.byKey(const ValueKey<String>('menu-window-panels')),
+      findsOneWidget,
+    );
+    for (final id in const [
+      'panels-menu-item-brushes',
+      'menu-window-tool-rail-right',
+      'menu-window-region-on-top',
+      'menu-window-reset-layout',
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>(id)),
+        findsNothing,
+        reason: '⛔$id 는 첫 겹에 없다 — 그게 서랍인 이유다',
+      );
+    }
+    // ⚠️COUNTED BEFORE, because the app draws dividers elsewhere and a bare
+    // `find.byType(Divider)` would pass whatever the submenu did. 🧪A mutant
+    // proved it: swapping the divider for a `SizedBox.shrink()` left the
+    // first version of this assertion green.
+    final dividersBefore = find.byType(Divider).evaluate().length;
+
+    await hoverEntry(tester, 'menu-window-panels');
+    for (final id in const [
+      'panels-menu-item-brushes',
+      'menu-window-tool-rail-right',
+      'menu-window-region-on-top',
+      'menu-window-reset-layout',
+    ]) {
+      expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
+    }
+    // 🚨And the DIVIDER between the switchboard and the layout choices is
+    // drawn. The submenu used to keep only `PanelFlyoutItem`s, so a divider
+    // handed to it vanished without a sound — found here, fixed in
+    // `panel_flyout.dart`.
+    expect(
+      find.byType(Divider).evaluate().length,
+      greaterThan(dividersBefore),
+      reason: '서랍이 열리면서 그 안의 구분선이 하나 늘어난다',
+    );
   });
 
   testWidgets('Settings: the diagnosis switches live under DEBUG, and only '

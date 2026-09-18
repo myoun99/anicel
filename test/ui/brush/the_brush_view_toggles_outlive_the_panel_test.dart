@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -158,8 +159,7 @@ void main() {
           'back on',
     );
 
-    await tapKey(tester, 'top-strip-settings-button');
-    await tapKey(tester, 'menu-window-reset-layout');
+    await tapPanelsDrawerRow(tester, 'menu-window-reset-layout');
     expect(
       await strokePreviewsChecked(tester),
       isTrue,

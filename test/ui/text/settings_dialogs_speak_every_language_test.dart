@@ -198,7 +198,14 @@ void main() {
   /// and the scan reads the first literal after the colon or nothing at
   /// all. ★So the number is not the debt — it never was, and a round that
   /// moves it by two can still be the round that translated eight.
-  const untranslatedElsewhere = 86;
+  /// 87 (F-146 ①, 2026-09-18): the panel switchboard and the three layout
+  /// choices moved inside a new 「패널」 row, and that row's English label is
+  /// the menu bar's call-site contract above — `menuAction.window-panels` is
+  /// answered in the other four languages, and
+  /// `every_menu_entry_speaks_every_language_test` is what asks whether it
+  /// is. ⚠️Same shape as I-15's entry: the count went UP by a line that was
+  /// translated the moment it was written.
+  const untranslatedElsewhere = 87;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

@@ -223,15 +223,10 @@ Future<void> showPanelFlyout(
           as RenderBox;
   // The entry heights are fixed (32/24/6 + the menu's 8+8 padding), so the
   // flyout's height is known before layout.
-  var estimatedHeight = 16.0;
-  for (final entry in entries) {
-    estimatedHeight += switch (entry) {
-      PanelFlyoutHeader() => 24.0,
-      PanelFlyoutDivider() => 6.0,
-      PanelFlyoutRow(:final height) => height,
-      PanelFlyoutItem() => 32.0,
-    };
-  }
+  final estimatedHeight = entries.fold(
+    16.0,
+    (sum, entry) => sum + _entryHeight(entry),
+  );
   final anchorTopLeft = button.localToGlobal(anchor.topLeft, ancestor: overlay);
   final anchorBottomLeft = button.localToGlobal(
     anchor.bottomLeft,
@@ -423,6 +418,16 @@ Future<void> showPanelFlyout(
 /// 2026-08-29 reported — 「호버색이 다른 용지처럼 전면 흰색되는게 아니라
 /// 작게 글자만큼만 흰 배경 생기고 버튼 취급? 인식도 그 안에서만 되」.
 const double flyoutRowHeight = 32;
+
+/// How tall one entry draws. ⛔ONE table: the route-based parent list and
+/// the overlay-based submenu both lay out from it, and a submenu that
+/// measured itself would drift from the list it hangs off.
+double _entryHeight(PanelFlyoutEntry entry) => switch (entry) {
+  PanelFlyoutHeader() => 24.0,
+  PanelFlyoutDivider() => 6.0,
+  PanelFlyoutRow(:final height) => height,
+  PanelFlyoutItem() => flyoutRowHeight,
+};
 const EdgeInsets flyoutRowPadding = EdgeInsets.symmetric(horizontal: 16);
 
 /// A row laid out so its ink and its hit area are the WHOLE row.
@@ -591,8 +596,22 @@ class _SubmenuLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final overlaySize = MediaQuery.sizeOf(context);
-    final items = request.entries.whereType<PanelFlyoutItem>().toList();
-    final height = items.length * flyoutRowHeight + 16;
+    // 🚨★★★**EVERY KIND, NOT ONLY THE ITEMS.** This read
+    // `whereType<PanelFlyoutItem>()` and a divider handed to a submenu was
+    // dropped without a sound — found in F-146 ① the moment a drawer needed
+    // one to separate the panel switchboard from the layout choices. The
+    // heights are the parent's own table ([showPanelFlyout]), so the two
+    // levels cannot disagree about how tall a row is.
+    //
+    // ⛔[PanelFlyoutRow] stays out, loudly: it carries a builder and a
+    // listenable, and rendering it here would be a second implementation of
+    // what the parent's `showMenu` does for it. No caller passes one.
+    assert(
+      !request.entries.any((entry) => entry is PanelFlyoutRow),
+      'a submenu cannot draw a PanelFlyoutRow — put it on the top level',
+    );
+    final height =
+        request.entries.fold(16.0, (sum, entry) => sum + _entryHeight(entry));
     // Flush against the parent's right edge, its first row level with the
     // row that opened it — and folded back to the parent's LEFT when there
     // is no room, which is what every submenu does at a screen edge.
@@ -619,17 +638,39 @@ class _SubmenuLayer extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final item in items)
-                ControlPressClaim(onPressed: item.enabled ? () => onPicked(item) : null, child: InkWell(
-                  key: ValueKey<String>(item.keyValue),
-                  onTap: silentPress(item.enabled ? () => onPicked(item) : null),
-                  // ⛔The SAME row surface and the SAME body the parent list
-                  // draws — a submenu that laid itself out would drift from
-                  // the list it belongs to.
-                  child: flyoutRowSurface(
-                    _itemBody(item, bindings: bindings),
+              for (final entry in request.entries)
+                switch (entry) {
+                  PanelFlyoutHeader(:final label) => SizedBox(
+                    height: 24,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textDim,
+                        ),
+                      ),
+                    ),
                   ),
-                )),
+                  PanelFlyoutDivider() => const Divider(height: 6),
+                  PanelFlyoutRow() => const SizedBox.shrink(),
+                  final PanelFlyoutItem item => ControlPressClaim(
+                    onPressed: item.enabled ? () => onPicked(item) : null,
+                    child: InkWell(
+                      key: ValueKey<String>(item.keyValue),
+                      onTap: silentPress(
+                        item.enabled ? () => onPicked(item) : null,
+                      ),
+                      // ⛔The SAME row surface and the SAME body the parent
+                      // list draws — a submenu that laid itself out would
+                      // drift from the list it belongs to.
+                      child: flyoutRowSurface(
+                        _itemBody(item, bindings: bindings),
+                      ),
+                    ),
+                  ),
+                },
             ],
           ),
         ),

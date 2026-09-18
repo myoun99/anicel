@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/settings_flyout.dart';
 import 'dart:ffi' show AllocatorAlloc, Uint8;
 import 'package:ffi/ffi.dart' show calloc;
 import 'package:anicel/src/native/native_scratch.dart';
@@ -99,17 +100,8 @@ Future<void> _closeRightRail(WidgetTester tester) async {
 /// The tab's X went with the rest of the panel frame (패널 프레임 최소화),
 /// so this list is the switch — in both directions, and for the floor's
 /// panels it is the ONLY switch (the floor draws no tab strip at all).
-Future<void> _togglePanel(WidgetTester tester, String tabId) async {
-  await tester.tap(
-    find.byKey(const ValueKey<String>('top-strip-settings-button')),
-  );
-  await tester.pumpAndSettle();
-  final entry = find.byKey(ValueKey<String>('panels-menu-item-$tabId'));
-  await tester.ensureVisible(entry);
-  await tester.pumpAndSettle();
-  await tester.tap(entry);
-  await tester.pumpAndSettle();
-}
+Future<void> _togglePanel(WidgetTester tester, String tabId) =>
+    tapPanelsDrawerRow(tester, 'panels-menu-item-$tabId');
 
 /// R26 #31: the right dock ships OCCUPIED by the timesheet, so the
 /// collapsed-dock behaviours (its drop rail) need it emptied first —
@@ -215,17 +207,7 @@ void main() {
 
       // The strip has no grip to drag any more (고정 도킹), so the
       // left-handed choice is a switch in the Settings popover.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
-      );
-      await tester.pumpAndSettle();
-      final row = find.byKey(
-        const ValueKey<String>('menu-window-tool-rail-right'),
-      );
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
-      await tester.pumpAndSettle();
+      await tapPanelsDrawerRow(tester, 'menu-window-tool-rail-right');
 
       expect(find.byType(ToolsPanel), findsOneWidget);
       expect(
