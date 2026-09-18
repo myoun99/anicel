@@ -14,6 +14,7 @@
 // targets something a panel OWNS rather than something the app has
 // exactly one of.
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/canvas_visible_rect.dart';
@@ -54,11 +55,18 @@ Finder mainCanvasPanelShell() => inMainCanvas(find.byType(BrushCanvasPanel));
 /// So a test that means "draw on the canvas" asks for a point in the WINDOW
 /// rather than in the box: the centre of what the artist can see, taken
 /// from the same visible rect every framing verb uses.
-Offset visibleCanvasPoint(WidgetTester tester, {Offset offset = Offset.zero}) {
+Offset visibleCanvasPoint(WidgetTester tester, {Offset offset = Offset.zero}) =>
+    visibleCanvasRect(tester).center + offset;
+
+/// What the artist can SEE of the drawing canvas, in window coordinates.
+///
+/// The half of [visibleCanvasPoint] that a test capturing PIXELS needs: the
+/// window is mostly chrome, and chrome is dark in this app, so an ink count
+/// taken over the whole frame is a count of the panels. Ask inside this
+/// rectangle and dark means drawing.
+Rect visibleCanvasRect(WidgetTester tester) {
   final shellFinder = mainCanvasPanelShell();
   final panel = tester.widget<BrushCanvasPanel>(shellFinder);
-  final cover = panel.floorCover;
   final shell = tester.getRect(shellFinder);
-  final visible = canvasVisibleRect(shell.size, cover);
-  return visible.center + shell.topLeft + offset;
+  return canvasVisibleRect(shell.size, panel.floorCover).shift(shell.topLeft);
 }
