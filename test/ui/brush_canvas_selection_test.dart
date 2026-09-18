@@ -991,12 +991,22 @@ void main() {
     // ⛔It counts VIEWS, not bytes. An open session is worth 0 bytes — its
     // holed surface shares every tile it did not hole — which is how an
     // earlier attempt at this pin measured nothing and passed.
+    //
+    // 🚨★★★**EXACTLY ONE, AND THE TWO WRONG ANSWERS ARE DIFFERENT BUGS.**
+    // ↩️This asked for ZERO until 2026-09-19, when the box still arrived
+    // EMPTY and the count was of nothing at all. Now the arrival starts
+    // the transform here, so:
+    // · 2 = the session the layer let go of is still open on the cel we
+    //   left, which is the leak this pin was built for;
+    // · 0 = the box arrived and lifted nothing, which is 유저's ③
+    //   「프레임2의 변형이 시작되야하는데 시작되지도 않는 문제」.
     expect(
       env.coordinator.frameStore.reclaimableViewCount,
-      0,
+      1,
       reason:
-          'the host still holds the session the layer let go of, so '
-          '`holedSurfaceFor` keeps drawing that cel with its hole',
+          'the cel we LEFT was let go of, and the cel we arrived at opened '
+          'one of its own — two would be the leak, zero would be the box '
+          'arriving empty',
     );
     expect(
       find.byKey(const ValueKey<String>('selection-move-confirm')),
@@ -1050,18 +1060,17 @@ void main() {
     final keys = BrushCanvasFixture.createFrameKeys();
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
 
-    // 유저: 「프레임1,2에 그림을 그려두고」 — two frames of ONE drawing, so
-    // frame two's ink sits near frame one's rather than across the canvas.
+    // 유저: 「프레임1,2에 그림을 그려두고」 — and frame two's drawing is
+    // somewhere ELSE on the canvas, the way a drawing that moves is.
     //
-    // ⚠️**AND THAT IS LOAD-BEARING.** With no selection the box is frame
-    // ONE's picture silhouette (R26 #13's implicit whole-picture shape —
-    // measured here as 28..62), and that outline is what travels. A cel
-    // whose drawing lies outside it lifts nothing, which is 「불가능하면
-    // 그냥 무시」 and not a defect. ⛔Whether an implicit box should instead
-    // be re-derived from each cel's own picture is a DECISION, and it is on
-    // the board rather than assumed here.
+    // 🚨★★★**THAT IS THE POINT, AND IT IS 유저'S ANSWER TO F-164-Q1**
+    // (2026-09-19): with no selection the box is 「the picture」, and which
+    // picture that is depends on the cel you stand on — so the outline is
+    // re-read here and frame two's own drawing is what gets lifted. Frame
+    // ONE's silhouette is 28..62; (120,120) is nowhere near it, and it
+    // still has to work.
     env.coordinator.selectFrame(keys[1]);
-    env.coordinator.commitSourceStroke(sourceDabs: [dab(35, 35)]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
     env.coordinator.selectFrame(keys.first);
     await env.setTool(CanvasTool.move);
 
@@ -1094,16 +1103,142 @@ void main() {
     await tester.pump();
 
     expect(
-      inkAt(env.coordinator, 50, 50),
+      inkAt(env.coordinator, 135, 135),
       isNonZero,
       reason:
-          '유저: 「프레임2의 변형이 시작되야하는데」 — 들고 온 값이 이 셀 제 '
-          '그림에 걸려 있었으니 엔터가 그만큼 옮긴다',
+          '유저: 「프레임2의 변형이 시작되야하는데」 — 배율·회전·이동의 '
+          '편집값이 그대로 전달돼 이 셀 제 그림에 걸렸으니, 엔터가 그만큼 '
+          '옮긴다',
     );
     expect(
-      inkAt(env.coordinator, 35, 35),
+      inkAt(env.coordinator, 120, 120),
       0,
       reason: '옮긴 것이지 복사한 것이 아니다',
+    );
+  });
+
+  /// 🚨★★★**선택을 하던 안하던 동작이 바뀌는게 없다** (유저 2026-09-19,
+  /// answering F-164-Q1: 「1번. 상자의 크기가 달라지는게 중요한게아니야.
+  /// **중요한건 배율 회전 이동의 편집값이 그대로 전달되는거야**」).
+  ///
+  /// The two kinds of region ARE different things — one is a place the user
+  /// drew, the other is 「the picture」 — so the law cannot be 「they behave
+  /// identically」 in general. It is one sentence that covers both: **the
+  /// numbers transfer, and the cel you arrive at moves its own pixels under
+  /// whatever the region means there.**
+  ///
+  /// ⛔So this is not a pin on 「the code has no branch」, which a reader can
+  /// check and a mutant cannot. It runs the two states through the SAME
+  /// script on content BOTH regions cover, where the law says the answers
+  /// must match — and they can only match if neither path is special.
+  testWidgets('선택을 하던 안하던 — 걸어간 셀이 제 그림을 같은 값만큼 옮긴다', (
+    tester,
+  ) async {
+    Future<int> confirmedOnFrameTwo({required bool withSelection}) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+      env.coordinator.selectFrame(keys.first);
+      await env.setTool(CanvasTool.move);
+      if (withSelection) {
+        // ⚠️A rect that covers BOTH cels' drawings, so the OUTLINE is not
+        // what makes the two answers differ — otherwise this would be
+        // measuring the fixture, not the law.
+        env.commands.setRegion(
+          CanvasSelectionRegion.shape(
+            CanvasSelectionShape.rect(
+              left: 20,
+              top: 20,
+              right: 160,
+              bottom: 160,
+            ),
+          ),
+        );
+        await tester.pump();
+      }
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 15,
+        ty: 15,
+        rotationDegrees: 0,
+        scale: 1,
+      );
+      await tester.pump();
+      env.coordinator.selectFrame(keys[1]);
+      await env.setTool(CanvasTool.move);
+      await tester.pump();
+      env.commands.commitTransform();
+      await tester.pump();
+      return inkAt(env.coordinator, 135, 135);
+    }
+
+    final drawn = await confirmedOnFrameTwo(withSelection: true);
+    expect(
+      drawn,
+      isNonZero,
+      reason: '⛔CONTROL: 선택이 있을 때는 옮겨졌다 — 두 0을 비교하지 않는다',
+    );
+    expect(
+      await confirmedOnFrameTwo(withSelection: false),
+      drawn,
+      reason: '유저: 「선택을 하던 안하던 동작이 바뀌는게 없으니까」',
+    );
+  });
+
+  /// 🚨★★★**THE PIVOT TRAVELS WITH THE BOX, NOT WITH THE NUMBERS.**
+  ///
+  /// 유저 2026-09-19: 「중요한건 **배율 회전 이동의 편집값이 그대로
+  /// 전달**되는거야」. Carrying the cel-you-left's pivot would read the same
+  /// in the panel and land this cel's drawing somewhere off to one side —
+  /// the numbers would look transferred and not be.
+  ///
+  /// ⚠️**IT TAKES A SCALE TO SEE IT AT ALL.** 🧪Measured 2026-09-19: with
+  /// the pins above, which all move the box by a pure translation, deleting
+  /// the re-aim outright changed NOTHING — a translation is the same about
+  /// any pivot. Only a scale (or a rotation) asks where the centre is.
+  testWidgets('⛔×2 on the cel walked to grows ITS drawing where it stands, '
+      'not about the pivot of the cel left behind', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Frame ONE's picture is 28..62, so its centre is (45,45). Frame two's
+    // single dab is at (120,120) — far enough that the two pivots send it
+    // to places no tolerance could confuse.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 0,
+      scale: 2,
+    );
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, 120, 120),
+      isNonZero,
+      reason:
+          '×2 는 이 셀 제 그림의 중심에 걸린다 — 그림은 그 자리에서 커진다',
+    );
+    expect(
+      inkAt(env.coordinator, 195, 195),
+      0,
+      reason:
+          '⛔떠나온 셀의 피벗(45,45)으로 ×2 하면 (120,120)이 (195,195)로 '
+          '날아간다. 숫자는 같아 보이는데 전달된 것이 아니다',
     );
   });
 

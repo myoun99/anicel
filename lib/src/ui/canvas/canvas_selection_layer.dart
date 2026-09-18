@@ -1528,7 +1528,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (!mounted || _transform == null) {
         return;
       }
-      final region = _region;
+      // ⛔THE SAME DOOR THE Ctrl+T ENTRANCE USES — 유저 2026-09-19: 「선택을
+      // 하던 안하던 동작이 바뀌는게 없으니까 그점 유념해서 법 통일해줘」. A
+      // drawn outline comes back unchanged; no selection comes back as
+      // THIS cel's picture. There is no branch here to say which.
+      CanvasSelectionRegion? here;
+      setState(() => here = _regionToTransformHere());
+      final region = here;
       if (region == null || !_ensureLifted(region)) {
         // 「불가능하면 그냥 무시」 — this cel has nothing under the outline.
         //
@@ -1547,6 +1553,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       setState(() {
+        // The numbers travel; the box is re-read from the region HERE.
+        _aimTransformAt(region, keeping: _transform);
         _floatSurface = _buildFloatSurface();
       });
       _preview.schedule();
@@ -2203,6 +2211,68 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Ctrl+T: opens the free-transform box on the live selection (R19
   /// pixel model: the session lifts the shape's raster and the box
   /// manipulates the FLOAT; Enter resamples the stamp and confirms).
+  /// 🚨★★★**WHAT A TRANSFORM OPENS ON, ASKED ON THE CEL IT IS OPENING
+  /// ON** — and there is ONE answer, for Ctrl+T and for walking onto
+  /// another cel alike.
+  ///
+  /// 🗣️유저 2026-09-19: 「**선택을 하던 안하던 동작이 바뀌는게 없으니까**
+  /// 그점 유념해서 법 통일해줘」. So this is not 「the implicit case gets
+  /// re-derived and the drawn one does not」 — that would be two laws
+  /// wearing one name. It is one question, and the two kinds of region
+  /// answer it differently because they ARE different things:
+  ///
+  /// · A region the user DREW is a place on the canvas. It says the same
+  ///   thing on every cel, so asking again returns it unchanged.
+  /// · No selection means 「the picture」 (R26 #13), and which picture that
+  ///   is depends on the cel you are standing on. Asking again returns
+  ///   THIS cel's.
+  ///
+  /// ⇒ the caller never branches, and the drawn case is the one where the
+  /// answer happens not to move.
+  CanvasSelectionRegion? _regionToTransformHere() {
+    if (widget.tool != CanvasSelectionTool.move ||
+        widget.onLiftRequested == null) {
+      return _region;
+    }
+    final region = _region;
+    if (region != null && !_shapeIsImplicitWholePicture) {
+      return region;
+    }
+    return _adoptImplicitWholePictureShape(_wholeCanvasShape());
+  }
+
+  /// Points the box at [region] as it stands HERE — and keeps the numbers.
+  ///
+  /// 🗣️유저 2026-09-19: 「상자의 크기가 달라지는게 중요한게아니야. **중요한건
+  /// 배율 회전 이동의 편집값이 그대로 전달되는거야**」. So the base box and
+  /// the pivot are re-read from the region on this cel, and [keeping]'s
+  /// scale, rotation and translation are carried over untouched.
+  ///
+  /// ⛔**THE PIVOT TRAVELS WITH THE BOX, NOT WITH THE NUMBERS.** Holding
+  /// the cel-you-left's pivot would make the same 「×2」 land this cel's
+  /// drawing somewhere off to one side — the numbers would read the same
+  /// and not have been transferred, which is the very thing 유저 named.
+  ///
+  /// ⚠️A warp's per-point offsets are left alone: they are edit values too
+  /// and they live in the box's own frame, so they travel with it. Only
+  /// the mode decides how many there are, and a walk does not change it.
+  void _aimTransformAt(
+    CanvasSelectionRegion region, {
+    SelectionAffine? keeping,
+  }) {
+    final box = _regionBounds(region);
+    _baseBoxWidth = box.width;
+    _baseBoxHeight = box.height;
+    _transform = SelectionAffine(
+      pivot: box.center,
+      sx: keeping?.sx ?? 1,
+      sy: keeping?.sy ?? 1,
+      rotationDegrees: keeping?.rotationDegrees ?? 0,
+      tx: keeping?.tx ?? 0,
+      ty: keeping?.ty ?? 0,
+    );
+  }
+
   void _beginTransform() {
     // The quiet refusal (피드백 ⑦): with nothing to transform this simply
     // does not happen. No snackbar — one per tap on an empty layer is a
@@ -2210,16 +2280,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!_canEditTransform()) {
       return;
     }
-    var region = _region;
-    // R26 #13: the MOVE tool with no selection opens the box on the
-    // WHOLE picture (the Ctrl+T-family entrances included).
-    if (region == null &&
-        widget.tool == CanvasSelectionTool.move &&
-        widget.onLiftRequested != null) {
-      setState(() {
-        region = _adoptImplicitWholePictureShape(_wholeCanvasShape());
-      });
-    }
+    // R26 #13: the MOVE tool with no selection opens the box on the WHOLE
+    // picture (the Ctrl+T-family entrances included) — asked through the
+    // one door, so this entrance and the walk cannot drift apart.
+    CanvasSelectionRegion? region;
+    setState(() => region = _regionToTransformHere());
     final targetRegion = region;
     if (targetRegion == null || _transform != null) {
       return;
@@ -2233,12 +2298,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _syncAnts();
       return;
     }
-    final box = _regionBounds(targetRegion);
     setState(() {
       _transformOpenedLift = !hadPendingLift;
-      _baseBoxWidth = box.width;
-      _baseBoxHeight = box.height;
-      _transform = SelectionAffine(pivot: box.center);
+      _aimTransformAt(targetRegion);
       _syncOffsetsToMode();
       _floatSurface = _buildFloatSurface();
     });
