@@ -883,6 +883,139 @@ void main() {
     );
   });
 
+  /// 🚨★★★**F-164 — 유저 2026-09-18, the whole procedure they gave**:
+  ///
+  /// > 「프레임1,2에 그림을 그려두고, 프레임1에서 변형으로 확대한 다음
+  /// > **확정하지 않고**, 프레임2가면 **프레임1의 그림이 그대로 남아있는**
+  /// > 문제. 그리고 **확정버튼도 사라지는** 문제. 그리고 **프레임2의 변형이
+  /// > 시작되야하는데 시작되지도 않는** 문제. 그 상태에서 엔터버튼으로
+  /// > 확정시키고 프레임1가면 **프레임1의 그림이 사라짐**. **새로 선을 그어도
+  /// > 긋고나서 커밋하면 사라짐**」
+  ///
+  /// ⚠️**BOTH FRAMES HAVE INK, and that is the condition the first attempt at
+  /// this pin was missing.** With ink on only one cel the holed surface
+  /// shares every tile it did not hole, so nothing on screen changes and the
+  /// leak is invisible. 🧪Measured: that version passed while the shipped app
+  /// lost pictures.
+  ///
+  /// The last symptom is the one that matters most — it is not about the
+  /// transform at all any more. A session the layer let go of without telling
+  /// the HOST leaves `CanvasPanelLift`'s session open for that cel, so
+  /// `holedSurfaceFor` keeps drawing it with its hole, and anything drawn
+  /// there afterwards is masked away on commit.
+  testWidgets('F-164: a box left open on one frame lets that cel go, and the '
+      'cel it came from keeps its picture', (tester) async {
+    Future<int> drawnInk() async {
+      final bytes = await screenBytes(tester);
+      var dark = 0;
+      for (var i = 0; i + 3 < bytes.length; i += 4) {
+        if (bytes[i] < 80 && bytes[i + 1] < 80 && bytes[i + 2] < 80) {
+          dark += 1;
+        }
+      }
+      return dark;
+    }
+
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Frame TWO gets ink of its own, somewhere else on the canvas.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(120, 120), dab(140, 140)],
+    );
+    await env.setTool(CanvasTool.move);
+    final frameTwoSettled = await drawnInk();
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    final frameOneSettled = await drawnInk();
+    expect(
+      frameOneSettled,
+      greaterThan(100),
+      reason: '⛔fixture premise: frame one draws its own stroke',
+    );
+    expect(
+      frameTwoSettled,
+      greaterThan(100),
+      reason: '⛔fixture premise: frame two draws a stroke of ITS own',
+    );
+
+    // Scale the box on frame one and DO NOT confirm.
+    env.commands.beginTransform();
+    await tester.pump();
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+    expect(env.commands.transformActive, isTrue, reason: 'the box is open');
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+
+    expect(
+      await drawnInk(),
+      closeTo(frameTwoSettled, frameTwoSettled * 0.2),
+      reason:
+          '①유저: 「프레임2가면 프레임1의 그림이 그대로 남아있는 문제」 — the '
+          'float belongs to the cel it was cut from and may not follow',
+    );
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason:
+          '③유저: 「프레임2의 변형이 시작되야하는데 시작되지도 않는 문제」. '
+          'The box and its numbers survive a frame walk on purpose (유저 확정 '
+          '2026-09-17) and apply to whatever cel they then stand on',
+    );
+    // 🚨★★★**THE HOST LET GO TOO** — the half that costs a picture. A
+    // session the layer drops without telling the host stays open there,
+    // and the cel it was cut from goes on being drawn through its hole
+    // (유저: 「돌아가면 그림사라져있는데 … 새로 선을 그어도 긋고나서 커밋하면
+    // 사라짐」).
+    //
+    // ⛔It counts VIEWS, not bytes. An open session is worth 0 bytes — its
+    // holed surface shares every tile it did not hole — which is how an
+    // earlier attempt at this pin measured nothing and passed.
+    expect(
+      env.coordinator.frameStore.reclaimableViewCount,
+      0,
+      reason:
+          'the host still holds the session the layer let go of, so '
+          '`holedSurfaceFor` keeps drawing that cel with its hole',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('selection-move-confirm')),
+      findsOneWidget,
+      reason: '②유저: 「확정버튼도 사라지는 문제」',
+    );
+
+    // Enter, then back to frame one.
+    env.commands.commitTransform();
+    await tester.pump();
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    expect(
+      await drawnInk(),
+      greaterThan(frameOneSettled ~/ 2),
+      reason: '④유저: 「프레임1가면 프레임1의 그림이 사라짐」',
+    );
+
+    // ⛔**⑤ IS NOT PINNED HERE, AND THIS FIXTURE CANNOT PIN IT.** 유저's
+    // last symptom is 「새로 선을 그어도 긋고나서 커밋하면 사라짐」 — ordinary
+    // drawing on that cel afterwards.
+    //
+    // 🧪Measured, with a CONTROL: committing a stroke straight through the
+    // coordinator moves this panel's drawn ink by exactly zero even when no
+    // transform was ever opened. So an assertion here would be measuring
+    // nothing, the way two earlier attempts at this pin were — the red ink
+    // mask that counted the ANTS, and `reclaimableViewBytes`, which an open
+    // session reports as 0 because its holed surface shares every tile it
+    // did not hole.
+    //
+    // ⇒ The next attempt needs a rig that DRAWS the way the app draws (the
+    // brush host, not this selection fixture), and it must run a control
+    // first: commit a stroke with no session in sight and prove the screen
+    // moves at all.
+  });
+
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
   // 안이라면 언제든 작동하도록).
   testWidgets('the move tool grabs anywhere inside the BOX it draws, not '

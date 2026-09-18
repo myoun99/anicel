@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart'
+    show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
 import '../../services/straight_rgba_image.dart'
@@ -514,6 +516,49 @@ class _FloatResamplePreview {
   }
 }
 
+/// Why a move session ended. ⛔Not a flag: the three are three different
+/// things to tell the HOST, and the whole of F-164 was one of them being
+/// told nothing.
+enum _SessionEnd {
+  /// The float lands and the session becomes ONE history entry.
+  confirm,
+
+  /// The user took it back — the picture returns to what it was.
+  revert,
+
+  /// The float is dropped without landing, because its pixels belong to a
+  /// cel the panel is no longer standing on (유저 확정 2026-09-17: a frame
+  /// walk 「착지안하고 편집중 그대로 유지」).
+  letGo,
+}
+
+/// One open move session, as ONE value.
+///
+/// ⛔[stamp] and [moved] are mutable because a drag changes them while the
+/// session stays the same session; [token] and [startShape] are what the
+/// session IS and cannot change without it being a different one.
+class _MoveSession {
+  _MoveSession({
+    required this.token,
+    required this.stamp,
+    required this.startShape,
+  });
+
+  /// The lift command owning this selection's pixels (R15-④).
+  final int token;
+
+  /// The stamp dab currently FLOATING — removed from the command so the
+  /// base never shows it (no double image).
+  BrushDab stamp;
+
+  /// The region as the session found it — the revert restores it, and the
+  /// transform draws it as the green 「before」 outline (I-38).
+  final CanvasSelectionRegion? startShape;
+
+  /// True once the session actually MOVED.
+  bool moved = false;
+}
+
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin
     implements _OpenWarp {
@@ -647,28 +692,106 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// nothing lands and nothing is undoable until the user CONFIRMS
   /// (button, Enter, tool switch, deselect, undo/redo hook), which adopts
   /// the whole session as ONE history entry.
-  int? _liftToken;
-  BrushDab? _pendingLiftStamp;
+  /// 🚨★★★**THE SESSION IS ONE VALUE, AND THIS IS THE ONLY FIELD THAT HOLDS
+  /// IT.** There is no such thing as half a session: the token, the float,
+  /// whether it moved and the shape it started from begin together and end
+  /// together.
+  ///
+  /// ↩️They were four fields, and the END was spelled in FOUR places that
+  /// did not agree — one of them cleared three of the four and told the HOST
+  /// nothing at all. That is F-164 (유저 2026-09-18): the host holds the
+  /// hole this cel is drawn through, so a session it is never told about
+  /// leaves that cel drawn through a hole for the rest of the run — 「돌아가면
+  /// 그림사라져있는데 … **새로 선을 그어도 긋고나서 커밋하면 사라짐**」.
+  ///
+  /// ⛔So ending one goes through [_endSession] and nowhere else, and
+  /// `a_move_session_has_one_owner_test` reads this file to keep it that
+  /// way. 유저: 「절대로 낡지않을 구조로 튼튼하게」.
+  _MoveSession? _session;
+
+  BrushDab? get _pendingLiftStamp => _session?.stamp;
 
   /// True once the session actually MOVED — the ants turn red until the
   /// confirm (green = confirmed / untouched).
-  bool _moveSessionDirty = false;
+  bool get _moveSessionDirty => _session?.moved ?? false;
 
   /// The region as the session found it — the revert restores it.
-  CanvasSelectionRegion? _moveSessionStartShape;
+  CanvasSelectionRegion? get _moveSessionStartShape => _session?.startShape;
 
-  bool get _movePending => _pendingLiftStamp != null;
+  bool get _movePending => _session != null;
+
+  /// 🚨★★★**THE ONLY PLACE A SESSION ENDS.** Whatever the reason — a
+  /// confirm, a revert, or simply letting go because the panel walked to
+  /// another cel — the HOST hears about it, because the host is what holds
+  /// the hole the origin cel is being drawn through
+  /// ([CanvasPanelLift.holedSurfaceFor]).
+  ///
+  /// ⛔This is the invariant made unrepresentable rather than remembered:
+  /// the field is dropped HERE and nowhere else in this file, so
+  /// there is no way to forget a session quietly. F-164 is what forgetting
+  /// one cost — the cel kept drawing its hole, and everything drawn there
+  /// afterwards was masked away on commit.
+  ///
+  /// Returns the session that ended, or null when there was none.
+  _MoveSession? _endSession(_SessionEnd how) {
+    final session = _session;
+    if (session == null) {
+      return null;
+    }
+    _session = null;
+    _tellHost(() {
+      switch (how) {
+        case _SessionEnd.confirm:
+          final confirm = widget.onLiftConfirmed;
+          if (confirm != null) {
+            confirm(session.token, session.stamp);
+          } else {
+            // Headless hosts (focused tests): land without history.
+            widget.onLiftLanded?.call(session.token, session.stamp);
+          }
+        case _SessionEnd.revert:
+        case _SessionEnd.letGo:
+          // The same call, and they are the same fact: a session writes
+          // nothing to the cel until it lands (`314aa6e8`), so ending one
+          // without landing is only ever 「close it」. ⛔Letting go used to
+          // do this silently, which is the whole of F-164.
+          widget.onLiftReverted?.call(session.token);
+      }
+    });
+    return session;
+  }
+
+  /// 🚨★★★**TELLING THE HOST REBUILDS IT, AND ONE ENDING HAPPENS DURING A
+  /// BUILD.** A frame walk lets go from inside `didUpdateWidget`
+  /// ([_carrySessionToAnotherCel]), and a `setState` on the panel from
+  /// there is the framework's own 「called during build」 error.
+  ///
+  /// ⚠️This is why the silent version looked like it worked: saying nothing
+  /// cannot be mistimed. ⛔So the wait lives HERE, at the one door, rather
+  /// than in each caller — a caller that had to remember is a caller that
+  /// will forget, which is the shape F-164 already was.
+  void _tellHost(VoidCallback say) {
+    if (_disposing ||
+        SchedulerBinding.instance.schedulerPhase ==
+            SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => say());
+      return;
+    }
+    say();
+  }
+
+  /// This state is going away. ⚠️It is not 「is the session ending」 — it is
+  /// 「can the host be told NOW」: dispose can run inside a build, so the
+  /// history execute has to wait a frame either way.
+  bool _disposing = false;
 
   /// REVERT (R17-①): the pixels — and the ants — return exactly to where
   /// the session found them; nothing lands in history.
   void _revertMoveSession() {
-    final id = _liftToken;
-    final pending = _pendingLiftStamp;
-    if (id == null || pending == null) {
+    final startShape = _moveSessionStartShape;
+    if (_endSession(_SessionEnd.revert) == null) {
       return;
     }
-    widget.onLiftReverted?.call(id);
-    final startShape = _moveSessionStartShape;
     if (mounted) {
       setState(() {
         // R26 #13: an implicit whole-picture session reverts to NO
@@ -682,10 +805,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           }
           _shapeNeedsLift = true;
         }
-        _pendingLiftStamp = null;
-        _liftToken = null;
-        _moveSessionDirty = false;
-        _moveSessionStartShape = null;
         if (_transform == null) {
           _floatSurface = null;
         }
@@ -694,14 +813,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  void _clearLiftState() {
-    final wasPending = _movePending;
-    _liftToken = null;
-    _pendingLiftStamp = null;
-    _moveSessionDirty = false;
-    if (wasPending) {
-    }
-  }
+  /// LETTING GO: the float is dropped without landing, because its pixels
+  /// belong to the cel being left behind.
+  ///
+  /// ⛔It is not a quieter revert — it is the same ending, and the host is
+  /// told either way.
+  void _letGoOfSession() => _endSession(_SessionEnd.letGo);
 
   /// CONFIRM (R16-①): lands the floating stamp and adopts the whole
   /// session as ONE history entry. Safe to call from any event context;
@@ -709,31 +826,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// triggers defer post-frame). Afterwards the shape needs a fresh lift
   /// (R19 pixel model: the landed raster IS the content to move next).
   void _confirmMoveSession() {
-    final id = _liftToken;
-    final pending = _pendingLiftStamp;
-    if (id == null || pending == null) {
+    if (_endSession(_SessionEnd.confirm) == null) {
       return;
     }
-    final confirm = widget.onLiftConfirmed;
-    if (confirm != null) {
-      confirm(id, pending);
-    } else {
-      // Headless hosts (focused tests): land without history.
-      widget.onLiftLanded?.call(id, pending);
+    void settle() {
+      _shapeNeedsLift = true;
+      // R26 #13: a confirmed implicit whole-picture session lands and
+      // simply ends — back to no selection.
+      if (_shapeIsImplicitWholePicture) {
+        _setRegion(null);
+        _shapeNeedsLift = false;
+      }
     }
+
     if (mounted) {
       setState(() {
-        _pendingLiftStamp = null;
-        _liftToken = null;
-        _moveSessionDirty = false;
-        _moveSessionStartShape = null;
-        _shapeNeedsLift = true;
-        // R26 #13: a confirmed implicit whole-picture session lands and
-        // simply ends — back to no selection.
-        if (_shapeIsImplicitWholePicture) {
-          _setRegion(null);
-          _shapeNeedsLift = false;
-        }
+        settle();
         // The float goes with the session. Not under an open box — the
         // box's own commit closes it before calling here, and a confirm
         // that finds it open leaves the float for that.
@@ -742,15 +850,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       });
     } else {
-      _pendingLiftStamp = null;
-      _liftToken = null;
-      _moveSessionDirty = false;
-      _moveSessionStartShape = null;
-      _shapeNeedsLift = true;
-      if (_shapeIsImplicitWholePicture) {
-        _setRegion(null);
-        _shapeNeedsLift = false;
-      }
+      settle();
     }
     _syncAnts();
   }
@@ -910,7 +1010,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // caller, confirm the session first (`_confirmMoveSession()`, the way
       // the committed-region path below does) rather than widening this
       // comment.
-      _clearLiftState();
+      _letGoOfSession();
       if (channelRegion == null) {
         _clearTransform();
       }
@@ -1075,18 +1175,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final pendingStamp = _pendingLiftStamp == null
         ? null
         : (_preview.warped() ?? _pendingLiftStamp);
-    final liftId = _liftToken;
-    if (pendingStamp != null && liftId != null) {
-      final onConfirmed = widget.onLiftConfirmed;
-      final onLanded = widget.onLiftLanded;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (onConfirmed != null) {
-          onConfirmed(liftId, pendingStamp);
-        } else {
-          onLanded?.call(liftId, pendingStamp);
-        }
-      });
+    if (pendingStamp != null) {
+      _session!.stamp = pendingStamp;
     }
+    // ⛔THROUGH THE ONE DOOR, like every other ending. `_disposing` is what
+    // makes it wait: dispose can run inside a build, and the history
+    // execute must not.
+    _disposing = true;
+    _endSession(_SessionEnd.confirm);
     // The preview image is a GPU allocation and an in-flight decode holds
     // a callback into this state. Neither is reached by _clearTransform on
     // this path — dispose does not close the box, it folds it — so the
@@ -1401,7 +1497,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasDragging = _drag != null;
     setState(() {
       _endDrag(cancelled: true, notify: false);
-      _clearLiftState();
+      _letGoOfSession();
       _shapeNeedsLift = _region != null;
     });
     // The resample on screen was computed from the cel we just left.
@@ -1441,7 +1537,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (!keepRegion || _shapeIsImplicitWholePicture) {
         _setRegion(null);
       }
-      _clearLiftState();
+      _letGoOfSession();
       _clearTransform();
       // A kept region's pixels were just landed where they floated, so the
       // next move has to lift them again — from whatever cel is under it.
@@ -2133,14 +2229,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _recordTransformRecall(affine);
       final boundary = _meshBoundary(meshPoints);
       setState(() {
-        _pendingLiftStamp = warped;
+        _session?.stamp = warped;
         // A warped region collapses to its boundary polygon: the mesh
         // maps the LIFTED pixels, so what is selected afterwards is the
         // warped outline, not the old step list.
         _moveRegion(
           CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)),
         );
-        _moveSessionDirty = true;
+        _session?.moved = true;
         _clearTransform(confirming: true);
       });
       _confirmMoveSession();
@@ -2160,13 +2256,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       setState(() {
-        _pendingLiftStamp = warped;
+        _session?.stamp = warped;
         _moveRegion(
           h == null
               ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
               : region.mapped((point) => _applyHomography(h, point)),
         );
-        _moveSessionDirty = true;
+        _session?.moved = true;
         _clearTransform(confirming: true);
       });
       _confirmMoveSession();
@@ -2175,9 +2271,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!affine.isIdentity && pending != null) {
       _recordTransformRecall(affine);
       setState(() {
-        _pendingLiftStamp = _preview.warped() ?? pending;
+        _session?.stamp = _preview.warped() ?? pending;
         _moveRegion(region.mapped(affine.apply));
-        _moveSessionDirty = true;
+        _session?.moved = true;
         _clearTransform(confirming: true);
       });
       _confirmMoveSession();
@@ -2261,13 +2357,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final lift = widget.onLiftRequested!(region);
     _shapeNeedsLift = false;
     if (lift == null) {
-      _clearLiftState();
+      _letGoOfSession();
       return false;
     }
-    _liftToken = lift.liftToken;
-    _pendingLiftStamp = lift.stampDab;
-    _moveSessionDirty = false;
-    _moveSessionStartShape = region;
+    // ⛔THE ONLY PLACE ONE BEGINS, as [_endSession] is the only place one
+    // ends. A session is made whole or not at all.
+    _session = _MoveSession(
+      token: lift.liftToken,
+      stamp: lift.stampDab,
+      startShape: region,
+    );
     return true;
   }
 
@@ -2363,7 +2462,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
-    _pendingLiftStamp = _preview.warped() ?? pending;
+    _session?.stamp = _preview.warped() ?? pending;
     final region = _region;
     if (region != null) {
       _moveRegion(region.mapped(affine.apply));
@@ -2374,14 +2473,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// position (raw, no history) so the pixels are never lost. Ordinary
   /// session ends go through the confirm.
   void _landPendingLiftStamp() {
-    final id = _liftToken;
-    final pending = _pendingLiftStamp;
-    if (id == null || pending == null) {
+    final session = _session;
+    if (session == null) {
       return;
     }
-    widget.onLiftLanded?.call(id, pending);
-    _pendingLiftStamp = null;
-    _liftToken = null;
+    // ⛔THE RAW LANDING, so the pixels are never lost — but it still ends
+    // the session through the one door, because the host has to stop
+    // drawing this cel through its hole either way (F-164).
+    widget.onLiftLanded?.call(session.token, session.stamp);
+    _endSession(_SessionEnd.letGo);
   }
 
   CanvasPoint _toCanvas(Offset local) =>
@@ -3253,7 +3353,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() {
       _setRegion(region);
       _shapeNeedsLift = region != null;
-      _clearLiftState();
+      _letGoOfSession();
       if (region == null) {
         _clearTransform();
       }
@@ -3292,10 +3392,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R16-① TVP move session: a drag only moves the FLOAT — nothing lands
     // and nothing is undoable until the confirm. The ants go red.
     setState(() {
-      _pendingLiftStamp = pending.copyWith(
+      _session?.stamp = pending.copyWith(
         center: CanvasPoint(x: pending.center.x + dx, y: pending.center.y + dy),
       );
-      _moveSessionDirty = true;
+      _session?.moved = true;
       // ⚠️ NO rebuild. This used to re-materialize the whole stamp onto a
       // fresh surface at the new centre, on every drag release and every
       // arrow nudge — and the tiles it made were new objects with no
@@ -3657,8 +3757,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             _floatPreview(floatPaint, context),
           _antsLayer(displayShape, region, chrome),
           // R16-①: the CONFIRM button — floats at the selection's top
-          // right while a move session is pending.
-          if (_movePending && displayShape != null)
+          // right while there is something to confirm.
+          //
+          // ↩️**IT ASKED `_movePending` ALONE**, and that was the same
+          // stale premise the ants carried: when it was written a box could
+          // not outlive its float, so 「a float is pending」 and 「there is
+          // an edit to land」 were one fact. 유저 확정 2026-09-17 split them
+          // — a frame walk lets the float go and KEEPS the box — and from
+          // then on the button vanished on a box that was still open.
+          //
+          // 🗣️유저 2026-09-18 (F-164): 「그리고 **확정버튼도 사라지는**
+          // 문제」.
+          if ((_movePending || _transform != null) && displayShape != null)
             _confirmButton(displayShape),
         ],
       ),

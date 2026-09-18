@@ -445,6 +445,19 @@ class BrushFrameStore {
     _reclaimableViews.remove(token);
   }
 
+  /// How many derived views a tool is holding (diagnostics/tests).
+  ///
+  /// 🚨★★★**COUNT, NOT BYTES — and it exists because the bytes could not
+  /// answer.** [reclaimableViewBytes] asks what a view is WORTH, and an
+  /// open move session is worth 0: its holed surface shares every tile it
+  /// did not hole. 🧪Measured in F-164 while trying to pin exactly this —
+  /// a session that never closed reported zero bytes and looked like no
+  /// session at all.
+  ///
+  /// A view that is still held is a tool that still thinks it is mid-edit,
+  /// whatever it weighs, and that is what a test about lifetimes means.
+  int get reclaimableViewCount => _reclaimableViews.length;
+
   /// Bytes a tool's derived views are holding right now
   /// (diagnostics/tests) — zero once they have been reclaimed.
   int get reclaimableViewBytes =>
