@@ -1035,6 +1035,78 @@ void main() {
     // failing, and satisfies nothing at all by passing.
   });
 
+  /// 🚨★★★**③ 유저 2026-09-18: 「프레임2의 변형이 시작되야하는데 시작되지도
+  /// 않는 문제」**, and in the same breath 「변형이 제대로 **프레임바뀌면
+  /// 다음 프레임에 적용시작** 한다던가」.
+  ///
+  /// ⛔**AN OPEN BOX IS NOT A STARTED TRANSFORM**, and the pin above cannot
+  /// tell the two apart — it counts ink, and a translation moves every
+  /// pixel without changing how many there are. 유저's own next step says
+  /// what「시작됐다」means: 「그 상태에서 **엔터버튼으로 확정**시키고」. So
+  /// the question this asks is the one they asked: press Enter on the cel
+  /// you walked to, and THAT cel must move by the numbers you carried.
+  testWidgets('③stepping to another cel STARTS its transform — Enter there '
+      'moves THAT cel by the numbers you carried', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // 유저: 「프레임1,2에 그림을 그려두고」 — two frames of ONE drawing, so
+    // frame two's ink sits near frame one's rather than across the canvas.
+    //
+    // ⚠️**AND THAT IS LOAD-BEARING.** With no selection the box is frame
+    // ONE's picture silhouette (R26 #13's implicit whole-picture shape —
+    // measured here as 28..62), and that outline is what travels. A cel
+    // whose drawing lies outside it lifts nothing, which is 「불가능하면
+    // 그냥 무시」 and not a defect. ⛔Whether an implicit box should instead
+    // be re-derived from each cel's own picture is a DECISION, and it is on
+    // the board rather than assumed here.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(35, 35)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    // ⚠️Stated rather than dragged: a drag is in LAYER coordinates and the
+    // answer is read in CANVAS ones, so a displacement written as a number
+    // is the only one both ends agree about.
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 15,
+      ty: 15,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue, reason: 'the box is open');
+
+    // Walk to frame two WITHOUT confirming — 유저: 「확정하지 않고, 프레임2
+    // 가면」.
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: '②유저: 「확정버튼도 사라지는문제」 — the box survives the walk',
+    );
+
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, 50, 50),
+      isNonZero,
+      reason:
+          '유저: 「프레임2의 변형이 시작되야하는데」 — 들고 온 값이 이 셀 제 '
+          '그림에 걸려 있었으니 엔터가 그만큼 옮긴다',
+    );
+    expect(
+      inkAt(env.coordinator, 35, 35),
+      0,
+      reason: '옮긴 것이지 복사한 것이 아니다',
+    );
+  });
+
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
   // 안이라면 언제든 작동하도록).
   /// 🚨★★★**F-116-b / F-164 — 여러 행·프레임 확정.**

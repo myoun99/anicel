@@ -1485,9 +1485,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _letGoOfSession();
       _shapeNeedsLift = _region != null;
     });
-    // The resample on screen was computed from the cel we just left.
+    // The resample on screen was computed from the cel we just left, and
+    // an open box starts again HERE.
     if (_transform != null) {
-      _preview.schedule();
+      _startCarriedTransformHere();
     }
     if (wasDragging) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1498,6 +1499,61 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _syncAnts();
   }
+
+  /// 🚨★★★**THE NUMBERS ARRIVE AND THE PICTURE COMES WITH THEM** (F-164
+  /// ③). 유저 2026-09-18: 「프레임2의 변형이 **시작되야하는데 시작되지도
+  /// 않는** 문제」 · 「변형이 제대로 **프레임바뀌면 다음 프레임에 적용시작**
+  /// 한다던가」.
+  ///
+  /// ↩️The box used to arrive open and EMPTY: [_shapeNeedsLift] was set and
+  /// the pixels waited for a drag to notice them. 🧪Measured 2026-09-18 —
+  /// Enter on the cel walked to moved nothing at all, which is exactly
+  /// 유저's own next step (「그 상태에서 **엔터버튼으로 확정**시키고」). An
+  /// open box was being reported as a started transform, and those are not
+  /// the same thing.
+  ///
+  /// ⛔**THE SAME LIFT EVERY OTHER ENTRANCE TAKES**, not a second one:
+  /// [_ensureLifted] is the one door, and its false IS 「불가능하면 그냥
+  /// 무시」 — a cel with nothing under the outline does not start, and the
+  /// walk is still allowed.
+  ///
+  /// ⚠️Through [_tellHost]: this runs inside `didUpdateWidget` and a lift
+  /// rebuilds the host, which is the 「called during build」 error that
+  /// door exists for.
+  void _startCarriedTransformHere() {
+    if (widget.onLiftRequested == null) {
+      return;
+    }
+    _tellHost(() {
+      if (!mounted || _transform == null) {
+        return;
+      }
+      final region = _region;
+      if (region == null || !_ensureLifted(region)) {
+        // 「불가능하면 그냥 무시」 — this cel has nothing under the outline.
+        //
+        // ⛔**AND NOTHING IS CLEARED.** [_clearFailedImplicitShape] is what
+        // the ENTRANCES do, where a lift that finds nothing means the user
+        // pressed on an empty canvas and no box should appear. Here a box
+        // is already open and its numbers are an edit in progress: 🧪doing
+        // that here turned 유저's ②「확정버튼도 사라지는문제」 red on the
+        // very next run, because the button asks for a shape to draw.
+        //
+        // ⚠️Nothing to put back either: [_ensureLifted] leaves
+        // [_shapeNeedsLift] set when it finds nothing, so the same outline
+        // over this cel stays liftable if ink arrives under it.
+        setState(() {});
+        _syncAnts();
+        return;
+      }
+      setState(() {
+        _floatSurface = _buildFloatSurface();
+      });
+      _preview.schedule();
+      _syncAnts();
+    });
+  }
+
   void _resetAll({bool deferDragNotify = false, bool keepRegion = false}) {
     final wasDragging = _drag != null;
     setState(() {
@@ -2378,11 +2434,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return _pendingLiftStamp != null;
     }
     final lift = widget.onLiftRequested!(region);
-    _shapeNeedsLift = false;
     if (lift == null) {
+      // ⛔**A FAILED LIFT LEAVES [_shapeNeedsLift] ALONE.** It says 「the
+      // pixels under this shape have not been lifted」, and after a lift
+      // that found nothing they still have not been. Clearing it here made
+      // one flag answer two questions — 「already lifted」 and 「we tried」
+      // — and the entrances hid that by dropping the shape on the same
+      // breath. The walk to another cel (F-164 ③) keeps its shape, so it
+      // is the caller that shows the difference: the same outline over a
+      // cel that later gains ink has to be liftable.
       _letGoOfSession();
       return false;
     }
+    _shapeNeedsLift = false;
     // ⛔THE ONLY PLACE ONE BEGINS, as [_endSession] is the only place one
     // ends. A session is made whole or not at all.
     _session = _MoveSession(
