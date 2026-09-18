@@ -1,3 +1,6 @@
+@Tags(['gc'])
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';

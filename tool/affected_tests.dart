@@ -52,6 +52,45 @@ const _runEverything = <String>[
   'test/flutter_test_config.dart',
 ];
 
+/// The marker a file writes to say 「my assertion waits for the garbage
+/// collector」 — see [partitionByGcTag].
+const gcTagMarker = "@Tags(['gc'])";
+
+/// Splits the run into the [crowd] and the ones that go [alone].
+///
+/// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
+/// `flutter test` runs a batch's files in concurrent isolates, and a full
+/// collection under a hundred of them is scheduled when the machine gets
+/// round to it. The pins that read a [WeakReference] then give up on a
+/// bounded wait and report what they see — which under that load is 「still
+/// alive」 for a holder that has already let go.
+///
+/// 🔬Measured, twice, on two different files: `tile_images_are_counted`
+/// lost one tile's 64 bytes inside a parity batch and was green alone
+/// (2026-09-11), and `a_parked_transform_lets_go_of_its_picture` went red
+/// in an 822-test batch, green alone AND green across its own 476-test
+/// directory (2026-09-18) — the second time blocking a landing.
+///
+/// ⛔**NOT by raising the bound.** That is the same instrument shaken
+/// harder: the wait already gives up in seconds by design, because an
+/// unbounded one took this suite past ten gigabytes and the runner's
+/// ten-minute cap. What is wrong is the COMPANY, not the patience.
+///
+/// ⚠️It is a whole-FILE question because the tag is a library annotation,
+/// so partitioning by file is exact — no `--exclude-tags` pass that could
+/// come back 「no tests match」 and read as a failure to start.
+({List<String> crowd, List<String> alone}) partitionByGcTag(
+  List<String> files,
+  String Function(String path) read,
+) {
+  final crowd = <String>[];
+  final alone = <String>[];
+  for (final file in files) {
+    (read(file).contains(gcTagMarker) ? alone : crowd).add(file);
+  }
+  return (crowd: crowd, alone: alone);
+}
+
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
@@ -214,11 +253,29 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  final batches = files.isEmpty ? [<String>[]] : _batches(files);
-  if (batches.length > 1) {
-    _report('${files.length} files exceed the command-line budget: '
-        'running them in ${batches.length} batches. Each batch pays the '
-        'resident compiler\'s cold start again.');
+  // The collector-waiting pins go last and by themselves — see
+  // [partitionByGcTag]. ⚠️An empty selection means 「the whole suite」 and
+  // stays one empty batch: the crowd's own command carries every file
+  // there is, this one included.
+  final split = files.isEmpty
+      ? (crowd: files, alone: <String>[])
+      : partitionByGcTag(files, (path) => File(path).readAsStringSync());
+  final crowdBatches = split.crowd.isEmpty && split.alone.isEmpty
+      ? [<String>[]]
+      : _batches(split.crowd);
+  final batches = [
+    ...crowdBatches,
+    if (split.alone.isNotEmpty) split.alone,
+  ];
+  if (split.alone.isNotEmpty) {
+    _report('${split.alone.length} pin(s) wait for the garbage collector '
+        '($gcTagMarker) and run in a batch of their own — in company they '
+        'report a holder that has already let go.');
+  }
+  if (crowdBatches.length > 1) {
+    _report('${split.crowd.length} files exceed the command-line budget: '
+        'running them in ${crowdBatches.length} batches. Each batch pays '
+        'the resident compiler\'s cold start again.');
   }
 
   var worst = 0;

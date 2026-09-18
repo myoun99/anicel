@@ -27,3 +27,21 @@
 tags:
   benchmark:
     skip: "performance benchmark — run with: flutter test --run-skipped --tags benchmark"
+  # A pin whose assertion waits for the GARBAGE COLLECTOR — a WeakReference
+  # that must read null, a byte count a finalizer brings down.
+  #
+  # NOT skipped: these run every time. The tag says WHERE they run.
+  # `flutter test` puts a batch's files in concurrent isolates, and a full
+  # collection under a hundred of them happens when the machine gets round
+  # to it — so the bounded wait these pins use gives up and reports a
+  # holder that has already let go. Measured on two different files: a tile
+  # count lost 64 bytes inside a parity batch and was green alone
+  # (2026-09-11), and the parked-transform pin went red in an 822-test
+  # batch while green alone AND green across its own 476-test directory
+  # (2026-09-18, blocking a landing).
+  #
+  # `tool/affected_tests.dart` reads this tag and runs the files carrying
+  # it in a batch of their own, last. Raising the wait instead is the same
+  # instrument shaken harder: unbounded, it took this suite past ten
+  # gigabytes and the runner's ten-minute cap.
+  gc:
