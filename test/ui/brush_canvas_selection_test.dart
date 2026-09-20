@@ -1242,6 +1242,66 @@ void main() {
     );
   });
 
+  /// 🚨★★★**BOTH AT ONCE — 「오른쪽으로 옮기고 2배 키운 상태」.**
+  ///
+  /// 🗣️유저 2026-09-20: 「즉 프레임 1을 오른쪽으로 옮기고, 2배 키운상태에서
+  /// 프레임2가면 **오른쪽으로 옮긴 값이 사라지고 2배만 키워진단건가?**」.
+  ///
+  /// ⚠️**NEITHER PIN ABOVE COULD ANSWER THAT.** One moves the box and never
+  /// scales it; the other scales it and never moves it. Each was built to
+  /// kill one mutant, and between them they left the ordinary case — a user
+  /// doing both — unmeasured. 유저 found the hole by reading the answer.
+  ///
+  /// 🔬The arithmetic it pins: the affine is 「scale about the pivot, THEN
+  /// translate」 — `q = R·S·(p − pivot) + pivot + t`. Frame two's dab sits
+  /// at its own box centre, so ×2 leaves it there and +50 carries it to
+  /// (170,120). ⛔Both wrong answers are named: 120 would mean the move was
+  /// dropped, 245 would mean frame one's pivot came along (45 + 75×2 + 50).
+  testWidgets('오른쪽으로 옮기고 2배 키운 채로 걸어가면 — 옮긴 값도 배율도 '
+      '둘 다 이 셀에 걸린다', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 50,
+      ty: 0,
+      rotationDegrees: 0,
+      scale: 2,
+    );
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, 170, 120),
+      isNonZero,
+      reason:
+          '유저: 옮긴 값은 사라지지 않는다 — 이 셀 제 그림이 제자리에서 2배가 '
+          '되고, 그 다음 +50 만큼 오른쪽으로 간다',
+    );
+    expect(
+      inkAt(env.coordinator, 120, 120),
+      0,
+      reason: '⛔120 에 남아 있으면 「2배만 되고 이동은 버려졌다」는 뜻이다',
+    );
+    expect(
+      inkAt(env.coordinator, 245, 120),
+      0,
+      reason: '⛔245 면 떠나온 셀의 피벗이 따라온 것이다(45 + 75×2 + 50)',
+    );
+  });
+
   // TP4 (유저: 선택된 내부를 끌어야 변형툴이 움직이는데 … 변형툴 내부 사각형
   // 안이라면 언제든 작동하도록).
   /// 🚨★★★**F-116-b / F-164 — 여러 행·프레임 확정.**
