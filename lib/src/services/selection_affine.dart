@@ -57,6 +57,17 @@ class SelectionAffine {
   bool get isIdentity =>
       sx == 1 && sy == 1 && rotationDegrees == 0 && tx == 0 && ty == 0;
 
+  /// Nothing but a move: the pixels travel without being resampled.
+  ///
+  /// 🚨★★★**THE CHEAP PATH IS A LAW, NOT AN OPTIMISATION.** A translation
+  /// carries the lifted stamp byte-exactly by moving its centre, so a drag
+  /// inside the box neither resamples nor re-decodes — it is as cheap as it
+  /// was when the move lived outside the affine entirely, which is what
+  /// 유저's 「**가볍게 구조적으로 설계**」 asks of this round. ⛔The anchor is
+  /// not consulted: with no rotation it costs nothing ([appliedTx]).
+  bool get isPureTranslation =>
+      sx == 1 && sy == 1 && rotationDegrees == 0;
+
   /// The translation the composite actually applies: [tx]/[ty] plus what
   /// the anchor costs.
   ///

@@ -134,16 +134,37 @@ final class MarqueeDrag extends SelectionDrag {
 
 /// The MOVE tool's drag: the selected pixels follow the hand.
 ///
-/// Its whole mid-gesture state is the screen-space delta. What is being
+/// Its whole mid-gesture state is the screen-space delta and where the
+/// affine's translation stood when the hand went down. What is being
 /// carried — the lift token, the floating stamp — belongs to the move
 /// SESSION, which outlives every drag in it until the confirm (R16-①), and
 /// so stays on the layer.
 final class MoveDrag extends SelectionDrag {
-  MoveDrag({required super.pointer});
+  MoveDrag({
+    required super.pointer,
+    required this.txAtStart,
+    required this.tyAtStart,
+  });
 
   /// The drag so far, in screen pixels. The layer rounds it into whole
   /// canvas pixels before anything is shown or landed (TP5).
   Offset screenDelta = Offset.zero;
+
+  /// The affine's translation when this drag began.
+  ///
+  /// 🚨★★★**A MOVE IS THE AFFINE'S tx/ty AND NOTHING ELSE** — 유저
+  /// 2026-09-22: 「변형에서 위치 이동하면 **X,Y 전혀 기록안되는거** … 구조적
+  /// 으로 X,Y가 그 뜻이 아닌거같은데 … **이동값이 X,Y잖아. tvp도 그렇고**」.
+  /// ↩️The drag used to move the lifted STAMP and the region instead, so
+  /// the panel's X/Y — which reads the affine — sat at zero however far the
+  /// picture travelled, and a confirm over a frame range could only carry a
+  /// displacement because that was the only place the move existed.
+  ///
+  /// ⛔The drag ADDS to what was already there. Replacing it would make a
+  /// second drag snap back to the origin, and would throw away a
+  /// translation typed into the panel.
+  final double txAtStart;
+  final double tyAtStart;
 }
 
 /// Which part of the Ctrl+T box a drag grabbed.

@@ -1549,6 +1549,12 @@ void main() {
       isTrue,
       reason: 'the press inside the box started a move',
     );
+    // ⚠️CONFIRM FIRST. A move is the affine's tx/ty now, so the committed
+    // region stands still until Enter — exactly as a scale or a rotation
+    // always has. What the drag moved is on screen and in X/Y; what lands
+    // is what this reads.
+    env.commands.confirmPendingMove();
+    await tester.pump();
     // …and what moved is the LASSO's own outline, +30 across: the box
     // widened the door, it did not become the thing carried through it.
     expect(env.commands.region!.selectedBounds.left, 50);
@@ -1586,11 +1592,18 @@ void main() {
     // 10 screen px = 3.33… canvas px: fractional by construction.
     await dragOnLayer(tester, const Offset(135, 135), const Offset(145, 135));
 
-    final moved = env.commands.region!.selectedBounds.left - 30;
+    // 🚨★★★**READ IT OFF X/Y — THAT IS WHERE A MOVE LIVES** (유저
+    // 2026-09-22: 「이동값이 X,Y잖아. tvp도 그렇고」). ↩️This used to read the
+    // committed region, because the drag walked it over on release; the
+    // affine holds the move now and the region stands still until Enter,
+    // like every other transform value.
+    final moved = env.commands.transformValues!.tx;
     expect(
       moved,
       moved.roundToDouble(),
-      reason: 'the move asked for a whole number of canvas pixels',
+      reason:
+          '유저: 「캔버스쪽 직접 손으로 끌어서 이동하는거는 소수점은 '
+          '이동안되게. 즉 스냅. 15다음이 15.2 이런식말고 16되도록」',
     );
     expect(moved, isNot(0), reason: 'precondition: it did move');
 
@@ -1803,24 +1816,34 @@ void main() {
     );
   });
 
-  testWidgets('I-38: ⛔and a plain MOVE draws no before-line — 유저 said '
-      '「변형도구 사용시」', (tester) async {
+  testWidgets('I-38: ⛔a session that OUTLIVED its box draws no before-line',
+      (tester) async {
     // 🧪A mutant is why this exists. Dropping the 「is a box open」 guard
     // broke nothing, because a confirm ends the session and the shape goes
     // with it either way — the case the guard is actually for is a session
-    // with NO box, which nothing was asking about.
+    // with NO box.
+    //
+    // ↩️That case used to be 「a plain move」, which no longer exists: an
+    // inside grab opens the box and the numbers behind it (유저 2026-09-22,
+    // 「이동값이 X,Y잖아」). A session still outlives its box, though —
+    // Escape closes the box and leaves the float pending — and that is the
+    // case now, which is a better one: it is the only way to reach it.
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
     await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
     expect(env.commands.movePending, isTrue, reason: '⛔fixture premise');
-    expect(env.commands.transformActive, isFalse, reason: '⛔and no box');
+    expect(env.commands.transformActive, isTrue, reason: '⛔and a box');
+
+    env.commands.cancelTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isTrue, reason: 'the float pends on');
+    expect(env.commands.transformActive, isFalse, reason: 'the box is gone');
 
     expect(
       antsOnScreen(tester)?.startShape,
       isNull,
       reason:
-          'the before-line belongs to the transform TOOL. A move already '
-          'shows where it started — the ants are still on the old outline '
-          'until it lands',
+          'the before-line belongs to the BOX — with no box there is '
+          'nothing to draw it beside',
     );
   });
 

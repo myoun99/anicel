@@ -907,18 +907,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return CanvasPoint(x: raw.x.roundToDouble(), y: raw.y.roundToDouble());
   }
 
-  /// [_moveCanvasDelta] back in screen space — for the chrome that is
-  /// positioned in screen coordinates (the ants, the confirm button), so it
-  /// steps with the pixels rather than gliding past them.
-  Offset get _moveChromeOffset {
-    final delta = _moveCanvasDelta;
-    final mapped = widget.viewport.canvasDeltaToViewportDelta(
-      dx: delta.x,
-      dy: delta.y,
-    );
-    return Offset(mapped.x, mapped.y);
-  }
-
   // Ctrl+T free-transform session (P9b): the composite affine and the base
   // box it manipulates (the shape's AABB at session start; its center is
   // the affine pivot). The per-drag solving context is NOT here — it lives
@@ -2565,8 +2553,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         clip: pasteboard,
       );
     }
-    if (floatSurface != null &&
-        (_drag is MoveDrag || transform != null || _movePending)) {
+    // ↩️`_drag is MoveDrag` stood here too, from when a move was its own
+    // mechanism. An inside grab opens the box now, so that term could only
+    // ever be true alongside the one beside it.
+    if (floatSurface != null && (transform != null || _movePending)) {
       return SelectionFloatPaint(
         surface: BitmapSurfacePainter(
           surface: floatSurface,
@@ -2852,7 +2842,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     setState(() {
-      _drag = MoveDrag(pointer: event.pointer);
+      // 🚨★★★**AN INSIDE GRAB IS A TRANSFORM WHOSE ONLY VALUE IS tx/ty.**
+      // ↩️It used to be a second mechanism — the drag moved the lifted
+      // stamp and the region while the affine sat at zero — so the panel's
+      // X/Y never budged (유저 2026-09-22) and a confirm over a frame range
+      // had only a displacement to hand the other cels. One box, one set of
+      // numbers, and 「선택을 하던 안하던 … 다른 법 안두는게 절대규칙」.
+      //
+      // ⚠️Opening it here rather than refusing: with the Move tool the box
+      // is already on screen (R17-U), so this is the moment the numbers
+      // behind it start existing, not a new thing appearing.
+      if (_transform == null) {
+        _aimTransformAt(liftShape);
+        _syncOffsetsToMode();
+      }
+      final affine = _transform!;
+      _drag = MoveDrag(
+        pointer: event.pointer,
+        txAtStart: affine.tx,
+        tyAtStart: affine.ty,
+      );
       _floatSurface = _buildFloatSurface();
     });
     return true;
@@ -2985,7 +2994,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case MarqueeDrag():
         setState(() => drag.update(_toCanvas(event.localPosition)));
       case MoveDrag():
-        setState(() => drag.screenDelta += event.delta);
+        setState(() {
+          drag.screenDelta += event.delta;
+          // ⚠️The rounding is [_moveCanvasDelta]'s and it is the whole of
+          // 유저's 「캔버스쪽 직접 손으로 끌어서 이동하는거는 소수점은
+          // 이동안되게. 즉 스냅. 15다음이 15.2 이런식말고 16되도록」 — the
+          // TOTAL is rounded, not each step, so a slow drag cannot drift.
+          // ⛔Typed values are not rounded: 「확대축소는 소수점 이동해도
+          // 되는데」 splits by ENTRANCE, not by a mode.
+          final moved = _moveCanvasDelta;
+          _transform = _transform?.copyWith(
+            tx: drag.txAtStart + moved.x,
+            ty: drag.tyAtStart + moved.y,
+          );
+          if (moved.x != 0 || moved.y != 0) {
+            _session?.moved = true;
+          }
+        });
+        _publishTransformValues();
+        // ⛔A PURE TRANSLATION DOES NOT RESAMPLE. `transformStampDab`
+        // carries it by moving the stamp's centre, so scheduling here
+        // would decode the same megabyte image once per pointer move for
+        // a picture that has not changed a pixel.
+        if (_transform?.isPureTranslation == false) {
+          _preview.schedule();
+        }
       case TransformDrag():
         _updateTransformDrag(drag, _toCanvas(event.localPosition));
     }
@@ -3261,9 +3294,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case MarqueeDrag():
         _finishMarquee(drag);
       case MoveDrag():
-        _finishMove();
       case TransformDrag():
         // The session stays open across drags; Enter/Escape close it.
+        //
+        // ↩️A move used to LAND here — it walked the stamp and the region
+        // over by the drag's delta on every release. The affine holds the
+        // move now, so a release has nothing of its own to do and the two
+        // drags end the same way, which is the point.
         break;
       case VertexTapDrag():
         _placeVertex(drag);
@@ -3523,41 +3560,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasShapeKind.polygon => true,
   };
 
-  void _finishMove() {
-    if (_moveScreenDelta == Offset.zero) {
-      return;
-    }
-    // Whole canvas pixels (TP5) — the same value the float has been drawn
-    // at all through the drag, so the confirm moves nothing.
-    final canvasDelta = _moveCanvasDelta;
-    _commitMove(dx: canvasDelta.x, dy: canvasDelta.y);
-  }
-
-  void _commitMove({required double dx, required double dy}) {
-    final region = _region;
-    final pending = _pendingLiftStamp;
-    if (region == null || pending == null || (dx == 0 && dy == 0)) {
-      return;
-    }
-    // R16-① TVP move session: a drag only moves the FLOAT — nothing lands
-    // and nothing is undoable until the confirm. The ants go red.
-    setState(() {
-      _session?.stamp = pending.copyWith(
-        center: CanvasPoint(x: pending.center.x + dx, y: pending.center.y + dy),
-      );
-      _session?.moved = true;
-      // ⚠️ NO rebuild. This used to re-materialize the whole stamp onto a
-      // fresh surface at the new centre, on every drag release and every
-      // arrow nudge — and the tiles it made were new objects with no
-      // decoded images, so what replaced a float that could paint was one
-      // that could not. Measured on the confirm frame of a wide move:
-      // 44% of the landing absent. A move is a translation; the surface
-      // stays where it was built and [_floatDrawOffset] carries it.
-      _moveRegion(region.translated(dx: dx, dy: dy));
-    });
-    _syncAnts();
-  }
-
   static CanvasPoint _applyHomography(Float64List h, CanvasPoint point) {
     final w = h[6] * point.x + h[7] * point.y + h[8];
     if (w.abs() < 1e-12) {
@@ -3804,7 +3806,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// now, so they meet here instead — and the drag delta comes back through
   /// the same mapping that carried it out, rotation and flip included.
   CanvasPoint get _floatDrawCanvasOffset {
-    final dragged = _moveCanvasDelta;
+    // ⚠️Read off the AFFINE, not off the drag: the move lives there now,
+    // so this is also what carries it between drags — the stamp no longer
+    // moves and the drift below is zero until a warp folds into it.
+    final affine = _transform;
+    final dragged = affine == null
+        ? CanvasPoint(x: 0, y: 0)
+        : CanvasPoint(x: affine.appliedTx, y: affine.appliedTy);
     final from = _floatSurfaceCentre;
     final to = _pendingLiftStamp?.center;
     if (from == null || to == null) {
@@ -4010,9 +4018,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // TP5: the ants step with the PIXELS, not with the
             // pointer — the outline has to be around the thing that
             // will land, or the confirm looks like it moved.
-            screenOffset: _drag is MoveDrag
-                ? _moveChromeOffset
-                : Offset.zero,
+            //
+            // ↩️A MoveDrag used to need an offset of its own here,
+            // because the region stood still until the release landed
+            // it. The move is the affine's now, so `displayShape` above
+            // already carries it — and adding the drag on top would
+            // step the ants twice.
+            screenOffset: Offset.zero,
             marqueeShapes: _symmetryCopies(_marqueeDrag?.shape()),
             openTrail: _tapsVertices
                 ? (widget.selectionCommands?.polygonPoints ?? const [])
@@ -4153,10 +4165,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final mapped = _mapCanvasToViewportOffset(
       CanvasPoint(x: bounds.right, y: bounds.top),
     );
-    final dragOffset = _drag is MoveDrag
-        ? _moveChromeOffset
-        : Offset.zero;
-    return mapped + dragOffset + const Offset(8, -34);
+    // ⚠️No drag offset: the button is anchored to [region], and with the
+    // move living in the affine the caller hands the TRANSFORMED shape —
+    // so it already rides the corner it is supposed to ride.
+    return mapped + const Offset(8, -34);
   }
 
   Offset _mapCanvasToViewportOffset(CanvasPoint point) {

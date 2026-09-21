@@ -160,11 +160,11 @@ BrushDab transformStampDab(
   if (stamp == null || affine.isIdentity) {
     return stampDab;
   }
-  if (affine.sx == 1 && affine.sy == 1 && affine.rotationDegrees == 0) {
+  if (affine.isPureTranslation) {
     return stampDab.copyWith(
       center: CanvasPoint(
-        x: stampDab.center.x + affine.tx,
-        y: stampDab.center.y + affine.ty,
+        x: stampDab.center.x + affine.appliedTx,
+        y: stampDab.center.y + affine.appliedTy,
       ),
     );
   }
