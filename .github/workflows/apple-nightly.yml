@@ -16,10 +16,13 @@ name: Apple nightly suite
 # separators, file locking, Platform.isMacOS branches — with nothing
 # looking for them at all, and nobody is waiting on this job at 03:00
 # UTC.
+#
+# ⛔THE 03:00 CRON IS GONE (2026-09-22) — same reason as testflight.yml:
+# the suspension's likeliest trigger was nightly macOS-runner crons, and
+# 유저 said 「크론은 일단 지우고, 나중에 어떤식으로 돌릴지 상담하자」. Until
+# that conversation the breadth above is bought only when somebody asks
+# for it.
 on:
-  schedule:
-    # 03:00 UTC = 12:00 KST, once a day — same slot as apple.yml.
-    - cron: '0 3 * * *'
   workflow_dispatch:
 
 concurrency:

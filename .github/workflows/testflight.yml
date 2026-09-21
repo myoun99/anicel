@@ -4,15 +4,16 @@ name: TestFlight (iOS)
 # one answers "can I hold it on the iPad?" — a signed device build pushed
 # to TestFlight.
 #
-# Once a night, and on demand. Not on every push: master takes ten or more
-# merges on a working day, and since a build cannot start while another is
-# running they would queue for hours to deliver versions nobody asked to
-# look at. A night build carries the whole day's work instead, and is on
-# the iPad before the next one starts.
+# ON DEMAND ONLY. It ran at 21:00 UTC until 2026-09-22. The account was
+# suspended on 09-01 with this nightly macOS-runner cron as the likeliest
+# trigger, and the appeal offered to drop it; 유저 2026-09-22: 「크론은 일단
+# 지우고, 나중에 어떤식으로 돌릴지 상담하자」. ⛔Do not put a schedule back
+# without that conversation.
+#
+# Not on every push either: master takes ten or more merges on a working
+# day, and since a build cannot start while another is running they would
+# queue for hours to deliver versions nobody asked to look at.
 on:
-  schedule:
-    # 21:00 UTC = 06:00 JST — after the late merges, before the morning.
-    - cron: '0 21 * * *'
   workflow_dispatch:
 
 concurrency:

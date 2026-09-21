@@ -1,14 +1,11 @@
 name: Apple (macOS + iOS)
 
 # The EXPENSIVE tier. macOS runners are free for this public repository,
-# but a build is minutes rather than seconds - so this runs once a day
-# and on demand, not on every push. Its job is COMPILE verification:
+# but a build is minutes rather than seconds - so it runs on demand and on
+# the pushes below, not on every push. Its job is COMPILE verification:
 # nobody here owns a Mac, so "it builds and links on Apple platforms" is
 # the guarantee this workflow buys.
 on:
-  schedule:
-    # 03:00 UTC = 12:00 KST, once a day.
-    - cron: '0 3 * * *'
   workflow_dispatch:
   push:
     # Also whenever the native core or the Apple projects change - those
