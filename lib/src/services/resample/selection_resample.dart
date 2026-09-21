@@ -106,8 +106,8 @@ ResampleTransform selectionAffineResampleTransform({
   final sin = affine.sinTheta;
   final invSx = 1 / affine.sx;
   final invSy = 1 / affine.sy;
-  final offsetX = outLeft - affine.pivot.x - affine.tx;
-  final offsetY = outTop - affine.pivot.y - affine.ty;
+  final offsetX = outLeft - affine.pivot.x - affine.appliedTx;
+  final offsetY = outTop - affine.pivot.y - affine.appliedTy;
   return ResampleTransform(
     a: cos * invSx,
     b: sin * invSx,
