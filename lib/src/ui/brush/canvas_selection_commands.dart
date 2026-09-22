@@ -222,6 +222,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
   })?
   _setTransformValues;
   void Function({required double x, required double y})? _setTransformAnchor;
+  bool Function()? _undoTransformStep;
+  VoidCallback? _beginTransformStep;
   void Function({required bool horizontal})? _flipTransform;
   VoidCallback? _resetTransform;
   VoidCallback? _applyTransform;
@@ -254,6 +256,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
     })?
     setTransformValues,
     void Function({required double x, required double y})? setTransformAnchor,
+    bool Function()? undoTransformStep,
+    VoidCallback? beginTransformStep,
     void Function({required bool horizontal})? flipTransform,
     VoidCallback? resetTransform,
     VoidCallback? applyTransform,
@@ -278,6 +282,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _transformValues = transformValues;
     _setTransformValues = setTransformValues;
     _setTransformAnchor = setTransformAnchor;
+    _undoTransformStep = undoTransformStep;
+    _beginTransformStep = beginTransformStep;
     notifySessionChanged();
   }
 
@@ -300,6 +306,8 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _transformValues = null;
     _setTransformValues = null;
     _setTransformAnchor = null;
+    _undoTransformStep = null;
+    _beginTransformStep = null;
     _flipTransform = null;
     _resetTransform = null;
     _applyTransform = null;
@@ -453,6 +461,26 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// default would silently put the cross back in the middle.
   void setTransformAnchor({required double x, required double y}) =>
       _setTransformAnchor?.call(x: x, y: y);
+
+  /// Takes ONE operation back inside an open transform box.
+  ///
+  /// 🗣️유저 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로
+  /// 기록**된단거야 … **확정하면 변형 하나로서의 언두만 작동**」.
+  ///
+  /// Returns false when there is nothing left to take — no box, or a box
+  /// standing as it opened — and then undo means what it always means.
+  /// ⛔Exactly [undoPolygonPoint]'s contract, because it is exactly the
+  /// same question: 「is the key the user pressed about the thing they are
+  /// in the middle of, or about the document?」
+  bool undoTransformStep() => _undoTransformStep?.call() ?? false;
+
+  /// Marks the start of an operation that is NOT a canvas gesture — a
+  /// scrub on a tool-settings channel, or a typed value.
+  ///
+  /// ⚠️The canvas takes its own step when a drag begins, because it can
+  /// see the press. A label scrub is one operation made of forty writes,
+  /// and only the label knows where it started — so it says so.
+  void beginTransformStep() => _beginTransformStep?.call();
 
   /// Mirrors the open box about its centre — a sign flip on one scale
   /// axis, not a new kind of transform. Works in every mode: 퍼스 and 메쉬

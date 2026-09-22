@@ -45,7 +45,16 @@ class DragValueLabel extends StatefulWidget {
     this.inputKeyValue,
     this.textAlign = TextAlign.center,
     this.enabled = true,
+    this.onOperationStart,
   });
+
+  /// Called ONCE at the top of a scrub or a typed commit, before the value
+  /// moves — for a host that records operations rather than values.
+  ///
+  /// ⚠️A scrub is one operation made of many [onDragDelta] calls, and only
+  /// this widget knows where it began. Null for every readout that does
+  /// not care, which is most of them.
+  final VoidCallback? onOperationStart;
 
   /// Stable widget key base (`keyValue` label / `keyValue`-input).
   final String keyValue;
@@ -112,6 +121,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
   void _commitEdit(String text) {
     setState(() => _editing = false);
     if (text.isNotEmpty) {
+      widget.onOperationStart?.call();
       widget.onEditSubmit(text);
     }
   }
@@ -146,6 +156,12 @@ class _DragValueLabelState extends State<DragValueLabel> {
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
+      // ⚠️On the FIRST whole unit, not on the press: a press that never
+      // moves the value is not an operation, and the edit it opens
+      // instead announces itself in [_commitEdit].
+      if (!_scrubbedThisPress) {
+        widget.onOperationStart?.call();
+      }
       _scrubbedThisPress = true;
       widget.onDragDelta(whole);
     }

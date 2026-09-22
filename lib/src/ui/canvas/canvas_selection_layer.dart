@@ -584,6 +584,18 @@ class _MoveSession {
   SelectionAffine? landedAffine;
 }
 
+/// The whole of an open box's edit, as one step back.
+///
+/// ⛔**ALL THREE OR NONE.** The affine and the two warps are what an
+/// operation can change, and a step that carried only the affine would
+/// give 퍼스/메쉬 a step that restores nothing — a law that works in one
+/// mode and quietly does not in the others.
+typedef _TransformStep = ({
+  SelectionAffine affine,
+  List<CanvasPoint>? cornerOffsets,
+  List<CanvasPoint>? meshOffsets,
+});
+
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin
     implements _OpenWarp {
@@ -1306,6 +1318,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       transformValues: _transformValuesNow,
       setTransformValues: _setTransformValues,
       setTransformAnchor: _setTransformAnchor,
+      undoTransformStep: _undoTransformStep,
+      beginTransformStep: _pushTransformStep,
       canEditTransform: _canEditTransform,
       flipTransform: _flipTransform,
       resetTransform: _resetTransform,
@@ -1520,6 +1534,43 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ),
   );
 
+  /// Remembers where the box stands, just before an operation moves it.
+  ///
+  /// ⚠️Called at the START of an operation rather than its end, so the
+  /// stack always holds 「what undo goes back to」 and never has to guess
+  /// when a gesture finished. With no box open there is nothing to step
+  /// back to and nothing is pushed.
+  void _pushTransformStep() {
+    final affine = _transform;
+    if (affine == null) {
+      return;
+    }
+    _transformSteps.add((
+      affine: affine,
+      cornerOffsets: _cornerOffsets == null ? null : List.of(_cornerOffsets!),
+      meshOffsets: _meshOffsets == null ? null : List.of(_meshOffsets!),
+    ));
+  }
+
+  /// Takes one operation back. False when there is nothing left to take —
+  /// and then undo means what it always means, exactly as it does once a
+  /// polygon trace runs out ([CanvasSelectionCommands.undoPolygonPoint]).
+  bool _undoTransformStep() {
+    if (_transform == null || _transformSteps.isEmpty) {
+      return false;
+    }
+    final step = _transformSteps.removeLast();
+    setState(() {
+      _transform = step.affine;
+      _cornerOffsets = step.cornerOffsets;
+      _meshOffsets = step.meshOffsets;
+    });
+    _publishTransformValues();
+    _preview.schedule();
+    _syncAnts();
+    return true;
+  }
+
   /// The anchor's numeric input — the cross's own channel.
   ///
   /// ⛔It goes through [_editTransform] like every other numeric write, so
@@ -1717,6 +1768,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   List<CanvasPoint>? _meshOffsets;
   int _meshOffsetColumns = 0;
   int _meshOffsetRows = 0;
+
+  /// 🚨★★★**ONE OPERATION INSIDE AN OPEN BOX = ONE STEP BACK.**
+  ///
+  /// 🗣️유저 2026-09-20: 「클튜 보니 좋은점이 있는데, **변형도구 사용시
+  /// 변형에 대한 조작마다 언두로 기록**된단거야. 즉 변형도구 사용중에
+  /// **앵커포인트 이동하거나, 확대하거나. 이런 동작마다 언두 기록**되고
+  /// **확정하면 변형 하나로서의 언두만 작동**. 지금처럼 변형전으로
+  /// 돌아가는거지」.
+  ///
+  /// ⛔**VALUES, NEVER PIXELS.** A step is what an operation changed — the
+  /// affine and the warp — and undoing one re-solves the preview from
+  /// them. Keeping rasters here would put a copy of the picture on the
+  /// stack per drag, which is the memory the whole session model exists to
+  /// avoid.
+  ///
+  /// ⚠️It holds the value BEFORE each operation, so the stack is empty
+  /// exactly when the box stands as it opened. Emptied with the session,
+  /// because a confirmed transform is ONE document entry and a cancelled
+  /// one never happened.
+  final List<_TransformStep> _transformSteps = [];
 
   /// What a narrowing mode switch put aside, so widening again restores
   /// the warp instead of starting flat. Cleared with the session.
@@ -2260,6 +2331,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // same thing by nulling five per-drag fields at a distance.
     _transform = null;
     _transformOpenedLift = false;
+    // ⛔The steps die with the box. A confirmed transform is ONE document
+    // entry (유저: 「확정하면 변형 하나로서의 언두만 작동」) and a cancelled
+    // one never happened, so there is nothing left for them to describe.
+    _transformSteps.clear();
     _baseBoxWidth = 0;
     _baseBoxHeight = 0;
     _cornerOffsets = null;
@@ -2969,6 +3044,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _transformOpenedLift = !hadPendingLift;
       }
       final affine = _transform!;
+      // ⚠️AFTER the box exists: an inside grab that opened it steps back
+      // to the box as it opened, which is what the user sees.
+      _pushTransformStep();
       _drag = MoveDrag(
         pointer: event.pointer,
         txAtStart: affine.tx,
@@ -2992,15 +3070,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ).containsPoint(canvasPoint)) {
         return;
       }
-      setState(() {
-        _drag = WarpPointDrag(
+      _startTransformDrag(
+        WarpPointDrag(
           pointer: event.pointer,
           startPointer: canvasPoint,
           points: pointIndex == null ? null : [pointIndex],
           startOffsets: List.of(_meshOffsets ?? const []),
-        );
-      });
-      _notifyDragActive(true);
+        ),
+      );
       return;
     }
     // 퍼스: the four corners move freely — no modifier, because the MODE
@@ -3020,15 +3097,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         cornersPlaced,
       );
       if (cornerIndex != null) {
-        setState(() {
-          _drag = WarpPointDrag(
+        _startTransformDrag(
+          WarpPointDrag(
             pointer: event.pointer,
             startPointer: canvasPoint,
             points: [cornerIndex],
             startOffsets: List.of(_cornerOffsets ?? const []),
-          );
-        });
-        _notifyDragActive(true);
+          ),
+        );
         return;
       }
       // A warped quad's inside is the quad, not the affine box the edge
@@ -3065,19 +3141,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         ? _edgeCornerPair(handle)
         : null;
     if (edgePair != null && cornersPlaced != null) {
-      setState(() {
-        _drag = WarpPointDrag(
+      _startTransformDrag(
+        WarpPointDrag(
           pointer: event.pointer,
           startPointer: canvasPoint,
           points: edgePair,
           startOffsets: List.of(_cornerOffsets ?? const []),
-        );
-      });
-      _notifyDragActive(true);
+        ),
+      );
       return;
     }
-    setState(() {
-      _drag = BoxHandleDrag(
+    _startTransformDrag(
+      BoxHandleDrag(
         pointer: event.pointer,
         startPointer: canvasPoint,
         handle: handle,
@@ -3088,10 +3163,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         lastAngle: handle == TransformHandle.rotate
             ? _pointerAngleAbout(canvasPoint, openTransform)
             : 0,
-      );
-    });
-    _notifyDragActive(true);
+      ),
+    );
     return;
+  }
+
+  /// Begins a drag on the open box: the STEP first, then the drag.
+  ///
+  /// ⛔One place, because all four branches above already said the same
+  /// three lines and the step has to be taken before the drag can move
+  /// anything. A branch that forgot it would be a gesture the user could
+  /// not take back, and nothing else would notice.
+  void _startTransformDrag(TransformDrag drag) {
+    _pushTransformStep();
+    setState(() => _drag = drag);
+    _notifyDragActive(true);
   }
 
   void _handlePointerMove(PointerMoveEvent event) {

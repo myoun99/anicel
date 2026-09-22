@@ -666,7 +666,7 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.voiceRecordToggle:
         unawaited(toggleVoiceRecordingWithFeedback(context, _session));
       case EditorActionIds.undo:
-        _undoVertexOrDocument();
+        _undoInnerStepOrDocument();
       case EditorActionIds.redo:
         _redoVertexOrDocument();
       case EditorActionIds.onionSkinToggle:
@@ -771,16 +771,30 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// While a polygon outline is open, undo/redo take its last vertex
-  /// back and put it there again (유저 확정). They are NOT document
-  /// history for that: a trace of twenty taps would otherwise bury the
-  /// twenty real edits under it, and the undo cap is 200.
+  /// Undo means the thing the user is in the MIDDLE of, if there is one.
   ///
-  /// The channel answers false once the trace is empty, so undo falls
-  /// straight through to the document — undo never becomes a dead key
-  /// just because a polygon was being drawn a moment ago.
-  void _undoVertexOrDocument() {
+  /// While a polygon outline is open, it takes that trace's last vertex
+  /// back (유저 확정). They are NOT document history: a trace of twenty
+  /// taps would otherwise bury the twenty real edits under it, and the
+  /// undo cap is 200. An open transform box answers the same way for its
+  /// own operations (유저 2026-09-20).
+  ///
+  /// ⛔Each channel answers false once its own thing is back where it
+  /// started, so undo falls straight through to the document — undo never
+  /// becomes a dead key just because something was open a moment ago.
+  void _undoInnerStepOrDocument() {
     if (_canvasSelectionCommands.undoPolygonPoint()) {
+      return;
+    }
+    // 🚨★★★**AN OPEN TRANSFORM BOX TAKES UNDO THE SAME WAY** — 유저
+    // 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
+    // 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」.
+    //
+    // ⛔It answers false once the box stands as it opened, so undo falls
+    // through to the document exactly as it does after the last vertex —
+    // 「is this key about the thing I am in the middle of?」 is one
+    // question with one shape, asked twice.
+    if (_canvasSelectionCommands.undoTransformStep()) {
       return;
     }
     if (_session.canUndo) {

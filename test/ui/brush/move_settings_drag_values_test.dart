@@ -179,6 +179,68 @@ void main() {
     expect(anchors.last.y, isNot(0));
   });
 
+  /// 🚨★★★**⑤ONE SCRUB IS ONE STEP BACK, not forty.**
+  ///
+  /// 🗣️유저 2026-09-20: 「변형에 대한 **조작마다** 언두로 기록」. A label
+  /// scrub writes a value per pixel; only the label knows where the
+  /// operation began, so it is the label that says so.
+  testWidgets('⑤a label scrub announces ONE operation, a press that only '
+      'opens the editor announces none', (tester) async {
+    final applied = <AppliedTransform>[];
+    var steps = 0;
+    final commands = await pumpMoveSettings(tester, applied: applied);
+    commands.bind(
+      Object(),
+      hasSelection: () => false,
+      canEditTransform: () => true,
+      deselect: () {},
+      transformValues: () => null,
+      setTransformValues:
+          ({
+            required double tx,
+            required double ty,
+            required double rotationDegrees,
+            required double scale,
+          }) {
+            applied.add((
+              tx: tx,
+              ty: ty,
+              rotationDegrees: rotationDegrees,
+              scale: scale,
+            ));
+          },
+      beginTransformStep: () => steps += 1,
+    );
+    await tester.pump();
+
+    // ⚠️A hand-driven gesture, not `tester.drag`: that delivers the whole
+    // travel as ONE update, so it writes once and the pin would pass on a
+    // build that announced an operation per write.
+    final scrub = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey<String>('move-x-field'))),
+      kind: PointerDeviceKind.mouse,
+    );
+    for (var i = 0; i < 4; i += 1) {
+      await scrub.moveBy(const Offset(20, 0));
+      await tester.pump();
+    }
+    await scrub.up();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(
+      applied.length,
+      greaterThan(1),
+      reason: '⛔전제: the scrub really did write many times',
+    );
+    expect(steps, 1, reason: 'and it was ONE operation');
+
+    // A press that never moves the value opens the text field instead —
+    // nothing has happened yet, so there is nothing to step back to.
+    await tester.tap(find.byKey(const ValueKey<String>('move-y-field')));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(steps, 1, reason: '⛔a tap is not an operation');
+  });
+
   testWidgets('a scale-label drag clamps at the floor instead of going '
       'non-positive', (tester) async {
     final applied = <AppliedTransform>[];
