@@ -42,23 +42,8 @@ enum TransformMode {
   mesh,
 }
 
-/// Which point of the box stays put while a scale handle is dragged.
-///
-/// A HOLD (Alt) cannot be the whole answer on a tablet: the pen is already
-/// dragging the handle, so holding a second thing means a second hand on
-/// the glass for the length of the drag. So the anchor is a persistent
-/// setting and Alt merely inverts it for one drag — the desktop habit
-/// keeps working and the tablet gets the same reach without a keyboard.
-enum TransformAnchor {
-  /// The handle opposite the grabbed one stays fixed (the default).
-  oppositeCorner,
-
-  /// The box centre stays fixed — both sides move outward together.
-  center,
-}
-
 /// Everything the transform tool remembers between drags: the mode, the
-/// scale anchor, the resampler, and the mesh grid.
+/// resampler, and the mesh grid.
 ///
 /// One object rather than four notifiers threaded through five widgets:
 /// the canvas layer reads all of it and the tool settings panel writes all
@@ -67,7 +52,6 @@ enum TransformAnchor {
 class TransformToolOptions {
   const TransformToolOptions({
     this.mode = TransformMode.normal,
-    this.anchor = TransformAnchor.oppositeCorner,
     this.resampleMode = ResampleMode.blend,
     this.meshColumns = defaultMeshCells,
     this.meshRows = defaultMeshCells,
@@ -88,9 +72,6 @@ class TransformToolOptions {
   /// 일반 / 퍼스 / 메쉬 — the tool library's three tiles.
   final TransformMode mode;
 
-  /// The scale anchor; Alt inverts it for the duration of one drag.
-  final TransformAnchor anchor;
-
   /// How a transform turns pixels into other pixels: the tent mean that
   /// smooths (AA on), or the coverage argmax that copies source words
   /// through untouched so a two-value drawing stays two-valued (AA off).
@@ -105,14 +86,12 @@ class TransformToolOptions {
 
   TransformToolOptions copyWith({
     TransformMode? mode,
-    TransformAnchor? anchor,
     ResampleMode? resampleMode,
     int? meshColumns,
     int? meshRows,
   }) {
     return TransformToolOptions(
       mode: mode ?? this.mode,
-      anchor: anchor ?? this.anchor,
       resampleMode: resampleMode ?? this.resampleMode,
       meshColumns: clampMeshCells(meshColumns ?? this.meshColumns),
       meshRows: clampMeshCells(meshRows ?? this.meshRows),
@@ -127,14 +106,12 @@ class TransformToolOptions {
       identical(this, other) ||
       other is TransformToolOptions &&
           other.mode == mode &&
-          other.anchor == anchor &&
           other.resampleMode == resampleMode &&
           other.meshColumns == meshColumns &&
           other.meshRows == meshRows;
 
   @override
-  int get hashCode =>
-      Object.hash(mode, anchor, resampleMode, meshColumns, meshRows);
+  int get hashCode => Object.hash(mode, resampleMode, meshColumns, meshRows);
 }
 
 /// The last committed transform, replayed by 재현.

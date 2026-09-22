@@ -219,11 +219,30 @@ CanvasPoint? handleLocal(TransformHandle handle, double w, double h) {
 /// points and their start offsets OR the handle and its start affine, and
 /// nothing but the shape of that code said the two never mix.
 sealed class TransformDrag extends SelectionDrag {
-  TransformDrag({required super.pointer, required this.startPointer});
+  TransformDrag({required super.pointer, required this.startPointer})
+    : lastPointer = startPointer;
 
   /// Where the drag went down, in canvas space — every branch measures its
   /// displacement from here.
-  final CanvasPoint startPointer;
+  ///
+  /// ⚠️It can be RE-BASED mid-gesture, and only for one reason: the scale
+  /// modifier changed under the hand. 유저 2026-09-22: 「확대/축소 중 수정자
+  /// 들어오면 **위치값이나 확대축소 이런거 초기화같은거 하지말고** 해당
+  /// 상황에서 수정자 적용해서 **다음부터 적용**되도록」. The solve runs from
+  /// here every move, so leaving it alone would re-solve the whole drag
+  /// under the new anchor and jump the picture; moving it to where the
+  /// hand WAS ([lastPointer]) keeps every number and changes only what
+  /// happens next.
+  CanvasPoint startPointer;
+
+  /// Where the hand was at the PREVIOUS solve.
+  ///
+  /// ⚠️It exists for the re-base above and is what makes 「다음 움직임부터」
+  /// exact: re-basing onto the current pointer instead would swallow the
+  /// movement that carried the news, so the box would sit still for one
+  /// event and the hand would be a pixel ahead of the picture for the rest
+  /// of the drag.
+  CanvasPoint lastPointer;
 }
 
 /// A control-point drag — one corner in 퍼스, one grid point in 메쉬, or the
@@ -264,13 +283,27 @@ final class BoxHandleDrag extends TransformDrag {
     required this.handle,
     required this.start,
     required this.lastAngle,
+    required this.modifierHeld,
   });
 
   final TransformHandle handle;
 
   /// The affine as the press found it. The scale solver works from this,
   /// so a drag is one solve from the start rather than a chain of deltas.
-  final SelectionAffine start;
+  ///
+  /// ⚠️Re-based with [startPointer] when the scale modifier changes — see
+  /// the note there.
+  SelectionAffine start;
+
+  /// Whether the scale modifier was held at the last solve.
+  ///
+  /// 🚨★★★**ONE ENTRANCE, TWO MOMENTS** — 유저 2026-09-22: 「최대한 **입구
+  /// 하나로 하되 두개의 동작을 지원**한다는거임. **편집중의 수정자 사용이랑
+  /// 편집전**」. Holding it before the press and pressing it during the drag
+  /// are the same condition read at every move; this remembers the last
+  /// answer only so the change can be NOTICED, which is what the re-base
+  /// hangs on. ⛔It is not a second mode.
+  bool modifierHeld;
 
   /// The rotate knob's wrapped-delta accumulator (the camera lever rule):
   /// continuous across the ±180° seam. Meaningless for the other handles,

@@ -2719,7 +2719,14 @@ void main() {
 
     // Scale by the top-left handle, which is the one on screen. The drag
     // is what turns clipping on.
+    //
+    // ⚠️Alt is scaffolding, not the subject: it anchors the FAR corner, so
+    // the far ink's landing place is known without arithmetic that would
+    // have to track the box. Without it the default centre anchor moves
+    // that ink somewhere this test would have to compute.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await dragOnLayer(tester, const Offset(100, 100), const Offset(40, 30));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     expect(env.commands.transformActive, isTrue);
     env.commands.commitTransform();
     await tester.pump();
@@ -2739,49 +2746,24 @@ void main() {
     );
   });
 
-  testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
-    tester,
-  ) async {
-    // Centre-anchored: the box grows both ways, so the corner OPPOSITE the
-    // grabbed one moves too. With the default anchor it would stay put.
-    final env = await pumpSelectionPanel(tester);
-    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
-    await env.setTool(CanvasTool.move);
-    env.transformOptions.value = env.transformOptions.value.copyWith(
-      anchor: TransformAnchor.center,
-    );
-    await tester.pump();
-
-    // BR (70,70) out to (95,95) is 2× about the centre (45,45), so the
-    // stroke's ends map 30→15 and 60→75. Anchored at the opposite corner
-    // the same drag would be 1.5× about (20,20), putting them at 35 and 80.
-    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
-    env.commands.commitTransform();
-    await tester.pump();
-    expect(
-      inkAt(env.coordinator, 75, 75),
-      isNonZero,
-      reason:
-          'the grabbed end went out to 75, not the 80 a corner anchor '
-          'would have given',
-    );
-    expect(
-      inkAt(env.coordinator, 15, 15),
-      isNonZero,
-      reason:
-          'and the far end came out to meet it — that is what "anchor at '
-          'the centre" means, and it used to need Alt held down',
-    );
-  });
-
-  testWidgets('a finger landing mid-transform is IGNORED: the drag survives '
-      'and the canvas does not pan', (tester) async {
+  /// 🚨★★★**③터치가 수정자의 입구, ⑨도중에 들어오면 다음 움직임부터.**
+  ///
+  /// 🗣️유저 2026-09-22: 「**터치발생하면 수정자 발생**하도록」 ·
+  /// 「확대/축소 중 수정자 들어오면 **위치값이나 확대축소 이런거
+  /// 초기화같은거 하지말고** 해당 상황에서 수정자 적용해서 **다음부터
+  /// 적용**되도록」.
+  ///
+  /// ↩️The finger used to mean NOTHING here (08-13) — see [_modifierTouch]
+  /// for why, and why 유저 took that risk back.
+  testWidgets('a finger landing mid-transform is the MODIFIER: the drag '
+      'survives and NOTHING is reset', (tester) async {
     final env = await pumpSelectionPanel(tester);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
 
     final origin = tester.getTopLeft(find.byKey(layerKey));
-    // Grab the BR corner with the pen and start scaling...
+    // Grab the BR corner with the pen and scale (70,70)→(85,85): 1.6×
+    // about the centre (45,45), which is the default law.
     final pen = await tester.startGesture(
       origin + const Offset(70, 70),
       kind: PointerDeviceKind.stylus,
@@ -2790,6 +2772,7 @@ void main() {
     await pen.moveTo(origin + const Offset(85, 85));
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
+    expect(env.commands.transformValues?.scale, closeTo(1.6, 1e-9));
 
     // ...then rest a palm on the glass. This used to cancel the drag and
     // hand the gesture to the viewport (유저: "변형 도중 터치 들어오면
@@ -2808,14 +2791,16 @@ void main() {
     expect(
       env.commands.transformActive,
       isTrue,
-      reason: 'the transform is still open — the finger changed nothing',
+      reason: 'the transform is still open — the finger is not a cancel',
     );
-    env.commands.commitTransform();
-    await tester.pump();
+    // The box the palm landed on runs (5,5)–(85,85). Anchored at its TL
+    // the last (85,85)→(95,95) is 90/50 = 1.8× — and 1.8 is the number
+    // that carries BOTH halves of the law: the centre-pivot 2.0 says the
+    // finger did nothing, and 1.2 says the drag restarted at the palm.
     expect(
-      inkAt(env.coordinator, 80, 80),
-      isNonZero,
-      reason: 'the scale the pen was drawing landed in full',
+      env.commands.transformValues?.scale,
+      closeTo(1.8, 1e-9),
+      reason: '⛔초기화 없이 — the 1.6 is still inside the 1.8',
     );
   });
 
@@ -3427,7 +3412,7 @@ void main() {
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       env.commands.beginTransform();
       await tester.pump();
-      // BR (70,70) → (95,95): 1.5× about the anchored TL (20,20).
+      // BR (70,70) → (95,95): 2× about the box centre (45,45).
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
       await tester.pump();
 
@@ -3444,14 +3429,13 @@ void main() {
       await tester.tap(button, warnIfMissed: false);
       await tester.pump();
 
-      // The same landing the corner-scale test asserts for Enter.
-      expect(inkAt(env.coordinator, 35, 35), isNonZero);
-      expect(inkAt(env.coordinator, 80, 80), isNonZero);
-      expect(
-        inkAt(env.coordinator, 30, 30),
-        0,
-        reason: 'the unwarped lift landed at its pre-transform position',
-      );
+      // The same landing the corner-scale test asserts for Enter. ⚠️Both
+      // witnesses are OUTSIDE the unwarped stroke's 30..60 span, which is
+      // what makes them witnesses at all: scaling about the centre leaves
+      // the stroke on its own diagonal and only lengthens it, so every
+      // point the unwarped landing covers the warped one covers too.
+      expect(inkAt(env.coordinator, 15, 15), isNonZero);
+      expect(inkAt(env.coordinator, 75, 75), isNonZero);
       expect(
         env.commands.transformActive,
         isFalse,
@@ -4474,7 +4458,18 @@ void main() {
       expect(env.commands.transformActive, isTrue);
     });
 
-    testWidgets('a corner drag scales anchored on the opposite corner: the '
+    /// 🚨★★★**①확대의 기준은 상자의 중심이고, 그게 기본값이다.**
+    ///
+    /// 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
+    /// 일반변형에서 꼭짓점 이동하면 **그림 자체가 중심점 기준으로 커져** …
+    /// 지금 **반대쪽 꼭짓점 그대로 두고 현재 꼭짓점만 키우는게 클튜방식**
+    /// 이야. 그래서 **tvp방식인 전체 크게하도록** … 그걸 **수정자가아니라
+    /// 일반 로직으로 적용**하고」.
+    ///
+    /// ↩️This pin and the Alt one below TRADED PLACES on 09-22: the anchor
+    /// used to be a persistent setting defaulting to the opposite corner,
+    /// with Alt inverting it for one drag.
+    testWidgets('a corner drag scales about the box CENTER: the '
         'pixels RESAMPLE into the scaled footprint', (tester) async {
       final env = await pumpSelectionPanel(tester);
       // Selection box (20,20)..(70,70): pivot (45,45), BR handle at (70,70).
@@ -4482,36 +4477,52 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
 
-      // Drag BR to (95,95): 1.5× about the anchored TL corner (20,20).
+      // Drag BR to (95,95): 2× about the box centre (45,45).
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
       env.commands.commitTransform();
       await tester.pump();
 
-      // Dab centers map through q = 20 + 1.5·(p − 20):
-      // (30,30)→(35,35), (45,45)→(57.5,57.5), (60,60)→(80,80).
-      expect(inkAt(env.coordinator, 35, 35), isNonZero);
-      expect(inkAt(env.coordinator, 57, 57), isNonZero);
-      expect(inkAt(env.coordinator, 80, 80), isNonZero);
+      // Dab centers map through q = 45 + 2·(p − 45):
+      // (30,30)→(15,15), (45,45) fixed, (60,60)→(75,75).
+      expect(inkAt(env.coordinator, 15, 15), isNonZero);
+      expect(inkAt(env.coordinator, 45, 45), isNonZero);
+      expect(inkAt(env.coordinator, 75, 75), isNonZero);
     });
 
-    testWidgets('Alt scales about the center; Escape reverts a fresh '
+    /// 🚨★★★**②수정자를 쥐면 클튜식 — 반대 꼭짓점이 고정된다.**
+    ///
+    /// ⚠️Held BEFORE the press, which is one of the modifier's two moments
+    /// (유저: 「**편집전에 수정자를 입력한 채로 변형하면 처음부터 수정자
+    /// 적용**」). The other one — arriving mid-drag — is pinned by the
+    /// finger test, because the finger is the same modifier's other
+    /// entrance.
+    testWidgets('Alt anchors the OPPOSITE CORNER; Escape reverts a fresh '
         'Ctrl+T lift byte-exactly', (tester) async {
       final env = await pumpSelectionPanel(tester);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       env.commands.beginTransform();
       await tester.pump();
 
-      // Alt+drag BR (70,70)→(95,95): 2× about the center (45,45).
+      // Alt+drag BR (70,70)→(95,95): 1.5× about the held TL corner (20,20).
       await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
       env.commands.commitTransform();
       await tester.pump();
 
-      // q = 45 + 2·(p − 45): (30,30)→(15,15), (45,45) fixed, (60,60)→(75,75).
-      expect(inkAt(env.coordinator, 15, 15), isNonZero);
-      expect(inkAt(env.coordinator, 45, 45), isNonZero);
-      expect(inkAt(env.coordinator, 75, 75), isNonZero);
+      // q = 20 + 1.5·(p − 20): (30,30)→(35,35), (45,45)→(57.5,57.5),
+      // (60,60)→(80,80).
+      expect(inkAt(env.coordinator, 35, 35), isNonZero);
+      expect(inkAt(env.coordinator, 57, 57), isNonZero);
+      expect(inkAt(env.coordinator, 80, 80), isNonZero);
+      expect(
+        inkAt(env.coordinator, 15, 15),
+        0,
+        reason:
+            '⛔and the far side did NOT come out to meet it — that is the '
+            'whole difference from the centre, and only a negative witness '
+            'can see it (the centre-anchored footprint CONTAINS this one)',
+      );
       final afterFirst = currentSurface(env.coordinator);
 
       // A second session cancelled with Escape leaves no trace: the
@@ -4580,7 +4591,7 @@ void main() {
       expect(env.commands.transformActive, isFalse);
 
       // Grab the BR corner handle of the ALWAYS-ON box and drag to
-      // (95,95): 1.5× about the anchored TL corner.
+      // (95,95): 2× about the box centre (45,45).
       await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
       expect(
         env.commands.transformActive,
@@ -4590,8 +4601,8 @@ void main() {
 
       env.commands.commitTransform();
       await tester.pump();
-      expect(inkAt(env.coordinator, 35, 35), isNonZero);
-      expect(inkAt(env.coordinator, 80, 80), isNonZero);
+      expect(inkAt(env.coordinator, 15, 15), isNonZero);
+      expect(inkAt(env.coordinator, 75, 75), isNonZero);
     });
 
     testWidgets('일반변형 follows the hand off the diagonal: the uniform '
@@ -4600,16 +4611,16 @@ void main() {
       // for picking one scale from two agrees. This one does not, which is
       // the only way to see which rule is running.
       //
-      // Box (20,20)-(70,70), anchored at TL. Grabbing BR and pulling it
-      // sideways to (95,70) asks for 1.5× on x and 1.0× on y:
+      // Box (20,20)-(70,70), centred on (45,45). Grabbing BR and pulling
+      // it sideways to (95,70) asks for 2.0× on x and 1.0× on y:
       //
-      //   max(|sx|,|sy|)  → 1.5×, so the stroke's far end (60,60) lands
-      //                     at 20 + 40·1.5 = 80 — past the pointer on the
+      //   max(|sx|,|sy|)  → 2.0×, so the stroke's far end (60,60) lands
+      //                     at 45 + 15·2.0 = 75 — past the pointer on the
       //                     axis the hand never moved along.
-      //   projection      → (75·50 + 50·50)/(50²+50²) = 1.25×, so it
-      //                     lands at 20 + 40·1.25 = 70.
+      //   projection      → (50·25 + 25·25)/(25²+25²) = 1.5×, so it
+      //                     lands at 45 + 15·1.5 = 67.5.
       //
-      // Following the hand is also 1.44× fewer pixels to resample here,
+      // Following the hand is also 1.78× fewer pixels to resample here,
       // which is the whole reason the rule changed.
       final env = await pumpSelectionPanel(tester);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
@@ -4620,15 +4631,15 @@ void main() {
       await tester.pump();
 
       expect(
-        inkAt(env.coordinator, 70, 70),
+        inkAt(env.coordinator, 68, 68),
         isNonZero,
-        reason: 'the far end landed at the projected 1.25×',
+        reason: 'the far end landed at the projected 1.5×',
       );
       expect(
-        inkAt(env.coordinator, 80, 80),
+        inkAt(env.coordinator, 75, 75),
         0,
         reason:
-            'and NOT at the 1.5× the larger-axis rule would have given — '
+            'and NOT at the 2.0× the larger-axis rule would have given — '
             'that is the box outrunning the hand',
       );
     });

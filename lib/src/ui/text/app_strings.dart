@@ -1490,9 +1490,6 @@ enum AppStrings {
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
-  String get trAnchor => _s('trAnchor');
-  String get trAnchorOpposite => _s('trAnchorOpposite');
-  String get trAnchorCenter => _s('trAnchorCenter');
   String get trMeshColumns => _s('trMeshColumns');
   String get trMeshRows => _s('trMeshRows');
   String get commonReset => _s('commonReset');
@@ -2443,9 +2440,6 @@ enum AppStrings {
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
-    'trAnchor': 'Anchor',
-    'trAnchorOpposite': 'Opposite corner',
-    'trAnchorCenter': 'Center',
     'trMeshColumns': 'Columns',
     'trMeshRows': 'Rows',
     'commonReset': 'Reset',
@@ -3706,9 +3700,6 @@ enum AppStrings {
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
-    'trAnchor': '基準点',
-    'trAnchorOpposite': '対角',
-    'trAnchorCenter': '中心',
     'trMeshColumns': '横のマス',
     'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
@@ -4991,9 +4982,6 @@ enum AppStrings {
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
-    'trAnchor': '기준점',
-    'trAnchorOpposite': '반대 모서리',
-    'trAnchorCenter': '중심',
     'trMeshColumns': '가로 칸',
     'trMeshRows': '세로 칸',
     'commonReset': '초기화',
@@ -6255,9 +6243,6 @@ enum AppStrings {
         'intermédiaires',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
-    'trAnchor': 'Point de référence',
-    'trAnchorOpposite': 'Coin opposé',
-    'trAnchorCenter': 'Centre',
     'trMeshColumns': 'Colonnes',
     'trMeshRows': 'Lignes',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
@@ -7587,9 +7572,6 @@ enum AppStrings {
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
-    'trAnchor': '基准点',
-    'trAnchorOpposite': '对角',
-    'trAnchorCenter': '中心',
     'trMeshColumns': '列数',
     'trMeshRows': '行数',
     'commonReset': '重置',

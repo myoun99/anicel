@@ -801,7 +801,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     // The one gate for the whole panel. Choosing the tool is always
     // allowed now; it is the EDIT that is refused, and it is refused
     // quietly — flat controls rather than a notice per press (유저 08-13).
@@ -936,36 +935,6 @@ class _MoveSettingsState extends State<_MoveSettings> {
               child: Text(AppText.strings.commonApply),
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-        // The scale anchor, as a persistent choice rather than a held key
-        // — a hold cannot be reached on a tablet while the pen is on the
-        // handle. Alt still inverts it for one drag.
-        Text(
-          AppText.strings.trAnchor,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 4),
-        SegmentedButton<TransformAnchor>(
-          key: const ValueKey<String>('move-anchor-segments'),
-          showSelectedIcon: false,
-          segments: [
-            ButtonSegment<TransformAnchor>(
-              value: TransformAnchor.oppositeCorner,
-              label: Text(AppText.strings.trAnchorOpposite),
-            ),
-            ButtonSegment<TransformAnchor>(
-              value: TransformAnchor.center,
-              label: Text(AppText.strings.trAnchorCenter),
-            ),
-          ],
-          selected: {options.anchor},
-          onSelectionChanged: onOptions == null
-              ? null
-              : (selection) =>
-                    onOptions(options.copyWith(anchor: selection.first)),
         ),
         const SizedBox(height: 12),
         // AA, and nothing else.

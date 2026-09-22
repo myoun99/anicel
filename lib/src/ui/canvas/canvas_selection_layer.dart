@@ -100,11 +100,11 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// user's slot.
   final CanvasTouchDragAction? oneFingerAction;
 
-  /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in,
-  /// where a scale drag anchors, how the resample turns pixels into other
-  /// pixels (the tent mean that smooths, or the coverage argmax that
-  /// copies source words through untouched so a two-value drawing stays
-  /// two-valued), and the mesh grid size.
+  /// The transform tool's knobs: which of 일반/퍼스/메쉬 the box is in, how
+  /// the resample turns pixels into other pixels (the tent mean that
+  /// smooths, or the coverage argmax that copies source words through
+  /// untouched so a two-value drawing stays two-valued), and the mesh grid
+  /// size.
   ///
   /// All of it is a property of the TOOL, not a declaration about the
   /// layer's content — nothing here inspects the picture to decide.
@@ -962,6 +962,32 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     vsync: this,
     duration: const Duration(milliseconds: 600),
   );
+
+  /// A finger resting on the glass while a transform handle is dragged —
+  /// the modifier's TOUCH entrance.
+  ///
+  /// 🗣️유저 2026-09-22: 「수정자는 항상 그렇지만 **터치 입구도 존재하게**
+  /// 하고싶으니 **터치발생하면 수정자 발생**하도록. **최대한 입구 단순하게
+  /// 네이티브하게**해서」.
+  ///
+  /// ↩️**THIS REVERSES A 2026-08-13 DECISION, and that one's reasoning is
+  /// kept because it is still true**: an extra finger during a transform
+  /// drag was deliberately given NO meaning — 「변형 도중 터치 들어오면
+  /// 변형 멈춰버리는데」 asked for it to stop cancelling the drag, and
+  /// giving it a meaning was refused on the grounds that a PALM would then
+  /// change the result, which is invisible, instead of the drag, which is
+  /// not. 유저 asked for the meaning anyway on 09-22, with the tablet's
+  /// missing Alt as the reason. ⛔So the risk is theirs and it is named,
+  /// not forgotten.
+  int? _modifierTouch;
+
+  /// Whether the scale modifier is held — by key or by finger.
+  ///
+  /// ⚠️Read at EVERY solve, which is the whole of 유저's 「입구 하나로 하되
+  /// 두개의 동작을 지원」: held before the press and pressed during the drag
+  /// are the same question asked at the same place.
+  bool get _scaleModifierHeld =>
+      HardwareKeyboard.instance.isAltPressed || _modifierTouch != null;
 
   /// A selection the USER made.
   ///
@@ -2699,16 +2725,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // A second TOUCH is the navigate signal (same rule as strokes):
       // cancel the selection drag and let the gesture layer take over.
       //
-      // EXCEPT while a transform handle is being dragged, where the extra
-      // finger is IGNORED — neither cancel nor navigate. 유저 08-13, on
-      // "변형 도중 터치 들어오면 변형 멈춰버리는데": a palm landing must
-      // not throw away a transform in progress, and the alternative of
-      // giving the finger a meaning was rejected for the reason a palm
-      // gives it too — a mis-touch would then change the RESULT, which is
-      // invisible, instead of the drag, which is not.
+      // EXCEPT while a transform handle is being dragged, where it is the
+      // MODIFIER — neither cancel nor navigate. 유저 08-13 asked only that
+      // it stop cancelling; 09-22 gave it the meaning. ⚠️The reasoning of
+      // both decisions lives on [_modifierTouch] — read it before moving
+      // this.
       if (event.kind == PointerDeviceKind.touch && _drag is! TransformDrag) {
         setState(() => _endDrag(cancelled: true, notify: true));
         _syncAnts();
+      } else if (event.kind == PointerDeviceKind.touch) {
+        _modifierTouch ??= event.pointer;
       }
       return;
     }
@@ -3046,6 +3072,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         start: openTransform,
         // Only a rotation reads it, and it needs the angle the press
         // was at so the first move is a delta rather than a jump.
+        modifierHeld: _scaleModifierHeld,
         lastAngle: handle == TransformHandle.rotate
             ? _pointerAngleAbout(canvasPoint, openTransform)
             : 0,
@@ -3122,6 +3149,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       case BoxHandleDrag():
         _dragBoxHandle(drag, pointer);
     }
+    // ⚠️AFTER the branch: the re-base inside it reads the previous value.
+    drag.lastPointer = pointer;
   }
 
   /// A control point drag — one corner in 퍼스, one grid point in 메쉬.
@@ -3210,11 +3239,27 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // press anywhere in the 16px grab radius jumped it there on the first
         // move — and a pen always moves. The inside drag and the rotation
         // were already deltas; the scale handles are too now.
+        //
+        // 🚨★★★**A MODIFIER THAT ARRIVES MID-DRAG RE-BASES, IT DOES NOT
+        // RESET.** 유저 2026-09-22: 「확대/축소 중 수정자 들어오면 **위치값
+        // 이나 확대축소 이런거 초기화같은거 하지말고** 해당 상황에서 수정자
+        // 적용해서 **다음부터 적용**되도록」. The solve runs from the press
+        // every move, so a changed anchor would re-solve the whole drag and
+        // jump the picture. Moving the press to HERE keeps every number and
+        // changes only what the next movement does.
+        final held = _scaleModifierHeld;
+        if (held != drag.modifierHeld) {
+          drag
+            ..modifierHeld = held
+            ..start = _transform ?? drag.start
+            ..startPointer = drag.lastPointer;
+        }
+        final from = drag.start;
         setState(
           () => _transform = _solveScaleDrag(
-            start,
+            from,
             drag.handle,
-            _pressDisplaced(start, drag.handle, drag.startPointer, pointer),
+            _pressDisplaced(from, drag.handle, drag.startPointer, pointer),
           ),
         );
     }
@@ -3245,12 +3290,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// press-displaced point ([_pressDisplaced]) — while the ANCHOR stays
   /// fixed (its motion folds into the translation).
   ///
-  /// Which point that is comes from the tool's [TransformAnchor] setting,
-  /// and Alt inverts it for this one drag. A hold alone could not be the
-  /// whole answer: the pen is already on the handle, so on a tablet
-  /// "hold Alt" means a second hand on the glass for the length of the
-  /// drag. The setting is the answer there and the hold is the desktop
-  /// habit on top of it.
+  /// Which point that is comes from [_scaleModifierHeld] and nothing else:
+  /// the box's centre by default, the opposite corner while the modifier
+  /// is held. The tablet is why the modifier has two entrances — the pen
+  /// is already on the handle, so "hold Alt" there means a second hand on
+  /// the glass, and that hand IS the entrance.
   ///
   /// The aspect ratio is locked by the MODE, not by a modifier. 일반변형
   /// preserves it by definition. Shift used to lock it here and no longer
@@ -3268,9 +3312,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasPoint pointer,
   ) {
     final grabbed = handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
-    final centerPivot =
-        (widget.transformOptions.anchor == TransformAnchor.center) !=
-        HardwareKeyboard.instance.isAltPressed;
+    // 🚨★★★**CENTRE BY DEFAULT, OPPOSITE CORNER ON THE MODIFIER.**
+    //
+    // 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
+    // 일반변형에서 꼭짓점 이동하면 **그림 자체가 중심점 기준으로 커져** …
+    // 지금 반대쪽 꼭짓점 그대로 두고 현재 꼭짓점만 키우는게 클튜방식이야.
+    // 그래서 **tvp방식인 전체 크게하도록** … 그걸 **수정자가아니라 일반
+    // 로직으로 적용**하고, **수정자로서 클튜방식의 현재꼭짓점만 늘리는
+    // 로직** 두도록」.
+    //
+    // ↩️It was a persistent SETTING (`TransformAnchor`) that Alt inverted,
+    // because a hold 「cannot be the whole answer on a tablet」 (2026-08-29).
+    // 유저 answered that differently on 09-22 — the modifier gets a TOUCH
+    // entrance instead — so the setting is gone and the default is the one
+    // they named.
+    final centerPivot = !_scaleModifierHeld;
     final anchorLocal = centerPivot
         ? CanvasPoint(x: 0, y: 0)
         : CanvasPoint(x: -grabbed.x, y: -grabbed.y);
@@ -3357,6 +3413,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    // The modifier finger lifting is not the drag ending — it changes what
+    // the NEXT move solves, and nothing else.
+    if (event.pointer == _modifierTouch) {
+      _modifierTouch = null;
+      return;
+    }
     final drag = _drag;
     if (drag == null || event.pointer != drag.pointer) {
       return;
@@ -4008,7 +4070,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // 🗣️유저 2026-09-18 (F-164): 「그리고 **확정버튼도 사라지는**
           // 문제」.
           if ((_movePending || _transform != null) && displayShape != null)
-            _confirmBar(displayShape),
+            // 🚨★★★**THE WAY OUT CANNOT LEAVE THE SCREEN.** The bar sits
+            // 34px ABOVE the box's top-right, which was safe only while a
+            // scale grew the box down and right — it anchors on the corner
+            // that never moved. ①센터 기준 makes every scale grow the box
+            // UPWARD, so the bar climbs off the top on the first drag and
+            // 유저's 「확정/취소만 버튼」 becomes unreachable on a tablet,
+            // which has no Enter key to fall back on.
+            //
+            // ⚠️Its own [Positioned.fill] rather than the layer's Stack:
+            // the clamp needs the layer's SIZE, and this is the only child
+            // that does.
+            Positioned.fill(
+              child: LayoutBuilder(
+                builder: (context, constraints) =>
+                    _confirmBar(displayShape, constraints.biggest),
+              ),
+            ),
         ],
       ),
     );
@@ -4023,21 +4101,38 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// ⛔Cancel is wired to [_cancelTransform], which is Escape's own verb —
   /// one law, two entrances. It is not a second way of ending a session.
-  Positioned _confirmBar(CanvasSelectionRegion displayShape) {
-    final offset = _confirmButtonOffset(displayShape);
-    return Positioned(
-      left: offset.dx,
-      top: offset.dy,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _confirmButton(displayShape),
-          const SizedBox(width: 6),
-          _cancelButton(),
-        ],
-      ),
+  Widget _confirmBar(CanvasSelectionRegion displayShape, Size within) {
+    final offset = _confirmButtonOffset(displayShape, within);
+    return Stack(
+      children: [
+        Positioned(
+          left: offset.dx,
+          top: offset.dy,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _confirmButton(displayShape),
+              const SizedBox(width: _chromeButtonGap),
+              _cancelButton(),
+            ],
+          ),
+        ),
+      ],
     );
   }
+
+  /// The bar's footprint, as a NUMBER rather than a measurement.
+  ///
+  /// ⚠️The clamp runs while the bar is being BUILT, so there is nothing to
+  /// measure yet. [_sessionChromeButton] is sized to this constant instead
+  /// of the other way round — one source of truth, and the direction that
+  /// works.
+  static const double _chromeButtonDiameter = 30;
+  static const double _chromeButtonGap = 6;
+  static const Size _confirmBarSize = Size(
+    _chromeButtonDiameter * 2 + _chromeButtonGap,
+    _chromeButtonDiameter,
+  );
 
   /// ⛔The two buttons are ONE widget with two answers — a second copy of
   /// the Material/claim/ink stack is how they would drift apart in press
@@ -4049,19 +4144,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     required IconData icon,
     required VoidCallback onPressed,
   }) {
-    return Material(
-      key: key,
-      color: colour,
-      shape: const CircleBorder(),
-      elevation: 2,
-      child: ControlPressClaim(
-        onPressed: onPressed,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: silentPress(onPressed),
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Icon(icon, size: 18, color: Colors.white),
+    return SizedBox.square(
+      dimension: _chromeButtonDiameter,
+      child: Material(
+        key: key,
+        color: colour,
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: ControlPressClaim(
+          onPressed: onPressed,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: silentPress(onPressed),
+            child: Center(
+              child: Icon(icon, size: 18, color: Colors.white),
+            ),
           ),
         ),
       ),
@@ -4278,7 +4375,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Confirm button anchor: just outside the selection bbox's top-right,
   /// following the live drag offset. Anchored to what is actually
   /// selected — the button rides the same corner the box draws.
-  Offset _confirmButtonOffset(CanvasSelectionRegion region) {
+  ///
+  /// …until the corner leaves [within], and then the bar stops riding and
+  /// stays. ⛔It is the only way out of a session on a tablet, so "where
+  /// the box is" loses to "on the screen" every time.
+  Offset _confirmButtonOffset(CanvasSelectionRegion region, Size within) {
     final bounds = region.selectedBounds;
     final mapped = _mapCanvasToViewportOffset(
       CanvasPoint(x: bounds.right, y: bounds.top),
@@ -4286,7 +4387,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ⚠️No drag offset: the button is anchored to [region], and with the
     // move living in the affine the caller hands the TRANSFORMED shape —
     // so it already rides the corner it is supposed to ride.
-    return mapped + const Offset(8, -34);
+    final rode = mapped + const Offset(8, -34);
+    return Offset(
+      rode.dx.clamp(0.0, math.max(0.0, within.width - _confirmBarSize.width)),
+      rode.dy.clamp(0.0, math.max(0.0, within.height - _confirmBarSize.height)),
+    );
   }
 
   Offset _mapCanvasToViewportOffset(CanvasPoint point) {

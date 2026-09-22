@@ -140,7 +140,11 @@ void main() {
   const bareMaterialControls = <String, int>{
     'lib/src/ui/brush/brush_settings_panel.dart': 2,
     'lib/src/ui/brush/guide_panels.dart': 1,
-    'lib/src/ui/brush/tool_settings_panel.dart': 16,
+    // 16 → 15 on 2026-09-22: the scale anchor's SegmentedButton went with
+    // the setting itself (유저 gave the modifier a touch entrance instead,
+    // so a persistent choice and a held key were two entrances to one
+    // question). The ratchet only ever comes DOWN.
+    'lib/src/ui/brush/tool_settings_panel.dart': 15,
     'lib/src/ui/dialogs/audio_settings_section.dart': 3,
     'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
     'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
