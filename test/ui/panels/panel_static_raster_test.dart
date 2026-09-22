@@ -84,31 +84,44 @@ const _knownToPaintThrough = <String, String>{
   'panel:media-viewer':
       'an InteractiveViewer around the media preview: the transform is '
       'the panel, so there is nothing static to bake.',
+  // 🆕2026-09-22 — the four the sweep found the first time it opened the
+  // rail groups that ship closed. Three are the yield above, one is not.
+  'panel:brush-settings':
+      'yields to body:Brush Settings inside EditorPanelBody — the panel '
+      'scrolls, and a viewport is a boundary',
+  'panel:color-palette': 'yields to the body inside, the panel:brushes shape',
+  'panel:onion-skin': 'yields to the body inside — the panel scrolls',
+  'panel:tool-size': 'yields to the body inside — the panel scrolls',
+  'panel:media-viewer-sub':
+      'the same widget as panel:media-viewer, in the rail instead of the '
+      'floor: an InteractiveViewer, nothing static to bake',
+  'body:Brush Settings':
+      '⛔NOT A YIELD — this one is the real thing, and it is here rather '
+      'than fixed because the fix changes what a DISABLED bar looks like, '
+      'which is the user\'s call (board `a-disabled-bar-dims-without-a-'
+      'layer`). A `FieldSlider` that is disabled dims itself with '
+      '`Opacity(0.4)` (field_slider.dart), and `RenderOpacity` composites '
+      'at any alpha above zero — so ONE disabled bar makes the whole brush '
+      'settings panel pay its full raster price on every frame the app '
+      'produces. 🔬Found 2026-09-22 by this sweep, the first time it '
+      'reached a rail group.',
 };
 
-/// Tabs the default layout cannot reach by selecting a tab, because their
-/// dock is not mounted (a closed rail group, a floating-only panel).
-/// Listed so that coverage is a decision rather than an accident.
+/// Tabs this sweep still does not reach, and why.
 ///
-/// ⚠️ Every one of these lives in a rail group that ships CLOSED, so no
-/// `EditorPanelTabs` hosts it and selecting a tab cannot reach it. The
-/// user's own working layout has several of them open — so this is a gap
-/// in the sweep, not in the app, and it is listed rather than silently
-/// skipped. Teaching the sweep to open a rail group closes it.
+/// 🪦It used to hold NINE — every panel that lives in a rail group that
+/// ships closed, which is most of the ones the user actually works in (the
+/// preset list's neighbours, the palette, the brush settings, the onion
+/// panel). The note here said 「Teaching the sweep to open a rail group
+/// closes it」, and on 2026-09-22 it did: the walk opens every rail group,
+/// audits what it holds and puts it back. Eight names left this list that
+/// day, and the first run found five surfaces nobody had ever audited —
+/// one of them a real one (`body:Brush Settings`).
 const _unreachableInDefaultLayout = <String, String>{
-  EditorWorkspace.toolsTabId: 'rail group ships closed',
-  EditorWorkspace.brushSettingsTabId: 'rail group ships closed',
-  EditorWorkspace.colorWheelTabId: 'rail group ships closed',
-  EditorWorkspace.colorRgbTabId: 'rail group ships closed',
-  EditorWorkspace.colorPaletteTabId: 'rail group ships closed',
-  EditorWorkspace.onionSkinTabId: 'rail group ships closed',
-  EditorWorkspace.mediaTabId: 'rail group ships closed',
-  EditorWorkspace.toolSizeTabId: 'rail group ships closed',
-  // The sub viewer ships closed on purpose (유저 확정 ⑥): a reference
-  // panel earns its height only once there is a reference in it. It is
-  // the SAME widget as the floor's viewer, which this sweep does reach,
-  // so the bake being audited on one of them audits the code on both.
-  EditorWorkspace.mediaViewerSubTabId: 'rail group ships closed',
+  // Not in any dock or rail group of the default layout at all — it is
+  // reached by adding it from the panels menu, which is a different verb
+  // from the one this sweep drives.
+  EditorWorkspace.toolsTabId: 'no group in the default layout hosts it',
 };
 
 /// Named surfaces that MUST be baking while their tab is active.
@@ -328,76 +341,163 @@ void main() {
       // anything collected after the loop has already lost it.
       await _pumpWorkspace(tester);
 
-      final byGroup = <String, List<String>>{};
-      for (final host in tester.widgetList<EditorPanelTabs>(
-        find.byType(EditorPanelTabs),
-      )) {
-        final group = host.groupId;
-        if (group != null) {
-          byGroup[group] = host.tabs.map((t) => t.id).toList();
+      Map<String, List<String>> groupsOnScreen() {
+        final byGroup = <String, List<String>>{};
+        for (final host in tester.widgetList<EditorPanelTabs>(
+          find.byType(EditorPanelTabs),
+        )) {
+          final group = host.groupId;
+          if (group != null) {
+            byGroup[group] = host.tabs.map((t) => t.id).toList();
+          }
         }
+        return byGroup;
       }
-      expect(byGroup, isNotEmpty, reason: 'no tab host had a group id');
+
+      expect(groupsOnScreen(), isNotEmpty, reason: 'no tab host had a group id');
 
       final visited = <String>{};
       final offenders = <String>[];
       final report = <String>[];
+      // Every group this sweep ever had on screen, and what it holds — the
+      // only honest source for `_unreachableInDefaultLayout`.
+      final seenGroups = <String, List<String>>{};
 
-      for (final entry in byGroup.entries) {
-        for (final tabId in entry.value) {
-          // Re-find the host every time: selecting a tab rebuilds the tree.
-          final host = tester
-              .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
-              .where((h) => h.groupId == entry.key)
-              .firstOrNull;
-          if (host == null) {
-            continue;
-          }
-          host.onTabSelected(tabId);
-          await tester.pumpAndSettle();
-          visited.add(tabId);
-
-          // Collect INSIDE the loop — the surfaces vanish when the tab does.
-          final live = _surfaces().toList();
-          final baked = live.where((r) => r.captureCount > 0).length;
-          report.add('$tabId: ${live.length} surfaces, $baked baked');
-
-          for (final label in _mustBakeWhenActive[tabId] ?? const <String>[]) {
-            final named = live.where((r) => r.debugLabel == label).toList();
-            expect(
-              named,
-              isNotEmpty,
-              reason:
-                  'no surface called `$label` exists while `$tabId` is active, '
-                  'so whatever the allowlist says it yields to is not there',
-            );
-            for (final raster in named) {
-              expect(
-                raster.captureCount,
-                greaterThan(0),
-                reason:
-                    '$label exists but has never baked while `$tabId` is '
-                    'active.\nRefused because: ${raster.debugCaptureRefusal}\n'
-                    'Nested boundary: ${raster.debugNestedBoundaryPath}',
-              );
-            }
-          }
-
-          for (final raster in live) {
-            if (!raster.debugNestedBoundary) {
+      Future<void> auditTabsOn(Map<String, List<String>> byGroup) async {
+        seenGroups.addAll(byGroup);
+        for (final entry in byGroup.entries) {
+          for (final tabId in entry.value) {
+            if (visited.contains(tabId)) {
               continue;
             }
-            if (!_knownToPaintThrough.containsKey(raster.debugLabel)) {
-              offenders.add(
-                '$tabId → ${raster.debugLabel}\n'
-                '      blocked by: ${raster.debugNestedBoundaryPath}',
+            // Re-find the host every time: selecting a tab rebuilds the tree.
+            final host = tester
+                .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
+                .where((h) => h.groupId == entry.key)
+                .firstOrNull;
+            if (host == null) {
+              continue;
+            }
+            host.onTabSelected(tabId);
+            await tester.pumpAndSettle();
+            visited.add(tabId);
+
+            // Collect INSIDE the loop — the surfaces vanish when the tab
+            // does.
+            final live = _surfaces().toList();
+            final baked = live.where((r) => r.captureCount > 0).length;
+            // ⚠️The labels, not just the count: an allowlist entry that says
+            // 「yields to the one inside」 can only be written from the name
+            // of the surface that actually bakes.
+            final asleep = live
+                .where((r) => r.captureCount == 0)
+                .map((r) => r.debugLabel)
+                .toList();
+            report.add(
+              '$tabId: ${live.length} surfaces, $baked baked, '
+              'not baking: $asleep',
+            );
+
+            for (final label
+                in _mustBakeWhenActive[tabId] ?? const <String>[]) {
+              final named = live.where((r) => r.debugLabel == label).toList();
+              expect(
+                named,
+                isNotEmpty,
+                reason:
+                    'no surface called `$label` exists while `$tabId` is '
+                    'active, so whatever the allowlist says it yields to is '
+                    'not there',
               );
+              for (final raster in named) {
+                expect(
+                  raster.captureCount,
+                  greaterThan(0),
+                  reason:
+                      '$label exists but has never baked while `$tabId` is '
+                      'active.\nRefused because: '
+                      '${raster.debugCaptureRefusal}\n'
+                      'Nested boundary: ${raster.debugNestedBoundaryPath}',
+                );
+              }
+            }
+
+            for (final raster in live) {
+              if (!raster.debugNestedBoundary) {
+                continue;
+              }
+              if (!_knownToPaintThrough.containsKey(raster.debugLabel)) {
+                offenders.add(
+                  '$tabId → ${raster.debugLabel}\n'
+                  '      blocked by: ${raster.debugNestedBoundaryPath}',
+                );
+              }
             }
           }
         }
       }
 
+      await auditTabsOn(groupsOnScreen());
+
+      // 🚨★★★**AND THE GROUPS THAT SHIP CLOSED** (2026-09-22, 유저 실기:
+      // Show Repaints on their own layout, 「래스터가 쓰는게 많고」). The
+      // panels the user actually works with — the preset list, the palette,
+      // the tool settings, the onion panel — live in rail groups that ship
+      // CLOSED, and a closed group mounts no `EditorPanelTabs` at all: the
+      // walk above could not name them, and `_unreachableInDefaultLayout`
+      // said so in a list instead of covering them. The file's own note
+      // ended 「Teaching the sweep to open a rail group closes it」.
+      //
+      // Each group is opened, walked and put back — a rail may keep one
+      // group open at a time, so auditing them together is not available.
+      // ⚠️`rail-group-rail-`, not `rail-group-`: the spacer between the two
+      // rails is keyed `rail-group-gap` and there are several of it, so the
+      // looser prefix finds a non-button many times over ("Too many
+      // elements", which the loop below reports as a group it could not
+      // open — correctly, and uselessly).
+      final railButtons = find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'rail-group-rail-',
+            ),
+      );
+      final unreachable = <String>[];
+      // ⛔BY KEY, NOT BY INDEX. Opening a group rebuilds the rail — a rail
+      // keeps one group open at a time, so the button list is a different
+      // list on the next turn and `at(index)` walks a moving target. The
+      // first version did, and it silently never reached two of the seven
+      // groups (R3, R4) while reporting nothing wrong.
+      final railKeys = tester
+          .widgetList(railButtons)
+          .map((widget) => (widget.key! as ValueKey<String>).value)
+          .toList();
+      for (final key in railKeys) {
+        final button = find.byKey(ValueKey<String>(key));
+        try {
+          await tester.ensureVisible(button);
+          await tester.pumpAndSettle();
+          await tester.tap(button);
+          await tester.pumpAndSettle();
+        } on Object catch (error) {
+          unreachable.add('$key: $error');
+          continue;
+        }
+        await auditTabsOn(groupsOnScreen());
+        // Put it back: a toggle left flipped would change what the tests
+        // after this one are looking at.
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+      expect(
+        unreachable,
+        isEmpty,
+        reason: 'a rail group this sweep could not open is a group nothing '
+            'below says anything about:\n${unreachable.join('\n')}',
+      );
+
       debugPrint('StaticRaster TAB SWEEP:\n${report.join('\n')}');
+      debugPrint('StaticRaster TAB SWEEP groups: $seenGroups');
 
       expect(
         offenders,
