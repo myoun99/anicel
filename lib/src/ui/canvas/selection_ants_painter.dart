@@ -9,14 +9,14 @@ import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
-/// The Ctrl+T box chrome in viewport space: the transformed box outline,
-/// the scale handles and the rotate knob (null in QUAD mode — a free
-/// quadrilateral has no rotation lever).
-typedef SelectionTransformChrome = ({
-  List<Offset> box,
-  List<Offset> handles,
-  Offset? knob,
-});
+/// The Ctrl+T box chrome in viewport space: the transformed box outline
+/// and the scale handles.
+///
+/// ↩️A rotate KNOB used to hang off the top edge on a lever, and both are
+/// gone — 유저 2026-09-22: 「**사각형 밖 조작은 회전으로 통하도록.** 지금
+/// 있는 **회전 꼭짓점은 잔재 싹 삭제**하고」. A whole half-plane is a
+/// bigger target than a five-pixel circle and needs no aiming.
+typedef SelectionTransformChrome = ({List<Offset> box, List<Offset> handles});
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
 ///
@@ -134,7 +134,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   final bool outlineIsLive;
 
   /// The colour the SESSION CHROME is drawn in — transform box, handles,
-  /// rotate lever. ⛔Three separate constants lived here, and the box's was
+  /// handles. ⛔Three separate constants lived here, and the box's was
   /// a fixed blue that never answered the question the other two did.
   ///
   /// ⚠️The ANTS left this in F-65 (see [_antColour]); R16-①'s red/green
@@ -296,7 +296,6 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..color = _sessionColor;
-    final fill = Paint()..color = _sessionColor;
 
     canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
     for (final handle in chrome.handles) {
@@ -308,17 +307,6 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
         Rect.fromCenter(center: handle, width: 9, height: 9),
         stroke,
       );
-    }
-    // The rotate lever: line from the top edge midpoint to the knob.
-    // Quad mode carries no knob (R20-D2).
-    final knob = chrome.knob;
-    if (knob != null) {
-      final topMid = Offset(
-        (chrome.box[0].dx + chrome.box[1].dx) / 2,
-        (chrome.box[0].dy + chrome.box[1].dy) / 2,
-      );
-      canvas.drawLine(topMid, knob, stroke);
-      canvas.drawCircle(knob, 5, fill);
     }
   }
 

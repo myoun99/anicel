@@ -957,8 +957,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Screen-space hit slack around a handle (≥ touch-friendly).
   static const double _handleHitRadius = 16;
 
-  /// How far the rotate knob sticks out of the top edge, screen pixels.
-  static const double _rotateLeverLength = 28;
 
   late final AnimationController _ants = AnimationController(
     vsync: this,
@@ -3031,7 +3029,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         startPointer: canvasPoint,
         handle: handle,
         start: openTransform,
-        // Only the rotate knob reads it, and it needs the angle the press
+        // Only a rotation reads it, and it needs the angle the press
         // was at so the first move is a delta rather than a jump.
         lastAngle: handle == TransformHandle.rotate
             ? _pointerAngleAbout(canvasPoint, openTransform)
@@ -3195,7 +3193,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // 변형이 커진다거나? … 마우스는 그냥 클릭해도 클릭한다고 변형이
         // 바뀌지 않는데」. The handle used to be put UNDER the pointer, so a
         // press anywhere in the 16px grab radius jumped it there on the first
-        // move — and a pen always moves. The inside drag and the rotate knob
+        // move — and a pen always moves. The inside drag and the rotation
         // were already deltas; the scale handles are too now.
         setState(
           () => _transform = _solveScaleDrag(
@@ -3687,7 +3685,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// could select and then never enter.
   List<TransformHandle> get _scaleHandles {
     final open = switch (_mode) {
-      TransformMode.normal => _cornerHandles,
+      // 🚨★★★**일반변형도 변 중앙을 잡는다** — 유저 2026-09-22: 「**일반변형도
+      // 자유변형처럼 각 변 중앙에 버튼? 두도록. 자유변형이랑 법 통일**해서.
+      // 이제 기본조작은 어떤 꼭짓점 편집하든 중심기준 크기변형이지만,
+      // **수정자통한 조작이 변 중앙의 꼭짓점 조작이 필요**해진다는게 이유임」.
+      //
+      // ⛔Nothing else had to change: `_dragBoxHandle` already solves all
+      // eight through `_solveScaleDrag`, and the edges were only ever
+      // withheld from this mode.
+      TransformMode.normal => const [..._cornerHandles, ..._edgeHandles],
       TransformMode.perspective => _edgeHandles,
       TransformMode.mesh => const <TransformHandle>[],
     };
@@ -3698,23 +3704,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       ..._cornerHandles,
       ...open.where((handle) => !_cornerHandles.contains(handle)),
     ];
-  }
-
-  Offset _rotateKnobOffset(SelectionAffine affine) =>
-      _rotateKnobOffsetFor(affine, _baseBoxHeight);
-
-  Offset _rotateKnobOffsetFor(SelectionAffine affine, double boxHeight) {
-    final topMid = _mapLocalToViewport(
-      affine,
-      CanvasPoint(x: 0, y: -boxHeight / 2),
-    );
-    final centerMapped = widget.viewport.canvasToViewport(
-      affine.apply(affine.pivot),
-    );
-    final direction = topMid - Offset(centerMapped.x, centerMapped.y);
-    final distance = direction.distance;
-    final unit = distance == 0 ? const Offset(0, -1) : direction / distance;
-    return topMid + unit * _rotateLeverLength;
   }
 
   /// The transformed box as a canvas-space polygon (inside = translate).
@@ -3791,19 +3780,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     Offset local,
     SelectionAffine affine,
   ) {
-    if ((local - _rotateKnobOffset(affine)).distance <= _handleHitRadius) {
-      return TransformHandle.rotate;
-    }
     for (final handle in _scaleHandles) {
       final position = _scaleHandleViewport(handle, affine, _baseBoxWidth, _baseBoxHeight);
       if ((local - position).distance <= _handleHitRadius) {
         return handle;
       }
     }
-    if (_transformedBoxShape(affine).containsPoint(_toCanvas(local))) {
+    final canvasPoint = _toCanvas(local);
+    if (_transformedBoxShape(affine).containsPoint(canvasPoint)) {
       return TransformHandle.inside;
     }
-    return null;
+    // 🚨★★★**OUTSIDE THE BOX IS THE ROTATION.** 유저 2026-09-22: 「우선
+    // **사각형 밖 조작은 회전으로 통하도록**. 지금 있는 **회전 꼭짓점은
+    // 잔재 싹 삭제**하고. 사각형 내부 조작은 지금처럼 위치이동」.
+    //
+    // ↩️A knob stuck out of the top edge and was hit-tested first. It is
+    // gone with everything that drew it — the lever, the circle, the
+    // offsets that placed it — because a whole half-plane is a bigger
+    // target than a 5px circle and needs no aiming.
+    //
+    // ⚠️On stage only. Off the pasteboard the press is not this tool's at
+    // all, which is the gate the move already asked for — see the
+    // `onStage` check on the move path. ⛔Not a new rule: the same
+    // sentence, asked once instead of twice.
+    return widget.canvasSize.containsPasteboardPoint(
+          x: canvasPoint.x,
+          y: canvasPoint.y,
+        )
+        ? TransformHandle.rotate
+        : null;
   }
 
   /// The float's surface: the pending stamp's IMAGE materialized once, at
@@ -4049,7 +4054,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? chrome) {
+  Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, ({List<ui.Offset> box, List<ui.Offset> handles})? chrome) {
     return Positioned.fill(
       child: IgnorePointer(
         child: CustomPaint(
@@ -4155,7 +4160,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  ({List<ui.Offset> box, List<ui.Offset> handles, ui.Offset? knob})? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
+  ({List<ui.Offset> box, List<ui.Offset> handles})? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
     final chrome = placedMesh != null
         ? (
             box: [
@@ -4165,7 +4170,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             handles: [
               for (final point in placedMesh) _mapCanvasToViewportOffset(point),
             ],
-            knob: null as Offset?,
+
           )
         : placedCorners != null && chromeAffine != null
         ? (
@@ -4179,7 +4184,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
-            knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
+
           )
         : chromeAffine == null
         ? null
@@ -4196,7 +4201,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
-            knob: _rotateKnobOffsetFor(chromeAffine, chromeHeight) as Offset?,
+
           );
     return chrome;
   }

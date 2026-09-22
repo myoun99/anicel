@@ -19,11 +19,10 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 void main() {
   const size = Size(120, 120);
 
-  /// A box with a handle at each corner and a rotate knob above it.
+  /// A box with a handle at each corner.
   const chrome = (
     box: [Offset(30, 30), Offset(90, 30), Offset(90, 90), Offset(30, 90)],
     handles: [Offset(30, 30), Offset(90, 30), Offset(90, 90), Offset(30, 90)],
-    knob: Offset(60, 12),
   );
 
   /// 🚨The readback runs under `runAsync`. `toImage` needs the real event
@@ -67,18 +66,30 @@ void main() {
   /// The most saturated pixel on the box's top edge, away from the corner
   /// handles (those are filled white with a stroked border, so sampling one
   /// would measure the handle rather than the silhouette).
+  ///
+  /// 🚨★★★**UN-PREMULTIPLIED, AND THAT IS THE MEASUREMENT.** The readback
+  /// arrives premultiplied, so a 1.5px stroke's edge pixel is the colour
+  /// times its coverage — (192,51,51) for a law of (255,68,68) at 75%.
+  /// ↩️This compared the raw bytes and got away with it only because a
+  /// filled circle — the rotate knob's — happened to sit in the band at
+  /// full coverage. 유저 had that knob deleted on 2026-09-22, and what
+  /// was left was an anti-aliased line the old tolerance called a
+  /// different colour. Dividing by alpha asks the question the pin
+  /// actually means, and asks it exactly.
   (int, int, int) edgeInk(Uint8List rgba) {
     var best = (0, 0, 0);
     var bestSum = -1;
     for (var x = 45; x < 76; x += 1) {
       for (var y = 28; y < 33; y += 1) {
         final o = (y * size.width.toInt() + x) * 4;
-        if (rgba[o + 3] < 0x80) continue;
-        final sum = rgba[o] + rgba[o + 1] + rgba[o + 2];
-        // Skip the rotate lever's white-ish nothing and pick real ink.
-        if (sum > bestSum && (rgba[o] > 0x60 || rgba[o + 1] > 0x60)) {
+        final alpha = rgba[o + 3];
+        if (alpha < 0x80) continue;
+        int straight(int channel) => (channel * 255 / alpha).round();
+        final pixel = (straight(rgba[o]), straight(rgba[o + 1]), straight(rgba[o + 2]));
+        final sum = pixel.$1 + pixel.$2 + pixel.$3;
+        if (sum > bestSum && (pixel.$1 > 0x60 || pixel.$2 > 0x60)) {
           bestSum = sum;
-          best = (rgba[o], rgba[o + 1], rgba[o + 2]);
+          best = pixel;
         }
       }
     }

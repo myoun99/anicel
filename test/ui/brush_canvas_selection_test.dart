@@ -1728,8 +1728,22 @@ void main() {
     );
     expect(inkAt(env.coordinator, -200, -200), isNonZero);
 
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
-    env.commands.confirmPendingMove();
+    // ⚠️Stated rather than dragged. ↩️This pressed at (45,45) and relied on
+    // 「a press anywhere on the pasteboard grabs the whole picture」, which
+    // 유저 superseded on 2026-09-22: 「사각형 밖 조작은 회전으로 통하도록」.
+    // The subject here was never the gesture — it is the degenerate bounds
+    // branch, where pasteboard-only ink used to collapse to an empty rect
+    // and fall back to a whole canvas holding nothing.
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 5,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
     await tester.pump();
 
     expect(
@@ -1827,6 +1841,92 @@ void main() {
       antsOnScreen(tester)?.startShape,
       isNull,
       reason: '유저: 「확정시 사라짐」',
+    );
+  });
+
+  /// 🚨★★★**⑦상자 밖에서 시작한 드래그는 회전이다.**
+  ///
+  /// 🗣️유저 2026-09-22: 「우선 **사각형 밖 조작은 회전으로 통하도록**. 지금
+  /// 있는 **회전 꼭짓점은 잔재 싹 삭제**하고. **사각형 내부 조작은 지금처럼
+  /// 위치이동**」.
+  testWidgets('⑦상자 밖에서 시작한 드래그는 회전, 안은 이동', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformValues!.rotationDegrees, 0, reason: '시작');
+
+    // The implicit box frames the fixture's picture (28..62), so (100,100)
+    // is outside it and still on the canvas.
+    await dragOnLayer(tester, const Offset(100, 100), const Offset(100, 140));
+
+    expect(
+      env.commands.transformValues!.rotationDegrees,
+      isNot(0),
+      reason: '유저: 「사각형 밖 조작은 회전으로 통하도록」',
+    );
+    expect(
+      env.commands.transformValues!.tx,
+      0,
+      reason: '⛔밖은 이동이 아니다 — 둘이 섞이면 그게 두 법이다',
+    );
+  });
+
+  testWidgets('⑦…그리고 상자 안은 회전이 아니라 이동이다', (tester) async {
+    // ⛔CONTROL for the pin above: without it, 「밖은 회전」 would also pass
+    // on a box that rotates wherever you press.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+
+    expect(env.commands.transformValues!.rotationDegrees, 0);
+    expect(env.commands.transformValues!.tx, isNot(0));
+  });
+
+  /// 🚨★★★**⑧일반변형에도 각 변 중앙에 핸들이 있다.**
+  ///
+  /// 🗣️유저 2026-09-22: 「**일반변형도 자유변형처럼 각 변 중앙에 버튼? 두도록.
+  /// 자유변형이랑 법 통일**해서. 이제 기본조작은 어떤 꼭짓점 편집하든
+  /// 중심기준 크기변형이지만, **수정자통한 조작이 변 중앙의 꼭짓점 조작이
+  /// 필요**해진다는게 이유임」.
+  testWidgets('⑧일반변형의 변 중앙 핸들이 한 축만 늘린다', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    final chrome = antsOnScreen(tester)!.transformChrome!;
+    final topMid = (chrome.box[0] + chrome.box[1]) / 2;
+    // ⛔Found by WHERE it is, not by its index: the order `_scaleHandles`
+    // happens to build in is spelling, and this pin is about the middle of
+    // an edge having a grip.
+    final grip = chrome.handles.reduce(
+      (a, b) => (a - topMid).distance <= (b - topMid).distance ? a : b,
+    );
+    expect(
+      (grip - topMid).distance,
+      lessThan(1),
+      reason: '변 중앙에 핸들이 있다',
+    );
+
+    // ⚠️Measured on the BOX, not on `transformValues.scale` — that field
+    // carries `sx` alone, so a stretch along y is invisible to it. The box
+    // is what the user sees and what the pin is about.
+    double width(SelectionTransformChrome c) =>
+        (c.box[1] - c.box[0]).distance;
+    double height(SelectionTransformChrome c) =>
+        (c.box[3] - c.box[0]).distance;
+    final wasWide = width(chrome);
+    final wasTall = height(chrome);
+
+    await dragOnLayer(tester, grip, grip + const Offset(0, -20));
+
+    final after = antsOnScreen(tester)!.transformChrome!;
+    expect(height(after), greaterThan(wasTall), reason: '끌린 축이 늘었다');
+    expect(
+      width(after),
+      closeTo(wasWide, 0.5),
+      reason: '⛔그리고 다른 축은 그대로 — 변 핸들은 한 축이다',
     );
   });
 
