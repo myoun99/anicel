@@ -1251,7 +1251,28 @@ Widget layerPlateGlyphs({
         minFontSize: 4,
         style: style,
       )
-    : Text(text, maxLines: 1, style: style);
+    : Text(
+        text,
+        maxLines: 1,
+        // 🚨★★★THE GLYPH CARRIES NO LEADING OF ITS OWN — on the sheet as on
+        // the rail. 유저 2026-09-17 (F-160): 「x시트의 색 라벨, LO만 글자가
+        // 아래로 치우쳐져있고 용지는 살짝 위로 … 타임라인이랑 다른거있나?
+        // 다른거있으면 법 통일하고 제대로 중앙에오도록」.
+        //
+        // There was one difference, and it was this line. The rail's painter
+        // lays every glyph at `height: 1.0` and lets the CELL be the leading
+        // ([paintVerticalText]); the sheet kept the caller's 1.15. A line box
+        // that tall seats its ink by each FONT's ascent and descent, and a
+        // Korean label is two fonts — BIZ UDPGothic draws `LO`, Nanum Gothic
+        // draws 용지 — so the two sat at different heights in one plate.
+        //
+        // 🧪Measured with the app's faces loaded (the test binding's own box
+        // font hides this completely): on the sheet `LO` sat 1.26px below
+        // the Hangul labels on a 14px plate; on the rail, 0.25px. At 1.0 the
+        // sheet reads 0.25px as well. The take text lays its glyphs through
+        // here too, so it is the same law for both plates.
+        style: style.copyWith(height: 1.0),
+      );
 
 class _LabelPlate extends StatelessWidget {
   const _LabelPlate({
