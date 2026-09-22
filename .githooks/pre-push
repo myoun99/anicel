@@ -11,6 +11,8 @@
 # The machine says no, or it is not solved.
 #
 # WHAT IT DOES, only for a push whose remote ref is master:
+#   · a push that would REWIND master        → REFUSED; origin came back on
+#     2026-09-22 and now holds what everyone else follows;
 #   · anything outside the board's own files  → REFUSED, use a PR;
 #   · board-only                              → `flutter analyze` (no
 #     arguments, the real gate) and the board tests must pass first.
@@ -52,6 +54,20 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
   [ "$remote_ref" = 'refs/heads/master' ] || continue
   # Deleting master is not something this hook has an opinion about.
   [ "$local_sha" = "$ZERO" ] && continue
+
+  # 🚨A REWIND IS THE ONE THING CI CANNOT CATCH. Until 2026-09-22 origin was
+  # frozen and the trunk was the LOCAL master, so a force push cost nothing
+  # that was not already on this disk. Now origin/master carries the month
+  # the account was suspended and every checkout follows it: a push that is
+  # not a fast-forward drops commits from under whoever already pulled them,
+  # and a green CI run afterwards would not say a word about it.
+  if [ "$remote_sha" != "$ZERO" ] &&
+    ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+    fail "master 를 되감는 푸시입니다 — origin 의 커밋이 사라집니다." \
+      "origin 이 가진 것: $remote_sha" \
+      "보내려는 것  : $local_sha" \
+      "먼저 당겨서 얹으세요. 정말 되감아야 한다면 --no-verify 입니다."
+  fi
 
   if [ "$remote_sha" = "$ZERO" ]; then
     files=$(git diff --name-only "$(git hash-object -t tree /dev/null)" "$local_sha")
