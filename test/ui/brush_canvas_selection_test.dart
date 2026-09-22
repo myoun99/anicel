@@ -1830,6 +1830,56 @@ void main() {
     );
   });
 
+  /// 🚨★★★**F-108 — 선택 없이 연 변형에는 개미가 없다.**
+  ///
+  /// 🗣️유저 2026-09-12: 「선택툴 안하고 그냥 변형사용시 … **선택툴의
+  /// 개미행렬이 남아있음** … 그러지않도록」. Landed once (`d0d6089f`, the
+  /// channel's `region`/`liveShape` split) and found again by hand on
+  /// 2026-09-22: 「**아직도** 선택없이 변형시작하면 사각형에 뒤에 잘보면
+  /// 개미행렬 있는데 … **구조적으로 생길수밖에 없는게 문제라면 구조를
+  /// 바꾸라고**」.
+  ///
+  /// ⛔**AND NOTHING PINNED IT.** The whole file passed either way, which
+  /// is how it came back. The structure it pins now is that the ants draw
+  /// the SELECTION and the box draws itself — so an implicit shape, which
+  /// R26 #13 already says is not a selection, gets no ants.
+  testWidgets('🚨F-108: a box opened with NO selection draws no ants', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue, reason: '⛔fixture: a box');
+
+    expect(
+      antsOnScreen(tester)?.committedRegion,
+      isNull,
+      reason:
+          '유저: 「선택툴 안하고 그냥 변형사용시 … 개미행렬이 남아있음」 — '
+          '암시 상자는 선택이 아니다(R26 #13)',
+    );
+    expect(
+      env.commands.hasSelection,
+      isFalse,
+      reason: 'and the channel says the same thing, because it is the '
+          'same question',
+    );
+  });
+
+  testWidgets('⛔CONTROL for F-108: a REAL selection still draws its ants', (
+    tester,
+  ) async {
+    // Without this the pin above passes on a painter that never draws.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    expect(antsOnScreen(tester)?.committedRegion, isNotNull);
+    expect(env.commands.hasSelection, isTrue);
+  });
+
   testWidgets('I-38: ⛔a session that OUTLIVED its box draws no before-line',
       (tester) async {
     // 🧪A mutant is why this exists. Dropping the 「is a box open」 guard

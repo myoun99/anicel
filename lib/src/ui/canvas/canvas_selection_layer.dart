@@ -965,7 +965,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     duration: const Duration(milliseconds: 600),
   );
 
-  bool get _hasSelection => _region != null;
+  /// A selection the USER made.
+  ///
+  /// 🚨★★★**THE IMPLICIT WHOLE-PICTURE SHAPE IS NOT ONE** (R26 #13), and
+  /// this field is where that stopped being true inside the layer.
+  /// `d0d6089f` split the CHANNEL — `region` is what the user chose,
+  /// `liveShape` is geometry — but `_region` here went on answering both,
+  /// so the ants animated and drew around a box opened with no selection
+  /// at all.
+  ///
+  /// 🗣️유저 2026-09-12 (F-108): 「선택툴 안하고 그냥 변형사용시 … 선택툴의
+  /// 개미행렬이 남아있음 … 그러지않도록」, and again from a hands-on run on
+  /// 2026-09-22: 「아직도 선택없이 변형시작하면 사각형에 뒤에 잘보면
+  /// 개미행렬 있는데 … **구조적으로 생길수밖에 없는게 문제라면 구조를
+  /// 바꾸라고**」.
+  ///
+  /// ⛔Not a second name beside the old one: the doc on the channel's
+  /// `hasSelection` already said 「whether a live selection exists」, so
+  /// this is the meaning it always claimed. A caller that wants 「is there
+  /// a region at all」 asks `_region` and says so.
+  bool get _hasSelection => _region != null && !_shapeIsImplicitWholePicture;
 
   /// Where the pointer is, in this layer's own coordinates — the far end of
   /// the polygon's rubber band (TS6).
@@ -2497,7 +2516,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.selectionCommands?.publishTransformValues(_transformValuesNow());
 
   void _deselect() {
-    if (!_hasSelection && _drag == null) {
+    // ⚠️「Is there anything to clear」, not 「did the user select」: Ctrl+D
+    // over an implicit box still has to take the box away, and that shape
+    // is deliberately not a selection.
+    if (_region == null && _drag == null) {
       return;
     }
     final before = _region;
@@ -4034,7 +4056,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           painter: SelectionAntsPainter(
             repaint: _ants,
             viewport: widget.viewport,
-            committedRegion: displayShape,
+            // 🚨★★★**THE ANTS ARE THE SELECTION'S.** The box draws itself
+            // (the chrome below), so a shape that is not a selection gets
+            // no ants — which is F-108, said in the one place that draws
+            // them rather than as a guard bolted onto each.
+            committedRegion: _hasSelection ? displayShape : null,
             // I-38 (유저 2026-09-16): 「변형도구 사용시 기존의 실루엣을
             // 초록색 선으로 보여줌. **확정시 사라짐.** 즉 변형중에는
             // 보이도록」.
