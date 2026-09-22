@@ -132,14 +132,20 @@ class TimelineViewCluster extends StatelessWidget {
                 // Dimmer, never smaller: the two numbers have to line up
                 // digit for digit, and a second size would break that at
                 // the one moment it matters — reading them together.
-                Opacity(
-                  opacity: 0.62,
-                  child: Text(
-                    global == null ? '' : _frameLabel(global + 1),
-                    key: const ValueKey<String>(
-                      'timeline-global-frame-counter',
-                    ),
-                    style: style,
+                //
+                // 🪦The dimming was an `Opacity(0.62)` around this one
+                // `Text`, and an `Opacity` is a repaint boundary at any
+                // alpha above zero — a permanent one, in the bar that bakes
+                // itself in zones. ⛔For a single run of opaque glyphs the
+                // two are the same pixels: a layer at 62% over the ground
+                // and a glyph colour at 62% alpha are one expression
+                // (`test/architecture/an_opacity_is_a_boundary_test.dart`
+                // carries the law).
+                Text(
+                  global == null ? '' : _frameLabel(global + 1),
+                  key: const ValueKey<String>('timeline-global-frame-counter'),
+                  style: style.copyWith(
+                    color: style.color!.withValues(alpha: 0.62),
                   ),
                 ),
                 Text(
