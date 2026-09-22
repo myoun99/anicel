@@ -490,20 +490,48 @@ void main() {
     });
   });
 
-  testWidgets('disabled slider ignores input and dims', (tester) async {
+  testWidgets('🚨disabled slider ignores input and dims — EACH PIECE, never '
+      'with a layer', (tester) async {
     final value = ValueNotifier<double>(0.2);
     await tester.pumpWidget(harness(value: value, enabled: false));
-    // ⚠️A disabled bar has no drag claim to address, so the dimmed bar
-    // itself is the target. The +/− pair is still beside it, dimmed and
-    // inert — the row must not change width when the control comes alive.
-    final dimmed = find.descendant(
+    // ⚠️A disabled bar has no drag claim to address, so the bar itself is
+    // the target. The +/− pair is still beside it, dimmed and inert — the
+    // row must not change width when the control comes alive.
+    final bar = find.descendant(
       of: find.byKey(sliderKey),
-      matching: find.byType(Opacity),
+      matching: find.byType(DecoratedBox),
     );
-    await tester.tapAt(tester.getCenter(dimmed));
+    await tester.tapAt(tester.getCenter(bar.first));
     await tester.pump();
     expect(value.value, 0.2);
-    expect(tester.widget<Opacity>(dimmed).opacity, 0.4);
+
+    // 🚨★★★유저 확정 2026-09-22 (보드 `a-disabled-bar-dims-without-a-layer-Q1`):
+    // 「요소별로 흐리게 칠한다」. ⛔An `Opacity` here is a compositing
+    // boundary, and a boundary inside a panel makes that panel's
+    // `StaticRaster` pay its full raster price on every frame the app
+    // produces — one disabled bar, the whole panel (measured on
+    // `body:Brush Settings`, 2026-09-22).
+    expect(
+      find.descendant(
+        of: find.byKey(sliderKey),
+        matching: find.byType(Opacity),
+      ),
+      findsNothing,
+      reason: 'the bar is dimmed by its own colours, not by a layer over it',
+    );
+
+    // And it really is dim: the track it draws carries the 40%.
+    final decorated = tester
+        .widgetList<DecoratedBox>(bar)
+        .map((box) => box.decoration)
+        .whereType<ShapeDecoration>()
+        .toList();
+    expect(decorated, isNotEmpty, reason: 'fixture: the bar draws a track');
+    expect(
+      decorated.first.color!.a,
+      closeTo(0.4, 1e-3),
+      reason: 'a disabled bar shows 40% of itself, as it always did',
+    );
   });
 
   // 🚨유저 확정 2026-08-14, ⛔재론 금지: 「**슬라이더위에서 조작하기 시작하면

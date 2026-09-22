@@ -96,15 +96,22 @@ const _knownToPaintThrough = <String, String>{
       'the same widget as panel:media-viewer, in the rail instead of the '
       'floor: an InteractiveViewer, nothing static to bake',
   'body:Brush Settings':
-      '⛔NOT A YIELD — this one is the real thing, and it is here rather '
-      'than fixed because the fix changes what a DISABLED bar looks like, '
-      'which is the user\'s call (board `a-disabled-bar-dims-without-a-'
-      'layer`). A `FieldSlider` that is disabled dims itself with '
-      '`Opacity(0.4)` (field_slider.dart), and `RenderOpacity` composites '
-      'at any alpha above zero — so ONE disabled bar makes the whole brush '
-      'settings panel pay its full raster price on every frame the app '
-      'produces. 🔬Found 2026-09-22 by this sweep, the first time it '
-      'reached a rail group.',
+      '⛔NOT A YIELD, and not ours: **Material\'s `Switch` always contains '
+      'an `Opacity`** — `Opacity(opacity: onChanged == null ? '
+      'disabledOpacity : 1)`, switch.dart — and `RenderOpacity` is a repaint '
+      'boundary at ANY alpha above zero, 255 included. So a panel with a '
+      'switch in it can never bake, and pays its full raster price on every '
+      'frame the app produces. 🔬Named 2026-09-22 by this sweep (the '
+      'boundary path carries the widget chain now): the mixing toggle. '
+      'Leaving Material\'s switch behind is a UI decision — board '
+      '`a-panel-with-a-switch-can-never-bake`.',
+  // 🪦A second entry for this same label stood here for an hour on
+  // 2026-09-22: a disabled `FieldSlider` dimmed itself with `Opacity(0.4)`,
+  // which blocked the same panel for the same reason. 유저 확정 the same
+  // day (board `a-disabled-bar-dims-without-a-layer-Q1`: 「요소별로 흐리게
+  // 칠한다」) — the bar's pieces carry the 40% now, and the pressure well
+  // beside it went the same way. ⛔Neither is coming back:
+  // `field_slider_test` refuses an `Opacity` in a bar.
 };
 
 /// Tabs this sweep still does not reach, and why.

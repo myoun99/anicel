@@ -1032,9 +1032,32 @@ class RenderStaticRaster extends RenderProxyBox {
     _nestedBoundaryPath = <String>[
       start.runtimeType.toString(),
       for (final node in trail) node.runtimeType.toString(),
-      found.runtimeType.toString(),
+      _named(found!),
     ].join(' > ');
     return true;
+  }
+
+  /// The blocking render object, named the way someone can act on it: its
+  /// WIDGET and the widgets around it, when the tree remembers
+  /// (`RenderObject.debugCreator` is a `DebugCreator` in debug builds).
+  ///
+  /// 🚨A render type alone sends the reader grepping. `RenderOpacity` was
+  /// the answer three times on 2026-09-22 and it was a different widget
+  /// every time — a disabled bar, a disabled pressure well, and an icon
+  /// dimmed by its `IconTheme`. The type says what it IS; the creator says
+  /// where it LIVES.
+  static String _named(RenderObject boundary) {
+    final creator = boundary.debugCreator;
+    if (creator == null) {
+      return boundary.runtimeType.toString();
+    }
+    // One line of the creator's own chain is enough to place it, and the
+    // whole chain is a paragraph.
+    final chain = creator
+        .toString()
+        .split('\n')
+        .firstWhere((line) => line.trim().isNotEmpty, orElse: () => '');
+    return '${boundary.runtimeType} [$chain]';
   }
 
   @override
