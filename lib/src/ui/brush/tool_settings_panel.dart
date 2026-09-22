@@ -658,6 +658,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
   double _ty = 0;
   double _angleDeg = 0;
   double _scalePct = 100;
+  double _anchorX = 0;
+  double _anchorY = 0;
 
   @override
   void initState() {
@@ -694,6 +696,8 @@ class _MoveSettingsState extends State<_MoveSettings> {
       _ty = values?.ty ?? 0;
       _angleDeg = values?.rotationDegrees ?? 0;
       _scalePct = (values?.scale ?? 1) * 100;
+      _anchorX = values?.anchorX ?? 0;
+      _anchorY = values?.anchorY ?? 0;
     });
   }
 
@@ -707,6 +711,12 @@ class _MoveSettingsState extends State<_MoveSettings> {
       rotationDegrees: _angleDeg,
       scale: _scalePct.clamp(1.0, 3200.0) / 100,
     );
+  }
+
+  /// The anchor's own write — see [CanvasSelectionCommands.
+  /// setTransformAnchor] for why it is not folded into [_apply].
+  void _applyAnchor() {
+    widget.selectionCommands?.setTransformAnchor(x: _anchorX, y: _anchorY);
   }
 
   /// One transform channel as the shared DRAG VALUE READOUT (R26 #14 —
@@ -871,6 +881,46 @@ class _MoveSettingsState extends State<_MoveSettings> {
           onSubmit: (value) {
             setState(() => _scalePct = value.clamp(1.0, 3200.0));
             _apply();
+          },
+        ),
+        // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
+        // beside the other digits, because it is one of them to read even
+        // though it is not one of them to write ([_applyAnchor]).
+        //
+        // ⚠️Always here, never mode-gated: the rotation the anchor serves
+        // works in every mode (outside the box is the rotation), so a row
+        // that appeared and vanished would be inventing a rule the
+        // rotation does not have — and 「없다가 생기는 UI 금지」 besides.
+        const SizedBox(height: 4),
+        _channel(
+          keyValue: 'move-anchor-x-field',
+          label: AppText.strings.trAnchorPointX,
+          text: formatTrimmedDecimal(_anchorX, fractionDigits: 2),
+          live: (v) =>
+              formatTrimmedDecimal(v?.anchorX ?? _anchorX, fractionDigits: 2),
+          onDrag: (units) {
+            setState(() => _anchorX += units);
+            _applyAnchor();
+          },
+          onSubmit: (value) {
+            setState(() => _anchorX = value);
+            _applyAnchor();
+          },
+        ),
+        const SizedBox(height: 4),
+        _channel(
+          keyValue: 'move-anchor-y-field',
+          label: AppText.strings.trAnchorPointY,
+          text: formatTrimmedDecimal(_anchorY, fractionDigits: 2),
+          live: (v) =>
+              formatTrimmedDecimal(v?.anchorY ?? _anchorY, fractionDigits: 2),
+          onDrag: (units) {
+            setState(() => _anchorY += units);
+            _applyAnchor();
+          },
+          onSubmit: (value) {
+            setState(() => _anchorY = value);
+            _applyAnchor();
           },
         ),
         // The mesh's density, shown as numbers because that is what it is

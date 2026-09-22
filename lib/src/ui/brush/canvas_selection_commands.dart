@@ -13,6 +13,12 @@ typedef SelectionTransformValues = ({
   double ty,
   double rotationDegrees,
   double scale,
+
+  /// The rotation centre, as a displacement from the box centre in
+  /// absolute canvas units — 유저 2026-09-20: 「기본값 상자안의 자리에서
+  /// **얼마나 이동됬나**」, and 「**편집값은 절대값이야**」.
+  double anchorX,
+  double anchorY,
 });
 
 /// The imperative selection channel (P9): the app-level shortcuts
@@ -215,6 +221,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     required double scale,
   })?
   _setTransformValues;
+  void Function({required double x, required double y})? _setTransformAnchor;
   void Function({required bool horizontal})? _flipTransform;
   VoidCallback? _resetTransform;
   VoidCallback? _applyTransform;
@@ -246,6 +253,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       required double scale,
     })?
     setTransformValues,
+    void Function({required double x, required double y})? setTransformAnchor,
     void Function({required bool horizontal})? flipTransform,
     VoidCallback? resetTransform,
     VoidCallback? applyTransform,
@@ -269,6 +277,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _revertPendingMove = revertPendingMove;
     _transformValues = transformValues;
     _setTransformValues = setTransformValues;
+    _setTransformAnchor = setTransformAnchor;
     notifySessionChanged();
   }
 
@@ -290,6 +299,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _revertPendingMove = null;
     _transformValues = null;
     _setTransformValues = null;
+    _setTransformAnchor = null;
     _flipTransform = null;
     _resetTransform = null;
     _applyTransform = null;
@@ -431,6 +441,18 @@ class CanvasSelectionCommands extends ChangeNotifier {
     rotationDegrees: rotationDegrees,
     scale: scale,
   );
+
+  /// Moves the rotation centre — the cross — to a displacement from the box
+  /// centre, in absolute canvas units.
+  ///
+  /// ⛔**ITS OWN VERB, and the reason is the question it answers.** The four
+  /// above are the EDIT; the anchor is where the next turn happens, which
+  /// `SelectionAffine.isIdentity` already says out loud by leaving it out.
+  /// Folding it into that call would force every caller who only wanted to
+  /// type an X to restate the anchor — and the version of that with a
+  /// default would silently put the cross back in the middle.
+  void setTransformAnchor({required double x, required double y}) =>
+      _setTransformAnchor?.call(x: x, y: y);
 
   /// Mirrors the open box about its centre — a sign flip on one scale
   /// axis, not a new kind of transform. Works in every mode: 퍼스 and 메쉬

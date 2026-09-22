@@ -12,10 +12,24 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
 /// label drag writes through the selection channel, and the fields no
 /// longer demand a selection first (R26 #13: none = whole picture).
+
+/// What `setTransformValues` was called with.
+///
+/// ⚠️FOUR, and it used to borrow `SelectionTransformValues` for the shape.
+/// They parted on 2026-09-22: the anchor is READ with the other digits and
+/// WRITTEN by its own verb, so the record the layer publishes is six wide
+/// and the setter's arguments are still four.
+typedef AppliedTransform = ({
+  double tx,
+  double ty,
+  double rotationDegrees,
+  double scale,
+});
+
 void main() {
   Future<CanvasSelectionCommands> pumpMoveSettings(
     WidgetTester tester, {
-    required List<SelectionTransformValues> applied,
+    required List<AppliedTransform> applied,
     ResampleMode resampleMode = ResampleMode.blend,
     ValueChanged<ResampleMode>? onResampleModeChanged,
     bool canEdit = true,
@@ -76,7 +90,7 @@ void main() {
 
   testWidgets('an X-label drag accumulates units and writes them through '
       'the channel — no selection required', (tester) async {
-    final applied = <SelectionTransformValues>[];
+    final applied = <AppliedTransform>[];
     await pumpMoveSettings(tester, applied: applied);
 
     // A comfortably slop-clearing drag; the exact delivered delta is
@@ -95,9 +109,79 @@ void main() {
     expect(applied.last.scale, 1);
   });
 
+  /// 🚨★★★**④THE ANCHOR HAS A PLACE IN THE TOOL SETTINGS** — 유저
+  /// 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」.
+  ///
+  /// ⛔And it writes through ITS OWN verb, which is the pin's second half:
+  /// `setTransformValues` must not hear about it, or typing an X would put
+  /// the cross back in the middle.
+  testWidgets('④the anchor channels write through setTransformAnchor, and '
+      'the four-value setter never hears about them', (tester) async {
+    final applied = <AppliedTransform>[];
+    final anchors = <({double x, double y})>[];
+    final commands = await pumpMoveSettings(tester, applied: applied);
+    commands.bind(
+      Object(),
+      hasSelection: () => false,
+      canEditTransform: () => true,
+      deselect: () {},
+      transformValues: () => null,
+      setTransformValues:
+          ({
+            required double tx,
+            required double ty,
+            required double rotationDegrees,
+            required double scale,
+          }) {
+            applied.add((
+              tx: tx,
+              ty: ty,
+              rotationDegrees: rotationDegrees,
+              scale: scale,
+            ));
+          },
+      setTransformAnchor: ({required double x, required double y}) =>
+          anchors.add((x: x, y: y)),
+    );
+    await tester.pump();
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('move-anchor-x-field')),
+      const Offset(80, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(anchors, isNotEmpty, reason: 'the drag writes live');
+    expect(anchors.last.x, greaterThan(20));
+    expect(anchors.last.y, 0);
+    expect(
+      applied,
+      isEmpty,
+      reason:
+          '⛔the four-value setter was never called — the cross is not one '
+          'of the edit values',
+    );
+
+    // ⚠️Horizontal, like every other channel: the shared readout reads a
+    // unit per pixel ALONG THE LABEL, whatever value it carries.
+    await tester.drag(
+      find.byKey(const ValueKey<String>('move-anchor-y-field')),
+      const Offset(40, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      anchors.last.x,
+      greaterThan(20),
+      reason: '⛔and moving Y kept X — one channel each',
+    );
+    expect(anchors.last.y, isNot(0));
+  });
+
   testWidgets('a scale-label drag clamps at the floor instead of going '
       'non-positive', (tester) async {
-    final applied = <SelectionTransformValues>[];
+    final applied = <AppliedTransform>[];
     await pumpMoveSettings(tester, applied: applied);
 
     await tester.drag(
@@ -120,7 +204,7 @@ void main() {
     // smoothing default and OFF is the two-value copy. The wiring is what
     // it always was: the state has to come from the HOST, not from a local
     // bool that would drift away from what a commit runs through.
-    final applied = <SelectionTransformValues>[];
+    final applied = <AppliedTransform>[];
     final chosen = <ResampleMode>[];
     await pumpMoveSettings(
       tester,
@@ -166,7 +250,7 @@ void main() {
 
   testWidgets('with nothing to transform every control goes flat — the '
       'refusal is the panel, not a notice', (tester) async {
-    final applied = <SelectionTransformValues>[];
+    final applied = <AppliedTransform>[];
     await pumpMoveSettings(
       tester,
       applied: applied,
@@ -206,7 +290,7 @@ void main() {
 
   testWidgets('the four buttons come in the order the user asked for, and '
       'the mesh grid shows only in 메쉬', (tester) async {
-    final applied = <SelectionTransformValues>[];
+    final applied = <AppliedTransform>[];
     await pumpMoveSettings(
       tester,
       applied: applied,
@@ -270,6 +354,8 @@ void main() {
       ty: -4,
       rotationDegrees: 0,
       scale: 1,
+      anchorX: 0,
+      anchorY: 0,
     ));
     await tester.pump();
 

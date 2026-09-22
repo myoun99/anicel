@@ -721,6 +721,8 @@ void main() {
     'brColorStretch': (s) => s.brColorStretch,
     'trFlipHorizontal': (s) => s.trFlipHorizontal,
     'trFlipVertical': (s) => s.trFlipVertical,
+    'trAnchorPointX': (s) => s.trAnchorPointX,
+    'trAnchorPointY': (s) => s.trAnchorPointY,
     'trMeshColumns': (s) => s.trMeshColumns,
     'trMeshRows': (s) => s.trMeshRows,
     'brEditGroup': (s) => s.brEditGroup,

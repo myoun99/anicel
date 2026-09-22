@@ -20,9 +20,15 @@ void main() {
   const size = Size(120, 120);
 
   /// A box with a handle at each corner.
+  ///
+  /// ⚠️No anchor cross: this file weighs the box's COLOUR by sampling the
+  /// pixels it paints, and a cross in the middle is more of that colour
+  /// sitting somewhere the sampler does not expect. Its own pin lives with
+  /// the transform tests.
   const chrome = (
     box: [Offset(30, 30), Offset(90, 30), Offset(90, 90), Offset(30, 90)],
     handles: [Offset(30, 30), Offset(90, 30), Offset(90, 90), Offset(30, 90)],
+    anchor: null,
   );
 
   /// 🚨The readback runs under `runAsync`. `toImage` needs the real event
@@ -31,6 +37,7 @@ void main() {
   Future<Uint8List> paint(
     WidgetTester tester, {
     required bool changed,
+    Offset? anchor,
   }) async {
     final controller = AnimationController(
       vsync: const TestVSync(),
@@ -44,7 +51,11 @@ void main() {
       screenOffset: Offset.zero,
       marqueeShapes: const [],
       openTrail: const [],
-      transformChrome: chrome,
+      transformChrome: (
+        box: chrome.box,
+        handles: chrome.handles,
+        anchor: anchor,
+      ),
       sessionHasChanges: changed,
     );
     final recorder = ui.PictureRecorder();
@@ -120,6 +131,57 @@ void main() {
       greaterThan(green.$1),
       reason: 'unchanged = green — 유저: 「변경된게 없으면 초록색으로」',
     );
+  });
+
+  /// 🚨★★★**④THE ANCHOR IS DRAWN AS A CROSS.**
+  ///
+  /// 🗣️유저 2026-09-20, handing over CLIP's own: 「디자인은 별도 스샷
+  /// 확인해줘. **중앙에 십자가**가 있어」.
+  ///
+  /// ⛔A dot would pass 「something is painted there」. The shape is the
+  /// requirement — the user is placing a CENTRE, so the glyph has to say
+  /// which pixel it is on — and only the empty diagonals prove it.
+  testWidgets('④the anchor paints a CROSS, not a blob', (tester) async {
+    const at = Offset(60, 60);
+    final rgba = await paint(tester, changed: true, anchor: at);
+    int alphaAt(int x, int y) =>
+        rgba[(y * size.width.toInt() + x) * 4 + 3];
+
+    for (final arm in const [
+      Offset(5, 0),
+      Offset(-5, 0),
+      Offset(0, 5),
+      Offset(0, -5),
+    ]) {
+      expect(
+        alphaAt((at.dx + arm.dx).round(), (at.dy + arm.dy).round()),
+        greaterThan(0x80),
+        reason: 'the arm at $arm is drawn',
+      );
+    }
+    for (final corner in const [
+      Offset(4, 4),
+      Offset(-4, 4),
+      Offset(4, -4),
+      Offset(-4, -4),
+    ]) {
+      expect(
+        alphaAt((at.dx + corner.dx).round(), (at.dy + corner.dy).round()),
+        lessThan(0x40),
+        reason: '⛔$corner is between the arms and must stay empty — that '
+            'is the difference between a cross and a square',
+      );
+    }
+  });
+
+  testWidgets('⛔with no anchor nothing is painted there at all', (
+    tester,
+  ) async {
+    // The control: without it the pin above would pass on a painter that
+    // drew a cross in the middle of every box whether or not one was asked
+    // for.
+    final rgba = await paint(tester, changed: true);
+    expect(rgba[(60 * size.width.toInt() + 60) * 4 + 3], 0);
   });
 
   testWidgets('the box and the ants are drawn in the SAME colour — one '

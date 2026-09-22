@@ -32,6 +32,47 @@ void main() {
     expect(turned.y, closeTo(anchorPoint.y, 1e-9));
   });
 
+  /// 🚨★★★**WHERE THE CROSS IS DRAWN**, which is one derivation and not
+  /// three: the chrome, the hit test and the tool panel all read
+  /// `anchorCanvas`.
+  test('🚨the cross sits on the rotation centre, at every angle', () {
+    // The same anchor under four different turns and a scale. The cross
+    // must not orbit itself — a cross that moved when the box turned would
+    // be a cross you could not aim at while turning.
+    for (final degrees in const [0.0, 37.0, 90.0, 213.0]) {
+      final affine = SelectionAffine(
+        pivot: pivot,
+        sx: 2,
+        sy: 2,
+        rotationDegrees: degrees,
+        anchorX: 30,
+        anchorY: -40,
+      );
+      final cross = affine.anchorCanvas;
+      expect(cross.x, closeTo(pivot.x + 30, 1e-9), reason: 'at $degrees°');
+      expect(cross.y, closeTo(pivot.y - 40, 1e-9), reason: 'at $degrees°');
+
+      // …and it really IS the turn's centre: the point that lands there
+      // lands there whatever the angle is.
+      final source = CanvasPoint(x: pivot.x + 15, y: pivot.y - 20);
+      final landed = affine.apply(source);
+      expect(landed.x, closeTo(cross.x, 1e-9), reason: 'at $degrees°');
+      expect(landed.y, closeTo(cross.y, 1e-9), reason: 'at $degrees°');
+    }
+  });
+
+  test('⚠️the cross RIDES the move — tx/ty carry it like everything else', () {
+    final affine = SelectionAffine(
+      pivot: pivot,
+      tx: 11,
+      ty: -7,
+      anchorX: 30,
+      anchorY: 40,
+    );
+    expect(affine.anchorCanvas.x, closeTo(pivot.x + 30 + 11, 1e-9));
+    expect(affine.anchorCanvas.y, closeTo(pivot.y + 40 - 7, 1e-9));
+  });
+
   test('⛔and the PIVOT is not, once the anchor has moved', () {
     // The control for the pin above: with the anchor off-centre, the box
     // centre is carried around it, so the first pin is not passing by

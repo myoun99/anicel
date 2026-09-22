@@ -1305,6 +1305,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       revertPendingMove: _revertMoveSession,
       transformValues: _transformValuesNow,
       setTransformValues: _setTransformValues,
+      setTransformAnchor: _setTransformAnchor,
       canEditTransform: _canEditTransform,
       flipTransform: _flipTransform,
       resetTransform: _resetTransform,
@@ -1518,6 +1519,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       sy: scale,
     ),
   );
+
+  /// The anchor's numeric input — the cross's own channel.
+  ///
+  /// ⛔It goes through [_editTransform] like every other numeric write, so
+  /// typing into it opens a session exactly as typing an angle does. ⚠️And
+  /// it touches NOTHING else: see [CanvasSelectionCommands.
+  /// setTransformAnchor] for why it is not one of the four.
+  void _setTransformAnchor({required double x, required double y}) =>
+      _editTransform((affine) => affine.copyWith(anchorX: x, anchorY: y));
 
   /// Ends every gesture and lands everything that floats — and, unless
   /// [keepRegion], forgets the region too.
@@ -2520,6 +2530,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       ty: transform.ty,
       rotationDegrees: transform.rotationDegrees,
       scale: transform.sx,
+      anchorX: transform.anchorX,
+      anchorY: transform.anchorY,
     );
   }
 
@@ -3206,6 +3218,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ty: start.ty + pointer.y - drag.startPointer.y,
           );
         });
+      case TransformHandle.anchor:
+        // 🚨★★★**THE ANCHOR MOVES BY THE SAME DELTA LAW AS EVERY OTHER
+        // HANDLE** (F-127): it travels exactly as far as the hand has
+        // since the press, so a press that lands 15px off centre does not
+        // snap the cross under the pen.
+        //
+        // ⛔NOTHING CLAMPS IT. 유저 2026-09-20 on the edit values as a
+        // whole: 「그 과정에서 **그림이 바깥으로 나가던 뭐던 쓸데없어**.
+        // 그건 유저가 그렇게 하고싶지않으면 **생각해서 할일**이야」 — and
+        // the anchor is an edit value like any other.
+        setState(() {
+          _transform = start.copyWith(
+            anchorX: start.anchorX + pointer.x - drag.startPointer.x,
+            anchorY: start.anchorY + pointer.y - drag.startPointer.y,
+          );
+        });
       case TransformHandle.rotate:
         // Wrapped-delta accumulation (the camera lever rule): continuous
         // across the ±180° seam. Canvas-space angles, so the P8 view
@@ -3857,6 +3885,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     Offset local,
     SelectionAffine affine,
   ) {
+    // ⚠️THE CROSS IS ON TOP, SO IT IS GRABBED FIRST. It is painted over
+    // everything else, and 「what you see is what you grab」 is the only
+    // rule that survives the user dragging it onto a scale handle — which
+    // nothing stops them doing, because nothing clamps it.
+    if ((local - _mapCanvasToViewportOffset(affine.anchorCanvas)).distance <=
+        _handleHitRadius) {
+      return TransformHandle.anchor;
+    }
     for (final handle in _scaleHandles) {
       final position = _scaleHandleViewport(handle, affine, _baseBoxWidth, _baseBoxHeight);
       if ((local - position).distance <= _handleHitRadius) {
@@ -4199,7 +4235,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         },
       );
 
-  Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, ({List<ui.Offset> box, List<ui.Offset> handles})? chrome) {
+  Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, SelectionTransformChrome? chrome) {
     return Positioned.fill(
       child: IgnorePointer(
         child: CustomPaint(
@@ -4305,7 +4341,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  ({List<ui.Offset> box, List<ui.Offset> handles})? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
+  SelectionTransformChrome? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
+    // ⚠️ONE anchor for all three chromes. The cross is the ROTATION's
+    // centre and every mode can be turned (outside the box is the
+    // rotation, whatever mode is armed), so hiding it in 퍼스/메쉬 would
+    // be a rule about the modes that the rotation does not have.
+    final anchor = chromeAffine == null
+        ? null
+        : _mapCanvasToViewportOffset(chromeAffine.anchorCanvas);
     final chrome = placedMesh != null
         ? (
             box: [
@@ -4315,7 +4358,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             handles: [
               for (final point in placedMesh) _mapCanvasToViewportOffset(point),
             ],
-
+            anchor: anchor,
           )
         : placedCorners != null && chromeAffine != null
         ? (
@@ -4329,7 +4372,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
-
+            anchor: anchor,
           )
         : chromeAffine == null
         ? null
@@ -4346,7 +4389,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final handle in _scaleHandles)
                 _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
             ],
-
+            anchor: anchor,
           );
     return chrome;
   }

@@ -86,6 +86,19 @@ class SelectionAffine {
   double get appliedTy =>
       ty + anchorY - (anchorX * sinTheta + anchorY * cosTheta);
 
+  /// WHERE THE CROSS IS DRAWN — the rotation's centre in canvas space.
+  ///
+  /// Read [appliedTx]'s composite as `R·(q − a) + a + pivot + t`, where
+  /// `q = S·(p − pivot)`: the turn happens about `q = a`, so in the output
+  /// the centre sits at `pivot + a + t` whatever the angle is. ⚠️That it
+  /// does not depend on θ is the point — the cross must not orbit itself
+  /// while the box turns.
+  ///
+  /// ⛔ONE DERIVATION, beside the one it comes from. The chrome, the hit
+  /// test and the tool panel all ask here; none of them re-derives it.
+  CanvasPoint get anchorCanvas =>
+      CanvasPoint(x: pivot.x + anchorX + tx, y: pivot.y + anchorY + ty);
+
   double get _radians => rotationDegrees * math.pi / 180;
 
   /// The rotation's cosine and sine, EXACT at the quarter turns.

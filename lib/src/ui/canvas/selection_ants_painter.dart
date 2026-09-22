@@ -9,14 +9,22 @@ import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 
-/// The Ctrl+T box chrome in viewport space: the transformed box outline
-/// and the scale handles.
+/// The Ctrl+T box chrome in viewport space: the transformed box outline,
+/// the scale handles, and the anchor cross.
 ///
 /// ↩️A rotate KNOB used to hang off the top edge on a lever, and both are
 /// gone — 유저 2026-09-22: 「**사각형 밖 조작은 회전으로 통하도록.** 지금
 /// 있는 **회전 꼭짓점은 잔재 싹 삭제**하고」. A whole half-plane is a
 /// bigger target than a five-pixel circle and needs no aiming.
-typedef SelectionTransformChrome = ({List<Offset> box, List<Offset> handles});
+///
+/// ⚠️[anchor] is its own field and not a ninth handle: it is drawn as a
+/// CROSS and the handles are drawn as squares, so folding it into that
+/// list would only make the painter ask which index it was.
+typedef SelectionTransformChrome = ({
+  List<Offset> box,
+  List<Offset> handles,
+  Offset? anchor,
+});
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
 ///
@@ -307,6 +315,38 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
         Rect.fromCenter(center: handle, width: 9, height: 9),
         stroke,
       );
+    }
+    final anchor = chrome.anchor;
+    if (anchor != null) {
+      _paintAnchorCross(canvas, anchor);
+    }
+  }
+
+  /// The rotation centre: a cross, drawn LAST so it reads over the box.
+  ///
+  /// 🗣️유저 2026-09-20 handed CLIP's own as the reference — 「디자인은 별도
+  /// 스샷 확인해줘. **중앙에 십자가**가 있어」.
+  ///
+  /// ⛔A cross rather than a dot, and the reason is the job: the user is
+  /// placing a CENTRE, so the thing has to say exactly which pixel it is
+  /// on. A filled dot hides that pixel under itself.
+  void _paintAnchorCross(Canvas canvas, Offset at) {
+    const arm = 7.0;
+    final white = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = Colors.white;
+    final ink = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = _sessionColor;
+    // White underneath for the same reason the ants carry it: the artwork
+    // beneath can be any colour, and only the pair reads on both.
+    for (final paint in [white, ink]) {
+      canvas.drawLine(at - const Offset(arm, 0), at + const Offset(arm, 0),
+          paint);
+      canvas.drawLine(at - const Offset(0, arm), at + const Offset(0, arm),
+          paint);
     }
   }
 

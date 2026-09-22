@@ -178,6 +178,16 @@ enum TransformHandle {
   bottomEdge,
   leftEdge,
   rotate,
+
+  /// The rotation's centre — the cross the user can drag.
+  ///
+  /// 🗣️유저 2026-09-20: 「tvp도 클튜도 **앵커포인트 별도로 둘수있어. 기본값은
+  /// 중심**인데, 그걸 **유저가 드래그해서 움직이는 방식**」.
+  ///
+  /// ⚠️It is a HANDLE and not a mode: it grabs, drags and releases exactly
+  /// as the eight scale handles do, and for the same reason — the press
+  /// law is one law ([[control-press-claim]]).
+  anchor,
   inside,
 }
 
@@ -202,6 +212,11 @@ CanvasPoint? handleLocal(TransformHandle handle, double w, double h) {
     case TransformHandle.leftEdge:
       return CanvasPoint(x: -w / 2, y: 0);
     case TransformHandle.rotate:
+    // ⛔The anchor has no BASE-LOCAL place: it is not a corner of the box,
+    // it is wherever the user put it. `SelectionAffine.anchorX/anchorY`
+    // hold that, in absolute canvas units, and nothing here may guess it
+    // from the box's size.
+    case TransformHandle.anchor:
     case TransformHandle.inside:
       return null;
   }

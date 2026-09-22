@@ -1490,6 +1490,8 @@ enum AppStrings {
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
+  String get trAnchorPointX => _s('trAnchorPointX');
+  String get trAnchorPointY => _s('trAnchorPointY');
   String get trMeshColumns => _s('trMeshColumns');
   String get trMeshRows => _s('trMeshRows');
   String get commonReset => _s('commonReset');
@@ -2440,6 +2442,8 @@ enum AppStrings {
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
+    'trAnchorPointX': 'Anchor X',
+    'trAnchorPointY': 'Anchor Y',
     'trMeshColumns': 'Columns',
     'trMeshRows': 'Rows',
     'commonReset': 'Reset',
@@ -3700,6 +3704,8 @@ enum AppStrings {
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
+    'trAnchorPointX': '基準点 X',
+    'trAnchorPointY': '基準点 Y',
     'trMeshColumns': '横のマス',
     'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
@@ -4982,6 +4988,8 @@ enum AppStrings {
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
+    'trAnchorPointX': '기준점 X',
+    'trAnchorPointY': '기준점 Y',
     'trMeshColumns': '가로 칸',
     'trMeshRows': '세로 칸',
     'commonReset': '초기화',
@@ -6243,6 +6251,8 @@ enum AppStrings {
         'intermédiaires',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
+    'trAnchorPointX': 'Ancre X',
+    'trAnchorPointY': 'Ancre Y',
     'trMeshColumns': 'Colonnes',
     'trMeshRows': 'Lignes',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
@@ -7572,6 +7582,8 @@ enum AppStrings {
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
+    'trAnchorPointX': '基准点 X',
+    'trAnchorPointY': '基准点 Y',
     'trMeshColumns': '列数',
     'trMeshRows': '行数',
     'commonReset': '重置',

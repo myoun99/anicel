@@ -45,6 +45,31 @@ import '../helpers/brush_canvas_fixture.dart';
 void main() {
   const layerKey = ValueKey<String>('canvas-selection-layer');
 
+  /// A press INSIDE the box but off the anchor cross — the start of an
+  /// ordinary MOVE drag.
+  ///
+  /// 🚨★★★**THE CENTRE IS THE CROSS'S NOW** (R5, 2026-09-20: 「그걸 유저가
+  /// **드래그해서 움직이는방식**」). This file's selection runs
+  /// (20,20)-(70,70), so its centre is (45,45) — which is exactly where
+  /// every move pin used to grab, and exactly where the cross sits until
+  /// someone drags it.
+  ///
+  /// ⚠️A HOLE IN 「상자 안은 이동」 IS UNAVOIDABLE, not invented: 유저 asked
+  /// for both 「사각형 내부 조작은 지금처럼 위치이동」 and a cross you can
+  /// drag, and the cross is inside. It is small against a real selection;
+  /// it is 40% of this fixture's 50×50 box, which is why so many pins had
+  /// to move their thumb.
+  ///
+  /// 🚨★★★**THIS EXACT POINT, and it is the ONLY one worth having.** Nine
+  /// grab targets sit on a 50×50 box — four corners, four edge middles and
+  /// the cross — each claiming a 16px radius, so the free floor is four
+  /// small diamonds. (32.5,32.5) is the middle of one: it is 17.68px from
+  /// the TL corner, the two nearest edge middles AND the cross, all four at
+  /// once, which is the largest clearance the box has to offer. ⛔Nudging
+  /// it "somewhere inside" lands on a handle — that is how this constant
+  /// was born.
+  const insideOffTheCross = Offset(32.5, 32.5);
+
   BrushDab dab(double x, double y) => BrushDab(
     center: CanvasPoint(x: x, y: y),
     color: 0xFFFF0000,
@@ -396,6 +421,42 @@ void main() {
     await gesture.up();
     await tester.pump();
   }
+
+  /// An ordinary MOVE drag: grab the box somewhere that is not a handle
+  /// and carry it [by].
+  ///
+  /// ⚠️THE DELTA IS THE SUBJECT, so it is the argument. These pins used to
+  /// spell two absolute points and read the move out of the difference,
+  /// and when the grab point had to move off the cross (R5) that spelling
+  /// silently changed every one of their deltas.
+  Future<void> moveBoxBy(WidgetTester tester, Offset by) =>
+      dragOnLayer(tester, insideOffTheCross, insideOffTheCross + by);
+
+  /// A move drag on a box too small to be grabbed at zoom 1, stated in
+  /// CANVAS pixels so the pin keeps asserting the landing it always did.
+  ///
+  /// 🚨★★★**NINE 16px TARGETS DO NOT FIT ON A SMALL BOX.** Four corners,
+  /// four edge middles and now the anchor cross each claim a 16px SCREEN
+  /// radius. The free floor is the four quadrant midpoints, each
+  /// `side·√2/4` from the corner, the two near edge middles and the cross
+  /// alike — so a box needs to be **wider than ~46 screen px** before any
+  /// of it can start a move. The fixture's implicit whole-picture box is 34
+  /// canvas px; at zoom 1 its centre was the last free pixel, and R5's
+  /// cross took it.
+  ///
+  /// ⛔The answer is not to shrink a radius. Those are touch targets and
+  /// the crowding is real for the user too — but the radii are SCREEN
+  /// space, so zooming in buys the room back, which is what the user does.
+  Future<void> moveAtZoom(
+    WidgetTester tester, {
+    required double zoom,
+    required Offset grabCanvas,
+    required Offset byCanvas,
+  }) => dragOnLayer(
+    tester,
+    grabCanvas * zoom,
+    (grabCanvas + byCanvas) * zoom,
+  );
 
   /// One polygon vertex tap: down where it aims, up to commit it.
   Future<void> tapOnLayer(WidgetTester tester, Offset at) async {
@@ -779,7 +840,7 @@ void main() {
     // undoable until the CONFIRM.
     await env.setTool(CanvasTool.move);
     final entriesBeforeMove = env.history.undoCount;
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveBoxBy(tester, const Offset(10, 5));
 
     // 🚨★★★**THE CEL KEEPS ITS INK WHILE THE BOX IS OPEN** (2026-09-17).
     // This read the opposite until then — 「pending: the base holds only the
@@ -867,7 +928,7 @@ void main() {
     // The user's state: a box OPEN and already dragged — 변형중, and red.
     env.commands.beginTransform();
     await tester.pump();
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    await moveBoxBy(tester, const Offset(10, 0));
     expect(env.commands.transformActive, isTrue);
     expect(
       antsOnScreen(tester)?.sessionHasChanges,
@@ -971,7 +1032,7 @@ void main() {
     // Scale the box on frame one and DO NOT confirm.
     env.commands.beginTransform();
     await tester.pump();
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+    await moveBoxBy(tester, const Offset(15, 15));
     expect(env.commands.transformActive, isTrue, reason: 'the box is open');
 
     env.coordinator.selectFrame(keys[1]);
@@ -1455,6 +1516,9 @@ void main() {
         tester,
         tool: CanvasTool.move,
         transformTargetKeys: () => ladder,
+        // The standing cel's ink is 14 canvas px across, so the box only
+        // has room to be grabbed once it is 70 screen px — see [moveAtZoom].
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 5)),
       );
       env.coordinator.selectFrame(keys[1]);
       env.coordinator.commitSourceStroke(
@@ -1462,7 +1526,12 @@ void main() {
       );
       env.coordinator.selectFrame(keys.first);
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+      await moveAtZoom(
+        tester,
+        zoom: 5,
+        grabCanvas: const Offset(41.5, 41.5),
+        byCanvas: const Offset(10, 5),
+      );
       env.commands.confirmPendingMove();
       await tester.pump();
       return env.history.retainedBytes;
@@ -1494,10 +1563,16 @@ void main() {
       tool: CanvasTool.move,
       // keys[2] is EMPTY — no stroke was ever committed there.
       transformTargetKeys: () => [keys[0], keys[2]],
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
     );
 
     final entriesBefore = env.history.undoCount;
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
     env.commands.confirmPendingMove();
     await tester.pump();
 
@@ -1515,9 +1590,18 @@ void main() {
     // answers `[the cel you stand on]` when no range is live, so the
     // multi-cel path IS the single-cel path. A branch here would be the
     // second rule this round exists to avoid.
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
     final entriesBefore = env.history.undoCount;
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
     env.commands.confirmPendingMove();
     await tester.pump();
 
@@ -1614,7 +1698,13 @@ void main() {
     expect(env.commands.region!.selectedBounds.left, 30, reason: 'start');
 
     // 10 screen px = 3.33… canvas px: fractional by construction.
-    await dragOnLayer(tester, const Offset(135, 135), const Offset(145, 135));
+    // ⚠️(112.5,112.5) rather than the box's screen centre (135,135), which
+    // is where the anchor cross sits (R5) — this pin is about the MOVE.
+    await dragOnLayer(
+      tester,
+      const Offset(112.5, 112.5),
+      const Offset(122.5, 112.5),
+    );
 
     // 🚨★★★**READ IT OFF X/Y — THAT IS WHERE A MOVE LIVES** (유저
     // 2026-09-22: 「이동값이 X,Y잖아. tvp도 그렇고」). ↩️This used to read the
@@ -1653,11 +1743,20 @@ void main() {
   testWidgets('R26 #13: the MOVE tool with NO selection drags the WHOLE '
       'picture — implicit whole-canvas session, ONE confirmed entry, and '
       'the end returns to no selection', (tester) async {
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
     expect(env.commands.hasSelection, isFalse);
 
     final entriesBefore = env.history.undoCount;
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
     expect(env.commands.movePending, isTrue);
     expect(
       inkAt(env.coordinator, 30, 30),
@@ -1708,7 +1807,7 @@ void main() {
       reason: 'the fixture really does hold pasteboard ink',
     );
 
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveBoxBy(tester, const Offset(10, 5));
     env.commands.confirmPendingMove();
     await tester.pump();
 
@@ -1836,7 +1935,7 @@ void main() {
 
     // Moving the box does not move the line — that is the whole point of
     // it: it says where this started, against what the chrome now shows.
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 50));
+    await moveBoxBy(tester, const Offset(15, 5));
     expect(
       antsOnScreen(tester)?.startShape,
       same(started),
@@ -1884,11 +1983,20 @@ void main() {
   testWidgets('⑦…그리고 상자 안은 회전이 아니라 이동이다', (tester) async {
     // ⛔CONTROL for the pin above: without it, 「밖은 회전」 would also pass
     // on a box that rotates wherever you press.
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
     env.commands.beginTransform();
     await tester.pump();
 
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
 
     expect(env.commands.transformValues!.rotationDegrees, 0);
     expect(env.commands.transformValues!.tx, isNot(0));
@@ -1905,8 +2013,17 @@ void main() {
   /// answers to 「취소」 by which handle you had used. That split was only
   /// real while the move lived outside the affine.
   testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
     expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
     expect(env.commands.transformValues!.tx, isNot(0), reason: '⛔전제: 옮김');
 
@@ -2109,7 +2226,7 @@ void main() {
     // Still OPEN: no confirm, no commit. 🚨Every place that sets the
     // move-session dirty flag is a COMMIT point, so this is exactly the
     // window that used to stay green however far the user dragged.
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    await moveBoxBy(tester, const Offset(10, 0));
     expect(env.commands.transformActive, isTrue, reason: 'still open');
     expect(
       antsOnScreen(tester)?.sessionHasChanges,
@@ -2128,13 +2245,22 @@ void main() {
     // switching tools ("변형 한번하고 다시 변형하면"), which is the one path
     // the R27 #18 fix did not cover — it hung the cleanup on a tool
     // change. Both rounds here run on the Move tool.
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
 
     // Round 1: implicit whole-picture transform, confirmed.
     env.commands.beginTransform();
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 45));
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 0),
+    );
     env.commands.commitTransform();
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
@@ -2164,8 +2290,14 @@ void main() {
       reason: 'the second lift wrote nothing either — the cel is untouched',
     );
 
-    // The picture moved +10, so the box did too — grab it where it now is.
-    await dragOnLayer(tester, const Offset(55, 45), const Offset(65, 45));
+    // The picture moved +10, so the box did too — grab it where it now is
+    // (canvas 38..72, so its free quadrant midpoint is (46.5,36.5)).
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(46.5, 36.5),
+      byCanvas: const Offset(10, 0),
+    );
     env.commands.commitTransform();
     await tester.pump();
     expect(
@@ -2183,7 +2315,7 @@ void main() {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await moveBoxBy(tester, const Offset(10, 5));
     expect(env.commands.movePending, isTrue);
 
     env.commands.revertPendingMove();
@@ -2245,7 +2377,7 @@ void main() {
     env.commands.beginTransform();
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(53, 45));
+    await moveBoxBy(tester, const Offset(8, 0));
     final values = env.commands.transformValues;
     expect(values, isNotNull);
     expect(values!.rotationDegrees, 0, reason: 'a translate does not rotate');
@@ -2877,7 +3009,7 @@ void main() {
     await env.setTool(CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+    await moveBoxBy(tester, const Offset(15, 15));
     expect(env.commands.movePending, isTrue);
 
     env.commands.revertPendingMove();
@@ -2936,6 +3068,13 @@ void main() {
     final env = await pumpSelectionPanel(tester);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     expect(env.commands.hasSelection, isTrue, reason: 'fixture premise');
+    // 🚨★★★**THE BASELINE IS TAKEN WITH THE TOOL ALREADY ARMED**, because
+    // this mask counts CHROME as ink. Arming the move tool puts the box
+    // and the anchor cross on screen, and a baseline taken before that
+    // reads their pixels as picture that 「appeared」 during the grab —
+    // which is what the cross did when it arrived (R5, 16 pixels, over a
+    // threshold of 2).
+    await env.setTool(CanvasTool.move);
     await settle(tester);
     final before = await screenInkMask(tester);
     final beforeInk = before.where((on) => on).length;
@@ -2943,9 +3082,8 @@ void main() {
 
     // ① THE GRAB: press inside the box and let go without moving. The lift
     // happens, the float opens, and nothing may move on screen.
-    await env.setTool(CanvasTool.move);
     final origin = tester.getTopLeft(find.byKey(layerKey));
-    final grab = await tester.startGesture(origin + const Offset(45, 45));
+    final grab = await tester.startGesture(origin + insideOffTheCross);
     await tester.pump();
     await grab.up();
     await tester.pump();
@@ -2999,7 +3137,7 @@ void main() {
 
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(60, 60));
+      await moveBoxBy(tester, const Offset(15, 15));
       expect(env.commands.movePending, isTrue);
       expect(
         inkAt(env.coordinator, 30, 30),
@@ -3146,7 +3284,7 @@ void main() {
       // Drag inside the box: rides the session (nothing committed yet —
       // the history holds only the marquee's Select entry).
       final undoDepthBefore = env.history.undoCount;
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 48));
+      await moveBoxBy(tester, const Offset(10, 3));
       expect(env.history.undoCount, undoDepthBefore);
 
       env.commands.commitTransform();
@@ -4458,6 +4596,102 @@ void main() {
       expect(env.commands.transformActive, isTrue);
     });
 
+    /// 🚨★★★**④THE ANCHOR IS A CROSS THE USER DRAGS, AND THE ROTATION
+    /// HAPPENS THERE.**
+    ///
+    /// 🗣️유저 2026-09-20: 「tvp도 클튜도 **앵커포인트 별도로 둘수있어.
+    /// 기본값은 중심**인데, 그걸 **유저가 드래그해서 움직이는방식** …
+    /// **앵커포인트는 회전시 앵커를 기준으로 회전**해」.
+    testWidgets('④the ROTATION turns about the cross, wherever it was '
+        'dragged to', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+
+      // Box (20,20)-(70,70), so the cross starts on (45,45). Drag it to
+      // (35,35) and turn a quarter.
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(35, 35));
+      expect(env.commands.transformValues?.anchorX, closeTo(-10, 1e-9));
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 90,
+        scale: 1,
+      );
+      await tester.pump();
+      env.commands.commitTransform();
+      await tester.pump();
+
+      // The stroke runs 30..60 down the diagonal. Turned 90° about
+      // (35,35) its near end lands on (40,30); about the box centre it
+      // would have landed on (60,30) instead — same row, so one witness
+      // pair settles which centre ran.
+      expect(
+        inkAt(env.coordinator, 40, 30),
+        isNonZero,
+        reason: 'the quarter turn went round the cross at (35,35)',
+      );
+      expect(
+        inkAt(env.coordinator, 60, 30),
+        0,
+        reason: '⛔and NOT round the box centre — that is the whole feature',
+      );
+    });
+
+    testWidgets('④the cross moves by the HAND\'S delta and nothing stops it '
+        'leaving the box', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      expect(
+        env.commands.transformValues,
+        isNull,
+        reason: 'fixture premise: no session yet, so the cross is at rest',
+      );
+
+      // Press 3px off the centre, then travel 50. F-127's law: the thing
+      // moves as far as the hand did, so this is 50 and not the 53 that
+      // putting the cross under the pointer would give.
+      await dragOnLayer(tester, const Offset(48, 48), const Offset(98, 98));
+      expect(env.commands.transformValues?.anchorX, closeTo(50, 1e-9));
+      expect(env.commands.transformValues?.anchorY, closeTo(50, 1e-9));
+      expect(
+        env.commands.transformValues?.scale,
+        1,
+        reason: '⛔and it is not a scale — grabbing the cross moves nothing '
+            'but the cross',
+      );
+      // (45,45) + (50,50) = (95,95), which is outside a box that still
+      // runs (20,20)-(70,70). 유저: 「그림이 바깥으로 나가던 뭐던 쓸데없어」.
+    });
+
+    testWidgets('⛔typing X does NOT put the cross back in the middle', (
+      tester,
+    ) async {
+      // The reason the anchor has its own verb: a setter that carried all
+      // six would reset the cross every time the user typed an X.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(65, 55));
+      expect(env.commands.transformValues?.anchorX, closeTo(20, 1e-9));
+
+      env.commands.setTransformValues(
+        tx: 5,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 1,
+      );
+      await tester.pump();
+      expect(env.commands.transformValues?.tx, 5);
+      expect(
+        env.commands.transformValues?.anchorX,
+        closeTo(20, 1e-9),
+        reason: '⛔the cross stayed where it was put',
+      );
+      expect(env.commands.transformValues?.anchorY, closeTo(10, 1e-9));
+    });
+
     /// 🚨★★★**①확대의 기준은 상자의 중심이고, 그게 기본값이다.**
     ///
     /// 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
@@ -4723,7 +4957,10 @@ void main() {
     // ↩️It was a (+2,0) arrow-key nudge until the nudge went (F-86, 유저
     // 2026-09-12: 「기능부터 잔존코드 싹 삭제」).
     await env.setTool(CanvasTool.move);
-    await dragOnLayer(tester, const Offset(40, 40), const Offset(60, 40));
+    // ⚠️(30,30) and not (40,40): the lasso's bounds are 10..90, so its
+    // centre (50,50) is where the anchor cross sits (R5) and (40,40) is
+    // inside its grab radius. The DELTA is what this pin is about.
+    await dragOnLayer(tester, const Offset(30, 30), const Offset(50, 30));
     env.commands.confirmPendingMove();
     await tester.pump();
     expect(inkAt(env.coordinator, 50, 30), isNonZero);
@@ -5281,7 +5518,7 @@ void main() {
       );
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+      await moveBoxBy(tester, const Offset(10, 5));
 
       expect(
         env.commands.movePending,
@@ -5321,7 +5558,7 @@ void main() {
 
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+      await moveBoxBy(tester, const Offset(10, 5));
       expect(env.commands.movePending, isTrue, reason: 'the session opened');
 
       // Walk to the next cel, the way a seek does.
