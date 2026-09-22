@@ -246,9 +246,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                                 widget.frameAxisOffset ?? _axisAtItsStart,
                             builder: (context, origin, _) => _frameHalf(
                               context,
-                              snapshot: snapshot,
-                              row: row,
-                              colorScheme: colorScheme,
+                              row,
                               viewport: frameConstraints.maxWidth,
                               origin: origin,
                             ),
@@ -283,14 +281,17 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   /// viewport (plus the partial cell) wide, so what is painted stays one
   /// screenful however far the axis has been scrolled — the open grid's
   /// rows window themselves for the same reason.
+  ///
+  /// [row] is the one the build already found standing — handed over rather
+  /// than looked up again, so the two cannot disagree about it.
   Widget _frameHalf(
-    BuildContext context, {
-    required FlipHudSnapshot snapshot,
-    required FlipHudRow row,
-    required ColorScheme colorScheme,
+    BuildContext context,
+    FlipHudRow row, {
     required double viewport,
     required double origin,
   }) {
+    final snapshot = widget.snapshot;
+    final colorScheme = Theme.of(context).colorScheme;
     final cell = widget.pixelsPerFrame;
     final at = math.max(0.0, origin);
     final first = cell <= 0 ? 0 : (at / cell).floor();
