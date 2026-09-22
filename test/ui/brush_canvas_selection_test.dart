@@ -943,7 +943,17 @@ void main() {
       sourceDabs: [dab(120, 120), dab(140, 140)],
     );
     await env.setTool(CanvasTool.move);
+    // ⚠️**BASELINE UNDER THE SAME CHROME.** This counts dark pixels over
+    // the whole panel, and the box's own buttons are dark chrome — the
+    // cancel button 유저 asked for on 2026-09-22 added ~950 of them, which
+    // a bare baseline read as a picture arriving. So the baseline is taken
+    // with a box open too, and what is left in the comparison is the
+    // PICTURE, which is what the pin is about.
+    env.commands.beginTransform();
+    await tester.pump();
     final frameTwoSettled = await drawnInk();
+    env.commands.cancelTransform();
+    await tester.pump();
     env.coordinator.selectFrame(keys.first);
     await env.setTool(CanvasTool.move);
     final frameOneSettled = await drawnInk();
@@ -1884,6 +1894,37 @@ void main() {
     expect(env.commands.transformValues!.tx, isNot(0));
   });
 
+  /// 🚨★★★**⑪취소는 버튼이고, Escape와 같은 일을 한다.**
+  ///
+  /// 🗣️유저 2026-09-22: 「상자밖은 기본은 회전에 **확정/취소만 버튼** 만들면
+  /// 쉽겟고」 — a press outside the box turns it now, so the way out cannot
+  /// be a press outside the box.
+  ///
+  /// ⛔And it reverts the MOVE too. ↩️Cancel used to leave a box that had
+  /// been moved pending while reverting one that had been scaled — two
+  /// answers to 「취소」 by which handle you had used. That split was only
+  /// real while the move lived outside the affine.
+  testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+    expect(env.commands.transformValues!.tx, isNot(0), reason: '⛔전제: 옮김');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('selection-move-cancel')),
+    );
+    await tester.pump();
+
+    expect(env.commands.transformActive, isFalse, reason: '상자가 닫혔다');
+    expect(env.commands.movePending, isFalse, reason: '세션도 끝났다');
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
+      reason: '그림이 제자리로 — 취소는 취소다',
+    );
+    expect(inkAt(env.coordinator, 40, 35), 0, reason: '옮겨진 자리는 비었다');
+  });
+
   /// 🚨★★★**⑧일반변형에도 각 변 중앙에 핸들이 있다.**
   ///
   /// 🗣️유저 2026-09-22: 「**일반변형도 자유변형처럼 각 변 중앙에 버튼? 두도록.
@@ -1989,15 +2030,19 @@ void main() {
     //
     // ↩️That case used to be 「a plain move」, which no longer exists: an
     // inside grab opens the box and the numbers behind it (유저 2026-09-22,
-    // 「이동값이 X,Y잖아」). A session still outlives its box, though —
-    // Escape closes the box and leaves the float pending — and that is the
-    // case now, which is a better one: it is the only way to reach it.
+    // 「이동값이 X,Y잖아」). And 취소 now reverts the whole session it
+    // opened, so Escape is not the way in either.
+    //
+    // ★The way in is the IDENTITY confirm: a tap inside lifts and opens a
+    // box, and Enter on a box that changed nothing closes it and leaves
+    // the float pending — 「identity closes the box with the session still
+    // pending」, which `_commitTransform` has said since R16-①.
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
-    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    await tapOnLayer(tester, const Offset(45, 45));
     expect(env.commands.movePending, isTrue, reason: '⛔fixture premise');
     expect(env.commands.transformActive, isTrue, reason: '⛔and a box');
 
-    env.commands.cancelTransform();
+    env.commands.commitTransform();
     await tester.pump();
     expect(env.commands.movePending, isTrue, reason: 'the float pends on');
     expect(env.commands.transformActive, isFalse, reason: 'the box is gone');

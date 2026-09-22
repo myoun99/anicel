@@ -2437,7 +2437,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_transform == null) {
       return;
     }
-    if (_transformOpenedLift && !_moveSessionDirty && _movePending) {
+    // ↩️`!_moveSessionDirty` stood here too, so a box that had been MOVED
+    // only closed and left its float pending while a box that had been
+    // scaled reverted whole — two answers to 「취소」 depending on which
+    // handle you had used. That distinction was real only while the move
+    // lived outside the affine: clearing the box now undoes the move with
+    // everything else, so there is nothing left for the extra term to
+    // protect. ⛔A session this box did NOT open still only loses the box
+    // (`_transformOpenedLift`), which is the case that term was mixed up
+    // with.
+    if (_transformOpenedLift && _movePending) {
       setState(_clearTransform);
       _revertMoveSession();
       return;
@@ -2890,6 +2899,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     final liftShape = targetShape;
+    // ⚠️Read BEFORE the lift, and it is the same question `_beginTransform`
+    // asks: did this gesture open the session, or ride one that was
+    // already pending? 취소 needs it — a box that opened the lift reverts
+    // the whole thing, one that rode a pending move only loses the box.
+    final hadPendingLift = _pendingLiftStamp != null;
     // R14-④/R19 pixel model: the shape's PIXELS are the content — the
     // first gesture on a selection (or on a confirmed landing) lifts
     // them fresh from the current raster.
@@ -2914,6 +2928,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       if (_transform == null) {
         _aimTransformAt(liftShape);
         _syncOffsetsToMode();
+        _transformOpenedLift = !hadPendingLift;
       }
       final affine = _transform!;
       _drag = MoveDrag(
@@ -3993,66 +4008,99 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // 🗣️유저 2026-09-18 (F-164): 「그리고 **확정버튼도 사라지는**
           // 문제」.
           if ((_movePending || _transform != null) && displayShape != null)
-            _confirmButton(displayShape),
+            _confirmBar(displayShape),
         ],
       ),
     );
   }
 
-  Positioned _confirmButton(CanvasSelectionRegion displayShape) {
+  /// 확정 and 취소, side by side at the box's corner.
+  ///
+  /// 🗣️유저 2026-09-22: 「상자밖은 기본은 회전에 **확정/취소만 버튼** 만들면
+  /// 쉽겟고」 — a press outside the box turns it now, so the way out cannot
+  /// be a press outside the box any more. The pair is 클튜's 確定/
+  /// キャンセル, which 유저 handed over as the reference.
+  ///
+  /// ⛔Cancel is wired to [_cancelTransform], which is Escape's own verb —
+  /// one law, two entrances. It is not a second way of ending a session.
+  Positioned _confirmBar(CanvasSelectionRegion displayShape) {
+    final offset = _confirmButtonOffset(displayShape);
     return Positioned(
-      left: _confirmButtonOffset(displayShape).dx,
-      top: _confirmButtonOffset(displayShape).dy,
-      child: Material(
-        key: const ValueKey<String>('selection-move-confirm'),
-        color: AppColors.selectionSession(changed: _sessionHasChanges),
-        shape: const CircleBorder(),
-        elevation: 2,
-        child: ControlPressClaim(
-          onPressed: () {
-            if (_transform != null) {
-              _commitTransform();
-            }
-            if (_movePending) {
-              _confirmMoveSession();
-            }
-          },
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            // The button is offered while a transform box is OPEN —
-            // its visibility test is `_movePending`, which says
-            // nothing about `_transform`. Wired straight to
-            // `_confirmMoveSession` it landed the unwarped lift: the
-            // artwork committed at its PRE-transform position and
-            // size, the warped preview kept painting on top until
-            // something closed the box, and the wrong landing went
-            // into history. Enter has branched on this since R16-①;
-            // the button never did.
-            //
-            // Both `if`s, not Enter's single branch. `_commitTransform`
-            // on an identity affine only closes the box and leaves
-            // the session pending, so Enter's form would make one tap
-            // of a button labelled "confirm" into two. With both, a
-            // warped box commits warped (the inner confirm fires and
-            // the outer no-ops on a null pending stamp) and an
-            // untouched box closes and confirms in one tap.
-            onTap: silentPress(() {
-              if (_transform != null) {
-                _commitTransform();
-              }
-              if (_movePending) {
-                _confirmMoveSession();
-              }
-            }),
-            child: const Padding(
-              padding: EdgeInsets.all(6),
-              child: Icon(Icons.check, size: 18, color: Colors.white),
-            ),
+      left: offset.dx,
+      top: offset.dy,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _confirmButton(displayShape),
+          const SizedBox(width: 6),
+          _cancelButton(),
+        ],
+      ),
+    );
+  }
+
+  /// ⛔The two buttons are ONE widget with two answers — a second copy of
+  /// the Material/claim/ink stack is how they would drift apart in press
+  /// behaviour, which is the thing `ControlPressClaim` exists to keep
+  /// identical everywhere.
+  Widget _sessionChromeButton({
+    required Key key,
+    required Color colour,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Material(
+      key: key,
+      color: colour,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: ControlPressClaim(
+        onPressed: onPressed,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: silentPress(onPressed),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(icon, size: 18, color: Colors.white),
           ),
         ),
       ),
     );
   }
+
+  Widget _cancelButton() => _sessionChromeButton(
+    key: const ValueKey<String>('selection-move-cancel'),
+    colour: AppColors.surfaceHigh,
+    icon: Icons.close,
+    onPressed: _cancelTransform,
+  );
+
+  /// ⛔**BOTH `if`s, not Enter's single branch.** `_commitTransform` on an
+  /// identity affine only closes the box and leaves the session pending,
+  /// so Enter's form would make one tap of a button labelled 「confirm」
+  /// into two. With both, a warped box commits warped (the inner confirm
+  /// fires and the outer no-ops on a null pending stamp) and an untouched
+  /// box closes and confirms in one tap.
+  ///
+  /// ↩️Wired straight to `_confirmMoveSession` it landed the UNWARPED
+  /// lift: the artwork committed at its pre-transform position and size,
+  /// the warped preview kept painting on top until something closed the
+  /// box, and the wrong landing went into history. Enter has branched on
+  /// this since R16-①; the button never did.
+  Widget _confirmButton(CanvasSelectionRegion displayShape) =>
+      _sessionChromeButton(
+        key: const ValueKey<String>('selection-move-confirm'),
+        colour: AppColors.selectionSession(changed: _sessionHasChanges),
+        icon: Icons.check,
+        onPressed: () {
+          if (_transform != null) {
+            _commitTransform();
+          }
+          if (_movePending) {
+            _confirmMoveSession();
+          }
+        },
+      );
 
   Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, ({List<ui.Offset> box, List<ui.Offset> handles})? chrome) {
     return Positioned.fill(
