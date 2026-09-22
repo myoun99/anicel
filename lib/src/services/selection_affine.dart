@@ -86,6 +86,26 @@ class SelectionAffine {
   double get appliedTy =>
       ty + anchorY - (anchorX * sinTheta + anchorY * cosTheta);
 
+  /// 🚨★★★**EVERY NUMBER THAT CHANGES THE PICTURE, AS ONE STRING — AND IT
+  /// LIVES HERE.**
+  ///
+  /// ⛔**A CACHE KEY WRITTEN SOMEWHERE ELSE CANNOT KNOW THIS CLASS GREW.**
+  /// The resample cache spelled seven of these fields by hand, in the
+  /// layer. [anchorX] and [anchorY] arrived on 2026-09-20 and that string
+  /// never heard about them, so two affines that differed only in WHERE
+  /// THE TURN HAPPENS hashed the same and the cache answered one with the
+  /// other's picture. 🗣️유저 2026-09-22 saw it: 「중심 십자가를 다른데 두고
+  /// **회전시키면** … **엄청나게 깜빡이면서 원래위치랑 향하려는 위치
+  /// 방향으로 서로 순간이동**해」 — a frame that hit the stale entry and a
+  /// frame that recomputed, alternating.
+  ///
+  /// ⚠️`the_key_knows_every_field_test` fails if a field is added to this
+  /// class and not to this string. That ratchet is the point: 「I will
+  /// remember」 is what was tried and it is what broke.
+  String get cacheKey =>
+      '$sx,$sy,$rotationDegrees,$tx,$ty,'
+      '${pivot.x},${pivot.y},$anchorX,$anchorY';
+
   /// WHERE THE CROSS IS DRAWN — the rotation's centre in canvas space.
   ///
   /// Read [appliedTx]'s composite as `R·(q − a) + a + pivot + t`, where

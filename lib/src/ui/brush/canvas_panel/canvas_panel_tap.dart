@@ -148,6 +148,14 @@ class _CanvasPanelTap {
   }
 
   void _toolTapDown(PointerDownEvent event) {
+    // 🚨★★★**A PRESS THAT LANDED ON A CONTROL IS THAT CONTROL'S** — 유저
+    // 2026-09-22: 「버튼에 오는 동작은 **무조건 버튼꺼야**」. The selection
+    // layer above learned this the same day; this surface is the other
+    // half of the canvas and answers it the same way, rather than waiting
+    // for a control to float over IT and be reported separately.
+    if (controlOwnsTap(event.pointer)) {
+      return;
+    }
     // PRIMARY contact only (R22-B):
     // the middle-button pan (the
     // ancestor gesture layer) used

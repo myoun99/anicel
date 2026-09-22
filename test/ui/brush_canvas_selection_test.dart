@@ -2012,6 +2012,60 @@ void main() {
   /// been moved pending while reverting one that had been scaled — two
   /// answers to 「취소」 by which handle you had used. That split was only
   /// real while the move lived outside the affine.
+  /// 🚨★★★**A PRESS THAT LANDS ON A BUTTON IS THE BUTTON'S. ALL OF IT.**
+  ///
+  /// 🗣️유저 2026-09-22, the fifth time and explicitly the last: 「왜
+  /// **확정/취소버튼을 클릭하면서 드래그하면 회전이 작동**하지? 버튼에 오는
+  /// 동작은 **버튼이 무조건 가져가야하는거아냐**? 지금 우리 프로그램
+  /// 그렇게 짜고있을텐데? **마지막 경고니까 다신 이딴식으로 하지마. 버튼에
+  /// 오는 동작은 무조건 버튼꺼야**」.
+  ///
+  /// ⛔The law and its keeper both already existed (`control_press_claim`,
+  /// CLAUDE.md). The buttons wore the claim; this LAYER never asked. Its
+  /// `Listener` is an ancestor of them, so the press reached the canvas
+  /// after the button had already taken it, and 「outside the box」 — which
+  /// the button floats in — is the rotation.
+  testWidgets('🚨확정/취소 버튼 위에서 시작한 드래그는 회전이 아니다', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+    final before = env.commands.transformValues!;
+
+    for (final key in const ['selection-move-confirm', 'selection-move-cancel']) {
+      final button = find.byKey(ValueKey<String>(key));
+      expect(button, findsOneWidget, reason: '⛔전제: $key 가 화면에 있다');
+      final press = await tester.startGesture(tester.getCenter(button));
+      await tester.pump();
+      await press.moveBy(const Offset(24, 18));
+      await tester.pump();
+      await press.moveBy(const Offset(24, 18));
+      await tester.pump();
+
+      expect(
+        env.commands.transformValues?.rotationDegrees,
+        before.rotationDegrees,
+        reason: '🚨$key 위에서 끈 것은 회전이 아니다 — 유저: 「버튼에 오는 동작은 '
+            '무조건 버튼꺼야」',
+      );
+      expect(
+        env.commands.transformValues?.tx,
+        before.tx,
+        reason: '⛔그리고 이동도 아니다 — 버튼의 것이지 캔버스의 것이 아니다',
+      );
+      await press.up();
+      await tester.pump();
+    }
+  });
+
   testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {
     final env = await pumpSelectionPanel(
       tester,

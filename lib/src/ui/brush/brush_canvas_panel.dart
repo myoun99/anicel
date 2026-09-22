@@ -89,6 +89,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../listenable_rebind.dart';
 import '../repaint_props.dart';
+import '../input/value_control_pointers.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';

@@ -261,10 +261,6 @@ enum AppStrings {
   String get fpsAudioPull => _s('fpsAudioPull');
 
   // --- The pending selection-move prompt (R17-①) ---
-  String get selectionMoveConfirmTitle => _s('selectionMoveConfirmTitle');
-  String get selectionMoveConfirmBody => _s('selectionMoveConfirmBody');
-  String get selectionMoveRevert => _s('selectionMoveRevert');
-  String get selectionMoveApply => _s('selectionMoveApply');
 
   /// Closes an open polygon outline. A tablet has no Enter key, so the
   /// confirm has to be reachable as a button too (the same reason the
@@ -1653,10 +1649,6 @@ enum AppStrings {
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
-    'selectionMoveConfirmTitle': 'Commit move',
-    'selectionMoveConfirmBody': 'Commit the selection move?',
-    'selectionMoveRevert': 'Revert',
-    'selectionMoveApply': 'Commit',
     'selectionClosePolygon': 'Close shape',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
@@ -2691,10 +2683,6 @@ enum AppStrings {
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
-    'selectionMoveConfirmTitle': '移動の確定',
-    'selectionMoveConfirmBody': '選択範囲の移動を確定しますか？',
-    'selectionMoveRevert': '元に戻す',
-    'selectionMoveApply': '確定',
     'selectionClosePolygon': '形を閉じる',
     'commonSave': '保存',
     'commonDelete': '削除',
@@ -3982,10 +3970,6 @@ enum AppStrings {
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
-    'selectionMoveConfirmTitle': '이동 확정',
-    'selectionMoveConfirmBody': '선택 영역 이동을 확정하시겠습니까?',
-    'selectionMoveRevert': '되돌리기',
-    'selectionMoveApply': '확정',
     'selectionClosePolygon': '도형 닫기',
     'commonSave': '저장',
     'commonDelete': '삭제',
@@ -5272,10 +5256,6 @@ enum AppStrings {
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
-    'selectionMoveConfirmTitle': 'Valider le déplacement',
-    'selectionMoveConfirmBody': 'Valider le déplacement de la sélection ?',
-    'selectionMoveRevert': 'Rétablir',
-    'selectionMoveApply': 'Valider',
     'selectionClosePolygon': 'Fermer la forme',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
@@ -6613,10 +6593,6 @@ enum AppStrings {
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
-    'selectionMoveConfirmTitle': '确认移动',
-    'selectionMoveConfirmBody': '要确认选区的移动吗？',
-    'selectionMoveRevert': '还原',
-    'selectionMoveApply': '确认',
     'selectionClosePolygon': '闭合形状',
     'commonSave': '保存',
     'commonDelete': '删除',
