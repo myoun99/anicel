@@ -350,6 +350,22 @@ String mediaFileName(String path) {
   final name = segments.isEmpty ? path : segments.last;
   return name.isEmpty ? path : name;
 }
+/// The name of the folder [path] SITS IN: its second-to-last segment,
+/// read in the one spelling [normalizedMediaPath] puts every path in. Null
+/// when the path names nothing above itself.
+///
+/// ⛔Not `Directory(path).parent`, which answers with the PLATFORM's idea of
+/// a separator — a path spelled `C:\a\b` read where `/` separates has no
+/// parent at all, and the cut folder parse then handed `.` out as the
+/// process name (Linux CI, 2026-09-21). One path, one spelling rule.
+String? mediaParentFolderName(String path) {
+  final segments = normalizedMediaPath(path)
+      .split('/')
+      .where((segment) => segment.isNotEmpty)
+      .toList();
+  return segments.length < 2 ? null : segments[segments.length - 2];
+}
+
 
 /// [path]'s file name split at its extension: the NAME a person reads and
 /// renames, and the extension that stays the file's.

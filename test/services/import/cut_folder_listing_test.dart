@@ -58,4 +58,45 @@ void main() {
       reason: 'the parent named the process; dropping it loses that answer',
     );
   });
+
+  test('the address is read in ONE spelling, whatever the machine '
+      'separates paths with', () {
+    // 🚨The same folder written the other way answers the same, because the
+    // parent's name is read with the rule [mediaFileName] reads the folder's
+    // own with — not with `Directory.parent`, which knows only the spelling
+    // of the machine it runs on. A Windows-spelled address on a `/` machine
+    // had no parent at all there, and the process came back `.` (Linux CI,
+    // 2026-09-21).
+    CutFolderParseResult parseAt(String folder) => parseCutFolderAt(
+      folder,
+      entries: [const CutFolderEntry('A1.png')],
+      config: const CutFolderParseConfig(
+        nameRule: CutFolderNameRule.cutNumberOnly,
+        parentFolderProcessHint: true,
+      ),
+    );
+
+    for (final folder in [r'C:\deliveries\lo\069', '/deliveries/lo/069']) {
+      final parsed = parseAt(folder);
+      expect(parsed.folderName, '069', reason: folder);
+      expect(parsed.processTokens, ['lo'], reason: folder);
+    }
+  });
+
+  test('a folder with nothing above it hints at no process at all', () {
+    // ⛔`Directory('069').parent.path` is `.`, and `.` used to reach the
+    // parse as a process NAME. Nothing above the folder is nothing, not a
+    // token made of the current directory.
+    final parsed = parseCutFolderAt(
+      '069',
+      entries: [const CutFolderEntry('A1.png')],
+      config: const CutFolderParseConfig(
+        nameRule: CutFolderNameRule.cutNumberOnly,
+        parentFolderProcessHint: true,
+      ),
+    );
+
+    expect(parsed.folderName, '069');
+    expect(parsed.processTokens, isEmpty);
+  });
 }
