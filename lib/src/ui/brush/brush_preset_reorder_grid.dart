@@ -162,6 +162,7 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
   /// from a reorder — see the comment in [build].
   int? _laidOutColumns;
   double? _laidOutCellWidth;
+  double? _laidOutCellHeight;
 
   /// Where it would land if the pointer let go now.
   int? _targetIndex;
@@ -237,13 +238,24 @@ class _BrushPresetReorderGridState extends State<BrushPresetReorderGrid> {
         // its frames INSIDE one count, and the cells have to follow it there
         // too. Both null on the first build reads as "re-laid out", which is
         // right — a first build must not animate either.
+        //
+        // 🚨CELL HEIGHT COUNTS TOO, and not only for the swimming: the
+        // allotment is what the row DRAWS in. Turning the name band on grows
+        // both at once, so animating the box means the row draws its 46 of
+        // content inside the 34 the old view allotted — 「A RenderFlex
+        // overflowed by 14 pixels」, for exactly the band's height, until
+        // the ease-out lands (Linux CI, 2026-09-21). A height change is a
+        // re-layout, like a width change, and re-layouts do not animate.
         final relaidOut =
-            _laidOutColumns != columns || _laidOutCellWidth != cellWidth;
+            _laidOutColumns != columns ||
+            _laidOutCellWidth != cellWidth ||
+            _laidOutCellHeight != widget.cellHeight;
         // ⚠️Written during build ON PURPOSE and with no setState: this is
         // layout the builder just derived, remembered so the NEXT build can
         // tell what changed. Calling setState here would be the loop.
         _laidOutColumns = columns;
         _laidOutCellWidth = cellWidth;
+        _laidOutCellHeight = widget.cellHeight;
 
         Widget cellAt(int slot) {
           final index = order[slot];

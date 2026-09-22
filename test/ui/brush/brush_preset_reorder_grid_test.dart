@@ -40,14 +40,17 @@ void main() {
   });
 
   group('⛔a resize is not a reorder', () {
-    Widget gridAt(double width) => MaterialApp(
+    Widget gridAt(
+      double width, {
+      double cellHeight = brushPresetRowHeight,
+    }) => MaterialApp(
       home: Scaffold(
         body: SizedBox(
           width: width,
           height: 400,
           child: BrushPresetReorderGrid(
             itemCount: 6,
-            cellHeight: brushPresetRowHeight,
+            cellHeight: cellHeight,
             itemKey: (index) => ValueKey<String>('cell-$index'),
             itemBuilder: (context, index) => ColoredBox(
               color: Colors.blue,
@@ -111,6 +114,42 @@ void main() {
         tester.getTopLeft(find.byKey(const ValueKey<String>('cell-1'))).dx,
         150,
         reason: 'column 1 starts at half of 300 the moment the panel is 300',
+      );
+    });
+
+    testWidgets('and a cell that gets TALLER is its new height on that '
+        'frame — the allotment is what the row DRAWS in', (tester) async {
+      // 🚨Not a third flavour of the swimming: the height is the one piece
+      // of this geometry the ROW is measured against. `brushPresetRow` draws
+      // stroke + name inside the allotment less the gap and the padding, so
+      // an allotment still easing from 34 up to 48 gives the row 28 to put
+      // 42 in — 「A RenderFlex overflowed by 14 pixels」, the name band's
+      // height exactly, on every frame until the ease-out lands (Linux CI,
+      // 2026-09-21).
+      //
+      // ⚠️ONE pump again: `pumpAndSettle` would end at 48 whether or not
+      // anything animated, and would step over every overflowing frame.
+      const tall = 48.0;
+      await tester.pumpWidget(gridAt(260));
+      expect(
+        tester.getSize(find.byKey(const ValueKey<String>('cell-0'))).height,
+        brushPresetRowHeight,
+        reason: 'fixture premise: the stroke-only allotment',
+      );
+
+      await tester.pumpWidget(gridAt(260, cellHeight: tall));
+      await tester.pump();
+
+      expect(
+        tester.getSize(find.byKey(const ValueKey<String>('cell-0'))).height,
+        tall,
+        reason: 'the cell is ALREADY as tall as the view it now draws — an '
+            'allotment still easing up would hand the row too little',
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey<String>('cell-2'))).dy,
+        tall,
+        reason: 'and the row below starts under it, not where it was',
       );
     });
 
