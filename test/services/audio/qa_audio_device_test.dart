@@ -192,16 +192,22 @@ void main() {
     test('openAudioOutput opens on an unattached NAME — the fallback is to '
         'the system default, never to silence (AUDIO-PRO R4)', () {
       final device = QaAudioDevice.instance!;
-      if (device.devicesOf(capture: false).isEmpty) {
-        // 🚨A machine that enumerates NO output has no system default to
-        // fall back TO, so the open below fails for want of hardware
-        // rather than for want of the fallback this bench is about — a CI
-        // runner with no sound card is exactly that (2026-09-21). ⛔The
-        // guard asks with the same call the product asks with, so it
-        // cannot drift into skipping a machine that does have a device.
-        markTestSkipped('no playback device on this machine');
+      // 🚨ASK WHETHER THE DEFAULT OPENS, not whether anything enumerates.
+      // A runner with no sound card still lists an ALSA default and then
+      // refuses to open it, so the enumeration answered yes and this bench
+      // failed for want of hardware (Linux CI, 2026-09-22 — the first guard
+      // asked `devicesOf` and never fired). What is under test is WHICH
+      // device the fallback picks, and that presupposes a default that
+      // opens; where none does, there is nothing to fall back to.
+      //
+      // ⚠️It keeps its teeth: a machine whose default opens must also open
+      // through the unattached name below, and a failure there is the
+      // product's, not the runner's.
+      if (device.open(sampleRate: 48000, channels: 2) <= 0) {
+        markTestSkipped('no playback device opens on this machine');
         return;
       }
+      device.close();
       expect(
         openAudioOutput(
           device,
