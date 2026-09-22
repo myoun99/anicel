@@ -4427,7 +4427,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  SelectionTransformChrome? _transformChrome(List<CanvasPoint>? placedMesh, List<CanvasPoint>? placedCorners, SelectionAffine? chromeAffine, double chromeWidth, double chromeHeight) {
+  /// What the ants painter draws over the box: the outline, the grips and
+  /// the anchor cross, in viewport space.
+  ///
+  /// THREE SHAPES, one per what the box currently IS — a mesh's warped
+  /// boundary, a 퍼스 quad, or the plain affine box — and each is its own
+  /// builder. ↩️They were one nested ternary holding all three record
+  /// literals, which scored 29 against a warning line of 15: every reader
+  /// had to unwind the whole chain to find out what one mode draws.
+  SelectionTransformChrome? _transformChrome(
+    List<CanvasPoint>? placedMesh,
+    List<CanvasPoint>? placedCorners,
+    SelectionAffine? chromeAffine,
+    double chromeWidth,
+    double chromeHeight,
+  ) {
     // ⚠️ONE anchor for all three chromes. The cross is the ROTATION's
     // centre and every mode can be turned (outside the box is the
     // rotation, whatever mode is armed), so hiding it in 퍼스/메쉬 would
@@ -4435,50 +4449,72 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final anchor = chromeAffine == null
         ? null
         : _mapCanvasToViewportOffset(chromeAffine.anchorCanvas);
-    final chrome = placedMesh != null
-        ? (
-            box: [
-              for (final point in _meshBoundary(placedMesh))
-                _mapCanvasToViewportOffset(point),
-            ],
-            handles: [
-              for (final point in placedMesh) _mapCanvasToViewportOffset(point),
-            ],
-            anchor: anchor,
-          )
-        : placedCorners != null && chromeAffine != null
-        ? (
-            box: [
-              for (final point in placedCorners)
-                _mapCanvasToViewportOffset(point),
-            ],
-            handles: [
-              for (final point in placedCorners)
-                _mapCanvasToViewportOffset(point),
-              for (final handle in _scaleHandles)
-                _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
-            ],
-            anchor: anchor,
-          )
-        : chromeAffine == null
-        ? null
-        : (
-            box: [
-              for (final point in _boxShapeFor(
-                chromeAffine,
-                chromeWidth,
-                chromeHeight,
-              ).points)
-                _mapCanvasToViewportOffset(point),
-            ],
-            handles: [
-              for (final handle in _scaleHandles)
-                _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
-            ],
-            anchor: anchor,
-          );
-    return chrome;
+    if (placedMesh != null) {
+      return _meshChrome(placedMesh, anchor);
+    }
+    if (chromeAffine == null) {
+      return null;
+    }
+    // The affine box's own grips, which BOTH remaining shapes wear: 퍼스
+    // keeps them under its quad, because non-uniform scaling lives there
+    // and hiding them would hide half the tool.
+    final grips = [
+      for (final handle in _scaleHandles)
+        _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
+    ];
+    if (placedCorners != null) {
+      return _quadChrome(placedCorners, grips, anchor);
+    }
+    return _boxChrome(chromeAffine, chromeWidth, chromeHeight, grips, anchor);
   }
+
+  /// 메쉬: the control points ARE the handles, and the outline is the grid's
+  /// warped boundary.
+  SelectionTransformChrome _meshChrome(
+    List<CanvasPoint> placedMesh,
+    ui.Offset? anchor,
+  ) => (
+    box: [
+      for (final point in _meshBoundary(placedMesh))
+        _mapCanvasToViewportOffset(point),
+    ],
+    handles: [
+      for (final point in placedMesh) _mapCanvasToViewportOffset(point),
+    ],
+    anchor: anchor,
+  );
+
+  /// 퍼스: the quad, its four corners, and the affine box's grips beneath.
+  SelectionTransformChrome _quadChrome(
+    List<CanvasPoint> placedCorners,
+    List<ui.Offset> grips,
+    ui.Offset? anchor,
+  ) => (
+    box: [
+      for (final point in placedCorners) _mapCanvasToViewportOffset(point),
+    ],
+    handles: [
+      for (final point in placedCorners) _mapCanvasToViewportOffset(point),
+      ...grips,
+    ],
+    anchor: anchor,
+  );
+
+  /// 일반: the affine box and nothing else.
+  SelectionTransformChrome _boxChrome(
+    SelectionAffine affine,
+    double width,
+    double height,
+    List<ui.Offset> grips,
+    ui.Offset? anchor,
+  ) => (
+    box: [
+      for (final point in _boxShapeFor(affine, width, height).points)
+        _mapCanvasToViewportOffset(point),
+    ],
+    handles: grips,
+    anchor: anchor,
+  );
 
   CanvasSelectionRegion? _displayShape(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners) {
     var displayShape = transform != null && region != null
