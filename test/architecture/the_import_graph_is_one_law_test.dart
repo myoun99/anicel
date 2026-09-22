@@ -70,6 +70,19 @@ void main() {
         {'lib/src/ui/thing.dart'},
       );
     });
+
+    test('a file addressed from the ROOT keeps it', () {
+      // 🚨The walk keys every file by the path it was listed at, so an edge
+      // that dropped the leading slash pointed at a node no walk ever made:
+      // the import was simply not counted, and neither was the fan-in from
+      // it. Only machines whose paths START at the root could show it —
+      // on Windows a drive is an ordinary first segment (Linux CI,
+      // 2026-09-21).
+      expect(
+        importsOf('/tmp/build/a.dart', "import 'sub/../b.dart';"),
+        {'/tmp/build/b.dart'},
+      );
+    });
   });
 
   group('what is not an edge', () {

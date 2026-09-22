@@ -123,7 +123,14 @@ String dirOf(String path) {
 }
 
 /// Collapses `a/b/../c` to `a/c` so two spellings of one file are one node.
+///
+/// ⛔A POSIX absolute path KEEPS its leading `/`. Dropping it turned
+/// `/tmp/x/beta.dart` into `tmp/x/beta.dart` — a different node from the one
+/// the walk keyed the file under — so the import edge, and the fan-in counted
+/// from it, simply vanished. Windows never showed this: `C:` is an ordinary
+/// first segment there (found on Linux CI, 2026-09-21).
 String normalisePath(String path) {
+  final fromRoot = path.startsWith('/');
   final parts = <String>[];
   for (final part in path.split('/')) {
     if (part == '.' || part.isEmpty) continue;
@@ -133,7 +140,8 @@ String normalisePath(String path) {
       parts.add(part);
     }
   }
-  return parts.join('/');
+  final joined = parts.join('/');
+  return fromRoot ? '/$joined' : joined;
 }
 
 /// Every set of files in [graph] that import each other around a loop: the
