@@ -3322,6 +3322,7 @@ class EditorSessionManager extends ChangeNotifier
     frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
+    solo: visibilitySolo,
   );
 
   // ── the project-wide audio settings: their own object ────────────────
