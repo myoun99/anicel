@@ -93,10 +93,18 @@ jobs:
       # Generated.xcconfig from right here. It has to climb, because App
       # Store Connect rejects a build number it has already seen, and the
       # run number climbs on its own.
+      #
+      # 🚨THE +1000 IS NOT DECORATION. While the account was suspended the
+      # builds came from Codemagic, which numbered them `BUILD_NUMBER + 1000`
+      # — so TestFlight already holds 1006 for version 0.1.0, while this
+      # workflow's run number is in the fifties. Handing Apple a 53 after a
+      # 1006 is rejected outright, and the rejection reads as a signing or
+      # upload failure rather than as arithmetic. The offset puts this
+      # workflow back above the stopgap for good (2026-09-22).
       - name: Build Flutter iOS artifacts
         run: |
           flutter build ios --release --no-codesign \
-            --build-number=${{ github.run_number }}
+            --build-number=$(( ${{ github.run_number }} + 1000 ))
 
       - uses: ruby/setup-ruby@v1
         with:
