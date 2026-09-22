@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 
@@ -75,8 +76,8 @@ void main() {
 
     // The same two cells the buttons' own test reads after copy + linked
     // paste (`home_frame_and_clipboard_test`).
-    expectCellText(_row, 0, '○');
-    expectCellText(_row, 1, '○');
+    expectCellText(_row, 0, unnamedDrawingMark);
+    expectCellText(_row, 1, unnamedDrawingMark);
   });
 
   for (final (name, button, key, control) in const [

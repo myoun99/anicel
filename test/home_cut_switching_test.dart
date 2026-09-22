@@ -3,6 +3,7 @@
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -132,7 +133,7 @@ void main() {
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
     expectCellText('layer-1', 0, 'X');
-    expectCellText('layer-1', 1, '○');
+    expectCellText('layer-1', 1, unnamedDrawingMark);
     expect(selectedCellStateLabel(tester), 'drawing start');
 
     await switchToCut(tester, 'default-cut-1');
@@ -140,12 +141,12 @@ void main() {
     await expectActiveCutName(tester, '1');
     expectActiveLayerName('A');
     expectCellText('default-layer-1', 0, 'X');
-    expectNoCellText('default-layer-1', 1, '○');
+    expectNoCellText('default-layer-1', 1, unnamedDrawingMark);
 
     await switchToCut(tester, 'cut-1');
 
     await expectActiveCutName(tester, '2');
-    expectCellText('layer-1', 1, '○');
+    expectCellText('layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets(
@@ -163,7 +164,7 @@ void main() {
         tester,
         const ValueKey<String>('new-frame-button'),
       );
-      expectCellText('layer-1', 1, '○');
+      expectCellText('layer-1', 1, unnamedDrawingMark);
 
       // Grow the block to [1,4) so a held cell can take the dot, cut the
       // hold back at 3, then dot the held cell at 2 (dots are block-owned).
@@ -228,7 +229,7 @@ void main() {
     // semantics label under the unified model.
     expect(selectedCellStateLabel(tester), isNull);
     expectCellText('default-layer-1', 0, 'X');
-    expectNoCellText('default-layer-1', 1, '○');
+    expectNoCellText('default-layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets(
@@ -287,12 +288,12 @@ void main() {
 
       expectNoCellText('default-layer-1', 1, 'X');
       expectNoCellText('default-layer-1', 2, 'X');
-      expectCellText('default-layer-1', 4, '○');
+      expectCellText('default-layer-1', 4, unnamedDrawingMark);
 
       // The whole drag is ONE undo step.
       await tapToolbarButton(tester, const ValueKey<String>('undo-button'));
       expectCellText('default-layer-1', 1, 'X');
-      expectCellText('default-layer-1', 3, '○');
+      expectCellText('default-layer-1', 3, unnamedDrawingMark);
 
       // START-edge drag across several cells in ONE gesture: the live
       // preview moves the block's start every step, and the drag must
@@ -314,9 +315,9 @@ void main() {
       await frontDrag.up();
       await tester.pumpAndSettle();
 
-      expectCellText('default-layer-1', 1, '○');
+      expectCellText('default-layer-1', 1, unnamedDrawingMark);
       expectNoCellText('default-layer-1', 2, 'X');
-      expectNoCellText('default-layer-1', 3, '○');
+      expectNoCellText('default-layer-1', 3, unnamedDrawingMark);
     },
   );
 
@@ -359,7 +360,7 @@ void main() {
         ),
         isFalse,
       );
-      expectNoCellText('layer-1', 1, '○');
+      expectNoCellText('layer-1', 1, unnamedDrawingMark);
     },
   );
 
@@ -375,17 +376,17 @@ void main() {
       const ValueKey<String>('timeline-cell-layer-1-1'),
     );
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expectCellText('layer-1', 1, '○');
+    expectCellText('layer-1', 1, unnamedDrawingMark);
 
     await tapUndoButton(tester);
 
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
-    expectNoCellText('layer-1', 1, '○');
+    expectNoCellText('layer-1', 1, unnamedDrawingMark);
 
     await tapRedoButton(tester);
 
     await expectActiveCutName(tester, '2');
-    expectCellText('layer-1', 1, '○');
+    expectCellText('layer-1', 1, unnamedDrawingMark);
   });
 }

@@ -56,13 +56,13 @@ enum TimesheetCellKind {
 
   /// A drawing exposure starts here; [TimesheetCell.label] carries the cel
   /// number ([Frame.celNumber] — the cel export files by the same rule) or
-  /// the ○ mark for an unnamed drawing.
+  /// the in-between mark for an unnamed drawing.
   drawing,
 
   /// Covered by the drawing above (the hold line runs through this row).
   held,
 
-  /// An inbetween mark (drawn as the sheet's ○).
+  /// An in-between mark (the sheet draws it as a filled dot).
   mark,
 
   /// First row of a REPEAT ghost chain (UI-R10 #6): the painter prints

@@ -3,6 +3,7 @@
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
 
@@ -25,16 +26,16 @@ void main() {
     expect(find.byKey(const ValueKey<String>('redo-button')), findsOneWidget);
 
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expectCellText('default-layer-1', 0, '○');
+    expectCellText('default-layer-1', 0, unnamedDrawingMark);
 
     await tapUndoButton(tester);
 
     expectCellText('default-layer-1', 0, 'X');
-    expectNoCellText('default-layer-1', 0, '○');
+    expectNoCellText('default-layer-1', 0, unnamedDrawingMark);
 
     await tapRedoButton(tester);
 
-    expectCellText('default-layer-1', 0, '○');
+    expectCellText('default-layer-1', 0, unnamedDrawingMark);
   });
 
   testWidgets('dragging Cut 2 before Cut 1 keeps Cut 2 active', (

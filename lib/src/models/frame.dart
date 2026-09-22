@@ -4,10 +4,24 @@ import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
 import 'text_cel_style.dart';
 
+/// The in-between division mark (中割) — the one glyph both of its uses
+/// print: a drawing without a cel number, and the dot inside a block.
+///
+/// 🚨★★F-149 (유저 2026-09-16): 「프레임 이름 없는 기본 상태도 중간나누기
+/// 마크(속이 빈 동그라미)고, 중간나누기 마크(속이 찬 동그라미)도 중간나누기
+/// 마크인건 맞는데, 중간나누기 설정은 2개로 두고싶지만, 일단 이름 없는
+/// 기본상태를 속이 찬 동그라미로 통일적용. 추후 두번째 중간나누기
+/// 마크(속이 빈)를 활용할지도 모르겠지만 당장은 제거」.
+///
+/// ⇒ TWO names below, ONE glyph here. The hollow ○ the unnamed drawing
+/// printed until now is retired; the day 유저 wants a second mark back,
+/// [unnamedDrawingMark] gets its own glyph and nothing else moves.
+const String inbetweenMark = '●';
+
 /// What a drawing without a cel number prints where the number would stand
-/// — the in-between division mark (中割), the same on the sheet, the
-/// timeline, the flip HUD, the storyboard and a save's notice.
-const String unnamedDrawingMark = '○';
+/// — the in-between mark, the same on the sheet, the timeline, the flip
+/// HUD, the storyboard and a save's notice.
+const String unnamedDrawingMark = inbetweenMark;
 
 /// The cel number a drawing named [name] prints: [name] trimmed, or null
 /// when nothing is left of it.

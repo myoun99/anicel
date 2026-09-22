@@ -3,6 +3,7 @@
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/main.dart';
 
 import 'helpers/home_page_probes.dart';
@@ -250,7 +251,7 @@ void main() {
         isTrue,
       );
       // The drawing start is untouched.
-      expectCellText('default-layer-1', 0, '○');
+      expectCellText('default-layer-1', 0, unnamedDrawingMark);
 
       await tester.ensureVisible(markButton);
       await tester.pumpAndSettle();
@@ -284,7 +285,7 @@ void main() {
       await tester.tap(newFrameButton);
       await tester.pumpAndSettle();
 
-      expectCellText('default-layer-1', 0, '○');
+      expectCellText('default-layer-1', 0, unnamedDrawingMark);
       expectCellText('default-layer-2', 0, 'X');
       expect(anyCellSemanticsLabel('default-layer-1', 'drawing start'), isTrue);
       expect(

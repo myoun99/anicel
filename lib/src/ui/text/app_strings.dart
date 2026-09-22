@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/app_language.dart';
+import '../../models/frame.dart' show inbetweenMark;
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -2595,7 +2596,7 @@ enum AppStrings {
     'cnActionColumn': 'Action',
     'cnConte': 'Conte',
     'tlBlankX': 'Blank / X',
-    'tlMark': 'Mark ●',
+    'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
     'tlSetCommaTemplate': 'Set {n} comma exposure',
     'tlProjectAudioRate': 'Project audio sample rate',
@@ -3882,7 +3883,7 @@ enum AppStrings {
     'cnActionColumn': 'アクション',
     'cnConte': '絵コンテ',
     'tlBlankX': '中割なし / ×',
-    'tlMark': 'マーク ●',
+    'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
     'tlSetCommaTemplate': '{n}コマに設定',
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
@@ -5164,7 +5165,7 @@ enum AppStrings {
     'cnActionColumn': '액션',
     'cnConte': '콘티',
     'tlBlankX': '중간 없음 / ×',
-    'tlMark': '마크 ●',
+    'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
     'tlSetCommaTemplate': '{n}코마로 설정',
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
@@ -6507,7 +6508,7 @@ enum AppStrings {
     'cnActionColumn': 'Action',
     'cnConte': 'Storyboard',
     'tlBlankX': 'Vide / X',
-    'tlMark': 'Repère ●',
+    'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
     'tlSetCommaTemplate': 'Régler sur {n} comma',
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
@@ -7718,7 +7719,7 @@ enum AppStrings {
     'cnActionColumn': '动作',
     'cnConte': '分镜',
     'tlBlankX': '空 / ×',
-    'tlMark': '标记 ●',
+    'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',
     'tlSetCommaTemplate': '设为 {n} 格',
     'tlProjectAudioRate': '项目音频采样率',

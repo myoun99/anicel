@@ -209,7 +209,7 @@ void main() {
       ),
     );
 
-    expect(_xsheetGlyph(tester, 'layer-2', 2), '○');
+    expect(_xsheetGlyph(tester, 'layer-2', 2), unnamedDrawingMark);
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -272,7 +272,7 @@ void main() {
   testWidgets('empty cells stay blank', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(_xsheetGlyph(tester, 'layer-1', 2), isNot('○'));
+    expect(_xsheetGlyph(tester, 'layer-1', 2), isNot(unnamedDrawingMark));
     expect(
       timelineCellModel(tester, 'layer-1', 2, prefix: 'xsheet').semanticsLabel,
       isNull,
@@ -360,7 +360,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    expect(_xsheetGlyph(tester, 'layer-1', 0), '○');
+    expect(_xsheetGlyph(tester, 'layer-1', 0), unnamedDrawingMark);
 
     await tester.pumpWidget(
       _grid(

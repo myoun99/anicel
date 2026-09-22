@@ -102,7 +102,7 @@ class StoryboardCutBlockVisual {
   final List<StoryboardCoverageCell> cells;
 
   /// Each panel's frame NAME (#15: the timeline convention — the name, or
-  /// `○` when unnamed; `●` stays the inbetween mark's), parallel to
+  /// the in-between mark when unnamed), parallel to
   /// [cells]; empty string on the no-row placeholder cell. EMPTY LISTS
   /// when the bands fold — folding that far means watching the cuts, not
   /// the panels, so the writing is omitted at the source (probe-visible).
@@ -448,10 +448,17 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// The panels' writing (#15): frame name + comma count per cell, the
-  /// timeline row's conventions (`○` unnamed head — `●` would read as
-  /// an inbetween mark). Safe to resolve here — the row lookup no
+  /// timeline row's conventions (an unnamed head prints the in-between
+  /// mark). Safe to resolve here — the row lookup no
   /// longer throws on duplicates (#760). A folded block carries no
   /// writing at all: folding that far means watching the cuts.
+  ///
+  /// ↩️#15 kept the unnamed head HOLLOW (`○`) precisely so it would NOT
+  /// read as the in-between dot (`●`). 유저 reversed that on 2026-09-16
+  /// (F-149): 「일단 이름 없는 기본상태를 속이 찬 동그라미로 통일적용 …
+  /// 당장은 제거」 — an unnamed drawing IS an in-between mark, so reading as
+  /// one is the point now, and the storyboard follows by asking the same
+  /// [celNumberOrMark] as the timeline.
   ({List<String> names, List<String> commaLabels}) _cellWriting(
     StoryboardTimelineLayoutEntry entry,
     List<StoryboardCoverageCell> cells, {

@@ -298,9 +298,9 @@ Iterable<ExportCelGroupTask> _bundleTasks(
 ) sync* {
   for (final axisFrame in bundle.axis.frames) {
     // An unnamed drawing is the in-between mark, not a cel: no file. The
-    // sheet prints ○ for the very same frame ([Frame.celNumber] decides
-    // for both); numbering it by position here invented a cel the sheet
-    // never listed (유저 2026-09-09).
+    // sheet prints the mark for the very same frame ([Frame.celNumber]
+    // decides for both); numbering it by position here invented a cel the
+    // sheet never listed (유저 2026-09-09).
     final celName = axisFrame.celNumber;
     if (celName == null) {
       continue;

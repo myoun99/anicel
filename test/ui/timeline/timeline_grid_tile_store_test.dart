@@ -277,7 +277,7 @@ void main() {
     }
   });
 
-  test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s ○ '
+  test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s mark '
       'glyph shows up as a strong delta over the substrate alone', () async {
     if (!available) {
       markTestSkipped('qa_engine.dll not built');

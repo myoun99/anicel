@@ -586,9 +586,9 @@ class FrameVerbs {
       TimelineCellExposureState.drawingStart => celNumberOrMark(frame?.name),
       TimelineCellExposureState.held => celNumber ?? '',
       TimelineCellExposureState.markHeld =>
-        celNumber == null ? '●' : '$celNumber ●',
+        celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',
       TimelineCellExposureState.uncovered => 'X',
-      TimelineCellExposureState.markUncovered => '●',
+      TimelineCellExposureState.markUncovered => inbetweenMark,
     };
   }
 }

@@ -668,7 +668,7 @@ enum LayerKind {
   bool get mirrorsEffects => filtersBelow;
 
   /// Whether a row's frame BAND is the instruction adapter and nothing else —
-  /// no timeline of its own, so no cels, no names, no ○.
+  /// no timeline of its own, so no cels, no names, no marks.
   ///
   /// 🚨R27 #16 (유저 확정 2026-08-25): 「**카메라랑 트랜지션은 지금처럼
   /// 못그리는데 디렉션레이어는 그림 그릴수있는 행으로**」.

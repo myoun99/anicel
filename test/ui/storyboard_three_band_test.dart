@@ -212,8 +212,8 @@ void main() {
     expect(block.bottomBand, Rect.zero);
   });
 
-  testWidgets('#15: each panel carries its frame NAME (or ○ unnamed — ● '
-      'stays the inbetween mark\'s) and its own comma count — the timeline '
+  testWidgets('#15: each panel carries its frame NAME (or the in-between '
+      'mark when unnamed — F-149) and its own comma count — the timeline '
       'row conventions carried over', (tester) async {
     final layer = Layer(
       id: const LayerId('cut-1-sb'),
@@ -238,7 +238,7 @@ void main() {
     await _pump(tester, storyboardLayer: layer);
     final block = requireCutBlock(tester, 'cut-1');
 
-    expect(block.cellNames, ['LO', '○', '○']);
+    expect(block.cellNames, ['LO', unnamedDrawingMark, unnamedDrawingMark]);
     expect(block.cellCommaLabels, ['4', '5', '3']);
   });
 

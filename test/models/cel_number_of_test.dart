@@ -17,8 +17,19 @@ void main() {
     expect(celNumberOf(' \t'), isNull);
   });
 
-  test("no name prints the mark — the sheet's ○", () {
-    expect(unnamedDrawingMark, '○');
+  test('no name prints the in-between mark — ONE filled dot for both of '
+      'its uses (F-149)', () {
+    // 🗣️유저 2026-09-16: 「일단 이름 없는 기본상태를 속이 찬 동그라미로
+    // 통일적용 … 추후 두번째 중간나누기 마크(속이 빈)를 활용할지도
+    // 모르겠지만 당장은 제거」. The GLYPH is pinned here by value — every
+    // other test asks the constant, so this is the one place that says
+    // what the constant is.
+    expect(inbetweenMark, '●');
+    expect(
+      unnamedDrawingMark,
+      inbetweenMark,
+      reason: 'the unnamed drawing prints the in-between mark itself',
+    );
     expect(celNumberOrMark('A1'), 'A1');
     expect(celNumberOrMark(null), unnamedDrawingMark);
     expect(celNumberOrMark('   '), unnamedDrawingMark);

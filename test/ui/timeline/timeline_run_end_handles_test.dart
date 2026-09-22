@@ -426,9 +426,9 @@ void main() {
     // and NO block chrome (no radius — the cell paints as empty paper).
     // UI-R14 #3 rolled the timeline back to plain ghost frames — the
     // SHEET alone carries the repeat-word convention.
-    expect(timelineCellModel(tester, 'layer-r', 2).glyph, '○');
+    expect(timelineCellModel(tester, 'layer-r', 2).glyph, unnamedDrawingMark);
     expect(timelineCellModel(tester, 'layer-r', 3).glyph, '');
-    expect(timelineCellModel(tester, 'layer-r', 4).glyph, '○');
+    expect(timelineCellModel(tester, 'layer-r', 4).glyph, unnamedDrawingMark);
     expect(
       timelineCellDecoration(tester, 'layer-r', 2).borderRadius,
       isNull,
