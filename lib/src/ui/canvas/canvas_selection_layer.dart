@@ -213,7 +213,16 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// CONFIRM of a move session (R16-①): the host lands [stampDab] and
   /// adopts the whole session (raw lift + landed stamp) as ONE history
   /// entry (BrushLiftMoveHistoryCommand).
-  final void Function(int liftToken, BrushDab stampDab)? onLiftConfirmed;
+  /// ⚠️The AFFINE travels with the stamp: the cels a range confirm reaches
+  /// never floated anything, so they need the whole transform to apply to
+  /// their own pixels — a displacement read off the stamp loses the scale
+  /// and the rotation entirely (유저 2026-09-22, 실기).
+  final void Function(
+    int liftToken,
+    BrushDab stampDab,
+    SelectionAffine? affine,
+  )?
+  onLiftConfirmed;
 
   /// REVERT (R17-①): the host restores the pre-lift picture byte-exactly;
   /// nothing lands in history.
@@ -557,6 +566,22 @@ class _MoveSession {
 
   /// True once the session actually MOVED.
   bool moved = false;
+
+  /// The affine the confirm landed with, for the cels the confirm reaches
+  /// that this session never floated.
+  ///
+  /// 🚨★★★**THE OTHER CELS NEED THE WHOLE TRANSFORM, NOT ITS SHADOW.**
+  /// 유저 2026-09-22, from a hands-on run: 「이동+확대하고 둘다 동시적용
+  /// 해봤는데 **한쪽 값의 확대가 사라졌어. 이동은 남아있는데**」. The host
+  /// could only read a DISPLACEMENT off the stamp it was handed — the
+  /// scale and the rotation live in the affine and never travelled — so a
+  /// pure ×2 moved the other cels by nothing at all.
+  ///
+  /// ⚠️Recorded at the confirm because the box is cleared before the host
+  /// hears about it, and the pivot has to be the box's — 유저: 「확대/축소의
+  /// 기준점은 **항상 상자의 중심**」, and with a range live that is the one
+  /// box on screen.
+  SelectionAffine? landedAffine;
 }
 
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
@@ -744,7 +769,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         case _SessionEnd.confirm:
           final confirm = widget.onLiftConfirmed;
           if (confirm != null) {
-            confirm(session.token, session.stamp);
+            confirm(session.token, session.stamp, session.landedAffine);
           } else {
             // Headless hosts (focused tests): land without history.
             widget.onLiftLanded?.call(session.token, session.stamp);
@@ -825,7 +850,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// never called inside a build phase (the tool-switch and dispose
   /// triggers defer post-frame). Afterwards the shape needs a fresh lift
   /// (R19 pixel model: the landed raster IS the content to move next).
-  void _confirmMoveSession() {
+  void _confirmMoveSession({SelectionAffine? landedWith}) {
+    // 🚨★★★**EVERY CONFIRM FOLDS THE BOX IN FIRST, AND REMEMBERS IT.**
+    //
+    // ⛔Not only the box's own Enter. A confirm also arrives from a
+    // deselect, from Ctrl+D and from a region that undo/redo put back —
+    // and since the move became the affine's tx/ty there is no longer
+    // anything in the STAMP for those paths to land. They used to work by
+    // accident, because the drag had already walked the stamp over.
+    //
+    // ⚠️[landedWith] is for the one caller that has already cleared the
+    // box: `_commitTransform` folds and closes before it gets here, so it
+    // says what it landed with rather than leaving a null behind.
+    final affine = landedWith ?? _transform;
+    _foldOpenTransformIntoPendingStamp();
+    _session?.landedAffine = affine;
     if (_endSession(_SessionEnd.confirm) == null) {
       return;
     }
@@ -2330,7 +2369,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _session?.moved = true;
         _clearTransform(confirming: true);
       });
-      _confirmMoveSession();
+      _confirmMoveSession(landedWith: affine);
       return;
     }
     // R20-D2: an open quad resamples through the homography instead.
@@ -2356,7 +2395,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _session?.moved = true;
         _clearTransform(confirming: true);
       });
-      _confirmMoveSession();
+      _confirmMoveSession(landedWith: affine);
       return;
     }
     if (!affine.isIdentity && pending != null) {
@@ -2367,7 +2406,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _session?.moved = true;
         _clearTransform(confirming: true);
       });
-      _confirmMoveSession();
+      _confirmMoveSession(landedWith: affine);
       return;
     }
     setState(_clearTransform);

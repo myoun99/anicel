@@ -153,6 +153,7 @@ class _CanvasPanelLift {
     _MoveSession session,
     BrushDab stampDab,
     Command landOn,
+    SelectionAffine? affine,
   ) {
     final ladder = _state.widget.transformTargetKeys?.call();
     final coordinator = _state.widget._editableCoordinator;
@@ -166,15 +167,24 @@ class _CanvasPanelLift {
     // `canonicalKeyOf`; this is the same answer, not a second one.
     final store = coordinator.frameStore;
     final landings = {store.canonicalKeyOf(session.key): landOn};
-    // What the move DID, read off the float: where the lifted pixels ended
-    // up against where they were cut from. ⛔Read from the dabs rather than
-    // taken as a parameter — the layer's affine is one description of this
-    // and the stamp is another, and a confirm that trusted the affine could
-    // land pixels the screen never showed.
-    final moved = Offset(
-      stampDab.center.x - session.eraseDab.center.x,
-      stampDab.center.y - session.eraseDab.center.y,
-    );
+    // 🚨★★★**WHAT THE TRANSFORM DID — ALL OF IT.**
+    //
+    // 🗣️유저 2026-09-22, 실기: 「1과 2 동일한 그림 만들고 **이동+확대**하고
+    // **둘다 동시적용** 해봤는데 **한쪽 값의 확대가 사라졌어. 이동은
+    // 남아있는데**」.
+    //
+    // ↩️This read a DISPLACEMENT off the float — `stampDab.center` against
+    // where it was cut from — and offset each cel's own lift by it. That
+    // is the move and nothing else: the scale and the rotation live in the
+    // affine, which never came down here, so a pure ×2 (whose centre does
+    // not move) shifted the other cels by exactly zero. The comment that
+    // stood here argued for reading the dabs 「rather than the affine」,
+    // which was true of the one number it was reading and false of the
+    // three it was not.
+    //
+    // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
+    // 중심**」, and with a range live that is the one box on screen, so the
+    // same affine describes every cel's landing.
     for (final key in ladder) {
       final cel = store.canonicalKeyOf(key);
       if (landings.containsKey(cel)) {
@@ -197,12 +207,12 @@ class _CanvasPanelLift {
         preLiftSurface: coordinator.currentSurfaceOf(key),
         landingDabs: _landingDabs(
           lift.eraseDab,
-          lift.stampDab.copyWith(
-            center: CanvasPoint(
-              x: lift.stampDab.center.x + moved.dx,
-              y: lift.stampDab.center.y + moved.dy,
-            ),
-          ),
+          // ⚠️The SAME resample the standing cel's float went through, on
+          // this cel's own pixels. A pure translation still costs nothing:
+          // `transformStampDab` carries it by moving the centre.
+          affine == null
+              ? lift.stampDab
+              : transformStampDab(lift.stampDab, affine),
         ),
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
       );
@@ -213,7 +223,11 @@ class _CanvasPanelLift {
   /// R16-① confirm: lands the move as ONE undo entry whose undo target is
   /// the picture the session opened on — which is simply the cel as it
   /// stands, because the session never wrote to it.
-  void handleLiftConfirmed(int liftToken, BrushDab stampDab) {
+  void handleLiftConfirmed(
+    int liftToken,
+    BrushDab stampDab,
+    SelectionAffine? affine,
+  ) {
     final coordinator = _state.widget._editableCoordinator;
     final session = _closeSession(liftToken);
     if (coordinator == null || session == null) {
@@ -253,7 +267,7 @@ class _CanvasPanelLift {
         readRegion: doors.read,
         restoreRegion: doors.restore,
       );
-      final landings = _landingsPerCel(session, stampDab, landOn);
+      final landings = _landingsPerCel(session, stampDab, landOn, affine);
       historyManager.execute(
         landings.length == 1
             ? landOn

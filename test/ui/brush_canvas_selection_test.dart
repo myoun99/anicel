@@ -1333,8 +1333,12 @@ void main() {
     // landing derives against a BASE, and only pixels the move does not
     // touch can say which cel's base it was. Frame two's own is (70,20),
     // where frame one has nothing; frame one's is the fixture's (60,60).
+    //
+    // ⚠️Frame two's inside ink is OFF the box centre (25..55 centres at
+    // 40,40) — at the centre a scale moves nothing, and this pin exists to
+    // see the scale.
     env.coordinator.selectFrame(keys[1]);
-    env.coordinator.commitSourceStroke(sourceDabs: [dab(40, 40), dab(70, 20)]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(50, 50), dab(70, 20)]);
     env.coordinator.selectFrame(keys.first);
     await env.setTool(CanvasTool.move);
     // ⛔A PARTIAL region, not the implicit whole picture: a whole-picture
@@ -1354,11 +1358,15 @@ void main() {
     // inside the outline. Stating the displacement says what is meant.
     env.commands.beginTransform();
     await tester.pump();
+    // 🚨★★★**A MOVE AND A SCALE, TOGETHER** — 유저 2026-09-22, 실기:
+    // 「이동+확대하고 둘다 동시적용 해봤는데 **한쪽 값의 확대가 사라졌어.
+    // 이동은 남아있는데**」. ⛔A pin that sets one of them measures half the
+    // law, and that is exactly why this one let the defect through.
     env.commands.setTransformValues(
       tx: 10,
       ty: 5,
       rotationDegrees: 0,
-      scale: 1,
+      scale: 2,
     );
     await tester.pump();
     env.commands.commitTransform();
@@ -1370,20 +1378,26 @@ void main() {
       reason: '유저: 한 번의 확정은 한 번의 언두다',
     );
 
-    // Frame ONE moved.
-    expect(inkAt(env.coordinator, 40, 35), isNonZero);
-    // And frame TWO moved by the same amount — its OWN ink, not frame
-    // one's. ⛔The check that says so is WHERE: frame two's stroke started
-    // at (40,40), so a correct move puts it at (50,40); frame one's pixels
-    // pasted in would land somewhere else entirely.
+    // Frame ONE moved: its (30,30) doubles about (40,40) to (20,20), then
+    // +10,+5.
+    expect(inkAt(env.coordinator, 30, 25), isNonZero);
+    // And frame TWO took the SAME transform on its OWN ink: (50,50)
+    // doubles about (40,40) to (60,60), then +10,+5.
     env.coordinator.selectFrame(keys[1]);
     expect(
-      inkAt(env.coordinator, 50, 45),
+      inkAt(env.coordinator, 70, 65),
       isNonZero,
-      reason: '같은 아핀이 이 셀의 제 그림에 적용됐다',
+      reason: '같은 아핀이 이 셀의 제 그림에 적용됐다 — 배율까지',
     );
     expect(
-      inkAt(env.coordinator, 40, 40),
+      inkAt(env.coordinator, 60, 55),
+      0,
+      reason:
+          '⛔60,55 는 **이동만** 전달됐을 때 가는 자리다. 유저가 실기에서 '
+          '찾은 그 결함이고, 여기가 그것을 잡는 곳이다',
+    );
+    expect(
+      inkAt(env.coordinator, 50, 50),
       0,
       reason: '그리고 원래 자리는 비었다 — 복사가 아니라 이동이다',
     );
@@ -1406,7 +1420,7 @@ void main() {
     env.history.undo();
     await tester.pump();
     expect(
-      inkAt(env.coordinator, 40, 40),
+      inkAt(env.coordinator, 50, 50),
       isNonZero,
       reason: '⛔ONE undo takes BOTH cels back, or it was two entries',
     );
