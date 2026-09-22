@@ -8,15 +8,18 @@ import 'package:flutter_test/flutter_test.dart';
 /// 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」. The polygon trace
 /// had the same law first (유저 확정, 2026-08).
 ///
-/// ⛔**SO THIS SCANS SOURCE, and the reason is measured.** The channel's own
-/// pins call `undoTransformStep()` themselves, so a build where the SHORTCUT
-/// never asked it passes every one of them — a mutation that deleted the
-/// call from `home_page.dart` survived the whole suite on 2026-09-22. The
-/// behaviour version of this pin needs a HomePage with ink on the cel, which
-/// this fixture cannot make without a project to load.
+/// ⛔**THE BEHAVIOUR IS PINNED ELSEWHERE** — `test/ui/canvas/
+/// ctrl_z_steps_inside_the_open_box_test.dart` presses the real key on a
+/// real box. ⚠️This file is not that pin's understudy: what it holds is the
+/// SHAPE, which is a rule about the NEXT channel to be added. The document
+/// undo is the fallback, so it has to stay last and each open thing has to
+/// decide on its own answer — a build that asked the document first, or
+/// wrapped one of these calls in a guard, would leave that channel dead.
 ///
-/// ⚠️What it pins is ORDER, not presence: the document undo is the fallback,
-/// so it has to come last or the open thing never gets asked at all.
+/// 🧪Both halves were measured: a mutation that wrote `if (false && …)` into
+/// `home_page.dart` survived the whole suite on 2026-09-22, and the first
+/// version of THIS file — which read only the calls' positions — survived it
+/// too, because a `false &&` leaves every position where it was.
 void main() {
   test('the undo key asks polygon, then transform, then the document', () {
     final source = File('lib/src/ui/home_page.dart').readAsStringSync();
