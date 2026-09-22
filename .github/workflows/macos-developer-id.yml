@@ -12,10 +12,12 @@
 # build is something a person asks for when they want a file, so it is asked
 # for by hand.
 #
-# ⚠️THIS IS THE SAME LANE CODEMAGIC RAN. Codemagic was the stopgap while the
-# account was suspended; the signing identity came home to GitHub on
-# 2026-09-22 and so does this. One law in the Fastfile, and whichever CI is
-# alive calls it — which is why this file is a caller and not a copy.
+# ⚠️THIS IS THE LANE CODEMAGIC USED TO RUN. Codemagic was the stopgap while
+# the account was suspended; the signing identity came home to GitHub on
+# 2026-09-22 and so did this, proven by a notarized, stapled zip from run 1
+# before `codemagic.yaml` was deleted. The law is the Fastfile's lane and
+# this file only calls it — which is why moving CI cost a caller, not a
+# rewrite.
 name: macOS (Developer ID)
 
 on:

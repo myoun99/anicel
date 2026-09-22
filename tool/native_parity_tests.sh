@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Which tests exercise the native engine — the ONE answer to that question.
 #
-# Three places ask it: the TestFlight build on GitHub, the same build on
-# Codemagic, and `lane.sh land` when a lane touched the C sources. Three
-# copies of a selector drift apart, and a local gate that picks a different
-# set from the CI it stands in for is testing something else while printing
-# the same green. Chosen by what a test IMPORTS rather than from a list, so a
-# new parity test joins without anybody remembering to add it.
+# Three places ask it: the TestFlight build, the Mac build, and `lane.sh
+# land` when a lane touched the C sources. Three copies of a selector drift
+# apart, and a local gate that picks a different set from the CI it stands
+# in for is testing something else while printing the same green. Chosen by
+# what a test IMPORTS rather than from a list, so a new parity test joins
+# without anybody remembering to add it.
 #
 # Prints one path per line, sorted, relative to the repository root.
 # ⛔Exits 1 when it selects NOTHING: a selector that stopped matching would
