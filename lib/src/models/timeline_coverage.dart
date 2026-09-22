@@ -98,6 +98,58 @@ TimelineDrawingBlock? previousDrawingBlockBefore(
   return TimelineDrawingBlock(startIndex: key, entry: timeline[key]!);
 }
 
+/// Where the UNIT covering [frameIndex] starts — its drawing block's start,
+/// or, in an empty stretch, where that stretch starts (the end of the
+/// drawing before it, or 0).
+///
+/// 🚨★★A UNIT IS A DRAWING BLOCK OR AN EMPTY STRETCH, the stretch counted
+/// ONCE however long it is (F-175). The sheet already counts it that way:
+/// it prints an empty stretch's `x` in the stretch's FIRST cell only.
+int unitStartAt(SplayTreeMap<int, TimelineExposure> timeline, int frameIndex) {
+  final covering = coveringDrawingBlockAt(timeline, frameIndex);
+  if (covering != null) {
+    return covering.startIndex;
+  }
+  return lastDrawingBlockAtOrBefore(timeline, frameIndex)?.endIndexExclusive ??
+      0;
+}
+
+/// Where the unit after the one covering [frameIndex] starts.
+///
+/// 🚨F-175 (유저 2026-09-21): 「어니언스킨 블록 단위일때, 사이에 빈 공간
+/// 있는데도 그 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서
+/// 한칸으로 쳐서 빈공간이면 다음 1번의 어니언스킨 안보이게.」
+///
+/// ⛔NOT [nextDrawingBlockAfter], which jumps OVER an empty stretch to the
+/// drawing beyond it — the editing code depends on that jump, so the two
+/// walks stay two: one answers "the next drawing", this one "the next
+/// step".
+int? nextUnitStartAfter(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  int frameIndex,
+) {
+  final covering = coveringDrawingBlockAt(timeline, frameIndex);
+  if (covering != null) {
+    // A drawing's next unit starts where it ends: a drawing starting right
+    // there, or the empty stretch that follows it.
+    return covering.endIndexExclusive;
+  }
+  // Inside an empty stretch the next unit is the next drawing, or none.
+  return nextDrawingBlockAfter(timeline, frameIndex)?.startIndex;
+}
+
+/// Where the unit before the one starting at [unitStart] starts; null at
+/// the head of the sheet.
+int? previousUnitStartBefore(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  int unitStart,
+) {
+  if (unitStart <= 0) {
+    return null;
+  }
+  return unitStartAt(timeline, unitStart - 1);
+}
+
 /// Whether a block-owned inbetween dot (중간나누기 ●) renders at
 /// [frameIndex]: the covering block carries a breakdown offset there.
 bool hasBreakdownDotAt(

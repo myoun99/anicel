@@ -33,12 +33,18 @@ class OnionSkinFramePlan {
 
 /// Resolves which of the ACTIVE layer's cels ghost at [frameIndex].
 ///
-/// [OnionSkinStep.blocks] (the default) walks DRAWINGS: peg k is the
-/// (k+1)-th unique drawing before/after the current exposure, holds are
-/// respected (a held block is one drawing), linked-cel repeats of an
-/// already-collected (or the current) cel are skipped, and a silent peg
-/// still consumes its slot (peg 2 stays "two drawings back" while peg 1
-/// is at 0).
+/// [OnionSkinStep.blocks] (the default) walks UNITS: a held block is one
+/// unit, an EMPTY STRETCH is one unit however long it is, linked-cel
+/// repeats of an already-collected (or the current) cel are skipped, and a
+/// silent peg still consumes its slot (peg 2 stays "two units back" while
+/// peg 1 is at 0).
+///
+/// 🚨★★AN EMPTY STRETCH SPENDS ITS PEG AND SHOWS NOTHING (F-175, 유저
+/// 2026-09-21): 「어니언스킨 블록 단위일때, 사이에 빈 공간 있는데도 그
+/// 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서 한칸으로 쳐서
+/// 빈공간이면 다음 1번의 어니언스킨 안보이게.」 The walk used to jump
+/// over the stretch to the drawing beyond it, so peg 1 ghosted a drawing
+/// the sheet shows as two steps away. See [nextUnitStartAfter].
 ///
 /// [OnionSkinStep.frames] walks the sheet instead: peg k is whatever is
 /// exposed k frames away. Inside a hold that is the drawing already on
@@ -97,20 +103,34 @@ List<OnionSkinFramePlan> planOnionSkin({
     for (final peg in pegs) {
       int? blockStart;
       FrameId? blockFrameId;
-      // Advance to the next block showing a cel we have not ghosted yet.
+      var emptyStretch = false;
+      // Advance to the next unit: an empty stretch, or a block showing a
+      // cel we have not ghosted yet.
       while (true) {
         blockStart = nextBlockStart(cursor);
         if (blockStart == null) {
           break;
         }
         cursor = blockStart;
-        blockFrameId = timeline[blockStart]?.frameId;
+        final exposure = timeline[blockStart];
+        if (exposure == null) {
+          emptyStretch = true;
+          break;
+        }
+        blockFrameId = exposure.frameId;
         if (blockFrameId != null && seen.add(blockFrameId)) {
           break;
         }
         blockFrameId = null;
       }
-      if (blockStart == null || blockFrameId == null) {
+      if (blockStart == null) {
+        break;
+      }
+      if (emptyStretch) {
+        // F-175: the stretch IS this peg's step — spent, nothing to ghost.
+        continue;
+      }
+      if (blockFrameId == null) {
         break;
       }
       if (peg.shows) {
@@ -127,10 +147,10 @@ List<OnionSkinFramePlan> planOnionSkin({
     return plans;
   }
 
-  // The BEFORE walk starts from the current block's START (so a held
-  // mid-block playhead still sees the previous drawing, not its own
-  // block); the AFTER walk from the current index.
-  final currentBlock = coveringDrawingBlockAt(timeline, frameIndex);
+  // The BEFORE walk starts from the current UNIT's start (so a held
+  // mid-block playhead still sees the previous unit, not its own block,
+  // and a playhead standing in an empty stretch counts that stretch as
+  // where it is); the AFTER walk from the current index.
   final frameSteps = settings.step == OnionSkinStep.frames;
   final before = frameSteps
       ? collectFrames(
@@ -141,9 +161,8 @@ List<OnionSkinFramePlan> planOnionSkin({
       : collectBlocks(
           pegs: settings.beforePegs,
           tint: settings.tintBefore,
-          startCursor: currentBlock?.startIndex ?? frameIndex,
-          nextBlockStart: (cursor) =>
-              previousDrawingBlockBefore(timeline, cursor)?.startIndex,
+          startCursor: unitStartAt(timeline, frameIndex),
+          nextBlockStart: (cursor) => previousUnitStartBefore(timeline, cursor),
         );
   final after = frameSteps
       ? collectFrames(
@@ -155,8 +174,7 @@ List<OnionSkinFramePlan> planOnionSkin({
           pegs: settings.afterPegs,
           tint: settings.tintAfter,
           startCursor: frameIndex,
-          nextBlockStart: (cursor) =>
-              nextDrawingBlockAfter(timeline, cursor)?.startIndex,
+          nextBlockStart: (cursor) => nextUnitStartAfter(timeline, cursor),
         );
 
   // Furthest ghosts paint first (bottom), nearest last, before then after.
