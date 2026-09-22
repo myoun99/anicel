@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -48,12 +49,150 @@ void main() {
     expect(timeline[2]!.frameId, isNot(timeline[0]!.frameId));
   });
 
-  test('the block START still refuses: there is nothing there to divide', () {
-    final session = sessionWithHeldBlock();
+  group('F-151: at a HEAD, add pushes what is glued and takes the cell', () {
+    // 🗣️유저 2026-09-16: 「프레임 블록의 헤드에 서있을때 프레임 추가버튼은
+    // 해당 블록 뒤로 1칸 밀어내고(붙어있는거만 밀어냄. 로직 공용화되있는거?
+    // 법 통일해서 사용) 그 자리에 생성. 그러니 추가버튼 사용가능하도록」.
+    //
+    // ↩️The rule before this read 「the block START refuses: there is
+    // nothing there to divide」 — true of a DIVIDE, and the head is exactly
+    // where 유저 wanted the button to do something else.
 
-    session.selectFrameIndex(0);
+    /// A [0,6) · B GLUED at [6,8) · a two-cell gap · C [10,12).
+    EditorSessionManager threeBlocks() {
+      final session = sessionWithHeldBlock();
+      session.selectFrameIndex(6);
+      session.createDrawingAtCurrentFrame();
+      session.exposureVerbs.setCommaForSelectionOrCurrent(2);
+      session.selectFrameIndex(10);
+      session.createDrawingAtCurrentFrame();
+      session.exposureVerbs.setCommaForSelectionOrCurrent(2);
+      final timeline = timelineOf(session);
+      expect(
+        {for (final e in timeline.entries) e.key: e.value.length},
+        {0: 6, 6: 2, 10: 2},
+        reason: '⛔전제: A, B glued to it, a gap, then C',
+      );
+      return session;
+    }
 
-    expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
+    test('🚨pressing A\'s head: A and B (glued) move back one cell, C (past '
+        'a gap) stays, and the new drawing takes the head', () {
+      final session = threeBlocks();
+      final a = timelineOf(session)[0]!.frameId;
+      final c = timelineOf(session)[10]!.frameId;
+
+      session.selectFrameIndex(0);
+      expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
+      session.createDrawingAtCurrentFrame();
+
+      final timeline = timelineOf(session);
+      expect(
+        {for (final e in timeline.entries) e.key: e.value.length},
+        {0: 1, 1: 6, 7: 2, 10: 2},
+        reason: '유저: 「붙어있는거만 밀어냄」 — the gap before C absorbed '
+            'the push',
+      );
+      expect(timeline[1]!.frameId, a, reason: 'A moved, it was not redrawn');
+      expect(timeline[10]!.frameId, c, reason: 'C never moved');
+      expect(
+        timeline[0]!.frameId,
+        isNot(anyOf(a, c)),
+        reason: 'a NEW drawing at the head',
+      );
+    });
+
+    test('a head in the middle pushes only what follows it', () {
+      final session = threeBlocks();
+
+      session.selectFrameIndex(6);
+      expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isTrue);
+      session.createDrawingAtCurrentFrame();
+
+      expect(
+        {for (final e in timelineOf(session).entries) e.key: e.value.length},
+        {0: 6, 6: 1, 7: 2, 10: 2},
+        reason: 'A before the press is untouched; B moved; C still past '
+            'its gap',
+      );
+    });
+
+    test('⛔the CONTROL: a push that reaches the next block pushes it too — '
+        'the gap only absorbs what fits', () {
+      // Three presses at the head: the first two eat C's two-cell gap
+      // (after the second, B ends exactly where C starts — glued), so the
+      // third carries C along. A gap absorbs only what fits in it.
+      final session = threeBlocks();
+      for (var press = 0; press < 3; press += 1) {
+        session.selectFrameIndex(0);
+        session.createDrawingAtCurrentFrame();
+      }
+
+      final starts = timelineOf(session).keys.toList();
+      expect(starts.last, 11, reason: 'C was finally pushed by one');
+    });
+
+    test('the head push is ONE undo step', () {
+      final session = threeBlocks();
+      session.selectFrameIndex(0);
+      session.createDrawingAtCurrentFrame();
+      session.undo();
+
+      expect(
+        {for (final e in timelineOf(session).entries) e.key: e.value.length},
+        {0: 6, 6: 2, 10: 2},
+      );
+    });
+
+    test('dots ride inside the block they time', () {
+      final session = threeBlocks();
+      session.selectFrameIndex(3);
+      session.layerMarks.toggleMarkAtCurrentFrame();
+      expect(timelineOf(session)[0]!.breakdownOffsets, [3]);
+
+      session.selectFrameIndex(0);
+      session.createDrawingAtCurrentFrame();
+
+      expect(
+        timelineOf(session)[1]!.breakdownOffsets,
+        [3],
+        reason: 'the dot still marks A\'s fourth frame, now frame 4',
+      );
+    });
+
+    test('⚠️a row that covers its cut EDGE TO EDGE still refuses at every '
+        'head — there is nowhere to push to', () {
+      // 유저 named the storyboard's FIRST head; the reason (the row lives
+      // inside its cut, every panel glued to the next) holds for every
+      // head, so every head refuses. Reported on the card.
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+      session.selectFrameIndex(3);
+      session.createDrawingAtCurrentFrame();
+      expect(
+        timelineOf(session).keys,
+        [0, 3],
+        reason: '⛔전제: two panels',
+      );
+
+      for (final head in [0, 3]) {
+        session.selectFrameIndex(head);
+        expect(
+          session.frameVerbs.canCreateDrawingAtCurrentFrame,
+          isFalse,
+          reason: 'storyboard head $head',
+        );
+      }
+      session.selectFrameIndex(1);
+      expect(
+        session.frameVerbs.canCreateDrawingAtCurrentFrame,
+        isTrue,
+        reason: 'inside a panel it still divides',
+      );
+    });
   });
 
   test('an empty cell still just creates, as it always did', () {
