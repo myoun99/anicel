@@ -218,6 +218,76 @@ void main() {
     );
   });
 
+  /// 🚨★★★**한 번 굽고, 값이 바뀔 때만 다시 굽는다** (유저 2026-09-22:
+  /// 「스트로크는 한번 굽고, 값이 바뀔때만 구우면 되는게 맞지않나?」).
+  ///
+  /// 🔬유저 실기 09-22: 아무것도 안 하는데 화면이 계속 갱신되고, Show Repaints
+  /// 에서 이 프리뷰만 **앰버 테두리**(= 연속 프레임마다 살아 있어 굽기를 스스로
+  /// 포기한 상태)를 달고 있었다. 구운 그림이 도착하면 `setState` → 빌드 →
+  /// **같은 값을 또 요청** → 또 도착 … 스스로 도는 고리다. 그동안 워커 하나가
+  /// 계속 돌고 완료마다 프레임이 예약되니, 손이 멈춰 있는데도 앱 전체가 매
+  /// 프레임 다시 래스터된다.
+  ///
+  /// 옆의 프리셋 프리뷰는 같은 법을 `_sampleSettings` 로 이미 지키고 있었다
+  /// ([BrushStrokePreview]) — **화면에 있는 것은 다시 요청할 값이 아니다.**
+  testWidgets('🚨once it has what it asked for it stops asking — and asks '
+      'again only when the value changes', (tester) async {
+    final asked = <double>[];
+    final gates = <Completer<BrushStrokeSample>>[];
+    Future<BrushStrokeSample> rasterize(
+      BrushSettings settings,
+      int width,
+      int height,
+    ) {
+      asked.add(settings.size);
+      final gate = Completer<BrushStrokeSample>();
+      gates.add(gate);
+      return gate.future;
+    }
+
+    var settings = BrushSettings(size: 1);
+    late StateSetter setOuter;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 120,
+              height: 60,
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  setOuter = setState;
+                  return BrushStrokeLivePreview(
+                    settings: settings,
+                    rasterize: rasterize,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(asked, [1], reason: 'the first build asks for what it shows');
+
+    gates.single.complete(BrushStrokeSample(image: await _pixel()));
+    for (var frame = 0; frame < 5; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      asked,
+      [1],
+      reason:
+          '⛔구운 그림이 이미 화면에 있다 — 그것을 또 굽는 것은 아무것도 바꾸지 '
+          '않으면서 워커와 프레임만 먹는다',
+    );
+
+    settings = BrushSettings(size: 4);
+    setOuter(() {});
+    await tester.pump();
+    expect(asked, [1, 4], reason: '「값이 바뀔때만 구우면 되는게 맞지않나?」');
+  });
+
   /// ⛔**그리고 그 그림들은 프리셋 캐시에 들어가지 않는다.** 행동으로는 못
   /// 잰다 — 이음매로 구우니 캐시를 아예 안 만진다 — 그래서 소스 스캔이다.
   /// 512칸짜리 LRU에 슬라이더가 지나간 값이 쌓이면, 목록이 실제로 재사용하는

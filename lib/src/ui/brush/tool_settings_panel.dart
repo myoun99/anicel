@@ -754,6 +754,11 @@ class _MoveSettingsState extends State<_MoveSettings> {
       textAlign: TextAlign.right,
       textStyle: const TextStyle(fontSize: 12),
       onDragDelta: onDrag,
+      // 🚨★★★**ONE SCRUB IS ONE STEP BACK** (유저 2026-09-20: 「변형에 대한
+      // **조작마다** 언두로 기록」). A scrub is forty writes and one
+      // operation; the canvas takes its own step when a press lands, and
+      // this is the same announcement from the other entrance.
+      onOperationStart: widget.selectionCommands?.beginTransformStep,
       onEditSubmit: (raw) {
         final parsed = double.tryParse(
           raw.replaceAll('%', '').replaceAll('°', '').trim(),

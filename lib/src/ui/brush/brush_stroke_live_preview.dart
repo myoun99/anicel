@@ -63,6 +63,25 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
   /// What is on screen. Owned here.
   ui.Image? _shown;
 
+  /// What [_shown] was baked from — the request whose answer is already up.
+  ///
+  /// 🚨★★★**WHAT IS ON SCREEN IS NOT WORTH ASKING FOR** (유저 2026-09-22:
+  /// 「스트로크는 한번 굽고, **값이 바뀔때만** 구우면 되는게 맞지않나?」).
+  ///
+  /// The widget asks in `build`, and adopting an image rebuilds — so
+  /// without this the finished bake's own `setState` asked for the
+  /// IDENTICAL bake again, for ever. Nothing on screen ever changed, which
+  /// is exactly why it looked like nothing was wrong: a worker isolate
+  /// stayed busy and every completion scheduled a frame, so the whole app
+  /// re-rastered with the hand standing still (유저 실기: 「가만히 있어도 쭉
+  /// 화면이 갱신되고있어」, and this surface alone wore the 「alive」 badge
+  /// under Show Repaints).
+  ///
+  /// ⛔[_running] and [_queued] cannot answer it — both are null by the
+  /// time that rebuild runs. The preset preview has kept the same rule all
+  /// along, in `_sampleSettings` (`BrushStrokePreview`).
+  (BrushSettings, int, int)? _showing;
+
   /// The newest request nothing has started yet — the coalescing slot.
   (BrushSettings, int, int)? _queued;
 
@@ -78,7 +97,7 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
 
   void _want(BrushSettings settings, int width, int height) {
     final wanted = (settings, width, height);
-    if (wanted == _running || wanted == _queued) {
+    if (wanted == _showing || wanted == _running || wanted == _queued) {
       return;
     }
     _queued = wanted;
@@ -114,6 +133,7 @@ class _BrushStrokeLivePreviewState extends State<BrushStrokeLivePreview> {
       setState(() {
         _shown?.dispose();
         _shown = sample!.image;
+        _showing = next;
       });
     }
     unawaited(_pump());

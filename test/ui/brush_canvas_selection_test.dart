@@ -2042,6 +2042,143 @@ void main() {
     expect(inkAt(env.coordinator, 40, 35), 0, reason: '옮겨진 자리는 비었다');
   });
 
+  /// 🚨★★★**⑤변형 중에는 조작 하나가 한 걸음이다.**
+  ///
+  /// 🗣️유저 2026-09-20: 「클튜 보니 좋은점이 있는데, **변형도구 사용시
+  /// 변형에 대한 조작마다 언두로 기록**된단거야. 즉 변형도구 사용중에
+  /// **앵커포인트 이동하거나, 확대하거나. 이런 동작마다 언두 기록**되고
+  /// **확정하면 변형 하나로서의 언두만 작동**」.
+  testWidgets('⑤변형 중 언두는 조작 하나씩 되돌린다', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    // Three operations: scale, move, and the anchor.
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+    final scaled = env.commands.transformValues!.scale;
+    expect(scaled, isNot(1));
+    await moveBoxBy(tester, const Offset(10, 5));
+    expect(env.commands.transformValues!.tx, isNot(0));
+    await dragOnLayer(tester, const Offset(55, 50), const Offset(65, 50));
+    expect(env.commands.transformValues!.anchorX, isNot(0));
+
+    // …and back, one at a time.
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+    expect(env.commands.transformValues!.anchorX, 0, reason: '앵커만 돌아왔다');
+    expect(env.commands.transformValues!.tx, isNot(0), reason: '이동은 남아 있다');
+
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+    expect(env.commands.transformValues!.tx, 0, reason: '이동이 돌아왔다');
+    expect(env.commands.transformValues!.scale, scaled, reason: '배율은 남았다');
+
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+    expect(env.commands.transformValues!.scale, 1, reason: '배율도 돌아왔다');
+
+    expect(
+      env.commands.undoTransformStep(),
+      isFalse,
+      reason: '⛔상자가 열린 그대로면 더 되돌릴 것이 없다 — 폴리곤과 같은 계약',
+    );
+    expect(env.commands.transformActive, isTrue, reason: '상자는 그대로 열려 있다');
+  });
+
+  testWidgets('⑤확정하면 걸음들은 사라지고 변형 하나만 남는다', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+    await moveBoxBy(tester, const Offset(10, 5));
+    env.commands.commitTransform();
+    await tester.pump();
+
+    expect(
+      env.history.undoCount,
+      entriesBefore + 1,
+      reason: '유저: 「확정하면 **변형 하나로서의 언두만 작동**」',
+    );
+
+    // 🚨★★★**ASKED WITH A BOX OPEN, because with none the answer is
+    // false whatever the stack holds.** ↩️This pin asked right after the
+    // confirm and passed on a build that never cleared the stack at all —
+    // the mutation campaign is what said so.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 새 상자');
+    expect(
+      env.commands.undoTransformStep(),
+      isFalse,
+      reason: '⛔지난 변형의 걸음이 새 상자로 넘어오지 않았다',
+    );
+  });
+
+  testWidgets('⑤퍼스의 모서리 조작도 한 걸음이다', (tester) async {
+    // ⛔THE STEP CARRIES THE WARP TOO. A step that held only the affine
+    // would give 퍼스/메쉬 a Ctrl+Z that restores nothing — a law that
+    // works in one mode and quietly does not in the others.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.perspective,
+    );
+    await tester.pump();
+
+    // 🚨★★★**TWO CORNERS, and the second undo is not asked.** ↩️One corner
+    // was not enough: undoing it to a NULL warp looks exactly like undoing
+    // it to a zero warp, so a step that dropped the offsets it was meant
+    // to carry passed this pin (2026-09-22). Moving a second corner makes
+    // the two answers different — dropping them blanks the first one too.
+    final flat = antsOnScreen(tester)!.transformChrome!.box;
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14));
+    final firstMoved = antsOnScreen(tester)!.transformChrome!.box;
+    expect(firstMoved.first, isNot(flat.first), reason: '⛔전제: TL이 움직였다');
+
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(84, 78));
+    expect(
+      antsOnScreen(tester)!.transformChrome!.box[2],
+      isNot(firstMoved[2]),
+      reason: '⛔전제: BR도 움직였다',
+    );
+
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+    final afterOne = antsOnScreen(tester)!.transformChrome!.box;
+    expect(afterOne[2], firstMoved[2], reason: 'BR만 돌아왔다');
+    expect(
+      afterOne.first,
+      firstMoved.first,
+      reason: '⛔그리고 TL은 그대로 — 걸음이 워프를 들고 있다는 증거',
+    );
+  });
+
+  testWidgets('⑤걸음은 그림이 아니라 값이다 — 되돌려도 히스토리는 그대로', (
+    tester,
+  ) async {
+    // ⛔The cost this design refuses: a raster per drag. The step stack
+    // holds the affine and the warp, so stepping back costs nothing the
+    // history can see.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+    final bytesBefore = env.history.retainedBytes;
+
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+    await moveBoxBy(tester, const Offset(10, 5));
+    expect(env.commands.undoTransformStep(), isTrue);
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+
+    expect(env.history.undoCount, entriesBefore, reason: '기록된 것이 없다');
+    expect(env.history.retainedBytes, bytesBefore, reason: '보관한 바이트도 없다');
+  });
+
   /// 🚨★★★**⑧일반변형에도 각 변 중앙에 핸들이 있다.**
   ///
   /// 🗣️유저 2026-09-22: 「**일반변형도 자유변형처럼 각 변 중앙에 버튼? 두도록.
