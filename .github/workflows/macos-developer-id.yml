@@ -1,0 +1,146 @@
+# 🚨THE MAC BUILD ANYONE ELSE CAN OPEN — signed, notarized, stapled, zipped.
+#
+# The Mac App Store was left out of the app's registration (sandboxing would
+# constrain the path-based `.qap` sidecar and the file-backed cold tier), so
+# macOS ships by direct distribution: Developer ID, Apple's notary service,
+# and a file handed over. That decision and its reasoning live in the
+# Fastfile's `developer_id` lane; this file only calls it.
+#
+# ⛔NO SCHEDULE AND NO PUSH TRIGGER. 2026-08-31 landed 132 workflow runs in a
+# day and the account was suspended the next morning — abuse detection, per
+# GitHub's own reply, with nightly macOS runners the likeliest trigger. A Mac
+# build is something a person asks for when they want a file, so it is asked
+# for by hand.
+#
+# ⚠️THIS IS THE SAME LANE CODEMAGIC RAN. Codemagic was the stopgap while the
+# account was suspended; the signing identity came home to GitHub on
+# 2026-09-22 and so does this. One law in the Fastfile, and whichever CI is
+# alive calls it — which is why this file is a caller and not a copy.
+name: macOS (Developer ID)
+
+on:
+  workflow_dispatch:
+
+# A notarization in flight must not be cancelled: Apple has the upload and
+# the next run would queue behind the same wait for nothing.
+concurrency:
+  group: macos-developer-id
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+
+jobs:
+  developer-id:
+    name: Signed, notarized Mac app
+    runs-on: macos-latest
+    # ⚠️Notarization is a WAIT on Apple, not work on the runner: the first
+    # one for this identity (2026-09-11) was still waiting after twenty
+    # minutes. A build killed mid-wait throws away an app Apple was about to
+    # accept, and the next run waits again from the start.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: ios
+
+      # FIRST, AND ON ITS OWN: a missing or mistyped Developer ID secret
+      # costs a minute here instead of a whole build. It proves the Account
+      # Holder's certificate reached a keychain `codesign` reads — Apple
+      # will not let the API key mint this one, which is why it arrives as a
+      # .p12 rather than through match.
+      - name: Signing identity (Developer ID)
+        working-directory: ios
+        env:
+          # Only what `import_developer_id` reads — the keychain it unlocks
+          # is the one `setup_ci` just made. No App Store Connect key here:
+          # Apple refuses to mint a Developer ID for an API key, which is
+          # the whole reason this identity arrives as a .p12.
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+        run: bundle exec fastlane mac identity
+
+      # The Apple-side correctness check, before anything expensive — the
+      # same step and the same selector `testflight.yml` runs, for the same
+      # reason: a check the release path cannot skip is worth more than a
+      # thorough one somewhere else.
+      - name: Native core (Apple clang)
+        run: |
+          cmake -S packages/qa_native/src -B build/ci-apple -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/ci-apple --config Release
+      - name: Parity against the Apple-built engine
+        env:
+          QA_ENGINE_PATH: ${{ github.workspace }}/build/ci-apple/libqa_engine.dylib
+          # A missing engine must FAIL rather than skip: a skipped parity
+          # suite and a passing one look identical in a summary.
+          QA_REQUIRE_NATIVE: '1'
+        run: |
+          set -euo pipefail
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
+          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt" || {
+            status=$?
+            python3 tool/print_mac_crash_reports.py
+            exit $status
+          }
+
+      # Flutter's build first, as on iOS: it writes the configuration the
+      # archive reads. Its own signature — "sign to run locally" — is
+      # replaced by the lane below.
+      #
+      # The +1000 is the offset `testflight.yml` carries and for the same
+      # reason: Codemagic numbered the stopgap's builds BUILD_NUMBER + 1000,
+      # and a Mac zip that says it is older than a build already handed out
+      # is a support question nobody can answer from the file.
+      - name: Build Flutter macOS
+        run: |
+          flutter build macos --release \
+            --build-number=$(( ${{ github.run_number }} + 1000 ))
+
+      - name: Sign, notarize, package
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          FASTLANE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+        run: bundle exec fastlane mac developer_id
+
+      # The zipped, stapled app is the deliverable: it outlives the runner
+      # only if we say so, and 90 days is the ceiling a public repository
+      # gets. A permanent link means attaching it to a release instead.
+      - name: Upload the Mac app
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: anicel-macos
+          path: ios/build/mac/*.zip
+          if-no-files-found: error
+          retention-days: 90
+
+      # Where a signing or notarization failure explains itself.
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: fastlane-mac-logs
+          path: /Users/runner/Library/Logs/gym/*.log
+          if-no-files-found: ignore
+          retention-days: 7
