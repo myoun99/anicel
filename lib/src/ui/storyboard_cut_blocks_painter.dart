@@ -311,7 +311,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
 
   double get _cellExtent => geometry.value.frameCellExtent;
 
-  double _left(int frame) => frame * _cellExtent;
+  /// A frame's leading edge in the ROW's coordinates — measured from the
+  /// geometry's first frame, which is the contract every row painter keeps
+  /// ([TimelineFrameGeometry.leadingFrameSpacerWidth]: 「[frameStartIndex]'s
+  /// leading edge in the ROW's own coordinates」).
+  ///
+  /// ⚠️This was `frame * cell`, which is the same number only while the
+  /// geometry starts at frame 0 with no spacer — and the panel's always
+  /// does, so nothing ever showed it. The folded track row's geometry starts
+  /// at the first VISIBLE frame (F-143), and there `frame * cell` put every
+  /// block that many cells too far right.
+  double _left(int frame) =>
+      geometry.value.leadingFrameSpacerWidth +
+      (frame - geometry.value.frameStartIndex) * _cellExtent;
 
   double _widthFor(int duration) {
     final width = duration * _cellExtent;

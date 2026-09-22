@@ -437,6 +437,7 @@ class StoryboardPanel extends StatefulWidget {
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.railExtent,
+    this.frameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.revealSelectionTick,
@@ -714,6 +715,12 @@ class StoryboardPanel extends StatefulWidget {
   /// This rail's window size, set by the splitter beside it and persisted
   /// by the workspace. Null = a session-local one of our own.
   final LayerRailExtent? railExtent;
+
+  /// Where the FRAME axis stands, in pixels — kept by the host beside
+  /// [railExtent] because it has to outlive this panel (F-143: a fold
+  /// remounts it, and the offset that lived here went with it). Null = a
+  /// session-local one of our own, as with the rail.
+  final ValueNotifier<double>? frameAxisOffset;
 
   final ProjectFrameRate projectFrameRate;
 
@@ -1059,7 +1066,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   int get _countingFps => widget.projectFrameRate.countingBase;
 
   final ScrollController _verticalController = ScrollController();
-  final ScrollController _horizontalController = ScrollController();
+
+  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounts
+  /// this panel, and a newborn 0 was read back after layout and recorded as
+  /// a scroll over the position the host had kept. The timeline grids'
+  /// controllers are born the same way.
+  late final ScrollController _horizontalController = ScrollController(
+    initialScrollOffset: _horizontalScrollOffset.value,
+  );
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -1091,9 +1105,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// pinned ruler's translate follows it with zero panel rebuilds. Only
   /// an endless-extent change (growth/shrink) still goes through
   /// setState.
-  final ValueNotifier<double> _horizontalScrollOffset = ValueNotifier<double>(
-    0,
-  );
+  ///
+  /// The host's when it keeps one ([StoryboardPanel.frameAxisOffset]) —
+  /// read ONCE, as in the timeline grids.
+  late final ValueNotifier<double> _horizontalScrollOffset =
+      widget.frameAxisOffset ?? _ownedHorizontalScrollOffset;
+
+  /// The fallback frame-axis offset for hosts that keep none of their own.
+  final ValueNotifier<double> _ownedHorizontalScrollOffset =
+      ValueNotifier<double>(0);
 
   /// The QUANTIZED window bucket (UI-R16, shared policy): the ruler
   /// painters' repaint trigger — fires once per span crossing, so the
@@ -1236,7 +1256,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _frameAxis.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();
-    _horizontalScrollOffset.dispose();
+    // ⛔Only our own — the host's outlives this panel by design.
+    _ownedHorizontalScrollOffset.dispose();
     _horizontalWindowBucket.dispose();
     _hoveredCutId.dispose();
     _frameGeometry.dispose();

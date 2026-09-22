@@ -792,6 +792,9 @@ class _WorkspaceTabs {
               },
               timelineRailExtent: _state._railExtents[LayerRailId.timeline],
               xsheetRailExtent: _state._railExtents[LayerRailId.xsheet],
+              timelineFrameAxisOffset:
+                  _state._frameAxisOffsets[LayerRailId.timeline],
+              xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
               expandedLaneLayerIds: _state._expandedLaneLayerIds.value,
               onToggleLayerLanes: _state._toggleLayerLanes,
               expandedLaneGroupKeys: _state._expandedLaneGroupKeys.value,
@@ -878,6 +881,7 @@ class _WorkspaceTabs {
                 _state._showSecondsDisplay.value = show;
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
+              frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
               // ⛔No height setter any more (B7): the steppers left the bar,
               // and the planned V-track splitter is the next writer.
               trackLaneHeight: _state._storyboardTrackLaneHeight.value,

@@ -57,6 +57,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
+    this.timelineFrameAxisOffset,
+    this.xsheetFrameAxisOffset,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
@@ -103,6 +105,11 @@ class TimelineTabHost extends StatefulWidget {
   /// tab switch AND a restart).
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
+
+  /// Where each grid's frame axis stands (workspace-owned so it survives a
+  /// fold — F-143; session-only, see the workspace's field).
+  final ValueNotifier<double>? timelineFrameAxisOffset;
+  final ValueNotifier<double>? xsheetFrameAxisOffset;
 
   /// AE-style property-lane twirl-down state (host-owned so it survives
   /// tab switches).
@@ -875,6 +882,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,
+            timelineFrameAxisOffset: widget.timelineFrameAxisOffset,
+            xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             laneOpenOf: widget.expandedLaneLayerIds.contains,

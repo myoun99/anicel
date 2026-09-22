@@ -72,6 +72,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.hooks,
     required this.layers,
     this.railExtent,
+    this.frameAxisOffset,
     this.displayedOnionSkinOn = false,
     this.metrics = TimelineGridMetrics.defaults,
     this.onToggleSection,
@@ -96,6 +97,17 @@ class LayerTimelineGrid extends StatefulWidget {
   /// the workspace. Null = a session-local one of our own (tests, and any
   /// host that has no place to keep it).
   final LayerRailExtent? railExtent;
+
+  /// Where the FRAME axis stands, in pixels — kept by the workspace beside
+  /// [railExtent] and for the same reason: it has to outlive this grid.
+  /// Null = a session-local one of our own, as with the rail.
+  ///
+  /// 🚨F-143 (유저 2026-09-16): 「꽤 오른쪽으로 스크롤한채로 접으면
+  /// 간편오버레이는 첫 인덱스쪽을 보여주고있어서 … 타임라인 열면
+  /// 스크롤바가 왼쪽으로 초기화되있는상태」. Folding the panel disposes this
+  /// grid; the offset lived in it, so it went too — the folded row had
+  /// nothing to read and the grid that came back started at zero.
+  final ValueNotifier<double>? frameAxisOffset;
 
   final bool displayedOnionSkinOn;
 
@@ -208,7 +220,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// pixel updates this value only — the ruler's translate and the window
   /// token subscribe, and the grid itself never rebuilds per pixel (the
   /// body is a real scrollable; pixels are free there).
-  final ValueNotifier<double> _frameAxisOffset = ValueNotifier<double>(0);
+  ///
+  /// The host's when it keeps one ([LayerTimelineGrid.frameAxisOffset]).
+  /// ⚠️Read ONCE: the workspace's lives as long as the workspace, and the
+  /// follower below holds whichever this resolved to.
+  late final ValueNotifier<double> _frameAxisOffset =
+      widget.frameAxisOffset ?? _ownedFrameAxisOffset;
+
+  /// The fallback frame-axis offset for hosts that keep none of their own.
+  final ValueNotifier<double> _ownedFrameAxisOffset = ValueNotifier<double>(0);
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -279,7 +299,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     super.initState();
     // PEN-10: pen-friendly positions — while a stylus is nearby, a
     // coasting fling stops hiding the cells from hit-testing.
-    _horizontalScrollController = PenFriendlyScrollController();
+    //
+    // 🚨★★BORN WHERE THE AXIS STANDS, NOT AT ZERO (F-143). Folding and
+    // unfolding the panel REMOUNT this grid (measured: a new controller each
+    // time). A controller born at 0 has no clients in its first layout, so
+    // the sync there cannot pull it anywhere — and then the follower's
+    // after-layout re-read (F-95) found the newborn 0 and recorded it as a
+    // scroll, over the position the host had kept. Born at the kept offset,
+    // the re-read reads back what was kept and records nothing.
+    _horizontalScrollController = PenFriendlyScrollController(
+      initialScrollOffset: _frameAxisOffset.value,
+    );
     _verticalScrollController = PenFriendlyScrollController();
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
@@ -357,7 +387,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();
-    _frameAxisOffset.dispose();
+    // ⛔Only our own: the host's has to outlive this grid — that is the
+    // whole reason it is the host's.
+    _ownedFrameAxisOffset.dispose();
     _frameWindowBucket.dispose();
     _rowWindowBucket.dispose();
     _ownedRailExtent?.dispose();

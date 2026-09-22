@@ -114,6 +114,8 @@ class TimelinePanel extends StatefulWidget {
     this.onShowSecondsChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
+    this.timelineFrameAxisOffset,
+    this.xsheetFrameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.expandedLaneLayerIds = const {},
     this.laneOpenOf,
@@ -442,6 +444,13 @@ class TimelinePanel extends StatefulWidget {
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
 
+  /// Where each grid's FRAME axis stands — kept by the host beside the rail
+  /// windows so it outlives a fold (F-143). One per grid, like the rails:
+  /// the two axes run in different directions at different zooms, and
+  /// switching between them has never carried a position across.
+  final ValueNotifier<double>? timelineFrameAxisOffset;
+  final ValueNotifier<double>? xsheetFrameAxisOffset;
+
   final ProjectFrameRate projectFrameRate;
 
   /// AE-style property lanes (twirl-down rows under a layer): expansion
@@ -683,6 +692,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       hooks: hooks,
                       layers: horizontalLayers,
                       railExtent: widget.timelineRailExtent,
+                      frameAxisOffset: widget.timelineFrameAxisOffset,
                       displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
                       onToggleSection: widget.onToggleSection,
@@ -695,6 +705,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       hooks: hooks,
                       layers: xsheetLayerDisplayOrder(widget.layers),
                       railExtent: widget.xsheetRailExtent,
+                      frameAxisOffset: widget.xsheetFrameAxisOffset,
                       metrics: xsheetMetrics,
                     ),
             ),

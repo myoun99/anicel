@@ -150,6 +150,10 @@ class _WorkspaceCollapsedRows {
       // way the panel's own rail does.
       rail: rail,
       naturalRailWidth: _collapsedMetrics().layerControlsWidth,
+      // 🚨F-143: and the frame axis where the open grid left it — the same
+      // kept value that grid is handed, so the folded row shows the frames
+      // the open one was showing instead of frame 0.
+      frameAxisOffset: _state._frameAxisOffsets[LayerRailId.timeline],
       pixelsPerFrame: _state._timelinePixelsPerFrame.value,
       framesPerSecond: _state.widget.session.projectSettings.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
@@ -188,6 +192,8 @@ class _WorkspaceCollapsedRows {
       // axis, so the two summaries of "where am I" cannot disagree.
       snapshot: _state._flipHud._flipHudTrackSnapshot(session),
       rail: _state._railExtents[LayerRailId.storyboard],
+      // F-143: the storyboard's own axis, beside its own rail window.
+      frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
       naturalRailWidth: StoryboardTrackLabelRow.railWidth,
       pixelsPerFrame: pixelsPerFrame,
       framesPerSecond: session.projectSettings.projectFrameRate.countingBase,

@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show celNumberOrMark;
@@ -65,10 +68,17 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.height = defaultHeight,
     this.railChild,
     this.frameRowBuilder,
+    this.frameAxisOffset,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
   final Widget? railChild;
+
+  /// Where the open grid's FRAME axis stands, in pixels at [pixelsPerFrame]
+  /// — the host's own value, the one the grid keeps (F-143). The frame half
+  /// is laid out from it, so the folded row shows the frames the open one
+  /// was showing. Null = the axis at its start.
+  final ValueListenable<double>? frameAxisOffset;
 
   /// ⑩ 뿌리 C: the FRAME half, built by the caller from the same row widget
   /// the timeline draws — the other half of "the overlay owns no drawing
@@ -154,6 +164,11 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     ),
   );
 
+  /// The axis at frame 0, for a host that keeps no offset — a listenable
+  /// that never moves, so the frame half has ONE way to be laid out.
+  static const ValueListenable<double> _axisAtItsStart =
+      AlwaysStoppedAnimation<double>(0);
+
   @override
   void dispose() {
     _geometry.dispose();
@@ -225,66 +240,19 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                 Expanded(
                   child: ClipRect(
                     child: LayoutBuilder(
-                      builder: (context, frameConstraints) {
-                        final build = widget.frameRowBuilder;
-                        if (build == null) {
-                          return CustomPaint(
-                            painter: _CollapsedStripPainter(
+                      builder: (context, frameConstraints) =>
+                          ValueListenableBuilder<double>(
+                            valueListenable:
+                                widget.frameAxisOffset ?? _axisAtItsStart,
+                            builder: (context, origin, _) => _frameHalf(
+                              context,
                               snapshot: snapshot,
                               row: row,
-                              pixelsPerFrame: widget.pixelsPerFrame,
-                              framesPerSecond: widget.framesPerSecond,
                               colorScheme: colorScheme,
+                              viewport: frameConstraints.maxWidth,
+                              origin: origin,
                             ),
-                          );
-                        }
-                        // Republished per layout, value only — the handle's
-                        // identity is what the row memo keys on.
-                        _geometry.value = TimelineFrameGeometry(
-                          frameCellExtent: widget.pixelsPerFrame,
-                          frameStartIndex: 0,
-                          frameEndIndexExclusive: widget.pixelsPerFrame <= 0
-                              ? 0
-                              : (frameConstraints.maxWidth /
-                                        widget.pixelsPerFrame)
-                                    .ceil(),
-                        );
-                        // 🚨THE GRID LINES, and they were never removed — this
-                        // painter was simply not mounted here. Every plain
-                        // per-cell border is `Colors.transparent` on purpose
-                        // (`timeline_cell_style`: 「the GRID OVERLAY owns every
-                        // plain per-cell line now」), so a row without this
-                        // overlay has no lines at all, and chromeless mode was
-                        // wrongly blamed for erasing them.
-                        //
-                        // 🎁The cut-end shading rides in the same painter, so
-                        // mounting it brings both back at once — and the shading
-                        // is information rather than chrome (유저 확정 08-10),
-                        // which is why it belongs on a folded row too.
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            build(context, _geometry),
-                            IgnorePointer(
-                              child: CustomPaint(
-                                key: const ValueKey<String>(
-                                  'collapsed-beat-lines',
-                                ),
-                                painter: TimelineBeatLinesPainter(
-                                  frameCellExtent: widget.pixelsPerFrame,
-                                  framesPerSecond: widget.framesPerSecond,
-                                  colorScheme: colorScheme,
-                                  // ⛔NULL: the folded row lies over the ARTWORK at
-                                  // 70%, so there is no single ground to multiply
-                                  // against — these lines stay source-over.
-                                  ground: null,
-                                  crossCellExtent: widget.height,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                          ),
                     ),
                   ),
                 ),
@@ -293,6 +261,104 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The FRAME half: a viewport onto the row, standing where the open
+  /// grid's frame axis stands.
+  ///
+  /// 🚨★★F-143 (유저 2026-09-16): 「꽤 오른쪽으로 스크롤한채로 접으면
+  /// 간편오버레이는 첫 인덱스쪽을 보여주고있어서」. This half was laid out
+  /// from frame 0 whatever the grid had been showing — `frameStartIndex: 0`
+  /// was written here as a constant.
+  ///
+  /// ⛔ONE ORIGIN FOR EVERYTHING IN IT. The row, the beat lines with their
+  /// cut-end shading, and the fallback strip are all laid out from the same
+  /// first frame, and the one sub-cell remainder slides them together — the
+  /// open grid's scroll view moves its content as one piece, and so does
+  /// this. A painter handed the offset on its own is the one that drifts
+  /// the day the others change.
+  ///
+  /// ⚠️The content begins at the first VISIBLE frame rather than at 0, one
+  /// viewport (plus the partial cell) wide, so what is painted stays one
+  /// screenful however far the axis has been scrolled — the open grid's
+  /// rows window themselves for the same reason.
+  Widget _frameHalf(
+    BuildContext context, {
+    required FlipHudSnapshot snapshot,
+    required FlipHudRow row,
+    required ColorScheme colorScheme,
+    required double viewport,
+    required double origin,
+  }) {
+    final cell = widget.pixelsPerFrame;
+    final at = math.max(0.0, origin);
+    final first = cell <= 0 ? 0 : (at / cell).floor();
+    final shift = cell <= 0 ? 0.0 : at - first * cell;
+    final width = viewport + math.max(0.0, cell);
+    final build = widget.frameRowBuilder;
+    final Widget content;
+    if (build == null) {
+      content = CustomPaint(
+        key: const ValueKey<String>('collapsed-strip'),
+        painter: _CollapsedStripPainter(
+          snapshot: snapshot,
+          row: row,
+          pixelsPerFrame: cell,
+          framesPerSecond: widget.framesPerSecond,
+          colorScheme: colorScheme,
+          frameStartIndex: first,
+        ),
+      );
+    } else {
+      // Republished per layout, value only — the handle's identity is what
+      // the row memo keys on.
+      _geometry.value = TimelineFrameGeometry(
+        frameCellExtent: cell,
+        frameStartIndex: first,
+        frameEndIndexExclusive: cell <= 0
+            ? first
+            : first + (width / cell).ceil(),
+      );
+      // 🚨THE GRID LINES, and they were never removed — this painter was
+      // simply not mounted here. Every plain per-cell border is
+      // `Colors.transparent` on purpose (`timeline_cell_style`: 「the GRID
+      // OVERLAY owns every plain per-cell line now」), so a row without this
+      // overlay has no lines at all, and chromeless mode was wrongly blamed
+      // for erasing them.
+      //
+      // 🎁The cut-end shading rides in the same painter, so mounting it
+      // brings both back at once — and the shading is information rather
+      // than chrome (유저 확정 08-10), which is why it belongs on a folded
+      // row too.
+      content = Stack(
+        fit: StackFit.expand,
+        children: [
+          build(context, _geometry),
+          IgnorePointer(
+            child: CustomPaint(
+              key: const ValueKey<String>('collapsed-beat-lines'),
+              painter: TimelineBeatLinesPainter(
+                frameCellExtent: cell,
+                framesPerSecond: widget.framesPerSecond,
+                colorScheme: colorScheme,
+                // ⛔NULL: the folded row lies over the ARTWORK at 70%, so
+                // there is no single ground to multiply against — these
+                // lines stay source-over.
+                ground: null,
+                crossCellExtent: widget.height,
+                frameStartIndex: first,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    return OverflowBox(
+      alignment: Alignment.centerLeft,
+      minWidth: width,
+      maxWidth: width,
+      child: Transform.translate(offset: Offset(-shift, 0), child: content),
     );
   }
 
@@ -362,6 +428,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     required this.pixelsPerFrame,
     required this.framesPerSecond,
     required this.colorScheme,
+    this.frameStartIndex = 0,
   });
 
   final FlipHudSnapshot snapshot;
@@ -370,13 +437,31 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   final int framesPerSecond;
   final ColorScheme colorScheme;
 
+  /// The frame at this painter's left edge — the beat lines' convention
+  /// ([TimelineBeatLinesPainter.frameStartIndex]), so the strip and the
+  /// row it stands in for share one origin (F-143).
+  final int frameStartIndex;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (pixelsPerFrame <= 0) {
       return;
     }
-    final visibleFrames = (size.width / pixelsPerFrame).ceil() + 1;
+    // Positions stay ABSOLUTE (frame × cell) and the canvas moves instead,
+    // so no drawing below learns about the origin — the same way a scroll
+    // view moves its content rather than its children's arithmetic.
+    canvas
+      ..save()
+      ..translate(-frameStartIndex * pixelsPerFrame, 0);
+    _paintFrom(canvas, size);
+    canvas.restore();
+  }
+
+  void _paintFrom(Canvas canvas, Size size) {
+    final first = frameStartIndex;
+    final visibleFrames = first + (size.width / pixelsPerFrame).ceil() + 1;
     double x(int frame) => frame * pixelsPerFrame;
+    final right = x(first) + size.width;
 
     // 1. THE GRID — the timeline's own line system, and nothing else under
     // it. One cadence per frame, 6f stronger, the second boundary
@@ -384,7 +469,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     // rather than fading it, so this reads the same as the panel does.
     // Position from the LAW's snap (D8) — this pass used to draw at the
     // raw boundary, half a pixel off every other drawer.
-    for (var frame = 1; frame < visibleFrames; frame += 1) {
+    for (var frame = math.max(1, first); frame < visibleFrames; frame += 1) {
       final ink = timelineFrameBoundaryLineInk(
         frameIndex: frame,
         frameCellExtent: pixelsPerFrame,
@@ -407,9 +492,9 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     // 2. THE OUT-OF-CUT WASH — the one fill that stays. It is not chrome:
     // it says the frames past it are outside what plays.
     final playback = snapshot.playbackFrameCount;
-    if (playback != null && x(playback) < size.width) {
+    if (playback != null && x(playback) < right) {
       canvas.drawRect(
-        Rect.fromLTRB(x(playback), 0, size.width, size.height),
+        Rect.fromLTRB(x(playback), 0, right, size.height),
         Paint()..color = const Color(0x66101214),
       );
     }
@@ -420,7 +505,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     final current = snapshot.frameIndex;
     for (final run in row.runs) {
       final left = x(run.startIndex);
-      if (left > size.width) {
+      if (left > right) {
         break;
       }
       final rect = Rect.fromLTRB(
@@ -429,7 +514,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         x(run.endIndexExclusive) - 1,
         size.height - 4,
       );
-      if (rect.right <= 0 || rect.width <= 0) {
+      if (rect.right <= x(first) || rect.width <= 0) {
         continue;
       }
       final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(2));
@@ -453,7 +538,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
 
     // The `x` markers, and the SELECTION when the cursor is not on a block.
     // 「빈 프레임이면 그 한 칸」 — same selected ink, one cell wide.
-    for (var frame = 0; frame < visibleFrames; frame += 1) {
+    for (var frame = first; frame < visibleFrames; frame += 1) {
       if (row.runs.isNotEmpty && row.runAt(frame) != null) {
         continue;
       }
@@ -495,7 +580,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
 
     // 4. THE CUT END — 2px of the app's one length-colour, and the playhead
     // over everything.
-    if (playback != null && x(playback) <= size.width) {
+    if (playback != null && x(playback) <= right) {
       canvas.drawRect(
         Rect.fromLTWH(x(playback) - 1, 0, 2, size.height),
         Paint()..color = AppColors.danger,
@@ -548,5 +633,12 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props =>
-      (snapshot, ByIdentity(row), pixelsPerFrame, framesPerSecond, colorScheme);
+      (
+        snapshot,
+        ByIdentity(row),
+        pixelsPerFrame,
+        framesPerSecond,
+        colorScheme,
+        frameStartIndex,
+      );
 }
