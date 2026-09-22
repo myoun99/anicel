@@ -192,6 +192,16 @@ void main() {
     test('openAudioOutput opens on an unattached NAME — the fallback is to '
         'the system default, never to silence (AUDIO-PRO R4)', () {
       final device = QaAudioDevice.instance!;
+      if (device.devicesOf(capture: false).isEmpty) {
+        // 🚨A machine that enumerates NO output has no system default to
+        // fall back TO, so the open below fails for want of hardware
+        // rather than for want of the fallback this bench is about — a CI
+        // runner with no sound card is exactly that (2026-09-21). ⛔The
+        // guard asks with the same call the product asks with, so it
+        // cannot drift into skipping a machine that does have a device.
+        markTestSkipped('no playback device on this machine');
+        return;
+      }
       expect(
         openAudioOutput(
           device,
