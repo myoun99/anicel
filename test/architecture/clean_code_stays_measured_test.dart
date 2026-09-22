@@ -60,7 +60,16 @@ void main() {
   /// reads its value and where a keyless pose is centred. The last two are
   /// the answers the two rails give differently: the cut's canvas, the
   /// camera frame.
-  const wideSignatures = 385;
+  /// ⚠️385 → 386 on 2026-09-22, and this one is not the app's design: the
+  /// five parameters are `PageTransitionsBuilder.buildTransitions`'s, an
+  /// SDK override the app cannot re-shape, and the body it carries is
+  /// `=> child` — it uses NONE of them. `_NoPageTransition` exists because
+  /// a completed page transition keeps a full-window layer for ever (a
+  /// `FadeTransition` is a repaint boundary at alpha 255 too), and the app
+  /// has no page routes to transition; `app_theme.dart` has the
+  /// measurement. Shrinking it is not available, and skipping the override
+  /// means keeping four offscreens over the window on every frame.
+  const wideSignatures = 386;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
