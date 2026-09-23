@@ -1,21 +1,32 @@
 /// Incremental .anicel appender (R22-C): the container is ordinary ZIP with
 /// every entry STORE'd (cel blobs carry their own compression), which makes
-/// appends trivial and spec-legal — new local entries write over the old
-/// central directory's position, then a fresh central directory + EOCD
-/// close the file. Standard readers (including our own
-/// `parseAnicelArchiveBytes`) see only the LATEST central directory, so a
-/// re-saved `project.json` or a superseded cel simply shadows its old
-/// bytes (garbage until compaction rewrites the file whole).
+/// appends trivial and spec-legal — new local entries and a fresh central
+/// directory + EOCD go on the END of the file. Standard readers (including
+/// our own `parseAnicelArchiveBytes`) see only the LATEST central
+/// directory, so a re-saved `project.json` or a superseded cel simply
+/// shadows its old bytes — dead until [compactAnicelInPlace] packs the live
+/// ones down over them.
 ///
-/// Crash contract: the central-directory rewrite is the only destructive
-/// step. `appendAnicelEntries` first reads the old central directory into
-/// memory; a crash mid-append leaves a file without a valid EOCD tail —
-/// the caller keeps compaction (full atomic rewrite) as the recovery and
-/// the periodic durability point.
+/// 🚨★★★CRASH CONTRACT (유저 2026-09-23: 「전부 재사용으로 하고싶은데
+/// 거기서 저장중 크래시만 어떻게 안전책 만들수없나?」): at every instant,
+/// the newest complete directory in the file names only bytes that are
+/// intact. Nothing a committed directory names is ever written over — a
+/// save commits first (its directory APPENDED after the old one, which
+/// stays whole until the new one has landed), and only then writes into
+/// bytes that directory has let go of. A crash therefore opens as the
+/// state before the save or the state after it
+/// ([recoverAnicelZipLayoutFile]).
+///
+/// 🪦Until 2026-09-23 the append truncated at the old directory and wrote
+/// over it, so a crash left NO directory and the open path had to rebuild
+/// one by walking local headers — which only works while the file is in
+/// append order, and the push-down is what stops it being so.
 library;
 
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'anicel_project_archive.dart';
 
@@ -413,6 +424,21 @@ AnicelZipLayout _parseAnicelZipLayoutFrom({
   if (eocd < 0) {
     throw const FormatException('No ZIP end-of-central-directory found.');
   }
+  // 🚨THE DIRECTORY IS THE LAST THING IN A FINISHED FILE. A save writes its
+  // entries AFTER the committed directory and its own directory after
+  // them, so bytes past an EOCD are a save that did not finish — and the
+  // EOCD found here is then the PREVIOUS save's. Taking it as the file
+  // would open a state the file is halfway out of, and an append onto it
+  // would write over the unfinished save's bytes before anything decided
+  // they were garbage. Refused, the open path takes the recovery
+  // ([recoverAnicelZipLayoutFile]) and a save takes the whole write, which
+  // heals the file.
+  final commentLength = tailData.getUint16(eocd + 20, Endian.little);
+  if (tailStart + eocd + 22 + commentLength != length) {
+    throw const FormatException(
+      'Bytes after the end-of-central-directory: a save did not finish.',
+    );
+  }
   final zip64 = _readZip64End(tailData, eocd, tailStart: tailStart);
   final entryCount =
       zip64?.entryCount ?? tailData.getUint16(eocd + 10, Endian.little);
@@ -455,105 +481,318 @@ AnicelZipLayout _parseAnicelZipLayoutFrom({
   );
 }
 
-/// Torn-tail RECOVERY (R24-D1): an append crash destroys only the tail
-/// (the central directory + EOCD are rewritten last), never entry data
-/// — so the file is reconstructable by walking LOCAL headers from the
-/// front. Same-name entries resolve last-wins (the shadowing rule the
-/// central directory encodes), a torn final entry is dropped, and the
-/// LAST complete entry is CRC-verified (the only one a torn write can
-/// have half-filled; verifying every entry would read whole gigabytes).
-/// Entries deleted by removeNames may resurrect (their old locals still
-/// exist) — for crash recovery, too much beats lost.
+/// Opens a file whose tail does not parse — the state a crashed save left.
 ///
-/// The returned centralDirectoryOffset is the end of the last complete
-/// entry, so the file stays append-able; the next FULL save (which the
-/// service forces because the tail no longer parses) rewrites the file
-/// whole and heals it.
+/// 🚨★★★THE NEWEST DIRECTORY STILL WHOLE IS THE LAST SAVE THAT FINISHED.
+/// The crash contract (library doc) keeps every committed directory's
+/// bytes intact until a newer directory has landed after it, so scanning
+/// back from the end for the first EOCD whose directory parses — and whose
+/// every entry starts with its own local header — finds exactly the state
+/// the last completed save left.
+///
+/// Then the save that died. If everything after that directory is a
+/// COMPLETE run of entries, each CRC-true, ending where the next directory
+/// begins, that save wrote all of its entries and died writing the
+/// directory that would have committed them: they win, last-wins by name,
+/// and the work is not lost. A run that ends anywhere else is a save that
+/// died partway through its entries, and it is ignored — the state before
+/// it is whole, and half of a save laid over it would be neither state.
+/// ⚠️In the committing case the names that save REMOVED come back (the
+/// directory that would have said so is what did not land) — for crash
+/// recovery, too much beats lost (R24-D1).
+///
+/// Only when no directory is whole does the old walk run
+/// ([_walkFromTheFront]) — a file this build did not leave that way, or one
+/// an older build did. The next save cannot append onto any of these (the
+/// tail still does not parse), so it writes the file whole and heals it.
 AnicelZipLayout recoverAnicelZipLayoutFile(String path) {
   final raf = File(path).openSync();
   try {
-    final fileLength = raf.lengthSync();
-    final byName = <String, AnicelZipEntry>{};
-    final order = <String>[];
-    var cursor = 0;
-    var lastCompleteEnd = 0;
-    String? lastName;
-    AnicelZipEntry? shadowedByLast;
-    while (cursor + 30 <= fileLength) {
-      raf.setPositionSync(cursor);
-      final header = raf.readSync(30);
-      final data = ByteData.sublistView(header);
-      if (data.getUint32(0, Endian.little) != _localSignature) {
-        break; // Central-directory remnant or torn garbage: stop.
-      }
-      final crc = data.getUint32(14, Endian.little);
-      var compressedSize = data.getUint32(18, Endian.little);
-      final nameLength = data.getUint16(26, Endian.little);
-      final extraLength = data.getUint16(28, Endian.little);
-      final dataOffset = cursor + 30 + nameLength + extraLength;
-      if (dataOffset > fileLength) {
-        break; // Torn inside the header's own name/extra.
-      }
-      final name = String.fromCharCodes(raf.readSync(nameLength));
-      if (compressedSize == _zip32Max) {
-        // An entry past [anicelZip64FieldLimit]: the truth lives in the
-        // local ZIP64 extra (both sizes, per spec). A flagged size with
-        // no extra is not a shape any writer of this format makes — stop
-        // the walk there like any other unparseable header.
-        final size = _localZip64CompressedSize(raf.readSync(extraLength));
-        if (size == null) {
-          break;
-        }
-        compressedSize = size;
-      }
-      final entryEnd = dataOffset + compressedSize;
-      if (entryEnd > fileLength) {
-        break; // Torn final entry: its data never fully landed.
-      }
-      if (!byName.containsKey(name)) {
-        order.add(name);
-      }
-      shadowedByLast = byName[name];
-      byName[name] = AnicelZipEntry(
-        name: name,
-        localHeaderOffset: cursor,
-        dataOffset: dataOffset,
-        length: compressedSize,
-        crc32: crc,
-      );
-      lastName = name;
-      lastCompleteEnd = entryEnd;
-      cursor = entryEnd;
-    }
-    // The last complete entry is the only one a torn write can have
-    // corrupted content-wise (data lands before the tail rewrite);
-    // verify it and drop on mismatch.
-    if (lastName != null) {
-      final last = byName[lastName]!;
-      if (last.localHeaderOffset + 30 <= fileLength &&
-          last.dataOffset + last.length == lastCompleteEnd) {
-        raf.setPositionSync(last.dataOffset);
-        final bytes = raf.readSync(last.length);
-        if (anicelCrc32(bytes) != last.crc32) {
-          // Corrupt final entry: its earlier shadowed version (if any)
-          // wins again, exactly as if the torn append never happened.
-          if (shadowedByLast != null) {
-            byName[lastName] = shadowedByLast;
-          } else {
-            byName.remove(lastName);
-            order.remove(lastName);
-          }
-          lastCompleteEnd = last.localHeaderOffset;
-        }
-      }
-    }
-    return AnicelZipLayout(
-      entries: [for (final name in order) byName[name]!],
-      centralDirectoryOffset: lastCompleteEnd,
+    return _recoverFrom(
+      length: raf.lengthSync(),
+      readAt: (offset, count) {
+        raf.setPositionSync(offset);
+        return raf.readSync(count);
+      },
     );
   } finally {
     raf.closeSync();
   }
+}
+
+/// [recoverAnicelZipLayoutFile] over bytes already in hand — the same
+/// recovery, so a test can open every state a crash can leave without a
+/// file per state.
+@visibleForTesting
+AnicelZipLayout recoverAnicelZipLayout(Uint8List bytes) => _recoverFrom(
+  length: bytes.length,
+  readAt: (offset, count) {
+    final start = offset < 0 ? 0 : (offset > bytes.length ? bytes.length : offset);
+    final end = start + count > bytes.length ? bytes.length : start + count;
+    return Uint8List.sublistView(bytes, start, end);
+  },
+);
+
+/// Up to [count] bytes from [offset] — fewer where the source ends.
+typedef _ReadAt = Uint8List Function(int offset, int count);
+
+/// THE recovery, over any byte source.
+AnicelZipLayout _recoverFrom({required int length, required _ReadAt readAt}) {
+  final committed = _newestWholeDirectory(readAt, length);
+  if (committed == null) {
+    return _walkFromTheFront(readAt, length);
+  }
+  final landed = _runADyingCommitWrote(
+    readAt,
+    from: committed.end,
+    length: length,
+  );
+  if (landed == null || landed.entries.isEmpty) {
+    return committed.layout;
+  }
+  final byName = {
+    for (final entry in committed.layout.entries) entry.name: entry,
+  };
+  for (final entry in landed.entries) {
+    byName[entry.name] = entry;
+  }
+  return AnicelZipLayout(
+    entries: [...byName.values],
+    centralDirectoryOffset: landed.end,
+  );
+}
+
+/// The newest directory in the source that is whole, and where its EOCD
+/// ends — or null when there is none.
+///
+/// Scans back from the end in windows, so a crash that left a long run of
+/// unfinished bytes behind the directory costs a read of those bytes and
+/// no more.
+({AnicelZipLayout layout, int end})? _newestWholeDirectory(
+  _ReadAt readAt,
+  int length,
+) {
+  const window = 64 * 1024;
+  // Candidates are where an EOCD could START; a whole one is 22 bytes.
+  var high = length - 22;
+  while (high >= 0) {
+    final low = high - window + 1 < 0 ? 0 : high - window + 1;
+    // Three bytes past [high] so a signature starting AT it reads whole.
+    final bytes = readAt(low, high + 4 - low);
+    final data = ByteData.sublistView(bytes);
+    for (var i = high - low; i >= 0; i -= 1) {
+      if (i + 4 > bytes.length ||
+          data.getUint32(i, Endian.little) != _eocdSignature) {
+        continue;
+      }
+      final end = low + i + 22;
+      final layout = _wholeDirectoryEndingAt(readAt, end);
+      if (layout != null) {
+        return (layout: layout, end: end);
+      }
+    }
+    high = low - 1;
+  }
+  return null;
+}
+
+/// The directory whose EOCD ends at [end], when it is one a save of this
+/// format committed — parsed as if the source stopped there, and every
+/// entry it names beginning with its own local header.
+///
+/// ⚠️The local-header check is what makes an OLD directory fail. A
+/// directory the push-down has since moved past can still parse — its
+/// bytes were never overwritten — while the entries it names were; the
+/// header that should open each one is someone else's bytes now.
+AnicelZipLayout? _wholeDirectoryEndingAt(_ReadAt readAt, int end) {
+  final AnicelZipLayout layout;
+  try {
+    layout = _parseAnicelZipLayoutFrom(
+      length: end,
+      readAt: (offset, count) {
+        if (offset < 0 || count < 0 || offset + count > end) {
+          throw const FormatException('Outside the candidate directory.');
+        }
+        return readAt(offset, count);
+      },
+    );
+  } on FormatException {
+    return null;
+  }
+  for (final entry in layout.entries) {
+    if (entry.dataOffset + entry.length > layout.centralDirectoryOffset) {
+      return null;
+    }
+    final header = readAt(entry.localHeaderOffset, 30 + entry.name.length);
+    if (header.length < 30 + entry.name.length ||
+        ByteData.sublistView(header).getUint32(0, Endian.little) !=
+            _localSignature ||
+        String.fromCharCodes(header, 30) != entry.name) {
+      return null;
+    }
+  }
+  return layout;
+}
+
+/// The entries a save wrote after [from] when it got as far as starting
+/// the directory that would have committed them — every one whole and
+/// CRC-true, and a central-directory record begun right behind the last.
+/// Null for any other shape: a save that died among its entries.
+///
+/// ⚠️"Begun" is three bytes: `PK\x01` already says central record where a
+/// local header would read `PK\x03`, while one or two bytes could be
+/// either — and a file that ends exactly after an entry could have had
+/// more entries coming.
+({List<AnicelZipEntry> entries, int end})? _runADyingCommitWrote(
+  _ReadAt readAt, {
+  required int from,
+  required int length,
+}) {
+  final entries = <AnicelZipEntry>[];
+  var cursor = from;
+  while (cursor < length) {
+    final head = readAt(cursor, 4);
+    if (head.length >= 3 &&
+        head[0] == 0x50 &&
+        head[1] == 0x4B &&
+        head[2] == 0x01 &&
+        (head.length < 4 || head[3] == 0x02)) {
+      return (entries: entries, end: cursor);
+    }
+    final entry = _localEntryAt(readAt, cursor, length);
+    if (entry == null || !_crcHolds(readAt, entry)) {
+      return null;
+    }
+    entries.add(entry);
+    cursor = entry.dataOffset + entry.length;
+  }
+  return null;
+}
+
+/// The whole local entry at [cursor], or null when there is none — no
+/// local signature, or a header or data that runs past [length].
+AnicelZipEntry? _localEntryAt(_ReadAt readAt, int cursor, int length) {
+  if (cursor + 30 > length) {
+    return null;
+  }
+  final header = readAt(cursor, 30);
+  if (header.length < 30) {
+    return null;
+  }
+  final data = ByteData.sublistView(header);
+  if (data.getUint32(0, Endian.little) != _localSignature) {
+    return null; // A directory remnant or torn garbage.
+  }
+  final crc = data.getUint32(14, Endian.little);
+  var compressedSize = data.getUint32(18, Endian.little);
+  final nameLength = data.getUint16(26, Endian.little);
+  final extraLength = data.getUint16(28, Endian.little);
+  final dataOffset = cursor + 30 + nameLength + extraLength;
+  if (dataOffset > length) {
+    return null; // Torn inside the header's own name/extra.
+  }
+  final name = String.fromCharCodes(readAt(cursor + 30, nameLength));
+  if (compressedSize == _zip32Max) {
+    // An entry past [anicelZip64FieldLimit]: the truth lives in the local
+    // ZIP64 extra (both sizes, per spec). A flagged size with no extra is
+    // not a shape any writer of this format makes — unparseable like any
+    // other.
+    final size = _localZip64CompressedSize(
+      readAt(cursor + 30 + nameLength, extraLength),
+    );
+    if (size == null) {
+      return null;
+    }
+    compressedSize = size;
+  }
+  if (dataOffset + compressedSize > length) {
+    return null; // Torn: its data never fully landed.
+  }
+  return AnicelZipEntry(
+    name: name,
+    localHeaderOffset: cursor,
+    dataOffset: dataOffset,
+    length: compressedSize,
+    crc32: crc,
+  );
+}
+
+/// Whether [entry]'s bytes still checksum to what its header recorded,
+/// read in chunks so a gigabyte of media never sits in memory at once.
+bool _crcHolds(_ReadAt readAt, AnicelZipEntry entry) {
+  var running = anicelCrc32Start;
+  var done = 0;
+  while (done < entry.length) {
+    final left = entry.length - done;
+    final chunk = readAt(
+      entry.dataOffset + done,
+      left < _streamChunkBytes ? left : _streamChunkBytes,
+    );
+    if (chunk.isEmpty) {
+      return false;
+    }
+    running = anicelCrc32Update(running, chunk);
+    done += chunk.length;
+  }
+  return anicelCrc32Finish(running) == entry.crc32;
+}
+
+/// The last resort (R24-D1, from before directories were kept whole):
+/// LOCAL headers walked from the front. Same-name entries resolve
+/// last-wins (the shadowing rule the central directory encodes), a torn
+/// final entry is dropped, and the LAST complete entry is CRC-verified
+/// (the only one a torn write can have half-filled; verifying every entry
+/// would read whole gigabytes). Entries deleted by removeNames may
+/// resurrect (their old locals still exist) — for crash recovery, too much
+/// beats lost.
+///
+/// ⚠️It trusts file ORDER to say which copy is newest, and a stale copy
+/// left in a gap the push-down could not fill breaks that — so it runs
+/// only when no directory is whole.
+///
+/// The returned centralDirectoryOffset is the end of the last complete
+/// entry.
+AnicelZipLayout _walkFromTheFront(_ReadAt readAt, int length) {
+  final byName = <String, AnicelZipEntry>{};
+  final order = <String>[];
+  var cursor = 0;
+  var lastCompleteEnd = 0;
+  String? lastName;
+  AnicelZipEntry? shadowedByLast;
+  while (true) {
+    final entry = _localEntryAt(readAt, cursor, length);
+    if (entry == null) {
+      break;
+    }
+    if (!byName.containsKey(entry.name)) {
+      order.add(entry.name);
+    }
+    shadowedByLast = byName[entry.name];
+    byName[entry.name] = entry;
+    lastName = entry.name;
+    lastCompleteEnd = entry.dataOffset + entry.length;
+    cursor = lastCompleteEnd;
+  }
+  // The last complete entry is the only one a torn write can have
+  // corrupted content-wise; verify it and drop on mismatch.
+  if (lastName != null) {
+    final last = byName[lastName]!;
+    if (!_crcHolds(readAt, last)) {
+      // Corrupt final entry: its earlier shadowed version (if any) wins
+      // again, exactly as if the torn append never happened.
+      if (shadowedByLast != null) {
+        byName[lastName] = shadowedByLast;
+      } else {
+        byName.remove(lastName);
+        order.remove(lastName);
+      }
+      lastCompleteEnd = last.localHeaderOffset;
+    }
+  }
+  return AnicelZipLayout(
+    entries: [for (final name in order) byName[name]!],
+    centralDirectoryOffset: lastCompleteEnd,
+  );
 }
 
 /// CRC-32 (ZIP polynomial), table-driven.
@@ -623,14 +862,6 @@ int anicelCrc32Update(int running, Uint8List chunk, [int? length]) {
 /// Turns a running CRC into the value ZIP records.
 int anicelCrc32Finish(int running) => (running ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 
-/// Appends [newEntries] ({name: raw bytes, STORE'd}) to the .anicel at
-/// [path] IN PLACE: new locals write from the old central directory's
-/// offset, then the merged central directory (old actives minus shadowed
-/// names minus [removeNames], plus the new entries) and a fresh EOCD
-/// close the file. [removeNames] deletes entries outright (a cel that
-/// became empty or moved away) — their bytes turn to garbage like any
-/// shadowed entry, reclaimed at the next compaction. Returns the
-/// resulting layout (offsets valid for the rewritten file).
 /// One entry appended by streaming rather than by handing over bytes.
 ///
 /// 🚨 The reason it exists: [appendAnicelEntries] takes a `Uint8List` per
@@ -708,6 +939,32 @@ int _streamedEntryCrc(
   return anicelCrc32Finish(running);
 }
 
+/// Where a ref's bytes went, keyed elsewhere by the DATA offset they were
+/// at — what a session applies to every cel ref it holds into the file
+/// (`BrushFrameStore.relocateFileRefs`).
+typedef AnicelRelocation = ({int dataOffset, int length});
+
+/// One live entry as a piece of the file: its local header and the data
+/// behind it, which move together or not at all.
+typedef AnicelLiveSpan = ({int offset, int size});
+
+/// One copy of the push-down, front to back.
+typedef AnicelCompactionMove = ({int from, int to, int size});
+
+/// Appends [newEntries] ({name: raw bytes, STORE'd}) and [streamedEntries]
+/// to the .anicel at [path], IN PLACE: the new locals and a fresh central
+/// directory (old actives minus shadowed names minus [removeNames], plus
+/// the new entries) + EOCD go after the committed directory. [removeNames]
+/// deletes entries outright (a cel that became empty or moved away) —
+/// their bytes go dead like any shadowed entry, for [compactAnicelInPlace]
+/// to take back. Returns the resulting layout.
+///
+/// 🚨★★★THIS IS THE 떼기 커밋 (deleting-save-compacts-Q1, 유저 2026-09-23:
+/// 「떼기 커밋 → 구멍 뒤 살아 있는 바이트를 구멍으로 → 꼬리 자르기」). It
+/// writes over NOTHING: the old directory stays whole behind the new
+/// entries until the new directory has landed after them, so a crash
+/// anywhere in here opens as the file before this save. From then on the
+/// old directory is dead bytes like any shadowed entry.
 AnicelZipLayout appendAnicelEntries({
   required String path,
   required Map<String, Uint8List> newEntries,
@@ -715,8 +972,11 @@ AnicelZipLayout appendAnicelEntries({
   List<AnicelStreamedEntry> streamedEntries = const [],
 }) {
   final file = File(path);
-  // Tail-only parse: the append must not scale with file size.
+  // Tail-only parse: the append must not scale with file size. ⚠️Strict —
+  // it refuses a file whose directory is not its last byte (a save that
+  // did not finish), and the caller's answer to that is the whole write.
   final layout = parseAnicelZipLayoutFile(path);
+  final committedEnd = file.lengthSync();
 
   final streamedNames = {for (final entry in streamedEntries) entry.name};
   final survivors = [
@@ -729,7 +989,7 @@ AnicelZipLayout appendAnicelEntries({
 
   final builder = BytesBuilder(copy: false);
   final appended = <AnicelZipEntry>[];
-  var writeOffset = layout.centralDirectoryOffset;
+  var writeOffset = committedEnd;
 
   for (final entry in newEntries.entries) {
     final crc = anicelCrc32(entry.value);
@@ -751,7 +1011,7 @@ AnicelZipLayout appendAnicelEntries({
 
   // Streamed entries are checksummed BEFORE the file is touched. Their
   // headers state a CRC, and a source that turns out to be unreadable
-  // must not have already truncated the archive to find that out.
+  // must not have already written into the archive to find that out.
   final streamedCrcs = <int>[];
   for (final entry in streamedEntries) {
     streamedCrcs.add(_streamedEntryCrc(entry));
@@ -776,38 +1036,306 @@ AnicelZipLayout appendAnicelEntries({
   // Central directory over survivors + appended.
   final centralOffset = streamOffset;
   final all = [...survivors, ...appended];
-  final centralBytes = _centralDirectoryBytes(all);
-  final eocd = _eocdBytes(
-    entryCount: all.length,
-    centralLength: centralBytes.length,
-    centralOffset: centralOffset,
-  );
 
-  // One sequential write: truncate at the old central directory, then
-  // locals + streamed locals + central + EOCD.
+  // One sequential write after the committed end: locals + streamed
+  // locals + central + EOCD.
   final raf = file.openSync(mode: FileMode.append);
   try {
-    raf.truncateSync(layout.centralDirectoryOffset);
-    raf.setPositionSync(layout.centralDirectoryOffset);
-    raf.writeFromSync(builder.takeBytes());
+    raf.setPositionSync(committedEnd);
+    _write(raf, builder.takeBytes());
     for (var i = 0; i < streamedEntries.length; i += 1) {
       final entry = streamedEntries[i];
-      raf.writeFromSync(
-        _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]),
-      );
+      _write(raf, _localHeaderBytes(entry.name, entry.length, streamedCrcs[i]));
       _readStreamedEntry(
         entry,
-        (buffer, read) => raf.writeFromSync(buffer, 0, read),
+        (buffer, read) => _write(raf, buffer, 0, read),
       );
     }
-    raf.writeFromSync(centralBytes);
-    raf.writeFromSync(eocd);
-    raf.flushSync();
+    _write(raf, _directoryBytes(all, centralOffset: centralOffset));
+    _durable(raf);
   } finally {
     raf.closeSync();
   }
 
   return AnicelZipLayout(entries: all, centralDirectoryOffset: centralOffset);
+}
+
+/// The push-down, planned whole: every live span slides down into the dead
+/// bytes in front of it, in file order — which spans move where, and where
+/// the live bytes end once they have.
+///
+/// 🗣️유저 2026-09-23 (deleting-save-compacts-Q1) chose 「한 번에 밀어
+/// 내리기」 over the per-save budget (「점진 — 저장마다 예산(16MB)만큼」), so
+/// there is no budget: the save that compacts packs everything it can. The
+/// bound is the one the user named — 「지금의 전체저장보다는
+/// 안늘어날거아냐」: it copies the live bytes behind the first hole, never
+/// more than the whole write copied.
+///
+/// ⚠️A span whose hole in front is SMALLER than itself stays where it is.
+/// Its new home would overlap its old one, and the crash contract forbids
+/// writing over bytes the committed directory names — its own included.
+/// The hole in front of it stays dead; what comes after packs against it.
+({List<AnicelCompactionMove> moves, int end}) planAnicelPushDown(
+  List<AnicelLiveSpan> live,
+) {
+  final sorted = [...live]..sort((a, b) => a.offset.compareTo(b.offset));
+  final moves = <AnicelCompactionMove>[];
+  var cursor = 0;
+  for (final span in sorted) {
+    if (span.offset > cursor && cursor + span.size <= span.offset) {
+      moves.add((from: span.offset, to: cursor, size: span.size));
+      cursor += span.size;
+    } else {
+      cursor = span.offset + span.size;
+    }
+  }
+  return (moves: moves, end: cursor);
+}
+
+/// [moves] cut into rounds, each ending where the next move would land on
+/// bytes a move of the SAME round is leaving: the committed directory still
+/// names those until the round's own directory lands, so that move waits.
+///
+/// Rounds grow as the push-down climbs — each directory frees what the
+/// round before it vacated — so garbage spread evenly through a file takes
+/// on the order of log(entries) rounds, and one big hole takes one.
+List<List<AnicelCompactionMove>> anicelCompactionRounds(
+  List<AnicelCompactionMove> moves,
+) {
+  final rounds = <List<AnicelCompactionMove>>[];
+  var round = <AnicelCompactionMove>[];
+  // The first move of [round] whose vacated bytes end after the current
+  // destination starts. Destinations only climb, so it only advances.
+  var watch = 0;
+  for (final move in moves) {
+    while (watch < round.length &&
+        round[watch].from + round[watch].size <= move.to) {
+      watch += 1;
+    }
+    if (watch < round.length && round[watch].from < move.to + move.size) {
+      rounds.add(round);
+      round = [];
+      watch = 0;
+    }
+    round.add(move);
+  }
+  if (round.isNotEmpty) {
+    rounds.add(round);
+  }
+  return rounds;
+}
+
+/// The rest of the save the user chose: the live bytes behind each hole
+/// slide down into it, and the dead tail is cut off (deleting-save-
+/// compacts-Q1). In place — no temp file, and nothing replaced.
+///
+/// [layout] is the directory just committed ([appendAnicelEntries]'s
+/// result). The push-down ([planAnicelPushDown]) runs in rounds
+/// ([anicelCompactionRounds]); each round copies, then commits a directory
+/// naming where its entries went, appended at the end — only after that
+/// may the next round write over the bytes they left. Last, the directory
+/// moves down to where the live bytes end and the file is cut behind it.
+///
+/// 🚨★★★[release] RUNS BETWEEN A ROUND'S COMMIT AND THE NEXT ROUND'S FIRST
+/// WRITE, AND IS AWAITED. The session reads cels straight out of this file
+/// by offset while the save runs in another isolate, so bytes a round has
+/// moved away from are garbage only once no ref points at them any more.
+/// [release] is handed every move of the round (old data offset → new) and
+/// must not complete until the refs have moved. The crash contract keeps
+/// the file safe from the save; this keeps the session safe from it.
+///
+/// [onProgress] hears the fraction of the moving bytes copied so far.
+Future<AnicelZipLayout> compactAnicelInPlace({
+  required String path,
+  required AnicelZipLayout layout,
+  required Future<void> Function(Map<int, AnicelRelocation> moved) release,
+  void Function(double fraction)? onProgress,
+}) async {
+  final plan = planAnicelPushDown([
+    for (final entry in layout.entries)
+      (
+        offset: entry.localHeaderOffset,
+        size: entry.dataOffset - entry.localHeaderOffset + entry.length,
+      ),
+  ]);
+  final total = plan.moves.fold<int>(0, (sum, move) => sum + move.size);
+  var copied = 0;
+  var entries = layout.entries;
+  var committedDirectory = layout.centralDirectoryOffset;
+  final raf = File(path).openSync(mode: FileMode.append);
+  try {
+    final buffer = Uint8List(_streamChunkBytes);
+    for (final round in anicelCompactionRounds(plan.moves)) {
+      for (final move in round) {
+        _copyDown(raf, move, buffer);
+        copied += move.size;
+        onProgress?.call(copied / total);
+      }
+      _durable(raf);
+      final movedTo = {for (final move in round) move.from: move.to};
+      final moved = <int, AnicelRelocation>{};
+      entries = [
+        for (final entry in entries)
+          if (movedTo[entry.localHeaderOffset] case final to?)
+            _landedAt(entry, to, moved)
+          else
+            entry,
+      ];
+      committedDirectory = _commitDirectoryAtTheEnd(raf, entries);
+      await release(moved);
+    }
+
+    // The cut: the directory comes down to where the live bytes end, and
+    // everything behind it goes.
+    final directory = _directoryBytes(entries, centralOffset: plan.end);
+    if (plan.end < committedDirectory) {
+      if (plan.end + directory.length > committedDirectory) {
+        // Its new home reaches into the committed directory itself — commit
+        // once more at the end first, so the one written over is no longer
+        // the newest.
+        committedDirectory = _commitDirectoryAtTheEnd(raf, entries);
+      }
+      raf.setPositionSync(plan.end);
+      _write(raf, directory);
+      _durable(raf);
+      _truncate(raf, plan.end + directory.length);
+      _durable(raf);
+      committedDirectory = plan.end;
+    }
+  } finally {
+    raf.closeSync();
+  }
+  return AnicelZipLayout(
+    entries: entries,
+    centralDirectoryOffset: committedDirectory,
+  );
+}
+
+/// [entry] as it reads once its span has moved to [to]; the move is noted
+/// in [moved] for the refs that still point at the old bytes.
+AnicelZipEntry _landedAt(
+  AnicelZipEntry entry,
+  int to,
+  Map<int, AnicelRelocation> moved,
+) {
+  final dataOffset = to + (entry.dataOffset - entry.localHeaderOffset);
+  moved[entry.dataOffset] = (dataOffset: dataOffset, length: entry.length);
+  return AnicelZipEntry(
+    name: entry.name,
+    localHeaderOffset: to,
+    dataOffset: dataOffset,
+    length: entry.length,
+    crc32: entry.crc32,
+  );
+}
+
+/// Copies [move] front to back through [buffer]. The destination always
+/// lies wholly in front of the source ([planAnicelPushDown] leaves a span
+/// whose home would overlap it where it is), so the copy never reads a
+/// byte it has written.
+void _copyDown(
+  RandomAccessFile raf,
+  AnicelCompactionMove move,
+  Uint8List buffer,
+) {
+  var done = 0;
+  while (done < move.size) {
+    final left = move.size - done;
+    raf.setPositionSync(move.from + done);
+    final read = raf.readIntoSync(
+      buffer,
+      0,
+      left < buffer.length ? left : buffer.length,
+    );
+    if (read <= 0) {
+      throw FileSystemException(
+        'a live entry ended early while being moved',
+        raf.path,
+      );
+    }
+    raf.setPositionSync(move.to + done);
+    _write(raf, buffer, 0, read);
+    done += read;
+  }
+}
+
+/// A round's commit: a directory over [entries] written at the end of the
+/// file and made durable. Answers where it starts.
+int _commitDirectoryAtTheEnd(
+  RandomAccessFile raf,
+  List<AnicelZipEntry> entries,
+) {
+  final at = raf.lengthSync();
+  raf.setPositionSync(at);
+  _write(raf, _directoryBytes(entries, centralOffset: at));
+  _durable(raf);
+  return at;
+}
+
+/// A durability barrier: what was written before it reaches the disk before
+/// anything written after it can. The phases of a save lean on that order —
+/// a directory must not land ahead of the copies it names, nor a copy ahead
+/// of the directory that let go of its bytes.
+void _durable(RandomAccessFile raf) => raf.flushSync();
+
+/// A central directory over [entries] and the records that close it, as it
+/// reads starting at [centralOffset].
+Uint8List _directoryBytes(
+  List<AnicelZipEntry> entries, {
+  required int centralOffset,
+}) {
+  final central = _centralDirectoryBytes(entries);
+  return (BytesBuilder(copy: false)
+        ..add(central)
+        ..add(
+          _eocdBytes(
+            entryCount: entries.length,
+            centralLength: central.length,
+            centralOffset: centralOffset,
+          ),
+        ))
+      .takeBytes();
+}
+
+/// 🧪Hears every change a save makes to the project file, in the order it
+/// makes them.
+///
+/// The crash tests replay a prefix of this onto the file as it was before
+/// the save — exactly what a process that died at that byte leaves behind:
+/// writes land in order, and a truncation is all or nothing.
+@visibleForTesting
+abstract interface class AnicelWriteWatcher {
+  /// [bytes] were written starting at [at].
+  void wrote(int at, List<int> bytes);
+
+  /// The file was cut to [length].
+  void cut(int length);
+}
+
+/// Null in production.
+@visibleForTesting
+AnicelWriteWatcher? anicelDebugWriteWatcher;
+
+/// Every write a save makes into the project file goes through here, so
+/// the crash tests hear every one of them.
+void _write(
+  RandomAccessFile raf,
+  List<int> bytes, [
+  int start = 0,
+  int? end,
+]) {
+  final stop = end ?? bytes.length;
+  anicelDebugWriteWatcher?.wrote(
+    raf.positionSync(),
+    bytes.sublist(start, stop),
+  );
+  raf.writeFromSync(bytes, start, stop);
+}
+
+/// [RandomAccessFile.truncateSync], heard like [_write].
+void _truncate(RandomAccessFile raf, int length) {
+  anicelDebugWriteWatcher?.cut(length);
+  raf.truncateSync(length);
 }
 
 /// Writes a COMPLETE .anicel to [path], one entry at a time.

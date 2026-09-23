@@ -49,14 +49,14 @@ Map<String, MediaByteSource> projectMediaSources({
       layout = parseAnicelZipLayoutFile(projectFilePath);
     } on Object {
       // 🚨 A torn tail is NOT "nothing is inside". The crash contract says
-      // an append crash destroys only the file's tail — the media entries'
-      // bytes are still in the body — and the very next save is the HEAL
-      // that consumes this answer to decide what streams forward.
-      // Answering "nothing" here made that healing save rename a
-      // media-less archive over the file that still physically held the
-      // bytes: for an asset whose import original was gone (the whole
-      // reason carrying exists), that was silent, permanent loss. The
-      // local-header walk recovers what the tail no longer names.
+      // a crashed save leaves the last committed directory and everything
+      // it names intact — the media entries' bytes are still in the body —
+      // and the very next save is the HEAL that consumes this answer to
+      // decide what streams forward. Answering "nothing" here made that
+      // healing save rename a media-less archive over the file that still
+      // physically held the bytes: for an asset whose import original was
+      // gone (the whole reason carrying exists), that was silent, permanent
+      // loss. The recovery finds what the torn tail no longer names.
       try {
         layout = recoverAnicelZipLayoutFile(projectFilePath);
       } on Object {

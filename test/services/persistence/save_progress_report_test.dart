@@ -79,9 +79,9 @@ void main() {
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     // The proof that an APPEND ran, rather than a full rewrite that happened
-    // to end up bigger. An append truncates at the old central directory and
-    // writes from there, so everything before that offset survives byte for
-    // byte; a rewrite builds a fresh file in a temp and renames it over.
+    // to end up bigger. An append writes after the committed directory, so
+    // everything before that offset survives byte for byte; a rewrite
+    // builds a fresh file in a temp and renames it over.
     // Growth alone cannot tell those apart — a rewrite of a project that
     // gained a cut grows too, which is how this test spent its first draft
     // measuring the wrong path.

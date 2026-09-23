@@ -231,9 +231,17 @@ void main() {
       // save became a full rewrite — on a project carrying media that means
       // re-streaming every megabyte on every Ctrl+S, silently.
       //
-      // ⛔A size assertion is what catches it, because nothing else does: the
-      // file is still correct after a full rewrite, just written the
-      // expensive way.
+      // 🚨WHAT TELLS THE TWO PATHS APART. It used to be the file GROWING —
+      // an append left the superseded bytes behind — and that stopped being
+      // true when a save started sliding its live bytes down over the holes
+      // (deleting-save-compacts-Q1, 유저 2026-09-23: 「한 번에 밀어 내리기」).
+      // Size was only ever a shadow of the question anyway.
+      //
+      // ⛔The real difference: a full rewrite REBUILDS the archive from what
+      // the project holds, so anything the project never names is gone; an
+      // append keeps every entry it was not told to remove. A planted entry
+      // is therefore a direct answer, and it stays one whatever the
+      // compaction does to the file's size.
       const service = AnicelFileService();
       final store = BrushFrameStore();
       final path = '${directory.path}/append.anicel';
@@ -245,7 +253,19 @@ void main() {
         brushFrameStore: store,
         filePath: path,
       );
-      final first = File(path).lengthSync();
+      // An entry no project ever names, planted in the file the save is
+      // about to write onto.
+      appendAnicelEntries(
+        path: path,
+        newEntries: {
+          'planted.bin': Uint8List.fromList(List<int>.filled(64, 7)),
+        },
+      );
+      expect(
+        parseAnicelZipLayoutFile(path).entryNamed('planted.bin'),
+        isNotNull,
+        reason: 'fixture: it is in the file before the save',
+      );
 
       // ⚠️The SAME cel, re-inked: that kills its file ref, so there are ZERO
       // clean refs and the save takes the ownership-check branch — which is
@@ -258,11 +278,13 @@ void main() {
       );
 
       expect(
-        File(path).lengthSync(),
-        greaterThan(first),
+        parseAnicelZipLayoutFile(path).entryNamed('planted.bin'),
+        isNotNull,
         reason:
-            'an append leaves the superseded bytes behind, so the file GROWS. '
-            'A full rewrite would land at roughly the same size and look fine.',
+            'an append carries entries it was not told to remove. A full '
+            'rewrite rebuilds from the project and this one would be gone — '
+            'which is the regression: every Ctrl+S re-streaming every '
+            'megabyte, silently.',
       );
     },
   );

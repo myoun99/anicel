@@ -217,19 +217,55 @@ AnicelStreamedEntry _progressed(
   );
 }
 
-/// Runs [write] with a port for it to report progress on, and closes that
-/// port afterwards. With no [onProgress] there is no port and no cost.
+/// A writing isolate asking the session to move its cel refs off bytes it
+/// is about to write over, and waiting on [reply] until they have
+/// ([compactAnicelInPlace]'s `release`).
+class _MoveRefs {
+  const _MoveRefs(this.moved, this.reply);
+
+  /// Old data offset → where those bytes are now.
+  final Map<int, AnicelRelocation> moved;
+  final SendPort reply;
+}
+
+/// The writing isolate's half of [_MoveRefs]: asks, and completes once the
+/// session has answered.
+Future<void> _askToMoveRefs(
+  SendPort session,
+  Map<int, AnicelRelocation> moved,
+) async {
+  if (moved.isEmpty) {
+    return;
+  }
+  final answer = ReceivePort();
+  session.send(_MoveRefs(moved, answer.sendPort));
+  await answer.first;
+}
+
+/// Runs [write] with a port for it to report progress on — and, given
+/// [onMoveRefs], to ask the session to move its refs on — and closes that
+/// port afterwards. With neither there is no port and no cost.
+///
+/// ⚠️[onMoveRefs] is answered even when it throws: the isolate waits on
+/// the answer, and a save that never hears back never finishes.
 Future<R> _reportingProgress<R>(
   void Function(double)? onProgress,
-  Future<R> Function(SendPort? port) write,
-) async {
-  if (onProgress == null) {
+  Future<R> Function(SendPort? port) write, {
+  void Function(Map<int, AnicelRelocation> moved)? onMoveRefs,
+}) async {
+  if (onProgress == null && onMoveRefs == null) {
     return write(null);
   }
   final receive = ReceivePort();
   receive.listen((message) {
     if (message is double) {
-      onProgress(message);
+      onProgress?.call(message);
+    } else if (message is _MoveRefs) {
+      try {
+        onMoveRefs?.call(message.moved);
+      } finally {
+        message.reply.send(null);
+      }
     }
   });
   try {
@@ -245,11 +281,15 @@ Future<R> _reportingProgress<R>(
 ///  - INCREMENTAL (the normal autosave/manual-save path): only cels
 ///    edited since the last save append to the existing file, shadowing
 ///    their old entries by stable name. Superseded bytes stay as garbage
-///    until compaction.
-///  - FULL (first save, save-as, torn tail, or garbage past
-///    [_compactionGarbageRatio]): the archive rebuilds whole into a temp
-///    sibling then renames over the target — atomic, and the recovery/
-///    durability point of the append contract.
+///    until garbage passes [_compactionGarbageRatio] — and then the same
+///    save pushes the live bytes down over it and cuts the tail, in place
+///    ([compactAnicelInPlace]).
+///  - FULL (first save, save-as, or a tail that does not parse): the
+///    archive rebuilds whole into a temp sibling then renames over the
+///    target — atomic, and what heals a file a crash left torn.
+///    🪦It was also the compaction until 2026-09-23 (유저,
+///    deleting-save-compacts-Q1: 「전체 다시쓰기는 압축 정리에서
+///    사라지고(첫 저장·Save As·복구에만 남음)」).
 ///
 /// After every successful save the store adopts file refs for the
 /// written cels, so their RAM copies can drop for free — the saved .anicel
@@ -304,8 +344,8 @@ class AnicelFileService {
     );
   }
 
-  /// A full rewrite is forced when shadowed/removed garbage exceeds this
-  /// fraction of the file.
+  /// The save compacts — in place, [compactAnicelInPlace] — when
+  /// shadowed/removed garbage exceeds this fraction of the file.
   static const double _compactionGarbageRatio = 0.5;
 
   /// Writes the project, answering the cels it could NOT write.
@@ -486,6 +526,18 @@ class AnicelFileService {
         if (!adopted.containsKey(key) && !carried.contains(key)) key,
     };
 
+    /// Every ref into [filePath], in every store, follows its bytes before
+    /// the push-down can write over them ([compactAnicelInPlace]).
+    ///
+    /// ⚠️Whatever [adoptRefs] says: that decides whether the session takes
+    /// THIS save's file as its own, and these refs already point into it —
+    /// one left behind reads whatever lands on its old bytes.
+    void moveRefs(Map<int, AnicelRelocation> moved) {
+      for (final store in stores) {
+        store.relocateFileRefs((path) => _samePath(path, filePath), moved);
+      }
+    }
+
     if (sound) {
       final adopted = await _saveIncremental(
         project: project,
@@ -497,6 +549,7 @@ class AnicelFileService {
         conforms: conforms,
         sessionFields: sessionFields,
         onProgress: onProgress,
+        onMoveRefs: moveRefs,
       );
       if (adopted != null) {
         adoptEach(adopted);
@@ -508,7 +561,8 @@ class AnicelFileService {
           },
         ));
       }
-      // Torn tail or garbage over threshold → compaction below.
+      // A torn tail, refs the file does not back, or somebody else's
+      // archive → the whole write below.
     }
 
     final adopted = await _saveFull(
@@ -653,12 +707,14 @@ class AnicelFileService {
   }
 
   /// The layout of [filePath] when appending onto it is SOUND — with the
-  /// names this save takes out of its directory — or null when the caller
-  /// must rewrite the file whole instead.
+  /// names this save takes out of its directory, and whether it compacts —
+  /// or null when the caller must rewrite the file whole instead.
   ///
-  /// Three separate ways an append would lose data, asked in the order that
-  /// costs the least: a torn tail, refs whose bytes are not where they say,
-  /// and a file so full of garbage that appending more is the wrong move.
+  /// Two separate ways an append would lose data, asked in the order that
+  /// costs the least: a torn tail, and refs whose bytes are not where they
+  /// say. A file so full of garbage that appending more is the wrong move
+  /// is not a third any more: it is [compact], and the same save packs it
+  /// in place (유저 2026-09-23, deleting-save-compacts-Q1).
   ///
   /// 🚨THE GARBAGE IS JUDGED ON THE DIRECTORY THIS SAVE LEAVES BEHIND, not
   /// on the one it found. A save that dropped a carried 157MB PDF judged
@@ -672,7 +728,7 @@ class AnicelFileService {
   /// rule — the ratio — for a 157MB movie and a 79KB still alike; size
   /// only ever enters through the ratio (유저: 「큰 미디어든 아니든 법
   /// 하나로」).
-  static ({AnicelZipLayout layout, Set<String> leaving})?
+  static ({AnicelZipLayout layout, Set<String> leaving, bool compact})?
   _layoutSafeToAppendOnto({
     required String filePath,
     required List<(String, int, int)> cleanRefsToVerify,
@@ -683,7 +739,7 @@ class AnicelFileService {
     try {
       layout = parseAnicelZipLayoutFile(filePath);
     } on FormatException {
-      return null; // Torn tail — compaction is the recovery.
+      return null; // Torn tail — the whole write is the recovery.
     }
     // The refs' claim — "my bytes are already in this file" — is verified
     // against the file itself before anything appends, because path
@@ -723,7 +779,7 @@ class AnicelFileService {
       return null;
     }
     final leaving = namesLeaving(layout);
-    if (anicelNeedsCompaction(
+    final compact = anicelNeedsCompaction(
       fileLength: File(filePath).lengthSync(),
       entries: [
         for (final entry in layout.entries)
@@ -731,15 +787,14 @@ class AnicelFileService {
             (name: entry.name, length: entry.length),
       ],
       garbageRatio: _compactionGarbageRatio,
-    )) {
-      return null; // Garbage-heavy — compact instead of appending more.
-    }
-    return (layout: layout, leaving: leaving);
+    );
+    return (layout: layout, leaving: leaving, compact: compact);
   }
 
-  /// Appends only the dirty cels (+ a superseding project.json). Returns
-  /// the refs to adopt, or null when the file needs a full rewrite
-  /// instead (unparseable tail, or garbage past the threshold).
+  /// Appends only the dirty cels (+ a superseding project.json) — and, when
+  /// garbage has passed the ratio, packs the file down in place in the same
+  /// save. Returns the refs to adopt, or null when the file needs a full
+  /// rewrite instead (unparseable tail, or refs it does not back).
   Future<Map<BrushFrameKey, AnicelCelFileRef>?> _saveIncremental({
     required Project project,
     required ({
@@ -759,6 +814,10 @@ class AnicelFileService {
     /// entry REMOVED — that is the settings-change sweep.
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
+
+    /// Moves the session's refs off bytes the push-down is about to write
+    /// over — see `save`'s `moveRefs`.
+    required void Function(Map<int, AnicelRelocation> moved) onMoveRefs,
   }) async {
     final (:works, :removedNames) = _dirtyCelWork(dirty, baked);
     // Scalars only, resolved HERE: the isolate closure must not capture
@@ -768,10 +827,22 @@ class AnicelFileService {
         if (!dirty.contains(ref.key) && _samePath(ref.value.filePath, filePath))
           (anicelCelEntryName(ref.key), ref.value.dataOffset, ref.value.length),
     ];
+    // 🚨Refs a DIRTY cel still holds into this file — a rekeyed cel keeps
+    // pointing at the bytes of its old name (`rekeyFrames`), and this save
+    // takes that name out of the directory. The push-down may write over
+    // those bytes, so before it starts each ref moves to the entry this
+    // save wrote for its key. By entry name → where the ref points now.
+    final heldByDirtyCels = <String, int>{
+      for (final key in dirty)
+        if (baked.fileRefs[key] case final ref?
+            when _samePath(ref.filePath, filePath))
+          anicelCelEntryName(key): ref.dataOffset,
+    };
 
     return _reportingProgress(
       onProgress,
-      (port) => Isolate.run(() {
+      onMoveRefs: onMoveRefs,
+      (port) => Isolate.run(() async {
         final sound = _layoutSafeToAppendOnto(
           filePath: filePath,
           cleanRefsToVerify: cleanRefsToVerify,
@@ -792,7 +863,7 @@ class AnicelFileService {
         if (sound == null) {
           return null;
         }
-        final (:layout, :leaving) = sound;
+        final (:layout, :leaving, :compact) = sound;
         // Resolved BEFORE the cels so the progress count is complete: a
         // fraction needs its denominator before the first thing it divides.
         final newMedia = _mediaToAppend(layout, mediaToStore);
@@ -801,12 +872,15 @@ class AnicelFileService {
         // streamed entry twice (checksum, then copy), and counting it once
         // put `_done` at `_total` when the checksum pass ended — the window
         // said 100% and then sat there through the whole byte copy, which on
-        // a large import is most of the wait.
+        // a large import is most of the wait. The push-down is one more
+        // unit, filled by the fraction of its bytes copied: on the save that
+        // drops a big asset it IS the wait.
         final progress = _SaveProgress(
-          port,
+          onProgress == null ? null : port,
           1 +
               works.length +
-              (newMedia.length + newConforms.length) * anicelAppendStreamPasses,
+              (newMedia.length + newConforms.length) * anicelAppendStreamPasses +
+              (compact ? 1 : 0),
         );
         final projectEntry = buildAnicelProjectEntry(
           project: project,
@@ -828,10 +902,57 @@ class AnicelFileService {
             for (final entry in newConforms) _progressed(entry, progress),
           ],
         );
+        final written = compact
+            ? await _packedInPlace(
+                filePath: filePath,
+                appended: appended,
+                heldByDirtyCels: heldByDirtyCels,
+                session: port!,
+                progress: progress,
+              )
+            : appended;
         progress.finish();
-        return _refsForBlobs(blobs, appended: appended, filePath: filePath);
+        return _refsForBlobs(blobs, appended: written, filePath: filePath);
       }),
     );
+  }
+
+  /// The push-down and the cut, in the isolate that just appended — or
+  /// [appended] as it stands when a dirty cel still holds bytes this save
+  /// could not give a new home.
+  ///
+  /// Before anything is written over, every ref a dirty cel holds into the
+  /// file moves to the entry this save wrote for its key
+  /// ([heldByDirtyCels]); then each round's moves are announced the same
+  /// way ([compactAnicelInPlace]). ⛔If one of those cels was not written
+  /// (its bytes would not resolve), its ref has nowhere to go — so nothing
+  /// is written over this save, and the next one packs the file instead.
+  static Future<AnicelZipLayout> _packedInPlace({
+    required String filePath,
+    required AnicelZipLayout appended,
+    required Map<String, int> heldByDirtyCels,
+    required SendPort session,
+    required _SaveProgress progress,
+  }) async {
+    final rehomed = <int, AnicelRelocation>{};
+    for (final MapEntry(key: name, value: dataOffset)
+        in heldByDirtyCels.entries) {
+      final home = appended.entryNamed(name);
+      if (home == null) {
+        progress.step();
+        return appended;
+      }
+      rehomed[dataOffset] = (dataOffset: home.dataOffset, length: home.length);
+    }
+    await _askToMoveRefs(session, rehomed);
+    final packed = await compactAnicelInPlace(
+      path: filePath,
+      layout: appended,
+      release: (moved) => _askToMoveRefs(session, moved),
+      onProgress: progress.within,
+    );
+    progress.step();
+    return packed;
   }
 
   /// Every dirty cel's bytes, in [works] order.
@@ -1304,10 +1425,10 @@ class AnicelFileService {
       try {
         layout = parseAnicelZipLayoutFile(filePath);
       } on FormatException {
-        // Torn tail (an append crashed mid-rewrite): reconstruct from
-        // the intact local entries (R24-D1). The file stays torn on
-        // disk until the next save — which the service forces down the
-        // FULL path (the incremental precondition re-parses this same
+        // A save died partway: open the last one that finished (plus, if
+        // it died committing, what it had fully written). The file stays
+        // torn on disk until the next save — which the service forces down
+        // the FULL path (the incremental precondition re-parses this same
         // tail and fails) — so opening is enough to heal on save.
         layout = recoverAnicelZipLayoutFile(filePath);
       }

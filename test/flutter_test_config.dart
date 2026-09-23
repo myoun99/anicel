@@ -96,6 +96,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // A lowered limit forces the ZIP64 per-entry shape onto small fixtures;
   // leaked, it would sentinel every entry in every other suite's archives.
   anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
+  // A watcher left installed would hear — and hold on to — every later
+  // suite's saves.
+  anicelDebugWriteWatcher = null;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;
