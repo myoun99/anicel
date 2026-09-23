@@ -8,6 +8,7 @@ import '../../models/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
@@ -72,13 +73,11 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
 /// The corner radius of the block a grip [box] sits in — THE block corner
 /// ([timelineBlockCornerRadiusAt]), read back from the box the placement made:
 /// half a cell along the frame axis, a third of the row across it.
-double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) {
-  final horizontal = axis == Axis.horizontal;
-  return timelineBlockCornerRadiusAt(
-    cellExtent: (horizontal ? box.width : box.height) / _gripMainCells,
-    crossExtent: (horizontal ? box.height : box.width) / _gripCrossShare,
-  ).x;
-}
+double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
+    timelineBlockCornerRadiusAt(
+      cellExtent: extentAlong(axis, box.size) / _gripMainCells,
+      crossExtent: extentAcross(axis, box.size) / _gripCrossShare,
+    ).x;
 
 /// The grip's triangle inside its [box]: the right angle in the block's
 /// corner and the two legs along the block's own edges, rounded where the
@@ -96,7 +95,7 @@ Path blockEdgeGripPath(
 }) {
   final horizontal = axis == Axis.horizontal;
   Offset at(double along, double across) =>
-      horizontal ? Offset(along, across) : Offset(across, along);
+      offsetAlong(axis, along: along, across: across);
   final a0 = horizontal ? box.left : box.top;
   final a1 = horizontal ? box.right : box.bottom;
   final c0 = horizontal ? box.top : box.left;
@@ -160,8 +159,9 @@ Color blockEdgeGripColor(
   );
 }
 
-/// Draws one grip into its [box]. THE drawing source, shared by the widget
-/// grip and the dense rows' row-wide chrome painter.
+/// Draws one grip's [triangle] ([blockEdgeGripPath]) in its ink. THE drawing
+/// source, shared by the widget grip and the dense rows' row-wide chrome
+/// painter.
 ///
 /// ⛔No outline arm (2026-08-17). R9 #11 wrapped the bar in the text's
 /// white outline so a resting grip read on a busy block; #1104 took the
@@ -170,14 +170,12 @@ Color blockEdgeGripColor(
 /// visibility answer now, for the grip exactly as for the writing.
 void paintBlockEdgeGrip(
   Canvas canvas,
-  Rect box, {
-  required TimelineBlockEdge edge,
-  required Axis axis,
-  required BlockEdgeGripInk ink,
+  Path triangle,
+  BlockEdgeGripInk ink, {
   Color ground = timelineDrawingHeldColor,
 }) {
   canvas.drawPath(
-    blockEdgeGripPath(box, edge: edge, axis: axis),
+    triangle,
     Paint()..color = blockEdgeGripColor(ink, ground: ground),
   );
 }
@@ -204,10 +202,8 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) => paintBlockEdgeGrip(
     canvas,
-    Offset.zero & size,
-    edge: edge,
-    axis: axis,
-    ink: ink,
+    blockEdgeGripPath(Offset.zero & size, edge: edge, axis: axis),
+    ink,
   );
 
   @override

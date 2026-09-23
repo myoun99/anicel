@@ -452,10 +452,12 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
         case TimelineRowGripTarget():
           paintBlockEdgeGrip(
             canvas,
-            target.rect,
-            edge: target.edge,
-            axis: resolver.axis,
-            ink: target.id == draggingGripId
+            blockEdgeGripPath(
+              target.rect,
+              edge: target.edge,
+              axis: resolver.axis,
+            ),
+            target.id == draggingGripId
                 ? BlockEdgeGripInk.dragging
                 : target.id == hoveredId
                 ? BlockEdgeGripInk.hovered

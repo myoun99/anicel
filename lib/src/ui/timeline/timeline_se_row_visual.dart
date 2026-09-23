@@ -323,8 +323,8 @@ class _WarningBarPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     final horizontal = axis == Axis.horizontal;
-    final along = horizontal ? size.width : size.height;
-    final across = horizontal ? size.height : size.width;
+    final along = extentAlong(axis, size);
+    final across = extentAcross(axis, size);
     final corner = frameCount <= 0
         ? Radius.zero
         : timelineBlockCornerRadiusAt(
