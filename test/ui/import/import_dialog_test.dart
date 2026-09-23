@@ -997,6 +997,27 @@ void main() {
       [('conte_3-4.pdf', pdfPath)],
       reason: 'the pool names the piece; the original is where it came from',
     );
+    final piecePath = pool.single.path;
+    // The piece is secured once its door returns — after the last page has
+    // baked, which is later than the renders being asked for.
+    for (var tries = 0;
+        tries < 200 && s.mediaStagingStore.find(piecePath) == null;
+        tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    expect(
+      s.mediaStagingStore.find(piecePath),
+      isNotNull,
+      reason: 'carried from the moment it landed (「품은 순간 데이터를 가지고」)',
+    );
+    expect(
+      File(piecePath).existsSync(),
+      isFalse,
+      reason: 'the file the door read is gone — the staged copy is the only one',
+    );
   });
 
   /// PLACE: the pool row's way onto the timeline. The same window, minus

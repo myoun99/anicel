@@ -242,6 +242,45 @@ void main() {
       await tester.pumpAndSettle();
     }, skip: skip);
 
+    testWidgets('🚨a sound is cut in its OWN time — at 1001/1000 project frame '
+        'f plays source time f / rate × 1001/1000, and the piece starts there '
+        '(cut from the conform instead, it would be sped twice)', (
+      tester,
+    ) async {
+      final s = EditorSessionManager(
+        initialProject: createDefaultProject().copyWith(
+          audioSpeedNumerator: 1001,
+          audioSpeedDenominator: 1000,
+        ),
+      );
+      addTearDown(s.dispose);
+      final source = writeWav('line.wav', 2);
+      final rate = s.projectSettings.projectFrameRate;
+
+      final cut = await tester.runAsync(
+        () => s.trimmedPieces.cut(
+          source,
+          MediaAssetKind.audio,
+          inFrame: 24,
+          outFrame: 35,
+        ),
+      );
+
+      final kept = QaAudioDecoder.instance!.decode(
+        File(cut!.path).readAsBytesSync(),
+      )!;
+      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      int sampleAt(int frame) =>
+          frame * rate.denominator * 1001 * 48000 ~/ (rate.numerator * 1000);
+      expect(
+        kept.samples.first,
+        all.samples[sampleAt(24) * 2],
+        reason: 'one second of project time is 1.001 seconds of source',
+      );
+      expect(kept.samples.length, (sampleAt(36) - sampleAt(24)) * 2);
+      await tester.pumpAndSettle();
+    }, skip: skip);
+
     testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
         'project shows, one per project frame', (tester) async {
       final encoder = QaVideoEncoder.instance;

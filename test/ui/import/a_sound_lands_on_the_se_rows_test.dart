@@ -255,6 +255,54 @@ void main() {
     await tester.pumpAndSettle();
   }, skip: nativeEngineLibraryPathOrNull() == null);
 
+  testWidgets('🚨a sound the POOL already holds is placed from as it is — its '
+      'IN/OUT picks a stretch of the pooled file, and no piece is cut', (
+    tester,
+  ) async {
+    final path = await tester.runAsync(() => writeSound('door.wav', 1));
+    final s = session();
+    await tester.runAsync(
+      () => s.mediaPool.addMediaAssets([normalizedMediaPath(path!)], carried: true),
+    );
+    final start = s.activeCutGlobalStartFrame;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
+      ),
+    );
+    TransportBar bar() =>
+        tester.widget<TransportBar>(find.byType(TransportBar));
+    for (var tries = 0; tries < 60 && bar().frameCount == 1; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+
+    bar().onRangeChanged(2, 5);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 60; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+      if (s.activeTrack.seLayers.first.timeline[start] != null) {
+        break;
+      }
+    }
+
+    final clip = s.activeTrack.seLayers.first.audioClips.single;
+    expect(clip.offsetFrames, 2, reason: 'a stretch of the pooled file');
+    expect(
+      [for (final asset in s.repository.requireProject().mediaAssets) asset.path],
+      [clip.filePath],
+      reason: 'its carrying was decided when it arrived — nothing new is '
+          'carried, so nothing is cut',
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('with the SECOND cut open the sound starts at that cut\'s start '
       'on the track — the SE rows are the track\'s, not the cut\'s', (
     tester,
