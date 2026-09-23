@@ -124,7 +124,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'timeline/timeline_frame_coordinate_policy.dart'
     show FrameScrubDedupe, frameIndexFromLocalX;
 import 'timeline/timeline_frame_range_policy.dart'
-    show endlessViewportFillFrames;
+    show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
@@ -1128,9 +1128,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     frameAxisOffset: _horizontalScrollOffset,
     frameWindowBucket: _horizontalWindowBucket,
     cellExtent: () => _scale.pixelsPerFrame,
-    baseFrameCount: () => _totalFrames(
-      widget.project,
-      buildStoryboardTimelineLayout(widget.project),
+    baseFrameCount: () => _restingFramesOf(
+      _totalFrames(
+        widget.project,
+        buildStoryboardTimelineLayout(widget.project),
+      ),
     ),
     rebuild: _rebuild,
     isMounted: () => mounted,
@@ -1471,8 +1473,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// fill — the old always-120 resting runway is gone, so past-content
   /// cells vanish once out of view and the scrollbar stops at the built
   /// cells. Only the ruler edge-drag overshoots and grows the extent.
-  int _renderedFramesFor(int totalFrames) =>
-      math.max(totalFrames + _frameAxis.trailingFrames, _viewportFillFrameCells);
+  int _renderedFramesFor(int totalFrames) => math.max(
+    _restingFramesOf(totalFrames) + _frameAxis.trailingFrames,
+    _viewportFillFrameCells,
+  );
+
+  /// The frames the strips' axis RESTS at before its endless room: the
+  /// movie's end line and the post-cut allowance past it — asked of the one
+  /// policy the timeline grids ask, so the scrollbar's far end shows the
+  /// line on every surface that draws one (F-174).
+  int _restingFramesOf(int totalFrames) =>
+      TimelineFrameRange.fromPlaybackDuration(
+        playbackFrameCount: totalFrames,
+        minimumVisibleFrameCells: 0,
+      ).visibleFrameCount;
 
   /// The scroll content's full width for [layoutEntries] (cuts + the
   /// endless runway). The rendered-cell term is EXACT (UI-R12 #16): any

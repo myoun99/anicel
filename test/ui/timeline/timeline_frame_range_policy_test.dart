@@ -4,11 +4,11 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 
 void main() {
   group('TimelineFrameRange', () {
-    test('defines default cut and safety frame counts (the safety tail is '
-        'RETIRED to zero — UI-R10 #23, the endless axis owns the past-cut '
-        'frames)', () {
+    test('defines default cut and safety frame counts (UI-R10 #23 retired '
+        'the 24-frame tail; F-174 keeps ONE comma past the end line — '
+        '「엔드라인+1콤마」 — and the endless axis owns the rest)', () {
       expect(defaultCutDurationFrames, 24);
-      expect(defaultTimelineSafetyFrameCount, 0);
+      expect(defaultTimelineSafetyFrameCount, 1);
     });
 
     test('computes visible range from playback plus safety frames', () {
