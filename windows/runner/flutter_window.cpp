@@ -1,7 +1,11 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+#include <imm.h>
+
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -41,6 +45,25 @@ constexpr char kAppSaidExit[] = R"("response":"exit")";
 // engine down. The engine posts its re-sent WM_CLOSE for the same reason.
 constexpr UINT kCloseApproved = WM_APP + 0x128;
 
+// 🚨★★★I-19 ④ — THE IME LISTENS ONLY WHILE A TEXT FIELD DOES.
+//
+// 유저 2026-09-13: 「일본어 키보드나 한국어 상태등 키보드가 영어가 아닐때도
+// 대응하도록」 — 「지금은 일본어 히라가나상태로 치면 이상한 텍스트입력기?
+// 같은 게 뜸」.
+//
+// Flutter's Windows engine drops every key an IME takes (VK_PROCESSKEY: 「These
+// key presses are considered handled and not sent to Flutter」) and never
+// turns the window's IME off, so with a Japanese or Korean IME composing no
+// shortcut ever sees a key, and the IME composes into a window of its own.
+// Dart knows when a text field holds the keyboard (KeyboardImeSwitch) and
+// says so here; the view's input context follows. The way Chromium keeps its
+// IME off outside an editable field.
+//
+// test/ui/shortcuts/the_ime_listens_only_with_a_text_field_test.dart reads
+// these literals, so the two halves cannot drift apart unseen.
+constexpr char kKeyboardChannel[] = "anicel/keyboard";
+constexpr char kSetImeOpen[] = "setImeOpen";
+
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -65,6 +88,7 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  ListenForTheIme(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -81,6 +105,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  // The channel speaks through the engine's messenger, so it goes first.
+  ime_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -140,5 +166,27 @@ void FlutterWindow::AskTheAppToClose(HWND window) {
         if (answer.find(kAppSaidExit) != std::string::npos) {
           ::PostMessage(window, kCloseApproved, 0, 0);
         }
+      });
+}
+
+void FlutterWindow::ListenForTheIme(HWND view) {
+  ime_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kKeyboardChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  ime_channel_->SetMethodCallHandler(
+      [view](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        const bool* open = std::get_if<bool>(call.arguments());
+        if (call.method_name() != kSetImeOpen || open == nullptr) {
+          result->NotImplemented();
+          return;
+        }
+        // IACE_DEFAULT hands the view its own input context back, in the
+        // mode the user left it; no context at all is how Win32 turns the
+        // IME off for one window.
+        ::ImmAssociateContextEx(view, nullptr, *open ? IACE_DEFAULT : 0);
+        result->Success();
       });
 }

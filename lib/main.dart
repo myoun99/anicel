@@ -20,6 +20,7 @@ import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
+import 'src/ui/shortcuts/keyboard_ime_switch.dart';
 import 'src/models/app_input_settings.dart' show AppInput;
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
@@ -65,6 +66,10 @@ Future<void> main() async {
   // the macOS/Linux channel streams start on their platform. Absent
   // drivers/handlers stay permanently idle.
   PenSidecars.bind();
+  // I-19 ④: on Windows the IME listens only while a text field holds the
+  // keyboard, so a Japanese or Korean input mode cannot swallow a shortcut.
+  // Once, for the app's lifetime — see the class.
+  KeyboardImeSwitch.install();
   // 🚨AWAITED, BEFORE THE FIRST FRAME. The colour key on a folder is a
   // fragment shader, and a `Paint` is built inside a paint — which cannot
   // wait for an asset. A composite that reached a key with no program would
