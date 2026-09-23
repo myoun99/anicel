@@ -1292,15 +1292,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   int _totalFrames(
     Project project,
     List<StoryboardTimelineLayoutEntry> entries,
-  ) {
-    var total = 0;
-    for (final entry in entries) {
-      if (entry.endFrame > total) {
-        total = entry.endFrame;
-      }
-    }
-    return total + project.trailingFrames;
-  }
+  ) => movieEndFramesOver(entries, trailingFrames: project.trailingFrames);
+
+  /// Where the movie ends under [preview]: the end of the project the
+  /// BLOCKS are drawn from mid-drag — whichever drag moves it, a cut's or
+  /// the end line's own. The strip's line, its grip and the ruler's line
+  /// all read this one (F-119).
+  int _movieEndUnder(TimelineDragPreview preview) =>
+      movieEndFrames(projectWithTimelineDragPreview(widget.project, preview));
 
   // ── where the storyboard stands: its own object ─────────────────────
   //
@@ -1926,9 +1925,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                 cutId: null,
                                                 playbackFrameCount:
                                                     frame.totalFrames,
-                                                committedTrailingFrames:
-                                                    frame.project
-                                                        .trailingFrames,
+                                                movieEndUnder: _movieEndUnder,
                                               );
                                           return Positioned(
                                             key: const ValueKey<String>(
@@ -1957,8 +1954,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             widget.dragPreview,
                                         committedTotalFrames:
                                             frame.totalFrames,
-                                        committedTrailingFrames:
-                                            frame.project.trailingFrames,
+                                        movieEndUnder: _movieEndUnder,
                                         scale: frame.scale,
                                         // Grabbed from the EMPTY side of
                                         // the line, never straddling it:
@@ -2110,7 +2106,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         width: frame.contentWidth,
                         renderedFrames: frame.renderedFrames,
                         contentFrames: frame.totalFrames,
-                        committedTrailingFrames: frame.project.trailingFrames,
+                        movieEndUnder: _movieEndUnder,
                         dragPreview: widget.dragPreview,
                         playhead: frame.playheadListenable,
                         frameReadySignal: widget.frameReadySignal,
@@ -2155,7 +2151,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.width,
     required this.renderedFrames,
     required this.contentFrames,
-    required this.committedTrailingFrames,
+    required this.movieEndUnder,
     this.dragPreview,
     required this.playhead,
     required this.frameReadySignal,
@@ -2181,9 +2177,9 @@ class _StoryboardRuler extends StatefulWidget {
   /// The cuts' actual end (runway dimming + the cut-end boundary line).
   final int contentFrames;
 
-  /// The trailing gap past the last cut, as committed — what a movie-end
-  /// drag's preview replaces on the ruler's end line (F-18).
-  final int committedTrailingFrames;
+  /// Where the movie ends under a drag — the panel's one reading, which the
+  /// strip's line and grip read too (F-18, F-119).
+  final int Function(TimelineDragPreview preview) movieEndUnder;
 
   /// The panel's drag channel; null keeps the ruler's end line committed.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
@@ -2350,10 +2346,11 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 currentFrameIndex: -1,
                 playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
-                // F-18: the ruler's end line follows the movie-end drag with
-                // the strip's line and grip — the same reader, the same gap.
+                // F-18: the ruler's end line follows the drag with the
+                // strip's line and grip — the same reader (F-119: every drag
+                // that moves the movie's end, not the end line's alone).
                 dragPreview: widget.dragPreview,
-                committedTrailingFrames: widget.committedTrailingFrames,
+                movieEndUnder: widget.movieEndUnder,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,
                 metrics: metrics,
@@ -4108,7 +4105,7 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   const _StoryboardEndLineHandle({
     required this.dragPreview,
     required this.committedTotalFrames,
-    required this.committedTrailingFrames,
+    required this.movieEndUnder,
     required this.scale,
     required this.pixelsPerFrame,
     required this.movieEnd,
@@ -4119,7 +4116,7 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   /// project, so the finger left it behind on the first frame of a drag.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
   final int committedTotalFrames;
-  final int committedTrailingFrames;
+  final int Function(TimelineDragPreview preview) movieEndUnder;
   final TimelineScale scale;
   final double pixelsPerFrame;
   final StoryboardMovieEndCallbacks movieEnd;
@@ -4176,7 +4173,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
             preview: preview,
             cutId: null,
             playbackFrameCount: widget.committedTotalFrames,
-            committedTrailingFrames: widget.committedTrailingFrames,
+            movieEndUnder: widget.movieEndUnder,
           ),
         ),
         top: 0,

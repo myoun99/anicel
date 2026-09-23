@@ -54,6 +54,28 @@ List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(
   return entries;
 }
 
+/// Where the MOVIE ends (UI-R20 #3): the furthest cut end on any track in
+/// [layout], plus the project's trailing gap — the frame the storyboard's
+/// end line stands at.
+int movieEndFramesOver(
+  List<StoryboardTimelineLayoutEntry> layout, {
+  required int trailingFrames,
+}) {
+  var end = 0;
+  for (final entry in layout) {
+    if (entry.endFrame > end) {
+      end = entry.endFrame;
+    }
+  }
+  return end + trailingFrames;
+}
+
+/// [movieEndFramesOver] for [project] as it stands.
+int movieEndFrames(Project project) => movieEndFramesOver(
+  buildStoryboardTimelineLayout(project),
+  trailingFrames: project.trailingFrames,
+);
+
 /// ONE cumulative pass over [track]'s cuts: each cut's global start and end
 /// on the track's axis. A cut's leading gap = empty (black) frames before
 /// it; list order stays the sequence authority, the layout stays one

@@ -27,7 +27,7 @@ class TimelineFrameRuler extends StatelessWidget {
     this.viewportMainExtent = 0,
     this.dragPreview,
     this.previewCutId,
-    this.committedTrailingFrames,
+    this.movieEndUnder,
     this.drawnFrameCount,
     this.noriShiroLabel = '',
     this.axis = Axis.horizontal,
@@ -55,10 +55,10 @@ class TimelineFrameRuler extends StatelessWidget {
   final ValueListenable<TimelineDragPreview?>? dragPreview;
   final CutId? previewCutId;
 
-  /// The trailing gap past the last cut when this ruler's end is the MOVIE's
-  /// (the storyboard): a movie-end drag moves the ruler's end line with the
-  /// strip's (F-18). Null on a ruler whose end is one cut's.
-  final int? committedTrailingFrames;
+  /// Where the MOVIE ends under a drag, when this ruler's end is the movie's
+  /// (the storyboard): the ruler's end line rides every drag that moves it
+  /// with the strip's (F-18, F-119). Null on a ruler whose end is one cut's.
+  final int Function(TimelineDragPreview preview)? movieEndUnder;
 
   /// How many frames the cut is DRAWN for — its 尺 plus the のりしろ a
   /// transition span crossing one of its boundaries asks for. Null (or equal
@@ -106,7 +106,7 @@ class TimelineFrameRuler extends StatelessWidget {
         // the one function the wash edge and the body's line read too, which is
         // what keeps the three from splitting apart mid-drag.
         if (dragPreview != null &&
-            (previewCutId != null || committedTrailingFrames != null))
+            (previewCutId != null || movieEndUnder != null))
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,
             builder: (context, preview, _) => TimelineRulerNoriShiroBoundary(
@@ -114,7 +114,7 @@ class TimelineFrameRuler extends StatelessWidget {
                 playbackFrameCount: timelineCutEndPreviewFrameCount(
                   preview: preview,
                   cutId: previewCutId,
-                  committedTrailingFrames: committedTrailingFrames,
+                  movieEndUnder: movieEndUnder,
                   playbackFrameCount: playbackFrameCount,
                 ),
                 metrics: metrics,
@@ -123,7 +123,7 @@ class TimelineFrameRuler extends StatelessWidget {
                 playbackFrameCount: timelineDrawnEndPreviewFrameCount(
                   preview: preview,
                   cutId: previewCutId,
-                  committedTrailingFrames: committedTrailingFrames,
+                  movieEndUnder: movieEndUnder,
                   playbackFrameCount: playbackFrameCount,
                   drawnFrameCount: drawnFrameCount,
                 ),
@@ -147,7 +147,7 @@ class TimelineFrameRuler extends StatelessWidget {
             axis: axis,
           ),
         if (dragPreview != null &&
-            (previewCutId != null || committedTrailingFrames != null))
+            (previewCutId != null || movieEndUnder != null))
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,
             builder: (context, preview, _) => TimelineRulerCutEndBoundary(
@@ -155,7 +155,7 @@ class TimelineFrameRuler extends StatelessWidget {
                 playbackFrameCount: timelineCutEndPreviewFrameCount(
                   preview: preview,
                   cutId: previewCutId,
-                  committedTrailingFrames: committedTrailingFrames,
+                  movieEndUnder: movieEndUnder,
                   playbackFrameCount: playbackFrameCount,
                 ),
                 metrics: metrics,
