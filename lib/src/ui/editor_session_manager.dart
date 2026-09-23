@@ -156,6 +156,7 @@ import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
 import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
+import 'session/trimmed_pieces.dart';
 import 'session/layer_switch_verbs.dart';
 import 'session/editing_canvas.dart';
 import 'package:flutter/painting.dart' show ImageCache;
@@ -2096,6 +2097,13 @@ class EditorSessionManager extends ChangeNotifier
     layerIndexAboveActive: () =>
         activeCutControllers.layerController.insertionIndexAboveActiveLayer(),
     acceptsPlacedFrames: acceptsPlacedFrames,
+  );
+
+  /// A trimmed file carried in as only its span ([TrimmedPieces]).
+  late final TrimmedPieces trimmedPieces = TrimmedPieces(
+    staging: mediaStagingStore,
+    project: this,
+    frameRate: () => projectSettings.projectFrameRate,
   );
 
   late final ProjectImportDoors importDoors = ProjectImportDoors(

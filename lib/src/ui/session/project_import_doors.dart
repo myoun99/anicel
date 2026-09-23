@@ -106,6 +106,10 @@ class ProjectImportDoors {
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — a trimmed file's piece carries its
+    /// original here, as provenance only ([TrimmedPieces]).
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -174,6 +178,7 @@ class ProjectImportDoors {
         mint: arrival.mint,
         identity: identity,
         carried: copyIntoProject,
+        sourcePath: sourcePath,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -199,6 +204,7 @@ class ProjectImportDoors {
         referencePath: source,
         identity: identity,
         carried: copyIntoProject,
+        sourcePath: sourcePath,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -368,6 +374,9 @@ class ProjectImportDoors {
     void Function(int done, int total)? onRenderProgress,
     void Function(int pageIndex)? onPageRenderFailed,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -427,6 +436,7 @@ class ProjectImportDoors {
           mint: arrival.mint,
           identity: identity,
           carried: copyIntoProject,
+          sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -449,6 +459,7 @@ class ProjectImportDoors {
           referencePath: source,
           identity: identity,
           carried: copyIntoProject,
+          sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -532,6 +543,9 @@ class ProjectImportDoors {
     void Function(int rendered, int total)? onRenderProgress,
     void Function(int movieFrame)? onFrameRenderFailed,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -553,7 +567,7 @@ class ProjectImportDoors {
       );
       final arrival = planned.arrival;
       final source = arrival.source;
-      final asset = _movieAsset(source, info, settings);
+      final asset = _movieAsset(source, info, settings, sourcePath);
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
@@ -648,10 +662,12 @@ class ProjectImportDoors {
     String source,
     QaVideoInfo info,
     ImportFileSettings settings,
+    String? sourcePath,
   ) => importedMediaAsset(
     path: source,
     kind: MediaAssetKind.video,
     fit: settings.fit,
+    sourcePath: sourcePath,
     identity: readMediaIdentity(source),
     carried: settings.mode == ImportFileMode.keepInside,
     sourceFps: info.fps,
@@ -949,6 +965,9 @@ class ProjectImportDoors {
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
@@ -976,6 +995,7 @@ class ProjectImportDoors {
           // 한 번에 따라간다」).
           kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
           fit: MediaFitMode.contain,
+          sourcePath: sourcePath,
           identity: readMediaIdentity(source),
           carried: copyIntoProject,
         ),

@@ -910,12 +910,22 @@ void main() {
         ui.Size(595, 842),
       ],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    // The piece the chosen pages are cut into: two pages of its own.
+    final piece = FakePdfDocument(
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+    );
     final pdfPath = await tester.runAsync(() async {
       final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
       return file.path;
     });
+    PdfRenderService.debugOpenerOverride = (path) async =>
+        path == pdfPath ? fake : piece;
+    final cutFrom = <(String, int, int)>[];
+    PdfRenderService.debugPageSpanOverride = (path, first, count) async {
+      cutFrom.add((path, first, count));
+      return Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]);
+    };
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
     await tester.pumpWidget(
@@ -952,7 +962,7 @@ void main() {
     // would read the render log half-written.
     for (var tries = 0; tries < 200; tries += 1) {
       if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
-          fake.renderRequests.length >= 3) {
+          piece.renderRequests.length >= 2) {
         break;
       }
       await tester.runAsync(
@@ -963,18 +973,30 @@ void main() {
     await tester.pumpAndSettle();
 
     final cut = s.repository.requireProject().tracks.first.cuts.firstWhere(
-      (cut) => cut.name == 'conte',
+      (cut) => cut.name == 'conte_3-4',
     );
-    final layer = cut.layers.firstWhere((l) => l.name == 'conte');
+    final layer = cut.layers.firstWhere((l) => l.name == 'conte_3-4');
     expect(layer.frames, hasLength(2), reason: 'two pages, not five');
-    final pages = [for (final request in fake.renderRequests) request.$1];
+    expect(
+      cutFrom,
+      [(pdfPath, 2, 2)],
+      reason: 'the pages the user chose, zero-based against the document — '
+          'cut out of the ORIGINAL into the piece the project carries '
+          '(유저 2026-09-23: 자른 구간만 품는다)',
+    );
+    final pages = [for (final request in piece.renderRequests) request.$1];
     expect(
       pages,
-      containsAll(<int>[2, 3]),
-      reason: 'the pages the user chose, zero-based against the document',
+      containsAll(<int>[0, 1]),
+      reason: 'the cels are the piece, whole — its two pages ARE the ones '
+          'the user chose',
     );
-    expect(pages, isNot(contains(1)), reason: 'page two was outside IN');
-    expect(pages, isNot(contains(4)), reason: 'page five was outside OUT');
+    final pool = s.repository.requireProject().mediaAssets;
+    expect(
+      [for (final asset in pool) (mediaFileName(asset.path), asset.sourcePath)],
+      [('conte_3-4.pdf', pdfPath)],
+      reason: 'the pool names the piece; the original is where it came from',
+    );
   });
 
   /// PLACE: the pool row's way onto the timeline. The same window, minus

@@ -145,36 +145,43 @@ void _applyLibraryOverride(String? override) {
   }
 }
 
+/// [source]'s sound, decoded at its own rate — what a conform starts from,
+/// and what a trimmed sound's piece is cut from.
+///
+/// 🚨★★★**THE RANGE DOOR FIRST, AND THE BYTES ONLY WHEN THERE IS NO
+/// RANGE.** Every source that is a plain span of a file — a loose file, a
+/// movie carried whole inside the project — decodes in place. Only a FRAMED
+/// entry, whose stored blocks are compressed, has to be assembled first,
+/// and nothing enormous is stored framed.
+({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
+  MediaByteSource source,
+) {
+  final decoder = QaAudioDecoder.instance;
+  final span = source.range;
+  final decoded = span == null
+      ? decoder?.decode(source.readSync())
+      : decoder?.decodeRange(
+          span.path,
+          offset: span.offset,
+          length: span.length,
+        );
+  if (decoded == null) {
+    return null;
+  }
+  return (
+    samples: decoded.samples,
+    channels: decoded.channels,
+    sampleRate: decoded.sampleRate,
+  );
+}
+
 /// The pipeline itself, on whichever isolate this is called from —
 /// [runConformInIsolate]'s worker body, and directly callable by tests
 /// that want the real native path without isolate indirection.
 ConformResult runConformHere(ConformRequest request) {
   _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
-    decode: (source) {
-      // 🚨★★★**THE RANGE DOOR FIRST, AND THE BYTES ONLY WHEN THERE IS NO
-      // RANGE.** Every source that is a plain span of a file — a loose file,
-      // a movie carried whole inside the project — decodes in place. Only a
-      // FRAMED entry, whose stored blocks are compressed, has to be
-      // assembled first, and nothing enormous is stored framed.
-      final decoder = QaAudioDecoder.instance;
-      final span = source.range;
-      final decoded = span == null
-          ? decoder?.decode(source.readSync())
-          : decoder?.decodeRange(
-              span.path,
-              offset: span.offset,
-              length: span.length,
-            );
-      if (decoded == null) {
-        return null;
-      }
-      return (
-        samples: decoded.samples,
-        channels: decoded.channels,
-        sampleRate: decoded.sampleRate,
-      );
-    },
+    decode: decodeAudioSource,
     // Native resampler when the binary is present; the byte-identical Dart
     // reference otherwise. Either way the SAME filter design — that is what
     // the parity pins are for.

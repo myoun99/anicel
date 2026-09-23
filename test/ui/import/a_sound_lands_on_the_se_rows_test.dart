@@ -23,7 +23,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
+import 'package:anicel/src/services/audio/audio_conform_runner.dart'
+    show runConformHere;
+import 'package:anicel/src/services/audio/wav16_header.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 
+import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -40,6 +45,23 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(tempDir));
+
+  /// [seconds] of a quiet tone as a plain 16-bit WAV — one the decoder
+  /// reads, where [writeSound]'s only the conform store's stand-in does.
+  Future<String> writeWav(String name, double seconds) async {
+    const rate = 48000;
+    final samples = Int16List((rate * seconds).round());
+    for (var i = 0; i < samples.length; i += 1) {
+      samples[i] = (6000 * math.sin(i / 20)).round();
+    }
+    final data = samples.buffer.asUint8List();
+    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
+    await file.writeAsBytes([
+      ...wav16HeaderBytes(dataBytes: data.length, sampleRate: rate, channels: 1),
+      ...data,
+    ]);
+    return file.path;
+  }
 
   /// [seconds] of a quiet tone, written as the conform's own WAV.
   Future<String> writeSound(String name, double seconds) async {
@@ -166,9 +188,21 @@ void main() {
 
   testWidgets('in the WINDOW the sound runs over its own frames, and '
       'shortening its IN/OUT there shortens the block (「거기서 가져올 구간을 '
-      '줄이면 블록도 그만큼 줄어든다」)', (tester) async {
-    final path = await tester.runAsync(() => writeSound('door.wav', 1));
-    final s = session();
+      '줄이면 블록도 그만큼 줄어든다」) — the block IS the kept span, carried '
+      'as its own piece', (tester) async {
+    // A trimmed sound kept inside is carried as a WAV of only its span
+    // (유저 2026-09-23: 자른 구간만 품는다), so this one has to be a sound
+    // the decoder can cut — and a conform that measures the piece for
+    // real, since the piece's own length is the block's.
+    final path = await tester.runAsync(() => writeWav('door.wav', 1));
+    final s = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      audioConformStore: AudioConformStore(
+        resolveConformPath: (_) => null,
+        runner: (request) async => runConformHere(request),
+      ),
+    );
+    addTearDown(s.dispose);
     final start = s.activeCutGlobalStartFrame;
     await tester.pumpWidget(
       MaterialApp(
@@ -207,9 +241,19 @@ void main() {
 
     final s1 = s.activeTrack.seLayers.first;
     expect(s1.timeline[start]?.length, 4);
-    expect(s1.audioClips.single.offsetFrames, 2);
+    final clip = s1.audioClips.single;
+    expect(
+      clip.offsetFrames,
+      0,
+      reason: 'the piece starts where IN was — it holds nothing before it',
+    );
+    final asset = s.repository.requireProject().mediaAssetByPath(
+      clip.filePath,
+    )!;
+    expect(mediaFileName(asset.path), 'door_3-6.wav');
+    expect(asset.sourcePath, path, reason: 'the original, as provenance');
     await tester.pumpAndSettle();
-  });
+  }, skip: nativeEngineLibraryPathOrNull() == null);
 
   testWidgets('with the SECOND cut open the sound starts at that cut\'s start '
       'on the track — the SE rows are the track\'s, not the cut\'s', (

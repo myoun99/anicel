@@ -568,7 +568,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final failedPages = <int>[];
     final bool ok;
     try {
-      ok = await _placeThrough(path, kind, tally, failedPages);
+      ok = await _placeCarryingOnlyTheSpan(path, kind, tally, failedPages);
     } on Object {
       tally.warnings.add(
         AppText.strings.imCorrupt(mediaFileName(path)),
@@ -591,6 +591,60 @@ class _ImportDialogState extends State<ImportDialog> {
     tally.warnings.add(_placementFailure(path, kind, _settingsFor(path)));
   }
 
+  /// [path] through its door — or, when it is trimmed and being carried in,
+  /// its PIECE ([TrimmedPieces]): the span cut into a file of its own and
+  /// placed whole, with [path] as where it came from, then held like every
+  /// carried file once it has landed.
+  ///
+  /// 🗣️유저 2026-09-23: 「비디오든 이미지든 오디오든 관계없이 법 하나로」 —
+  /// ONE step, here, for every kind; the doors behind it are the ones an
+  /// untrimmed file goes through.
+  ///
+  /// ⚠️Not a file the pool already holds: its carrying was decided when it
+  /// arrived, and placing a stretch of it takes the pooled file as it is.
+  Future<bool> _placeCarryingOnlyTheSpan(
+    String path,
+    MediaAssetKind? kind,
+    _ImportTally tally,
+    List<int> failedPages,
+  ) async {
+    final settings = _settingsFor(path);
+    if (kind == null ||
+        !settings.isTrimmed ||
+        settings.mode != ImportFileMode.keepInside ||
+        _poolEntryFor(path) != null) {
+      return _placeThrough(path, kind, tally, failedPages, settings);
+    }
+    final pieces = widget.session.trimmedPieces;
+    final piece = await pieces.cut(
+      path,
+      kind,
+      inFrame: settings.inFrame,
+      outFrame: settings.outFrame,
+    );
+    if (piece == null) {
+      return false;
+    }
+    var landed = false;
+    try {
+      landed = await _placeThrough(
+        piece.path,
+        kind,
+        tally,
+        failedPages,
+        settings.copyWith(inFrame: 0, outFrame: piece.frames - 1),
+        sourcePath: path,
+      );
+    } finally {
+      if (landed) {
+        await pieces.secure(piece.path);
+      } else {
+        pieces.discard(piece.path);
+      }
+    }
+    return landed;
+  }
+
   /// Which door this file goes through: an expanded PSD, the PDF
   /// renderer, or the ordinary image path.
   Future<bool> _placeThrough(
@@ -598,8 +652,9 @@ class _ImportDialogState extends State<ImportDialog> {
     MediaAssetKind? kind,
     _ImportTally tally,
     List<int> failedPages,
-  ) {
-    final settings = _settingsFor(path);
+    ImportFileSettings settings, {
+    String? sourcePath,
+  }) {
     final carry = settings.mode == ImportFileMode.keepInside;
     final bake = settings.bake;
     if (kind == MediaAssetKind.audio) {
@@ -609,10 +664,11 @@ class _ImportDialogState extends State<ImportDialog> {
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     if (kind == MediaAssetKind.video) {
-      return _placeMovie(path, settings, failedPages);
+      return _placeMovie(path, settings, failedPages, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
@@ -637,6 +693,7 @@ class _ImportDialogState extends State<ImportDialog> {
         },
         onPageRenderFailed: failedPages.add,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     return widget.session.importDoors.importImageFile(
@@ -648,6 +705,7 @@ class _ImportDialogState extends State<ImportDialog> {
       inFrame: settings.inFrame,
       outFrame: settings.outFrame,
       spot: widget.spot,
+      sourcePath: sourcePath,
     );
   }
 
@@ -663,8 +721,9 @@ class _ImportDialogState extends State<ImportDialog> {
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
-    List<int> failedFrames,
-  ) {
+    List<int> failedFrames, {
+    String? sourcePath,
+  }) {
     final doors = widget.session.importDoors;
     final carry = settings.mode == ImportFileMode.keepInside;
     if (widget.spot is SeCellSpot) {
@@ -674,6 +733,7 @@ class _ImportDialogState extends State<ImportDialog> {
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     Future<bool> place(void Function(int rendered, int total)? progress) =>
@@ -683,6 +743,7 @@ class _ImportDialogState extends State<ImportDialog> {
           onRenderProgress: progress,
           onFrameRenderFailed: failedFrames.add,
           spot: widget.spot,
+          sourcePath: sourcePath,
         );
     if (!settings.bake) {
       return place(null);

@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
+import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
@@ -118,6 +119,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // `media_staging_store_test` has it. Deleting that test would leave the
   // road production takes with no coverage at all.
   MediaStagingStore.debugStageInline = true;
+  // The same fake-clock reason: cutting a trimmed file's piece runs in a
+  // worker in the app, and a widget test cannot await one.
+  TrimmedPieces.debugCutInline = true;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

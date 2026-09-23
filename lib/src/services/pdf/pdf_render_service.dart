@@ -82,8 +82,50 @@ abstract final class PdfRenderService {
     return _PdfrxDocumentHandle(document);
   }
 
+  /// Test seam for [pageSpan], for the same reason as [debugOpenerOverride]:
+  /// flutter_tester never loads PDFium.
+  static Future<Uint8List?> Function(String path, int first, int count)?
+  debugPageSpanOverride;
+
+  /// Pages [first] .. [first] + [count] - 1 of [path] as a PDF of their
+  /// own — what a trimmed PDF is carried as (유저 2026-09-23: 자른 구간만
+  /// 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Null when
+  /// the renderer is absent.
+  ///
+  /// ⚠️The pages are PDFium's own objects moved into a new document, never
+  /// pictures of them: a conte page stays vector, and a page that renders
+  /// sharp at any zoom in the original renders sharp in its piece.
+  static Future<Uint8List?> pageSpan(
+    String path, {
+    required int first,
+    required int count,
+  }) async {
+    final override = debugPageSpanOverride;
+    if (override != null) {
+      return override(path, first, count);
+    }
+    if (!await ensureAvailable()) {
+      return null;
+    }
+    final source = await pdfrx.PdfDocument.openFile(path);
+    try {
+      final piece = await pdfrx.PdfDocument.createNew(sourceName: path);
+      try {
+        piece.pages = source.pages.sublist(first, first + count);
+        // Encoding assembles the piece first, while [source] — whose pages
+        // it is borrowing — is still open.
+        return await piece.encodePdf();
+      } finally {
+        await piece.dispose();
+      }
+    } finally {
+      await source.dispose();
+    }
+  }
+
   static void debugResetForTests() {
     debugOpenerOverride = null;
+    debugPageSpanOverride = null;
     _availability = null;
     _probe = null;
   }
