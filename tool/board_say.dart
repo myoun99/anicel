@@ -67,6 +67,16 @@ String? recordRefusal(Map<String, dynamic> json, int lineNo) {
   // ⛔meta carries whatever its note needs and is not read by this file
   // alone — `board_gate.sh` greps `landedSince` straight out of it.
   if (kind == 'meta') return null;
+  // 🚨A LAW IS ITS `care` AND NOTHING ELSE (law-notes-are-invisible, 실측
+  // 2026-09-17). 「작업전 확인」 draws a law card's LAST `care` line and no
+  // other field, so a law written as a `note` reached no screen at all —
+  // timeline 8 lines, panel 7, structure 5, media 3 and rendering 1 were
+  // found buried that way.
+  if (kind == 'law' && json.containsKey('note')) {
+    return '$lineNo번째 줄: 법 카드의 `note` 는 어디에도 안 나옵니다 — '
+        '「작업전 확인」은 그 법 카드의 마지막 `care` 한 줄만 그립니다. 법은 '
+        '`care` 에, 직전 `care` 전문에 덧붙인 누적본으로 쓰세요.';
+  }
   for (final k in json.keys) {
     if (kReadFields.contains(k)) continue;
     return '$lineNo번째 줄: 「$k」 는 아무도 안 읽습니다 — 읽는 키: '
@@ -112,6 +122,36 @@ String? endedCardRefusal(
       '`"at":"정정"` 을 붙이세요.';
 }
 
+/// What a new law `care` would LOSE, as a warning — or null when it loses
+/// nothing it can be measured to lose.
+///
+/// 🚨「작업전 확인」 keeps only a law card's LAST `care`, so a `care` written
+/// as just the new law silently drops every law before it — rendering and
+/// brush lost theirs that way on 2026-09-16·17 and were rebuilt by hand.
+/// ⚠️A warning, not a refusal: a law can be retired, and a shorter
+/// accumulated text is then exactly right. The two numbers say how much
+/// went, so the writer can tell which of the two happened.
+String? shrinkingCareWarning(
+  Map<String, dynamic> json,
+  Map<String, String> lawCare,
+) {
+  final care = json['care'];
+  if (json['kind'] != 'law' || care is! String) return null;
+  final id = '${json['id'] ?? ''}';
+  final before = lawCare[id];
+  if (before == null || care.length >= before.length) return null;
+  return '⚠️「$id」의 care 가 직전보다 짧습니다(${before.length}자 → '
+      '${care.length}자). 「작업전 확인」에는 이 줄만 남습니다 — 이전 법을 '
+      '빠뜨린 것이 아닌지 보세요.';
+}
+
+/// Every law card's current `care` — what [shrinkingCareWarning] measures a
+/// new one against.
+Map<String, String> lawCares(List<BoardCard> cards) => {
+  for (final c in cards)
+    if (c.kind == 'law' && c.care.isNotEmpty) c.id: c.care,
+};
+
 /// The bytes to append, or the reason there are none — NEVER both.
 ///
 /// 🚨★★★THE SHAPE IS THE INVARIANT. 「a bad line writes nothing」 is not a
@@ -122,12 +162,16 @@ String? endedCardRefusal(
 ///
 /// ⚠️`now` is an argument so a test can pin it. The CLOCK is read once, in
 /// [main], and nowhere else.
-({String? refusal, String? bytes}) boardSayAppend(
+({String? refusal, String? bytes, List<String> warnings}) boardSayAppend(
   List<String> lines,
   DateTime now, {
   Map<String, String> ended = const {},
+  Map<String, String> lawCare = const {},
 }) {
   final records = <Map<String, dynamic>>[];
+  final warnings = <String>[];
+  // A batch that writes one law twice is measured against its own last line.
+  final cares = {...lawCare};
   var lineNo = 0;
   for (final raw in lines) {
     lineNo++;
@@ -137,14 +181,32 @@ String? endedCardRefusal(
     try {
       json = jsonDecode(t) as Map<String, dynamic>;
     } on Object catch (e) {
-      return (refusal: '$lineNo번째 줄이 JSON 이 아닙니다 — $e', bytes: null);
+      return (
+        refusal: '$lineNo번째 줄이 JSON 이 아닙니다 — $e',
+        bytes: null,
+        warnings: const <String>[],
+      );
     }
     final why = recordRefusal(json, lineNo) ??
         endedCardRefusal(json, lineNo, ended);
-    if (why != null) return (refusal: why, bytes: null);
+    if (why != null) {
+      return (refusal: why, bytes: null, warnings: const <String>[]);
+    }
+    if (shrinkingCareWarning(json, cares) case final warning?) {
+      warnings.add('$lineNo번째 줄: $warning');
+    }
+    if (json['kind'] == 'law' && json['care'] is String) {
+      cares['${json['id']}'] = json['care'] as String;
+    }
     records.add(json);
   }
-  if (records.isEmpty) return (refusal: '적을 줄이 없습니다.', bytes: null);
+  if (records.isEmpty) {
+    return (
+      refusal: '적을 줄이 없습니다.',
+      bytes: null,
+      warnings: const <String>[],
+    );
+  }
 
   // Each record a millisecond after the last, so the story keeps the order
   // they were written in and no two collide.
@@ -154,7 +216,7 @@ String? endedCardRefusal(
     r['ts'] = now.add(Duration(milliseconds: i)).toIso8601String();
     out.writeln(jsonEncode(r));
   }
-  return (refusal: null, bytes: out.toString());
+  return (refusal: null, bytes: out.toString(), warnings: warnings);
 }
 
 void main(List<String> args) {
@@ -166,10 +228,12 @@ void main(List<String> args) {
   // 🚨THE CLOCK, ONCE, HERE — the only place this program asks what time it
   // is, and the only place it was ever possible to get wrong.
   final now = DateTime.now();
+  final cards = readBoard(File(args[0]));
   final result = boardSayAppend(
     File(args[1]).readAsLinesSync(),
     now,
-    ended: endedCards(readBoard(File(args[0]))),
+    ended: endedCards(cards),
+    lawCare: lawCares(cards),
   );
   if (result.refusal != null) {
     stderr.writeln('board_say: ${result.refusal}');
@@ -178,4 +242,7 @@ void main(List<String> args) {
   File(args[0]).writeAsStringSync(result.bytes!, mode: FileMode.append);
   final n = '\n'.allMatches(result.bytes!).length;
   stdout.writeln('board_say: $n줄 추가 (${now.toIso8601String()})');
+  for (final warning in result.warnings) {
+    stderr.writeln('board_say: $warning');
+  }
 }
