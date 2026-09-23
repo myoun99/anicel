@@ -8,6 +8,7 @@
 // facts DOWN into it and nothing has to reach sideways for them.
 // [ProjectFileDoor] is the writer; this is the record.
 
+import 'dart:async';
 import 'dart:io';
 
 import '../../models/project.dart';
@@ -23,6 +24,13 @@ import '../../services/persistence/anicel_project_archive.dart'
 import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
 import 'session_roles.dart';
+
+/// A stretch of a file a reader holds ([ProjectFile.holdArchiveRange]), and
+/// how it gives it back.
+typedef HeldArchiveRange = ({
+  ({String path, int offset, int length}) range,
+  void Function() release,
+});
 
 /// The project file this session is bound to, and everything derived from
 /// that binding: what the archive carries, how big those bytes are, and
@@ -289,6 +297,69 @@ class ProjectFile {
     return MediaFileBytes(poolPath);
   }
 
+  /// Entries a reader holds by OFFSET right now ([holdArchiveRange]), and
+  /// how many hold each.
+  final Map<String, int> _heldEntries = {};
+
+  /// The archive entries [holdArchiveRange] has handed out and not had
+  /// back — what a save that packs the file in place must leave where it
+  /// is.
+  Set<String> get heldArchiveEntries => {..._heldEntries.keys};
+
+  /// [poolPath]'s bytes as a stretch of a file, HELD until `release`: while
+  /// held, no save moves them ([heldArchiveEntries]). Null when they are no
+  /// plain stretch of anything — a framed entry, which only a decoder can
+  /// serve ([mediaByteSourceFor]).
+  ///
+  /// 🚨★★★**FOR A READER THAT KEEPS A DOCUMENT OPEN ON THE RANGE** — the
+  /// viewer's carried movie, which the OS decoder reads by offset frame
+  /// after frame. [mediaByteSourceFor] is resolved per call and held by no
+  /// one; a document is held by definition. Since 2026-09-23 a save packs
+  /// the file IN PLACE — live bytes slide down, and the next round writes
+  /// over where they were — where it used to write a new file beside the
+  /// old one, which an open reader went on reading untouched. A held entry
+  /// is the one span the push-down does not move.
+  ///
+  /// ⚠️Waits out a save already running: it may be moving these very bytes,
+  /// and a range read off the directory it is about to supersede would be
+  /// the stale offset this exists to prevent.
+  ///
+  /// `release` is idempotent — call it once the reader has CLOSED, not
+  /// when it decides to.
+  Future<HeldArchiveRange?> holdArchiveRange(String poolPath) async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+    final range = mediaByteSourceFor(poolPath).range;
+    if (range == null) {
+      return null;
+    }
+    // Only a stretch of the .anicel can move; a staged copy or the
+    // original is a file of its own.
+    final name = range.path == _projectFilePath
+        ? _mediaEntryNames[poolPath]
+        : null;
+    if (name != null) {
+      _heldEntries.update(name, (count) => count + 1, ifAbsent: () => 1);
+    }
+    var released = false;
+    return (
+      range: range,
+      release: () {
+        if (released || name == null) {
+          return;
+        }
+        released = true;
+        final left = _heldEntries[name]! - 1;
+        if (left == 0) {
+          _heldEntries.remove(name);
+        } else {
+          _heldEntries[name] = left;
+        }
+      },
+    );
+  }
+
   /// Resolved per call rather than cached: the cache root is a live
   /// setting and the project's rate and speed are live settings too, so a
   /// conform path held from before any of them would name a file nothing
@@ -431,12 +502,24 @@ class ProjectFile {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
+  /// Completes when the save in flight ends — what [holdArchiveRange]
+  /// waits on.
+  Completer<void> _saveEnded = Completer<void>()..complete();
+
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which is the only caller and
   /// says why the window has to be that wide.
-  void beginSave() => _saveInFlight = true;
+  void beginSave() {
+    _saveInFlight = true;
+    _saveEnded = Completer<void>();
+  }
 
-  void endSave() => _saveInFlight = false;
+  void endSave() {
+    _saveInFlight = false;
+    if (!_saveEnded.isCompleted) {
+      _saveEnded.complete();
+    }
+  }
 
   /// Bumped each time a save COMPLETES — the cache key for anything read
   /// out of the archive on disk ([_archivedBytes]).

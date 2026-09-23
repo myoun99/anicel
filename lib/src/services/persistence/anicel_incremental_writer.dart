@@ -948,6 +948,25 @@ typedef AnicelLiveSpan = ({int offset, int size});
 /// One copy of the push-down, front to back.
 typedef AnicelCompactionMove = ({int from, int to, int size});
 
+/// Who reads the file while [compactAnicelInPlace] moves bytes under it,
+/// and how each is kept from reading what moved in.
+///
+/// 🚨★★★[move] RUNS BETWEEN A ROUND'S COMMIT AND THE NEXT ROUND'S FIRST
+/// WRITE, AND IS AWAITED. The session reads cels straight out of this file
+/// by offset while the save runs in another isolate, so bytes a round has
+/// moved away from are garbage only once no ref points at them any more.
+/// [move] is handed every move of the round (old data offset → new) and
+/// must not complete until the refs have moved.
+///
+/// 🚨[holding] names what CANNOT move with its bytes: an entry a reader
+/// holds a document open on, which it reads by offset frame after frame
+/// (the viewer's carried movie). Those entries stay where they are
+/// ([planAnicelPushDown]'s `staying`).
+typedef AnicelReaders = ({
+  Future<void> Function(Map<int, AnicelRelocation> moved) move,
+  Set<String> holding,
+});
+
 /// Appends [newEntries] ({name: raw bytes, STORE'd}) and [streamedEntries]
 /// to the .anicel at [path], IN PLACE: the new locals and a fresh central
 /// directory (old actives minus shadowed names minus [removeNames], plus
@@ -1072,14 +1091,24 @@ AnicelZipLayout appendAnicelEntries({
 /// Its new home would overlap its old one, and the crash contract forbids
 /// writing over bytes the committed directory names — its own included.
 /// The hole in front of it stays dead; what comes after packs against it.
+///
+/// 🚨A span that starts at one of [staying] stays where it is too, however
+/// big the hole in front of it: something is reading it by OFFSET right now
+/// (`ProjectFile.holdArchiveRange` — the viewer's carried movie, decoded
+/// frame after frame from where the save found it). Moving it would hand
+/// that reader whatever the next round wrote there. Its hole waits for the
+/// first save after the reader lets go — deferred, not given up.
 ({List<AnicelCompactionMove> moves, int end}) planAnicelPushDown(
-  List<AnicelLiveSpan> live,
-) {
+  List<AnicelLiveSpan> live, {
+  Set<int> staying = const {},
+}) {
   final sorted = [...live]..sort((a, b) => a.offset.compareTo(b.offset));
   final moves = <AnicelCompactionMove>[];
   var cursor = 0;
   for (final span in sorted) {
-    if (span.offset > cursor && cursor + span.size <= span.offset) {
+    if (!staying.contains(span.offset) &&
+        span.offset > cursor &&
+        cursor + span.size <= span.offset) {
       moves.add((from: span.offset, to: cursor, size: span.size));
       cursor += span.size;
     } else {
@@ -1133,28 +1162,17 @@ List<List<AnicelCompactionMove>> anicelCompactionRounds(
 /// may the next round write over the bytes they left. Last, the directory
 /// moves down to where the live bytes end and the file is cut behind it.
 ///
-/// 🚨★★★[release] RUNS BETWEEN A ROUND'S COMMIT AND THE NEXT ROUND'S FIRST
-/// WRITE, AND IS AWAITED. The session reads cels straight out of this file
-/// by offset while the save runs in another isolate, so bytes a round has
-/// moved away from are garbage only once no ref points at them any more.
-/// [release] is handed every move of the round (old data offset → new) and
-/// must not complete until the refs have moved. The crash contract keeps
-/// the file safe from the save; this keeps the session safe from it.
+/// The crash contract keeps the file safe from the save; [readers] keeps
+/// the session safe from it ([AnicelReaders]).
 ///
 /// [onProgress] hears the fraction of the moving bytes copied so far.
 Future<AnicelZipLayout> compactAnicelInPlace({
   required String path,
   required AnicelZipLayout layout,
-  required Future<void> Function(Map<int, AnicelRelocation> moved) release,
+  required AnicelReaders readers,
   void Function(double fraction)? onProgress,
 }) async {
-  final plan = planAnicelPushDown([
-    for (final entry in layout.entries)
-      (
-        offset: entry.localHeaderOffset,
-        size: entry.dataOffset - entry.localHeaderOffset + entry.length,
-      ),
-  ]);
+  final plan = _pushDownOf(layout, holding: readers.holding);
   final total = plan.moves.fold<int>(0, (sum, move) => sum + move.size);
   var copied = 0;
   var entries = layout.entries;
@@ -1179,7 +1197,7 @@ Future<AnicelZipLayout> compactAnicelInPlace({
             entry,
       ];
       committedDirectory = _commitDirectoryAtTheEnd(raf, entries);
-      await release(moved);
+      await readers.move(moved);
     }
 
     // The cut: the directory comes down to where the live bytes end, and
@@ -1207,6 +1225,25 @@ Future<AnicelZipLayout> compactAnicelInPlace({
     centralDirectoryOffset: committedDirectory,
   );
 }
+
+/// The push-down of [layout]'s entries, each span its local header and
+/// data — the entries in [holding] where they are.
+({List<AnicelCompactionMove> moves, int end}) _pushDownOf(
+  AnicelZipLayout layout, {
+  required Set<String> holding,
+}) => planAnicelPushDown(
+  [
+    for (final entry in layout.entries)
+      (
+        offset: entry.localHeaderOffset,
+        size: entry.dataOffset - entry.localHeaderOffset + entry.length,
+      ),
+  ],
+  staying: {
+    for (final entry in layout.entries)
+      if (holding.contains(entry.name)) entry.localHeaderOffset,
+  },
+);
 
 /// [entry] as it reads once its span has moved to [to]; the move is noted
 /// in [moved] for the refs that still point at the old bytes.

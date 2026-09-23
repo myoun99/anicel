@@ -60,7 +60,7 @@ void main() {
     await compactAnicelInPlace(
       path: path,
       layout: appended,
-      release: (_) async => rounds += 1,
+      readers: (move: (_) async => rounds += 1, holding: const {}),
     );
     return rounds;
   }

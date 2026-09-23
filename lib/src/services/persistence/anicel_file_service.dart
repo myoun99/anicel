@@ -219,7 +219,7 @@ AnicelStreamedEntry _progressed(
 
 /// A writing isolate asking the session to move its cel refs off bytes it
 /// is about to write over, and waiting on [reply] until they have
-/// ([compactAnicelInPlace]'s `release`).
+/// ([AnicelReaders.move]).
 class _MoveRefs {
   const _MoveRefs(this.moved, this.reply);
 
@@ -376,6 +376,12 @@ class AnicelFileService {
     /// Called on the UI isolate with 0..1 as the write proceeds. Null costs
     /// nothing — no port is opened and the writer reports into no one.
     void Function(double)? onProgress,
+
+    /// Entries something reads by OFFSET right now
+    /// (`ProjectFile.heldArchiveEntries`): a save that packs the file in
+    /// place leaves them where they are ([compactAnicelInPlace]'s
+    /// `staying`).
+    Set<String> heldEntries = const {},
 
     /// False writes a COPY: the stores do not adopt refs into [filePath]
     /// and nothing about the session's idea of "where the project lives"
@@ -549,6 +555,7 @@ class AnicelFileService {
         conforms: conforms,
         sessionFields: sessionFields,
         onProgress: onProgress,
+        heldEntries: heldEntries,
         onMoveRefs: moveRefs,
       );
       if (adopted != null) {
@@ -815,6 +822,9 @@ class AnicelFileService {
     ProjectConforms conforms = const ProjectConforms.none(),
     void Function(double)? onProgress,
 
+    /// Entries the push-down leaves where they are — see `save`'s.
+    Set<String> heldEntries = const {},
+
     /// Moves the session's refs off bytes the push-down is about to write
     /// over — see `save`'s `moveRefs`.
     required void Function(Map<int, AnicelRelocation> moved) onMoveRefs,
@@ -919,7 +929,7 @@ class AnicelFileService {
           written = await compactAnicelInPlace(
             path: filePath,
             layout: appended,
-            release: moveRefs,
+            readers: (move: moveRefs, holding: heldEntries),
             onProgress: progress.within,
           );
           progress.step();

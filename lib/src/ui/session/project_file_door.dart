@@ -488,6 +488,7 @@ class ProjectFileDoor {
       resume: _whereTheWorkStands().toJson(),
     ),
     onProgress: carry.onProgress,
+    heldEntries: _file.heldArchiveEntries,
     adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
     onFullWriteLeftAt: onFullWriteLeftAt,

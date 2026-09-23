@@ -58,9 +58,15 @@ final class VideoViewerDocument implements ViewerDocument {
   /// reader」 — Windows and Apple refuse a range by name while decoding
   /// paths perfectly well, and telling the user their build has no decoder
   /// would be the exact lie this function was just fixed for.
+  ///
+  /// [onClosed] runs once the decoder has let go of the movie — after
+  /// [dispose], never before: a reader that holds a range
+  /// (`ProjectFile.holdArchiveRange`) may give it back only when nothing
+  /// reads it any more.
   static Future<VideoViewerDocument?> open(
     String path, {
     ({int offset, int length})? range,
+    void Function()? onClosed,
   }) async {
     // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
     // frames arrive off the UI isolate, so the viewer's own timer, chrome
@@ -95,11 +101,23 @@ final class VideoViewerDocument implements ViewerDocument {
           reason.isEmpty ? 'that movie could not be read' : reason,
         );
       case ViewerOpenOutcome.opened:
-        return VideoViewerDocument._(backend, opened!.token, opened.info);
+        return VideoViewerDocument._(
+          backend,
+          opened!.token,
+          opened.info,
+          onClosed,
+        );
     }
   }
 
-  VideoViewerDocument._(this._backend, this._token, this._info);
+  VideoViewerDocument._(
+    this._backend,
+    this._token,
+    this._info,
+    this._onClosed,
+  );
+
+  final void Function()? _onClosed;
 
   final VideoDecodeBackend _backend;
   final int _token;
@@ -174,5 +192,11 @@ final class VideoViewerDocument implements ViewerDocument {
   /// take the import preview's movie with it — the same bug as the silent
   /// replace, wearing the other hat.
   @override
-  Future<void> dispose() => _backend.close(_token);
+  Future<void> dispose() async {
+    try {
+      await _backend.close(_token);
+    } finally {
+      _onClosed?.call();
+    }
+  }
 }

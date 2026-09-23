@@ -59,7 +59,7 @@ void main() {
   }) => compactAnicelInPlace(
     path: path,
     layout: layout,
-    release: release ?? (_) async {},
+    readers: (move: release ?? (_) async {}, holding: const {}),
   );
 
   test('🎯the 떼기 커밋 writes over NOTHING — every byte the file had before '

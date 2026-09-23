@@ -35,6 +35,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
+import '../session/project_file.dart' show HeldArchiveRange;
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -724,11 +725,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// waiting for the archive layout to change under it. The source answers
   /// [MediaByteSource.range] itself now, and the conform asks the same
   /// question through the same door.
-  ({String path, int offset, int length})? _carriedMovieRange(String path) {
+  ///
+  /// 🚨HELD, not read: the decoder reads the range by offset for as long as
+  /// the document is open, and a save packs the `.anicel` in place — so the
+  /// range is held ([ProjectFile.holdArchiveRange]) until the document has
+  /// closed, and no save moves it meanwhile.
+  Future<HeldArchiveRange?> _holdCarriedMovieRange(String path) async {
     if (File(path).existsSync()) {
       return null;
     }
-    return widget.session.projectFile.mediaByteSourceFor(path).range;
+    return widget.session.projectFile.holdArchiveRange(path);
+  }
+
+  /// A carried movie opened on its HELD range, which goes back when the
+  /// document closes — or at once, when it never opens.
+  Future<ViewerDocument?> _openCarriedMovie(HeldArchiveRange held) async {
+    final range = held.range;
+    try {
+      final document = await VideoViewerDocument.open(
+        range.path,
+        range: (offset: range.offset, length: range.length),
+        onClosed: held.release,
+      );
+      if (document == null) {
+        held.release();
+      }
+      return document;
+    } on Object {
+      held.release();
+      rethrow;
+    }
   }
 
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
@@ -738,13 +764,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       case MediaAssetKind.pdf:
         return PdfRenderService.open(request.path);
       case MediaAssetKind.video:
-        final carried = _carriedMovieRange(request.path);
-        return carried == null
+        final held = await _holdCarriedMovieRange(request.path);
+        return held == null
             ? VideoViewerDocument.open(request.path)
-            : VideoViewerDocument.open(
-                carried.path,
-                range: (offset: carried.offset, length: carried.length),
-              );
+            : _openCarriedMovie(held);
       case MediaAssetKind.audio:
         // 🪦This used to read 「Sound has no picture — the one medium that
         // stays absent」. 유저 2026-09-08: 「오디오파일도 열려야하고 …
