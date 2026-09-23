@@ -135,7 +135,7 @@ void main() {
       '품기/참조인 그 열 자체를 삭제」)', (tester) async {
     final png = await tester.runAsync(() => writePng('bg.png'));
     final s = session();
-    s.mediaPool.importMediaFiles([png!], copyIntoProject: true);
+    await s.mediaPool.importMediaFiles([png!], copyIntoProject: true);
     await open(tester, s, [png], placeOnly: true);
 
     expect(column('file'), findsNothing);
@@ -183,7 +183,7 @@ void main() {
     final pooled = await tester.runAsync(() => writePng('pooled.png'));
     final fresh = await tester.runAsync(() => writePng('fresh.png'));
     final s = session();
-    s.mediaPool.importMediaFiles([pooled!], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([pooled!], copyIntoProject: false);
     await open(tester, s, [pooled, fresh!]);
 
     expect(column('file'), findsOneWidget, reason: 'the new file needs it');

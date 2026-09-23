@@ -57,7 +57,7 @@ void main() {
     final source = File('${external.path}/발소리.wav')
       ..writeAsBytesSync([1, 2, 3, 4]);
 
-    session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
 
     final asset = session.mediaPool.mediaAssets.single;
     expect(asset.path, '$root/외부소재/발소리.wav');
@@ -82,7 +82,7 @@ void main() {
       final source = File('${directory.path}/guide.wav')
         ..writeAsBytesSync([8, 9]);
 
-      session.mediaPool.importMediaFiles([source.path], copyIntoProject: false);
+      await session.mediaPool.importMediaFiles([source.path], copyIntoProject: false);
 
       final asset = session.mediaPool.mediaAssets.single;
       expect(asset.path, source.path.replaceAll('\\', '/'));
@@ -100,7 +100,7 @@ void main() {
     final session = sessionWithFakeConforms();
     final source = File('${directory.path}/bgm.wav')..writeAsBytesSync([7]);
 
-    session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
 
     expect(session.mediaPool.mediaAssets.single.carried, isTrue);
     expect(archived(session), {source.path.replaceAll('\\', '/')});
@@ -117,7 +117,7 @@ void main() {
     final movie = File('${directory.path}/reference.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
 
-    session.mediaPool.importMediaFiles([movie.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([movie.path], copyIntoProject: true);
 
     final asset = session.mediaPool.mediaAssets.single;
     expect(asset.kind, MediaAssetKind.video);
@@ -136,7 +136,7 @@ void main() {
     final movie = File('${directory.path}/take02.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
 
-    session.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
 
     expect(session.mediaPool.mediaAssets.single.carried, isFalse);
     expect(archived(session), isEmpty);
@@ -175,7 +175,7 @@ void main() {
     final outside = File('${directory.path}/guide.wav')
       ..writeAsBytesSync([4, 5, 6]);
 
-    session.mediaPool.importMediaFiles([outside.path], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([outside.path], copyIntoProject: false);
     expect(session.mediaPool.mediaAssets.single.carried, isFalse);
 
     expect(
@@ -204,7 +204,7 @@ void main() {
     final session = sessionWithFakeConforms();
     await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final source = File('${directory.path}/bgm.wav')..writeAsBytesSync([7, 7]);
-    session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
     final path = session.mediaPool.mediaAssets.single.path;
 
     expect(await session.mediaPool.promoteMediaAssetIntoProject(path), isFalse);
@@ -222,7 +222,7 @@ void main() {
     await session.projectDoor.saveProjectToFile('${directory.path}/scene.anicel', asked: SaveAsked.byAPerson);
     final movie = File('${directory.path}/참고.mp4')
       ..writeAsBytesSync([0, 0, 0, 24]);
-    session.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([movie.path], copyIntoProject: false);
     final path = session.mediaPool.mediaAssets.single.path;
 
     expect(await session.mediaPool.promoteMediaAssetIntoProject(path), isTrue);
@@ -253,7 +253,7 @@ void main() {
     final referenced = File('${directory.path}/guide.wav')
       ..writeAsBytesSync(List<int>.filled(321, 4));
 
-    session.mediaPool.importMediaFiles([referenced.path], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([referenced.path], copyIntoProject: false);
 
     final asset = session.mediaPool.mediaAssets.single;
     expect(asset.identity, isNotNull);
@@ -268,7 +268,7 @@ void main() {
     final source = File('${directory.path}/bgm.wav')
       ..writeAsBytesSync(List<int>.filled(77, 9));
 
-    session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([source.path], copyIntoProject: true);
 
     expect(session.mediaPool.mediaAssets.single.identity!.lengthBytes, 77);
     session.dispose();
@@ -297,8 +297,8 @@ void main() {
       ..writeAsBytesSync(List<int>.filled(555, 2));
     final referenced = File('${directory.path}/guide.wav')
       ..writeAsBytesSync(List<int>.filled(40, 3));
-    session.mediaPool.importMediaFiles([carriedFile.path], copyIntoProject: true);
-    session.mediaPool.importMediaFiles([referenced.path], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([carriedFile.path], copyIntoProject: true);
+    await session.mediaPool.importMediaFiles([referenced.path], copyIntoProject: false);
     await session.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
     session.dispose();
 

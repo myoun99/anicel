@@ -89,9 +89,11 @@ class _WorkspaceTabs {
           // carries what it can. This button exists to promote a loose
           // path into something that travels with the project, so a
           // reference here would be the one answer it cannot mean.
-          onRegisterAsset: (path) => _state.widget.session.mediaPool.importMediaFiles([
-            path,
-          ], copyIntoProject: true),
+          onRegisterAsset: (path) => unawaited(
+            _state.widget.session.mediaPool.importMediaFiles([
+              path,
+            ], copyIntoProject: true),
+          ),
           isPathRegistered: (path) =>
               _state.widget.session.repository.currentProject?.mediaAssetByPath(
                 path,

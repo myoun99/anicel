@@ -201,12 +201,12 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
 
     expect(store.invalidated, [wav]);
     expect(store.warmed, [wav]);
 
-    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
 
     expect(
       store.invalidated,

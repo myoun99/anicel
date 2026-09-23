@@ -75,7 +75,7 @@ void main() {
   test('🚨 remembering a fingerprint does NOT dirty the project', () async {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     expect(s.projectFile.hasUnsavedChanges, isFalse, reason: 'a save leaves it clean');
 
@@ -94,7 +94,7 @@ void main() {
   test('it survives a save and an open, still pointing at its asset', () async {
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     fingerprint(s, movie);
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     s.dispose();
@@ -124,7 +124,7 @@ void main() {
     // and `compare` treats a length mismatch as decisive.
     final s = session();
     final movie = makeFile('참고영상.mp4', 7);
-    s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     expect(s.mediaFingerprints.recordedMediaIdentity(movie)!.lengthBytes, 512);
 
     // The file is edited in place: different size, different content.
@@ -151,7 +151,7 @@ void main() {
     // DELETES it. The feature would work exactly once per asset.
     final s = session();
     final was = makeFile('참고영상.mp4', 7);
-    s.mediaPool.importMediaFiles([was], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([was], copyIntoProject: false);
     fingerprint(s, was);
     final recorded = s.mediaFingerprints.recordedMediaIdentity(was)!;
 
@@ -179,7 +179,7 @@ void main() {
     // keeps only keys the pool still holds.
     final s = session();
     final was = makeFile('참고영상.mp4', 7);
-    s.mediaPool.importMediaFiles([was], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([was], copyIntoProject: false);
     fingerprint(s, was);
     final recorded = s.mediaFingerprints.recordedMediaIdentity(was)!;
 
@@ -207,7 +207,7 @@ void main() {
       // nothing asks about.
       final s = session();
       final movie = makeFile('참고영상.mp4', 7);
-      s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+      await s.mediaPool.importMediaFiles([movie], copyIntoProject: false);
       fingerprint(s, movie);
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
@@ -240,7 +240,7 @@ void main() {
       // Every project written before this existed. The absence has to be an
       // ordinary state, not a missing field somebody has to handle.
       final s = session();
-      s.mediaPool.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
+      await s.mediaPool.importMediaFiles([makeFile('참고영상.mp4', 7)], copyIntoProject: false);
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
       s.dispose();
 

@@ -54,7 +54,7 @@ void main() {
 
     final source = writeMedia('bgm.wav', 40 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
+    await editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
@@ -70,7 +70,13 @@ void main() {
       mediaEntryNames: reopened.projectFile.mediaEntryNames,
     );
     expect(sources[asset.path], isA<MediaArchiveBytes>());
-    expect(sources[asset.path]!.readSync(), expected);
+    // Read through the door every consumer uses: a carried file is held
+    // FRAMED when it compresses, and the archive then holds its blob —
+    // what the save streams is not what the file says.
+    expect(
+      reopened.projectFile.mediaByteSourceFor(asset.path).readSync(),
+      expected,
+    );
     reopened.dispose();
   });
 
@@ -85,7 +91,7 @@ void main() {
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     final movie = writeMedia('reference.mp4', 2048);
-    editor.mediaPool.importMediaFiles([movie], copyIntoProject: false);
+    await editor.mediaPool.importMediaFiles([movie], copyIntoProject: false);
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 
@@ -110,7 +116,7 @@ void main() {
 
     final source = writeMedia('voice.wav', 12 * 1024);
     final expected = File(source).readAsBytesSync();
-    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
+    await editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(first, asked: SaveAsked.byAPerson);
 
     // Deleted BEFORE the save-as, deliberately. With the original still
@@ -136,7 +142,12 @@ void main() {
       projectFilePath: second,
       mediaEntryNames: reopened.projectFile.mediaEntryNames,
     );
-    expect(sources[asset.path]!.readSync(), expected);
+    expect(sources[asset.path], isA<MediaArchiveBytes>());
+    // Through the consumers' door — see the test above.
+    expect(
+      reopened.projectFile.mediaByteSourceFor(asset.path).readSync(),
+      expected,
+    );
     reopened.dispose();
   });
 
@@ -148,7 +159,7 @@ void main() {
     final projectPath = '${directory.path}/scene.anicel';
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final source = writeMedia('bgm.wav', 64 * 1024);
-    editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
+    await editor.mediaPool.importMediaFiles([source], copyIntoProject: true);
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
     final afterFirst = File(projectPath).lengthSync();
@@ -171,7 +182,7 @@ void main() {
     final projectPath = '${directory.path}/scene.anicel';
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     final source = writeMedia('shared.wav', 8 * 1024);
-    editor.mediaPool.importMediaFiles([source], copyIntoProject: false);
+    await editor.mediaPool.importMediaFiles([source], copyIntoProject: false);
     await editor.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     editor.dispose();
 

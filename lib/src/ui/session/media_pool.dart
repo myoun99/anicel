@@ -30,6 +30,8 @@ import '../../models/media_asset.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_id.dart';
 import '../../services/import/media_identity_reader.dart';
+import '../../services/import/media_import_planner.dart'
+    show importedMediaAsset;
 import '../../services/media/media_asset_uses.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
@@ -98,27 +100,53 @@ class MediaPool {
   /// ⚠️Async because that copy runs in an isolate now, and the pool must
   /// not record an asset before its bytes are secured. A caller that
   /// forgets to await gets the pre-carry behaviour back without a word.
-  Future<void> addMediaAssets(
-    List<String> paths, {
-    bool carried = false,
-  }) async {
-    final pool = mediaAssets;
-    final known = {for (final asset in pool) asset.path};
-    final added = [
-      for (final path in paths)
-        if (known.add(path))
-          MediaAsset(
+  ///
+  /// ⚠️SOUNDS: every caller registers one — a clip's file, a take, a
+  /// .tvpp's sounds — and the entry says so, as the model's default always
+  /// did. The pool's import of any kind is [importMediaFiles].
+  Future<void> addMediaAssets(List<String> paths, {bool carried = false}) =>
+      _admit([
+        for (final path in paths)
+          importedMediaAsset(
             path: path,
-            name: mediaAssetDefaultName(path),
+            kind: MediaAssetKind.audio,
+            fit: MediaFitMode.contain,
             identity: readMediaIdentity(path),
             carried: carried,
           ),
+      ]);
+
+  /// Records the [entries] the pool does not have yet — once the bytes of
+  /// every one that is CARRIED are held.
+  ///
+  /// 🚨★★★**THE ONE WAY AN IMPORT ENTERS THE POOL.** [importMediaFiles] — the
+  /// import window's pool and the viewer's register button — built its own
+  /// entries and recorded them carried without holding a byte, from the day
+  /// staging landed until 2026-09-24, while [addMediaAssets] beside it held
+  /// them (card `a-registered-carry-holds-its-bytes`). Two ways in, and only
+  /// one of them kept 「품은 순간 데이터를 가지고있고 불변」 (유저 08-30).
+  Future<void> _admit(List<MediaAsset> entries) async {
+    final seen = {for (final asset in mediaAssets) asset.path};
+    final fresh = [
+      for (final entry in entries)
+        if (seen.add(entry.path)) entry,
+    ];
+    final carried = [
+      for (final entry in fresh)
+        if (entry.carried) entry.path,
+    ];
+    if (carried.isNotEmpty) {
+      await _staging.stageCarriedBytes(carried);
+    }
+    // Read after the wait: what landed meanwhile is kept, not written over.
+    final pool = mediaAssets;
+    final known = {for (final asset in pool) asset.path};
+    final added = [
+      for (final entry in fresh)
+        if (known.add(entry.path)) entry,
     ];
     if (added.isEmpty) {
       return;
-    }
-    if (carried) {
-      await _staging.stageCarriedBytes([for (final asset in added) asset.path]);
     }
     _project.cutCommandCoordinator.updateMediaAssets([
       ...pool,
@@ -528,12 +556,19 @@ class MediaPool {
 
   /// The media pool's import: same carry-or-reference choice as a
   /// timeline import, pool only (no clip link). Non-audio kinds register
-  /// with their detected kind (R3b) — the batch stays one undo through
-  /// [addMediaAssets].
-  void importMediaFiles(List<String> paths, {required bool copyIntoProject}) {
-    final pool = mediaAssets;
-    final known = {for (final asset in pool) asset.path};
-    final added = <MediaAsset>[];
+  /// with their detected kind (R3b), and the batch is one undo step — held
+  /// before it is recorded, like every import ([_admit]).
+  ///
+  /// A path [cutFrom] names is a trimmed file's PIECE ([TrimmedPieces]),
+  /// and the file it names is where the piece was cut from: provenance
+  /// only, as a placed piece's is.
+  Future<void> importMediaFiles(
+    List<String> paths, {
+    required bool copyIntoProject,
+    Map<String, String> cutFrom = const {},
+  }) {
+    final known = {for (final asset in mediaAssets) asset.path};
+    final entries = <MediaAsset>[];
     for (final path in paths) {
       final source = normalizedMediaPath(path);
       final kind = mediaAssetKindForPath(source) ?? MediaAssetKind.image;
@@ -543,28 +578,25 @@ class MediaPool {
       if (!known.add(source)) {
         continue;
       }
-      added.add(
-        MediaAsset(
+      entries.add(
+        importedMediaAsset(
           path: source,
-          name: mediaAssetDefaultName(source),
           kind: kind,
-          // What the user asked for. The kind still decides whether it CAN
-          // be carried, and NEITHER is a path any more: every import
-          // records the file where the user keeps it, and the save reads
-          // this to decide whose bytes travel inside the archive.
-          carried: copyIntoProject,
+          fit: MediaFitMode.contain,
+          sourcePath: cutFrom[path],
           // Answers "which file is this?", so it is stamped for a carried
           // asset and a reference alike — a reference is exactly the one
           // that can go missing and have to be found again, and a carried
           // asset still has an original on disk until the first save.
           identity: readMediaIdentity(source),
+          // What the user asked for. The kind still decides whether it CAN
+          // be carried, and NEITHER is a path any more: every import
+          // records the file where the user keeps it, and the save reads
+          // this to decide whose bytes travel inside the archive.
+          carried: copyIntoProject,
         ),
       );
     }
-    if (added.isEmpty) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateMediaAssets([...pool, ...added]);
-    _changes.notifyChanged();
+    return _admit(entries);
   }
 }

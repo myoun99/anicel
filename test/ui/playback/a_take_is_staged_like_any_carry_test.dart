@@ -214,7 +214,7 @@ void main() {
     final lane = manager.activeTrack.seLayers.last;
     final decoy = File('${directory.path}/${lane.name}_T01.wav')
       ..writeAsBytesSync(List<int>.filled(64, 1));
-    manager.mediaPool.importMediaFiles([decoy.path], copyIntoProject: false);
+    await manager.mediaPool.importMediaFiles([decoy.path], copyIntoProject: false);
     expect(
       manager.mediaPool.mediaAssets.single.path.split('/').last,
       '${lane.name}_T01.wav',

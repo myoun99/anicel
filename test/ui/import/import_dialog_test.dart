@@ -869,28 +869,71 @@ void main() {
       );
     });
 
-    testWidgets('registering into the pool shows no IN/OUT either — trimming '
-        'what is only registered would have to write the trimmed bytes', (
+    /// A five-page document whose preview opens — what shows the ends.
+    Future<String> fivePages(WidgetTester tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+        pageSizes: List.filled(5, const ui.Size(595, 842)),
+      );
+      return (await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      }))!;
+    }
+
+    Future<void> openOnThePool(
+      WidgetTester tester,
+      EditorSessionManager s,
+      String path,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: s, initialPaths: [path], poolOnly: true),
+          ),
+        ),
+      );
+      for (var tries = 0; tries < 50; tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+    }
+
+    testWidgets('🚨registering into the pool shows IN/OUT where there is a '
+        'span to keep — a trimmed registration comes in as its piece', (
       tester,
     ) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
-      final png = await tester.runAsync(() => writePng('a.png'));
+      final pdf = await fivePages(tester);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ImportDialog(
-              session: s,
-              initialPaths: [png!],
-              poolOnly: true,
-            ),
-          ),
-        ),
+      await openOnThePool(tester, s, pdf);
+
+      expect(find.byKey(const ValueKey<String>('transport-in')), findsOneWidget);
+    });
+
+    testWidgets('⛔but not on a file the pool already holds — registering it '
+        'again adds nothing, so a span there would act on nothing', (
+      tester,
+    ) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final pdf = await fivePages(tester);
+      await tester.runAsync(
+        () => s.mediaPool.importMediaFiles([pdf], copyIntoProject: false),
       );
-      await tester.pump();
+
+      await openOnThePool(tester, s, pdf);
 
       expect(find.byKey(const ValueKey<String>('transport-in')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('transport-play')),
+        findsOneWidget,
+        reason: 'the bar itself stays, inert',
+      );
     });
   });
 
@@ -1021,6 +1064,94 @@ void main() {
     );
   });
 
+  testWidgets('🎯a PDF REGISTERED with a range comes in as a piece of those '
+      'pages — the same step a placement takes', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final fake = FakePdfDocument(
+      pageSizes: List.filled(5, const ui.Size(595, 842)),
+    );
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    final cutFrom = <(String, int, int)>[];
+    PdfRenderService.debugPageSpanOverride = (path, first, count) async {
+      cutFrom.add((path, first, count));
+      return Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]);
+    };
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(
+            session: s,
+            initialPaths: [pdfPath!],
+            poolOnly: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Pages two and three of five: IN and OUT are one-based on screen.
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-in-input')),
+      '2',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-out-input')),
+      '3',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
+    for (var tries = 0; tries < 200 && pool().isEmpty; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(cutFrom, [(pdfPath, 1, 2)], reason: 'cut out of the original');
+    expect(
+      [for (final asset in pool()) (mediaFileName(asset.path), asset.sourcePath)],
+      [('conte_2-3.pdf', pdfPath)],
+      reason: 'the pool names the piece; the original is where it came from',
+    );
+    final piecePath = pool().single.path;
+    expect(pool().single.carried, isTrue);
+    expect(
+      s.mediaStagingStore.find(piecePath),
+      isNotNull,
+      reason: 'held the moment it was registered',
+    );
+    expect(
+      File(piecePath).existsSync(),
+      isFalse,
+      reason: 'the file the pool was handed is gone — the held copy is the '
+          'only one',
+    );
+    expect(
+      s.repository.requireProject().tracks.first.cuts.length,
+      cutsBefore,
+      reason: 'registered, not placed',
+    );
+  });
+
   /// PLACE: the pool row's way onto the timeline. The same window, minus
   /// the question it has already answered — which file.
   testWidgets('place mode drops the source bar and says what it is doing', (
@@ -1065,7 +1196,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final path = await tester.runAsync(() => writePng('bg.png'));
-    s.mediaPool.importMediaFiles([path!], copyIntoProject: true);
+    await s.mediaPool.importMediaFiles([path!], copyIntoProject: true);
     expect(s.mediaPool.mediaAssets, hasLength(1));
     final layersBefore = s.requireActiveCut.layers.length;
 
