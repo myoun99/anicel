@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
 import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨EVERY BLOCK WEARS ONE CORNER (유저 2026-09-23: 「모서리 호버하니까
 /// 티나는데 … 모서리랑 블록이랑 모서리가 통일안되서 그런거같은데 확실하게
@@ -66,10 +67,8 @@ void main() {
       'lib/src/ui/timeline',
       'lib/src/ui/storyboard',
     ]) {
-      for (final entity in Directory(root).listSync(recursive: true)) {
-        if (entity is File && entity.path.endsWith('.dart')) {
-          _count(entity, numbered, found);
-        }
+      for (final entity in dartFilesUnder(root)) {
+        _count(entity, numbered, found);
       }
     }
     for (final path in const [

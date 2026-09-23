@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**AN `Opacity` IS A REPAINT BOUNDARY, AND A BOUNDARY INSIDE A PANEL
 /// COSTS THAT PANEL ITS BAKE.**
@@ -111,10 +110,7 @@ void main() {
 
   test('🚨every compositing wrapper in lib/ is one somebody decided', () {
     final found = <String, int>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       for (final line in entity.readAsLinesSync()) {
         final code = line.trim();

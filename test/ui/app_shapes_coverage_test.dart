@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// THE APP HAS ONE CORNER, AND THIS IS WHAT MAKES THAT TRUE.
 ///
@@ -17,10 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('no new circular corners escape the app shape', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       if (_allowedFiles.contains(path)) {
         continue;
@@ -81,10 +77,7 @@ void main() {
     // bare `ClipRSuperellipse(...)` or a `RenderClipRSuperellipse` still
     // lands in `found`.
     final found = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
         final line = lines[i];

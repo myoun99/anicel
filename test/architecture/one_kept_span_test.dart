@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨ONE answer for what an IN/OUT pair keeps: `models/kept_span.dart`.
 ///
@@ -19,10 +20,7 @@ void main() {
       r'|\bout(?:Frame|Mark|Point)?\s*==\s*null\s*\|\|',
     );
     final offenders = <String>[];
-    final files = Directory('lib/src')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'));
+    final files = dartFilesUnder('lib/src');
     var scanned = 0;
     for (final file in files) {
       final path = file.path.replaceAll(Platform.pathSeparator, '/');

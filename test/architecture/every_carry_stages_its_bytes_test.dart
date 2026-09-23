@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED MUST HOLD ITS BYTES.**
 ///
@@ -59,10 +58,7 @@ void main() {
   });
 
   test('every place an asset becomes carried also stages its bytes', () {
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (_allowedFiles.contains(relative)) {

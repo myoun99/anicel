@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**A REPORT THAT NAMES A PATH THAT IS GONE IS WORSE THAN NO REPORT.**
 ///
@@ -76,10 +77,7 @@ void main() {
     // this is. ⛔A new ffmpeg caller elsewhere is not forbidden — it just has
     // to be a deliberate decision, and this is where it gets noticed.
     final offenders = <String>[];
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final text = entity.readAsStringSync();
       if (!text.contains('Process.run') && !text.contains('Process.start')) {
         continue;

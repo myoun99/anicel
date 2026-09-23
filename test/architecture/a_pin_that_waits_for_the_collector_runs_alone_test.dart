@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 import '../../tool/affected_tests.dart'
     show gcTag, gcTagMarker, partitionByGcTag, runPlan;
@@ -130,8 +131,8 @@ void main() {
   test('🚨THE LEDGER: these are the files that wait for the collector', () {
     final root = Directory.current.path;
     final tagged = <String>[];
-    for (final entity in Directory('$root/test').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('_test.dart')) continue;
+    for (final entity in dartFilesUnder('$root/test')) {
+      if (!entity.path.endsWith('_test.dart')) continue;
       if (!entity.readAsStringSync().contains(gcTagMarker)) continue;
       tagged.add(
         entity.path.substring(root.length + 1).replaceAll(r'\', '/'),

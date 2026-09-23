@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★앱은 **자기 얼굴**로 말한다. 유저 확정 2026-08-28:
 /// 일본어 **BIZ UDPGothic**(「작은크기 가독성 목표로해서 아주 읽기쉬워」)
@@ -93,10 +94,7 @@ void _noWidgetNamesItsOwnFace() {
     final literal = RegExp(r"fontFamily:\s*'([^']+)'");
     final offenders = <String>[];
     var scanned = 0;
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       if (owners.any(entity.path.endsWith)) {
         continue;
       }

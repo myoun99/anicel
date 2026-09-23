@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨F-37 — the settings dialogs do not hardcode English.
 ///
@@ -80,12 +81,7 @@ void main() {
   test('a settings dialog reads its words from AppStrings', () {
     final hasLetter = RegExp('[A-Za-z]');
     final offenders = <String>[];
-    for (final file in Directory(
-      'lib/src/ui/dialogs',
-    ).listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui/dialogs')) {
       final path = file.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       final source = file.readAsStringSync();
@@ -211,10 +207,7 @@ void main() {
     final hasLetter = RegExp('[A-Za-z]');
     var found = 0;
     final worst = <String, int>{};
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final path = file.path.replaceAll(r'\', '/');
       // ⛔The dialogs are the wall above, not part of the count — a number
       // that included them could be paid down by translating elsewhere while

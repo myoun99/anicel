@@ -11,6 +11,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// Every panel that says it has nothing — the place of each line it says,
 /// in source order.
@@ -52,10 +53,7 @@ void main() {
 
   test('a panel that starts saying it has nothing is listed above', () {
     final unlisted = <String>[];
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final path = file.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.endsWith('/widgets/empty_state_text.dart') ||

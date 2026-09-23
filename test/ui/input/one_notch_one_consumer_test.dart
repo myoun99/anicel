@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../../helpers/dart_sources.dart';
 
 /// H23 — **one wheel notch, one consumer.**
 ///
@@ -132,10 +131,7 @@ void main() {
     };
 
     final offenders = <String>[];
-    for (final entry in Directory('lib/src/ui')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll('\\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       if (observers.containsKey(key)) {

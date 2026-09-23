@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**A HOLDER THAT KNOWS ITS OWN SIZE MUST BE IN THE CENSUS.**
 ///
@@ -27,10 +28,7 @@ void main() {
         .readAsStringSync();
     final missing = <String>[];
 
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       // ⛔`lib/dev/` is the brush lab — a harness, not the app.
@@ -79,10 +77,7 @@ void main() {
     // permanent: the getter is renamed or deleted, the line stays, and it
     // quietly excuses the NEXT thing that takes the name.
     final live = <String>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       for (final match in _counter.allMatches(entity.readAsStringSync())) {
@@ -105,10 +100,7 @@ void main() {
   test('every field that keeps images is counted, or says why not', () {
     final missing = <String>[];
     final live = <String>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.startsWith('lib/dev/')) {

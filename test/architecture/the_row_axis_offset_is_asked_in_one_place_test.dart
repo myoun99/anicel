@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// HOW FAR A ROW'S OWN AXIS RUNS AHEAD OF THE CUT'S — ASKED IN ONE PLACE.
 ///
@@ -23,10 +22,7 @@ void main() {
     const home = 'lib/src/ui/session/track_se_display.dart';
     final sites = <String>[];
 
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {

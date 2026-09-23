@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★유저 규칙: **없다가 갑자기 생기는 UI 금지 — 자리는 항상 예약하고
 /// 내용만 바꾼다.**
@@ -26,10 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// (the same investment `location.reload()` was banned for throwing away).
 void main() {
   Iterable<({String path, int line, String text})> sourceLines() sync* {
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final relative = file.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = file.readAsLinesSync();

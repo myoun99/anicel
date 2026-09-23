@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import '../../helpers/dart_sources.dart';
 
 /// A RULER MARK IS A POSITION, AND NOTHING HAS ELAPSED AT THE FIRST FRAME.
 ///
@@ -69,10 +68,7 @@ void main() {
 
   test('the expression lives in ONE place — no surface re-derives it', () {
     final offenders = <String>[];
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       if (path.endsWith('timeline_frame_ruler_painter.dart')) {
         continue; // the implementation itself

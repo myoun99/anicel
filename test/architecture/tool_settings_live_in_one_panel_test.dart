@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★유저 규칙: **툴 설정은 툴 설정 패널에 넣는다. 그 툴 전용 패널을
 /// 새로 만들지 않는다.**
@@ -33,10 +34,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// settings widget, and a NEW panel in the workspace registry.
 void main() {
   Iterable<({String path, int line, String text})> sourceLines() sync* {
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final relative = file.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = file.readAsLinesSync();

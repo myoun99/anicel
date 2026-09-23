@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**ONE AWAITABLE BYTES→PICTURE UPLOAD, AND IT IS THE ONE THAT CAN
 /// SAY NO.**
@@ -39,10 +38,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// is banned is the BRIDGE, because a bridge implies a caller who waits.
 void main() {
   Iterable<({String path, int line, String text})> sourceLines() sync* {
-    for (final file in Directory('lib/src').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src')) {
       final relative = file.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src'));
       final lines = file.readAsLinesSync();

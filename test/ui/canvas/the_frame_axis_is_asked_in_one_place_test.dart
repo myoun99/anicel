@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// F-28's law, guarded the only way that survives me: by making a second
 /// copy fail rather than by trusting anyone to notice one.
@@ -25,10 +24,7 @@ void main() {
     const home = 'lib/src/ui/canvas/flip_hud_controller.dart';
     final offenders = <String>[];
 
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       if (path.endsWith(home)) {
         continue;

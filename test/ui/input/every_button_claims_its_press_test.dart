@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
@@ -63,11 +64,8 @@ void main() {
   /// (the layer-type button), `layer_rail_window`, `project_settings_pill` and
   /// `se_layer_mixer` are timeline chrome by any reading and were bare,
   /// because they were not among the eight names.
-  List<String> everyUiFile() => Directory('lib/src/ui')
-      .listSync(recursive: true)
-      .whereType<File>()
+  List<String> everyUiFile() => dartFilesUnder('lib/src/ui')
       .map((file) => file.path.replaceAll(r'\', '/'))
-      .where((path) => path.endsWith('.dart'))
       .toList();
 
   /// ⛔EACH ONE IS A DECISION, and the reason is the same question every

@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★공통창은 색을 **한 군데서만** 고른다.
 ///
@@ -61,10 +60,7 @@ void main() {
 
     final offenders = <String>[];
     var scanned = 0;
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       // The theme file is the one place allowed to spell the value out —
       // that IS the token's definition.
       if (entity.path.endsWith('app_theme.dart')) {

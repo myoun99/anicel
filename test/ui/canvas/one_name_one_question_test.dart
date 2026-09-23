@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE NAME WAS ANSWERING THREE QUESTIONS.
 ///
@@ -65,10 +66,7 @@ void main() {
     // geometry parameter `drawPosedLayerImage` takes — but it must never
     // again be the argument to a chain resolve.
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final source = file.readAsStringSync();
       for (final resolve in const [

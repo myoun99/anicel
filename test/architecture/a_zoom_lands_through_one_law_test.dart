@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★A ZOOM LANDS THROUGH ONE LAW (F-122 · I-27).
 ///
@@ -24,11 +25,8 @@ void main() {
   const law = 'lib/src/ui/canvas/canvas_zoom_scale.dart';
   const model = 'lib/src/models/canvas_viewport.dart';
 
-  Iterable<({String path, String source})> libSources() => Directory('lib')
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((file) => file.path.endsWith('.dart'))
-      .map(
+  Iterable<({String path, String source})> libSources() =>
+      dartFilesUnder('lib').map(
         (file) => (
           path: file.path.replaceAll('\\', '/'),
           source: file.readAsStringSync(),

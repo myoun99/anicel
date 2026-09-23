@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -10,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_canvas.dart';
 import 'package:anicel/src/ui/session/onion_skin.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../helpers/dart_sources.dart';
 
 /// HIDING A FOLDER HIDES WHAT IS INSIDE IT — EVERYWHERE, NOT JUST WHERE THE
 /// COMPOSITE LOOKS.
@@ -262,10 +261,7 @@ void main() {
     test('"is this row shown" is asked in ONE place, and the number of '
         'places that re-derive it only goes down', () {
       final offenders = <String>[];
-      for (final entity in Directory('lib').listSync(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('.dart')) {
-          continue;
-        }
+      for (final entity in dartFilesUnder('lib')) {
         final path = entity.path.replaceAll(r'\', '/');
         if (_mayAnswerVisibilityItself.containsKey(path)) {
           continue;

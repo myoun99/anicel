@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨THE LANE AND THE THUMB ARE NUMBERS WITH NAMES.
 ///
@@ -32,10 +31,7 @@ void main() {
   test('🚨every minThumbExtent in lib/ reads the shared constant — three '
       'private copies of this number is how it drifts', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final source = file.readAsStringSync();
       for (final match in RegExp(
         r'minThumbExtent:\s*([^,\n)]+)',
@@ -60,10 +56,7 @@ void main() {
   test('🚨the scrollbar lane widths are not written as literals either — a '
       'reserved column is a decision with a name', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       if (file.path.endsWith('app_scrollbar_lane.dart')) {
         continue; // Where the numbers live.
       }

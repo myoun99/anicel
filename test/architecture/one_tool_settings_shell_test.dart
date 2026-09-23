@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨THE TOOL SETTINGS SECTIONS WEAR ONE SHELL — and the shell is the only
 /// place that spells its name.
@@ -23,10 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// an exception list; there is deliberately none.
 void main() {
   Iterable<({String path, int line, String text})> sourceLines() sync* {
-    for (final file in Directory('lib/src/ui').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib/src/ui')) {
       final relative = file.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = file.readAsLinesSync();

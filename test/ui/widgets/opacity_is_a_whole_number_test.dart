@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★AN OPACITY BAR IS WHOLE PER CENT (F-34).
 ///
@@ -93,10 +92,7 @@ void main() {
     // case this exists for, and it will not be in any list a test wrote
     // down today.
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.endsWith('widgets/field_slider.dart')) {

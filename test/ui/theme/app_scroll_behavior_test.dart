@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
+import '../../helpers/dart_sources.dart';
 
 /// The app has ONE scrollbar, and this is where that is a contract rather
 /// than a habit.
@@ -146,12 +145,7 @@ void main() {
       // placed by hand around a scrollable the behaviour also bars is two
       // bars, and the obvious cure for that is the nesting leak above.
       final offenders = <String>[];
-      for (final entity in Directory(
-        'lib',
-      ).listSync(recursive: true).whereType<File>()) {
-        if (!entity.path.endsWith('.dart')) {
-          continue;
-        }
+      for (final entity in dartFilesUnder('lib')) {
         final name = entity.uri.pathSegments.last;
         if (name == 'panel_scrollbar.dart' ||
             name == 'app_scroll_behavior.dart') {

@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨ONE transparency checker in the app.
 ///
@@ -19,10 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('🚨no file but the shared one draws a transparency checker', () {
     final offenders = <String>[];
-    final files = Directory('lib/src')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'));
+    final files = dartFilesUnder('lib/src');
     var scanned = 0;
     for (final file in files) {
       final path = file.path.replaceAll('\\', '/');
@@ -64,10 +60,7 @@ void main() {
   /// cannot be driven: the only proof left is that nothing spells its name.
   test('⛔the ALPHA-PREVIEW toggle stays deleted', () {
     final spelled = <String>[];
-    for (final file in Directory('lib/src')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final file in dartFilesUnder('lib/src')) {
       if (file.readAsStringSync().contains('alphaPreviewEnabled')) {
         spelled.add(file.path.replaceAll(r'\', '/'));
       }

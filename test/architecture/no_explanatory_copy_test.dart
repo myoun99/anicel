@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★유저 규칙 (F-2, 2026-08-24): 「텍스트가 쓸데없이 설명적인 부분이
 /// 너무 많음. … 쓸데없는 텍스트 싹 다 삭제하고 그 중에서 필요해보이는건
@@ -22,10 +21,7 @@ void main() {
   test('explanatory captions under controls do not multiply', () {
     final offenders = <String>[];
 
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {

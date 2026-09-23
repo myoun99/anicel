@@ -16,9 +16,9 @@
 // source text, so a `print(` inside a string literal or a comment counts,
 // and a call spelled `foundation.debugPrint(` or aliased through a variable
 // does not.
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// Files allowed to log, how many calls each, and why.
 const _ledger = <String, ({int calls, String why})>{
@@ -57,10 +57,7 @@ void main() {
   test('every print/debugPrint in lib/ is on the ledger, and the ledger '
       'has no paid-off entries', () {
     final counts = <String, int>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll('\\', '/');
       final calls = _logCall.allMatches(entity.readAsStringSync()).length;
       if (calls > 0) {

@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// EVERY `＋` IN THE APP WEARS THE ACCENT, AND THIS IS WHAT MAKES THAT TRUE.
 ///
@@ -19,10 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('every ＋ glyph in the app takes its colour from AppColors.addGlyph', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final source = file.readAsStringSync();
       for (final match in _plusGlyph.allMatches(source)) {

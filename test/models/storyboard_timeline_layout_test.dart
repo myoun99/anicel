@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -9,6 +7,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import '../helpers/dart_sources.dart';
 
 void main() {
   test('cutGlobalStartFrameIn reads the same walk the layout makes', () {
@@ -195,11 +194,7 @@ void main() {
     final byHand = RegExp(r'\+=[^;]*leadingGapFrames');
     var scanned = 0;
 
-    for (final entry
-        in Directory('lib')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/'));
       // The walk itself, and the ONE deliberate exception: the cut-move

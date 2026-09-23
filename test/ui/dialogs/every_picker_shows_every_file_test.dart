@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/dialogs/open_file_flow.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★유저 2026-08-29: 「임포트든 열기든 뭐든 픽커는 pdf만 표시한다던가.
 /// 특히 윈도우 열기시 anicel이랑 tvp만 설정따라서 보이게 되있는데 그게아니라
@@ -16,10 +15,7 @@ void main() {
   test('no opening picker passes a type filter — the dialog shows every '
       'file and the refusal comes after', () {
     final offenders = <String>[];
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final source = entity.readAsStringSync();
       for (final line in source.split('\n')) {
         final trimmed = line.trim();

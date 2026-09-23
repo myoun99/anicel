@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/mask_soft_edge.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE RAMP, TWO MEANINGS.
 ///
@@ -94,10 +95,7 @@ void main() {
     // written next year — which is exactly what happened here. The C kernel
     // is not Dart and stays: `fill_gap_close_test` holds it byte for byte.
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('lib/src/services/mask_soft_edge.dart')) {
         continue;
