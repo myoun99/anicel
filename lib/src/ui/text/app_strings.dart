@@ -671,7 +671,6 @@ enum AppStrings {
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
   String get tlKindImage => _s('tlKindImage');
-  String get tlKindText => _s('tlKindText');
   String get tlKindAdjustment => _s('tlKindAdjustment');
   String get tlKindFolder => _s('tlKindFolder');
   String get tlKindSe => _s('tlKindSe');
@@ -686,19 +685,6 @@ enum AppStrings {
   /// could never be translated at all.
   String get tlKindSemanticTemplate => _s('tlKindSemanticTemplate');
 
-  // --- The text cel editor (R5) ---
-  String get textCelNewTitle => _s('textCelNewTitle');
-  String get textCelEditTitle => _s('textCelEditTitle');
-  String get textCelTextLabel => _s('textCelTextLabel');
-  String get textCelFontLabel => _s('textCelFontLabel');
-  String get textCelFontSystem => _s('textCelFontSystem');
-  String get textCelSizeLabel => _s('textCelSizeLabel');
-  String get textCelAlignLabel => _s('textCelAlignLabel');
-  String get textCelAlignLeft => _s('textCelAlignLeft');
-  String get textCelAlignCenter => _s('textCelAlignCenter');
-  String get textCelAlignRight => _s('textCelAlignRight');
-  String get textCelColorLabel => _s('textCelColorLabel');
-  String get textCelBoldLabel => _s('textCelBoldLabel');
   String get seNameTagShowLineLabel => _s('seNameTagShowLineLabel');
   String get seNameTagLineInkLabel => _s('seNameTagLineInkLabel');
   String get seNameTagTrackingLabel => _s('seNameTagTrackingLabel');
@@ -711,9 +697,6 @@ enum AppStrings {
   /// the block's own text, so these never change with the playhead.
   String get seNameTagPreviewName => _s('seNameTagPreviewName');
   String get seNameTagPreviewLine => _s('seNameTagPreviewLine');
-  String get textCelOutlineLabel => _s('textCelOutlineLabel');
-  String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
-  String get textCelPositionLabel => _s('textCelPositionLabel');
 
   // --- The SE name tag editor (R5b) ---
 
@@ -2570,7 +2553,6 @@ enum AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
-    'tlKindText': 'Text',
     'tlKindAdjustment': 'Adjustment',
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
@@ -2579,18 +2561,6 @@ enum AppStrings {
     'tlKindSemanticTemplate': '{kind} layer',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGIN',
-    'textCelNewTitle': 'New Text',
-    'textCelEditTitle': 'Edit Text',
-    'textCelTextLabel': 'Text',
-    'textCelFontLabel': 'Font',
-    'textCelFontSystem': 'System',
-    'textCelSizeLabel': 'Size',
-    'textCelAlignLabel': 'Align',
-    'textCelAlignLeft': 'Left',
-    'textCelAlignCenter': 'Center',
-    'textCelAlignRight': 'Right',
-    'textCelColorLabel': 'Ink',
-    'textCelBoldLabel': 'Bold',
     'seNameTagShowLineLabel': 'Show Dialogue',
     'seNameTagLineInkLabel': 'Dialogue Ink',
     'seNameTagTrackingLabel': 'Tracking',
@@ -2600,9 +2570,6 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Bold',
     'seNameTagPreviewName': 'Name',
     'seNameTagPreviewLine': 'Line',
-    'textCelOutlineLabel': 'Outline (white)',
-    'textCelBackgroundLabel': 'Box (red)',
-    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -3878,25 +3845,12 @@ enum AppStrings {
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
     'tlKindImage': '画像',
-    'tlKindText': 'テキスト',
     'tlKindAdjustment': '調整レイヤー',
     'tlKindFolder': 'フォルダー',
     'tlKindSe': 'SE',
     'tlKindTransition': 'トランジション',
     'tlKindCamera': 'カメラ',
     'tlKindSemanticTemplate': '{kind}レイヤー',
-    'textCelNewTitle': '新規テキスト',
-    'textCelEditTitle': 'テキストを編集',
-    'textCelTextLabel': 'テキスト',
-    'textCelFontLabel': 'フォント',
-    'textCelFontSystem': 'システム',
-    'textCelSizeLabel': 'サイズ',
-    'textCelAlignLabel': '揃え',
-    'textCelAlignLeft': '左',
-    'textCelAlignCenter': '中央',
-    'textCelAlignRight': '右',
-    'textCelColorLabel': 'インク',
-    'textCelBoldLabel': '太字',
     'seNameTagShowLineLabel': 'セリフを表示',
     'seNameTagLineInkLabel': 'セリフの色',
     'seNameTagTrackingLabel': '字間',
@@ -3906,9 +3860,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '太字',
     'seNameTagPreviewName': '名前',
     'seNameTagPreviewLine': 'セリフ',
-    'textCelOutlineLabel': 'フチ（白）',
-    'textCelBackgroundLabel': 'ボックス（赤）',
-    'textCelPositionLabel': '位置',
     'tlKindInstruction': 'ディレクション',
     'tlNoriShiro': 'のりしろ',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
@@ -5178,25 +5129,12 @@ enum AppStrings {
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
     'tlKindImage': '이미지',
-    'tlKindText': '텍스트',
     'tlKindAdjustment': '조정 레이어',
     'tlKindFolder': '폴더',
     'tlKindSe': 'SE',
     'tlKindTransition': '트랜지션',
     'tlKindCamera': '카메라',
     'tlKindSemanticTemplate': '{kind} 레이어',
-    'textCelNewTitle': '새 텍스트',
-    'textCelEditTitle': '텍스트 편집',
-    'textCelTextLabel': '텍스트',
-    'textCelFontLabel': '폰트',
-    'textCelFontSystem': '시스템',
-    'textCelSizeLabel': '크기',
-    'textCelAlignLabel': '정렬',
-    'textCelAlignLeft': '왼쪽',
-    'textCelAlignCenter': '가운데',
-    'textCelAlignRight': '오른쪽',
-    'textCelColorLabel': '잉크',
-    'textCelBoldLabel': '굵게',
     'seNameTagShowLineLabel': '대사 표시',
     'seNameTagLineInkLabel': '대사 잉크',
     'seNameTagTrackingLabel': '자간',
@@ -5206,9 +5144,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '굵게',
     'seNameTagPreviewName': '이름',
     'seNameTagPreviewLine': '대사',
-    'textCelOutlineLabel': '외곽선(흰색)',
-    'textCelBackgroundLabel': '박스(빨강)',
-    'textCelPositionLabel': '위치',
     'tlKindInstruction': '디렉션',
     'tlNoriShiro': '여백',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
@@ -6538,7 +6473,6 @@ enum AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
-    'tlKindText': 'Texte',
     'tlKindAdjustment': 'Calque de réglage',
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
@@ -6547,18 +6481,6 @@ enum AppStrings {
     'tlKindSemanticTemplate': 'Calque {kind}',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGE',
-    'textCelNewTitle': 'Nouveau texte',
-    'textCelEditTitle': 'Modifier le texte',
-    'textCelTextLabel': 'Texte',
-    'textCelFontLabel': 'Police',
-    'textCelFontSystem': 'Système',
-    'textCelSizeLabel': 'Taille',
-    'textCelAlignLabel': 'Alignement',
-    'textCelAlignLeft': 'Gauche',
-    'textCelAlignCenter': 'Centre',
-    'textCelAlignRight': 'Droite',
-    'textCelColorLabel': 'Encre',
-    'textCelBoldLabel': 'Gras',
     'seNameTagShowLineLabel': 'Afficher le dialogue',
     'seNameTagLineInkLabel': 'Encre du dialogue',
     'seNameTagTrackingLabel': 'Interlettrage',
@@ -6568,9 +6490,6 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Gras',
     'seNameTagPreviewName': 'Nom',
     'seNameTagPreviewLine': 'Réplique',
-    'textCelOutlineLabel': 'Contour (blanc)',
-    'textCelBackgroundLabel': 'Boîte (rouge)',
-    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -7766,25 +7685,12 @@ enum AppStrings {
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
     'tlKindImage': '图像',
-    'tlKindText': '文本',
     'tlKindAdjustment': '调整图层',
     'tlKindFolder': '文件夹',
     'tlKindSe': 'SE',
     'tlKindTransition': 'Transition',
     'tlKindCamera': 'Camera',
     'tlKindSemanticTemplate': '{kind}图层',
-    'textCelNewTitle': '新建文本',
-    'textCelEditTitle': '编辑文本',
-    'textCelTextLabel': '文本',
-    'textCelFontLabel': '字体',
-    'textCelFontSystem': '系统',
-    'textCelSizeLabel': '大小',
-    'textCelAlignLabel': '对齐',
-    'textCelAlignLeft': '左',
-    'textCelAlignCenter': '居中',
-    'textCelAlignRight': '右',
-    'textCelColorLabel': '墨色',
-    'textCelBoldLabel': '加粗',
     'seNameTagShowLineLabel': '显示台词',
     'seNameTagLineInkLabel': '台词颜色',
     'seNameTagTrackingLabel': '字距',
@@ -7794,9 +7700,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '加粗',
     'seNameTagPreviewName': '名字',
     'seNameTagPreviewLine': '台词',
-    'textCelOutlineLabel': '描边（白）',
-    'textCelBackgroundLabel': '底框（红）',
-    'textCelPositionLabel': '位置',
     // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만
     // 원어/영어로 두기로 하자」). ja/ko already transliterate it rather than
     // translate it — ディレクション / 디렉션 — so zh standing alone with 指示

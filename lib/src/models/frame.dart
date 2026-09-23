@@ -80,10 +80,10 @@ class Frame {
   /// so legacy SE labels keep reading as dialogue).
   final String? seName;
 
-  /// Text rows only (R5, §6-s): the cel's PICTURE as parameters — the
-  /// baked raster in the brush store is a projection re-baked on edit.
-  /// Being a Frame field it shares across linked cuts and rides paste/
-  /// duplicate exactly like the drawing it stands for.
+  /// ↩️A TEXT row's picture as parameters (R5, §6-s) until F-154 removed
+  /// the kind: nothing writes it any more. It still reads from an old file
+  /// and rides copies until the save format drops it — the save lane's
+  /// half of F-154, left to it on purpose.
   final TextCelContent? textContent;
 
   Frame copyWith({

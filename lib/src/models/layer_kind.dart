@@ -148,39 +148,6 @@ enum LayerKind {
     celNameIsIdentity: true,
   ),
 
-  /// A TEXT layer (R5, §6-s): the drawing layer's sibling — frames and
-  /// exposure work exactly like animation, but a cel's PICTURE is text
-  /// parameters ([Frame.textContent]) instead of pen strokes: the brush
-  /// is refused, editing re-types the parameters, and the raster the
-  /// stack composites is a projection baked into the ordinary cel store
-  /// on every edit (the import-cel grammar). Rasterize converts the row
-  /// into a plain animation layer — the pixels stay, the parameters go.
-  text(
-    'text',
-    holdsDrawings: true,
-    isDrawingCel: true,
-    // A text cel's picture is typed parameters, so the pen is refused
-    // there the way it is on a referenced image.
-    acceptsBrushInput: false,
-    coversWithoutGaps: false,
-    holdsSingleCel: false,
-    groupsLayers: false,
-    filtersBelow: false,
-    composites: true,
-    hasPictureOpacity: true,
-    hasLayerTransform: true,
-    hasTransformFxSwitch: true,
-    hasLayerEffects: true,
-    carriesInstructions: false,
-    exportsCels: true,
-    linksIntoLinkedCut: true,
-    isSingletonPerCut: false,
-    isClipboardCopyable: true,
-    isReadOnlyInCut: false,
-    reordersInCut: true,
-    celNameIsIdentity: true,
-  ),
-
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
   /// an animation layer (exposure blocks mark SE timing; frame names carry
   /// the labels); sorts into its own timeline section between the drawing
@@ -426,18 +393,17 @@ enum LayerKind {
 
   /// The ACTION-section DRAWING kinds: the rows whose cels hold artwork.
   /// Everything that means "a real drawing row" — attach bases, cel export —
-  /// asks this rather than listing the kinds again. The TEXT row belongs:
-  /// its cels are pictures (typed, not penned), it carries attaches and
-  /// exports cels; only the brush itself asks the narrower
+  /// asks this rather than listing the kinds again; the brush itself asks
   /// [acceptsBrushInput].
   final bool isDrawingCel;
 
-  /// Whether the brush may land on this kind's cels (R6-④). Narrower than
-  /// [isDrawingCel] since the TEXT kind: a text cel's picture is typed
-  /// parameters, so the pen is refused there the way it is on a referenced
-  /// image — the kind-level version of the same "derived content" rule. SE
-  /// cels exist for timing/dialogue data and instruction/camera rows carry
-  /// notation — the pen must never draw on any of them.
+  /// Whether the brush may land on this kind's cels (R6-④). SE cels exist
+  /// for timing/dialogue data and instruction/camera rows carry notation —
+  /// the pen must never draw on any of them.
+  ///
+  /// ⚠️A question apart from [isDrawingCel] — what a row IS against whether
+  /// a pen may touch it. The two answered differently while the TEXT kind
+  /// lived (R5; removed by F-154) and agree on every kind today.
   final bool acceptsBrushInput;
 
   /// Whether this kind's rows can ghost (onion skin): the kinds the brush
@@ -563,7 +529,7 @@ enum LayerKind {
   /// ACTION-section rows whose content is shared between the cuts that reuse
   /// the same drawing ("액션란은 다 공유", user 2026-07-30).
   ///
-  /// Animation, image and text rows share their pictures (§6-z5); the folder
+  /// Animation and image rows share their pictures (§6-z5); the folder
   /// rows that hold them share so the structure matches; and an ADJUSTMENT
   /// row shares too (R6b) — see [mirrorsEffects] for what that has
   /// to mean for a row whose only content is FX.
@@ -578,9 +544,8 @@ enum LayerKind {
   ///
   /// IMAGE rows are included (the shared BG is the classic 겸용 case; the
   /// linked copy shares the cel id and the covering normalization re-covers
-  /// it) and TEXT rows too (§6-z5: "레이어는 모두 겸용컷에서 공유된다" — the
-  /// escape hatch for per-cut cut numbers is the ordinary 독립시키기) — plus
-  /// the folder rows that hold them ("폴더 존재/멤버십은 공유 구조").
+  /// it) — plus the folder rows that hold them ("폴더 존재/멤버십은 공유
+  /// 구조").
   final bool linksIntoLinkedCut;
 
   /// Whether a cut may hold at most ONE row of this kind (R9 #7).
@@ -739,10 +704,11 @@ enum LayerKind {
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {
-    // Legacy alias: the retired `art` kind drew and composited exactly
-    // like animation (its enum doc said as much) — old dev files load as
-    // what they always behaved as.
-    if (json == 'art') {
+    // Legacy aliases: old dev files load as what their rows always were. The
+    // retired `art` kind drew and composited exactly like animation (its
+    // enum doc said as much); a retired TEXT row's pictures were ordinary
+    // baked cels, which is all rasterizing one ever left (F-154).
+    if (json == 'art' || json == 'text') {
       return LayerKind.animation;
     }
     for (final kind in LayerKind.values) {

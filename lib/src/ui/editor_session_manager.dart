@@ -118,7 +118,6 @@ import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
 import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
-import 'session/text_cel_bakes.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
 import 'session/cut_under_playhead.dart';
@@ -250,10 +249,6 @@ class EditorSessionManager extends ChangeNotifier
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
     layerStack.attach();
-    // Text cel projections follow the model through EVERY mutation path
-    // (edit/undo/redo/paste/duplicate/link) — one history listener, the
-    // sweep re-renders whatever went stale (R5).
-    historyManager.addListener(textCelBakes.scheduleTextCelBakeSweep);
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
@@ -1187,7 +1182,6 @@ class EditorSessionManager extends ChangeNotifier
   /// and then the reason is written here.
   List<void Function()> get _teardown => [
     () => AppMemory.settings.removeListener(_applyCacheBudgets),
-    textCelBakes.dispose,
     layerStack.dispose,
     currentRowListenable.dispose,
     rowSelectionVerbs.dispose,
@@ -1217,7 +1211,6 @@ class EditorSessionManager extends ChangeNotifier
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
-    () => historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -2149,28 +2142,6 @@ class EditorSessionManager extends ChangeNotifier
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     frameSeekCommitted: frameSeekCommitted,
-  );
-
-  // --- Text cel bake sweep (R5, §6-s) --------------------------------------
-  //
-  // A text cel's truth is [Frame.textContent]; the raster every consumer
-  // composites is a PROJECTION baked into the ordinary cel store (the
-  // import-cel grammar). Every mutation path that can move the truth —
-  // edit, undo/redo, paste, duplicate, link merge, selection fills —
-  // funnels through the history manager, so ONE listener re-renders
-  // whatever projection went stale. Self-healing, no per-command hooks.
-
-  // ── the text-cel bakes: their own sweep, in their own file ─────────────
-  //
-  // A collaborator (session/text_cel_bakes.dart). Callers name it: a forwarder here
-  // would be a second name for the same verb (round 8, G4).
-  late final TextCelBakes textCelBakes = TextCelBakes(
-    project: this,
-    selection: this,
-    changes: this,
-    controllers: activeCutControllers,
-    internals: this,
-    renderCaches: renderCaches,
   );
 
   @override
@@ -3313,7 +3284,6 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
-    textCelBakes: textCelBakes,
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,

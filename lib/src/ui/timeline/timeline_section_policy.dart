@@ -20,7 +20,6 @@ TimelineSection timelineSectionForLayerKind(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
-    LayerKind.text ||
     LayerKind.folder ||
     LayerKind.adjustment => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,

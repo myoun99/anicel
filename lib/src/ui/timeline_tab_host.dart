@@ -296,7 +296,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // ever about the timeline. See [layer_name_commands.dart].
 
   // ⛔THE INSTANCE EDITOR left this host (2026-08-11). Every flow it held —
-  // the kind dispatch, the camera keys, the SE entry, the text cel, the
+  // the kind dispatch, the camera keys, the SE entry, the
   // instruction event and its vocabulary editor, the frame rename and the
   // lane-key rename — is [instance_editor_commands.dart] now, because the
   // storyboard's bar carries the same `Edit Instance` entry and had to grey

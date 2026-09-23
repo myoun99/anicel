@@ -224,7 +224,6 @@ class TimelineActionToolbar extends StatelessWidget {
     LayerKind.animation => 'animation',
     LayerKind.storyboard => 'storyboard',
     LayerKind.image => 'image',
-    LayerKind.text => 'text',
     LayerKind.se => 'se',
     LayerKind.instruction => 'instruction',
     LayerKind.adjustment => 'adjustment',
@@ -237,7 +236,6 @@ class TimelineActionToolbar extends StatelessWidget {
     LayerKind.animation => AppText.strings.tlKindAnimation,
     LayerKind.storyboard => AppText.strings.tlKindStoryboard,
     LayerKind.image => AppText.strings.tlKindImage,
-    LayerKind.text => AppText.strings.tlKindText,
     LayerKind.se => AppText.strings.tlKindSe,
     LayerKind.instruction => AppText.strings.tlKindInstruction,
     LayerKind.adjustment => AppText.strings.tlKindAdjustment,
@@ -266,7 +264,6 @@ class TimelineActionToolbar extends StatelessWidget {
         LayerKind.animation,
         LayerKind.storyboard,
         LayerKind.image,
-        LayerKind.text,
         LayerKind.se,
         LayerKind.instruction,
         // R6b: the row that filters everything below it. It lands above the

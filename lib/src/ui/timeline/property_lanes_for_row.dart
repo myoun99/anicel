@@ -193,7 +193,6 @@ List<PropertyLaneRow> propertyLanesForRow({
       return const [];
     case LayerKind.animation:
     case LayerKind.image:
-    case LayerKind.text:
     case LayerKind.storyboard:
     case LayerKind.instruction:
     // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer lane

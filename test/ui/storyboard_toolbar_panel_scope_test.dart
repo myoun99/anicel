@@ -120,7 +120,6 @@ void main() {
       LayerKind.animation,
       LayerKind.storyboard,
       LayerKind.image,
-      LayerKind.text,
       LayerKind.instruction,
       LayerKind.adjustment,
       LayerKind.folder,

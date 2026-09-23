@@ -152,7 +152,6 @@ class LayerStack {
       case LayerKind.animation:
       case LayerKind.storyboard:
       case LayerKind.image:
-      case LayerKind.text:
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
         // so they never start empty and then have to be filled.
@@ -162,16 +161,6 @@ class LayerStack {
                 frameId: FrameId(_frameIds.nextFrameId(layerId)),
                 cut: cut,
                 kind: kind,
-              )
-            : kind == LayerKind.text
-            // A text row starts all-empty like an animation cel row, under
-            // its own T1/T2 naming (cel letters stay the pen rows').
-            ? Layer(
-                id: layerId,
-                name: nextTextLayerName(_project.requireActiveCut.layers),
-                frames: const [],
-                timeline: const {},
-                kind: LayerKind.text,
               )
             : createDefaultAnimationLayer(layerId: layerId, cut: cut);
         // F-76: a row made from nothing wears its kind's label

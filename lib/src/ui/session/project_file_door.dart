@@ -49,7 +49,6 @@ import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'live_stroke_landing.dart';
-import 'text_cel_bakes.dart';
 
 /// What every road of a save carries besides its path: THE PROJECT IT IS
 /// WRITING, the media the archive stores, the conforms beside them, and
@@ -103,7 +102,6 @@ class ProjectFileDoor {
     required MediaStagingStore staging,
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
-    required TextCelBakes textCelBakes,
     required FrameClipboard clipboard,
     required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
@@ -123,7 +121,6 @@ class ProjectFileDoor {
        _staging = staging,
        _grants = grants,
        _fingerprints = fingerprints,
-       _textCelBakes = textCelBakes,
        _clipboard = clipboard,
        _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
@@ -147,7 +144,6 @@ class ProjectFileDoor {
   final MediaStagingStore _staging;
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
-  final TextCelBakes _textCelBakes;
   final FrameClipboard _clipboard;
   final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
@@ -245,8 +241,6 @@ class ProjectFileDoor {
     if (asked == SaveAsked.byAPerson) {
       _liveStrokeLanding.landNow();
     }
-    // The archive's parameters and raster must never disagree.
-    await _textCelBakes.flushTextCelBakes();
     return _file.editCount;
   }
 

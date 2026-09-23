@@ -176,10 +176,6 @@ void main() {
         isTrue,
       );
       expect(
-        canMountLayerOnBase(row: _row('row', kind: LayerKind.text), base: base),
-        isTrue,
-      );
-      expect(
         canMountLayerOnBase(row: _row('row', kind: LayerKind.se), base: base),
         isFalse,
       );

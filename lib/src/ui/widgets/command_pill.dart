@@ -341,8 +341,8 @@ class _StrapIconButtonState extends State<StrapIconButton> {
     // the width by making the affordance invisible.
     //
     // ⚠️Here that is not a cosmetic loss. The `＋` makes an ANIMATION layer
-    // and nothing else; the band was the ONLY route to a storyboard, image or
-    // text layer. Someone new to the app could not find it (유저: 「그 띠가
+    // and nothing else; the band was the ONLY route to a storyboard or image
+    // layer. Someone new to the app could not find it (유저: 「그 띠가
     // 너무 알기어렵다고해」), so discoverability WAS feature availability —
     // and 16px is not the expensive side of that trade. The bar scrolls
     // (유저: 「스크롤있으니까 상관없는데」).

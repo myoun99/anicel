@@ -70,7 +70,8 @@ void main() {
 ///
 ///  * `brush_preset_panel` ×2 and `brush_tip_picker` — a preset/tip tile's
 ///    outline goes 1 → 1.5.
-///  * `text_cel_dialog` — a font tile's outline goes 1 → 2.
+///  * 🪦`text_cel_dialog` — a font tile's outline. GONE on 2026-09-23 with
+///    the text layer kind it edited (F-154).
 ///  * 🪦`timeline_lane_rows` — a lane KEY's outline. GONE on 2026-09-12:
 ///    the mark has no outline of its own any more (유저: 「지금 실루엣에
 ///    외곽선 회색 존재하는거같은데 삭제」), so the accent ring it wears when
@@ -80,4 +81,4 @@ void main() {
 /// ⛔NOT FIXED HERE ON PURPOSE. Which of these the user wants flattened is
 /// a look decision, and the audit's job was to make them countable so the
 /// question can be asked once instead of drifting.
-const int _knownNonColourSelection = 5;
+const int _knownNonColourSelection = 4;

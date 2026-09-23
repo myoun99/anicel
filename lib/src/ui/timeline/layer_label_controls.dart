@@ -730,7 +730,6 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.animation => Icons.filter_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
-    LayerKind.text => Icons.title_outlined,
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     // The cross-fade glyph: a transition span is two pictures overlapping.
@@ -760,7 +759,6 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.animation => strings.tlKindAnimation,
     LayerKind.storyboard => strings.tlKindStoryboard,
     LayerKind.image => strings.tlKindImage,
-    LayerKind.text => strings.tlKindText,
     LayerKind.se => strings.tlKindSe,
     LayerKind.instruction => strings.tlKindInstruction,
     LayerKind.transition => strings.tlKindTransition,

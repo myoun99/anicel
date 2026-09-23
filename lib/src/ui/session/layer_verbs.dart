@@ -143,7 +143,6 @@ class LayerVerbs {
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image ||
-      LayerKind.text ||
       LayerKind.folder ||
       LayerKind.adjustment => true,
     };

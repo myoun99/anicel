@@ -4,7 +4,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
@@ -25,8 +24,8 @@ import 'track_se_display.dart';
 /// come to draw a live row nothing could draw on.
 ///
 /// [rasterizeActiveLayer] is the verb that CHANGES that answer: a media
-/// reference or a text row has no editable cel until its derived content
-/// is baked into ordinary ones.
+/// reference has no editable cel until its derived content is baked into
+/// ordinary ones.
 ///
 /// A collaborator (round 8, G4-2): it takes the roles it needs plus its
 /// siblings, and the session names it — a forwarder on the host would be a
@@ -232,20 +231,12 @@ class EditingCanvas {
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
   /// Reference layers null [Layer.mediaReference] (the pixels are already
   /// the cels) and their asset stays in the pool (유저 2026-09-11: 「구워도
-  /// 풀에 남음」); TEXT layers become plain animation rows — the parameters
-  /// go, the baked pixels stay, the brush unlocks (§6-s).
+  /// 풀에 남음」).
   bool get canRasterizeActiveLayer =>
-      _selection.activeLayer?.mediaReference != null ||
-      _selection.activeLayer?.kind == LayerKind.text;
+      _selection.activeLayer?.mediaReference != null;
 
   void rasterizeActiveLayer() {
     final layer = _selection.activeLayer;
-    if (layer != null && layer.kind == LayerKind.text) {
-      _controllers.timelineController.rasterizeTextLayer(layerId: layer.id);
-      _changes.refreshAfterCutCommand(preferredActiveLayerId: layer.id);
-      _changes.notifyChanged();
-      return;
-    }
     if (layer == null || layer.mediaReference == null) {
       return;
     }

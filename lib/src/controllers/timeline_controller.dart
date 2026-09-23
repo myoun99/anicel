@@ -11,10 +11,8 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
-import '../models/layer_kind.dart';
 import '../models/media_reference.dart';
 import '../models/movie_cel.dart';
-import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
@@ -22,7 +20,6 @@ import '../models/timeline_repeat.dart';
 import '../models/timeline_splice.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
-import '../services/commands/update_layer_kind_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart' show celBankLanesOf;
@@ -552,73 +549,6 @@ class TimelineController {
     seName: seName,
     updateSeName: updateSeName,
   );
-
-  /// Sets a TEXT cel's parameters (R5, §6-s) — the frame edit travels the
-  /// same before/after layer command as a rename, so linked-cut mirroring
-  /// and the single undo step come with it. The raster projection is the
-  /// session's business (the bake sweep re-renders from the model).
-  void setTextContentForFrame({
-    required LayerId layerId,
-    required FrameId frameId,
-    required TextCelContent? textContent,
-  }) {
-    final before = _requireLayer(layerId);
-    _requireFrameInLayer(layer: before, frameId: frameId);
-    final nextFrames = before.frames
-        .map(
-          (frame) => frame.id == frameId
-              ? frame.copyWith(textContent: textContent)
-              : frame,
-        )
-        .toList(growable: false);
-    final after = before.copyWith(frames: nextFrames);
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
-
-  /// Rasterizes a TEXT layer (§6-s: "래스터라이즈로 드로잉이 된다"): the
-  /// row BECOMES an animation layer — every cel's parameters go, the baked
-  /// pixels stay, and the brush unlocks. One undo restores the kind and
-  /// every frame's parameters together.
-  ///
-  /// Two commands compose the step because they mirror DIFFERENTLY: the
-  /// frames edit mirrors the shared cel bank, and the KIND must travel
-  /// [UpdateLayerKindCommand] so every 겸용 member converts together — a
-  /// kind smuggled through the frames funnel left linked siblings as
-  /// content-less text rows, and the bake sweep blank-baked the shared
-  /// bank both cuts display.
-  void rasterizeTextLayer({required LayerId layerId}) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return;
-    }
-    final before = _requireLayer(layerId);
-    if (before.kind != LayerKind.text) {
-      return;
-    }
-    final strippedFrames = before.frames
-        .map((frame) => frame.copyWith(textContent: null))
-        .toList(growable: false);
-    final command = CompositeCommand(
-      description: 'Rasterize text layer',
-      commands: [
-        _layerEditCommand(
-          before: before,
-          after: before.copyWith(frames: strippedFrames),
-        ),
-        UpdateLayerKindCommand(
-          repository: _repository,
-          cutId: cutId,
-          layerId: layerId,
-          kind: LayerKind.animation,
-        ),
-      ],
-    );
-    _runCommand(command);
-  }
 
   void linkFrameForLayer({
     required LayerId layerId,

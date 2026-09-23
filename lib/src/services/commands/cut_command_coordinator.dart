@@ -465,7 +465,6 @@ class CutCommandCoordinator {
         LayerKind.animation ||
         LayerKind.storyboard ||
         LayerKind.image ||
-        LayerKind.text ||
         LayerKind.folder ||
         LayerKind.adjustment => false,
       };

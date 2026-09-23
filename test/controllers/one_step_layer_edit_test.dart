@@ -10,7 +10,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -191,39 +190,6 @@ void main() {
   });
 
   group('commands run through the history when there is one', () {
-    test('rasterize: ONE undo restores the kind and every cel\'s text', () {
-      final h = _Harness(
-        a: {0: _drawing('a', 2)},
-        b: {0: _drawing('b', 2)},
-        aKind: LayerKind.text,
-        aText: const TextCelContent(text: 'hi'),
-      );
-
-      h.controller.rasterizeTextLayer(layerId: _a);
-
-      expect(h.layer(_a).kind, LayerKind.animation);
-      expect(h.layer(_a).frames.single.textContent, isNull);
-      expect(h.history.undoCount, 1);
-      h.history.undo();
-      expect(h.layer(_a).kind, LayerKind.text);
-      expect(h.layer(_a).frames.single.textContent?.text, 'hi');
-    });
-
-    test('rasterize with no history still lands', () {
-      final h = _Harness(
-        a: {0: _drawing('a', 2)},
-        b: {0: _drawing('b', 2)},
-        aKind: LayerKind.text,
-        aText: const TextCelContent(text: 'hi'),
-        withHistory: false,
-      );
-
-      h.controller.rasterizeTextLayer(layerId: _a);
-
-      expect(h.layer(_a).kind, LayerKind.animation);
-      expect(h.layer(_a).frames.single.textContent, isNull);
-    });
-
     test('the single-layer edit with no history still lands', () {
       final h = _Harness(
         a: {0: _drawing('a', 3)},
@@ -258,8 +224,6 @@ class _Harness {
     required Map<int, TimelineExposure> b,
     Map<int, TimelineExposure> seTimeline = const {},
     int seOffset = 0,
-    LayerKind aKind = LayerKind.animation,
-    TextCelContent? aText,
     bool withHistory = true,
   }) {
     final cut = Cut(
@@ -268,7 +232,7 @@ class _Harness {
       duration: 24,
       canvasSize: const CanvasSize(width: 8, height: 8),
       layers: [
-        _layer(_a, a, kind: aKind, text: aText),
+        _layer(_a, a),
         _layer(_b, b),
       ],
     );
@@ -317,17 +281,12 @@ class _Harness {
   Map<int, TimelineExposure> timeline(LayerId id) =>
       Map<int, TimelineExposure>.from(layer(id).timeline);
 
-  static Layer _layer(
-    LayerId id,
-    Map<int, TimelineExposure> timeline, {
-    LayerKind kind = LayerKind.animation,
-    TextCelContent? text,
-  }) {
+  static Layer _layer(LayerId id, Map<int, TimelineExposure> timeline) {
     final seen = <String>{};
     return Layer(
       id: id,
       name: id.value,
-      kind: kind,
+      kind: LayerKind.animation,
       frames: [
         for (final entry in timeline.entries)
           if (entry.value.isDrawing && seen.add(entry.value.frameId!.value))
@@ -335,7 +294,6 @@ class _Harness {
               id: entry.value.frameId!,
               duration: 1,
               strokes: const [],
-              textContent: text,
             ),
       ],
       timeline: timeline,

@@ -3,15 +3,15 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
-import '../../models/pasteboard_bounds.dart';
 import '../../models/text_cel_style.dart';
 import '../conte/conte_fonts.dart';
 
-/// ONE canvas-text implementation for both surfaces (R5, ⓣ): the TEXT
-/// LAYER bakes it into a cel and the SE NAME TAG draws it live over the
-/// picture. Engine text through the bundled conte faces (registered at
-/// startup), the same bytes the PDF path embeds, so screen/export can
-/// never disagree on a glyph.
+/// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
+/// over the picture. ↩️The TEXT LAYER baked it into cels until F-154
+/// removed the kind — the text tool the user plans for ordinary layers
+/// writes with this same machinery. Engine text through the bundled conte
+/// faces (registered at startup), the same bytes the PDF path embeds, so
+/// screen/export can never disagree on a glyph.
 ///
 /// Layout: hard newlines only (no auto-wrap in v1); [TextCelStyle.align]
 /// spreads lines around the anchor's x, the first line's TOP sits at the
@@ -86,8 +86,8 @@ class TextCelLayout {
 ///
 /// [maxWidth] SHRINKS the type until the block fits (the SE name tag's
 /// budget — a long line must stay inside the picture instead of running
-/// off it). Null keeps the text-layer bake's unbounded behaviour, where
-/// the author's size is the contract. Shrinking rather than wrapping is
+/// off it). Null keeps the block unbounded, where the author's size is
+/// the contract. Shrinking rather than wrapping is
 /// deliberate: the tag's anchor puts its single line above a margin, so
 /// wrapped lines would flow down off the edge and collide with the row
 /// below.
@@ -181,44 +181,4 @@ TextCelLayout layoutTextCel({
     pad: pad,
     textSize: ui.Size(fill.width, fill.height),
   );
-}
-
-/// Renders a TEXT CEL to an image over the text's own ink bounds — the
-/// projection the bake sweep donates into the cel store, together with
-/// the placement rect that says where those pixels sit in canvas space.
-/// Rendering the BOUNDS (not the canvas rect) keeps off-canvas anchors
-/// alive on the pasteboard like any oversized drop, and keeps a small
-/// cut-number stamp from costing a full-canvas raster.
-Future<({ui.Image image, ui.Rect placement})> renderTextCelImage({
-  required TextCelContent content,
-  required CanvasSize canvas,
-}) async {
-  await ensureConteFontsLoaded();
-  final layout = layoutTextCel(content: content, canvas: canvas);
-  try {
-    final wall = canvas.pasteboardRect;
-    var bounds = layout.inkBounds.intersect(wall);
-    if (bounds.isEmpty) {
-      // Fully outside even the pasteboard: an empty 1px placement bakes
-      // an empty surface (transparent tiles are skipped).
-      bounds = const ui.Rect.fromLTWH(0, 0, 1, 1);
-    }
-
-    final recorder = ui.PictureRecorder();
-    final paintCanvas = ui.Canvas(recorder);
-    paintCanvas.translate(-bounds.left, -bounds.top);
-    layout.paint(paintCanvas);
-    final picture = recorder.endRecording();
-    try {
-      final image = await picture.toImage(
-        bounds.width.round(),
-        bounds.height.round(),
-      );
-      return (image: image, placement: bounds);
-    } finally {
-      picture.dispose();
-    }
-  } finally {
-    layout.dispose();
-  }
 }
