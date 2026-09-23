@@ -152,6 +152,12 @@ void main() {
             isEmpty,
             reason: 'no decoder was pointed at the original',
           );
+          expect(
+            session.mediaStagingStore.find(path),
+            isNull,
+            reason: 'the project already holds it — its original is not '
+                'copied again',
+          );
           // A placed movie's row asks for its picture as it lands, and HOLDS
           // its bytes for as long as it can play — so the placement's own
           // hold is counted once the rows have let go.

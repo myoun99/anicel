@@ -2146,6 +2146,7 @@ class EditorSessionManager extends ChangeNotifier
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
     holdBytes: projectFile.holdMediaBytes,
+    projectHolds: projectFile.projectHoldsMediaBytes,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(

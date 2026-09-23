@@ -75,6 +75,7 @@ class ProjectImportDoors {
     required AudioConformStore conforms,
     required ProjectFrameRate Function() frameRate,
     required HoldMediaBytes holdBytes,
+    required bool Function(String path) projectHolds,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
@@ -85,7 +86,8 @@ class ProjectImportDoors {
        _staging = staging,
        _conforms = conforms,
        _frameRate = frameRate,
-       _holdBytes = holdBytes;
+       _holdBytes = holdBytes,
+       _projectHolds = projectHolds;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -105,6 +107,10 @@ class ProjectImportDoors {
   /// `carried-bytes-every-reader`).
   final HoldMediaBytes _holdBytes;
 
+  /// Whether the project already holds a medium's bytes
+  /// (`ProjectFile.projectHoldsMediaBytes`) — see [_holdCarried].
+  final bool Function(String path) _projectHolds;
+
   /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
   /// here decides an asset carried from the window's Keep, and the landing
   /// is what records it in the pool — so the bytes of each carried one in
@@ -121,10 +127,20 @@ class ProjectImportDoors {
   ///
   /// A landing that fails after this leaves a staged copy no asset names:
   /// the orphan the run's room takes when the run ends, the same as any.
+  ///
+  /// ⚠️An asset whose bytes the project already HOLDS — in the project file,
+  /// or staged — is left alone: those are the bytes the user asked to keep,
+  /// and the file on disk may have moved on since. The staging funnel is
+  /// idempotent for the same reason, but it knows only its own copies.
+  /// 🪦So placing a carried file from the pool copied its original AGAIN
+  /// once a save had absorbed the first copy — the edited original, when it
+  /// had been edited: never read (the project file answers first), but a
+  /// second copy on disk until the next save, and a stored size in the pool
+  /// that was not the project's.
   Future<void> _holdCarried(Iterable<MediaAsset> assets) =>
       _staging.stageCarriedBytes([
         for (final asset in assets)
-          if (asset.carried) asset.path,
+          if (asset.carried && !_projectHolds(asset.path)) asset.path,
       ]);
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
