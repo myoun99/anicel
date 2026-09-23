@@ -432,14 +432,14 @@ class AnicelSessionFields {
 ({String name, Uint8List bytes}) buildAnicelProjectEntry({
   required Project project,
   String? saveDirectory,
-  Set<String> mediaInArchive = const {},
+  Map<String, String> mediaEntryNames = const {},
   AnicelSessionFields sessionFields = AnicelSessionFields.none,
 }) {
   final compressed = compressAnicelPayload(
     buildAnicelProjectJsonBytes(
       project: project,
       saveDirectory: saveDirectory,
-      mediaInArchive: mediaInArchive,
+      mediaEntryNames: mediaEntryNames,
       sessionFields: sessionFields,
     ),
   );
@@ -477,7 +477,16 @@ Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) {
 Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
-  Set<String> mediaInArchive = const {},
+
+  /// The entry each medium inside the archive is stored under — the names
+  /// the archive HOLDS, handed in.
+  ///
+  /// 🚨Not derived here. A framed entry's name carries its suffix, and this
+  /// used to derive every name from the path alone: from framing's arrival
+  /// (2026-08-31) to 2026-09-24 the manifest named the unframed entry while
+  /// the archive held the framed one, so a reopened project looked for media
+  /// the file did not have — and refused to save once the original was gone.
+  Map<String, String> mediaEntryNames = const {},
 
   /// What the session keeps beside the project — kept out of `project` on
   /// purpose, see [AnicelSessionFields].
@@ -492,8 +501,9 @@ Uint8List buildAnicelProjectJsonBytes({
     // what stays outside is a path that may or may not still resolve.
     // Inside wins where both could describe the same asset — the copy the
     // project carries is the one it is sure of.
-    if (mediaInArchive.contains(path)) {
-      mediaEntries[path] = anicelMediaEntryName(path);
+    final inside = mediaEntryNames[path];
+    if (inside != null) {
+      mediaEntries[path] = inside;
       continue;
     }
     if (saveDirectory != null) {

@@ -9,7 +9,8 @@ import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
 import '../media/media_fingerprints.dart';
-import '../media/project_media_sources.dart' show ProjectConforms;
+import '../media/project_media_sources.dart'
+    show ProjectConforms, mediaEntryNamesFor;
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
@@ -901,7 +902,7 @@ class AnicelFileService {
         final projectEntry = buildAnicelProjectEntry(
           project: project,
           saveDirectory: saveDirectory,
-          mediaInArchive: mediaToStore.keys.toSet(),
+          mediaEntryNames: mediaEntryNamesFor(mediaToStore),
           sessionFields: sessionFields,
         );
         progress.step();
@@ -1345,7 +1346,7 @@ class AnicelFileService {
             final projectEntry = buildAnicelProjectEntry(
               project: project,
               saveDirectory: saveDirectory,
-              mediaInArchive: mediaToStore.keys.toSet(),
+              mediaEntryNames: mediaEntryNamesFor(mediaToStore),
               sessionFields: sessionFields,
             );
             yield (name: projectEntry.name, bytes: projectEntry.bytes);

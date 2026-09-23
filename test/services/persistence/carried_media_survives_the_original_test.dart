@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**품기 END TO END: THE ORIGINAL GOES AWAY AND THE PROJECT STILL
@@ -111,6 +113,44 @@ void main() {
       anicelMediaEntryName(path, framed: false),
       isNot(endsWith(mediaFramedEntrySuffix)),
     );
+  });
+
+  test('🚨a FRAMED carry survives a save and a reopen with its original gone '
+      '— the manifest names the entry the archive holds', () async {
+    if (!engineHere()) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    final path = compressibleFile('take.wav');
+    final original = File(path).readAsBytesSync();
+    await pool.addMediaAssets([path], carried: true);
+    expect(session.mediaStagingStore.find(path)!.framed, isTrue,
+        reason: 'fixture: this content compresses');
+    final projectPath = '${root.path}/scene.anicel';
+    await session.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    File(path).deleteSync();
+
+    final reopened = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${root.path}/Reopened',
+      ),
+    );
+    addTearDown(reopened.dispose);
+    await reopened.projectDoor.openProjectFromFile(projectPath);
+
+    // What every consumer reads through — the decoder over the framed entry.
+    expect(reopened.projectFile.mediaByteSourceFor(path).readSync(), original);
+    // And what the next save streams: found, so the save does not refuse.
+    final sources = projectMediaSources(
+      project: reopened.repository.requireProject(),
+      projectFilePath: projectPath,
+      mediaEntryNames: reopened.projectFile.mediaEntryNames,
+    );
+    expect(sources[path]!.storedIsFramed, isTrue);
   });
 
   test('🚨the original can be deleted right after the import and the bytes '
