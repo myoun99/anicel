@@ -170,6 +170,63 @@ void main() {
     }
   }
 
+  testWidgets('stand on the header first, then sweep the same row: the '
+      'button lights on the range alone', (tester) async {
+    // The order a hand takes after adding an fx: press the new header
+    // (standing — no range, no keys, so nothing to delete and the button is
+    // grey), then drag along that same row. The row you stand on does not
+    // change across the drag, so the RANGE is the only thing that moved —
+    // a pill that re-read on the standing row alone would stay grey.
+    final session = await openTheSheet(tester);
+    final layer = session.requireActiveCut.layers.first;
+    session.selectLayer(layer.id);
+    session.selectFrameIndex(3);
+    session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+    await tester.pumpAndSettle();
+    final effect = session.commitLayerById(layer.id)!.effects.single;
+    final headerLane = effectGroupLaneId(effect.id);
+    await tester.tap(
+      find.byKey(ValueKey<String>('timeline-lane-toggle-${layer.id.value}')),
+    );
+    await tester.pumpAndSettle();
+    final band = find.byKey(
+      ValueKey<String>(
+        'timeline-lane-range-layer-${layer.id.value}-$headerLane',
+      ),
+    );
+    final deleteButton = find.byKey(
+      const ValueKey<String>('shared-delete-button'),
+    );
+    final start =
+        tester.getTopLeft(band) + const Offset(12, timelineLayerRowHeight / 2);
+
+    await tester.tapAt(start, kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(session.laneRangeSelection.value, isNull, reason: 'standing');
+    expect(
+      tester.appIconButton(deleteButton).onPressed,
+      isNull,
+      reason: 'standing on a header with no keys holds nothing to delete',
+    );
+
+    final finger = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await finger.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await finger.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await finger.up();
+    await tester.pumpAndSettle();
+    expect(session.laneRangeSelection.value?.spanLaneIds, [headerLane]);
+    expect(
+      tester.appIconButton(deleteButton).onPressed,
+      isNotNull,
+      reason: 'the range alone moved, and the button saw it',
+    );
+  });
+
   // Every row kind that takes an fx, added the way the Add Layer menu adds
   // it — the user did not say which row it was.
   for (final kind in LayerKind.values.where(
