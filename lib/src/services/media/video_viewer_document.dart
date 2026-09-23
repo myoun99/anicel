@@ -5,15 +5,9 @@ import 'dart:ui' as ui;
 import '../straight_rgba_image.dart';
 import '../../native/qa_video_decoder.dart';
 import 'media_byte_source.dart';
+import 'movie_bytes.dart';
 import 'video_decode_worker.dart';
 import 'viewer_document.dart';
-
-/// Whether a movie decoder can be pointed at [source] where it lies — a file
-/// of its own, or a plain stretch of one. A movie kept FRAMED cannot: the OS
-/// decoders read the container's own bytes, never the app's blocks (board
-/// `carried-movie-compressed`).
-bool movieReadInPlace(MediaByteSource source) =>
-    source.wholeFilePath != null || source.range != null;
 
 /// A movie, as a [ViewerDocument]: one page per FRAME.
 ///
@@ -69,18 +63,13 @@ final class VideoViewerDocument implements ViewerDocument {
   /// would be the exact lie this function was just fixed for. So is a movie
   /// kept FRAMED (compressed in blocks): no decoder reads it in place.
   static Future<VideoViewerDocument?> open(MediaByteSource source) async {
-    if (!movieReadInPlace(source)) {
+    final at = movieOpening(source);
+    if (at == null) {
       throw const ViewerDocumentException(
         'that movie is kept compressed in the project, and a movie is only '
         'read in place',
       );
     }
-    final file = source.wholeFilePath;
-    final stretch = source.range;
-    final path = file ?? stretch!.path;
-    final range = file != null
-        ? null
-        : (offset: stretch!.offset, length: stretch.length);
     // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
     // frames arrive off the UI isolate, so the viewer's own timer, chrome
     // and scrollbars are not stopped for a third of every frame while it
@@ -99,7 +88,9 @@ final class VideoViewerDocument implements ViewerDocument {
     // could be injected and then never consulted, because the gate in front
     // of it said no on any machine without the native library.
     final hasReader = backend.supported;
-    final opened = hasReader ? await backend.open(path, range: range) : null;
+    final opened = hasReader
+        ? await backend.open(at.path, range: at.range)
+        : null;
     switch (viewerOpenOutcome(hasReader: hasReader, opened: opened != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;

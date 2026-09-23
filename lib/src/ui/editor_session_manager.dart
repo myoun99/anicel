@@ -452,6 +452,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
+    holdBytes: projectFile.holdMediaBytes,
   );
 
   late final PlaybackRig playbackRig = PlaybackRig(
@@ -2144,6 +2145,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
+    holdBytes: projectFile.holdMediaBytes,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(

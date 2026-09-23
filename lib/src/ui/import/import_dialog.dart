@@ -1079,6 +1079,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     _placing ||
                     (previewPath != null && _poolEntryFor(previewPath) == null),
                 soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+                holdBytes: widget.session.projectFile.holdMediaBytes,
                 frameRate: widget.session.projectSettings.projectFrameRate,
                 audioSpeed: _projectAudioSpeed,
                 onRangeChanged: (start, end) {

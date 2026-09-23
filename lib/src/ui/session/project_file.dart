@@ -25,10 +25,6 @@ import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
 import 'session_roles.dart';
 
-/// A medium's bytes a reader holds ([ProjectFile.holdMediaBytes]), and how
-/// it gives them back.
-typedef HeldMediaBytes = ({MediaByteSource source, void Function() release});
-
 /// The project file this session is bound to, and everything derived from
 /// that binding: what the archive carries, how big those bytes are, and
 /// whether the autosave tick may run.

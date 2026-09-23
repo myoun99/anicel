@@ -30,8 +30,11 @@ import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
+import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
+import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/straight_rgba_image.dart';
@@ -71,6 +74,7 @@ class ProjectImportDoors {
     required MediaStagingStore staging,
     required AudioConformStore conforms,
     required ProjectFrameRate Function() frameRate,
+    required HoldMediaBytes holdBytes,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
@@ -80,7 +84,8 @@ class ProjectImportDoors {
        _pool = pool,
        _staging = staging,
        _conforms = conforms,
-       _frameRate = frameRate;
+       _frameRate = frameRate,
+       _holdBytes = holdBytes;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -92,6 +97,13 @@ class ProjectImportDoors {
   final MediaStagingStore _staging;
   final AudioConformStore _conforms;
   final ProjectFrameRate Function() _frameRate;
+
+  /// Where a medium's bytes are — the project's own copy first
+  /// (`ProjectFile.holdMediaBytes`). 🪦Every door here read the file at the
+  /// path it was handed, so placing a carried medium from the pool read its
+  /// ORIGINAL: gone, the placement failed; edited, the edit landed (card
+  /// `carried-bytes-every-reader`).
+  final HoldMediaBytes _holdBytes;
 
   /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
   /// here decides an asset carried from the window's Keep, and the landing
@@ -145,7 +157,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await MediaFileBytes(path).read();
+      bytes = await readHeldMediaBytes(_holdBytes, path);
     } on Object {
       return false;
     }
@@ -314,7 +326,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await MediaFileBytes(path).read();
+      bytes = await readHeldMediaBytes(_holdBytes, path);
     } on Object {
       return null;
     }
@@ -415,7 +427,12 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final document = await PdfRenderService.open(MediaFileBytes(path));
+    final document = await openOnHeldBytes<ViewerDocument>(
+      _holdBytes,
+      path,
+      PdfRenderService.open,
+      HeldViewerDocument.new,
+    );
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
     }
@@ -585,7 +602,11 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final opened = await videoDecodeBackend.open(gate.source);
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      _holdBytes,
+      gate.source,
+    );
     if (opened == null) {
       return false;
     }
@@ -623,7 +644,7 @@ class ProjectImportDoors {
       );
       return true;
     } finally {
-      await videoDecodeBackend.close(opened.token);
+      await opened.close();
     }
   }
 
@@ -786,7 +807,11 @@ class ProjectImportDoors {
       // verb stands its row down until this verb has run.
       return false;
     }
-    final opened = await videoDecodeBackend.open(reference.assetPath);
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      _holdBytes,
+      reference.assetPath,
+    );
     if (opened == null) {
       return false;
     }
@@ -796,13 +821,13 @@ class ProjectImportDoors {
         layer: layer,
         reference: reference,
         block: blocks.single,
-        opened: opened,
+        opened: (token: opened.token, info: opened.info),
         onRenderProgress: onRenderProgress,
         onFrameRenderFailed: onFrameRenderFailed,
       );
       return true;
     } finally {
-      await videoDecodeBackend.close(opened.token);
+      await opened.close();
     }
   }
 

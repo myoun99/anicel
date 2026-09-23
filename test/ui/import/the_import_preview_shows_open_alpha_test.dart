@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/import/import_preview.dart';
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/the_file_itself.dart';
 
 /// 🚨Open alpha in the import window reads as the app's ONE checker — the
 /// export preview's own (유저 2026-09-11: 「임포트의 미리보기에서 배경이
@@ -47,6 +48,7 @@ void main() {
               rangeEditable: false,
               onRangeChanged: (start, end) {},
               soundPeaks: (_) async => null,
+              holdBytes: theFileItself,
               frameRate: ProjectFrameRate.fps24,
             ),
           ),

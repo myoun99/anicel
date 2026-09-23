@@ -1,6 +1,5 @@
 import '../widgets/empty_state_text.dart';
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -18,6 +17,7 @@ import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/straight_rgba_image.dart';
@@ -704,19 +704,38 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🚨★★★**WHERE THE BYTES ARE IS ASKED ONCE, NOT PER KIND** (유저
   /// 2026-09-11: 「막힌부분 파일 뭐든 관계없이 법 하나로 통일해서
   /// 해결하도록」). An arm here names only how its medium DECODES; where the
-  /// bytes are is [_openOnItsBytes]'s one question for every kind that reads
-  /// them.
+  /// bytes are is [ProjectFile.holdMediaBytes]'s one question, asked through
+  /// [openOnHeldBytes] for every kind that reads them.
+  ///
+  /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
+  /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
+  /// (유저 2026-08-30), so an original edited or deleted after the import
+  /// changes nothing the viewer shows.
+  /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
+  /// whose original was gone — or a project opened on another machine —
+  /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
+  /// 🪦And a movie read the original whenever it was still there: 「⛔The
+  /// original wins whenever it is still there: an OS opening a file for
+  /// itself beats any range wrapped around one」. It does, and it showed the
+  /// EDITED file for a carried movie whose original had changed since.
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
+    Future<ViewerDocument?> held(
+      Future<ViewerDocument?> Function(MediaByteSource source) open,
+    ) => openOnHeldBytes<ViewerDocument>(
+      widget.session.projectFile.holdMediaBytes,
+      request.path,
+      open,
+      HeldViewerDocument.new,
+    );
     switch (request.kind) {
       case MediaAssetKind.image:
-        return _openOnItsBytes(request.path, ImageViewerDocument.open);
+        return held(ImageViewerDocument.open);
       case MediaAssetKind.pdf:
-        return _openOnItsBytes(request.path, PdfRenderService.open);
+        return held(PdfRenderService.open);
       case MediaAssetKind.video:
-        return _openOnItsBytes(
-          request.path,
+        return held(
           (source) => VideoViewerDocument.open(
-            _compressedMovieFromItsOriginal(source, request.path),
+            movieBytesToDecode(source, request.path),
           ),
         );
       case MediaAssetKind.audio:
@@ -737,57 +756,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
               );
     }
   }
-
-  /// [open] on [path]'s bytes, wherever the project keeps them
-  /// ([ProjectFile.holdMediaBytes]: its own copy first, then the file it came
-  /// from), HELD until the document has closed ([HeldViewerDocument]) — a
-  /// PDF reads a page at a time and a movie a frame at a time, and no save
-  /// may move or remove the bytes under them meanwhile.
-  ///
-  /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
-  /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
-  /// (유저 2026-08-30), so an original edited or deleted after the import
-  /// changes nothing the viewer shows.
-  /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
-  /// whose original was gone — or a project opened on another machine —
-  /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
-  /// 🪦And a movie read the original whenever it was still there: 「⛔The
-  /// original wins whenever it is still there: an OS opening a file for
-  /// itself beats any range wrapped around one」. It does, and it showed the
-  /// EDITED file for a carried movie whose original had changed since.
-  Future<ViewerDocument?> _openOnItsBytes(
-    String path,
-    Future<ViewerDocument?> Function(MediaByteSource source) open,
-  ) async {
-    final held = await widget.session.projectFile.holdMediaBytes(path);
-    final ViewerDocument? document;
-    try {
-      document = await open(held.source);
-    } on Object {
-      held.release();
-      rethrow;
-    }
-    if (document == null) {
-      held.release();
-      return null;
-    }
-    return HeldViewerDocument(document, held.release);
-  }
-
-  /// ⏸**INTERIM, until board `carried-movie-compressed-Q1` is answered.** A
-  /// carried movie kept COMPRESSED has no reader that decodes it where it
-  /// lies ([movieReadInPlace]), so while the file it came from is still
-  /// there, that file is read instead — what this viewer did for every
-  /// carried movie before 2026-09-24. Without it, the movie says why it
-  /// cannot be read, as it did.
-  /// ⚠️The one place the viewer still prefers an original to the project's
-  /// own copy (「품은 순간 … 불변」) — which is exactly what the card asks.
-  MediaByteSource _compressedMovieFromItsOriginal(
-    MediaByteSource source,
-    String path,
-  ) => movieReadInPlace(source) || !File(path).existsSync()
-      ? source
-      : MediaFileBytes(path);
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 

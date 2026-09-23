@@ -592,3 +592,52 @@ MediaByteSource mediaSourceDecodingFrames(MediaByteSource stored) =>
 MediaByteSource mediaAppFileSource(String path) => mediaSourceDecodingFrames(
   MediaAppFileBytes(path: path, framed: mediaEntryIsFramed(path)),
 );
+
+/// A medium's bytes a reader holds (`ProjectFile.holdMediaBytes`), and how
+/// it gives them back.
+typedef HeldMediaBytes = ({MediaByteSource source, void Function() release});
+
+/// Where every reader asks for a medium's bytes —
+/// `ProjectFile.holdMediaBytes`: the project's own copy first, then the file
+/// it came from.
+typedef HoldMediaBytes = Future<HeldMediaBytes> Function(String path);
+
+/// All of [path]'s bytes, read while [hold] holds them — for a reader that
+/// decodes a whole file at once (a picture, a Photoshop document).
+Future<Uint8List> readHeldMediaBytes(HoldMediaBytes hold, String path) async {
+  final held = await hold(path);
+  try {
+    return await held.source.read();
+  } finally {
+    held.release();
+  }
+}
+
+/// [open] on the bytes [hold] answers for [path], HELD for as long as what it
+/// opened lives — [keep] ties the release to it, to run once that has closed
+/// — and given back at once when nothing opens.
+///
+/// 🚨The one shape of 「a reader that keeps reading」: a document the viewer
+/// shows, a PDF a placement renders page by page, a movie a canvas row or a
+/// bake decodes frame by frame. Each is a different thing to CLOSE, and the
+/// same thing to hold (유저 2026-09-11: 「파일 뭐든 관계없이 법 하나로」).
+Future<T?> openOnHeldBytes<T extends Object>(
+  HoldMediaBytes hold,
+  String path,
+  Future<T?> Function(MediaByteSource source) open,
+  T Function(T opened, void Function() release) keep,
+) async {
+  final held = await hold(path);
+  final T? opened;
+  try {
+    opened = await open(held.source);
+  } on Object {
+    held.release();
+    rethrow;
+  }
+  if (opened == null) {
+    held.release();
+    return null;
+  }
+  return keep(opened, held.release);
+}

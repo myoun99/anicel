@@ -8,7 +8,9 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/import/raster_cel_import.dart';
+import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/movie_bytes.dart';
 import '../../services/straight_rgba_image.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_video_decoder.dart';
@@ -45,6 +47,7 @@ class ImportPreview extends StatefulWidget {
     required this.onRangeChanged,
     required this.rangeEditable,
     required this.soundPeaks,
+    required this.holdBytes,
     required this.frameRate,
     this.audioSpeed = (numerator: 1, denominator: 1),
   });
@@ -64,6 +67,12 @@ class ImportPreview extends StatefulWidget {
   /// A sound's peaks once its conform has them
   /// (`AudioConformStore.ensurePeaksFor`); null when it never will.
   final Future<AudioPeaks?> Function(String path) soundPeaks;
+
+  /// Where a picture's, a PDF's or a movie's bytes are
+  /// (`ProjectFile.holdMediaBytes`) — the project's own copy first, so a
+  /// file the pool carries shows what the project holds, whatever became of
+  /// its original.
+  final HoldMediaBytes holdBytes;
 
   /// The project's rate: a sound runs over the frames IN/OUT and the block
   /// it becomes are counted in.
@@ -109,8 +118,9 @@ class _ImportPreviewState extends State<ImportPreview> {
   /// ⚠️A token from [videoDecodeBackend], not a decoder handle: the native
   /// document lives on a worker isolate now, and TWO owners of one
   /// process-global would make the handle bookkeeping track half the truth.
-  /// The viewer goes through the same door.
-  ({int token, QaVideoInfo info})? _video;
+  /// The viewer goes through the same door, and `close` gives back the
+  /// bytes it was reading once the movie is shut ([openHeldMovie]).
+  HeldMovie? _video;
   ui.Image? _videoFrame;
   int _videoFrameShown = -1;
 
@@ -155,7 +165,7 @@ class _ImportPreviewState extends State<ImportPreview> {
     if (video != null) {
       // ⛔Only if it is still ours — the backend closes by token, and a
       // token that is not the loaded document is a no-op.
-      unawaited(videoDecodeBackend.close(video.token));
+      unawaited(video.close());
     }
     final pdf = _pdf;
     _pdf = null;
@@ -178,10 +188,14 @@ class _ImportPreviewState extends State<ImportPreview> {
       setState(() {});
       return;
     }
-    final video = await videoDecodeBackend.open(path);
+    final video = await openHeldMovie(
+      videoDecodeBackend,
+      widget.holdBytes,
+      path,
+    );
     if (!mounted || _loadedPath != path) {
       if (video != null) {
-        unawaited(videoDecodeBackend.close(video.token));
+        unawaited(video.close());
       }
       return;
     }
@@ -298,7 +312,12 @@ class _ImportPreviewState extends State<ImportPreview> {
       return;
     }
     if (path.toLowerCase().endsWith('.pdf')) {
-      final pdf = await PdfRenderService.open(MediaFileBytes(path));
+      final pdf = await openOnHeldBytes<ViewerDocument>(
+        widget.holdBytes,
+        path,
+        PdfRenderService.open,
+        HeldViewerDocument.new,
+      );
       if (!mounted || _loadedPath != path) {
         unawaited(pdf?.dispose());
         return;
@@ -312,7 +331,7 @@ class _ImportPreviewState extends State<ImportPreview> {
     }
     var frames = const <ui.Image>[];
     try {
-      final bytes = await MediaFileBytes(path).read();
+      final bytes = await readHeldMediaBytes(widget.holdBytes, path);
       frames = [
         for (final frame in await decodeImageFrames(bytes)) frame.image,
       ];
