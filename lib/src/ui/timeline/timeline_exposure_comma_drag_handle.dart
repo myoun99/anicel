@@ -8,7 +8,6 @@ import '../../models/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
-import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
@@ -19,115 +18,131 @@ import '../repaint_props.dart';
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
 enum BlockEdgeGripInk { rest, hovered, dragging }
 
-/// Back to 3.5 (R10). R9 #11 widened it to 4.5 on the theory that the
-/// then-outline ate into the bar from both sides, and 4.5 read as a fat
-/// rung across the block either way. The outline itself is gone now
-/// (2026-08-17): the bar reads by the ground law's ink instead.
-const double _gripBarThickness = 3.5;
-const double _gripBarInset = 2.5;
-
-/// R28 #3: the bar's cross-axis length as a fraction of the row — a
-/// CONSTANT. Hover and drag change the bar's color, never its size.
-const double _gripBarLengthFactor = 0.55;
-
-/// A third of the edge CELL, never thinner than [_minimumHitExtent] where
-/// the block can afford it, and never wider than [TimelineBlockEdgeGrip.hitExtent].
+/// 🚨★★★I-43 (유저 2026-09-23): THE EDGE IS A TRIANGLE IN THE BLOCK'S CORNER.
 ///
-/// The cell measure is what keeps a block's body tappable: the fixed 12px
-/// strips this replaced covered whole cells and swallowed cell selection,
-/// and widening it back to a third of the BLOCK brings that straight back
-/// (six timeline cell-edit tests said so).
+/// > 「줌 작아지면 특히 프레임이름이랑 엣지 겹치는거나, 엣지끼리 겹치는거나,
+/// > 코마텍스트랑 엣지랑 겹치는 등의 문제가 너무 신경쓰였음 … 엣지를
+/// > 삼각형으로 바꿔서 왼쪽아래, 오른쪽위에 두는것임. 그러면 안겹치니까」
 ///
-/// The FLOOR is the storyboard's half of it (user, 2026-07-28). A cut row
-/// draws at 8px a frame, so a third of a cell is under three pixels and the
-/// edges answered only on the boundary line itself — nothing like the
-/// timeline's feel. A floor fixes that wherever the block is wide enough to
-/// give the pixels up, and a one-frame block still keeps its body because
-/// the floor itself is capped by a third of the block.
-double blockEdgeGripHitExtent(double frameCellExtent, {double? blockExtent}) {
-  final byCell = frameCellExtent / 3;
-  final floor = blockExtent == null
-      ? 0.0
-      : math.min(_minimumHitExtent, blockExtent / 3);
-  final wanted = byCell > floor ? byCell : floor;
-  return wanted > TimelineBlockEdgeGrip.hitExtent
-      ? TimelineBlockEdgeGrip.hitExtent
-      : wanted;
-}
-
-/// Thin enough to leave a long block's middle alone, thick enough to aim
-/// at with a finger on a zoomed-out row.
-const double _minimumHitExtent = 6;
-
-/// Where a block-edge grip sits on a SPARSE row, as a frame-span placement
-/// that resolves to [blockEdgeGripHitExtent]'s EXACT width — a third of the
-/// edge cell, floored at min([_minimumHitExtent], a third of the block),
-/// capped at [TimelineBlockEdgeGrip.hitExtent].
+/// The name sits in the middle of the first cell and the 코마 number at the
+/// far end of the last one. The start edge takes the first cell's far corner
+/// (the timeline's bottom-left), the end edge the last cell's near corner
+/// (its top-right) — the two corners nothing else uses. Half a cell along the
+/// frame axis and a third of the row across it (「세로길이가 한 칸 세로의
+/// 1/3크기, 가로가 한 칸 가로의 1/2」).
 ///
-/// ⛔This form used to skip the block floor on purpose ("the sparse rows
-/// draw crossing marks in the same cells") — and that exemption is what the
-/// user reported as B5②/B6 (2026-08-17): at the storyboard's 8px-a-frame
-/// zoom a third of a cell is under three pixels, so the visible grip bar
-/// sat OUTSIDE its own hit strip and the edges read as answering "at the
-/// block's tip, not at the edge". One law now; the dense rows' chrome and
-/// this placement resolve the same zone (`block_edge_grip_placement_parity`
-/// pins them together).
+/// ↩️It was a 3.5px bar 2.5px inside each edge, 55% of the row tall: constant
+/// pixels, so at a third-scale zoom one bar covered the name, the number and
+/// the other bar of a one-frame block.
+const double _gripMainCells = 0.5;
+const double _gripCrossShare = 1 / 3;
+
+/// Where a block-edge grip sits, as a frame-span placement: a box half a cell
+/// along the frame axis and a third of the row across it, in the block's
+/// corner.
+///
+/// ★THE BOX IS THE GRIP (유저 답 2026-09-23: 「(가) 삼각형 상자 — 보이는 것 =
+/// 잡는 것」): the triangle fills half of it, and a press anywhere in it takes
+/// the edge. ⛔No floor and no cap. The strip this replaced carried both (a
+/// third of a cell, at least 6px, at most 12px) because its bar was narrower
+/// than the strip it answered in, and B5②/B6 (2026-08-17) was that bar
+/// overhanging its strip at the storyboard's zoom. A mark that IS its box
+/// cannot overhang it.
+///
+/// THE law for both kinds of mount: the sparse rows lay a widget out by it,
+/// and the dense rows' chrome resolves the same placement through
+/// [timelineFrameSpanRect] — one statement, two readers.
 TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   required TimelineBlockEdge edge,
   required int startIndex,
   required int endIndexExclusive,
-}) => TimelineFrameSpanPlacement(
-  startIndex: edge == TimelineBlockEdge.start ? startIndex : endIndexExclusive,
-  mainExtentCells: 1 / 3,
-  maxMainExtent: TimelineBlockEdgeGrip.hitExtent,
-  minMainExtent: _minimumHitExtent,
-  minMainExtentCells: (endIndexExclusive - startIndex) / 3,
-  anchorAtTrailingEdge: edge == TimelineBlockEdge.end,
-);
-
-/// The bar's rect INSIDE a hit strip whose origin is the strip's top-left:
-/// [hitExtent] along the frame axis, [crossAxisExtent] across it.
-///
-/// THE geometry source (R28 #4 tier 2): the widget grip and the dense rows'
-/// chrome painter both read it, so a grip drawn by a painter and one drawn
-/// by a widget cannot drift.
-Rect blockEdgeGripBarRect({
-  required TimelineBlockEdge edge,
-  required double hitExtent,
   required double crossAxisExtent,
-  required Axis axis,
 }) {
-  final isStart = edge == TimelineBlockEdge.start;
-  final barLength = crossAxisExtent * _gripBarLengthFactor;
-  if (axis == Axis.horizontal) {
-    return Rect.fromLTWH(
-      isStart ? _gripBarInset : hitExtent - _gripBarInset - _gripBarThickness,
-      (crossAxisExtent - barLength) / 2,
-      _gripBarThickness,
-      barLength,
-    );
-  }
-  return Rect.fromLTWH(
-    (crossAxisExtent - barLength) / 2,
-    isStart ? _gripBarInset : hitExtent - _gripBarInset - _gripBarThickness,
-    barLength,
-    _gripBarThickness,
+  final start = edge == TimelineBlockEdge.start;
+  final across = crossAxisExtent * _gripCrossShare;
+  return TimelineFrameSpanPlacement(
+    startIndex: start ? startIndex : endIndexExclusive,
+    mainExtentCells: _gripMainCells,
+    anchorAtTrailingEdge: !start,
+    crossInset: start ? crossAxisExtent - across : 0,
+    crossExtent: across,
   );
 }
 
-/// Quiet at rest, full on hover, accent while dragging — state carried by
-/// ink ALONE (R28 #3).
+/// The corner radius of the block a grip [box] sits in — THE block corner
+/// ([timelineBlockCornerRadiusAt]), read back from the box the placement made:
+/// half a cell along the frame axis, a third of the row across it.
+double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) {
+  final horizontal = axis == Axis.horizontal;
+  return timelineBlockCornerRadiusAt(
+    cellExtent: (horizontal ? box.width : box.height) / _gripMainCells,
+    crossExtent: (horizontal ? box.height : box.width) / _gripCrossShare,
+  ).x;
+}
+
+/// The grip's triangle inside its [box]: the right angle in the block's
+/// corner and the two legs along the block's own edges, rounded where the
+/// paper is rounded so the mark never pokes past it.
 ///
-/// [ground] is the color of what the bar sits ON, not the theme's
+/// Stated along the frame axis and across it, so the X-sheet reads it turned
+/// on its side like every other mark: the start edge's corner is the box's
+/// LEADING end on its FAR side (the timeline's bottom-left, the X-sheet's
+/// top-right), the end edge's the TRAILING end on the NEAR side (top-right,
+/// bottom-left).
+Path blockEdgeGripPath(
+  Rect box, {
+  required TimelineBlockEdge edge,
+  required Axis axis,
+}) {
+  final horizontal = axis == Axis.horizontal;
+  Offset at(double along, double across) =>
+      horizontal ? Offset(along, across) : Offset(across, along);
+  final a0 = horizontal ? box.left : box.top;
+  final a1 = horizontal ? box.right : box.bottom;
+  final c0 = horizontal ? box.top : box.left;
+  final c1 = horizontal ? box.bottom : box.right;
+  final start = edge == TimelineBlockEdge.start;
+  final corner = start ? at(a0, c1) : at(a1, c0);
+  final alongLeg = start ? at(a1, c1) : at(a0, c0);
+  final acrossLeg = start ? at(a0, c0) : at(a1, c1);
+  final radius = math.min(
+    blockEdgeGripCornerRadius(box, axis: axis),
+    math.min(a1 - a0, c1 - c0),
+  );
+  final path = Path()
+    ..moveTo(alongLeg.dx, alongLeg.dy)
+    ..lineTo(acrossLeg.dx, acrossLeg.dy);
+  if (radius <= 0) {
+    return path
+      ..lineTo(corner.dx, corner.dy)
+      ..close();
+  }
+  Offset toward(Offset leg) =>
+      corner + (leg - corner) / (leg - corner).distance * radius;
+  final onAcross = toward(acrossLeg);
+  final onAlong = toward(alongLeg);
+  // A conic with the corner as its control point and weight √½ IS the
+  // quarter circle tangent to both legs — the paper's own rounding.
+  return path
+    ..lineTo(onAcross.dx, onAcross.dy)
+    ..conicTo(corner.dx, corner.dy, onAlong.dx, onAlong.dy, math.sqrt1_2)
+    ..close();
+}
+
+/// Quiet at rest, full on hover, accent while dragging — state carried by
+/// ink ALONE (R28 #3). 유저 답 2026-09-23 kept exactly this ladder for the
+/// triangle (「반투명 먹」).
+///
+/// [ground] is the color of what the grip sits ON, not the theme's
 /// brightness (feedback #11 gave it two inks by surface; 2026-08-17 made
 /// the pick the text's own ground law, [timelineTextOnColor]). A paper
-/// block takes the black bar — the purple paper included — and the dark
+/// block takes the black mark — the purple paper included — and the dark
 /// cut-block strip takes the white one. The white OUTLINE the bar used to
 /// wear went with the pick ("애초에 통일하기로 했잖아"): the ink already
 /// contrasts with the ground it was chosen against, so a silhouette had
 /// nothing left to say. The accent of a live drag reads on both and is
 /// left alone: a drag in progress must not change colour with its row.
-Color blockEdgeGripBarColor(
+Color blockEdgeGripColor(
   BlockEdgeGripInk ink, {
   Color ground = timelineDrawingHeldColor,
 }) {
@@ -135,41 +150,44 @@ Color blockEdgeGripBarColor(
     return timelineSelectedFrameBorderColor;
   }
   final base = timelineTextOnColor(ground);
-  final lightBar = base == timelineTextOnDarkGroundColor;
-  // A light bar needs more alpha than a dark one to read as the same
+  final lightInk = base == timelineTextOnDarkGroundColor;
+  // A light mark needs more alpha than a dark one to read as the same
   // weight — the same asymmetry [storyboardCutBlockEdgeColor] carries.
   return base.withValues(
     alpha: ink == BlockEdgeGripInk.hovered
-        ? (lightBar ? 0.98 : 0.95)
-        : (lightBar ? 0.55 : 0.38),
+        ? (lightInk ? 0.98 : 0.95)
+        : (lightInk ? 0.55 : 0.38),
   );
 }
 
-/// Draws one grip bar at [barRect]. THE drawing source, shared by the widget
+/// Draws one grip into its [box]. THE drawing source, shared by the widget
 /// grip and the dense rows' row-wide chrome painter.
 ///
 /// ⛔No outline arm (2026-08-17). R9 #11 wrapped the bar in the text's
 /// white outline so a resting grip read on a busy block; #1104 took the
 /// text's outline off and the bar kept its — the last white silhouette on
 /// the blocks, which the user called out on device. The ground law is the
-/// visibility answer now, for the bar exactly as for the writing.
-void paintBlockEdgeGripBar(
+/// visibility answer now, for the grip exactly as for the writing.
+void paintBlockEdgeGrip(
   Canvas canvas,
-  Rect barRect,
-  BlockEdgeGripInk ink, {
+  Rect box, {
+  required TimelineBlockEdge edge,
+  required Axis axis,
+  required BlockEdgeGripInk ink,
   Color ground = timelineDrawingHeldColor,
 }) {
-  canvas.drawRRect(
-    RRect.fromRectAndRadius(barRect, const Radius.circular(2)),
-    Paint()..color = blockEdgeGripBarColor(ink, ground: ground),
+  canvas.drawPath(
+    blockEdgeGripPath(box, edge: edge, axis: axis),
+    Paint()..color = blockEdgeGripColor(ink, ground: ground),
   );
 }
 
-/// The widget grip's bar, painted rather than boxed: the sparse surfaces
-/// (storyboard cut trim, SE spans, instruction rows) still mount a widget
-/// per grip, and this keeps their pixels identical to the painted rows'.
-class BlockEdgeGripBarPainter extends CustomPainter with RepaintOnProps {
-  const BlockEdgeGripBarPainter({
+/// The widget grip's triangle, painted rather than boxed: the sparse
+/// surfaces (storyboard SE and transition strips, instruction rows) still
+/// mount a widget per grip, and this keeps their pixels identical to the
+/// painted rows'.
+class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
+  const BlockEdgeGripPainter({
     required this.edge,
     required this.axis,
     required this.ink,
@@ -179,20 +197,17 @@ class BlockEdgeGripBarPainter extends CustomPainter with RepaintOnProps {
   final Axis axis;
   final BlockEdgeGripInk ink;
 
-  /// The strip's own BOX gives the geometry — the grip is laid out at the
-  /// hit extent, so nothing needs the cell width passed in (that is what
-  /// used to drag every grip through a rebuild on each zoom step). Still the
-  /// shared [blockEdgeGripBarRect], so the painted rows cannot drift.
+  /// The grip's own BOX is the geometry — it is laid out by the placement,
+  /// so nothing needs the cell width passed in (that is what used to drag
+  /// every grip through a rebuild on each zoom step), and a zoom step that
+  /// resizes the box repaints it.
   @override
-  void paint(Canvas canvas, Size size) => paintBlockEdgeGripBar(
+  void paint(Canvas canvas, Size size) => paintBlockEdgeGrip(
     canvas,
-    blockEdgeGripBarRect(
-      edge: edge,
-      hitExtent: extentAlong(axis, size),
-      crossAxisExtent: extentAcross(axis, size),
-      axis: axis,
-    ),
-    ink,
+    Offset.zero & size,
+    edge: edge,
+    axis: axis,
+    ink: ink,
   );
 
   @override
@@ -219,8 +234,8 @@ class BlockEdgeGripHooks {
   final VoidCallback onCancel;
 }
 
-/// The ONE block-edge grip (R28 #3): an inset bar just inside a block's
-/// start or end edge, with the whole hover/drag state machine.
+/// The ONE block-edge grip (R28 #3): the triangle in a block's start or end
+/// corner, with the whole hover/drag state machine.
 ///
 /// Both surfaces mount THIS — the timeline through [TimelineBlockEdgeGrip]
 /// and the storyboard through its cut-trim binder. The storyboard used to
@@ -298,10 +313,6 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   /// The frame axis direction; geometry and gesture transpose with it.
   final Axis axis;
 
-  /// The grip strip's nominal main-axis extent; [blockEdgeGripHitExtent]
-  /// caps it against the cell width.
-  static const double hitExtent = 12;
-
   /// The identity finders (and tests) look for. It rides a [KeyedSubtree]
   /// rather than a `Positioned`, because WHERE a grip sits is now the mount
   /// site's business: a frame-span layout on the sparse rows, a `Positioned`
@@ -338,7 +349,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
   int _lastReportedFrames = 0;
   bool _dragging = false;
 
-  /// R27 #11: pointer resting on the grip — lights the bar.
+  /// R27 #11: pointer resting on the grip — lights the mark.
   bool _hovered = false;
 
   /// R9 #12: pointer DOWN on the grip — reads as engaged straight away.
@@ -414,11 +425,11 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
     // accent while dragging. (Both surfaces mount this one widget, so
     // the timeline and the storyboard get the same feedback.)
     //
-    // The bar is PAINTED through the shared helpers (R28 #4 tier 2) so the
-    // dense rows — which draw all their grips in one row-wide painter —
+    // The triangle is PAINTED through the shared helpers (R28 #4 tier 2) so
+    // the dense rows — which draw all their grips in one row-wide painter —
     // and these widget-mounted grips cannot drift apart.
-    final bar = CustomPaint(
-      painter: BlockEdgeGripBarPainter(
+    final mark = CustomPaint(
+      painter: BlockEdgeGripPainter(
         edge: widget.edge,
         axis: widget.axis,
         ink: _dragging || _pressed
@@ -478,7 +489,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
               recognizer.supportedDevices = devices;
             }
           },
-          child: bar,
+          child: mark,
         ),
       ),
     );

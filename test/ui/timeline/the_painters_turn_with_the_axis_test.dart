@@ -35,6 +35,7 @@ class _CanvasSpy implements Canvas {
   final lines = <({Offset from, Offset to})>[];
   final rects = <Rect>[];
   final rrects = <Rect>[];
+  final paths = <Path>[];
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) =>
@@ -45,6 +46,9 @@ class _CanvasSpy implements Canvas {
 
   @override
   void drawRRect(RRect rrect, Paint paint) => rrects.add(rrect.outerRect);
+
+  @override
+  void drawPath(Path path, Paint paint) => paths.add(path);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -347,42 +351,57 @@ void main() {
     });
   });
 
-  group('BlockEdgeGripBarPainter', () {
-    Rect painted(Axis axis, Size size) {
+  group('BlockEdgeGripPainter', () {
+    Path painted(TimelineBlockEdge edge, Axis axis, Size size) {
       final spy = _CanvasSpy();
-      BlockEdgeGripBarPainter(
-        edge: TimelineBlockEdge.end,
+      BlockEdgeGripPainter(
+        edge: edge,
         axis: axis,
         ink: BlockEdgeGripInk.rest,
       ).paint(spy, size);
-      return spy.rrects.single;
+      return spy.paths.single;
     }
 
-    test('the bar sits where the shared rect law puts it, on both axes', () {
-      expect(
-        painted(Axis.horizontal, const Size(40, 24)),
-        blockEdgeGripBarRect(
-          edge: TimelineBlockEdge.end,
-          hitExtent: 40,
-          crossAxisExtent: 24,
-          axis: Axis.horizontal,
-        ),
+    // A box half of a 24px cell along and a third of a 30px row across.
+    const along = 12.0;
+    const across = 10.0;
+
+    test('the triangle sits in the corner the axis turns to: the end edge '
+        'top-right on the timeline, bottom-left on the X-sheet', () {
+      final h = painted(
+        TimelineBlockEdge.end,
+        Axis.horizontal,
+        const Size(along, across),
       );
-      expect(
-        painted(Axis.vertical, const Size(24, 40)),
-        blockEdgeGripBarRect(
-          edge: TimelineBlockEdge.end,
-          hitExtent: 40,
-          crossAxisExtent: 24,
-          axis: Axis.vertical,
-        ),
+      expect(h.contains(const Offset(along * 0.8, across * 0.2)), isTrue);
+      expect(h.contains(const Offset(along * 0.2, across * 0.8)), isFalse);
+
+      final v = painted(
+        TimelineBlockEdge.end,
+        Axis.vertical,
+        const Size(across, along),
       );
-      // The end grip is measured from the hit extent's far end — the
-      // HEIGHT of a vertical strip, not its width.
-      expect(
-        painted(Axis.vertical, const Size(24, 40)).bottom,
-        greaterThan(30),
+      expect(v.contains(const Offset(across * 0.2, along * 0.8)), isTrue);
+      expect(v.contains(const Offset(across * 0.8, along * 0.2)), isFalse);
+    });
+
+    test('the start edge bottom-left on the timeline, top-right on the '
+        'X-sheet', () {
+      final h = painted(
+        TimelineBlockEdge.start,
+        Axis.horizontal,
+        const Size(along, across),
       );
+      expect(h.contains(const Offset(along * 0.2, across * 0.8)), isTrue);
+      expect(h.contains(const Offset(along * 0.8, across * 0.2)), isFalse);
+
+      final v = painted(
+        TimelineBlockEdge.start,
+        Axis.vertical,
+        const Size(across, along),
+      );
+      expect(v.contains(const Offset(across * 0.8, along * 0.2)), isTrue);
+      expect(v.contains(const Offset(across * 0.2, along * 0.8)), isFalse);
     });
   });
 

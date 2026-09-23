@@ -11,7 +11,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
-import 'timeline_se_row_visual.dart' show timelineBlockCornerWarning;
+import 'timeline_se_row_visual.dart' show timelineBlockWarningBar;
 import '../repaint_props.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
@@ -124,7 +124,7 @@ _instructionSpansIn(
 /// [crossingWarningTooltip] is the D26 marker's resolver — the
 /// seClipMarkerTooltip threading convention: null (or a null answer for a
 /// span's start key) mounts nothing, a string mounts the shared red
-/// corner warning on that span's block with that hover text. The block
+/// warning line on that span's block with that hover text. The block
 /// itself keeps drawing either way — a warning must have something to sit
 /// on, and the refusal is the EFFECT's, never the display's.
 List<Widget> timelineRowInstructionOverlays({
@@ -180,7 +180,7 @@ List<Widget> timelineRowInstructionOverlays({
         continue;
       }
       overlays.add(
-        timelineBlockCornerWarning(
+        timelineBlockWarningBar(
           blockStart: start,
           blockEndExclusive: endExclusive,
           crossAxisExtent: crossAxisExtent,
@@ -207,6 +207,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
   required double Function() resolveFrameCellExtent,
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
+  required double crossAxisExtent,
 }) {
   final grips = <Widget>[];
   var ordinal = 0;
@@ -223,6 +224,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               edge: edge,
               startIndex: start,
               endIndexExclusive: endExclusive,
+              crossAxisExtent: crossAxisExtent,
             ),
             child: TimelineBlockEdgeGrip(
               layerId: layer.id,

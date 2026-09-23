@@ -69,10 +69,10 @@ Project _project() => Project(
 );
 
 void main() {
-  group('the bar\'s ink is the ground law\'s pick', () {
+  group('the grip\'s ink is the ground law\'s pick', () {
     test('a dark ground takes the LIGHT ink, a light one the dark ink', () {
-      final onPaper = blockEdgeGripBarColor(BlockEdgeGripInk.rest);
-      final onPlate = blockEdgeGripBarColor(
+      final onPaper = blockEdgeGripColor(BlockEdgeGripInk.rest);
+      final onPlate = blockEdgeGripColor(
         BlockEdgeGripInk.rest,
         ground: AppColors.washUp,
       );
@@ -90,27 +90,27 @@ void main() {
 
     test('the PURPLE paper takes the dark bar — the same pick its numbers '
         'make, one law for text and edges', () {
-      final onPurple = blockEdgeGripBarColor(
+      final onPurple = blockEdgeGripColor(
         BlockEdgeGripInk.rest,
         ground: layerMarkColor(const LayerMark(process: LayerProcess.finish)),
       );
       expect(onPurple.withValues(alpha: 1), timelineTextOnLightGroundColor);
       expect(
         onPurple,
-        blockEdgeGripBarColor(BlockEdgeGripInk.rest),
+        blockEdgeGripColor(BlockEdgeGripInk.rest),
         reason:
             'purple sits on the same side of the crossover as the plain '
             'paper, so the bar does not change weight between them',
       );
     });
 
-    test('the paper default keeps the dark bar\'s weights', () {
+    test('the paper default keeps the dark mark\'s weights', () {
       expect(
-        blockEdgeGripBarColor(BlockEdgeGripInk.rest),
+        blockEdgeGripColor(BlockEdgeGripInk.rest),
         timelineTextOnLightGroundColor.withValues(alpha: 0.38),
       );
       expect(
-        blockEdgeGripBarColor(BlockEdgeGripInk.hovered),
+        blockEdgeGripColor(BlockEdgeGripInk.hovered),
         timelineTextOnLightGroundColor.withValues(alpha: 0.95),
       );
     });
@@ -118,8 +118,8 @@ void main() {
     test('a LIVE drag keeps the accent on both grounds — a drag in flight '
         'must not change colour with its row', () {
       expect(
-        blockEdgeGripBarColor(BlockEdgeGripInk.dragging),
-        blockEdgeGripBarColor(
+        blockEdgeGripColor(BlockEdgeGripInk.dragging),
+        blockEdgeGripColor(
           BlockEdgeGripInk.dragging,
           ground: AppColors.washUp,
         ),
@@ -164,7 +164,7 @@ void main() {
     // And the ground law turns it into the DARK ink — the pixel the user
     // actually looks at.
     expect(
-      blockEdgeGripBarColor(
+      blockEdgeGripColor(
         BlockEdgeGripInk.rest,
         ground: ground,
       ).withValues(alpha: 1),

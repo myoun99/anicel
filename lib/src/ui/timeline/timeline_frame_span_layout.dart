@@ -15,9 +15,6 @@ class TimelineFrameSpanPlacement {
     this.endIndexExclusive,
     this.mainExtentCells,
     this.mainExtent,
-    this.maxMainExtent,
-    this.minMainExtent,
-    this.minMainExtentCells,
     this.mainInset = 0,
     this.anchorAtTrailingEdge = false,
     this.crossInset = 0,
@@ -37,26 +34,12 @@ class TimelineFrameSpanPlacement {
   final int? endIndexExclusive;
 
   /// Size in CELLS, for chrome that scales with the cell but is not a span
-  /// (an edge grip is a third of a cell). Capped by [maxMainExtent].
+  /// (an edge grip is half a cell).
   final double? mainExtentCells;
 
   /// Fixed main-axis size in pixels, for chrome that must not scale (a
   /// marker glyph).
   final double? mainExtent;
-
-  /// Pixel cap on a [mainExtentCells] size.
-  final double? maxMainExtent;
-
-  /// A FLOOR under the resolved extent, in pixels — how an edge grip keeps
-  /// a usable hit width when the zoom shrinks a cell below it. Applied
-  /// before [maxMainExtent], exactly like [blockEdgeGripHitExtent]'s floor,
-  /// whose law this pair exists to state in placement terms.
-  final double? minMainExtent;
-
-  /// A cells-measured CAP on that floor: the floor may not outgrow this
-  /// many cells — a one-frame block's grip must leave the block's body
-  /// tappable. Null leaves [minMainExtent] uncapped.
-  final double? minMainExtentCells;
 
   /// Extra offset from the anchor edge, in pixels.
   final double mainInset;
@@ -76,9 +59,6 @@ class TimelineFrameSpanPlacement {
       other.endIndexExclusive == endIndexExclusive &&
       other.mainExtentCells == mainExtentCells &&
       other.mainExtent == mainExtent &&
-      other.maxMainExtent == maxMainExtent &&
-      other.minMainExtent == minMainExtent &&
-      other.minMainExtentCells == minMainExtentCells &&
       other.mainInset == mainInset &&
       other.anchorAtTrailingEdge == anchorAtTrailingEdge &&
       other.crossInset == crossInset &&
@@ -90,9 +70,6 @@ class TimelineFrameSpanPlacement {
     endIndexExclusive,
     mainExtentCells,
     mainExtent,
-    maxMainExtent,
-    minMainExtent,
-    minMainExtentCells,
     mainInset,
     anchorAtTrailingEdge,
     crossInset,
@@ -102,6 +79,37 @@ class TimelineFrameSpanPlacement {
 
 class TimelineFrameSpanParentData extends ContainerBoxParentData<RenderBox> {
   TimelineFrameSpanPlacement? placement;
+}
+
+/// The rect [placement] resolves to under [frames], in a row [crossAxisExtent]
+/// across — THE resolution.
+///
+/// The span layout lays its children out by it and the dense rows' edit
+/// chrome hit-tests by it, so an edge grip placed as a widget on a sparse row
+/// and one painted by a dense row's chrome land on the same pixels by
+/// construction rather than by a parity test between two formulas.
+Rect timelineFrameSpanRect(
+  TimelineFrameSpanPlacement placement,
+  TimelineFrameGeometry frames, {
+  required double crossAxisExtent,
+  required Axis axis,
+}) {
+  final anchor = frames.edgeAt(placement.startIndex) + placement.mainInset;
+  final end = placement.endIndexExclusive;
+  final cells = placement.mainExtentCells;
+  var mainExtent = end != null
+      ? frames.edgeAt(end) - frames.edgeAt(placement.startIndex)
+      : cells != null
+      ? cells * frames.frameCellExtent
+      : placement.mainExtent!;
+  if (mainExtent < 0) {
+    mainExtent = 0;
+  }
+  final main = placement.anchorAtTrailingEdge ? anchor - mainExtent : anchor;
+  final cross = placement.crossExtent ?? crossAxisExtent;
+  return axis == Axis.horizontal
+      ? Rect.fromLTWH(main, placement.crossInset, mainExtent, cross)
+      : Rect.fromLTWH(placement.crossInset, main, cross, mainExtent);
 }
 
 /// Positions its children by frame span off the LIVE geometry.
@@ -262,44 +270,12 @@ class RenderTimelineFrameSpanLayout extends RenderBox
   Rect rectFor(
     TimelineFrameSpanPlacement placement,
     TimelineFrameGeometry frames,
-  ) {
-    final cellExtent = frames.frameCellExtent;
-    final anchor =
-        frames.edgeAt(placement.startIndex) +
-        placement.mainInset;
-    final end = placement.endIndexExclusive;
-    final cells = placement.mainExtentCells;
-    var mainExtent = end != null
-        ? frames.edgeAt(end) - frames.edgeAt(placement.startIndex)
-        : cells != null
-        ? cells * cellExtent
-        : placement.mainExtent!;
-    // The floor first, the cap second — [blockEdgeGripHitExtent]'s order,
-    // so a grip stated as a placement resolves to that law's exact width.
-    final minPx = placement.minMainExtent;
-    if (minPx != null) {
-      var floor = minPx;
-      final minCells = placement.minMainExtentCells;
-      if (minCells != null && minCells * cellExtent < floor) {
-        floor = minCells * cellExtent;
-      }
-      if (mainExtent < floor) {
-        mainExtent = floor;
-      }
-    }
-    final cap = placement.maxMainExtent;
-    if (cap != null && mainExtent > cap) {
-      mainExtent = cap;
-    }
-    if (mainExtent < 0) {
-      mainExtent = 0;
-    }
-    final main = placement.anchorAtTrailingEdge ? anchor - mainExtent : anchor;
-    final cross = placement.crossExtent ?? crossAxisExtent;
-    return axis == Axis.horizontal
-        ? Rect.fromLTWH(main, placement.crossInset, mainExtent, cross)
-        : Rect.fromLTWH(placement.crossInset, main, cross, mainExtent);
-  }
+  ) => timelineFrameSpanRect(
+    placement,
+    frames,
+    crossAxisExtent: crossAxisExtent,
+    axis: axis,
+  );
 
   @override
   void performLayout() {

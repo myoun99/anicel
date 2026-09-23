@@ -3188,6 +3188,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
         commaDrag: commaDrag,
         axis: Axis.horizontal,
+        crossAxisExtent: _transitionRowHeight,
       );
       if (grips.isNotEmpty) {
         spans.add(
@@ -3574,6 +3575,7 @@ class _StoryboardSeRow extends StatelessWidget {
         edge: edge,
         startIndex: block.startIndex,
         endIndexExclusive: block.endIndexExclusive,
+        crossAxisExtent: _seRowHeight,
       ),
       child: TimelineBlockEdgeGrip(
         key: ValueKey<String>(

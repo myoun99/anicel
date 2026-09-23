@@ -214,11 +214,10 @@ List<Widget> timelineRowAudioOverlays({
   return overlays;
 }
 
-/// Red corner markers for takes that CLIPPED (REC1-D): the carrying
-/// block's trailing-top corner, tooltip-explained. Callers mount these
-/// only while the clipping notice is enabled — the quiet default stays
-/// quiet (user decision: an animator who does not care must not see red
-/// corners all day).
+/// Red warning lines for takes that CLIPPED (REC1-D), tooltip-explained.
+/// Callers mount these only while the clipping notice is enabled — the
+/// quiet default stays quiet (user decision: an animator who does not care
+/// must not see red marks all day).
 List<Widget> timelineRowClipMarkerOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -244,7 +243,7 @@ List<Widget> timelineRowClipMarkerOverlays({
       continue;
     }
     overlays.add(
-      timelineBlockCornerWarning(
+      timelineBlockWarningBar(
         blockStart: span.startFrame,
         blockEndExclusive: blockEnd,
         crossAxisExtent: crossAxisExtent,
@@ -260,12 +259,20 @@ List<Widget> timelineRowClipMarkerOverlays({
   return overlays;
 }
 
-/// ONE corner-warning unit — the red triangle + hover tooltip the SE
-/// clipped-take marker introduced (REC1-D), on the block's trailing-top
-/// corner. Shared (extracted, never copied — the unification absolute
-/// rule) with the D26 crossing-fade marker: a block warning is one thing,
-/// whoever warns.
-Widget timelineBlockCornerWarning({
+/// How thick a block's warning line is, across the row.
+const double timelineBlockWarningBarThickness = 2;
+
+/// ONE block-warning unit — the red mark + hover tooltip the SE clipped-take
+/// marker introduced (REC1-D). Shared (extracted, never copied — the
+/// unification absolute rule) with the D26 crossing-fade marker: a block
+/// warning is one thing, whoever warns.
+///
+/// 🚨I-43 (유저 답 2026-09-23, 「(나) 윗변 줄」): a red line along the block's
+/// NEAR long edge, end to end — the timeline's top, the X-sheet's left.
+/// ↩️It was an 11px red triangle in the block's top-right corner, which is
+/// where the end edge's own triangle sits now (and, on the X-sheet, the start
+/// edge's): two marks in one corner.
+Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,
   required double crossAxisExtent,
@@ -274,51 +281,85 @@ Widget timelineBlockCornerWarning({
   required Color color,
   required Key markerKey,
 }) {
-  const markerSize = 11.0;
   return TimelineFrameSpan(
-    // The block's top-right corner — beside, never over, the bottom-right
-    // duration label (R26 #7). Transposed, it rides the block's top edge
-    // on the column's trailing side.
-    placement: axis == Axis.horizontal
-        ? TimelineFrameSpanPlacement(
-            startIndex: blockEndExclusive,
-            anchorAtTrailingEdge: true,
-            mainExtent: markerSize,
-            crossExtent: markerSize,
-          )
-        : TimelineFrameSpanPlacement(
-            startIndex: blockStart,
-            mainExtent: markerSize,
-            crossInset: crossAxisExtent - markerSize,
-            crossExtent: markerSize,
-          ),
+    placement: TimelineFrameSpanPlacement(
+      startIndex: blockStart,
+      endIndexExclusive: blockEndExclusive,
+      crossExtent: timelineBlockWarningBarThickness,
+    ),
     child: KeyedSubtree(
       key: markerKey,
       child: Tooltip(
         message: tooltip,
-        child: CustomPaint(painter: _ClipCornerPainter(color)),
+        child: CustomPaint(
+          painter: _WarningBarPainter(
+            color: color,
+            axis: axis,
+            frameCount: blockEndExclusive - blockStart,
+            crossAxisExtent: crossAxisExtent,
+          ),
+        ),
       ),
     ),
   );
 }
 
-class _ClipCornerPainter extends CustomPainter with RepaintOnProps {
-  const _ClipCornerPainter(this.color);
+class _WarningBarPainter extends CustomPainter with RepaintOnProps {
+  const _WarningBarPainter({
+    required this.color,
+    required this.axis,
+    required this.frameCount,
+    required this.crossAxisExtent,
+  });
 
   final Color color;
+  final Axis axis;
+
+  /// The block's length in frames: the line spans exactly the block, so its
+  /// own extent over this is the live cell — what the block's corner reads.
+  final int frameCount;
+  final double crossAxisExtent;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(path, Paint()..color = color);
+    final horizontal = axis == Axis.horizontal;
+    final along = horizontal ? size.width : size.height;
+    final across = horizontal ? size.height : size.width;
+    final corner = frameCount <= 0
+        ? Radius.zero
+        : timelineBlockCornerRadiusAt(
+            cellExtent: along / frameCount,
+            crossExtent: crossAxisExtent,
+          );
+    // The line follows the paper's own rounding at both ends: the block's
+    // corners, a full corner deep across, clip it.
+    final depth = math.max(corner.x, across);
+    final paper = horizontal
+        ? RRect.fromLTRBAndCorners(
+            0,
+            0,
+            size.width,
+            depth,
+            topLeft: corner,
+            topRight: corner,
+          )
+        : RRect.fromLTRBAndCorners(
+            0,
+            0,
+            depth,
+            size.height,
+            topLeft: corner,
+            bottomLeft: corner,
+          );
+    canvas
+      ..save()
+      ..clipRRect(paper)
+      ..drawRect(Offset.zero & size, Paint()..color = color)
+      ..restore();
   }
 
   @override
-  Object get props => (color,);
+  Object get props => (color, axis, frameCount, crossAxisExtent);
 }
 
 /// Media-browser drop targets over an SE row's blocks: dropping an asset
@@ -431,11 +472,18 @@ const double seNameBoxExtent = 16;
 
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
 /// mockup v3): a compact INVERTED name chip flush against the block's
-/// start boundary (ink fill, paper-light writing), the dialogue fitted
-/// over the rest of the span and a short red underline closing the
-/// block's end — no duration bar. Shared by the timeline rows, the
-/// X-sheet columns and the storyboard's synced SE track; paper comes from
+/// start boundary (ink fill, paper-light writing) and the dialogue fitted
+/// over the rest of the span — no duration bar. Shared by the timeline rows,
+/// the X-sheet columns and the storyboard's synced SE track; paper comes from
 /// the cells underneath (or from [SePaperSpan] where there are none).
+///
+/// 🚨I-43 (유저 2026-09-23): 「se는 왜 제안에서 엣지가 빨간색 남아있지? 그부분만
+/// 혹시모르니 잘 통일해주고」. v3 also closed the block's end with a short red
+/// line, perpendicular to the flow and hugging the end edge — exactly where
+/// every block's edge used to stand, so beside the new corner triangles it
+/// read as an SE block keeping a red EDGE. ⇒ The block views close an SE
+/// block the way they close every block. The timesheet keeps its red bars:
+/// that is the paper's notation, drawn by the sheet, not by this widget.
 class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
@@ -472,40 +520,17 @@ class SeSpanVisual extends StatelessWidget {
         final nameExtent = mainExtent >= seNameBoxExtent * 2
             ? seNameBoxExtent
             : mainExtent / 2;
-        return Stack(
+        return Flex(
+          direction: axis,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Flex(
-              direction: axis,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (seName.isNotEmpty)
-                  _SeNameBox(axis: axis, name: seName, extent: nameExtent),
-                Expanded(
-                  child: DialogueFitText(
-                    text: dialogue,
-                    axis: axis,
-                    color: timelineDrawingInkColor,
-                  ),
-                ),
-              ],
-            ),
-            // The block's end closes with a short red underline (Toei
-            // notation) — perpendicular to the flow, hugging the end edge.
-            Positioned(
-              right: axis == Axis.horizontal ? 1 : 0,
-              bottom: axis == Axis.horizontal ? 0 : 1,
-              top: axis == Axis.horizontal ? 0 : null,
-              left: axis == Axis.horizontal ? null : 0,
-              width: axis == Axis.horizontal ? 2 : null,
-              height: axis == Axis.horizontal ? null : 2,
-              child: IgnorePointer(
-                child: Center(
-                  child: FractionallySizedBox(
-                    widthFactor: axis == Axis.horizontal ? null : 0.6,
-                    heightFactor: axis == Axis.horizontal ? 0.6 : null,
-                    child: const ColoredBox(color: AppColors.danger),
-                  ),
-                ),
+            if (seName.isNotEmpty)
+              _SeNameBox(axis: axis, name: seName, extent: nameExtent),
+            Expanded(
+              child: DialogueFitText(
+                text: dialogue,
+                axis: axis,
+                color: timelineDrawingInkColor,
               ),
             ),
           ],

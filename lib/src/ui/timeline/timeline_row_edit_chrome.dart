@@ -19,6 +19,7 @@ import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
 import 'timeline_run_end_handles.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
@@ -39,7 +40,8 @@ sealed class TimelineRowChromeTarget {
   final Rect rect;
 }
 
-/// A block's comma-drag grip.
+/// A block's comma-drag grip. Its [rect] is the triangle's own box — the
+/// box IS the grip (I-43), so the mark is drawn from it and nothing else.
 class TimelineRowGripTarget extends TimelineRowChromeTarget {
   const TimelineRowGripTarget({
     required super.id,
@@ -47,15 +49,11 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
     required this.edge,
     required this.blockStartIndex,
     required this.blockOrdinal,
-    required this.barRect,
   });
 
   final TimelineBlockEdge edge;
   final int blockStartIndex;
   final int blockOrdinal;
-
-  /// Row-local rect of the drawn bar (inside [rect]).
-  final Rect barRect;
 
   @override
   bool operator ==(Object other) =>
@@ -64,12 +62,11 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
       other.rect == rect &&
       other.edge == edge &&
       other.blockStartIndex == blockStartIndex &&
-      other.blockOrdinal == blockOrdinal &&
-      other.barRect == barRect;
+      other.blockOrdinal == blockOrdinal;
 
   @override
   int get hashCode =>
-      Object.hash(id, rect, edge, blockStartIndex, blockOrdinal, barRect);
+      Object.hash(id, rect, edge, blockStartIndex, blockOrdinal);
 }
 
 /// A run edge's [+] half.
@@ -235,14 +232,6 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
     )) {
       continue;
     }
-    final blockStartOffset = geometry.edgeAt(block.startIndex);
-    final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
-    // The block's own width joins the measure, so a long one keeps a grip
-    // you can aim at however far out the axis is zoomed.
-    final hitExtent = blockEdgeGripHitExtent(
-      frameCellExtent,
-      blockExtent: blockEndOffset - blockStartOffset,
-    );
     for (final edge in TimelineBlockEdge.values) {
       if (edge == TimelineBlockEdge.start && !block.startGrip) {
         continue;
@@ -250,24 +239,25 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       if (edge == TimelineBlockEdge.end && !block.endGrip) {
         continue;
       }
-      final hitStart = edge == TimelineBlockEdge.start
-          ? blockStartOffset
-          : blockEndOffset - hitExtent;
-      final rect = mainRect(hitStart, hitExtent);
-      final bar = blockEdgeGripBarRect(
-        edge: edge,
-        hitExtent: hitExtent,
-        crossAxisExtent: crossAxisExtent,
-        axis: axis,
-      );
       targets.add(
         TimelineRowGripTarget(
           id: 'block-edge-grip-${edge.name}-$gripIdScope-${block.ordinal}',
-          rect: rect,
+          // The SAME placement the sparse rows lay their grip widgets out
+          // by, resolved the same way — one law, not a parity between two.
+          rect: timelineFrameSpanRect(
+            timelineBlockEdgeGripPlacement(
+              edge: edge,
+              startIndex: block.startIndex,
+              endIndexExclusive: block.endIndexExclusive,
+              crossAxisExtent: crossAxisExtent,
+            ),
+            geometry,
+            crossAxisExtent: crossAxisExtent,
+            axis: axis,
+          ),
           edge: edge,
           blockStartIndex: block.startIndex,
           blockOrdinal: block.ordinal,
-          barRect: bar.shift(rect.topLeft),
         ),
       );
     }
@@ -460,10 +450,12 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     for (final target in model.targets) {
       switch (target) {
         case TimelineRowGripTarget():
-          paintBlockEdgeGripBar(
+          paintBlockEdgeGrip(
             canvas,
-            target.barRect,
-            target.id == draggingGripId
+            target.rect,
+            edge: target.edge,
+            axis: resolver.axis,
+            ink: target.id == draggingGripId
                 ? BlockEdgeGripInk.dragging
                 : target.id == hoveredId
                 ? BlockEdgeGripInk.hovered
@@ -543,7 +535,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       ];
 }
 
-/// A dense row's edit chrome: ONE painter for every grip bar and run glyph,
+/// A dense row's edit chrome: ONE painter for every grip and run glyph,
 /// and ONE gesture layer that routes by hit target.
 ///
 /// The layer fills the row but only ACCEPTS pointers that land on a target

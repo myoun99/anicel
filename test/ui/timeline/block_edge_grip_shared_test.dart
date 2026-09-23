@@ -21,7 +21,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 ///
 /// The grip FILLS whatever box its mount hands it (zoom round): placement
 /// moved out to the mount, so the sparse rows can place theirs by frame span
-/// and stop rebuilding on every zoom step. Its bar is read off its own size.
+/// and stop rebuilding on every zoom step. Its mark is read off its own size.
 void main() {
   BlockEdgeGripHooks inertHooks() => BlockEdgeGripHooks(
     onBegin: () => true,
@@ -56,22 +56,22 @@ void main() {
     );
   }
 
-  /// The grip's bar is PAINTED (R28 #4 tier 2) through the same helpers the
+  /// The grip's mark is PAINTED (R28 #4 tier 2) through the same helpers the
   /// dense rows' chrome painter uses, so both reads come off the painter.
-  BlockEdgeGripBarPainter barPainter(WidgetTester tester) {
+  BlockEdgeGripPainter markPainter(WidgetTester tester) {
     final paint = find.descendant(
       of: find.byType(BlockEdgeGrip),
       matching: find.byType(CustomPaint),
     );
     return tester.widget<CustomPaint>(paint.first).painter!
-        as BlockEdgeGripBarPainter;
+        as BlockEdgeGripPainter;
   }
 
   Size gripSize(WidgetTester tester) =>
       tester.getSize(find.byType(BlockEdgeGrip));
 
-  Color barColor(WidgetTester tester) =>
-      blockEdgeGripBarColor(barPainter(tester).ink);
+  Color markColor(WidgetTester tester) =>
+      blockEdgeGripColor(markPainter(tester).ink);
 
   testWidgets('R28 #3: hover changes the grip color, never its size', (
     tester,
@@ -80,7 +80,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final restingSize = gripSize(tester);
-    final restingColor = barColor(tester);
+    final restingColor = markColor(tester);
 
     // Park a mouse pointer on the grip.
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -95,7 +95,7 @@ void main() {
       reason: 'R28 #3: the hovered grip must keep its exact geometry',
     );
     expect(
-      barColor(tester),
+      markColor(tester),
       isNot(restingColor),
       reason: 'the hover still has to READ — through ink alone',
     );
@@ -118,7 +118,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(barPainter(tester).ink, BlockEdgeGripInk.rest);
+    expect(markPainter(tester).ink, BlockEdgeGripInk.rest);
 
     // Press and HOLD — no movement at all, so no drag recognizer has won.
     final gesture = await tester.startGesture(
@@ -126,7 +126,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      barPainter(tester).ink,
+      markPainter(tester).ink,
       BlockEdgeGripInk.dragging,
       reason:
           'the accent used to wait for the drag to win the arena, which '
@@ -137,7 +137,7 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(
-      barPainter(tester).ink,
+      markPainter(tester).ink,
       BlockEdgeGripInk.rest,
       reason: 'the release path #12 found missing',
     );
@@ -148,15 +148,6 @@ void main() {
       'any block ("애초에 통일하기로 했잖아")', (tester) async {
     await tester.pumpWidget(harness(hooks: inertHooks()));
     await tester.pumpAndSettle();
-
-    // The core geometry did not move with the outline's removal.
-    final bar = blockEdgeGripBarRect(
-      edge: TimelineBlockEdge.end,
-      hitExtent: 12,
-      crossAxisExtent: 60,
-      axis: Axis.horizontal,
-    );
-    expect(bar.width, 3.5);
 
     // THE edge pin: the drawing source has exactly one arm — the ground-law
     // fill. A stroke pass or the outline pair coming back is the white
@@ -211,6 +202,7 @@ void main() {
                     edge: TimelineBlockEdge.start,
                     startIndex: 0,
                     endIndexExclusive: 3,
+                    crossAxisExtent: 60,
                   ),
                   child: TimelineBlockEdgeGrip(
                     layerId: const LayerId('a'),
@@ -240,13 +232,11 @@ void main() {
       findsOneWidget,
       reason: 'the grip key format is unchanged by the extraction',
     );
-    // The placement is the pixel rule in frame terms: a third of the edge
-    // cell, capped at the nominal hit extent.
-    expect(
-      tester.getSize(find.byType(BlockEdgeGrip)).width,
-      blockEdgeGripHitExtent(40),
-    );
-    expect(tester.getTopLeft(find.byType(BlockEdgeGrip)).dx, 0);
+    // I-43: the placement is the triangle's own box — half the edge cell
+    // along, a third of the row across, in the block's FAR corner for a
+    // start edge.
+    expect(tester.getSize(find.byType(BlockEdgeGrip)), const Size(20, 20));
+    expect(tester.getTopLeft(find.byType(BlockEdgeGrip)), const Offset(0, 40));
   });
 
   testWidgets('the END grip hangs off the block\'s trailing edge', (
@@ -272,6 +262,7 @@ void main() {
                     edge: TimelineBlockEdge.end,
                     startIndex: 0,
                     endIndexExclusive: 3,
+                    crossAxisExtent: 60,
                   ),
                   child: BlockEdgeGrip(
                     edge: TimelineBlockEdge.end,
@@ -287,10 +278,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final hit = blockEdgeGripHitExtent(40);
+    // Half a cell in from the trailing edge, on the row's NEAR side.
     expect(
-      tester.getTopLeft(find.byType(BlockEdgeGrip)).dx,
-      moreOrLessEquals(3 * 40 - hit, epsilon: 0.01),
+      tester.getTopLeft(find.byType(BlockEdgeGrip)),
+      const Offset(3 * 40 - 20, 0),
     );
   });
 }
