@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/scrollable_of.dart';
+
 /// UI-R5 #3: expanding an attach group must not SCROLL the timeline.
 ///
 /// The wanted behaviour (user, 08-09): the rows below the insertion move
@@ -79,11 +81,10 @@ void main() {
     );
   }
 
-  ScrollController controllerOf(WidgetTester tester) => tester
-      .widget<SingleChildScrollView>(
-        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
-      )
-      .controller!;
+  ScrollController controllerOf(WidgetTester tester) => scrollableOf(
+    tester,
+    find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+  ).controller!;
 
   Future<void> tapTwirl(WidgetTester tester) async {
     await tester.tap(

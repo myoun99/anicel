@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 
 const _cameraLayerId = LayerId('lane-cam-layer');
@@ -579,13 +580,12 @@ void main() {
       // point own their own drag recognizers, so the gesture never reaches
       // the Scrollable. `scrollUntilVisible` used to sit here and looked
       // green only because the last lane happened to be built already.
-      final verticalScroll = tester
-          .widget<SingleChildScrollView>(
-            find.byKey(
-              const ValueKey<String>('timeline-vertical-scroll-viewport'),
-            ),
-          )
-          .controller!;
+      final verticalScroll = scrollableOf(
+        tester,
+        find.byKey(
+          const ValueKey<String>('timeline-vertical-scroll-viewport'),
+        ),
+      ).controller!;
       expect(
         find.byKey(
           const ValueKey<String>(

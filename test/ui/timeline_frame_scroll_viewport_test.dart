@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_scroll_viewport.dart';
 
+import '../helpers/scrollable_of.dart';
+
 void main() {
   const horizontalScrollbarViewportKey = ValueKey<String>(
     'timeline-horizontal-scrollbar-viewport',
@@ -70,12 +72,10 @@ void main() {
 
     await pumpViewport(tester, controller: controller);
 
-    final scrollView = tester.widget<SingleChildScrollView>(
-      find.byKey(frameScrollViewportKey),
-    );
+    final scrollable = scrollableOf(tester, find.byKey(frameScrollViewportKey));
 
-    expect(scrollView.controller, same(controller));
-    expect(scrollView.scrollDirection, Axis.horizontal);
+    expect(scrollable.controller, same(controller));
+    expect(scrollable.axisDirection, AxisDirection.right);
   });
 
   testWidgets('content width and height are preserved', (tester) async {
