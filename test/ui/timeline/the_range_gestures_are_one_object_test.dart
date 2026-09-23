@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/timeline/timeline_defaults.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -83,7 +84,11 @@ void main() {
       dragRows: rows,
       rangeMove: TimelineRangeMoveRowResolver(),
     );
-    expect(longer.frameRangePolicy.visibleFrameCount, 100);
+    expect(
+      longer.frameRangePolicy.visibleFrameCount,
+      100 + defaultTimelineSafetyFrameCount,
+      reason: 'the cut, and the allowance past its end line (F-174)',
+    );
   });
 
   test('no range hooks: no cells callbacks, but the resolver is still '

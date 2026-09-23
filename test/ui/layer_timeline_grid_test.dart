@@ -1157,8 +1157,9 @@ void main() {
     expect(selectedFrameIndex, 3);
   });
 
-  testWidgets('the resting extent IS the cut: no runway headers exist past '
-      'it, however far scrolling reaches (UI-R12 #16)', (tester) async {
+  testWidgets('the resting extent is the cut and ONE comma: no runway '
+      'headers exist past it, however far scrolling reaches (UI-R12 #16, '
+      'F-174)', (tester) async {
     // Same frame-viewport width as when the rail was 220px wide, so the
     // scroll offsets below keep exercising the same frame windows.
     await tester.binding.setSurfaceSize(const Size(944, 600));
@@ -1180,9 +1181,16 @@ void main() {
     );
     expect(
       timelineHeaderInWindow(tester, 24),
+      isTrue,
+      reason:
+          'F-174 「엔드라인+1콤마」: the one comma past the end line is '
+          'part of the resting extent, so the scrollbar shows the line',
+    );
+    expect(
+      timelineHeaderInWindow(tester, 25),
       isFalse,
       reason:
-          'past-cut cells exist only while visible/materialized '
+          'past the allowance, cells exist only while visible/materialized '
           '(UI-R12 #16) — scrolling never creates them',
     );
 
