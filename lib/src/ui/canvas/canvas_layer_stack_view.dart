@@ -465,6 +465,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // pixels, and the declaration ends exactly when the hold does.
     widget.imageCache.releasePin(key, held.quality);
     held.clone.dispose();
+    held.laidBack.dispose();
     _imagesRevision += 1;
   }
 
@@ -530,6 +531,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: held.revision,
       quality: held.quality,
       content: held.content,
+      // The same pixels, so the same whole.
+      laidBack: held.laidBack,
     );
   }
 
@@ -554,6 +557,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
       entry.value.clone.dispose();
+      entry.value.laidBack.dispose();
     }
     _images.clear();
     _releaseSettled();
@@ -624,6 +628,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: revision,
       quality: quality,
       content: image.content,
+      laidBack: LaidBackWhole(),
     ));
     return true;
   }
@@ -880,6 +885,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           content: held.content,
           worldRect: held.worldRect,
           extent: held.extent,
+          laidBack: held.laidBack,
           opacity: request.opacity,
           blendMode: request.blendMode,
           pose: request.pose,
@@ -1195,6 +1201,9 @@ typedef _HeldImage = ({
   // What the pixels ARE ([LayerFrameImage.content]) — what the paint tree
   // and the composite key compare, so a settle changes neither.
   Object content,
+  // The whole these pixels stand for, once a draw has laid it back — kept
+  // while they are held, disposed with the clone.
+  LaidBackWhole laidBack,
 });
 
 /// The painter's own node shape: the request tree with images resolved.
@@ -1243,6 +1252,7 @@ final class _PaintImage extends _PaintRow {
     required this.content,
     required this.worldRect,
     required this.extent,
+    required this.laidBack,
     required this.opacity,
     required this.blendMode,
     required this.pose,
@@ -1257,6 +1267,11 @@ final class _PaintImage extends _PaintRow {
   /// when the cache stored the ink alone ([LayerFrameImage.extent]). What the
   /// row stands for when a folder asks how far its buffer reaches.
   final Rect extent;
+
+  /// Where the whole of [image] is kept once a draw lays it back — the held
+  /// image's own. Out of [matches] and [signature]: it is [content]'s whole,
+  /// so it changes exactly when [content] does.
+  final LaidBackWhole laidBack;
 
   /// What [image]'s pixels ARE ([LayerFrameImage.content]) — the one thing
   /// [matches] and [signature] compare about the picture.

@@ -81,7 +81,9 @@ T withLayerPose<T>(
 /// transparent. A cached cel may be stored as its ink alone
 /// (`LayerFrameImage`), and [_laidDown] decides whether that crop can be
 /// drawn as it is or the whole image has to be laid back first. Pass the
-/// same rect twice for an image that was never cropped. [rasterScale] is the
+/// same rect twice for an image that was never cropped. A holder that draws
+/// the same crop again and again passes its [laidBack], so the whole is laid
+/// back once rather than per draw. [rasterScale] is the
 /// quality tier the destination canvas is rastering at — it scales the
 /// destination rect AND reaches the effect resolver, because the images
 /// are already at that tier and a canvas-pixel blur radius that ignored it
@@ -127,6 +129,7 @@ void drawPosedLayerImage(
   required ui.FilterQuality filterQuality,
   int? tint,
   bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
+  LaidBackWhole? laidBack,
 }) {
   withLayerPose(
     canvas,
@@ -168,6 +171,7 @@ void drawPosedLayerImage(
         (image: image, worldRect: worldRect, extent: extent),
         texelScale: copyScale,
         inkDrawsTheSame: _blendsInPlace(blendMode) && plan.outsetPixels == 0,
+        laidBack: laidBack,
       );
       // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
       // `rasterScale` answers "what space does the DRAW land in"; the steps
@@ -223,14 +227,15 @@ void drawPosedLayerImage(
           paint,
         );
       } finally {
-        // ⛔The steps made a NEW image, and a whole image laid back is this
-        // draw's; the one handed in belongs to the cache. Disposing that
-        // would take the layer's pixels with it. The draw above holds its
-        // own reference to whatever it drew.
+        // ⛔The steps made a NEW image, and a whole image laid back for this
+        // draw alone is this draw's; the one handed in belongs to the cache
+        // and a kept whole to its holder. Disposing either would take pixels
+        // someone still draws with. The draw above holds its own reference
+        // to whatever it drew.
         if (!identical(stepped, laid.image)) {
           stepped.dispose();
         }
-        if (!identical(laid.image, image)) {
+        if (laid.drawOwnsIt) {
           laid.image.dispose();
         }
       }
@@ -282,32 +287,95 @@ bool _blendsInPlace(LayerBlendMode blendMode) =>
 /// A crop is drawn as it is only as a texel copy ([_isTexelCopy]) through a
 /// blend and chain that keep the ink alone exact ([inkDrawsTheSame], the
 /// draw's half of [inkCropDrawsTheSame]); anything else — the walk on the
-/// screen, a pose, an advanced blend, a blur — gets the whole image first.
-({ui.Image image, ui.Rect worldRect}) _laidDown(
+/// screen, a pose, an advanced blend, a blur — gets the whole image first:
+/// the one [laidBack] keeps when the holder has one, else one this draw
+/// makes and owns ([drawOwnsIt]).
+({ui.Image image, ui.Rect worldRect, bool drawOwnsIt}) _laidDown(
   ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored, {
   required double? texelScale,
   required bool inkDrawsTheSame,
+  required LaidBackWhole? laidBack,
 }) {
   final (:image, :worldRect, :extent) = stored;
   if (worldRect == extent) {
-    return (image: image, worldRect: worldRect);
+    return (image: image, worldRect: worldRect, drawOwnsIt: false);
   }
   if (inkDrawsTheSame && _isTexelCopy(image, worldRect, texelScale)) {
     assert(() {
       debugCropsLaidDown += 1;
       return true;
     }());
-    return (image: image, worldRect: worldRect);
+    return (image: image, worldRect: worldRect, drawOwnsIt: false);
   }
-  assert(() {
-    debugWholesLaidBack += 1;
-    return true;
-  }());
+  if (laidBack != null) {
+    return (image: laidBack._of(stored), worldRect: extent, drawOwnsIt: false);
+  }
   return (
     image: _wholeOf(image, worldRect: worldRect, extent: extent),
     worldRect: extent,
+    drawOwnsIt: true,
   );
 }
+
+/// The whole image a held crop stands for, laid back the first time a draw
+/// needs it ([_laidDown]) and kept for every draw after, until the holder
+/// lets the crop go and calls [dispose]. One per held crop, never shared: it
+/// keeps the whole of the first crop it is asked about.
+///
+/// 🔬WHY IT IS KEPT (2026-09-24, the user's own project on the Windows app,
+/// 유저 「성능적인 면은 아주 중요하니까 철저하게 하자」): crossing 50% while the
+/// new level's images are still coming, the editing stack draws each row's
+/// old level resampled and records its slots again on every frame the zoom
+/// moves the buffer — and every one of those laid every crop back again:
+/// 111 whole images for 8 rows over one pinch, frames at p95 75–104ms
+/// against 15–27ms with the whole images kept. A crop's whole is the same
+/// bytes every time it is laid back, so keeping one is the same picture.
+final class LaidBackWhole {
+  ui.Image? _whole;
+  ({ui.Rect worldRect, ui.Rect extent, int width, int height})? _madeFrom;
+
+  ui.Image _of(({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored) {
+    final (:image, :worldRect, :extent) = stored;
+    final from = (
+      worldRect: worldRect,
+      extent: extent,
+      width: image.width,
+      height: image.height,
+    );
+    assert(
+      _madeFrom == null || _madeFrom == from,
+      'one LaidBackWhole per held crop: kept $_madeFrom, asked about $from',
+    );
+    _madeFrom = from;
+    if (_whole case final whole?) {
+      return whole;
+    }
+    assert(() {
+      debugKeptWholes += 1;
+      return true;
+    }());
+    return _whole = _wholeOf(image, worldRect: worldRect, extent: extent);
+  }
+
+  /// Lets the kept whole go. A slot recorded with it holds its own
+  /// reference, so a replay before the holder's next build still draws.
+  void dispose() {
+    if (_whole case final whole?) {
+      whole.dispose();
+      _whole = null;
+      assert(() {
+        debugKeptWholes -= 1;
+        return true;
+      }());
+    }
+  }
+}
+
+/// How many wholes [LaidBackWhole]s keep right now — each one a whole cel
+/// image resident, so one left behind is the memory the ink was stored to
+/// save. Written under `assert`.
+@visibleForTesting
+int debugKeptWholes = 0;
 
 /// The recording that copies [texels] of a cel's [whole] image out, texel
 /// for texel — how a cache comes to store the ink alone
@@ -315,6 +383,10 @@ bool _blendsInPlace(LayerBlendMode blendMode) =>
 /// ways between the ink and the whole, and both are texel copies at the
 /// identity, so the round trip is the same bytes.
 ui.PictureRecorder recordInkCutOut(ui.Image whole, ui.Rect texels) {
+  assert(() {
+    debugInksCutOut += 1;
+    return true;
+  }());
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImageRect(
     whole,
@@ -334,6 +406,10 @@ ui.Image _wholeOf(
   required ui.Rect worldRect,
   required ui.Rect extent,
 }) {
+  assert(() {
+    debugWholesLaidBack += 1;
+    return true;
+  }());
   final texels = image.width / worldRect.width;
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawImage(
@@ -351,14 +427,20 @@ ui.Image _wholeOf(
   );
 }
 
-/// How many draws laid a crop down as it is, and how many laid the whole
-/// image back first — the two arms of [_laidDown], so a pin can say the arm
-/// it compares actually ran. Written under `assert`.
+/// How many draws laid a crop down as it is, and how many whole images were
+/// laid back — the two arms of [_laidDown], so a pin can say the arm it
+/// compares actually ran, and what [LaidBackWhole] spares. Written under
+/// `assert`.
 @visibleForTesting
 int debugCropsLaidDown = 0;
 
 @visibleForTesting
 int debugWholesLaidBack = 0;
+
+/// How many inks were cut out of a whole image ([recordInkCutOut]) — the
+/// raster the full level no longer pays. Written under `assert`.
+@visibleForTesting
+int debugInksCutOut = 0;
 
 /// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
 /// whose pixels are [texelScale] canvas units apart: one texel per target

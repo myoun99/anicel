@@ -252,49 +252,54 @@ class LayerFrameImageCache {
       sourceEffects,
     );
 
-    // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
-    // any pasteboard tiles): the editing canvas keeps the on-screen
-    // frame's tiles decoded in the shared cache, so the post-stroke
-    // rebuild draws existing tile images instead of assembling + uploading
-    // the whole canvas — cost follows the CHANGED tiles, not the canvas.
-    var positioned = await composePositionedSurfaceImage(
-      preview,
-      reuse: BitmapTileImageCache.instance,
-      shouldAbort: shouldAbort,
-    );
-    if (positioned == null) {
-      return null;
-    }
-    if (quality != PlaybackQuality.full) {
-      // A level of the display's pyramid: halved [PlaybackQuality.level]
-      // times, each an exact 2×2 box ([halvingPicture]) — never one
-      // reduction straight to the size, which aliases past 2× and, as
-      // `medium`, mipmaps on one engine and not the other.
-      var image = positioned.image;
-      for (var i = 0; i < quality.level; i += 1) {
-        final halved = await _halved(image);
-        image.dispose();
-        image = halved;
-      }
-      positioned = _atLevel(positioned.worldRect, image, quality.level);
-    }
-
     final source = (
       revision: revision,
       canvasSize: canvasSize,
       sourceEffects: sourceEffects,
     );
-    final whole = positioned.worldRect;
-    final texels = inkSuffices && !debugStoresWholeContent
-        ? _inkTexels(
-            surfaceInkWorldRect(preview),
-            whole: whole,
-            level: quality.level,
-          )
-        : null;
-    if (texels == null) {
+    final plan = _levelPlan(
+      preview,
+      quality,
+      storesInk: inkSuffices && !debugStoresWholeContent,
+    );
+    final (:whole, :texels) = plan;
+    final inkAtFull = _inkAtFull(plan, quality.level);
+    // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
+    // any pasteboard tiles) — or the ink alone at the full level
+    // ([_inkAtFull]): the editing canvas keeps the on-screen frame's tiles
+    // decoded in the shared cache, so the post-stroke rebuild draws existing
+    // tile images instead of assembling + uploading the whole canvas — cost
+    // follows the CHANGED tiles, not the canvas.
+    final positioned = await composePositionedSurfaceImage(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+      shouldAbort: shouldAbort,
+      over: inkAtFull,
+    );
+    if (positioned == null) {
+      return null;
+    }
+    if (inkAtFull != null) {
       return _bank((key, quality), (
         image: positioned.image,
+        worldRect: inkAtFull,
+        extent: whole,
+      ), source);
+    }
+    // A level of the display's pyramid: halved [PlaybackQuality.level]
+    // times, each an exact 2×2 box ([halvingPicture]) — never one reduction
+    // straight to the size, which aliases past 2× and, as `medium`, mipmaps
+    // on one engine and not the other.
+    var image = positioned.image;
+    for (var i = 0; i < quality.level; i += 1) {
+      final halved = await _halved(image);
+      image.dispose();
+      image = halved;
+    }
+    assert(_isLevelOf(image, whole, quality.level));
+    if (texels == null) {
+      return _bank((key, quality), (
+        image: image,
         worldRect: whole,
         extent: whole,
       ), source);
@@ -302,8 +307,8 @@ class LayerFrameImageCache {
     // Cut out of the level of the WHOLE image, never halved on its own: the
     // halving is the engine's, and a smaller image is halved differently on
     // Impeller Vulkan (`halving-rounds-differently-per-engine`).
-    final ink = await _cutOut(positioned.image, texels);
-    positioned.image.dispose();
+    final ink = await _cutOut(image, texels);
+    image.dispose();
     return _bank((key, quality), (
       image: ink,
       worldRect: _worldRectOfTexels(whole, texels, quality.level),
@@ -444,9 +449,10 @@ class LayerFrameImageCache {
 
   /// [preview] composed inside the call at [quality] — the cel over its
   /// content extent, halved [PlaybackQuality.level] times, and, when
-  /// [storesInk], its ink cut out of that — beside the plain snapshot of the
-  /// picture that is KEPT: the last of those steps. Null only on the free
-  /// road ([makePictures] false and a tile without its picture).
+  /// [storesInk], its ink cut out of that, or at the full level composed
+  /// alone ([_inkAtFull]) — beside the plain snapshot of the picture that is
+  /// KEPT: the last of those steps. Null only on the free road
+  /// ([makePictures] false and a tile without its picture).
   ({
     ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
     Future<ui.Image> kept,
@@ -457,36 +463,29 @@ class LayerFrameImageCache {
     required bool makePictures,
     required bool storesInk,
   }) {
-    // The level's size is known before a pixel is drawn, so the cut is too
-    // — and with it which step's snapshot is the one to keep.
-    final content = surfaceContentWorldRect(preview);
-    var width = content.width.round();
-    var height = content.height.round();
-    for (var i = 0; i < quality.level; i += 1) {
-      (:width, :height) = halvedSize(width, height);
-    }
-    final step = (1 << quality.level).toDouble();
-    final whole = ui.Rect.fromLTWH(
-      content.left,
-      content.top,
-      width * step,
-      height * step,
-    );
-    final texels = storesInk
-        ? _inkTexels(
-            surfaceInkWorldRect(preview),
-            whole: whole,
-            level: quality.level,
-          )
-        : null;
+    final plan = _levelPlan(preview, quality, storesInk: storesInk);
+    final (:whole, :texels) = plan;
+    final inkAtFull = _inkAtFull(plan, quality.level);
     final composed = composePositionedSurfaceImageSync(
       preview,
       reuse: BitmapTileImageCache.instance,
       makePictures: makePictures,
-      snapshot: texels == null && quality == PlaybackQuality.full,
+      // At the full level the compose is the last step.
+      snapshot: quality.level == 0,
+      over: inkAtFull,
     );
     if (composed == null) {
       return null;
+    }
+    if (inkAtFull != null) {
+      return (
+        now: (
+          image: composed.deferred.image,
+          worldRect: inkAtFull,
+          extent: whole,
+        ),
+        kept: composed.real!,
+      );
     }
     var image = composed.deferred.image;
     var kept = composed.real;
@@ -500,11 +499,7 @@ class LayerFrameImageCache {
       image = halved.deferred;
       kept = halved.real;
     }
-    assert(
-      _atLevel(composed.deferred.worldRect, image, quality.level).worldRect ==
-          whole,
-      'the level measured before the compose is the level it made',
-    );
+    assert(_isLevelOf(image, whole, quality.level));
     if (texels == null) {
       return (
         now: (image: image, worldRect: whole, extent: whole),
@@ -521,32 +516,6 @@ class LayerFrameImageCache {
         extent: whole,
       ),
       kept: ink.real!,
-    );
-  }
-
-  /// [image] — a cel composed over [fullWorldRect], halved [level] times —
-  /// with the CANVAS-SPACE rect it covers.
-  ///
-  /// The worldRect stays canvas-space — consumers map src→worldRect, so the
-  /// raster resolution is free to differ — but it is the level's extent:
-  /// twice the image per level, one texel past an odd edge ([halvedSize]),
-  /// so a level maps onto the canvas at exactly 1/2^k.
-  static PositionedSurfaceImage _atLevel(
-    ui.Rect fullWorldRect,
-    ui.Image image,
-    int level,
-  ) {
-    final extent = 1 << level;
-    return PositionedSurfaceImage(
-      image: image,
-      worldRect: level == 0
-          ? fullWorldRect
-          : ui.Rect.fromLTWH(
-              fullWorldRect.left,
-              fullWorldRect.top,
-              (image.width * extent).toDouble(),
-              (image.height * extent).toDouble(),
-            ),
     );
   }
 
@@ -696,6 +665,67 @@ LayerFrameImage? _drawable(
   LayerFrameImage? image, {
   required bool inkSuffices,
 }) => image != null && image.isInk && !inkSuffices ? null : image;
+
+/// What a level-[quality] image of [preview] is, known before a pixel is
+/// drawn — so both roads decide what to compose, and which step's snapshot
+/// to keep, before composing: [whole] is the canvas-space rect the whole
+/// content covers at that level — the content grown past an odd edge by the
+/// halvings ([halvedSize]), so a level maps onto the canvas at exactly
+/// 1/2^k — and, when [storesInk], [texels] the part of it holding the ink
+/// ([_inkTexels]; null when that is all of it).
+({ui.Rect whole, ui.Rect? texels}) _levelPlan(
+  BitmapSurface preview,
+  PlaybackQuality quality, {
+  required bool storesInk,
+}) {
+  final content = surfaceContentWorldRect(preview);
+  var width = content.width.round();
+  var height = content.height.round();
+  for (var i = 0; i < quality.level; i += 1) {
+    (:width, :height) = halvedSize(width, height);
+  }
+  final step = (1 << quality.level).toDouble();
+  final whole = ui.Rect.fromLTWH(
+    content.left,
+    content.top,
+    width * step,
+    height * step,
+  );
+  return (
+    whole: whole,
+    texels: storesInk
+        ? _inkTexels(
+            surfaceInkWorldRect(preview),
+            whole: whole,
+            level: quality.level,
+          )
+        : null,
+  );
+}
+
+/// Whether [image] is the level-[level] image [whole] says it is.
+bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
+    image.width << level == whole.width.round() &&
+    image.height << level == whole.height.round();
+
+/// The rect the ink alone is composed over, straight from its tiles — at the
+/// full level, where each tile lands texel for texel and those are the whole
+/// image's pixels there. Below it the ink is cut out of the halved whole:
+/// the halving is the engine's, and a smaller image is halved differently
+/// on Impeller Vulkan.
+///
+/// 🔬WHY NOT COMPOSE THE WHOLE AND CUT (2026-09-24, 유저 「성능적인 면은 아주
+/// 중요하니까 철저하게 하자」): every raster of a picture is a multisampled
+/// render with a whole mip chain (the engine's `DisplayListToTexture`,
+/// `generate_mips`), ~6ms for a 2540×1654 image on the Windows app. The
+/// whole-then-cut road paid that for the whole image and again for the cut;
+/// this pays it once, for the ink.
+ui.Rect? _inkAtFull(({ui.Rect whole, ui.Rect? texels}) plan, int level) =>
+    switch (plan) {
+      (whole: final whole, texels: final texels?) when level == 0 =>
+        _worldRectOfTexels(whole, texels, 0),
+      _ => null,
+    };
 
 /// The texels of a level-[level] image of a cel's whole content — the image
 /// over [whole] — that hold its [ink] ([surfaceInkWorldRect]); null when

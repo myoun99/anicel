@@ -817,6 +817,7 @@ class _LayerStackPaintPass {
       :image,
       :worldRect,
       :extent,
+      :laidBack,
       :pose,
       :opacity,
       :blendMode,
@@ -865,6 +866,9 @@ class _LayerStackPaintPass {
       // artwork un-tinted). The paint alpha still fades the whole
       // ghost.
       tint: tint,
+      // The held image's own: a slot recorded again — every frame a zoom
+      // moves the buffer — lays a crop's whole back once, not per record.
+      laidBack: laidBack,
     );
   }
 
