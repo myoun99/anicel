@@ -12,12 +12,11 @@
 /// the row end (edge unification).
 ///
 /// A LEADING edge is the mirror of that trailing one and lives on the
-/// storyboard strip only ([storyboardTimelineWithPanelLeadRetimed]): it
-/// shortens the panel you grabbed and the cut's length gives way, so it
-/// cannot open a hole either. The timeline panel deliberately hangs no
-/// front grips at all — user's rule 2026-08-02, "grabbing the front and
-/// watching the back shrink feels wrong", so that surface keeps the
-/// trailing-edge vocabulary and nothing else.
+/// storyboard strip only: it shortens the panel you grabbed and the cut's
+/// length gives way, so it cannot open a hole either. The timeline panel
+/// deliberately hangs no front grips at all — user's rule 2026-08-02,
+/// "grabbing the front and watching the back shrink feels wrong", so that
+/// surface keeps the trailing-edge vocabulary and nothing else.
 ///
 /// ↩️I-21 (유저 2026-09-12) reversed both halves. A leading edge follows the
 /// SHARED lead-edge rule on every surface now ([planBlockRunLeadEdge]): the
@@ -26,6 +25,16 @@
 /// because a front edge no longer changes the cut's length, the timeline's
 /// conte row hangs front grips again on every block but the first, whose
 /// front edge is the cut's own start and stays on the storyboard strip.
+///
+/// ⛔**The strip's own front-edge law is RETIRED (I-21 ②)**: the grabbed
+/// panel lost frames, nobody grew, and the cut's length absorbed the
+/// difference. The strip reaches the shared rule by flattening the track
+/// into panels (`models/storyboard_panel_slots.dart`), and the cut axis's
+/// own lead-edge planner, which bounded that law's growth, lost its last
+/// caller with it and was deleted (2026-09-15). The law's two functions
+/// stood here as a body "so nobody writes it again" until 2026-09-24 —
+/// dead code that read as a law in force — and these words are that
+/// warning now.
 ///
 /// The cells are DERIVED here rather than maintained in the store, so the
 /// invariant cannot be broken by an edit path that forgot about it. Stored
@@ -153,131 +162,6 @@ List<int> storyboardDivisionKeys({
     }
   }
   return keys;
-}
-
-/// ⛔RETIRED (I-21 ②, 2026-09-12), kept only so nobody writes it again.
-/// The storyboard front edge used to have its own law: the grabbed panel
-/// lost frames, nobody grew, and the cut's length absorbed the difference.
-/// It is the SHARED lead-edge rule now, reached by flattening the track
-/// into panels (`models/storyboard_panel_slots.dart`).
-///
-/// How far the panel at [panelIndex] may be shortened from its FRONT, or
-/// null when there is no such panel to re-time.
-///
-/// Growing (a negative delta) was NOT bounded here: what stopped it was the
-/// cut axis's own lead-edge planner, which clamped against the slack ahead
-/// of the cut. That planner lost its last caller with this law and was
-/// deleted (2026-09-15); the shared rule bounds growth by how far its edge
-/// may reach ([planBlockRunLeadEdge]).
-int? storyboardPanelLeadMaxShrink({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int panelIndex,
-}) => _panelLeadBounds(
-  timeline: timeline,
-  cutDuration: cutDuration,
-  panelIndex: panelIndex,
-)?.maxShrink;
-
-/// [timeline] with the panel at [panelIndex] shortened by [delta] frames at
-/// its FRONT, or null when there is nothing to re-time or the clamped delta
-/// is zero.
-///
-/// This is the ONE thing a front-edge drag does, and it is the same
-/// operation whether the panel is the cut's first or one of its inner ones
-/// — the user's rule 2026-08-02: *the panel you grabbed loses commas, every
-/// other panel keeps the commas it had, and the cut's length gives way by
-/// the difference*. Nobody grows.
-///
-/// The keys BEFORE the grabbed panel do not move and the grabbed panel keeps
-/// its own key; every later key rides by -[delta] so it keeps its comma.
-/// That looks like it contradicts the cascade the user asked for — the
-/// panels in FRONT visibly come along — but it does not, because these are
-/// CUT-LOCAL keys and the caller moves the cut's head by the same amount.
-/// In the cut's own coordinates the panels ahead of the grab hold still and
-/// the ones behind it slide; on screen, with the cut's end pinned, it reads
-/// as the whole run in front translating. Two frames of reference, one
-/// motion — the same trick [planBlockRunLeadEdge] plays on the frame axis.
-///
-/// The grabbed panel loses its front frames, so its inbetween dots SHIFT
-/// rather than truncate — [TimelineExposure.copyWith] would drop them off
-/// the tail, which is the wrong end.
-///
-/// A row whose first division key is negative is refused rather than
-/// repaired: that is corrupt data, and folding it onto frame 0 can collide
-/// with a real key there.
-SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithPanelLeadRetimed({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int panelIndex,
-  required int delta,
-}) {
-  final bounds = _panelLeadBounds(
-    timeline: timeline,
-    cutDuration: cutDuration,
-    panelIndex: panelIndex,
-  );
-  if (bounds == null) {
-    return null;
-  }
-  final applied = delta > bounds.maxShrink ? bounds.maxShrink : delta;
-  if (applied == 0) {
-    return null;
-  }
-  final source = timeline!;
-  final next = SplayTreeMap<int, TimelineExposure>();
-  for (final entry in source.entries) {
-    if (entry.key < bounds.key) {
-      next[entry.key] = entry.value;
-    } else if (entry.key == bounds.key) {
-      next[entry.key] = entry.value.copyWith(
-        length: bounds.end - applied - bounds.start,
-        breakdownOffsets: [
-          for (final offset in entry.value.breakdownOffsets)
-            if (offset - applied >= 1) offset - applied,
-        ],
-      );
-    } else {
-      // Later entries ride, comma intact — overhanging junk data past the
-      // cut end included, so its distance to the end stays what it was.
-      next[entry.key - applied] = entry.value;
-    }
-  }
-  return next;
-}
-
-/// The stored key, cell start and cell end of the panel a front-edge drag
-/// grabbed, and how far its front may come in — or null when that panel
-/// does not exist.
-///
-/// [maxShrink] is the one-frame floor: the panel keeps one frame — the
-/// same one-frame floor every other boundary rule here has. Computed once,
-/// here, so the query that reports the room and the retime that clamps to
-/// it cannot disagree. It is never negative by construction: the division
-/// keys are strictly ascending and below [cutDuration], so every cell's end
-/// is past its start.
-({int key, int start, int end, int maxShrink})? _panelLeadBounds({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int panelIndex,
-}) {
-  final keys = storyboardDivisionKeys(
-    timeline: timeline,
-    cutDuration: cutDuration,
-  );
-  if (panelIndex < 0 || panelIndex >= keys.length || keys.first < 0) {
-    return null;
-  }
-  // The first cell reaches back to the cut start, exactly as
-  // [storyboardCoverageCells] reads it.
-  final start = panelIndex == 0 ? 0 : keys[panelIndex];
-  final end = panelIndex + 1 < keys.length ? keys[panelIndex + 1] : cutDuration;
-  return (
-    key: keys[panelIndex],
-    start: start,
-    end: end,
-    maxShrink: end - start - 1,
-  );
 }
 
 /// [timeline] rewritten so its STORED blocks tile `[0, cutDuration)` — the
