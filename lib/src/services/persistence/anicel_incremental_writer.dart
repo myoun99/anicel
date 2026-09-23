@@ -380,16 +380,21 @@ AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) =>
 /// scan window + central directory + 4 bytes per local header) — a
 /// multi-gigabyte project must never load whole just to append a few
 /// cels or list its entries.
-AnicelZipLayout parseAnicelZipLayoutFile(String path) {
+AnicelZipLayout parseAnicelZipLayoutFile(String path) => _readingFile(
+  path,
+  (length, readAt) =>
+      _parseAnicelZipLayoutFrom(length: length, readAt: readAt),
+);
+
+/// [read] over the file at [path]: its length, and reads by seek — what the
+/// parse and the recovery both need from a file and nothing more.
+T _readingFile<T>(String path, T Function(int length, _ReadAt readAt) read) {
   final raf = File(path).openSync();
   try {
-    return _parseAnicelZipLayoutFrom(
-      length: raf.lengthSync(),
-      readAt: (offset, count) {
-        raf.setPositionSync(offset);
-        return raf.readSync(count);
-      },
-    );
+    return read(raf.lengthSync(), (offset, count) {
+      raf.setPositionSync(offset);
+      return raf.readSync(count);
+    });
   } finally {
     raf.closeSync();
   }
@@ -404,7 +409,7 @@ AnicelZipLayout parseAnicelZipLayoutFile(String path) {
 /// entry points, so it is the only thing they hand in.
 AnicelZipLayout _parseAnicelZipLayoutFrom({
   required int length,
-  required Uint8List Function(int offset, int count) readAt,
+  required _ReadAt readAt,
 }) {
   if (length < 22) {
     throw const FormatException('No ZIP end-of-central-directory found.');
@@ -505,20 +510,10 @@ AnicelZipLayout _parseAnicelZipLayoutFrom({
 /// ([_walkFromTheFront]) — a file this build did not leave that way, or one
 /// an older build did. The next save cannot append onto any of these (the
 /// tail still does not parse), so it writes the file whole and heals it.
-AnicelZipLayout recoverAnicelZipLayoutFile(String path) {
-  final raf = File(path).openSync();
-  try {
-    return _recoverFrom(
-      length: raf.lengthSync(),
-      readAt: (offset, count) {
-        raf.setPositionSync(offset);
-        return raf.readSync(count);
-      },
-    );
-  } finally {
-    raf.closeSync();
-  }
-}
+AnicelZipLayout recoverAnicelZipLayoutFile(String path) => _readingFile(
+  path,
+  (length, readAt) => _recoverFrom(length: length, readAt: readAt),
+);
 
 /// [recoverAnicelZipLayoutFile] over bytes already in hand — the same
 /// recovery, so a test can open every state a crash can leave without a
@@ -533,7 +528,9 @@ AnicelZipLayout recoverAnicelZipLayout(Uint8List bytes) => _recoverFrom(
   },
 );
 
-/// Up to [count] bytes from [offset] — fewer where the source ends.
+/// Up to [count] bytes of a byte source from [offset]. A file hands back
+/// fewer where it ends (and the recovery reads bytes in hand the same way);
+/// the in-memory parse refuses such a read outright.
 typedef _ReadAt = Uint8List Function(int offset, int count);
 
 /// THE recovery, over any byte source.

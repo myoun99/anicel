@@ -902,57 +902,56 @@ class AnicelFileService {
             for (final entry in newConforms) _progressed(entry, progress),
           ],
         );
-        final written = compact
-            ? await _packedInPlace(
-                filePath: filePath,
-                appended: appended,
-                heldByDirtyCels: heldByDirtyCels,
-                session: port!,
-                progress: progress,
-              )
-            : appended;
+        // The push-down and the cut, here in the isolate that just appended.
+        // Before anything is written over, every ref a dirty cel holds into
+        // the file moves to its new home; then each round's moves are
+        // announced the same way.
+        var written = appended;
+        final rehomed = compact
+            ? _rehomedRefs(appended, heldByDirtyCels)
+            : null;
+        if (rehomed != null) {
+          Future<void> moveRefs(Map<int, AnicelRelocation> moved) =>
+              _askToMoveRefs(port!, moved);
+          await moveRefs(rehomed);
+          written = await compactAnicelInPlace(
+            path: filePath,
+            layout: appended,
+            release: moveRefs,
+            onProgress: progress.within,
+          );
+        }
+        if (compact) {
+          progress.step();
+        }
         progress.finish();
         return _refsForBlobs(blobs, appended: written, filePath: filePath);
       }),
     );
   }
 
-  /// The push-down and the cut, in the isolate that just appended — or
-  /// [appended] as it stands when a dirty cel still holds bytes this save
-  /// could not give a new home.
+  /// Where each ref a dirty cel holds into the file goes before the
+  /// push-down may write over its bytes: the entry this save wrote for its
+  /// key ([appended]) — by the offset the ref points at now.
   ///
-  /// Before anything is written over, every ref a dirty cel holds into the
-  /// file moves to the entry this save wrote for its key
-  /// ([heldByDirtyCels]); then each round's moves are announced the same
-  /// way ([compactAnicelInPlace]). ⛔If one of those cels was not written
-  /// (its bytes would not resolve), its ref has nowhere to go — so nothing
-  /// is written over this save, and the next one packs the file instead.
-  static Future<AnicelZipLayout> _packedInPlace({
-    required String filePath,
-    required AnicelZipLayout appended,
-    required Map<String, int> heldByDirtyCels,
-    required SendPort session,
-    required _SaveProgress progress,
-  }) async {
+  /// ⛔Null when one of them has no such entry (its bytes would not
+  /// resolve, so nothing was written for it): that ref has nowhere to go,
+  /// so nothing is written over this save, and the next one packs the file
+  /// instead.
+  static Map<int, AnicelRelocation>? _rehomedRefs(
+    AnicelZipLayout appended,
+    Map<String, int> heldByDirtyCels,
+  ) {
     final rehomed = <int, AnicelRelocation>{};
     for (final MapEntry(key: name, value: dataOffset)
         in heldByDirtyCels.entries) {
       final home = appended.entryNamed(name);
       if (home == null) {
-        progress.step();
-        return appended;
+        return null;
       }
       rehomed[dataOffset] = (dataOffset: home.dataOffset, length: home.length);
     }
-    await _askToMoveRefs(session, rehomed);
-    final packed = await compactAnicelInPlace(
-      path: filePath,
-      layout: appended,
-      release: (moved) => _askToMoveRefs(session, moved),
-      onProgress: progress.within,
-    );
-    progress.step();
-    return packed;
+    return rehomed;
   }
 
   /// Every dirty cel's bytes, in [works] order.
