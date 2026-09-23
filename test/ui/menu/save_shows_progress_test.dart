@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -175,6 +176,32 @@ void main() {
       findsOneWidget,
       reason: 'and the user is told, from a screen that can be seen again',
     );
+  });
+
+  testWidgets('🚨a save the FILE refuses is told as one — why, and that the '
+      'work is in the failed copy — not as a bare error', (tester) async {
+    // 유저 2026-09-23 (whole-write-temp-beside-the-file Q2): 「저장에
+    // 실패하여 앱컨테이너에 있다는걸 그 상황에 알려주기 … 왜 실패했는지 …
+    // 명시」.
+    FolderPicker.debugOperatingSystem = 'windows';
+    addTearDown(() => FolderPicker.debugOperatingSystem = null);
+    final refusing = '${directory.path.replaceAll('\\', '/')}/held.anicel';
+    Directory(refusing).createSync();
+    final s = session();
+
+    final run = await runSave(
+      tester,
+      (context) => saveProjectShowingProgress(context, s, refusing),
+    );
+
+    expect(run.result, isFalse);
+    expect(
+      find.byKey(const ValueKey<String>('save-failure-notice')),
+      findsOneWidget,
+    );
+    expect(s.projectFile.failedCopy, isNotNull);
+    s.dispose();
+    await tester.pump();
   });
 
   testWidgets('the project is still dirty after a failed save', (tester) async {

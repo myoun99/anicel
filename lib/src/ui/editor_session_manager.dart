@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/project_lookup.dart' show cutPositionOf;
 import '../models/app_language.dart';
@@ -3299,7 +3300,15 @@ class EditorSessionManager extends ChangeNotifier
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
     solo: visibilitySolo,
+    failedCopies: failedSaveCopies,
   );
+
+  /// Every FAILED COPY (실패본) this run holds — the work saves could not
+  /// put in their project files, kept until the run ends (유저 2026-09-23,
+  /// whole-write-temp-beside-the-file). Here rather than on the project
+  /// file because it outlives any one binding: a person who opened another
+  /// project can still back up the last one's.
+  late final FailedSaveCopies failedSaveCopies = FailedSaveCopies();
 
   // ── the project-wide audio settings: their own object ────────────────
   //

@@ -52,6 +52,7 @@ class ProjectAutosaveService {
     required this.projectPath,
     this.needsProjectFile,
     this.onUnsavedProject,
+    this.onFailed,
   });
 
   /// Whether unsaved changes exist (the session's dirty flag).
@@ -73,11 +74,25 @@ class ProjectAutosaveService {
   /// the shell's business).
   final void Function()? onUnsavedProject;
 
+  /// Told when a tick's save failed — the FIRST failure of a run of them.
+  ///
+  /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file Q2): a save that
+  /// failed says so AT THAT MOMENT, and where the work went — the clock's
+  /// saves as much as a person's, since the clock writes the project file
+  /// too. Once per run of failures: a file that stays locked would
+  /// otherwise say it again on every tick, and the next tick is writing
+  /// the failed copy that first notice already told them about.
+  final void Function(Object error)? onFailed;
+
   bool _writing = false;
+
+  /// Whether the last tick that wrote anything failed — what keeps
+  /// [onFailed] to once per run of failures.
+  bool _failing = false;
 
   /// One pass: dirty → save (clean sessions write nothing). Never throws —
   /// a failed tick must not disturb editing or block the lifecycle
-  /// callback that asked for it.
+  /// callback that asked for it; [onFailed] is how it is told.
   ///
   /// Re-entrant calls return immediately rather than queue: a tick can
   /// land while the previous tick's write is still in its isolate (a big
@@ -94,8 +109,13 @@ class ProjectAutosaveService {
     _writing = true;
     try {
       await saveProject(projectPath());
-    } on Object catch (_) {
-      // Swallowed by design; the next trigger retries.
+      _failing = false;
+    } on Object catch (error) {
+      // Not thrown on: the next trigger retries. Told, once per run.
+      if (!_failing) {
+        _failing = true;
+        onFailed?.call(error);
+      }
     } finally {
       _writing = false;
     }

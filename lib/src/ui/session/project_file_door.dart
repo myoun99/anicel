@@ -28,9 +28,11 @@ import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
     show AnicelSessionFields, remapProjectMediaPaths;
 import '../../services/persistence/coordinated_project_swap.dart';
+import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderPicker, MaterializeCancelled;
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
 import '../../services/project_lookup.dart'
@@ -109,7 +111,9 @@ class ProjectFileDoor {
     required MediaPool mediaPool,
     required LiveStrokeLanding liveStrokeLanding,
     required VisibilitySolo solo,
+    required FailedSaveCopies failedCopies,
   }) : _file = file,
+       _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
        _selection = selection,
@@ -150,6 +154,10 @@ class ProjectFileDoor {
   final ValueNotifier<int> _frameSeekCommitted;
   final LiveStrokeLanding _liveStrokeLanding;
   final MediaPool _mediaPool;
+
+  /// Every failed copy this run holds — where [_writeFailedCopy] records
+  /// one and a save the file took lets one go.
+  final FailedSaveCopies _failedCopies;
 
   static const AnicelFileService _anicelFileService = AnicelFileService();
 
@@ -244,11 +252,20 @@ class ProjectFileDoor {
     return _file.editCount;
   }
 
+  /// THE save — every button, the clock and the close prompt come here.
+  ///
+  /// Throws a [SaveFailure] when [filePath] would not take it: why, and the
+  /// FAILED COPY the work went to instead ([_saveSomewhere]).
   Future<void> saveProjectToFile(
     String filePath, {
     required SaveAsked asked,
     void Function(double)? onProgress,
   }) async {
+    if (asked == SaveAsked.byTheClock && _file.failedCopyIsCurrent) {
+      // The failed copy already holds every edit: nothing to write, and no
+      // point asking a file that refused this session again on a timer.
+      return;
+    }
     // Raised for the WHOLE save, so a tick that comes due inside one stands
     // down instead of starting a SECOND write of the same file — an
     // incremental append reads the tail it is about to extend, and two of
@@ -262,12 +279,138 @@ class ProjectFileDoor {
     // at the next launch is the only thing that says otherwise.
     MemoryBlackBox.begin('save');
     try {
-      await _writeProjectToFile(filePath, asked: asked, onProgress: onProgress);
+      await _saveSomewhere(filePath, asked: asked, onProgress: onProgress);
     } finally {
       _file.endSave();
       MemoryBlackBox.end('save');
     }
   }
+
+  /// 🚨★★★**A SAVE THE FILE REFUSES STILL LANDS — IN THE FAILED COPY.**
+  ///
+  /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file): Q1 「지금대로 +
+  /// 실패 시 앱 룸으로 옮겨 보관」, Q2 「이번 실행 동안만 — 앱을 닫으면
+  /// 사라진다」, and then 「실패하면 앱컨테이너에 같은파일로 계속
+  /// 증분저장? … 해당파일 지정해서 백업할수있게 … 이 실패본은 프로그램 닫으면
+  /// 사라진다고 안내」.
+  ///
+  /// So when [filePath] will not take the save, the work goes to ONE file in
+  /// this run's room — the failed copy — and every later save it will not
+  /// take appends to that same file ([ProjectFile.failedCopy]). The clock
+  /// stops asking the file and keeps the failed copy current; a person's
+  /// save asks the file first, every time, and the first one it takes lets
+  /// the failed copy go. What the refused save wrote beside the file goes
+  /// only once the work is safe in the failed copy — never before.
+  ///
+  /// ⚠️The clock not asking the file again is this code's call, not the
+  /// user's: a file that refused is asked by the next person's save, and
+  /// the notice says so. Asking it on every tick would write the whole
+  /// project beside a file that is still refusing, every few minutes.
+  Future<void> _saveSomewhere(
+    String filePath, {
+    required SaveAsked asked,
+    void Function(double)? onProgress,
+  }) async {
+    final failedCopy = _file.failedCopy;
+    if (failedCopy != null && asked == SaveAsked.byTheClock) {
+      try {
+        await _writeFailedCopy(failedCopy, filePath, onProgress: onProgress);
+      } on Object catch (error) {
+        throw SaveFailure(
+          cause: saveFailureCauseOf(error, projectPath: failedCopy),
+          error: error,
+          failedCopy: failedCopy,
+          copyError: error,
+        );
+      }
+      return;
+    }
+    try {
+      await _writeProjectToFile(filePath, asked: asked, onProgress: onProgress);
+    } on Object catch (error) {
+      throw await _keptInTheFailedCopy(error, filePath, onProgress);
+    }
+    if (failedCopy != null) {
+      // The file took this save: the failed copy is superseded, and goes
+      // the moment no ref reads from it.
+      _failedCopies.forget(failedCopy);
+      AnicelFileService.retireWhenUnread(failedCopy, _stores);
+    }
+  }
+
+  /// [error] kept [filePath] from taking a save; the work goes to this
+  /// session's failed copy, and the answer is what the person is told.
+  Future<SaveFailure> _keptInTheFailedCopy(
+    Object error,
+    String filePath,
+    void Function(double)? onProgress,
+  ) async {
+    final cause = saveFailureCauseOf(error, projectPath: filePath);
+    final copy = _file.failedCopy ?? FailedSaveCopies.addressFor(filePath);
+    try {
+      await _writeFailedCopy(copy, filePath, onProgress: onProgress);
+    } on Object catch (copyError) {
+      // Whatever the refused save wrote stays where it is: it may be the
+      // only complete copy of this work left.
+      return SaveFailure(cause: cause, error: error, copyError: copyError);
+    }
+    if (error is SaveNotSwappedIn) {
+      // Safe in the failed copy, so the archive the refused save wrote goes
+      // — out of the user's folder (Q1), once nothing reads from it.
+      AnicelFileService.retireWhenUnread(error.archive, _stores);
+    }
+    return SaveFailure(cause: cause, error: error, failedCopy: copy);
+  }
+
+  /// The session's work, written into [copy] — appended when [copy]
+  /// already holds its cels, whole the first time — and noted as this
+  /// binding's failed copy of [projectPath].
+  ///
+  /// ⚠️Adopts: the cels read from [copy] afterwards, so the next save into
+  /// it only appends. The binding does NOT move — the project file is still
+  /// where the work belongs, and it is still unsaved there.
+  Future<void> _writeFailedCopy(
+    String copy,
+    String projectPath, {
+    void Function(double)? onProgress,
+  }) async {
+    final asOf = _file.editCount;
+    await _saveArchive(copy, _carryFor(onProgress: onProgress));
+    _file.keptInFailedCopy(copy, asOf: asOf);
+    _failedCopies.record(copy, projectPath);
+  }
+
+  /// Copies the failed copy at [copy] to [destination] whole, with no save
+  /// writing it meanwhile — brought up to date first when it is this
+  /// session's own, since the clock may be minutes behind the pen.
+  ///
+  /// 🗣️유저 2026-09-23: 「해당파일 지정해서 백업할수있게」. The session is
+  /// not moved to [destination]: a backup is a copy the person keeps, and
+  /// the project file is still where this session's saves belong.
+  Future<void> backUpFailedCopy(String copy, String destination) async {
+    await _file.saveSettled();
+    _file.beginSave();
+    try {
+      // The project it belongs to from the list, not the binding: a
+      // project whose very first save was refused has no path bound.
+      final projectPath = _failedCopies.projectOf(copy);
+      if (copy == _file.failedCopy &&
+          !_file.failedCopyIsCurrent &&
+          projectPath != null) {
+        await _settleWorkInFlight(SaveAsked.byAPerson);
+        await _writeFailedCopy(copy, projectPath);
+      }
+      await FailedSaveCopies.copyWhole(copy, destination);
+    } finally {
+      _file.endSave();
+    }
+  }
+
+  /// Every store a cel ref can live in.
+  List<BrushFrameStore> get _stores => [
+    _renderCaches.brushFrameStore,
+    ..._auxCelStores,
+  ];
 
   /// Writes the CURRENT state to [path] as a complete, standalone archive
   /// and changes NOTHING about this session — no path adoption, no ref
@@ -514,7 +657,7 @@ class ProjectFileDoor {
       replaceProjectFileCoordinated(
         from: from,
         to: to,
-        stores: [_renderCaches.brushFrameStore, ..._auxCelStores],
+        stores: _stores,
       );
 
   Future<void> _writeProjectToFile(
@@ -562,13 +705,19 @@ class ProjectFileDoor {
           carry,
           rewriteWhole: saveAs,
         );
-      } on FileSystemException {
+      } on FileSystemException catch (refusal) {
         // A scoped platform WITHOUT a coordinator (Android) still reaches
         // the staging road, where the coordinated replace answers false
         // and the refusal is reported in full; a desktop refusal (locked
         // file, dead drive) has nothing to appeal to and stays loud.
         if (!FolderPicker.grantsAreScoped) {
           rethrow;
+        }
+        // The staging road writes the work again in this run's room, so
+        // what the direct write left beside the file goes (Q1) — nothing
+        // reads from it, its refs were never adopted.
+        if (refusal is SaveNotSwappedIn) {
+          AnicelFileService.retireWhenUnread(refusal.archive, _stores);
         }
         celsLostToAMissingFile = await _saveViaCoordinatedReplace(
           filePath,

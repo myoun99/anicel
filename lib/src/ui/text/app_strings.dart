@@ -566,6 +566,34 @@ enum AppStrings {
   String get saveCelsLostGone => _s('saveCelsLostGone');
   String get projectFileVanished => _s('projectFileVanished');
 
+  // --- A save its file refused: why, and the failed copy (실패본) the work
+  // went to instead (whole-write-temp-beside-the-file, 2026-09-23) ---
+  String get saveFailedTitle => _s('saveFailedTitle');
+  String get saveFailedFileInUse => _s('saveFailedFileInUse');
+  String get saveFailedReadOnly => _s('saveFailedReadOnly');
+  String get saveFailedDiskFull => _s('saveFailedDiskFull');
+  String get saveFailedLocationGone => _s('saveFailedLocationGone');
+  String get saveFailedReplaceRefused => _s('saveFailedReplaceRefused');
+  String get saveFailedUnknown => _s('saveFailedUnknown');
+  String get saveFailedCopyKept => _s('saveFailedCopyKept');
+  String get saveFailedNoCopy => _s('saveFailedNoCopy');
+  String get saveFailedRetry => _s('saveFailedRetry');
+  String get saveFailedDetailsHeading => _s('saveFailedDetailsHeading');
+
+  /// A line of the notice's fold: where the failed copy is.
+  String saveFailedCopyLine(String path) =>
+      _s('saveFailedCopyLineTemplate').replaceAll('{path}', path);
+
+  /// A line of the notice's fold: the platform's own words.
+  String saveFailedErrorLine(String error) =>
+      _s('saveFailedErrorLineTemplate').replaceAll('{error}', error);
+  String get failedCopyBackUp => _s('failedCopyBackUp');
+  String get failedCopyPickTitle => _s('failedCopyPickTitle');
+  String get failedCopyVanishOnClose => _s('failedCopyVanishOnClose');
+  String get failedCopyBackingUp => _s('failedCopyBackingUp');
+  String get failedCopyBackedUp => _s('failedCopyBackedUp');
+  String get closeProjectFailedCopyBody => _s('closeProjectFailedCopyBody');
+
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
 
@@ -1909,6 +1937,45 @@ enum AppStrings {
         'file they were stored in was removed while the project was open.',
     'saveCelsLostHeading': 'Affected drawings',
     'saveCelsLostGone': 'A drawing the project no longer has',
+    'saveFailedTitle': 'Could not save',
+    'saveFailedFileInUse':
+        'Another program is using this file — a sync client, a virus '
+        'scanner, or an app that has it open — so it could not be replaced.',
+    'saveFailedReadOnly':
+        'This file or its folder is read-only, so it could not be written.',
+    'saveFailedDiskFull':
+        'There is not enough space where this file is saved.',
+    'saveFailedLocationGone':
+        'The place this file is saved in cannot be reached — the drive was '
+        'removed, the network dropped, or the folder was deleted.',
+    'saveFailedReplaceRefused':
+        'This location (a cloud or Files provider) refused to replace the '
+        'file.',
+    'saveFailedUnknown': 'An error occurred while writing the file.',
+    'saveFailedCopyKept':
+        'Your work so far is kept in a failed copy inside the app. The '
+        'failed copy disappears when the program closes — to keep it, use '
+        '“Back up failed copy…” and choose where.',
+    'saveFailedNoCopy':
+        'A failed copy could not be written either — use Save as to save '
+        'somewhere else.',
+    'saveFailedRetry':
+        'Once the cause is gone, save again and it goes to the original '
+        'file.',
+    'saveFailedDetailsHeading': 'Details',
+    'saveFailedCopyLineTemplate': 'Failed copy: {path}',
+    'saveFailedErrorLineTemplate': 'Error: {error}',
+    'failedCopyBackUp': 'Back up failed copy…',
+    'failedCopyPickTitle': 'Which failed copy?',
+    'failedCopyVanishOnClose':
+        'Failed copies disappear when the program closes.',
+    'failedCopyBackingUp': 'Backing up…',
+    'failedCopyBackedUp': 'Backed up',
+    'closeProjectFailedCopyBody':
+        'The work this project could not save is only in its failed copy '
+        'inside the app, and the failed copy disappears when the program '
+        'closes. To keep it, use Save as, or “Back up failed copy…” in the '
+        'File menu.',
     'projectFileVanished':
         // 🚨The old wording ended 「…and saving would lose them」. That was a
         // PREDICTION, and it stopped being true on one of the two platforms
@@ -2991,6 +3058,29 @@ enum AppStrings {
         '保存しましたが、{count} 枚の絵を含められませんでした。それらが入っていたプロジェクトファイルが、開いている間に削除されました。',
     'saveCelsLostHeading': '該当する絵',
     'saveCelsLostGone': 'プロジェクトにもう無い絵',
+    'saveFailedTitle': '保存できませんでした',
+    'saveFailedFileInUse':
+        '別のプログラム（同期・ウイルス対策、またはこのファイルを開いているアプリ）がこのファイルを使っているため、書き換えられませんでした。',
+    'saveFailedReadOnly': 'このファイルまたはフォルダーが読み取り専用のため、書き込めませんでした。',
+    'saveFailedDiskFull': '保存先の空き容量が足りません。',
+    'saveFailedLocationGone':
+        '保存先にアクセスできません — ドライブが外されたか、ネットワークが切れたか、フォルダーが削除されました。',
+    'saveFailedReplaceRefused': 'この場所（クラウド・ファイルアプリ）がファイルの置き換えを拒否しました。',
+    'saveFailedUnknown': 'ファイルの書き込み中にエラーが起きました。',
+    'saveFailedCopyKept':
+        'ここまでの作業はアプリ内の失敗版に保存してあります。失敗版はプログラムを閉じると消えます — 残すには「失敗版をバックアップ…」で好きな場所に保存してください。',
+    'saveFailedNoCopy': '失敗版も作れませんでした — 「名前を付けて保存」で別の場所に保存してください。',
+    'saveFailedRetry': '原因がなくなってからもう一度保存すると、元のファイルに保存されます。',
+    'saveFailedDetailsHeading': '詳細',
+    'saveFailedCopyLineTemplate': '失敗版: {path}',
+    'saveFailedErrorLineTemplate': 'エラー: {error}',
+    'failedCopyBackUp': '失敗版をバックアップ…',
+    'failedCopyPickTitle': 'バックアップする失敗版',
+    'failedCopyVanishOnClose': '失敗版はプログラムを閉じると消えます。',
+    'failedCopyBackingUp': 'バックアップ中…',
+    'failedCopyBackedUp': 'バックアップ完了',
+    'closeProjectFailedCopyBody':
+        'このプロジェクトが保存できなかった作業はアプリ内の失敗版にしかなく、失敗版はプログラムを閉じると消えます。残すには「名前を付けて保存」するか、ファイルメニューの「失敗版をバックアップ…」を使ってください。',
     'projectFileVanished':
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
@@ -4280,6 +4370,29 @@ enum AppStrings {
         '저장했지만 그림 {count}장을 담지 못했습니다. 그 그림들이 들어 있던 프로젝트 파일이 열려 있는 동안 삭제되었습니다.',
     'saveCelsLostHeading': '해당 그림들',
     'saveCelsLostGone': '프로젝트에 더는 없는 그림',
+    'saveFailedTitle': '저장하지 못했습니다',
+    'saveFailedFileInUse':
+        '다른 프로그램(동기화·백신 또는 이 파일을 연 앱)이 이 파일을 사용하고 있어서 바꿔 쓸 수 없었습니다.',
+    'saveFailedReadOnly': '이 파일이나 폴더가 읽기 전용이라 쓸 수 없었습니다.',
+    'saveFailedDiskFull': '저장할 곳의 공간이 부족합니다.',
+    'saveFailedLocationGone':
+        '저장할 곳에 닿을 수 없습니다 — 드라이브가 빠졌거나, 네트워크가 끊겼거나, 폴더가 지워졌습니다.',
+    'saveFailedReplaceRefused': '이 위치(클라우드·파일 앱)가 파일을 바꿔 쓰는 것을 거부했습니다.',
+    'saveFailedUnknown': '파일을 쓰는 중에 오류가 났습니다.',
+    'saveFailedCopyKept':
+        '지금까지의 작업은 앱 안의 실패본에 저장해 두었습니다. 실패본은 프로그램을 닫으면 사라집니다 — 남기려면 「실패본 백업…」으로 원하는 곳에 저장하세요.',
+    'saveFailedNoCopy': '실패본도 만들지 못했습니다 — 「다른 이름으로 저장」으로 다른 곳에 저장하세요.',
+    'saveFailedRetry': '원인이 없어진 뒤 다시 저장하면 원래 파일에 저장됩니다.',
+    'saveFailedDetailsHeading': '자세히',
+    'saveFailedCopyLineTemplate': '실패본: {path}',
+    'saveFailedErrorLineTemplate': '오류: {error}',
+    'failedCopyBackUp': '실패본 백업…',
+    'failedCopyPickTitle': '백업할 실패본',
+    'failedCopyVanishOnClose': '실패본은 프로그램을 닫으면 사라집니다.',
+    'failedCopyBackingUp': '백업 중…',
+    'failedCopyBackedUp': '백업 완료',
+    'closeProjectFailedCopyBody':
+        '이 프로젝트가 저장하지 못한 작업은 앱 안의 실패본에만 있고, 실패본은 프로그램을 닫으면 사라집니다. 남기려면 「다른 이름으로 저장」하거나 파일 메뉴의 「실패본 백업…」을 쓰세요.',
     'projectFileVanished':
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
@@ -5583,6 +5696,47 @@ enum AppStrings {
         'ouvert.',
     'saveCelsLostHeading': 'Dessins concernés',
     'saveCelsLostGone': 'Dessin absent du projet',
+    'saveFailedTitle': 'Enregistrement impossible',
+    'saveFailedFileInUse':
+        'Un autre programme utilise ce fichier (synchronisation, antivirus '
+        "ou app qui l'a ouvert) : il n'a pas pu être remplacé.",
+    'saveFailedReadOnly':
+        "Ce fichier ou son dossier est en lecture seule : impossible d'y "
+        'écrire.',
+    'saveFailedDiskFull':
+        "Il n'y a pas assez d'espace là où ce fichier est enregistré.",
+    'saveFailedLocationGone':
+        "L'emplacement de ce fichier est inaccessible : le lecteur a été "
+        'retiré, le réseau coupé ou le dossier supprimé.',
+    'saveFailedReplaceRefused':
+        "Cet emplacement (un service cloud ou l'app Fichiers) a refusé de "
+        'remplacer le fichier.',
+    'saveFailedUnknown':
+        "Une erreur s'est produite pendant l'écriture du fichier.",
+    'saveFailedCopyKept':
+        "Votre travail est conservé dans une copie d'échec à l'intérieur de "
+        "l'app. Elle disparaît à la fermeture du programme — pour la garder, "
+        "utilisez « Sauvegarder la copie d'échec… » et choisissez où.",
+    'saveFailedNoCopy':
+        "La copie d'échec n'a pas pu être écrite non plus — utilisez "
+        '« Enregistrer sous » pour enregistrer ailleurs.',
+    'saveFailedRetry':
+        'Une fois la cause levée, enregistrez à nouveau : cela ira dans le '
+        "fichier d'origine.",
+    'saveFailedDetailsHeading': 'Détails',
+    'saveFailedCopyLineTemplate': "Copie d'échec : {path}",
+    'saveFailedErrorLineTemplate': 'Erreur : {error}',
+    'failedCopyBackUp': "Sauvegarder la copie d'échec…",
+    'failedCopyPickTitle': "Quelle copie d'échec ?",
+    'failedCopyVanishOnClose':
+        "Les copies d'échec disparaissent à la fermeture du programme.",
+    'failedCopyBackingUp': 'Sauvegarde…',
+    'failedCopyBackedUp': 'Sauvegardé',
+    'closeProjectFailedCopyBody':
+        "Le travail que ce projet n'a pas pu enregistrer n'existe que dans "
+        "sa copie d'échec à l'intérieur de l'app, et elle disparaît à la "
+        'fermeture du programme. Pour le garder, utilisez « Enregistrer '
+        "sous » ou « Sauvegarder la copie d'échec… » dans le menu Fichier.",
     'projectFileVanished':
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
@@ -6885,6 +7039,27 @@ enum AppStrings {
     'saveCelsLostTemplate': '已保存，但有 {count} 张画面未能包含：存放它们的项目文件在项目打开期间被删除了。',
     'saveCelsLostHeading': '相关画面',
     'saveCelsLostGone': '项目中已不存在的画面',
+    'saveFailedTitle': '无法保存',
+    'saveFailedFileInUse': '另一个程序（同步、杀毒软件或打开了此文件的应用）正在使用此文件，因此无法覆盖。',
+    'saveFailedReadOnly': '此文件或其文件夹为只读，无法写入。',
+    'saveFailedDiskFull': '保存位置的空间不足。',
+    'saveFailedLocationGone': '无法访问保存位置——驱动器已移除、网络已断开，或文件夹已被删除。',
+    'saveFailedReplaceRefused': '此位置（云端或“文件”应用）拒绝替换该文件。',
+    'saveFailedUnknown': '写入文件时出错。',
+    'saveFailedCopyKept':
+        '目前的工作已保存在应用内的失败副本中。程序关闭后失败副本会消失——如需保留，请用“备份失败副本…”保存到您选择的位置。',
+    'saveFailedNoCopy': '也无法写入失败副本——请用“另存为”保存到其他位置。',
+    'saveFailedRetry': '排除原因后再次保存，即会保存到原文件。',
+    'saveFailedDetailsHeading': '详细信息',
+    'saveFailedCopyLineTemplate': '失败副本：{path}',
+    'saveFailedErrorLineTemplate': '错误：{error}',
+    'failedCopyBackUp': '备份失败副本…',
+    'failedCopyPickTitle': '要备份的失败副本',
+    'failedCopyVanishOnClose': '程序关闭后失败副本会消失。',
+    'failedCopyBackingUp': '正在备份…',
+    'failedCopyBackedUp': '已备份',
+    'closeProjectFailedCopyBody':
+        '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
     'accentTitle': '强调色',

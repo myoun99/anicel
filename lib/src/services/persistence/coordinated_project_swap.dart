@@ -5,6 +5,7 @@ import '../brush_frame_store.dart';
 import 'anicel_file_service.dart';
 import 'folder_grant.dart' show FolderPicker;
 import 'open_project_file.dart';
+import 'save_failure.dart' show SaveNotSwappedIn;
 
 /// Swaps [from] — a complete archive the stores' refs already point into —
 /// onto [to] through the platform's file coordinator, then repoints the
@@ -41,10 +42,16 @@ Future<void> replaceProjectFileCoordinated({
     destinationPath: to,
   );
   if (!replaced) {
-    throw FileSystemException(
-      'the coordinated replace onto this location failed — it cannot be '
-      'saved to in place',
-      to,
+    // Where the archive is, so the session can keep the work in its
+    // failed copy before [from] goes (whole-write-temp-beside-the-file).
+    throw SaveNotSwappedIn(
+      archive: from,
+      error: FileSystemException(
+        'the coordinated replace onto this location failed — it cannot be '
+        'saved to in place',
+        to,
+      ),
+      refusedByProvider: true,
     );
   }
   final source = from.replaceAll('\\', '/');

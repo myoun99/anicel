@@ -13,6 +13,7 @@ import '../models/project.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/persistence/app_language_settings_store.dart';
+import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
@@ -443,6 +444,7 @@ class _HomePageState extends State<HomePage> {
       // file (OpenToonz-style).
       needsProjectFile: () => _session.projectFile.path == null,
       onUnsavedProject: _promptUnsavedAutosave,
+      onFailed: _tellWhatTheClockCouldNotSave,
     );
   }
 
@@ -1096,6 +1098,21 @@ class _HomePageState extends State<HomePage> {
       return await ensureUnsavedWorkSettled(context, _session);
     } finally {
       _exitDialogOpen = false;
+    }
+  }
+
+  /// The clock's save failed: said the way a person's is, at that moment —
+  /// why, and the failed copy the work went to (유저 2026-09-23,
+  /// whole-write-temp-beside-the-file). The service tells once per run of
+  /// failures, so a file that stays locked is not announced every tick.
+  void _tellWhatTheClockCouldNotSave(Object error) {
+    if (!mounted) {
+      return;
+    }
+    if (error is SaveFailure) {
+      unawaited(showSaveFailure(context, _session, error));
+    } else {
+      showFileError(context, error);
     }
   }
 

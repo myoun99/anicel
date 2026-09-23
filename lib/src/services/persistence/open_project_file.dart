@@ -33,7 +33,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// file and `rename` it onto the project path, and **renaming ONTO a file
 /// this process holds open is blocked too**. Left alone, a session-long
 /// handle would break every full save on Windows, and it would look exactly
-/// like the foreign lock `_renameWithRetry` already retries for. So the one
+/// like the foreign lock `renameWithRetry` already retries for. So the one
 /// funnel that replaces the project file lets go of ours first.
 ///
 /// ⚠️Letting go is cheap and needs no bookkeeping: the next read opens it

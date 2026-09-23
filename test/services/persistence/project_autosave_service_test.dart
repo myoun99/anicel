@@ -68,4 +68,33 @@ void main() {
 
     expect(peak, 1);
   });
+
+  test('🚨a failed tick is TOLD — once per run of failures, again after one '
+      'lands', () async {
+    // 유저 2026-09-23 (whole-write-temp-beside-the-file Q2): a save that
+    // failed says so at that moment, the clock's as much as a person's. A
+    // file that stays locked must not say it again every tick.
+    var refuse = true;
+    final told = <Object>[];
+    final service = ProjectAutosaveService(
+      isDirty: () => true,
+      saveProject: (_) async {
+        if (refuse) {
+          throw StateError('refused');
+        }
+      },
+      projectPath: () => '/projects/x.anicel',
+      onFailed: told.add,
+    );
+
+    await service.saveNow();
+    await service.saveNow();
+    expect(told, hasLength(1), reason: 'once for the run of failures');
+
+    refuse = false;
+    await service.saveNow();
+    refuse = true;
+    await service.saveNow();
+    expect(told, hasLength(2), reason: 'a save landed in between');
+  });
 }

@@ -327,9 +327,7 @@ class ProjectFile {
   /// `release` is idempotent — call it once the reader has CLOSED, not
   /// when it decides to.
   Future<HeldArchiveRange?> holdArchiveRange(String poolPath) async {
-    while (_saveInFlight) {
-      await _saveEnded.future;
-    }
+    await saveSettled();
     final range = mediaByteSourceFor(poolPath).range;
     if (range == null) {
       return null;
@@ -502,9 +500,17 @@ class ProjectFile {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
-  /// Completes when the save in flight ends — what [holdArchiveRange]
-  /// waits on.
+  /// Completes when the save in flight ends — what [saveSettled] waits on.
   Completer<void> _saveEnded = Completer<void>()..complete();
+
+  /// Waits out a save in flight, and the next if one starts in between —
+  /// what a reader of an archive a save may be writing does first: a range
+  /// held for a document ([holdArchiveRange]), a failed copy backed up.
+  Future<void> saveSettled() async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+  }
 
   /// Raised for the WHOLE save, retirement included — see
   /// [ProjectFileDoor.saveProjectToFile], which is the only caller and
@@ -581,6 +587,7 @@ class ProjectFile {
     _mediaEntryNames = entryNames;
     _projectFilePath = filePath;
     _editsInFile = cleanAsOf;
+    _forgetFailedCopy();
     _completedSaveGeneration += 1;
     invalidateConformStoredBytes();
     // A save is the session saying it is worth keeping after all; whatever
@@ -611,6 +618,7 @@ class ProjectFile {
     // to the last one must not silence this one's autosave.
     _discardedUnsavedWork = false;
     _editsInFile = unsaved ? _noFileHoldsIt : _edits;
+    _forgetFailedCopy();
   }
 
   /// This session is bound to NO file — what an imported project is until
@@ -618,5 +626,40 @@ class ProjectFile {
   void unbind() {
     _projectFilePath = null;
     _discardedUnsavedWork = false;
+    _forgetFailedCopy();
+  }
+
+  /// This binding's FAILED COPY (실패본): the file in this run's room its
+  /// saves have gone to since its project file refused one — or null.
+  ///
+  /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file, after Q2):
+  /// 「실패하면 앱컨테이너에 같은파일로 계속 증분저장?」 — ONE file, which
+  /// every later save the file will not take goes on appending to.
+  ///
+  /// ⚠️A fact about the BINDING, so the three moments a binding changes
+  /// (a save the file took, an open, an unbind) let go of it here, in one
+  /// place — the copy itself stays in the room, and on the list a backup
+  /// reads, until the run ends.
+  String? get failedCopy => _failedCopy;
+  String? _failedCopy;
+
+  /// The edit count [failedCopy] was written at.
+  int? _failedCopyEdits;
+
+  /// Whether [failedCopy] holds every edit there is — nothing new for the
+  /// clock to put in it.
+  bool get failedCopyIsCurrent =>
+      _failedCopy != null && _failedCopyEdits == _edits;
+
+  /// The work as of [asOf] edits went into [copy] rather than the project
+  /// file.
+  void keptInFailedCopy(String copy, {required int asOf}) {
+    _failedCopy = copy;
+    _failedCopyEdits = asOf;
+  }
+
+  void _forgetFailedCopy() {
+    _failedCopy = null;
+    _failedCopyEdits = null;
   }
 }

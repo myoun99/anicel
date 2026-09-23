@@ -3,13 +3,16 @@ import 'dart:io' show File, FileSystemException;
 
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ProjectAssetLayout;
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/cel_places.dart';
+import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
+import '../../services/persistence/save_failure.dart';
 import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
@@ -544,6 +547,18 @@ class EditorTopStrip extends StatelessWidget {
       shortcuts: const [EditorActionIds.fileSaveAs],
       icon: Icons.save_as_outlined,
       onPressed: () => unawaited(promptSaveProjectAs(context, session)),
+    ),
+    // 🗣️유저 2026-09-23: 「나중에 실패본에서 백업하기 … 해당파일
+    // 지정해서」. Always in the list, off while this run holds no failed
+    // copy — a row that appeared only after a refusal would be the UI that
+    // pops into existence this app does not make.
+    _item(
+      id: 'file-back-up-failed-copy',
+      label: AppText.strings.failedCopyBackUp,
+      icon: Icons.backup_outlined,
+      onPressed: session.failedSaveCopies.entries.isEmpty
+          ? null
+          : () => unawaited(backUpFailedCopy(context, session)),
     ),
     ..._recentEntries(context),
     const PanelFlyoutDivider(),
@@ -1515,9 +1530,14 @@ Future<bool> ensureUnsavedWorkSettled(
       titleIcon: Icons.logout_outlined,
       // A vanished file wins the wording even when there are unsaved
       // edits too: 「your changes are not saved」 describes a loss the four
-      // buttons can undo, and this one they mostly cannot.
+      // buttons can undo, and this one they mostly cannot. A failed copy
+      // comes next: the work is somewhere, but only until the program
+      // closes (유저 2026-09-23: 「이 실패본은 프로그램 닫으면 사라진다고
+      // 안내」).
       message: vanished
           ? strings.closeProjectVanishedBody
+          : session.projectFile.failedCopy != null
+          ? strings.closeProjectFailedCopyBody
           : strings.closeProjectBody,
       actions: [
         AppWindowAction(
@@ -1625,12 +1645,237 @@ Future<bool> saveProjectShowingProgress(
       _tellWhatTheSaveCouldNotCarry(context, session);
     }
     return true;
+  } on SaveFailure catch (failure) {
+    if (context.mounted) {
+      unawaited(showSaveFailure(context, session, failure));
+    }
+    return false;
   } on Object catch (error) {
     if (context.mounted) {
       showFileError(context, error);
     }
     return false;
   }
+}
+
+/// 🚨★★★**A SAVE ITS FILE REFUSED SAYS SO THEN — WHY, AND WHERE THE WORK
+/// IS.**
+///
+/// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file): 「저장에 실패하여
+/// 앱컨테이너에 있다는걸 그 상황에 알려주기 … 왜 실패했는지(파일을
+/// 잡고있어서)같은것들 정확하게 알기쉽게 명시」, and 「이 실패본은 프로그램
+/// 닫으면 사라진다고 안내」. The notice used to be the exception's own text.
+///
+/// From both ends a save can fail at: a person's ([saveProjectShowingProgress])
+/// and the clock's (the shell hears the autosave's failure). The backup the
+/// notice offers is there whenever there is a failed copy to back up —
+/// and greyed out, not missing, when even that could not be written.
+Future<void> showSaveFailure(
+  BuildContext context,
+  EditorSessionManager session,
+  SaveFailure failure,
+) {
+  final strings = AppText.strings;
+  final copy = failure.failedCopy;
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AppConfirmDialog(
+      windowKey: const ValueKey<String>('save-failure-notice'),
+      title: strings.saveFailedTitle,
+      titleIcon: Icons.error_outline,
+      message: saveFailureMessage(failure),
+      details: [
+        if (copy != null) strings.saveFailedCopyLine(copy),
+        strings.saveFailedErrorLine('${failure.error}'),
+      ],
+      detailsHeading: strings.saveFailedDetailsHeading,
+      actions: [
+        AppWindowAction(
+          label: strings.failedCopyBackUp,
+          actionKey: const ValueKey<String>('save-failure-back-up'),
+          onPressed: copy == null
+              ? null
+              : () {
+                  Navigator.of(dialogContext).pop();
+                  unawaited(backUpFailedCopy(context, session, copy: copy));
+                },
+        ),
+        AppWindowAction(
+          label: strings.commonClose,
+          actionKey: const ValueKey<String>('save-failure-close'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: () => Navigator.of(dialogContext).pop(),
+        ),
+      ],
+    ),
+  );
+}
+
+/// What a person is told about [failure]: why the file refused, where the
+/// work is now — and that it goes when the program does — and how the file
+/// gets it after all.
+String saveFailureMessage(SaveFailure failure) {
+  final strings = AppText.strings;
+  final why = switch (failure.cause) {
+    SaveFailureCause.fileInUse => strings.saveFailedFileInUse,
+    SaveFailureCause.readOnly => strings.saveFailedReadOnly,
+    SaveFailureCause.diskFull => strings.saveFailedDiskFull,
+    SaveFailureCause.locationGone => strings.saveFailedLocationGone,
+    SaveFailureCause.replaceRefused => strings.saveFailedReplaceRefused,
+    SaveFailureCause.unknown => strings.saveFailedUnknown,
+  };
+  final where = failure.failedCopy == null
+      ? strings.saveFailedNoCopy
+      : strings.saveFailedCopyKept;
+  return '$why\n\n$where\n\n${strings.saveFailedRetry}';
+}
+
+/// 「실패본 백업…」: a failed copy, saved where the person chooses.
+///
+/// 🗣️유저 2026-09-23: 「유저가 그 파일 따로 뭐 복사해서 저장해놔서 나중에
+/// 실패본에서 백업하기 … 해당파일 지정해서 백업할수있게」. [copy] names the
+/// one to back up (the notice's); without it the one there is is taken, or
+/// the person picks among several — a run that met refusals in more than
+/// one project keeps each one's until it ends.
+///
+/// The destination is asked the way Save As asks it, on every platform —
+/// the save dialog on the desktop, the export picker that places a staged
+/// file where there is none — and the session does not move there: a
+/// backup is a copy to keep, not where this project saves from now on.
+Future<void> backUpFailedCopy(
+  BuildContext context,
+  EditorSessionManager session, {
+  String? copy,
+}) async {
+  final chosen = await _failedCopyToBackUp(context, session, copy);
+  if (chosen == null || !context.mounted) {
+    return;
+  }
+  final strings = AppText.strings;
+  // ⚠️The order Save As keeps (유저 2026-08-31): where a picker PLACES a
+  // staged file, the window before it says 「Ready」 — nothing is backed up
+  // until the picker has put it somewhere — and 「Backed up」 comes after.
+  Future<void> backUpTo(
+    String destination, {
+    required String running,
+    required String done,
+  }) => runWithAppProgress<void>(
+    context: context,
+    title: strings.commonSave,
+    titleIcon: Icons.backup_outlined,
+    runningLabel: running,
+    doneLabel: done,
+    windowKey: const ValueKey<String>('failed-copy-backup-progress'),
+    task: (report) =>
+        session.projectDoor.backUpFailedCopy(chosen.copyPath, destination),
+  );
+  try {
+    final projectPath = chosen.projectPath.replaceAll(r'\', '/');
+    final pick = await pickProjectSaveTarget(
+      context,
+      _backupNameFor(chosen),
+      projectPath.contains('/')
+          ? projectPath.substring(0, projectPath.lastIndexOf('/'))
+          : ensuredAppDocumentsDirectorySync(),
+      stageArchive: (stagingPath) => backUpTo(
+        stagingPath,
+        running: strings.savePrepareRunning,
+        done: strings.savePrepareDone,
+      ),
+    );
+    if (pick == null || !context.mounted) {
+      return;
+    }
+    if (pick.placed) {
+      await runWithAppProgress<void>(
+        context: context,
+        title: strings.commonSave,
+        titleIcon: Icons.backup_outlined,
+        runningLabel: strings.failedCopyBackingUp,
+        doneLabel: strings.failedCopyBackedUp,
+        windowKey: const ValueKey<String>('failed-copy-backup-placed'),
+        task: (report) async => report(1),
+      );
+      return;
+    }
+    await backUpTo(
+      pick.path,
+      running: strings.failedCopyBackingUp,
+      done: strings.failedCopyBackedUp,
+    );
+  } on Object catch (error) {
+    if (context.mounted) {
+      showFileError(context, error);
+    }
+  }
+}
+
+/// Which failed copy a backup is of: [copy] when the notice named one, the
+/// one there is, or the person's pick among several.
+Future<FailedSaveCopy?> _failedCopyToBackUp(
+  BuildContext context,
+  EditorSessionManager session,
+  String? copy,
+) async {
+  final standing = session.failedSaveCopies.entries;
+  if (copy != null) {
+    return standing.where((entry) => entry.copyPath == copy).firstOrNull;
+  }
+  if (standing.length <= 1) {
+    return standing.firstOrNull;
+  }
+  return _pickFailedCopy(context, standing);
+}
+
+/// A name for [copy]'s backup beside its project that is not the project
+/// file itself — the file that refused the save, which a backup offered
+/// under its own name would be written over.
+String _backupNameFor(FailedSaveCopy copy) {
+  final name = fileNameOfPath(copy.projectPath);
+  final dot = name.lastIndexOf('.');
+  final stem = dot <= 0 ? name : name.substring(0, dot);
+  final at = copy.savedAt;
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '$stem-${at.year}${two(at.month)}${two(at.day)}-'
+      '${two(at.hour)}${two(at.minute)}$anicelProjectSuffix';
+}
+
+/// Which of several failed copies to back up — each answer names its
+/// project and when it was written; the full paths are in the fold.
+Future<FailedSaveCopy?> _pickFailedCopy(
+  BuildContext context,
+  List<FailedSaveCopy> copies,
+) {
+  final strings = AppText.strings;
+  String clock(DateTime at) =>
+      '${at.hour.toString().padLeft(2, '0')}:'
+      '${at.minute.toString().padLeft(2, '0')}';
+  return showDialog<FailedSaveCopy>(
+    context: context,
+    builder: (dialogContext) => AppConfirmDialog(
+      windowKey: const ValueKey<String>('failed-copy-pick'),
+      title: strings.failedCopyPickTitle,
+      titleIcon: Icons.backup_outlined,
+      message: strings.failedCopyVanishOnClose,
+      details: [
+        for (final copy in copies) '${copy.projectPath} — ${clock(copy.savedAt)}',
+      ],
+      detailsHeading: strings.saveFailedDetailsHeading,
+      actions: [
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('failed-copy-pick-cancel'),
+          onPressed: () => Navigator.of(dialogContext).pop(),
+        ),
+        for (final (index, copy) in copies.indexed)
+          AppWindowAction(
+            label: '${fileNameOfPath(copy.projectPath)} · ${clock(copy.savedAt)}',
+            actionKey: ValueKey<String>('failed-copy-pick-$index'),
+            onPressed: () => Navigator.of(dialogContext).pop(copy),
+          ),
+      ],
+    ),
+  );
 }
 
 /// 🚨★★★**A SAVE THAT WROTE FEWER CELS THAN IT HOLDS MUST SAY SO.**

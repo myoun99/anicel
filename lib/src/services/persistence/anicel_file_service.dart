@@ -13,6 +13,7 @@ import '../media/project_media_sources.dart' show ProjectConforms;
 import 'brush_drawing_binary_codec.dart';
 import 'anicel_incremental_writer.dart';
 import 'open_project_file.dart';
+import 'save_failure.dart' show SaveNotSwappedIn;
 import 'scratch_file.dart';
 import 'session_scratch.dart';
 import 'anicel_project_archive.dart';
@@ -418,7 +419,7 @@ class AnicelFileService {
     /// unaffected: it wrote into [filePath] and there is nothing to swap.
     ///
     /// Why a callback and not a return: the swap is synchronous below for a
-    /// reason ([_renameWithRetry] — the refs carry the OLD layout until the
+    /// reason ([renameWithRetry] — the refs carry the OLD layout until the
     /// caller adopts), and a coordinated replace is a channel call that
     /// cannot be. So the caller takes the swap, and with it the shape the
     /// staging road already had: adopt the temp, replace, repoint.
@@ -477,14 +478,14 @@ class AnicelFileService {
 
     /// How every save ends, whichever way it wrote: the lost refs go, the
     /// file the refs now point into is HELD ([OpenProjectFile.hold] — a full
-    /// save's rename had to let go of it), and a rescue copy nothing reads
-    /// any more is retired.
+    /// save's rename had to let go of it), and an archive waiting to go
+    /// that nothing reads any more is retired ([retireWhenUnread]).
     Set<BrushFrameKey> settle(Set<BrushFrameKey> lostKeys) {
       forgetEach(lostKeys);
       if (adoptRefs) {
         OpenProjectFile.instance.hold(filePath);
       }
-      _retireRescues(stores);
+      _retireUnread(stores);
       return lostKeys;
     }
 
@@ -1228,9 +1229,15 @@ class AnicelFileService {
     // a sync client, indexer or AV holds it — and cloud-synced folders are
     // this app's home turf (Krita and Blender both landed on the same
     // absorb-the-transient-lock answer). A rename that still fails leaves
-    // the temp IN PLACE: it holds the only complete copy of this save,
-    // and the sweep on the next successful save collects strays.
-    _renameWithRetry(temp, filePath);
+    // the temp IN PLACE — it holds the only complete copy of this save —
+    // and SAYS where: the session keeps the work in its failed copy and
+    // only then lets the temp go (유저 2026-09-23, whole-write-temp-beside-
+    // the-file: 「실패 시 앱 룸으로 옮겨 보관」, never beside the file).
+    try {
+      renameWithRetry(temp, filePath);
+    } on FileSystemException catch (error) {
+      throw SaveNotSwappedIn(archive: tempPath, error: error);
+    }
     sweepStaleSaveTemps(filePath);
     return refs;
   }
@@ -1239,7 +1246,7 @@ class AnicelFileService {
   /// client or scanner can hold on the destination. Bounded: this blocks
   /// the UI isolate on purpose (the swap must stay microtask-tight), so
   /// the worst case is a beat, not a hang.
-  static void _renameWithRetry(File temp, String filePath) {
+  static void renameWithRetry(File temp, String filePath) {
     // 🚨★★★**OUR OWN HANDLE FIRST, OR THE RETRY BELOW IS RETRYING US.**
     // The session holds the project file open so the user cannot delete the
     // cold tier out from under it ([OpenProjectFile]) — and renaming ONTO a
@@ -1551,34 +1558,50 @@ class AnicelFileService {
     for (final store in stores) {
       store.repointFileRefs(held, rescued);
     }
-    _rescueCopies.add(rescued);
+    _retiring.add(rescued);
     // The refs read from the copy now; the vanished file's last descriptor
     // goes with this.
     open.hold(rescued);
   }
 
-  /// Rescue copies a ref may still read from — see [_retireRescues].
-  static final Set<String> _rescueCopies = {};
+  /// Archives a ref may still read from, each to go the moment none does
+  /// ([_retireUnread]): a rescue copy, an archive a save wrote and could not
+  /// swap in, and a failed copy its project's next save superseded
+  /// ([retireWhenUnread]).
+  static final Set<String> _retiring = {};
 
-  /// A rescue copy goes the moment no ref reads from it — the staged media's
-  /// rule (유저 2026-08-27: 「사본 남으면 진짜 용서안할게」). A cel drawn on while
-  /// the save ran keeps its old ref and its dirt, so the copy can outlive the
-  /// save that made it, but only until the save that carries that cel.
-  static void _retireRescues(List<BrushFrameStore> stores) {
-    if (_rescueCopies.isEmpty) {
+  /// [archive] goes the moment no ref in [stores] reads from it — now, if
+  /// none does. For an archive a save wrote and could not swap in once the
+  /// work is safe elsewhere, and for a failed copy its project's next save
+  /// superseded.
+  static void retireWhenUnread(
+    String archive,
+    List<BrushFrameStore> stores,
+  ) {
+    _retiring.add(archive);
+    _retireUnread(stores);
+  }
+
+  /// An archive in [_retiring] goes the moment no ref reads from it — the
+  /// staged media's rule (유저 2026-08-27: 「사본 남으면 진짜
+  /// 용서안할게」). A cel drawn on while the save ran keeps its old ref and
+  /// its dirt, so the archive can outlive the save that made it, but only
+  /// until the save that carries that cel.
+  static void _retireUnread(List<BrushFrameStore> stores) {
+    if (_retiring.isEmpty) {
       return;
     }
     final read = <String>{
       for (final store in stores)
         for (final ref in store.bakedSnapshotForSave().fileRefs.values)
-          ref.filePath,
+          ref.filePath.replaceAll(r'\', '/'),
     };
-    _rescueCopies.removeWhere((copy) {
-      if (read.contains(copy)) {
+    _retiring.removeWhere((archive) {
+      if (read.contains(archive.replaceAll(r'\', '/'))) {
         return false;
       }
-      OpenProjectFile.instance.releaseFor(copy);
-      ScratchFile.remove(copy);
+      OpenProjectFile.instance.releaseFor(archive);
+      ScratchFile.remove(archive);
       return true;
     });
   }
