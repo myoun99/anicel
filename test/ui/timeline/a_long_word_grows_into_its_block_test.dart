@@ -214,6 +214,111 @@ void main() {
     );
   });
 
+  /// B (유저 2026-09-24): a name longer than its BLOCK narrows into it — and
+  /// the baked tile must narrow it too, not bake it wide and let the glyph's
+  /// own box cut it off (what the classic pass and the tile would then show
+  /// is a whole name and half a name).
+  test('a name longer than its block is BAKED narrowed, every letter of it', (
+  ) async {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    if (dllPath == null) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+    final store = TimelineGridTileStore.instance..clear();
+    addTearDown(() {
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+      QaNativeEngine.debugForceDartFallback = false;
+      store.clear();
+    });
+    // Four letters with gaps between them, in a TWO-cell block: 7 em-wide
+    // glyphs (the test face) at 11px against 48px of block.
+    const gapped = 'A A A A';
+    final short = Layer(
+      id: const LayerId('layer-short'),
+      name: 'S',
+      frames: [Frame(id: const FrameId('s1'), duration: 1, strokes: const [])],
+      timeline: {0: const TimelineExposure.drawing(FrameId('s1'), length: 2)},
+    );
+    final painter = TimelineRowCellsPainter(
+      layer: short,
+      geometry: testFrameGeometry(
+        frameCellExtent: cell,
+        frameEndIndexExclusive: 40,
+      ),
+      crossAxisExtent: crossExtent,
+      exposureStateForLayer: stateFor,
+      frameNameForLayer: (_, frameIndex) => frameIndex == 0 ? gapped : null,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      tileStore: store,
+      substrateGeneration: 'g-short',
+    );
+    final model = painter.cellModelAt(0);
+    final natural = timelineGlyphPainter(
+      model.glyph,
+      painter.glyphStyleFor(model),
+    ).size;
+    expect(natural.width, greaterThan(2 * cell), reason: 'fixture');
+    var landings = 0;
+    void count() => landings += 1;
+    store.revision.addListener(count);
+    addTearDown(() => store.revision.removeListener(count));
+    ui.Image? tile() => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
+    expect(tile(), isNull, reason: 'fixture: the store starts cold');
+    while (landings == 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final image = tile();
+    expect(image, isNotNull, reason: 'fixture: the tile landed');
+    final bytes = (await image!.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!;
+    int sumAt(int x, int y) {
+      final i = (y * image.width + x) * 4;
+      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+    }
+
+    // Along the word's middle line, across the block (x 0-47): the ink runs.
+    final layout = painter.cellWordLayoutFor(0, natural);
+    final y = (layout.origin.dy + natural.height * layout.fit.y / 2).round();
+    final paper = sumAt(24, 25);
+    final runs = <int>[];
+    var run = 0;
+    for (var x = 1; x < 2 * cell - 1; x += 1) {
+      if ((sumAt(x, y) - paper).abs() > 60) {
+        run += 1;
+      } else if (run > 0) {
+        runs.add(run);
+        run = 0;
+      }
+    }
+    if (run > 0) {
+      runs.add(run);
+    }
+    expect(
+      runs,
+      hasLength(4),
+      reason: 'all four letters are in the tile, inside the block — a name '
+          'baked wide shows the first two or three and is cut off',
+    );
+    expect(
+      runs.first,
+      lessThan(11 * 0.8),
+      reason: 'narrowed as the classic pass narrows it (fit '
+          '${layout.fit.x}), not at its full 11px',
+    );
+  });
+
   test('a length wider than its last cell ends at that cell and grows back '
       'into the block', () {
     const smallCell = 12.0;
