@@ -114,21 +114,24 @@ abstract final class FlipHudMetrics {
     return standing ? laidOut.flipped : laidOut;
   }
 
+  /// Whether [axis]'s strip runs SIDEWAYS on screen: the frame axis on the
+  /// timeline, the row axis on a [standing] window — the x-sheet's (F-28).
+  static bool runsSideways(FlipHudAxis axis, {required bool standing}) =>
+      (axis == FlipHudAxis.frame) != standing;
+
   /// Pins the window beside the hand, clamped inside the panel.
   ///
   /// Where it goes follows the DRAG, not the axis: a strip that runs
-  /// sideways rides above the hand and one that runs down rides beside it,
-  /// and on a [standing] window the frame axis is the one that runs down.
+  /// [sideways] rides above the hand and one that runs down rides beside it.
   static Offset placementFor({
     required Offset anchor,
     required Size size,
-    required FlipHudAxis axis,
+    required bool sideways,
     required Size bounds,
-    bool standing = false,
   }) {
     double left;
     double top;
-    if ((axis == FlipHudAxis.frame) != standing) {
+    if (sideways) {
       left = anchor.dx - size.width / 2;
       top = anchor.dy - sidewaysFlipLift - size.height;
     } else {
@@ -181,9 +184,11 @@ class FlipHudOverlay extends StatelessWidget {
               final offset = FlipHudMetrics.placementFor(
                 anchor: anchor,
                 size: size,
-                axis: axis,
+                sideways: FlipHudMetrics.runsSideways(
+                  axis,
+                  standing: standing,
+                ),
                 bounds: constraints.biggest,
-                standing: standing,
               );
               return Stack(
                 children: [
