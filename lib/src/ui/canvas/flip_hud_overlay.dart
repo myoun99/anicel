@@ -114,11 +114,6 @@ abstract final class FlipHudMetrics {
     return standing ? laidOut.flipped : laidOut;
   }
 
-  /// Whether [axis]'s strip runs SIDEWAYS on screen: the frame axis on the
-  /// timeline, the row axis on a [standing] window — the x-sheet's (F-28).
-  static bool runsSideways(FlipHudAxis axis, {required bool standing}) =>
-      (axis == FlipHudAxis.frame) != standing;
-
   /// Pins the window beside the hand, clamped inside the panel.
   ///
   /// Where it goes follows the DRAG, not the axis: a strip that runs
@@ -174,20 +169,22 @@ class FlipHudOverlay extends StatelessWidget {
             return const SizedBox.shrink();
           }
           // 🚨F-28 (유저 2026-09-17): 「플립ui도 x시트에 맞춰서 회전해서
-          // 미세조정은 알아서 맞추도록. x시트랑 동일하면됨」. The sheet the
-          // flip reads its axis off is the one the window takes its shape
-          // from — the same one fact ([FlipHudController.framesRunVertically]).
-          final standing = controller.framesRunVertically;
+          // 미세조정은 알아서 맞추도록. x시트랑 동일하면됨」. The window takes
+          // its shape from the sheet the flip reads its axis off, asked the
+          // way every entrance asks it ([FlipHudController.framesRunAlong]):
+          // where a sideways step does not walk frames — the X-sheet — it
+          // stands.
+          final framesSideways = controller.framesRunAlong(horizontal: true);
+          final standing = !framesSideways;
           final size = FlipHudMetrics.sizeFor(axis, standing: standing);
           return LayoutBuilder(
             builder: (context, constraints) {
               final offset = FlipHudMetrics.placementFor(
                 anchor: anchor,
                 size: size,
-                sideways: FlipHudMetrics.runsSideways(
-                  axis,
-                  standing: standing,
-                ),
+                // A strip runs sideways exactly when a sideways step walks
+                // the axis it shows.
+                sideways: framesSideways == (axis == FlipHudAxis.frame),
                 bounds: constraints.biggest,
               );
               return Stack(
