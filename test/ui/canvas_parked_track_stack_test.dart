@@ -174,7 +174,7 @@ void main() {
     scrub(s).scrubGlobalFrame(aEnd + 2);
     await tester.pump();
 
-    expect(s.frameScrubActive.value, isTrue, reason: 'a drag, not a tap');
+    expect(s.frameScrub.active.value, isTrue, reason: 'a drag, not a tap');
     expect(find.byKey(stackKey), findsOneWidget);
     expect(
       stackCrops(tester),
@@ -194,11 +194,11 @@ void main() {
 
     // The drag starts IN territory: engages the scrub without ever
     // taking the out-of-territory path (the exact shape the old code
-    // left invisible — frameScrubActive was already true, so the later
+    // left invisible — frameScrub.active was already true, so the later
     // crossing had no rebuild trigger).
     scrub(s).scrubGlobalFrame(1);
     await tester.pump();
-    expect(s.frameScrubActive.value, isTrue);
+    expect(s.frameScrub.active.value, isTrue);
     expect(find.byKey(stackKey), findsNothing);
 
     // Cross onto the SECOND cut's frames: the multitrack preview must
@@ -232,7 +232,7 @@ void main() {
     final (s, first, aEnd) = gappedSession();
     s.selectCut(first);
     var fires = 0;
-    s.scrubOutOfTerritory.addListener(() => fires += 1);
+    s.frameScrub.outOfTerritory.addListener(() => fires += 1);
 
     // A TAP over the gap: pointer-down parks, no move follows.
     scrub(s).scrubGlobalFrame(aEnd + 1);
@@ -253,7 +253,7 @@ void main() {
     expect(fires, 2, reason: 're-entry is the other edge');
     scrub(s).commitFrameScrub();
     expect(fires, 2);
-    expect(s.scrubOutOfTerritory.value, isFalse);
+    expect(s.frameScrub.outOfTerritory.value, isFalse);
     s.dispose();
   });
 
@@ -264,13 +264,13 @@ void main() {
     s.selectCut(first);
     // Grab the playhead: press exactly on the cursor's frame (0).
     scrub(s).scrubGlobalFrame(0);
-    expect(s.frameScrubActive.value, isFalse, reason: 'same-frame down');
+    expect(s.frameScrub.active.value, isFalse, reason: 'same-frame down');
 
     // Cross ONE frame out and hold: the preview must engage NOW.
     scrub(s).scrubGlobalFrame(aEnd + 1);
-    expect(s.frameScrubActive.value, isTrue);
+    expect(s.frameScrub.active.value, isTrue);
     expect(
-      s.scrubOutOfTerritory.value,
+      s.frameScrub.outOfTerritory.value,
       isTrue,
       reason:
           'the crossing is a real drag move — the down was in '
@@ -281,8 +281,8 @@ void main() {
     scrub(s).commitFrameScrub();
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(aEnd + 1);
-    expect(s.frameScrubActive.value, isFalse);
-    expect(s.scrubOutOfTerritory.value, isFalse);
+    expect(s.frameScrub.active.value, isFalse);
+    expect(s.frameScrub.outOfTerritory.value, isFalse);
     scrub(s).commitFrameScrub();
     s.dispose();
   });
@@ -294,15 +294,15 @@ void main() {
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(1);
     scrub(s).scrubGlobalFrame(aEnd + 1);
-    expect(s.frameScrubActive.value, isTrue);
-    expect(s.scrubOutOfTerritory.value, isTrue);
+    expect(s.frameScrub.active.value, isTrue);
+    expect(s.frameScrub.outOfTerritory.value, isTrue);
 
     // Space mid-drag: playback engages; the release path has no editing
     // seek to commit and must abandon the preview instead.
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     commitStoryboardScrub(s);
-    expect(s.frameScrubActive.value, isFalse);
-    expect(s.scrubOutOfTerritory.value, isFalse);
+    expect(s.frameScrub.active.value, isFalse);
+    expect(s.frameScrub.outOfTerritory.value, isFalse);
 
     s.playbackRig.playback.stop();
     // The NEXT drag's exit edge fires cleanly.
@@ -310,7 +310,7 @@ void main() {
     scrub(s).scrubGlobalFrame(1);
     scrub(s).scrubGlobalFrame(aEnd + 1);
     expect(
-      s.scrubOutOfTerritory.value,
+      s.frameScrub.outOfTerritory.value,
       isTrue,
       reason: 'no leak: the edge is alive on the very next drag',
     );

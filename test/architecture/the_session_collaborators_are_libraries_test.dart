@@ -69,8 +69,11 @@ const _mayNameTheSession = <String, String>{
 /// named in the tool's REFUSED list. 51 → 49 (2026-09-16, ARCH-session-state's
 /// first family): the onion skin's settings and layer set moved into
 /// `OnionSkin`, the collaborator that plans with them, and the two getters
-/// that handed them over left with them.
-const _sessionInternalsMembers = 49;
+/// that handed them over left with them. 49 → 47 (2026-09-23, the second
+/// family): the scrub's two flags moved into `FrameScrub`, which raises and
+/// drops them, and `CutUnderPlayhead` — whose only read of the role was one
+/// of them — now takes that flag instead of the role.
+const _sessionInternalsMembers = 47;
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())

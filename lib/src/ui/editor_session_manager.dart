@@ -229,7 +229,7 @@ class EditorSessionManager extends ChangeNotifier
       cutUnderPlayhead.sync,
     );
     _gapGlobalFrameNotifier.addListener(cutUnderPlayhead.sync);
-    frameScrubActive.addListener(cutUnderPlayhead.sync);
+    frameScrub.active.addListener(cutUnderPlayhead.sync);
     addListener(cutUnderPlayhead.resync);
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
@@ -1204,7 +1204,7 @@ class EditorSessionManager extends ChangeNotifier
       cutUnderPlayhead.sync,
     ),
     () => _gapGlobalFrameNotifier.removeListener(cutUnderPlayhead.sync),
-    () => frameScrubActive.removeListener(cutUnderPlayhead.sync),
+    () => frameScrub.active.removeListener(cutUnderPlayhead.sync),
     () => removeListener(cutUnderPlayhead.resync),
     cutUnderPlayhead.dispose,
     // The guard in [_hydrateShownMovieCels] is the belt and this the braces
@@ -1219,8 +1219,7 @@ class EditorSessionManager extends ChangeNotifier
     appSettings.dispose,
     soloedSeLayerIds.dispose,
     editingFrameCursor.dispose,
-    frameScrubActive.dispose,
-    scrubOutOfTerritory.dispose,
+    frameScrub.dispose,
     frameSeekCommitted.dispose,
     _gapGlobalFrameNotifier.dispose,
     frameRangeSelection.dispose,
@@ -1404,7 +1403,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     controllers: activeCutControllers,
-    internals: this,
+    scrubbing: frameScrub.active,
     playbackRig: playbackRig,
   );
 
@@ -3354,37 +3353,6 @@ class EditorSessionManager extends ChangeNotifier
     editingFrameCursor,
     gapParkingListenable,
   ]);
-
-  /// True while a ruler scrub is in flight.
-  ///
-  /// 🚨★★★ #26 (2026-08-15): THIS NO LONGER SWAPS THE DISPLAY. It used to —
-  /// the canvas became the composite-cache preview until the release commit
-  /// — and the user's law retired that: 「그냥 액티브레이어급으로 그냥 원본
-  /// 보여주게하고싶어 … 그냥 항상 full」. A scrub shows the editing canvas,
-  /// which follows the cursor through the canvas area's retarget scope.
-  ///
-  /// ⛔What it still decides is the GAP ANSWER: a parked global reads as a
-  /// gap only while the gesture is live (the `gapGlobalFrame` read below),
-  /// so the flag stays and the canvas rebuilds at enter and leave.
-  @override
-  final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
-
-  /// D6: whether the LIVE global scrub currently stands OUT of the active
-  /// cut's territory — the EDGE the canvas content mount listens to.
-  ///
-  /// A drag that STARTED inside the cut used to cross the boundary
-  /// invisibly: the out-of-territory branch parks quietly per move,
-  /// [frameScrubActive] was already true (its flip is the only rebuild
-  /// trigger the content mount had), and the cursor never fires out of
-  /// territory — so `inGap` was never recomputed and the canvas kept the
-  /// previous cut's picture until release. This is the retired `playheadHasCel`
-  /// mechanism applied to that missing edge: one comparison per move,
-  /// fires only when the ANSWER flips (out↔in), so the per-move parking
-  /// stays as quiet as UI-R7 #9 demands. Set only while the gesture is
-  /// live — a plain tap over another cut parks on pointer-down but never
-  /// scrubs, so this stays false and nothing flashes (the no-flash rule).
-  @override
-  final ValueNotifier<bool> scrubOutOfTerritory = ValueNotifier<bool>(false);
 
   // 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
   // 타임라인버튼 활성화되는식으로 버튼 상태 바꼈으면 좋겠는데 안바뀜.

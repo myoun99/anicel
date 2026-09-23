@@ -98,7 +98,7 @@ void main() {
 
       dragTo(s, secondStart, secondStart + 5);
 
-      expect(s.frameScrubActive.value, isTrue);
+      expect(s.frameScrub.active.value, isTrue);
       expect(
         cameraOf(s).cameraPoseAtCurrentFrame.zoom,
         2,
@@ -118,7 +118,7 @@ void main() {
 
     dragTo(s, gapFrame, gapFrame + 1);
 
-    expect(s.frameScrubActive.value, isTrue);
+    expect(s.frameScrub.active.value, isTrue);
     expect(cameraOf(s).displayedCameraPose, isNull);
   });
 
@@ -131,7 +131,7 @@ void main() {
     final shownDuringDrag = cameraOf(s).displayedCameraPose!.zoom;
     s.frameScrub.commitFrameScrub();
 
-    expect(s.frameScrubActive.value, isFalse);
+    expect(s.frameScrub.active.value, isFalse);
     expect(s.currentFrameIndex, 5);
     expect(cameraOf(s).cameraPoseAtCurrentFrame.zoom, closeTo(shownDuringDrag, 1e-6));
     expect(cameraOf(s).displayedCameraPose!.zoom, closeTo(shownDuringDrag, 1e-6));
@@ -146,7 +146,7 @@ void main() {
     // "no cut here", so there is nothing to frame.
     s.parkGlobalFrame(gapFrame);
 
-    expect(s.frameScrubActive.value, isFalse);
+    expect(s.frameScrub.active.value, isFalse);
     expect(cameraOf(s).displayedCameraPose, isNull);
   });
 

@@ -423,13 +423,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             // TERRITORY edge: a drag that started inside the cut crosses
             // the boundary mid-gesture, and the parking alone is per-move
             // quiet — the out↔in flips arrive through
-            // [EditorSessionManager.scrubOutOfTerritory]. Two rebuilds per
+            // `session.frameScrub.outOfTerritory`. Two rebuilds per
             // gesture, at most two more per territory transition; the
             // crossed frames come through the retarget scope, not here.
             return ListenableBuilder(
               listenable: Listenable.merge([
-                session.frameScrubActive,
-                session.scrubOutOfTerritory,
+                session.frameScrub.active,
+                session.frameScrub.outOfTerritory,
               ]),
               builder: (context, _) {
                 return _FrameRetargetScope(

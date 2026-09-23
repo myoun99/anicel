@@ -178,7 +178,6 @@ abstract interface class SessionInternals {
   ValueNotifier<int> get editingFrameCursor;
   bool get editingInteractionBusy;
   bool get editingPlayheadInGap;
-  ValueNotifier<bool> get frameScrubActive;
   double get lastMasterOpacity;
   set lastMasterOpacity(double value);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
@@ -191,7 +190,6 @@ abstract interface class SessionInternals {
   bool resetLaneGroup(LayerId layerId, String headerLaneId);
   ValueNotifier<int> get revealSelectionTick;
   bool rowIsSelected(TimelineRowAddress row);
-  ValueNotifier<bool> get scrubOutOfTerritory;
   void selectLayer(LayerId layerId);
   void selectTrackCutAtPlayhead(TrackId trackId);
   void selectTrackRow(TrackId trackId);
