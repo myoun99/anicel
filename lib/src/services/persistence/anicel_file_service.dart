@@ -838,6 +838,11 @@ class AnicelFileService {
             when _samePath(ref.filePath, filePath))
           anicelCelEntryName(key): ref.dataOffset,
     };
+    // ⛔A bool, not [onProgress]: the port now opens for the refs even with
+    // no one watching the bar, and a callback reaching into the isolate
+    // drags the session along with it — the send refuses (a `Future` deep
+    // in its settings is unsendable), and every Save from the menu failed.
+    final reportsProgress = onProgress != null;
 
     return _reportingProgress(
       onProgress,
@@ -876,7 +881,7 @@ class AnicelFileService {
         // unit, filled by the fraction of its bytes copied: on the save that
         // drops a big asset it IS the wait.
         final progress = _SaveProgress(
-          onProgress == null ? null : port,
+          reportsProgress ? port : null,
           1 +
               works.length +
               (newMedia.length + newConforms.length) * anicelAppendStreamPasses +
