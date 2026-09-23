@@ -25,7 +25,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 /// ⚠️This header used to add that 「the cut-end shading rides in the same
 /// painter, so one mount returns both」. It never did: the line painter has
 /// no wash, and nothing here pinned one — the claim only rode along in the
-/// test's name.
+/// test's name. The wash is the overlay's own layer now, over the row, and
+/// `collapsed_row_overlay_test` pins it.
 Future<void> _pumpFolded(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -92,7 +93,8 @@ void main() {
     final stack = tester.widget<Stack>(
       find.ancestor(of: sheet, matching: find.byType(Stack)).first,
     );
-    expect(stack.children, hasLength(2));
+    // First of all — what stands over the row (the out-of-cut wash and the
+    // cut-end marks) comes after it.
     expect(stack.children.first, tester.widget<IgnorePointer>(slot.first));
 
     // The row lies over the ARTWORK: no ground to paint rows on, so no row

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridLaw;
+    show TimelineGridLaw, TimelineOutsideCutWashPainter;
+import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
@@ -260,5 +264,176 @@ void main() {
 
     expect(find.byType(CollapsedRowOverlay), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  /// The 08-10 design keeps ONE ground, the out-of-cut wash — and the
+  /// folded row that mounts the real row (every folded timeline row since
+  /// ⑩ 뿌리 C) had none: only the fallback strip painted it, from the cut end
+  /// in a colour of its own.
+  testWidgets('the REAL folded row says where the film stops, from the '
+      'drawn end, over the row', (tester) async {
+    final session = await pumpApp(tester);
+    await collapseBottom(tester);
+    expect(inOverlay(find.byType(TimelineFrameCellsRow)), findsOneWidget);
+
+    final overlay = tester.widget<CollapsedRowOverlay>(
+      find.byType(CollapsedRowOverlay),
+    );
+    expect(
+      overlay.drawnFrameCount,
+      session.activeCutSpan.activeCutDrawnFrameCount,
+      reason: 'handed the open grid\'s own number — this project crosses no '
+          'transition, so the offsets below alone could not tell the drawn '
+          'end from the cut end',
+    );
+    final cell = overlay.pixelsPerFrame;
+    final origin =
+        (overlay.frameAxisOffset?.value ?? 0) ~/ cell * cell;
+    final wash = inOverlay(
+      find.byKey(const ValueKey<String>('collapsed-out-of-cut-wash')),
+    );
+    expect(wash, findsOneWidget);
+    expect(
+      (tester.widget<CustomPaint>(wash).painter!
+              as TimelineOutsideCutWashPainter)
+          .outsideStart,
+      session.activeCutSpan.activeCutDrawnFrameCount * cell - origin,
+      reason: 'the open grid\'s wash starts at the DRAWN end (유저 '
+          '2026-08-11), and the folded row is the open row seen through glass',
+    );
+    expect(
+      tester
+          .widget<TimelineBodyCutEndBoundary>(
+            inOverlay(
+              find.byKey(const ValueKey<String>('collapsed-cut-end-boundary')),
+            ),
+          )
+          .left,
+      session.activeCutSpan.activeCutPlaybackFrameCount * cell - origin,
+    );
+
+    // Over the row, as the open stack lays it over everything.
+    final stack = tester.widget<Stack>(
+      find.ancestor(of: wash, matching: find.byType(Stack)).first,
+    );
+    final rowSlot = stack.children.indexWhere(
+      (child) => find
+          .descendant(
+            of: find.byWidget(child),
+            matching: find.byType(TimelineFrameCellsRow),
+          )
+          .evaluate()
+          .isNotEmpty,
+    );
+    final washSlot = stack.children.indexWhere(
+      (child) => find
+          .descendant(of: find.byWidget(child), matching: wash)
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(rowSlot, greaterThanOrEqualTo(0));
+    expect(washSlot, greaterThan(rowSlot));
+  });
+
+  group('where the film stops, on the overlay itself', () {
+    FlipHudSnapshot snapshot({int? playbackFrameCount}) => FlipHudSnapshot(
+      rows: const [
+        FlipHudRow(
+          name: 'A',
+          kind: LayerKind.animation,
+          runs: [FlipHudRun(startIndex: 0, length: 4, label: '1')],
+        ),
+      ],
+      rowIndex: 0,
+      frameIndex: 0,
+      frameCount: 40,
+      playbackFrameCount: playbackFrameCount,
+    );
+
+    Future<void> pumpOverlay(
+      WidgetTester tester, {
+      required FlipHudSnapshot snapshot,
+      bool realRow = false,
+    }) async {
+      final axis = ValueNotifier<double>(55);
+      addTearDown(axis.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 800,
+              child: CollapsedRowOverlay(
+                snapshot: snapshot,
+                rail: null,
+                naturalRailWidth: 100,
+                pixelsPerFrame: 10,
+                framesPerSecond: 24,
+                frameAxisOffset: axis,
+                drawnFrameCount: 13,
+                frameRowBuilder: realRow
+                    ? (context, geometry) => const SizedBox.expand()
+                    : null,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    for (final realRow in [true, false]) {
+      testWidgets('${realRow ? 'a mounted row' : 'the fallback strip'}: the '
+          'wash from the drawn end, the のりしろ and the cut-end line, in '
+          'the scrolled axis\'s frame', (tester) async {
+        await pumpOverlay(
+          tester,
+          snapshot: snapshot(playbackFrameCount: 10),
+          realRow: realRow,
+        );
+
+        // The axis stands at 55px: frame 5 is the first laid out, so every
+        // offset is measured from 50.
+        expect(
+          (tester
+                      .widget<CustomPaint>(
+                        find.byKey(
+                          const ValueKey<String>('collapsed-out-of-cut-wash'),
+                        ),
+                      )
+                      .painter!
+                  as TimelineOutsideCutWashPainter)
+              .outsideStart,
+          130 - 50,
+        );
+        final noriShiro = tester.widget<TimelineBodyNoriShiroBoundary>(
+          find.byKey(const ValueKey<String>('collapsed-norishiro-boundary')),
+        );
+        expect(noriShiro.left, 130 - 50);
+        expect(noriShiro.cutEnd, 100 - 50);
+        expect(
+          tester
+              .widget<TimelineBodyCutEndBoundary>(
+                find.byKey(
+                  const ValueKey<String>('collapsed-cut-end-boundary'),
+                ),
+              )
+              .left,
+          100 - 50,
+        );
+      });
+    }
+
+    testWidgets('a snapshot with no cut end — the storyboard\'s track — has '
+        'nowhere the film stops', (tester) async {
+      await pumpOverlay(tester, snapshot: snapshot(), realRow: true);
+
+      expect(
+        find.byKey(const ValueKey<String>('collapsed-out-of-cut-wash')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('collapsed-cut-end-boundary')),
+        findsNothing,
+      );
+    });
   });
 }

@@ -9,6 +9,10 @@ import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
+import 'timeline_body_cut_end_boundary.dart';
+import 'timeline_body_norishiro_boundary.dart';
+import 'timeline_cut_end_handle.dart'
+    show timelineCutEndPreviewFrameCount, timelineDrawnEndOffset;
 import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
 import '../repaint_props.dart';
@@ -69,10 +73,17 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.railChild,
     this.frameRowBuilder,
     this.frameAxisOffset,
+    this.drawnFrameCount,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
   final Widget? railChild;
+
+  /// How many frames the cut is DRAWN for — the open grid's own number
+  /// ([TimelineFrameGridStack.drawnFrameCount]): the out-of-cut wash starts
+  /// there, past the のりしろ, not at the snapshot's cut end. Null = no
+  /// のりしろ, and the wash starts at the cut end.
+  final int? drawnFrameCount;
 
   /// Where the open grid's FRAME axis stands, in pixels at [pixelsPerFrame]
   /// — the host's own value, the one the grid keeps (F-143). The frame half
@@ -360,11 +371,77 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
                 ),
               ),
               content,
+              ..._whereTheFilmStops(colorScheme, first: first, cell: cell),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// WHERE THE FILM STOPS, stated over whatever stands here the way the
+  /// open grid states it over everything ([TimelineFrameGridStack]): the
+  /// out-of-cut wash from the DRAWN end (유저 2026-08-11), the のりしろ mark
+  /// and the cut-end line — the open grid's own three widgets at the open
+  /// grid's own offsets, so this is the open row seen through glass here too.
+  ///
+  /// 🚨The 08-10 design keeps ONE ground, and it is this wash: 「the only
+  /// ground that survives is the out-of-cut shading, because that one IS the
+  /// information」. ⛔It used to be the fallback strip's alone, painted from
+  /// the cut end in a colour of its own beside a cut line of its own — and
+  /// the folded row that mounts the REAL row (every folded timeline row since
+  /// ⑩ 뿌리 C) painted neither, so the one ground the design kept was on the
+  /// one path nobody saw.
+  ///
+  /// A snapshot with no cut end (the storyboard's track) has nowhere the film
+  /// stops, and the open storyboard draws no wash either.
+  List<Widget> _whereTheFilmStops(
+    ColorScheme colorScheme, {
+    required int first,
+    required double cell,
+  }) {
+    final playback = widget.snapshot.playbackFrameCount;
+    if (playback == null) {
+      return const [];
+    }
+    final origin = first * cell;
+    final drawnEnd =
+        timelineDrawnEndOffset(
+          preview: null,
+          cutId: null,
+          playbackFrameCount: playback,
+          drawnFrameCount: widget.drawnFrameCount,
+          frameCellExtent: cell,
+        ) -
+        origin;
+    final cutEnd =
+        timelineCutEndPreviewFrameCount(
+              preview: null,
+              cutId: null,
+              playbackFrameCount: playback,
+            ) *
+            cell -
+        origin;
+    return [
+      IgnorePointer(
+        child: CustomPaint(
+          key: const ValueKey<String>('collapsed-out-of-cut-wash'),
+          painter: TimelineOutsideCutWashPainter(
+            outsideStart: drawnEnd,
+            colorScheme: colorScheme,
+          ),
+        ),
+      ),
+      TimelineBodyNoriShiroBoundary(
+        key: const ValueKey<String>('collapsed-norishiro-boundary'),
+        left: drawnEnd,
+        cutEnd: cutEnd,
+      ),
+      TimelineBodyCutEndBoundary(
+        key: const ValueKey<String>('collapsed-cut-end-boundary'),
+        left: cutEnd,
+      ),
+    ];
   }
 
   /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.
@@ -468,19 +545,11 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
 
     // The grid is not this painter's: the timeline's own sheet lies under
     // it ([TimelineGridSheet], I-44) — this strip used to walk the same
-    // boundaries with a loop of its own.
+    // boundaries with a loop of its own. Nor is where the film stops: the
+    // wash and the cut-end line are the overlay's, over this strip and the
+    // real row alike ([_CollapsedRowOverlayState._whereTheFilmStops]).
 
-    // 1. THE OUT-OF-CUT WASH — the one fill that stays. It is not chrome:
-    // it says the frames past it are outside what plays.
-    final playback = snapshot.playbackFrameCount;
-    if (playback != null && x(playback) < right) {
-      canvas.drawRect(
-        Rect.fromLTRB(x(playback), 0, right, size.height),
-        Paint()..color = const Color(0x66101214),
-      );
-    }
-
-    // 2. THE BLOCKS — a translucent body so they read as paper, an outline
+    // THE BLOCKS — a translucent body so they read as paper, an outline
     // so they read as blocks, and their name. Uncovered stretches print the
     // sheet's `x` in their FIRST cell and nothing after.
     final current = snapshot.frameIndex;
@@ -559,14 +628,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
       }
     }
 
-    // 3. THE CUT END — 2px of the app's one length-colour, and the playhead
-    // over everything.
-    if (playback != null && x(playback) <= right) {
-      canvas.drawRect(
-        Rect.fromLTWH(x(playback) - 1, 0, 2, size.height),
-        Paint()..color = AppColors.danger,
-      );
-    }
+    // THE PLAYHEAD over everything this strip draws.
     canvas.drawRect(
       Rect.fromLTWH(x(current), 0, 2, size.height),
       Paint()..color = colorScheme.primary,

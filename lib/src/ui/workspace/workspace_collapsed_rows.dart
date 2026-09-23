@@ -154,6 +154,10 @@ class _WorkspaceCollapsedRows {
       // kept value that grid is handed, so the folded row shows the frames
       // the open one was showing instead of frame 0.
       frameAxisOffset: _state._frameAxisOffsets[LayerRailId.timeline],
+      // Where the open grid starts its wash — the drawn end, のりしろ
+      // included — so the folded row's starts at the same frame.
+      drawnFrameCount: _state.widget.session.activeCutSpan
+          .activeCutDrawnFrameCount,
       pixelsPerFrame: _state._timelinePixelsPerFrame.value,
       framesPerSecond: _state.widget.session.projectSettings.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
