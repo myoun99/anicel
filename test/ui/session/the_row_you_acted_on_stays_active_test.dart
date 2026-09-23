@@ -202,6 +202,8 @@ class _RecordingChanges implements ChangeSink {
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
+    bool reveal = false,
+    bool filterSparesStanding = true,
   }) {
     refreshes += 1;
     preferred = preferredActiveLayerId;

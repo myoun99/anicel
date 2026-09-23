@@ -83,7 +83,17 @@ void main() {
   /// the same round wrote came in under the line: the frame rate and the
   /// audio speed travel as the one clock they are (`ProjectClock`), and the
   /// window's IN/OUT as one trim.
-  const wideSignatures = 387;
+  ///
+  /// ⚠️387 → 388 on 2026-09-24, one named as the rule above asks.
+  /// `layerRowHiddenBy` (eight) is the ONE answer to 「is this layer's row on
+  /// screen」 that the grids draw by and the standing law lands by (F-169 —
+  /// the two answering it apart is what stood a hand-off inside a shut
+  /// group). It is the row builder's own four checks lifted out whole, so
+  /// its inputs are the ones that loop already took: the row, the rail's
+  /// three view facts, the row the filter spares and the fx answer the
+  /// filter asks — plus the folder index and attach base the builder
+  /// computes once for the indent too, passed in rather than asked twice.
+  const wideSignatures = 388;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

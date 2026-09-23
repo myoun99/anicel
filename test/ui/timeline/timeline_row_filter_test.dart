@@ -191,7 +191,7 @@ void main() {
     });
 
     test('collapsedAttachBaseIds folds a base\'s attach rows out — the '
-        'active attach row excepted (UI-R20 #9)', () {
+        'active one too (UI-R20 #9, ↩️F-169)', () {
       final attachRows = [
         _layer('base'),
         Layer(
@@ -211,18 +211,18 @@ void main() {
       );
       expect(folded.map((r) => r.layer.id.value), ['base', 'other']);
 
-      final activeExempt = buildTimelineDisplayRows(
+      // ↩️The active attach row used to be exempt from its group's fold.
+      // F-169 (유저 2026-09-24) took that out: it is what put a handed-off
+      // row on the screen inside a shut group. Nothing stands inside a fold
+      // now — the standing law hands off to the base or opens the group.
+      final activeInside = buildTimelineDisplayRows(
         layers: attachRows,
         expandedLayerIds: const {},
         lanesForLayer: (_) => const [],
         collapsedAttachBaseIds: {const LayerId('base')},
         activeLayerId: const LayerId('up1'),
       );
-      expect(activeExempt.map((r) => r.layer.id.value), [
-        'base',
-        'up1',
-        'other',
-      ]);
+      expect(activeInside.map((r) => r.layer.id.value), ['base', 'other']);
     });
   });
 }
