@@ -170,4 +170,81 @@ void main() {
     );
     await tester.pumpAndSettle();
   });
+
+  testWidgets('⑧ a movie that will not close does not keep the others open',
+      (tester) async {
+    final decoder = _OneCloseThrows();
+    debugVideoDecodeBackend = movies = decoder;
+    final path = normalizedMediaPath('${directory.path}/two.anicel');
+    final one = normalizedMediaPath(
+      (await tester.runAsync(() => writeCarriedMovie(directory)))!,
+    );
+    final two = normalizedMediaPath(
+      (await tester.runAsync(
+        () => written(directory, 'other.mp4', [
+          ...movieMagic.codeUnits,
+          ...noise(2048).reversed,
+        ]),
+      ))!,
+    );
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${directory.path}/Staged',
+      ),
+      audioConformStore: soundConformStore(),
+    );
+    addTearDown(session.dispose);
+    session.playbackRig.prerenderScheduler.beginInputHold();
+    await tester.runAsync(() async {
+      await session.mediaPool.importMediaFiles(
+        [one, two],
+        copyIntoProject: true,
+      );
+      for (final movie in [one, two]) {
+        await session.importDoors.importVideoFile(
+          path: movie,
+          settings: const ImportFileSettings(
+            mode: ImportFileMode.keepInside,
+            sound: false,
+          ),
+        );
+      }
+      await session.projectDoor.saveProjectToFile(
+        path,
+        asked: SaveAsked.byAPerson,
+      );
+      await session.projectDoor.openProjectFromFile(path);
+      await session.movieCels.hydrate(session.requireActiveCut, 0);
+    });
+    expect(
+      session.projectFile.heldArchiveEntries,
+      hasLength(2),
+      reason: 'the premise: the canvas holds both',
+    );
+
+    decoder.armed = true;
+    await tester.runAsync(() => session.movieCels.reset());
+
+    expect(
+      session.projectFile.heldArchiveEntries,
+      isEmpty,
+      reason: 'the first close threw, and the second was closed all the same',
+    );
+    await tester.pumpAndSettle();
+  });
+}
+
+/// A decoder whose next close fails once [armed] — antivirus, a lost
+/// handle.
+class _OneCloseThrows extends ReadingVideoBackend {
+  bool armed = false;
+
+  @override
+  Future<void> close(int token) async {
+    if (armed) {
+      armed = false;
+      throw StateError('will not close');
+    }
+  }
 }

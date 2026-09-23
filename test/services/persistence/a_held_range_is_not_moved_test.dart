@@ -359,6 +359,11 @@ void main() {
       final path = normalizedMediaPath('${directory.path}/spelled.anicel');
       final (:session, :movie) = await savedWithAMovie(tester, path);
       final osSpelling = movie.replaceAll('/', r'\');
+      expect(
+        session.projectFile.projectHoldsMediaBytes(osSpelling),
+        isTrue,
+        reason: 'the question a door asks before copying anything',
+      );
 
       final held = (await tester.runAsync(
         () => session.projectFile.holdMediaBytes(osSpelling),
