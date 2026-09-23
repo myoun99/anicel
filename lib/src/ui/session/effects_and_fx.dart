@@ -63,13 +63,17 @@ class EffectsAndFx {
   );
 
   /// Whether the ACTIVE row can take an effect: a row that carries its own
-  /// FX, and not a track-owned SE row (its display clone strips FX, so a
-  /// chain committed through it would land nowhere the lanes could edit).
+  /// FX.
+  ///
+  /// ↩️A track-owned SE row was fenced off here since R6a (2026-07-30: 「its
+  /// display clone strips FX」). The clone projects the track's chain now,
+  /// and 유저's law for a global row is that every cut can work it (F-102:
+  /// 「로컬에서도 조작은 가능」) — so the chain goes where the row lives
+  /// ([ProjectAccess.commitLayerById]).
   bool get canAddEffectToActiveLayer {
     final layer = _selection.activeLayer;
     return layer != null &&
         layer.kind.hasLayerEffects &&
-        !_project.isTrackSeLayerId(layer.id) &&
         // Attach rows wear their BASE's FX (W5) and have no lanes of their
         // own — the effect belongs on the base.
         layer.attachedToLayerId == null;
@@ -77,11 +81,17 @@ class EffectsAndFx {
 
   /// Appends a fresh effect of [kind] (every parameter at its default, so
   /// adding one changes nothing until a value moves) to the active row.
+  ///
+  /// ⚠️Built from the row that HOLDS the chain, not from the active row: an
+  /// SE row's active row is its cut's projection, whose keys sit on the
+  /// cut's frames — appending to that would write them back onto the
+  /// track's row at the wrong frames.
   void addEffectToActiveLayer(EffectKind kind) {
-    final layer = _selection.activeLayer;
-    if (layer == null || !canAddEffectToActiveLayer) {
+    final active = _selection.activeLayer;
+    if (active == null || !canAddEffectToActiveLayer) {
       return;
     }
+    final layer = _project.commitLayerById(active.id) ?? active;
     _effectSequence += 1;
     final effect = LayerEffect.defaults(
       // Timestamped like the frame ids: the lane address embeds this, so
@@ -120,7 +130,7 @@ class EffectsAndFx {
   /// independent bypass: some groups on, some off, and tapping resolves the
   /// whole row one way.
   LayerFxState layerFxState(LayerId layerId) {
-    final layer = fxSwitchLayerById(layerId);
+    final layer = _project.commitLayerById(layerId);
     if (layer == null) {
       return LayerFxState.on;
     }
@@ -151,12 +161,12 @@ class EffectsAndFx {
   /// can have its transform bypassed while a colour effect still runs —
   /// the master's [LayerFxState.mixed] answer cannot decide the pose.
   bool isLayerTransformFxEnabled(LayerId layerId) =>
-      fxSwitchLayerById(layerId)?.transformEnabled ?? true;
+      _project.commitLayerById(layerId)?.transformEnabled ?? true;
 
   /// The MASTER toggle: off unless the row is already fully off, in which
   /// case it turns everything back on. ONE undo step for the whole row.
   void toggleLayerFx(LayerId layerId) {
-    final layer = fxSwitchLayerById(layerId);
+    final layer = _project.commitLayerById(layerId);
     if (layer == null) {
       return;
     }
@@ -166,7 +176,7 @@ class EffectsAndFx {
 
   /// The TRANSFORM group header's own switch (R8).
   void toggleLayerTransformFx(LayerId layerId) {
-    final layer = fxSwitchLayerById(layerId);
+    final layer = _project.commitLayerById(layerId);
     if (layer == null) {
       return;
     }
@@ -179,10 +189,12 @@ class EffectsAndFx {
     );
   }
 
-  /// The row a switch edit addresses: a cut layer, or a track-owned SE row
-  /// (whose display clone is not the thing to write).
-  Layer? fxSwitchLayerById(LayerId layerId) =>
-      _project.layerById(layerId) ?? _project.trackSeGlobalLayerById(layerId);
+  // ⛔The row an FX edit addresses is [ProjectAccess.commitLayerById] — the
+  // row every layer op commits against, a track-owned SE row's GLOBAL form
+  // and not its cut's projection. A private `fxSwitchLayerById` restated it
+  // as 「cut layer, else the SE row」 and asked the cut FIRST, which hands
+  // back the projection: a chain built from it lands on the track at the
+  // cut's frames (se-row-fx-write-path's third pin).
 
   /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
   void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
@@ -206,12 +218,14 @@ class EffectsAndFx {
       // Through the COORDINATOR, not a hand-built command: it owns the
       // 겸용컷 effect mirror, and a master that built its own would write
       // one cut of a link group and leave its twin permanently `mixed`.
-      final cutId = cutIdOfLayer(
-        _project.repository.requireProject(),
-        layer.id,
-      );
+      // A track-owned SE row lives in no cut: its chain is addressed from
+      // the cut the user stands in, as every other FX edit of it is
+      // ([updateLayerEffects]).
+      final cutId =
+          cutIdOfLayer(_project.repository.requireProject(), layer.id) ??
+          _project.activeCutId;
       if (cutId == null) {
-        continue; // A row no cut holds (a track-SE clone) has no chain here.
+        continue;
       }
       commands.addAll(
         _project.cutCommandCoordinator.layerEffectsCommands(

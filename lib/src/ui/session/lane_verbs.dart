@@ -279,9 +279,7 @@ class LaneVerbs {
               effects: track.effects,
             );
     }
-    return _project.isTrackSeLayerId(layerId)
-        ? _project.trackSeGlobalLayerById(layerId)
-        : _project.layerById(layerId);
+    return _project.commitLayerById(layerId);
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of

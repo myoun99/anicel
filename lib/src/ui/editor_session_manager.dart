@@ -1652,7 +1652,7 @@ class EditorSessionManager extends ChangeNotifier
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = effectsAndFx.fxSwitchLayerById(layerId);
+    final layer = commitLayerById(layerId);
     if (layer == null || layer.transformEnabled == enabled) {
       return;
     }
