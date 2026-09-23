@@ -108,10 +108,12 @@ extension TimelineGlyphPlacementPaint on TimelineGlyphPlacement {
 /// promise rather than a fact.
 ///
 /// ⚠️THE SIZE IS THE RAIL'S OWN, not shared: the vertical rail narrowed to
-/// 28px (R10 R6) and prints a point smaller than the horizontal ruler.
+/// 28px (R10 R6) and prints a point smaller than the horizontal ruler. The
+/// FACE is the strip's too (`TimelineRulerScale.face`) — set from scratch,
+/// the second named none and wrote in the OS's font.
 TimelineGlyphPlacement? secondsCornerGlyph(
   Rect rect,
-  ({String text, double fontSize, Color color}) seconds,
+  ({String text, double fontSize, Color color, TextStyle face}) seconds,
 ) {
   if (seconds.text.isEmpty) {
     return null;
@@ -119,7 +121,7 @@ TimelineGlyphPlacement? secondsCornerGlyph(
   return (
     painter: timelineGlyphPainter(
       seconds.text,
-      TextStyle(
+      seconds.face.copyWith(
         fontSize: seconds.fontSize,
         fontWeight: FontWeight.w700,
         color: seconds.color,

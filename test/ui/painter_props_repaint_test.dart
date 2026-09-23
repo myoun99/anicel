@@ -94,6 +94,7 @@ void main() {
             crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
             metrics: TimelineGridMetrics.defaults,
             colorScheme: const ColorScheme.light(),
+            face: const TextStyle(),
             numberType: TimelineFrameRulerPainter.numberType,
           ),
         );

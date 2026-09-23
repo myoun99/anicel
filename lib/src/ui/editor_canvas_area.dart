@@ -42,6 +42,7 @@ import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'debug/input_inspector.dart';
+import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
@@ -900,6 +901,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             emphasized: toolState.tool == CanvasTool.guide,
             vanishingPointLabel: AppText.strings.guideVanishingPoint,
             color: Theme.of(context).colorScheme.primary,
+            face: appFaceOf(DefaultTextStyle.of(context).style),
             selectedGuideId: session.selectedGuideId,
           ),
         ),

@@ -489,6 +489,7 @@ void main() {
         ),
         geometry: geometry,
         colorScheme: const ColorScheme.dark(),
+        face: const TextStyle(),
         hoveredId: null,
         operatingId: null,
         draggingGripId: null,

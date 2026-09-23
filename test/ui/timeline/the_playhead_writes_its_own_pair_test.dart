@@ -39,6 +39,7 @@ void main() {
     crossExtent: 28,
     metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
     colorScheme: scheme,
+    face: const TextStyle(),
     numberType: axis == Axis.horizontal
         ? TimelineFrameRulerPainter.numberType
         : XSheetFrameRailPainter.numberType,

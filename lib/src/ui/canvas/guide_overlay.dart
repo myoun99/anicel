@@ -176,6 +176,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     required this.canvasSize,
     required this.emphasized,
     required this.color,
+    required this.face,
     required this.vanishingPointLabel,
     this.selectedGuideId,
   });
@@ -190,6 +191,11 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   final bool emphasized;
 
   final Color color;
+
+  /// The app's face the guides' names are set in (`appFaceOf`) — set from
+  /// scratch they named none and wrote in the OS's font (「앱은 한 글꼴」,
+  /// 08-28).
+  final TextStyle face;
 
   /// What a vanishing point is CALLED, without its number — 「소실점」.
   ///
@@ -294,7 +300,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(
+        style: face.copyWith(
           color: color.withValues(alpha: opacity),
           fontSize: 11,
           height: 1.1,
@@ -514,6 +520,7 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     canvasSize,
     emphasized,
     color,
+    face,
     vanishingPointLabel,
     selectedGuideId,
   );

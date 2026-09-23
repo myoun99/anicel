@@ -10,6 +10,7 @@ import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import '../text/app_face.dart';
 import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart';
 
@@ -589,13 +590,12 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// The app's face alone — the ambient line height would move every name.
-  TextStyle _railNameStyle(FlipHudRow row, Color ink) => TextStyle(
-    fontSize: row.isLane ? 10.5 : 11.5,
-    fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
-    color: row.isLane ? ink.withValues(alpha: 0.82) : ink,
-    fontFamily: baseTextStyle.fontFamily,
-    fontFamilyFallback: baseTextStyle.fontFamilyFallback,
-  );
+  TextStyle _railNameStyle(FlipHudRow row, Color ink) =>
+      appFaceOf(baseTextStyle).copyWith(
+        fontSize: row.isLane ? 10.5 : 11.5,
+        fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
+        color: row.isLane ? ink.withValues(alpha: 0.82) : ink,
+      );
 
   TextPainter _kindIconPainter(FlipHudRow row, Color ink) {
     final icon = layerKindIcon(row.kind);

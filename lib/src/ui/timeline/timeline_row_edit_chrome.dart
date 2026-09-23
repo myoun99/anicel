@@ -26,6 +26,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
 import 'timeline_run_end_handles.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -389,6 +390,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.resolver,
     required this.geometry,
     required this.colorScheme,
+    required this.face,
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
@@ -406,6 +408,9 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   double get frameCellExtent => geometry.value.frameCellExtent;
 
   final ColorScheme colorScheme;
+
+  /// The app's face the run glyphs are set in (`appFaceOf`).
+  final TextStyle face;
 
   /// The target the pointer rests on; null = nothing hovered.
   final String? hoveredId;
@@ -488,11 +493,13 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             canvas,
             text: '+',
             slot: target.rect,
-            fontSize: glyphSize + 2,
-            color: timelineRunGlyphColor(
-              colorScheme,
-              hovered: target.id == hoveredId,
-              operating: target.id == operatingId,
+            type: face.copyWith(
+              fontSize: glyphSize + 2,
+              color: timelineRunGlyphColor(
+                colorScheme,
+                hovered: target.id == hoveredId,
+                operating: target.id == operatingId,
+              ),
             ),
           );
         case TimelineRowRunTagTarget():
@@ -500,11 +507,13 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             canvas,
             text: target.letter,
             slot: target.rect,
-            fontSize: glyphSize,
-            color: timelineRunGlyphColor(
-              colorScheme,
-              hovered: target.id == hoveredId,
-              operating: target.id == operatingId,
+            type: face.copyWith(
+              fontSize: glyphSize,
+              color: timelineRunGlyphColor(
+                colorScheme,
+                hovered: target.id == hoveredId,
+                operating: target.id == operatingId,
+              ),
             ),
           );
       }
@@ -523,6 +532,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       ByList(resolved.targets),
       ByList(resolved.patternSpans),
       colorScheme,
+      face,
       hoveredId,
       operatingId,
       draggingGripId,
@@ -1113,6 +1123,7 @@ class _TimelineRowEditChromeLayerState
         resolver: widget.resolver,
         geometry: widget.geometry,
         colorScheme: Theme.of(context).colorScheme,
+        face: appFaceOf(DefaultTextStyle.of(context).style),
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,
         // R9 #12: pressed reads as engaged from the pointer DOWN, not from

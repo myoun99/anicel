@@ -178,6 +178,7 @@ void main() {
           crossExtent: 28,
           metrics: TimelineGridMetrics.defaults,
           colorScheme: scheme,
+          face: const TextStyle(),
           numberType: TimelineFrameRulerPainter.numberType,
         ),
       ).paint(spy, const Size(24 * 30, 28));
@@ -210,6 +211,7 @@ void main() {
           crossExtent: 28,
           metrics: TimelineGridMetrics.defaults,
           colorScheme: scheme,
+          face: const TextStyle(),
           numberType: TimelineFrameRulerPainter.numberType,
         ),
       ).scale.modelAt(6).background;
@@ -251,6 +253,7 @@ void main() {
           crossExtent: 28,
           metrics: TimelineGridMetrics.defaults,
           colorScheme: scheme,
+          face: const TextStyle(),
           numberType: XSheetFrameRailPainter.numberType,
         ),
       ).paint(spy, const Size(28, 24 * 30));
@@ -285,6 +288,7 @@ void main() {
         crossExtent: 28,
         metrics: TimelineGridMetrics.defaults,
         colorScheme: scheme,
+        face: const TextStyle(),
         numberType: XSheetFrameRailPainter.numberType,
       ).modelAt(6).background;
       expect(ground, isNot(scheme.surface), reason: 'fixture premise');
@@ -324,6 +328,7 @@ void main() {
         crossExtent: 28,
         metrics: TimelineGridMetrics.defaults,
         colorScheme: scheme,
+        face: const TextStyle(),
         numberType: TimelineFrameRulerPainter.numberType,
       ),
     ).paint(ruler, const Size(24 * 30, 28));

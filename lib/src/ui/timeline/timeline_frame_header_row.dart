@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../text/app_face.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_ruler_playhead_writing.dart';
@@ -88,6 +89,7 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       crossExtent: metrics.layerRowHeight,
       metrics: metrics,
       colorScheme: colorScheme,
+      face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: TimelineFrameRulerPainter.numberType,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,

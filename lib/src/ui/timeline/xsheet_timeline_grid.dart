@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
 import '../../models/layer_kind.dart';
+import '../text/app_face.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart';
@@ -1312,6 +1313,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       crossExtent: metrics.layerControlsWidth,
       metrics: metrics,
       colorScheme: colorScheme,
+      face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: XSheetFrameRailPainter.numberType,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
@@ -1430,6 +1432,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       text: writing.second,
       fontSize: 8,
       color: scale.secondsInk(current: current),
+      face: scale.face,
     ));
     if (second != null) {
       glyphs.add(second);
@@ -1468,7 +1471,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   static TextStyle numberType(
     TimelineRulerScale scale, {
     required bool everyFrame,
-  }) => TextStyle(
+  }) => scale.face.copyWith(
     // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the sheet's
     // own number, affordable only while the rail was 72 wide.
     fontSize: timelineFittedGlyphFontSize(

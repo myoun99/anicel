@@ -208,6 +208,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
       text: writing.second,
       fontSize: 9,
       color: scale.secondsInk(current: current),
+      face: scale.face,
     ));
     if (second != null) {
       glyphs.add(second);
@@ -222,7 +223,7 @@ class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
   static TextStyle numberType(
     TimelineRulerScale scale, {
     required bool everyFrame,
-  }) => TextStyle(
+  }) => scale.face.copyWith(
     fontSize: everyFrame
         ? timelineFittedGlyphFontSize(
             11,
@@ -287,6 +288,7 @@ final class TimelineRulerScale {
     required this.crossExtent,
     required this.metrics,
     required this.colorScheme,
+    required this.face,
     required this.numberType,
     this.framesPerSecond = 24,
     this.showSeconds = false,
@@ -316,6 +318,12 @@ final class TimelineRulerScale {
 
   final TimelineGridMetrics metrics;
   final ColorScheme colorScheme;
+
+  /// The app's face (`appFaceOf`) every number and second on the strip is
+  /// set in — and measured in, since [labelEveryFrames] measures in
+  /// [numberType]. The two strips set their type from scratch and named no
+  /// face, so the rulers wrote in the OS's font (「앱은 한 글꼴」, 08-28).
+  final TextStyle face;
 
   /// The type this strip sets its numbers in — the ruler's or the rail's
   /// (R10 R6: the corner is shared, the size is not).
@@ -591,6 +599,7 @@ final class TimelineRulerScale {
           other.playbackFrameCount == playbackFrameCount &&
           other.leadingFrameSpacer == leadingFrameSpacer &&
           other.metrics == metrics &&
+          other.face == face &&
           other.numberType == numberType &&
           other.framesPerSecond == framesPerSecond &&
           other.showSeconds == showSeconds &&
@@ -609,6 +618,7 @@ final class TimelineRulerScale {
     playbackFrameCount,
     leadingFrameSpacer,
     metrics,
+    face,
     numberType,
     framesPerSecond,
     showSeconds,

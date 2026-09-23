@@ -294,6 +294,15 @@ void main() {
     expect(xsheetRailWrittenFrame(tester), 3);
   });
 
+  testWidgets('the rail writes in the app\'s face, taken from where it '
+      'stands (「앱은 한 글꼴」, 08-28)', (tester) async {
+    await tester.pumpWidget(_grid(face: const TextStyle(fontFamily: 'Face')));
+
+    // Set from scratch, the rail's numbers named no face and wrote in the
+    // OS's; how the face reaches every glyph is `timeline_ruler_scale_test`.
+    expect(xsheetRailPainter(tester).scale.face.fontFamily, 'Face');
+  });
+
   testWidgets('named drawing start displays name and mark has priority', (
     tester,
   ) async {
@@ -612,30 +621,34 @@ Widget _grid({
   void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   bool Function(int frameIndex)? isFrameReady,
+  TextStyle face = const TextStyle(),
 }) {
   return MaterialApp(
     home: Scaffold(
       body: SizedBox(
         width: 900,
         height: 600,
-        child: XSheetTimelineGrid(
-          hooks: TimelineGridHooks(
-            activeLayerId: const LayerId('layer-1'),
-            frameCursor: ValueNotifier<int>(currentFrameIndex),
-            playbackFrameCount: frameCount,
-            exposureStateForLayer:
-                exposureStateForLayer ??
-                (_, _) => TimelineCellExposureState.uncovered,
-            frameNameForLayer: frameNameForLayer,
-            onSelectLayer: onSelectLayer ?? (_) {},
-            onSelectFrame: onSelectFrame ?? (_) {},
-            onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
-            onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
-            onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
-            onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
-            isFrameReady: isFrameReady,
+        child: DefaultTextStyle.merge(
+          style: face,
+          child: XSheetTimelineGrid(
+            hooks: TimelineGridHooks(
+              activeLayerId: const LayerId('layer-1'),
+              frameCursor: ValueNotifier<int>(currentFrameIndex),
+              playbackFrameCount: frameCount,
+              exposureStateForLayer:
+                  exposureStateForLayer ??
+                  (_, _) => TimelineCellExposureState.uncovered,
+              frameNameForLayer: frameNameForLayer,
+              onSelectLayer: onSelectLayer ?? (_) {},
+              onSelectFrame: onSelectFrame ?? (_) {},
+              onToggleLayerVisibility: onToggleLayerVisibility ?? (_) {},
+              onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
+              onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
+              onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
+              isFrameReady: isFrameReady,
+            ),
+            layers: _layers,
           ),
-          layers: _layers,
         ),
       ),
     ),

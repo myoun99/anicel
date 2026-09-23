@@ -9,6 +9,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 
+import '../../helpers/app_faces.dart';
+
 /// 🚨★★★유저 (guide-sym): 「가이드툴 선택된 상태에선 캔버스에 표시되는 자에
 /// **이름표시**. 대칭자같은건 **중앙포인트 위에 중앙정렬**로 해당 자의
 /// 이름(대칭 2)표시. 퍼스자는 **퍼스자의 이름말고 소실점 이름**을 각 소실점 위
@@ -56,12 +58,14 @@ void main() {
     List<DrawingGuide> guides, {
     required bool emphasized,
     String label = 'VP',
+    TextStyle face = const TextStyle(),
   }) => GuideOverlayPainter(
     guides: CutGuides(guides: guides),
     viewport: CanvasViewport(),
     canvasSize: const CanvasSize(width: 300, height: 200),
     emphasized: emphasized,
     color: const Color(0xFF00FF00),
+    face: face,
     vanishingPointLabel: label,
   );
 
@@ -199,4 +203,43 @@ void main() {
       reason: '「가이드툴이 선택됬을때」 — a quiet guide keeps its lines only',
     );
   });
+
+  testWidgets('a name is set in the app\'s face, not the OS\'s (「앱은 한 글꼴」, '
+      '08-28)', (tester) async {
+    await loadTheAppFaces();
+    const face = TextStyle(fontFamily: 'BIZ UDPGothic');
+    double widthIn(TextStyle style) => (TextPainter(
+      text: TextSpan(
+        text: 'Sym 2',
+        style: style.copyWith(fontSize: 11, height: 1.1),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout()).maxIntrinsicWidth;
+    expect(
+      widthIn(face),
+      isNot(closeTo(widthIn(const TextStyle()), 0.5)),
+      reason: 'the premise: the two faces set the name at different widths',
+    );
+
+    final painted = _PaintedWidths();
+    painterFor(
+      [symmetry(name: 'Sym 2')],
+      emphasized: true,
+      face: face,
+    ).paint(painted, size);
+    expect(painted.widths, hasLength(1));
+    expect(painted.widths.single, closeTo(widthIn(face), 0.5));
+  });
+}
+
+/// The natural width of every paragraph painted, in painting order.
+class _PaintedWidths implements Canvas {
+  final widths = <double>[];
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
+      widths.add(paragraph.maxIntrinsicWidth);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -382,22 +382,19 @@ Color timelineRunGlyphColor(
   return colorScheme.onSurfaceVariant.withValues(alpha: 0.65);
 }
 
-/// Draws one cluster glyph centred in its half.
+/// Draws one cluster glyph centred in its half, bold on one line of [type]
+/// — the size, the ink and the app's face are the caller's. Set from
+/// scratch here, the glyphs named no face and wrote in the OS's font
+/// (「앱은 한 글꼴」, 08-28).
 void paintTimelineRunGlyph(
   Canvas canvas, {
   required String text,
   required Rect slot,
-  required double fontSize,
-  required Color color,
+  required TextStyle type,
 }) {
   final glyph = timelineGlyphPainter(
     text,
-    TextStyle(
-      fontSize: fontSize,
-      height: 1,
-      fontWeight: FontWeight.w700,
-      color: color,
-    ),
+    type.copyWith(height: 1, fontWeight: FontWeight.w700),
   );
   glyph.paint(
     canvas,

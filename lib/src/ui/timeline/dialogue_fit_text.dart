@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_face.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/dialogue_fit_paint.dart';
 import '../text/word_condensation.dart';
@@ -40,22 +41,15 @@ class DialogueFitText extends StatelessWidget {
     if (text.isEmpty) {
       return const SizedBox.shrink();
     }
-    // The app's FACE and nothing else of the ambient style: a painter set
-    // from a bare `TextStyle` names no face and draws in the OS's (「앱은 한
-    // 글꼴」, 08-28), but the ambient line height would grow every glyph's
-    // box past the cell it is spread into.
-    final ambient = DefaultTextStyle.of(context).style;
     return ExcludeSemantics(
       child: CustomPaint(
         painter: _DialogueFitPainter(
           text: text,
           axis: axis,
-          style: TextStyle(
+          style: appFaceOf(DefaultTextStyle.of(context).style).copyWith(
             color: color,
             fontSize: fontSize,
             fontWeight: FontWeight.w600,
-            fontFamily: ambient.fontFamily,
-            fontFamilyFallback: ambient.fontFamilyFallback,
           ),
         ),
         child: const SizedBox.expand(),
