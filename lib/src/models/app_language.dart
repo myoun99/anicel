@@ -31,26 +31,31 @@ enum AppLanguage {
     AppLanguage.zhHans => '简体中文',
   };
 
+  /// The ISO 639 code a device names this language by.
+  ///
+  /// ⚠️Every Chinese reads 简体 (F-157): it is the one Chinese the app
+  /// speaks, and a reader of either script reads it better than English —
+  /// my call, on the user's 「그런부분은 알아서 맡기고」.
+  String get languageCode => switch (this) {
+    AppLanguage.en => 'en',
+    AppLanguage.ja => 'ja',
+    AppLanguage.ko => 'ko',
+    AppLanguage.fr => 'fr',
+    AppLanguage.zhHans => 'zh',
+  };
+
   /// The language a device that prefers [languageCodes] — in its own order,
   /// ISO 639 codes — reads the app in: the first of them the app speaks, or
   /// the program default when it speaks none of them.
   ///
   /// 🚨F-157 (유저 2026-09-17): 「앱 기본 언어 설정값, 디바이스? 의 언어 설정
-  /// 기준으로」. ⚠️Every Chinese reads 简体: it is the one Chinese the app
-  /// speaks, and a reader of either script reads it better than English —
-  /// my call, on the user's 「그런부분은 알아서 맡기고」.
+  /// 기준으로」.
   static AppLanguage forDevice(Iterable<String> languageCodes) {
     for (final code in languageCodes) {
-      final spoken = switch (code.toLowerCase()) {
-        'en' => AppLanguage.en,
-        'ja' => AppLanguage.ja,
-        'ko' => AppLanguage.ko,
-        'fr' => AppLanguage.fr,
-        'zh' => AppLanguage.zhHans,
-        _ => null,
-      };
-      if (spoken != null) {
-        return spoken;
+      for (final language in values) {
+        if (language.languageCode == code) {
+          return language;
+        }
       }
     }
     return const AppLanguageSettings().programLanguage;
