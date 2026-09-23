@@ -126,7 +126,15 @@ void main() {
     drawAt(0);
     holdEndOf(0);
     session.selectFrameIndex(0);
+    // F-152: the BLOCK is what a selection copies (「해당 블록을 선택해서
+    // 복사하면」) — standing, the copy is its drawing alone (below).
+    session.updateFrameRangeSelectionDrag(
+      layerId: rowId,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
     session.clipboard.copyFrameAtCurrentFrame();
+    session.clearFrameRangeSelection();
     session.selectFrameIndex(8);
     session.clipboard.pasteIndependentFrameAtCurrentFrame();
 
@@ -135,5 +143,71 @@ void main() {
     expect(after.timeline[8]!.endEdge, holdMark);
     expect(after.timeline[9]!.ghostOf, endHoldGhost);
     expect(after.timeline[1]!.length, 7, reason: 'the original holds to 8');
+  });
+
+  test('copied STANDING, it is the drawing alone — the property stays with '
+      'its block (F-152: 「1콤마로서 붙혀넣게」)', () {
+    drawAt(0);
+    holdEndOf(0);
+    session.selectFrameIndex(0);
+    session.clipboard.copyFrameAtCurrentFrame();
+    session.selectFrameIndex(8);
+    session.clipboard.pasteIndependentFrameAtCurrentFrame();
+
+    final after = row();
+    expect(after.timeline[8]!.ghost, isFalse, reason: 'LIVENESS — pasted');
+    expect(after.timeline[8]!.length, 1);
+    expect(after.timeline[8]!.endEdge, TimelineRunEdgeMark.none);
+    expect(
+      after.timeline[9],
+      isNull,
+      reason: 'a hold riding along would ghost the paste past the one comma '
+          'it was asked to be',
+    );
+  });
+
+  /// 🚨F-140 (유저 2026-09-16): 「복사버튼 누를때 고스트프레임이 복사되는거
+  /// 같음. 홀드하고 뒤의 고스트프레임? - 선 부분에서 복사버튼 활성화됨.
+  /// 복사버튼이 작동하는건 좋은데 지금 붙여넣기해도 아무일 안일어나니까
+  /// 작동하게하도록」. The button is lit by the drawing the line shows; the
+  /// copy used to bank the line's span off the ghost-free row — every cell
+  /// of it empty — so the paste put down nothing.
+  group('standing on a hold\'s GHOST, the copy is the drawing it shows', () {
+    setUp(() {
+      drawAt(0);
+      holdEndOf(0);
+      expect(row().timeline[1]!.ghostOf, endHoldGhost, reason: 'LIVENESS');
+      session.selectFrameIndex(3);
+      expect(
+        session.clipboard.canCopyFrameAtCurrentFrame,
+        isTrue,
+        reason: 'premise: the button is lit on the line',
+      );
+      session.clipboard.copyFrameAtCurrentFrame();
+      session.selectFrameIndex(10);
+    });
+
+    test('an independent paste puts it down', () {
+      session.clipboard.pasteIndependentFrameAtCurrentFrame();
+
+      final after = row();
+      final pasted = after.timeline[10];
+      expect(pasted, isNotNull, reason: '「붙여넣기해도 아무일 안일어나니까」');
+      expect(pasted!.ghost, isFalse);
+      expect(pasted.length, 1, reason: 'standing — one comma (F-152)');
+      expect(
+        pasted.frameId,
+        isNot(after.timeline[0]!.frameId),
+        reason: 'independent: a cel of its own',
+      );
+    });
+
+    test('a linked paste puts down the same drawing', () {
+      session.clipboard.pasteLinkedFrameAtCurrentFrame();
+
+      final after = row();
+      expect(after.timeline[10]?.frameId, after.timeline[0]!.frameId);
+      expect(after.timeline[10]!.ghost, isFalse);
+    });
   });
 }

@@ -530,7 +530,7 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     editingSession.setActiveCutId(position.cutId);
-    clipboard.dropCopiedFrame();
+    clipboard.keepWhileItsCutIsActive();
     activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
   }
 
@@ -1097,7 +1097,8 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
   }) {
-    clipboard.dropCopiedFrame();
+    // F-152: the copy survives an undo and a cut command in its own cut.
+    clipboard.keepWhileItsCutIsActive();
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
@@ -1764,12 +1765,13 @@ class EditorSessionManager extends ChangeNotifier
 
     move();
     // 🚨★★★**THE TIDY-UP FOLLOWS THE DOCUMENT, NOT THE KEYPRESS.** Every
-    // step used to run [refreshAfterCutCommand] — which DROPS THE COPIED
-    // FRAME and CLEARS THE FRAME-RANGE SELECTION, rebuilds the cut
-    // controllers and wakes every session listener. That is what a CUT
-    // command owes. Pressing Ctrl+Z after a brush stroke owes none of it,
-    // and paid all of it: the user's clipboard and their band went away
-    // because of an edit that moved no row.
+    // step used to run [refreshAfterCutCommand] — which CLEARS THE
+    // FRAME-RANGE SELECTION (and dropped the copied frame too, until F-152
+    // kept it in hand), rebuilds the cut controllers and wakes every
+    // session listener. That is what a CUT command owes. Pressing Ctrl+Z
+    // after a brush stroke owes none of it, and paid all of it: the user's
+    // clipboard and their band went away because of an edit that moved no
+    // row.
     //
     // ⚠️And the forward direction never did this. `HistoryManager`'s own
     // doc says 「brush strokes execute here WITHOUT a session notify, so
@@ -3135,7 +3137,7 @@ class EditorSessionManager extends ChangeNotifier
       visibilitySolo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
-    clipboard.dropCopiedFrame();
+    clipboard.keepWhileItsCutIsActive();
     clearFrameRangeSelection();
     activeCutControllers.rebuild();
     return true;

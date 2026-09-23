@@ -560,7 +560,7 @@ class Standing {
       trackIdOfCut(_project.repository.requireProject(), cutId) ??
           _timeline.editingSession.selectedTrackId,
     );
-    _clipboard.dropCopiedFrame();
+    _clipboard.keepWhileItsCutIsActive();
     _selection.clearFrameRangeSelection();
     // The cut comes back on the row it was left on; never visited (or the
     // layer is gone — the rebuild's own guard) falls back to the top row.

@@ -1,3 +1,4 @@
+import '../../models/cut_id.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/frame.dart';
@@ -61,11 +62,35 @@ class FrameClipboard {
     for (final row in _copiedFrame?.rows ?? const <_CopiedRow>[]) row.layerId,
   ];
 
-  /// The frame board names cels by id inside the cut it was written in;
-  /// every caller that switches cuts, parks in a gap or lands a cut
-  /// command drops it here rather than let a stale id resolve.
-  void dropCopiedFrame() {
-    _copiedFrame = null;
+  /// 🚨★★THE COPY STAYS IN HAND while its cut is the one being edited
+  /// (F-152, 유저 2026-09-16): 「복사하고 무언가 붙혀넣는다고 해서 복사한게
+  /// 사라지지않게. 복사한거는 들고있음. 그 상태에서 여러군데 붙혀넣기
+  /// 가능하도록. 블록이든 뭐든 복사의 기본로직으로서」.
+  ///
+  /// 🧪What threw it away was measured, not guessed: a paste never did, but
+  /// every UNDO that moves the document runs the cut-command refresh, and
+  /// the refresh dropped the board — so paste, undo the paste, paste again
+  /// found nothing. A cut command in the same cut (a length change, a
+  /// shift) did the same.
+  ///
+  /// ↩️That drop predates the board carrying its cels and sounds BY VALUE.
+  /// Inside its own cut nothing it holds can go stale any more: an
+  /// independent paste mints from the carried cels, a linked one brings the
+  /// very same cel back (T3). What still ties it to its cut is the PICTURE:
+  /// an independent paste copies it from the store under the source's key
+  /// in the ACTIVE cut ([carryBakedPictures]), so from another cut it would
+  /// mint a blank cel.
+  ///
+  /// ⛔ONE QUESTION, ONE ANSWER. The cut switches, the gap park and the
+  /// cut-command refresh all ask it here, after the active cut is settled —
+  /// they used to answer it two ways (three unconditional drops beside
+  /// this test), which is how the refresh came to drop a copy whose cut
+  /// had not changed.
+  void keepWhileItsCutIsActive() {
+    final copied = _copiedFrame;
+    if (copied != null && copied.cutId != _project.activeCutId) {
+      _copiedFrame = null;
+    }
   }
 
   /// The board goes when the project itself is replaced.
@@ -259,14 +284,26 @@ class FrameClipboard {
 
   void cutRunAtCurrentFrame() {
     final layer = _selection.activeLayer;
-    if (layer == null || !canCutRunAtCurrentFrame) {
+    final frame = _selection.selectedFrame;
+    if (layer == null || frame == null || !canCutRunAtCurrentFrame) {
       return;
     }
     final run = spliceRunOnActiveRow();
     if (run == null) {
       return;
     }
-    copyFrameAtCurrentFrame();
+    // ⛔NOT copyFrameAtCurrentFrame: standing, a copy banks ONE comma now
+    // (F-152) while this lifts the whole block — banking less than it lifts
+    // would make it a delete (결정 14 ②ⓐ). A cut banks exactly what it lifts.
+    _bank(
+      layer: layer,
+      frame: frame,
+      clip: _controllers.timelineController.copyRunForLayer(
+        layerId: layer.id,
+        index: run.index,
+        count: run.count,
+      ),
+    );
     // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
     // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
     // band: the two must not be able to disagree about which rows were
@@ -291,11 +328,10 @@ class FrameClipboard {
             bornSounds: const <AudioClip>[],
           ),
         // ⛔MUTANT SURVIVES HERE (`if (false)`), and the classification is
-        // NEVER APPLIED (2026-09-07): the copy above resolves the SAME
-        // `spliceRunOnActiveRow` this verb already got a non-null answer
-        // from, so it always banks at least the anchor row. Kept as the
-        // arm that keeps the lift honest if the board ever came back
-        // empty — 결정 14 ②ⓐ says a row lifted but not banked is work
+        // NEVER APPLIED (2026-09-07): the bank above is handed the very run
+        // this verb resolved, so it always banks at least the anchor row.
+        // Kept as the arm that keeps the lift honest if the board ever came
+        // back empty — 결정 14 ②ⓐ says a row lifted but not banked is work
         // that cannot come back, and this is the other side of it.
         if (banked.isEmpty)
           (
@@ -320,20 +356,66 @@ class FrameClipboard {
       return;
     }
 
-    final run = spliceRunOnActiveRow();
-    // 🚨T3 — the clip brings its LENGTH: 「내가 하고싶은건 프레임만 복붙이
-    // 아니라 코마까지 포함해서 블록 자체를 복붙한다는 느낌」. What travels is
-    // the run of cells, gaps and all, not one cel id that the destination
-    // then decides a length for.
-    final clip = run == null
+    // 🚨★★WHAT A COPY BANKS DEPENDS ON WHETHER SOMETHING IS SELECTED
+    // (F-152, 유저 2026-09-16): 「프레임 복붙할때 그냥 그곳에 서있을떄
+    // 복사한거면 … 붙혀넣을때 1콤마로서 붙혀넣게. 해당 블록을 선택해서
+    // 복사하면 콤마 유지되도록」.
+    //
+    // • SELECTED — the selection's run, commas and gaps and all. That is
+    //   T3's rule (「프레임만 복붙이 아니라 코마까지 포함해서 블록 자체를
+    //   복붙한다는 느낌」), and selecting the block is how it is asked for.
+    // • STANDING — ONE cell of the drawing the cell SHOWS.
+    //
+    // ⚠️That second line is also F-140 (유저 2026-09-16: 「복사버튼이
+    // 작동하는건 좋은데 지금 붙여넣기해도 아무일 안일어나니까」). Standing on a
+    // hold's GHOST, the run was the ghost's span read off the GHOST-FREE row
+    // (F-134) — every cell of it empty — so the copy banked nothing while
+    // its button, lit by the drawing on screen, promised that drawing.
+    // [_oneCellOf] banks what is shown, a real cell, wherever it came from.
+    //
+    // ⚠️One comma of the DRAWING, not of the block: the memo, the dots and
+    // the edge properties are the BLOCK's ([TimelineExposure.memo] — 「re-
+    // exposing the same drawing gets its own」), and a hold edge riding
+    // along would ghost the paste past the one comma it was asked to be.
+    //
+    // ⛔The gate leaves no third case: a selection that misses this row
+    // stood the press down ([canCopyFrameAtCurrentFrame]).
+    final run = _selection.frameRangeSelection.value == null
         ? null
-        : _controllers.timelineController.copyRunForLayer(
-            layerId: layer.id,
-            index: run.index,
-            count: run.count,
-          );
-    final cels = clip == null ? const <Frame>[] : _celsCarriedBy(layer, clip);
+        : spliceRunOnActiveRow();
+    _bank(
+      layer: layer,
+      frame: frame,
+      clip: run == null
+          ? _oneCellOf(frame.id)
+          : _controllers.timelineController.copyRunForLayer(
+              layerId: layer.id,
+              index: run.index,
+              count: run.count,
+            ),
+    );
+  }
+
+  /// One comma of [frameId] — the whole clip a copy with nothing selected
+  /// banks.
+  static TimelineClipRow _oneCellOf(FrameId frameId) => TimelineClipRow(
+    exposures: {0: TimelineExposure.drawing(frameId, length: 1)},
+    length: 1,
+  );
+
+  /// Puts [clip] on the board as the copy of [frame] on [layer] — the
+  /// half a copy and a 잘라내기 share. What differs between them is only
+  /// the CLIP: a cut must bank the whole run it lifts (결정 14 ②ⓐ —
+  /// 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가 아니다」),
+  /// while a copy banks what [copyFrameAtCurrentFrame] decides.
+  void _bank({
+    required Layer layer,
+    required Frame frame,
+    required TimelineClipRow clip,
+  }) {
+    final cels = _celsCarriedBy(layer, clip);
     _copiedFrame = _CopiedFrameReference(
+      cutId: _project.activeCutId,
       layerId: layer.id,
       frameId: frame.id,
       frameName: frame.name,
@@ -341,10 +423,7 @@ class FrameClipboard {
       cels: cels,
       sounds: _soundsCarriedBy(layer, cels),
       // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
-      rows: [
-        if (clip != null) _copiedRowFor(layer, clip),
-        ..._copiedRowsBesides(layer),
-      ],
+      rows: [_copiedRowFor(layer, clip), ..._copiedRowsBesides(layer)],
     );
     _changes.notifyChanged();
   }
@@ -465,12 +544,7 @@ class FrameClipboard {
     required _CopiedFrameReference copied,
     required bool independent,
   }) {
-    final clip =
-        copied.clip ??
-        TimelineClipRow(
-          exposures: {0: TimelineExposure.drawing(copied.frameId, length: 1)},
-          length: 1,
-        );
+    final clip = copied.clip;
     final run = spliceRunOnActiveRow();
     // ⛔A selection REPLACES what it covers; with none, nothing comes out.
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
@@ -588,7 +662,8 @@ class FrameClipboard {
   /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
   /// their N: a live selection says its own range, and with none the verb
   /// means the block under the playhead. Copy, cut and paste all ask this,
-  /// so they cannot disagree about what "the run" is.
+  /// so they cannot disagree about what "the run" is — except that a COPY
+  /// with nothing selected no longer asks: it banks one comma (F-152).
   ///
   /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
   /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source
@@ -656,10 +731,11 @@ class _CopiedRow {
 
 class _CopiedFrameReference {
   const _CopiedFrameReference({
+    required this.cutId,
     required this.layerId,
     required this.frameId,
     required this.frameName,
-    this.clip,
+    required this.clip,
     this.cels = const [],
     this.sounds = const [],
     this.rows = const [],
@@ -676,6 +752,11 @@ class _CopiedFrameReference {
   /// length one rather than a second shape standing beside it.
   final List<_CopiedRow> rows;
 
+  /// The cut the copy was made in — the board names its cels by id inside
+  /// it, so it lives exactly as long as that cut is the one being edited
+  /// ([FrameClipboard.keepWhileItsCutIsActive]).
+  final CutId? cutId;
+
   final LayerId layerId;
 
   /// The ANCHOR cel — what the status line names and what the old one-cel
@@ -685,11 +766,9 @@ class _CopiedFrameReference {
   final FrameId frameId;
   final String? frameName;
 
-  /// 🚨T3 — the run that was copied, 코마째. Null only for a clipboard
-  /// written before the run existed (no such writer remains); readers treat
-  /// null as "one cell of [frameId]", which is exactly what the retired
-  /// behaviour did.
-  final TimelineClipRow? clip;
+  /// 🚨T3 — the run that was copied, 코마째 — or, copied standing, one comma
+  /// of [frameId] (F-152).
+  final TimelineClipRow clip;
 
   /// 🚨The CELS the clip's exposures point at, carried by value.
   ///

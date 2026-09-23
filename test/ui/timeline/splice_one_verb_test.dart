@@ -30,6 +30,11 @@ import 'package:anicel/src/ui/home_page.dart';
 /// relink on a block start, split-and-take-the-rest inside a hold, fill an
 /// empty cell up to the next block. All three decided the LENGTH at the
 /// destination. 「코마까지 포함해서 블록 자체를 복붙」 means the clip decides.
+///
+/// 🚨F-152 (유저 2026-09-16) says WHEN the clip is the block: 「그냥 그곳에
+/// 서있을떄 복사한거면 … 1콤마로서 붙혀넣게. 해당 블록을 선택해서 복사하면
+/// 콤마 유지되도록」. So every test here that means the BLOCK selects it
+/// before copying, and the standing copy has tests of its own.
 const _layerId = LayerId('draw');
 
 void main() {
@@ -37,7 +42,7 @@ void main() {
       '유저 예시 A A A B B → A A A P P P B B', (tester) async {
     final session = await _pump(tester, 'AAABB');
 
-    _stand(session, 0);
+    _select(session, 0, 3);
     session.copyFrameAtCurrentFrame();
     _stand(session, 3);
     session.pasteIndependentFrameAtCurrentFrame();
@@ -45,11 +50,53 @@ void main() {
     expect(_row(session), 'AAAPPPBB');
   });
 
+  testWidgets('F-152 — copied STANDING, the paste is ONE comma', (
+    tester,
+  ) async {
+    final session = await _pump(tester, 'AAABB');
+
+    // Mid-hold, deliberately: which cell of the block the playhead is on
+    // must not matter.
+    _stand(session, 1);
+    session.copyFrameAtCurrentFrame();
+    _stand(session, 3);
+    session.pasteIndependentFrameAtCurrentFrame();
+
+    expect(_row(session), 'AAAPBB');
+  });
+
+  testWidgets('F-152 — and linked, one comma of the SAME cel', (tester) async {
+    final session = await _pump(tester, 'AAABB');
+
+    _stand(session, 2);
+    session.copyFrameAtCurrentFrame();
+    _stand(session, 3);
+    session.pasteLinkedFrameAtCurrentFrame();
+
+    expect(_row(session), 'AAAABB');
+    expect(_layer(session).frames.length, 2, reason: 'a link makes no new cel');
+  });
+
+  testWidgets('F-152 — a 잘라내기 STANDING still banks the whole block it '
+      'lifts: banking less would make it a delete (결정 14 ②ⓐ)', (
+    tester,
+  ) async {
+    final session = await _pump(tester, 'AABBBCC');
+
+    _stand(session, 3);
+    session.clipboard.cutRunAtCurrentFrame();
+    expect(_row(session), 'AA...CC', reason: 'LIVENESS — the block came out');
+
+    _stand(session, 0);
+    session.pasteLinkedFrameAtCurrentFrame();
+    expect(_row(session), 'BBBAA...CC');
+  });
+
   testWidgets('the linked paste places the SAME cel, and the run is still '
       'the clip\'s length', (tester) async {
     final session = await _pump(tester, 'AAABB');
 
-    _stand(session, 0);
+    _select(session, 0, 3);
     session.copyFrameAtCurrentFrame();
     _stand(session, 3);
     session.pasteLinkedFrameAtCurrentFrame();
@@ -83,7 +130,7 @@ void main() {
     final session = await _pump(tester, 'AABBBCC');
 
     // Copy the 2-cell A block…
-    _stand(session, 0);
+    _select(session, 0, 2);
     session.copyFrameAtCurrentFrame();
     // …over the 3-cell B block. 2 in, 3 out: C pulls one to the left.
     _select(session, 2, 5);
@@ -97,7 +144,7 @@ void main() {
     final session = await _pump(tester, 'AAAAABC');
 
     // A 5-cell clip over a 1-cell selection: B goes, C must not.
-    _stand(session, 0);
+    _select(session, 0, 5);
     session.copyFrameAtCurrentFrame();
     _select(session, 5, 6);
     session.pasteLinkedFrameAtCurrentFrame();
@@ -174,7 +221,7 @@ void main() {
       'stays past the end line', (tester) async {
     final session = await _pump(tester, 'AAAA', duration: 4);
 
-    _stand(session, 0);
+    _select(session, 0, 4);
     session.copyFrameAtCurrentFrame();
     _stand(session, 3);
     session.pasteLinkedFrameAtCurrentFrame();
@@ -219,8 +266,8 @@ void main() {
   testWidgets('⛔복제 does not touch the clipboard', (tester) async {
     final session = await _pump(tester, 'AAABB');
 
-    _stand(session, 3);
-    session.copyFrameAtCurrentFrame(); // B is on the clipboard
+    _select(session, 3, 5);
+    session.copyFrameAtCurrentFrame(); // B's block is on the clipboard
     _stand(session, 0);
     session.frameVerbs.duplicateActiveBlock(linked: true); // duplicating A
     _stand(session, 0);

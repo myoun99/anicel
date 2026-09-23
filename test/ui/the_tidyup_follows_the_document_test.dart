@@ -4,11 +4,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🚨★★★**UNDOING SOMETHING THAT DID NOT MOVE THE DOCUMENT MUST NOT TIDY
 /// THE DOCUMENT UP.** `_stepHistory` ran `refreshAfterCutCommand` after
-/// every step, and that verb drops the copied frame and clears the
-/// frame-range selection — the housekeeping a CUT command owes. So pressing
-/// Ctrl+Z after a brush stroke, a pixel verb or an onion-skin toggle threw
-/// away what the user had copied and the band they had drawn, for an edit
-/// that moved no row.
+/// every step, and that verb dropped the copied frame (until F-152) and
+/// clears the frame-range selection — the housekeeping a CUT command owes.
+/// So pressing Ctrl+Z after a brush stroke, a pixel verb or an onion-skin
+/// toggle threw away what the user had copied and the band they had drawn,
+/// for an edit that moved no row.
 ///
 /// 🔬**THE WHOLE FAMILY.** Of the 53 command classes that enter history,
 /// five never touch the repository — the three pixel commands,
@@ -125,5 +125,74 @@ void main() {
           '「stop tidying up」: a step that moves rows must clear the band, '
           'because the band names rows by index and the indices moved',
     );
+  });
+
+  /// 🚨F-152 (유저 2026-09-16): 「복사하고 무언가 붙혀넣는다고 해서 복사한게
+  /// 사라지지않게. 복사한거는 들고있음. 그 상태에서 여러군데 붙혀넣기
+  /// 가능하도록」. The band still goes on a step that moves rows; the COPY
+  /// does not — it carries its cels by value and names no row by index.
+  group('the copy stays in hand while its cut is the one being edited', () {
+    test('paste, undo the paste, paste again', () {
+      final session = sessionWithADrawing();
+      addTearDown(session.dispose);
+      session.copyFrameAtCurrentFrame();
+      session.selectFrameIndex(5);
+      session.pasteIndependentFrameAtCurrentFrame();
+      expect(session.activeLayer!.timeline[5], isNotNull, reason: 'LIVENESS');
+
+      session.undo();
+      expect(
+        session.activeLayer!.timeline[5],
+        isNull,
+        reason: 'premise: the step moved the document',
+      );
+
+      session.selectFrameIndex(9);
+      session.pasteIndependentFrameAtCurrentFrame();
+      expect(
+        session.activeLayer!.timeline[9],
+        isNotNull,
+        reason: '「복사한거는 들고있음」 — the undo did not take it',
+      );
+    });
+
+    test('a cut command in its own cut keeps it', () {
+      final session = sessionWithADrawing();
+      addTearDown(session.dispose);
+      session.copyFrameAtCurrentFrame();
+      final banked = session.clipboard.bankedRowLayerIds;
+      expect(banked, isNotEmpty, reason: 'fixture premise');
+
+      session.cutVerbs.renameActiveCut('renamed');
+
+      expect(session.clipboard.bankedRowLayerIds, banked);
+    });
+
+    test('⛔leaving its cut drops it — an independent paste copies the '
+        'picture from the cut it stands in', () {
+      final session = sessionWithADrawing();
+      addTearDown(session.dispose);
+      final cut1 = session.activeCutId!;
+
+      session.copyFrameAtCurrentFrame();
+      session.cutVerbs.createCut();
+      final cut2 = session.activeCutId!;
+      expect(cut2, isNot(cut1), reason: 'premise: the new cut is active');
+      expect(session.clipboard.bankedRowLayerIds, isEmpty);
+
+      session.createDrawingAtCurrentFrame();
+      session.copyFrameAtCurrentFrame();
+      expect(
+        session.clipboard.bankedRowLayerIds,
+        isNotEmpty,
+        reason: 'LIVENESS',
+      );
+      session.selectCut(cut1);
+      expect(
+        session.clipboard.bankedRowLayerIds,
+        isEmpty,
+        reason: 'picking a cut is leaving one too',
+      );
+    });
   });
 }

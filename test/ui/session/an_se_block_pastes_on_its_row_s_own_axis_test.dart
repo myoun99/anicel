@@ -122,9 +122,14 @@ void main() {
         'A',
         reason: '「붙여넣어지지않음」 — it lands at the playhead',
       );
-      expect(pasted?.length, 2, reason: 'the clip brings its length');
       expect(
-        blockAt(s1, cut2 + 8)?.frame.id,
+        pasted?.length,
+        1,
+        reason: 'copied standing — ONE comma, on an SE row as on any row '
+            '(F-152: 「1콤마로서 붙혀넣게」)',
+      );
+      expect(
+        blockAt(s1, cut2 + 7)?.frame.id,
         b.id,
         reason: 'what was after the playhead moves aside by that length',
       );
@@ -141,7 +146,7 @@ void main() {
 
       expect(blockAt(s1, 1)?.frame.id, a.id);
       expect(blockAt(s1, 3)?.frame.seName, 'A');
-      expect(blockAt(s1, 8)?.frame.id, b.id);
+      expect(blockAt(s1, 7)?.frame.id, b.id);
     });
 
     test('in cut 2, 잘라내기 lifts the block under the playhead and leaves its '
@@ -214,8 +219,16 @@ void main() {
       entry(s1, 22, speaker: 'A', length: 4);
       final cut2 = openCut2();
 
+      // ⚠️Read through 잘라내기: a COPY with nothing selected banks one comma
+      // (F-152), so the block under the playhead is the one the lift takes
+      // — and a lift banks what it takes.
       stand(s1, 1);
-      session.copyFrameAtCurrentFrame();
+      clipboardOf(session).cutRunAtCurrentFrame();
+      expect(
+        blockAt(s1, 22),
+        isNull,
+        reason: 'the lift took the block where cut 1 started it',
+      );
       stand(s1, 10);
       session.pasteIndependentFrameAtCurrentFrame();
 
