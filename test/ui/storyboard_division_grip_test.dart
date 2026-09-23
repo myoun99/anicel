@@ -182,10 +182,10 @@ void main() {
       prefix: 'storyboard',
     );
 
-    // I-43: the grip is its triangle's box — the NEAR third of the strip for
+    // I-43: the grip is its triangle's box — the NEAR half of the strip for
     // an end edge — and it stays inside the strip, clear of the bands.
     expect(grip.top, rowRect.top + band.top);
-    expect(grip.height, moreOrLessEquals(band.height / 3));
+    expect(grip.height, moreOrLessEquals(band.height / 2));
   });
 
   testWidgets('an edge BETWEEN two panels is that panel\'s COMMA (edge '

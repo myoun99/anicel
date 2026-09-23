@@ -304,7 +304,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final double viewportMainExtent;
 
   static const double _padding = 4;
-  static const double _radius = 8;
+  /// The CUT PLATE's corner — the V row's block, the one the standing
+  /// outline wraps when you stand on a cut. Not the frame-block law: the
+  /// plate is a container with bands, and the panels inside it wear the law.
+  static const double plateCornerRadius = 8;
 
   /// The narrowest block that still prints its total (the widget rule).
   static const double totalLabelMinWidth = 48;
@@ -727,7 +730,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   void _paintBlock(Canvas canvas, StoryboardCutBlockVisual block) {
     final rrect = RRect.fromRectAndRadius(
       block.rect,
-      const Radius.circular(_radius),
+      const Radius.circular(plateCornerRadius),
     );
     // The BACKGROUND carries the cut's own states. A range selection tints
     // only what is NOT the picture (design: "a cut selection colours the
@@ -778,7 +781,14 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // the press layer.
     if (createAffordanceRectOf(block) case final affordance?) {
       canvas.drawRRect(
-        RRect.fromRectAndRadius(affordance, timelineBlockCornerRadius),
+        // The slot a panel would fill, so it wears a panel's corner.
+        RRect.fromRectAndRadius(
+          affordance,
+          timelineBlockCornerRadiusAt(
+            cellExtent: _cellExtent,
+            crossExtent: affordance.height,
+          ),
+        ),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
@@ -997,10 +1007,15 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       }
       canvas.save();
       // D30: a panel is a frame block in thumbnail mode — it wears the
-      // timeline's rounded block corners.
-      canvas.clipRRect(
-        RRect.fromRectAndRadius(slot, timelineBlockCornerRadius),
+      // timeline's rounded block corners. ⛔THE corner, not the 6px it is
+      // capped from: F-79 made one function answer what a block wears at a
+      // zoom, and a panel that kept the raw 6 was rounder than its blocks'
+      // own edge triangles once the cell dropped under 12px (I-43).
+      final corner = timelineBlockCornerRadiusAt(
+        cellExtent: _cellExtent,
+        crossExtent: slot.height,
       );
+      canvas.clipRRect(RRect.fromRectAndRadius(slot, corner));
       _paintPanelPicture(canvas, block.thumbnails[index], slot);
       if (!block.bandsFolded) {
         _paintPanelWriting(canvas, block, index, slot);
@@ -1014,7 +1029,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         // the 4px-deflated inner rect, so a border there would sit off
         // the true frame edges the grips are mounted on.
         canvas.drawRRect(
-          RRect.fromRectAndRadius(slot.deflate(0.5), timelineBlockCornerRadius),
+          RRect.fromRectAndRadius(slot.deflate(0.5), corner),
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1

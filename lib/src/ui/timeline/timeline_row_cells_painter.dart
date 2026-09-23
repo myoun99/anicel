@@ -413,7 +413,12 @@ class TimelineRowCellsPainter extends CustomPainter
     return (
       background: baseBackground,
       border: Colors.transparent,
-      radius: timelineCellBorderRadius(model.segment, axis),
+      radius: timelineCellBorderRadius(
+        model.segment,
+        axis,
+        cellExtent: frameCellExtent,
+        crossExtent: crossAxisExtent,
+      ),
     );
   }
 

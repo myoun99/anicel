@@ -358,13 +358,14 @@ void main() {
         edge: edge,
         axis: axis,
         ink: BlockEdgeGripInk.rest,
+        devicePixelRatio: 1,
       ).paint(spy, size);
       return spy.paths.single;
     }
 
-    // A box half of a 24px cell along and a third of a 30px row across.
-    const along = 12.0;
-    const across = 10.0;
+    // A box a third of a 24px cell along and half a 30px row across.
+    const along = 8.0;
+    const across = 15.0;
 
     test('the triangle sits in the corner the axis turns to: the end edge '
         'top-right on the timeline, bottom-left on the X-sheet', () {

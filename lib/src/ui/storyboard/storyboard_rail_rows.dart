@@ -913,7 +913,8 @@ class _StoryboardRailRows {
   /// row-geometry change reached the lane band and left the frame band
   /// behind — and the two sit on the same rows.
   Widget _rangeBand(
-    Track track, {
+    Track track,
+    TimelineScale scale, {
     required bool Function(_StoryboardRailSlot slot) covers,
     required ({double left, double width}) span,
     required ({String key, String label}) label,
@@ -943,7 +944,10 @@ class _StoryboardRailRows {
             label: label.label,
             container: true,
             child: DecoratedBox(
-              decoration: timelineRangeSelectionBandDecoration,
+              decoration: timelineRangeSelectionBandDecorationAt(
+                cellExtent: scale.pixelsPerFrame,
+                crossExtent: bottom - top,
+              ),
             ),
           ),
         ),
@@ -987,6 +991,7 @@ class _StoryboardRailRows {
         }
         return _rangeBand(
           track,
+          scale,
           covers: planned.covers,
           span: planned.span,
           label: planned.label,

@@ -675,9 +675,15 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // THE block corner (F-79's one function) — this span is "visually the
+    // drawing rows' block", and it rounded by a 4px of its own since the
+    // first SE paper (07-09), so it never matched the blocks it mirrors.
     final rrect = RRect.fromRectAndRadius(
       Offset.zero & size,
-      const Radius.circular(4),
+      timelineBlockCornerRadiusAt(
+        cellExtent: frameCellExtent,
+        crossExtent: extentAcross(axis, size),
+      ),
     );
     canvas.drawRRect(rrect, Paint()..color = paper);
 

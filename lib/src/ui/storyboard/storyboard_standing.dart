@@ -153,17 +153,24 @@ class _StoryboardStanding {
                         (block.endIndexExclusive - block.startIndex) *
                         scale.pixelsPerFrame,
                     height: rowBand.height,
-                    child: DecoratedBox(
+                    // ★The timeline's own ring, not a hand copy of it — and
+                    // the corner of the block it wraps, read from whoever
+                    // paints that block: the CUT PLATE on the V row, the
+                    // frame-block law on the rows of sounds and spans.
+                    // ⛔It was a DecoratedBox spelling the ring's 2px and
+                    // 6px by hand, which kept 6 while the paper under it
+                    // rounded less at every zoom below 12px a frame.
+                    child: TimelineSelectionRing(
                       key: const ValueKey<String>('storyboard-standing-block'),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: timelineSelectedFrameBorderColor,
-                          width: 2,
+                      borderRadius: BorderRadius.all(switch (standingRow) {
+                        TrackRowAddress() => const Radius.circular(
+                          StoryboardCutBlocksPainter.plateCornerRadius,
                         ),
-                        borderRadius: const BorderRadius.all(
-                          Radius.circular(6),
+                        _ => timelineBlockCornerRadiusAt(
+                          cellExtent: scale.pixelsPerFrame,
+                          crossExtent: rowBand.height,
                         ),
-                      ),
+                      }),
                     ),
                   ),
                 Positioned(

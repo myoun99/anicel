@@ -228,12 +228,12 @@ void main() {
       expect(_track(tester).transitionLayer.instructions[2]!.length, 5);
 
       // The end grip: the triangle's box in the span's last cell (I-43) —
-      // half a cell in from the trailing edge (frame 7's leading edge, 56px)
-      // and in the row's NEAR third, so the press lands in its middle.
+      // a sixth of a cell in from the trailing edge (frame 7's leading edge,
+      // 56px) and in the row's NEAR half, so the press lands in its middle.
       final row = find.byKey(ValueKey<String>(_transitionRowKey));
       final grip =
           tester.getTopLeft(row) +
-          Offset(7 * _ppf - _ppf / 4, tester.getSize(row).height / 6);
+          Offset(7 * _ppf - _ppf / 6, tester.getSize(row).height / 4);
       final gesture = await tester.startGesture(
         grip,
         kind: PointerDeviceKind.mouse,
@@ -305,11 +305,13 @@ void main() {
       final endGrip = find.byKey(
         ValueKey<String>('storyboard-se-grip-$_seLayerId-0-end'),
       );
-      // I-43: half a cell along, a third of the row across — the dense
+      // I-43: a third of a cell along, half the row across — the dense
       // rows' one placement.
-      final box = Size(_ppf / 2, rowHeight / 3);
-      expect(tester.getSize(startGrip), box);
-      expect(tester.getSize(endGrip), box);
+      for (final grip in [startGrip, endGrip]) {
+        final size = tester.getSize(grip);
+        expect(size.width, moreOrLessEquals(_ppf / 3));
+        expect(size.height, moreOrLessEquals(rowHeight / 2));
+      }
       // In the corners: the start grip in the block's first cell on the
       // FAR side (frame 1, 8px; the bottom), the end grip in its last cell
       // on the NEAR side (frame 6's leading edge, 48px; the top).

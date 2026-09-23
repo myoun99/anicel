@@ -7,6 +7,7 @@ import '../../models/layer_kind.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
+import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';
 import 'timeline_cell_style.dart';
@@ -126,6 +127,10 @@ class TimelineFrameCell extends StatelessWidget {
           )
         : styleColors.border;
     final isEmptyX = exposureState == TimelineCellExposureState.uncovered;
+    final cellSize = Size(
+      width ?? _metrics.frameCellWidth,
+      height ?? _metrics.layerRowHeight,
+    );
 
     final onActivateCell = this.onActivateCell;
     // 🚨T10 — the order is load-bearing; see the twin in
@@ -155,17 +160,21 @@ class TimelineFrameCell extends StatelessWidget {
               onActivateCell(layer.id, frameIndex);
             },
       child: Container(
-        width: width ?? _metrics.frameCellWidth,
-        height: height ?? _metrics.layerRowHeight,
+        width: cellSize.width,
+        height: cellSize.height,
         alignment: Alignment.center,
         decoration: _timelineCellDecoration(
           backgroundColor: backgroundColor,
           borderColor: borderColor,
           borderWidth: 1.0,
-          exposureBlockSegment: cameraSummaryCell
-              ? TimelineExposureBlockVisualSegment.none
-              : exposureBlockSegment,
-          axis: axis,
+          borderRadius: timelineCellBorderRadius(
+            cameraSummaryCell
+                ? TimelineExposureBlockVisualSegment.none
+                : exposureBlockSegment,
+            axis,
+            cellExtent: extentAlong(axis, cellSize),
+            crossExtent: extentAcross(axis, cellSize),
+          ),
         ),
         child: Center(
           child: Semantics(
@@ -252,12 +261,11 @@ BoxDecoration _timelineCellDecoration({
   required Color backgroundColor,
   required Color borderColor,
   required double borderWidth,
-  required TimelineExposureBlockVisualSegment exposureBlockSegment,
-  required Axis axis,
+  required BorderRadius? borderRadius,
 }) {
   return BoxDecoration(
     color: backgroundColor,
     border: Border.all(color: borderColor, width: borderWidth),
-    borderRadius: timelineCellBorderRadius(exposureBlockSegment, axis),
+    borderRadius: borderRadius,
   );
 }

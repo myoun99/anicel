@@ -240,7 +240,12 @@ class TimelineCursorLayer extends StatelessWidget {
         key: semantics.key,
         label: semantics.label,
         container: true,
-        child: DecoratedBox(decoration: timelineRangeSelectionBandDecoration),
+        child: DecoratedBox(
+          decoration: timelineRangeSelectionBandDecorationAt(
+            cellExtent: metrics.frameCellWidth,
+            crossExtent: metrics.layerRowHeight,
+          ),
+        ),
       ),
     );
   }

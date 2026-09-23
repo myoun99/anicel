@@ -15,12 +15,14 @@ import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../widgets/panel_flyout.dart';
-import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
+import 'timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
 import 'timeline_run_end_handles.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -387,6 +389,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
+    required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
   }) : super(repaint: geometry);
 
@@ -409,6 +412,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 
   /// The grip currently being comma-dragged.
   final String? draggingGripId;
+
+  /// For the grips' one-device-pixel bleed at the round end
+  /// ([blockEdgeGripPath]).
+  final double devicePixelRatio;
 
   /// The color of what the grips sit ON (feedback #11, re-picked by the
   /// ground law 2026-08-17) — the row's block paper on a timeline row; the
@@ -444,7 +451,15 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final model = this.model;
     for (final span in model.patternSpans) {
-      paintTimelineRunPatternSpan(canvas, span, ground: gripGround);
+      paintTimelineRunPatternSpan(
+        canvas,
+        span,
+        corner: timelineBlockCornerRadiusAt(
+          cellExtent: frameCellExtent,
+          crossExtent: resolver.crossAxisExtent,
+        ),
+        ground: gripGround,
+      );
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
     for (final target in model.targets) {
@@ -456,6 +471,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
               target.rect,
               edge: target.edge,
               axis: resolver.axis,
+              arcBleed: 1 / devicePixelRatio,
             ),
             target.id == draggingGripId
                 ? BlockEdgeGripInk.dragging
@@ -508,6 +524,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       operatingId,
       draggingGripId,
       gripGround,
+      devicePixelRatio,
     );
   }
 
@@ -1078,6 +1095,7 @@ class _TimelineRowEditChromeLayerState
         // R9 #12: pressed reads as engaged from the pointer DOWN, not from
         // the moment the drag recognizer wins.
         draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
       ),
       child: _ChromeHitGate(

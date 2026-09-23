@@ -311,6 +311,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         peaks: audioPeaksFor?.call(span.clip.filePath),
         frameRate: frameRate,
         frameCellExtent: _cellExtent,
+        crossExtent: _crossExtent,
         axis: axis,
         onSetOffset: onSetOffset == null
             ? null
@@ -364,6 +365,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
     required this.peaks,
     required this.frameRate,
     required this.frameCellExtent,
+    required this.crossExtent,
     required this.axis,
     required this.onSetOffset,
     this.liveOffsetDrag,
@@ -374,6 +376,10 @@ class _SeAudioLaneSpan extends StatefulWidget {
   final AudioPeaks? peaks;
   final ProjectFrameRate frameRate;
   final double frameCellExtent;
+
+  /// The lane's own height across the frame axis — the block corner law's
+  /// other side.
+  final double crossExtent;
   final Axis axis;
   final ValueChanged<int>? onSetOffset;
   final _SpanLiveOffsetDrag? liveOffsetDrag;
@@ -565,12 +571,19 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
       : SystemMouseCursors.resizeUpDown;
 
   /// The block's paper backdrop so the lane reads as the block's own
-  /// editing strip.
+  /// editing strip — and so it wears the block's own corner, the one law
+  /// ([timelineBlockCornerRadiusAt]); a hand-typed 4 had it rounder or
+  /// squarer than the block above it depending on the zoom.
   Widget _backdrop() => Positioned.fill(
     child: DecoratedBox(
       decoration: BoxDecoration(
         color: timelineDrawingHeldColor.withValues(alpha: 0.6),
-        borderRadius: const BorderRadius.all(Radius.circular(4)),
+        borderRadius: BorderRadius.all(
+          timelineBlockCornerRadiusAt(
+            cellExtent: widget.frameCellExtent,
+            crossExtent: widget.crossExtent,
+          ),
+        ),
         border: Border.all(color: timelineDrawingStartBorderColor),
       ),
     ),

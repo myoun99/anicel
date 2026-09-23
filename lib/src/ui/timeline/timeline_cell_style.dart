@@ -47,11 +47,30 @@ Color get timelineSelectedFrameBorderColor => AppColors.accent;
 /// exactly this, so a key span cannot read as a different kind of
 /// selection than a cell span ("다른 프레임셀선택이랑 완전동일화").
 /// Non-const because the accent is live (UI-R22 #5).
-BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
-  color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
-  border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
-  borderRadius: const BorderRadius.all(Radius.circular(6)),
+///
+/// Over frame cells of [cellExtent] × [crossExtent] it wears the blocks' own
+/// corner ([timelineBlockCornerRadiusAt]) — F-26 made the band take the
+/// shape of what it selects, and F-79 is why that has to be the LAW rather
+/// than the bare 6: zoomed out the blocks round less, and a band that kept
+/// 6 was rounder than every block inside it.
+BoxDecoration timelineRangeSelectionBandDecorationAt({
+  required double cellExtent,
+  required double crossExtent,
+}) => _timelineSelectionBand(
+  BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: cellExtent,
+      crossExtent: crossExtent,
+    ),
+  ),
 );
+
+BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
+    BoxDecoration(
+      color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
+      border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
+      borderRadius: borderRadius,
+    );
 
 /// The same band with SQUARE corners — the one the LAYER area wears.
 ///
@@ -65,15 +84,13 @@ BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
 /// a run of those is. Everything else about it — the ink, the fill, the
 /// stroke width — stays the single value above.
 BoxDecoration get timelineRowSelectionBandDecoration =>
-    timelineRangeSelectionBandDecoration.copyWith(
-      borderRadius: BorderRadius.zero,
-    );
+    _timelineSelectionBand(BorderRadius.zero);
 
 /// The ring on the cell you are STANDING on, wherever that is: a layer's
 /// row, an fx header, a property lane.
 ///
 /// ONE decoration, because standing is ONE thing (user, 2026-08-08). A
-/// lane used to borrow [timelineRangeSelectionBandDecoration] for this —
+/// lane used to borrow [timelineRangeSelectionBandDecorationAt] for this —
 /// filled, 2px, 6px corners against this unfilled 3px 4px one — so
 /// standing on a property read as a one-cell SELECTION rather than as
 /// standing, and you could see the difference in the stroke weight.
@@ -381,7 +398,7 @@ Color storyboardCutBlockBackgroundColor(
     return base;
   }
   // 0.12 = the timeline's selected-CELL tint: the shared range-selection
-  // band ([timelineRangeSelectionBandDecoration], 0.18) rides above this,
+  // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above this,
   // and the pair must sum to the timeline's look, not overshoot it.
   return Color.alphaBlend(
     timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
@@ -484,11 +501,19 @@ TimelineCellStyleColors timelineCellStyleColors({
 /// The ONE corner radius every frame block wears — the timeline's rounded
 /// block language (D30 put the storyboard panels on it too, so the strip
 /// reads as frame blocks in thumbnail mode).
-const Radius timelineBlockCornerRadius = Radius.circular(6);
+///
+/// 🚨PRIVATE ON PURPOSE (유저 2026-09-23: 「모서리랑 블록이랑 모서리가
+/// 통일안되서 그런거같은데 확실하게 통일해줘」). Every reader that took this
+/// bare value drew a corner the blocks stop wearing below a 12px cell — the
+/// SE paper, the storyboard panels, the standing ring, the selection band, the
+/// pattern span, the classic cells pass — and each had been fixed one at a
+/// time. Only [timelineBlockCornerRadiusAt] reads it now, so there is no way
+/// left to draw a block corner that skips the law.
+const Radius _timelineBlockCornerRadius = Radius.circular(6);
 
 /// The corner a block actually wears over cells of [cellExtent] ×
-/// [crossExtent]: [timelineBlockCornerRadius], no larger than half the cell —
-/// the clamp the block tiles' rounded rects already apply to every cell they
+/// [crossExtent]: the block corner (6), no larger than half the cell — the
+/// clamp the block tiles' rounded rects already apply to every cell they
 /// round (`_blendRRect`).
 ///
 /// 🚨F-79 (유저 2026-09-11): 「현재 프레임 블록을 표시하는 블록의 외곽 라인.
@@ -501,6 +526,6 @@ Radius timelineBlockCornerRadiusAt({
   required double crossExtent,
 }) {
   final limit = (cellExtent < crossExtent ? cellExtent : crossExtent) / 2;
-  final radius = timelineBlockCornerRadius.x;
+  final radius = _timelineBlockCornerRadius.x;
   return Radius.circular(radius < limit ? radius : limit);
 }

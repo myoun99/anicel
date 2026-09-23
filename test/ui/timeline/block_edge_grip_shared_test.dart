@@ -232,11 +232,13 @@ void main() {
       findsOneWidget,
       reason: 'the grip key format is unchanged by the extraction',
     );
-    // I-43: the placement is the triangle's own box — half the edge cell
-    // along, a third of the row across, in the block's FAR corner for a
+    // I-43: the placement is the triangle's own box — a third of the edge
+    // cell along, half the row across, in the block's FAR corner for a
     // start edge.
-    expect(tester.getSize(find.byType(BlockEdgeGrip)), const Size(20, 20));
-    expect(tester.getTopLeft(find.byType(BlockEdgeGrip)), const Offset(0, 40));
+    final size = tester.getSize(find.byType(BlockEdgeGrip));
+    expect(size.width, moreOrLessEquals(40 / 3));
+    expect(size.height, 30);
+    expect(tester.getTopLeft(find.byType(BlockEdgeGrip)), const Offset(0, 30));
   });
 
   testWidgets('the END grip hangs off the block\'s trailing edge', (
@@ -278,10 +280,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Half a cell in from the trailing edge, on the row's NEAR side.
+    // A third of a cell in from the trailing edge, on the row's NEAR side.
     expect(
-      tester.getTopLeft(find.byType(BlockEdgeGrip)),
-      const Offset(3 * 40 - 20, 0),
+      tester.getTopLeft(find.byType(BlockEdgeGrip)).dx,
+      moreOrLessEquals(3 * 40 - 40 / 3),
     );
+    expect(tester.getTopLeft(find.byType(BlockEdgeGrip)).dy, 0);
   });
 }

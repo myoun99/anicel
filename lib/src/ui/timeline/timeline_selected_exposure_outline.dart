@@ -4,7 +4,8 @@ import '../../models/layer_id.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_style.dart'
     show
-        timelineRangeSelectionBandDecoration,
+        timelineBlockCornerRadiusAt,
+        timelineRangeSelectionBandDecorationAt,
         timelineRowSelectionBandDecoration,
         timelineSelectedFrameBorderColor;
 import 'timeline_frame_coordinate_policy.dart';
@@ -26,12 +27,17 @@ class TimelineSelectionRing extends StatelessWidget {
   const TimelineSelectionRing({
     super.key,
     this.color,
-    this.borderRadius = const BorderRadius.all(Radius.circular(6)),
+    required this.borderRadius,
     this.width = 2,
   });
 
   /// Null = the accent every other selection ring uses.
   final Color? color;
+
+  /// The corner of what the ring wraps — asked of whoever paints that. ⛔No
+  /// default: the 6 it used to default to was the block corner spelled by
+  /// hand, the value that stops matching the blocks the moment they zoom
+  /// out ([timelineBlockCornerRadiusAt]).
   final BorderRadius borderRadius;
   final double width;
 
@@ -142,7 +148,7 @@ class TimelineSelectedExposureOutline extends StatelessWidget {
 ///
 /// ★So this is the frame side's own arrangement, transposed: the cells do not
 /// each outline themselves either — the cursor overlay lays one band across
-/// the run ([timelineRangeSelectionBandDecoration], the same fill and the
+/// the run ([timelineRangeSelectionBandDecorationAt], the same fill and the
 /// same edge). A selection is one thing and gets one shape.
 ///
 /// Contiguous runs are drawn separately: a selection can be broken by a row

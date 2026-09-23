@@ -378,7 +378,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
           startIndex: span.startIndex,
           endIndexExclusive: span.endIndexExclusive,
         ),
-        child: const CustomPaint(painter: TimelineSilhouettePainter()),
+        child: CustomPaint(
+          painter: TimelineSilhouettePainter(
+            frames: span.endIndexExclusive - span.startIndex,
+            axis: axis,
+          ),
+        ),
       ),
     ]);
   }

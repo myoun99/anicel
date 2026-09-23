@@ -12,6 +12,7 @@ import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../widgets/owning_axis_grip.dart';
 import '../repaint_props.dart';
 
@@ -28,18 +29,23 @@ enum BlockEdgeGripInk { rest, hovered, dragging }
 /// The name sits in the middle of the first cell and the 코마 number at the
 /// far end of the last one. The start edge takes the first cell's far corner
 /// (the timeline's bottom-left), the end edge the last cell's near corner
-/// (its top-right) — the two corners nothing else uses. Half a cell along the
-/// frame axis and a third of the row across it (「세로길이가 한 칸 세로의
-/// 1/3크기, 가로가 한 칸 가로의 1/2」).
+/// (its top-right) — the two corners nothing else uses.
 ///
-/// ↩️It was a 3.5px bar 2.5px inside each edge, 55% of the row tall: constant
-/// pixels, so at a third-scale zoom one bar covered the name, the number and
-/// the other bar of a one-frame block.
-const double _gripMainCells = 0.5;
-const double _gripCrossShare = 1 / 3;
+/// 🚨A THIRD OF A CELL ALONG THE FRAME AXIS, HALF THE ROW ACROSS IT (유저
+/// 2026-09-23, the same day): 「지금 세로 1/3, 가로 1/2인데, 그게아니라 세로
+/// 1/2, 가로 1/3로 해서 모서리의 방향같은게 좌우로 향한다는 느낌내고싶어」 —
+/// the long leg runs across, so the wedge points along the frame axis.
+/// ↩️It shipped as half a cell by a third of the row (「세로길이가 한 칸
+/// 세로의 1/3크기, 가로가 한 칸 가로의 1/2」).
+///
+/// ↩️Before that it was a 3.5px bar 2.5px inside each edge, 55% of the row
+/// tall: constant pixels, so at a third-scale zoom one bar covered the name,
+/// the number and the other bar of a one-frame block.
+const double _gripMainCells = 1 / 3;
+const double _gripCrossShare = 1 / 2;
 
-/// Where a block-edge grip sits, as a frame-span placement: a box half a cell
-/// along the frame axis and a third of the row across it, in the block's
+/// Where a block-edge grip sits, as a frame-span placement: a box a third of
+/// a cell along the frame axis and half the row across it, in the block's
 /// corner.
 ///
 /// ★THE BOX IS THE GRIP (유저 답 2026-09-23: 「(가) 삼각형 상자 — 보이는 것 =
@@ -72,7 +78,7 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
 
 /// The corner radius of the block a grip [box] sits in — THE block corner
 /// ([timelineBlockCornerRadiusAt]), read back from the box the placement made:
-/// half a cell along the frame axis, a third of the row across it.
+/// a third of a cell along the frame axis, half the row across it.
 double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
     timelineBlockCornerRadiusAt(
       cellExtent: extentAlong(axis, box.size) / _gripMainCells,
@@ -80,8 +86,31 @@ double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
     ).x;
 
 /// The grip's triangle inside its [box]: the right angle in the block's
-/// corner and the two legs along the block's own edges, rounded where the
-/// paper is rounded so the mark never pokes past it.
+/// corner, the two legs along the block's own edges, and the corner cut by
+/// the PAPER'S OWN CIRCLE — the triangle is the paper's corner, inked.
+///
+/// 🚨유저 2026-09-23: 「모서리 호버하니까 티나는데 오른쪽 엣지라면 모서리의
+/// 오른쪽윗부분에 흰 블록 배경 보이거든? 이거 모서리랑 블록이랑 모서리가
+/// 통일안되서 그런거같은데 확실하게 통일해줘. 모양새.」 Two things showed there,
+/// and both are answered here:
+///
+///  * ⛔THE MARK ROUNDED ITSELF. It clamped its own radius to its legs, so
+///    wherever a leg was shorter than the paper's radius the ink kept a
+///    sharper corner than the paper it sits on — and with a third of a cell
+///    along, every zoom under 75% is that case. The corner is the paper's
+///    circle now, cut where it crosses the hypotenuse, whatever the legs are.
+///  * ⛔THE PAPER'S EDGE SHOWED THROUGH. Two shapes anti-aliased on the same
+///    curve blend twice: the paper's edge pixel is already part paper, and
+///    the mark covering it by the same fraction leaves that fraction of paper
+///    lit. 🧪Measured through the tile rasterizer's reference at 1×/1.5×/2×:
+///    a hovered mark on the white paper wore a light rim along its round end
+///    at every ratio — the paper's white leaking up to a quarter strength.
+///    [arcBleed] grows the ROUND END ONLY by that much — one device pixel is
+///    the paper's whole edge ramp — so the mark covers the paper's edge
+///    pixels outright and its own edge falls on the row's ground. The
+///    straight legs stay exactly on the block's edges: there the next cell's
+///    grid line and the row above sit a pixel away, and a bleed would ink
+///    them.
 ///
 /// Stated along the frame axis and across it, so the X-sheet reads it turned
 /// on its side like every other mark: the start edge's corner is the box's
@@ -92,40 +121,101 @@ Path blockEdgeGripPath(
   Rect box, {
   required TimelineBlockEdge edge,
   required Axis axis,
+  double arcBleed = 0,
 }) {
   final horizontal = axis == Axis.horizontal;
-  Offset at(double along, double across) =>
-      offsetAlong(axis, along: along, across: across);
   final a0 = horizontal ? box.left : box.top;
   final a1 = horizontal ? box.right : box.bottom;
   final c0 = horizontal ? box.top : box.left;
   final c1 = horizontal ? box.bottom : box.right;
   final start = edge == TimelineBlockEdge.start;
-  final corner = start ? at(a0, c1) : at(a1, c0);
-  final alongLeg = start ? at(a1, c1) : at(a0, c0);
-  final acrossLeg = start ? at(a0, c0) : at(a1, c1);
-  final radius = math.min(
-    blockEdgeGripCornerRadius(box, axis: axis),
-    math.min(a1 - a0, c1 - c0),
+  // (u, v): how far in from the block's corner — along the frame axis, and
+  // across the row.
+  Offset at(Offset uv) => offsetAlong(
+    axis,
+    along: start ? a0 + uv.dx : a1 - uv.dx,
+    across: start ? c1 - uv.dy : c0 + uv.dy,
   );
-  final path = Path()
-    ..moveTo(alongLeg.dx, alongLeg.dy)
-    ..lineTo(acrossLeg.dx, acrossLeg.dy);
-  if (radius <= 0) {
-    return path
-      ..lineTo(corner.dx, corner.dy)
-      ..close();
+  final legAlong = a1 - a0;
+  final legAcross = c1 - c0;
+  final path = Path();
+  if (legAlong <= 0 || legAcross <= 0) {
+    return path;
   }
-  Offset toward(Offset leg) =>
-      corner + (leg - corner) / (leg - corner).distance * radius;
-  final onAcross = toward(acrossLeg);
-  final onAlong = toward(alongLeg);
-  // A conic with the corner as its control point and weight √½ IS the
-  // quarter circle tangent to both legs — the paper's own rounding.
-  return path
-    ..lineTo(onAcross.dx, onAcross.dy)
-    ..conicTo(corner.dx, corner.dy, onAlong.dx, onAlong.dy, math.sqrt1_2)
-    ..close();
+  void moveTo(Offset uv) => path.moveTo(at(uv).dx, at(uv).dy);
+  void lineTo(Offset uv) => path.lineTo(at(uv).dx, at(uv).dy);
+  final alongEnd = Offset(legAlong, 0);
+  final acrossEnd = Offset(0, legAcross);
+
+  final radius = blockEdgeGripCornerRadius(box, axis: axis);
+  final reach = radius + arcBleed;
+  if (radius <= 0 || reach >= radius * math.sqrt2) {
+    // No paper corner to follow — or a bleed wide enough to swallow it.
+    moveTo(alongEnd);
+    lineTo(acrossEnd);
+    lineTo(Offset.zero);
+    path.close();
+    return path;
+  }
+  final center = Offset(radius, radius);
+  // Where the circle meets each leg, the same distance in from the corner.
+  final inset = radius - math.sqrt(reach * reach - radius * radius);
+  // The minor arc of the circle from [from] to [to], as the conic that IS it:
+  // the tangents' meeting point for control, the half-angle's cosine for
+  // weight. With no bleed that is the corner itself and √½.
+  void arcTo(Offset from, Offset to) {
+    final toMid = (from + to) / 2 - center;
+    final control = center + toMid * (reach * reach / toMid.distanceSquared);
+    path.conicTo(
+      at(control).dx,
+      at(control).dy,
+      at(to).dx,
+      at(to).dy,
+      toMid.distance / reach,
+    );
+  }
+
+  // Where the hypotenuse crosses the circle: t runs from the along leg's end
+  // (0) to the across leg's end (1).
+  Offset onHypotenuse(double t) =>
+      Offset(legAlong * (1 - t), legAcross * t);
+  final p = legAlong - radius;
+  final qa = legAlong * legAlong + legAcross * legAcross;
+  final qb = -2 * (legAlong * p + legAcross * radius);
+  final qc = p * p + radius * radius - reach * reach;
+  final disc = qb * qb - 4 * qa * qc;
+  final root = disc > 0 ? math.sqrt(disc) : 0.0;
+  final enters = onHypotenuse((-qb - root) / (2 * qa));
+  final leaves = onHypotenuse((-qb + root) / (2 * qa));
+
+  final alongEndCut = legAlong < inset;
+  final acrossEndCut = legAcross < inset;
+  if (!alongEndCut && !acrossEndCut) {
+    moveTo(alongEnd);
+    lineTo(acrossEnd);
+    lineTo(Offset(0, inset));
+    arcTo(Offset(0, inset), Offset(inset, 0));
+  } else if (!acrossEndCut) {
+    // The along leg is shorter than the paper's round: the circle takes the
+    // tip, and the hypotenuse runs from where it leaves the paper.
+    moveTo(enters);
+    lineTo(acrossEnd);
+    lineTo(Offset(0, inset));
+    arcTo(Offset(0, inset), enters);
+  } else if (!alongEndCut) {
+    moveTo(alongEnd);
+    lineTo(leaves);
+    arcTo(leaves, Offset(inset, 0));
+  } else if (disc > 0 && enters.dy >= 0 && leaves.dx >= 0) {
+    // Both legs inside the round: only the sliver the circle keeps.
+    moveTo(enters);
+    lineTo(leaves);
+    arcTo(leaves, enters);
+  } else {
+    return path;
+  }
+  path.close();
+  return path;
 }
 
 /// Quiet at rest, full on hover, accent while dragging — state carried by
@@ -189,11 +279,15 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
     required this.edge,
     required this.axis,
     required this.ink,
+    required this.devicePixelRatio,
   });
 
   final TimelineBlockEdge edge;
   final Axis axis;
   final BlockEdgeGripInk ink;
+
+  /// For the round end's one-device-pixel bleed ([blockEdgeGripPath]).
+  final double devicePixelRatio;
 
   /// The grip's own BOX is the geometry — it is laid out by the placement,
   /// so nothing needs the cell width passed in (that is what used to drag
@@ -202,12 +296,17 @@ class BlockEdgeGripPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) => paintBlockEdgeGrip(
     canvas,
-    blockEdgeGripPath(Offset.zero & size, edge: edge, axis: axis),
+    blockEdgeGripPath(
+      Offset.zero & size,
+      edge: edge,
+      axis: axis,
+      arcBleed: 1 / devicePixelRatio,
+    ),
     ink,
   );
 
   @override
-  Object get props => (edge, axis, ink);
+  Object get props => (edge, axis, ink, devicePixelRatio);
 }
 
 /// The drag hooks a grip needs once its identity is already bound by the
@@ -433,6 +532,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
             : _hovered
             ? BlockEdgeGripInk.hovered
             : BlockEdgeGripInk.rest,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       ),
       child: const SizedBox.expand(),
     );

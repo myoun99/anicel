@@ -423,13 +423,17 @@ void paintTimelineRunGlyph(
 /// because a repeat pattern should say what it is rather than merely that
 /// it is not a selection. It now differs from a selection in ink and in
 /// edge, where it used to differ in hue and nothing.
+///
+/// [corner] is the blocks' own (`timelineBlockCornerRadiusAt`) — the span
+/// outlines a run of them, so it rounds as they do at every zoom.
 void paintTimelineRunPatternSpan(
   Canvas canvas,
   Rect rect, {
+  required Radius corner,
   Color ground = timelineDrawingHeldColor,
 }) {
   final ink = timelineTextOnColor(ground);
-  final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+  final rrect = RRect.fromRectAndRadius(rect, corner);
   canvas.drawRRect(rrect, Paint()..color = ink.withValues(alpha: 0.06));
   final stroke = Paint()
     ..color = ink.withValues(alpha: 0.85)

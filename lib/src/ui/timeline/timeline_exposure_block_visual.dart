@@ -119,19 +119,27 @@ String? timelineCellSemanticsLabel({
 /// drift: one read the named radius, the other spelled the number 6 in
 /// place, so moving the constant would have rounded one kind of row and
 /// not the other.
+///
+/// ⛔And the radius is the block corner LAW, not the bare constant
+/// ([timelineBlockCornerRadiusAt]). The bare 6 left the tiles' rasterizer
+/// clamping it to half a cell on its own while the classic pass and the
+/// widget cells drew it whole — so below a 12px cell the same block wore a
+/// 6px round until its tile arrived and a 4px one after.
 BorderRadius? timelineCellBorderRadius(
   TimelineExposureBlockVisualSegment segment,
-  Axis axis,
-) {
+  Axis axis, {
+  required double cellExtent,
+  required double crossExtent,
+}) {
   if (!segment.isBlock) {
     return null;
   }
-  final startRadius = segment.continuesFromPrevious
-      ? Radius.zero
-      : timelineBlockCornerRadius;
-  final endRadius = segment.continuesToNext
-      ? Radius.zero
-      : timelineBlockCornerRadius;
+  final corner = timelineBlockCornerRadiusAt(
+    cellExtent: cellExtent,
+    crossExtent: crossExtent,
+  );
+  final startRadius = segment.continuesFromPrevious ? Radius.zero : corner;
+  final endRadius = segment.continuesToNext ? Radius.zero : corner;
   return switch (axis) {
     Axis.horizontal => BorderRadius.horizontal(
       left: startRadius,

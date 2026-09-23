@@ -880,8 +880,8 @@ void timelineGridEmitSubstrate(
         ? rect.shift(Offset(-originMain, 0))
         : rect.shift(Offset(0, -originMain));
 
-    // The radius map is uniform-6 per rounded corner (the painter's
-    // _cellRadius): a corner MASK captures it exactly.
+    // Every rounded corner wears the one block corner law
+    // (`timelineCellBorderRadius`): a corner MASK captures it exactly.
     final radius = style.radius;
     var mask = 0;
     var radiusValue = 0.0;

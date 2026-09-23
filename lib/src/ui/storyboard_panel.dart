@@ -83,8 +83,9 @@ import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor,
+        timelineBlockCornerRadiusAt,
         timelineDrawingInkColor,
-        timelineRangeSelectionBandDecoration,
+        timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
         timelineStandingCellDecoration;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
@@ -144,6 +145,8 @@ import 'timeline/timeline_section_policy.dart'
     show TimelineSection, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
+import 'timeline/timeline_selected_exposure_outline.dart'
+    show TimelineSelectionRing;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -4700,7 +4703,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                   child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
                     valueListenable: stripSelect.selection,
                     builder: (context, selection, _) {
-                      return _stripRangeOutline(selection);
+                      return _stripRangeOutline(
+                        selection,
+                        crossExtent: stripBand.height,
+                      );
                     },
                   ),
                 ),
@@ -4843,7 +4849,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// The strip's range-selection band: the selected panels of the cut
   /// whose storyboard layer the selection names, or nothing when no
   /// entry carries that layer.
-  Widget _stripRangeOutline(TimelineFrameRangeSelection? selection) {
+  Widget _stripRangeOutline(
+    TimelineFrameRangeSelection? selection, {
+    required double crossExtent,
+  }) {
     if (selection == null ||
         timelineScale.pixelsPerFrame <= 0) {
       return const SizedBox.shrink();
@@ -4878,8 +4887,10 @@ class _StoryboardTrackRow extends StatelessWidget {
             label: AppText.strings.tlSelectedPanelRange,
             container: true,
             child: DecoratedBox(
-              decoration:
-                  timelineRangeSelectionBandDecoration,
+              decoration: timelineRangeSelectionBandDecorationAt(
+                cellExtent: timelineScale.pixelsPerFrame,
+                crossExtent: crossExtent,
+              ),
             ),
           ),
         ),
