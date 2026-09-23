@@ -39,8 +39,8 @@ void main() {
     for (final (key, tooltip) in const [
       ('shared-cut-button', 'Cut (Ctrl+X)'),
       ('shared-copy-button', 'Copy (Ctrl+C)'),
-      ('shared-paste-linked-button', 'Paste linked (Ctrl+V)'),
-      ('shared-paste-independent-button', 'Paste independent (Ctrl+B)'),
+      ('shared-paste-linked-button', 'Paste linked (Ctrl+B)'),
+      ('shared-paste-independent-button', 'Paste independent (Ctrl+V)'),
       ('shared-delete-button', 'Delete (Delete)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),

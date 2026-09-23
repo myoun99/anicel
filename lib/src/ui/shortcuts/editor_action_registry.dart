@@ -359,16 +359,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyC, control: true),
     ],
   ),
-  // 「컨트롤c,v는 각각 타임라인 공용알약의 복사/링크붙여넣기로」 — V is the
-  // LINKED paste, and the independent one takes B. ㉕: the independent paste
-  // makes the copied cel's content a cel of its OWN — named for what it
-  // makes rather than for what it is not.
+  // 🚨F-156 (유저 2026-09-17): 「붙여넣기 기본값 단축키 변경. 독립 붙여넣기를
+  // 컨트롤+v로, 링크 붙여넣기를 컨트롤+b로」 — V is the INDEPENDENT paste,
+  // the one an ordinary program's Ctrl+V does, and the link takes B.
+  // ↩️It was the other way round: 「컨트롤c,v는 각각 타임라인 공용알약의
+  // 복사/링크붙여넣기로」. ㉕: the independent paste makes the copied cel's
+  // content a cel of its OWN — named for what it makes rather than for what
+  // it is not.
   const EditorActionDefinition(
     id: EditorActionIds.editPasteLinked,
     label: 'Paste linked',
     category: 'Edit',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.keyV, control: true),
+      SingleActivator(LogicalKeyboardKey.keyB, control: true),
     ],
   ),
   const EditorActionDefinition(
@@ -376,7 +379,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Paste independent',
     category: 'Edit',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.keyB, control: true),
+      SingleActivator(LogicalKeyboardKey.keyV, control: true),
     ],
   ),
   // Bare Delete and Backspace: a focused text field keeps both (bare keys
