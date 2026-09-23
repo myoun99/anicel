@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
@@ -124,7 +123,6 @@ class TimelineGridHooks {
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
   });
 
@@ -459,9 +457,6 @@ class TimelineGridHooks {
   /// legend's bulk pick both commit through this.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// PROGRAM language for the blend-mode names.
-  final AppLanguage blendLanguage;
 
   /// R27 #9: rows whose opacity is a live VIEW notifier (the camera row's
   /// dim) hand it over here — the slider subscribes and the drag never

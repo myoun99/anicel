@@ -292,7 +292,6 @@ class _WorkspaceCollapsedRows {
         expandedGroupKeys: _state._expandedLaneGroupKeys.value,
       ).isNotEmpty,
       lanesExpanded: _state._expandedLaneLayerIds.value.contains(layer.id),
-      blendLanguage: session.languageSettings.value.programLanguage,
       // 🚨A NULL CALLBACK IS NOT "no handler", IT IS "NO COLUMN": this row
       // reads `onToggleLayerOnionSkin != null` and friends as whether the
       // slot exists at all. Leaving them out to mean "nothing can be pressed

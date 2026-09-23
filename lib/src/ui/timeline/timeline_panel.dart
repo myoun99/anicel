@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../panels/panel_collapsed_scope.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
@@ -144,7 +143,6 @@ class TimelinePanel extends StatefulWidget {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
   });
 
@@ -154,7 +152,6 @@ class TimelinePanel extends StatefulWidget {
   /// R27 #6: the layer label's blend-mode column.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-  final AppLanguage blendLanguage;
 
   /// R27 #9: live opacity source for view-state rows (the camera dim).
   final ValueListenable<double>? Function(LayerId layerId)?
@@ -633,7 +630,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      blendLanguage: widget.blendLanguage,
       layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
       layerEyeOnOf: widget.layerEyeOnOf,
     );

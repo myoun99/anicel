@@ -6,6 +6,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
@@ -406,6 +408,25 @@ void main() {
           reason: '$key must label its stood-up column',
         );
       }
+    });
+
+    testWidgets('the LAYER heading stood up is the same word the timeline '
+        'prints — in the program language', (tester) async {
+      // F-37 tabled the heading lying down and left this one a literal, so
+      // a Korean sheet headed its names 「LAYER」 (found on F-170's sweep).
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_grid());
+
+      final heading = tester.widget<VerticalWritingText>(
+        find.byKey(const ValueKey<String>('legend-layer')),
+      );
+      expect(heading.text, AppText.strings.tlLegendLayer);
+      expect(heading.text, isNot('LAYER'), reason: 'LIVENESS — ko has a word');
     });
 
     testWidgets('ONION and BLND get their headings too — the heading '

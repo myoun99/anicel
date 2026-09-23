@@ -903,7 +903,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             masterOpacityValue: _session.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
             onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
-            blendLanguage: _session.languageSettings.value.programLanguage,
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,

@@ -110,7 +110,6 @@ class _XSheetGridHeaders {
       onionSkinEnabled:
           _state.widget.hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
       onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
-      blendLanguage: _state.widget.hooks.blendLanguage,
       wearsBaseComposite: attachRowWearsBaseComposite(
         layer,
         _state.widget.layers,

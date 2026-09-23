@@ -162,8 +162,15 @@ typedef _RailRowMemoInputs = ({
   ByIdentity<ValueListenable<({Set<LayerId> layerIds, double opacity})?>?>
   opacityDragPreview,
   // R27 #6: the blend chip prints a LANGUAGE-dependent name — a language
-  // switch must invalidate the memo like any other visible fact.
-  AppLanguage blendLanguage,
+  // switch must invalidate the memo like any other visible fact. Read from
+  // [AppText.language] when the token is made (F-170), not handed down.
+  // ⛔MUTANT SURVIVES HERE (2026-09-23): a fixed language in this slot left
+  // `a_language_that_lands_late_reaches_every_word_test` green — the chip
+  // reads the theme, so it rebuilds itself when the app root rebuilds for
+  // the language, memo or no memo. Kept because the memo's own rule is that
+  // every visible fact is in its token, and a row word that stopped reading
+  // the theme would keep the last language's without it.
+  AppLanguage language,
 });
 
 /// The legend header's memo token (UI-R7 #1): every legend-visible fact.
@@ -186,7 +193,7 @@ typedef _LegendMemoInputs = ({
   bool displayedOnionSkinOn,
   // R27 #6: the blend column's header prints language-dependent names in
   // its flyout and gates on the bulk callback's presence.
-  AppLanguage blendLanguage,
+  AppLanguage language,
   bool hasBlendBulk,
 });
 

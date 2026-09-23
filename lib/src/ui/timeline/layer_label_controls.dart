@@ -2,7 +2,6 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart' show AppLanguage;
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
 import '../../models/attached_placement.dart';
@@ -307,7 +306,6 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.keyValue,
     required this.optionKeyPrefix,
     required this.blendMode,
-    required this.language,
     required this.onBlendModeSelected,
     this.subject = 'Layer',
     this.isGroup = false,
@@ -328,7 +326,6 @@ class LayerBlendModeChip extends StatelessWidget {
   final String optionKeyPrefix;
 
   final LayerBlendMode blendMode;
-  final AppLanguage language;
   final ValueChanged<LayerBlendMode> onBlendModeSelected;
 
   /// Names the row kind in the tooltip ('Layer', 'Folder').
@@ -343,6 +340,14 @@ class LayerBlendModeChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final nonNormal = blendMode != LayerBlendMode.normal;
     final vertical = axis == Axis.vertical;
+    // 🚨F-170 (유저 2026-09-20): 「앱 초기 실행시, 레이어의 블렌드 모드가
+    // 영어가 되있음. Normal로. 그 상태에서 다른 레이어로 이동하거나 프레임
+    // 생성하면 표준이라고 한글로 바뀜」. The saved language lands after the
+    // first frame; every other word re-reads it when the app rebuilds for
+    // it, but this one was handed down as a VALUE by a host that does not
+    // rebuild, with English as the default. Asked here, at build, like
+    // every other vocabulary ([AppText.language]).
+    final language = AppText.language;
     return SizedBox(
       width: vertical ? 20 : layerBlendSlotWidth,
       height: vertical ? layerBlendSlotWidth : 20,

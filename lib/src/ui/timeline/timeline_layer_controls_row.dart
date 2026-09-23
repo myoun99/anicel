@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -154,7 +153,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.opacityDragPreview,
     this.isLinked = false,
     this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
     this.opacityOverride,
     this.chromeless = false,
   });
@@ -296,9 +294,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// keeps the slot reserved but inert (passive hosts).
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// PROGRAM language for the blend-mode name.
-  final AppLanguage blendLanguage;
 
   /// Paint the CONTENTS and no ground: no fill, no active wash, no seams.
   ///
@@ -873,7 +868,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
       keyValue: '$keyPrefix-layer-blend-${layer.id}',
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
-      language: blendLanguage,
       isGroup: isGroup,
       subject: isGroup ? 'Folder' : 'Layer',
       onBlendModeSelected: (mode) => onSelected(layer.id, mode),
