@@ -647,7 +647,7 @@ class _StoryboardRailRows {
         _playheadFollowing(
           (_) => StoryboardTrackLabelRow(
             track: track,
-            trackLabel: 'V${index + 1}',
+            trackLabel: _vRowName(index),
             laneHeight: _state.widget.trackLaneHeight,
             laneExpanded: _state.widget.expandedTransformTracks.contains(
               track.id.value,

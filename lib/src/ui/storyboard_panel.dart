@@ -67,7 +67,9 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragTarget,
         LayerRowSubject,
         TimelineRowDragHooks,
-        TrackRowSubject;
+        TrackRowSubject,
+        effectRowDragChip,
+        layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -4001,7 +4003,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
                   idValue: 'v-${track.id.value}',
-                  icon: Icons.movie_outlined,
+                  icon: _vRowGlyph,
                   semanticLabel: AppText.strings.sbVideoTrack,
                   onTap: onSelectTrack,
                 ),

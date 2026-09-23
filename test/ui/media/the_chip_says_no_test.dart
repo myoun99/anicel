@@ -61,7 +61,7 @@ void main() {
       final verdict = ValueNotifier<bool?>(null);
       addTearDown(verdict.dispose);
       await pumpChip(tester, verdict: verdict);
-      const ban = ValueKey<String>('media-drag-chip-ban');
+      const ban = ValueKey<String>('drag-chip-ban');
       expect(find.byKey(ban), findsNothing);
 
       verdict.value = false;
@@ -70,7 +70,7 @@ void main() {
       OutlinedBorder ring() =>
           tester
                   .widget<Material>(
-                    find.byKey(const ValueKey<String>('media-drag-chip')),
+                    find.byKey(const ValueKey<String>('drag-chip-0')),
                   )
                   .shape!
               as OutlinedBorder;

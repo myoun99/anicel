@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
+import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
@@ -908,42 +909,6 @@ class _TabStripTailDropRegion extends StatelessWidget {
   }
 }
 
-/// The floating chip under the pointer while a tab is dragged.
-class _PanelTabDragFeedback extends StatelessWidget {
-  const _PanelTabDragFeedback({required this.label, required this.icon});
-
-  final String label;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      elevation: 4,
-      // The tab in flight wears the same fill the tab wears when it is
-      // switched on: a drag avatar is the one surface the pointer is
-      // literally carrying, and on a dark UI its drop shadow is nearly
-      // nothing, so the fill has to do the lifting.
-      color: colorScheme.surfaceContainerHigh,
-      shape: AppShapes.container(AppShapes.wellRadius),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: colorScheme.primary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// One tab: an icon, and an 8px strip of its leading edge that lifts it.
 ///
 /// 패널 이름 글자는 어디에도 안 띄운다 (유저 확정). The name lives in the
@@ -1115,10 +1080,9 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         // The avatar origin IS the pointer, so drop regions can split
         // themselves into exact before/after halves from the drag offset.
         dragAnchorStrategy: pointerDragAnchorStrategy,
-        feedback: FractionalTranslation(
-          translation: const Offset(-0.5, -0.5),
-          child: _PanelTabDragFeedback(label: widget.label, icon: widget.icon),
-        ),
+        // Every drag's chip, hung where every drag hangs it (I-39) — this
+        // one sat centred on the pointer, a look of its own.
+        feedback: DragChip(items: [(icon: widget.icon, label: widget.label)]),
         onDragStarted: () {
           setState(() => _dragging = true);
           widget.onTabDragChanged?.call(data);

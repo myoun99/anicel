@@ -49,6 +49,7 @@ class _StoryboardRowsAndLabels {
             rowExtent: _laneHeight,
             axis: Axis.horizontal,
             hooks: hooks,
+            grip: () => [effectRowDragChip(lanes[index])],
             isLastRow: slot == displayEffects.length - 1,
             onCrossed: (steps, _, _) => hooks.onEffectUpdate(
               carrierId,
@@ -224,6 +225,11 @@ class _StoryboardRowsAndLabels {
       rowExtent: _state._railRows._seRowGroupExtent(track, slot),
       axis: Axis.horizontal,
       hooks: hooks,
+      grip: () => layerRowDragChips(
+        rows: _state._railRows._seRowsInDisplayOrder(track),
+        pressed: trackLayer.id,
+        hooks: hooks,
+      ),
       isLastRow: displayIndex == displayRows.length - 1,
       // The S rows are a flat SE list — no row here holds another, so there
       // is nothing for an on-row drop to mean and the caret stays the only
@@ -303,6 +309,7 @@ class _StoryboardRowsAndLabels {
       grabOffsetWithinRun: _state._railRows._trackGroupExtentAboveVRow(track),
       axis: Axis.horizontal,
       hooks: hooks,
+      grip: () => [(icon: _vRowGlyph, label: _vRowName(index))],
       isLastRow: index == trackCount - 1,
       // A track holds nothing, so its middle means nothing: the caret is
       // the only answer and the on-row arm stays unused (the S rows'
@@ -313,3 +320,9 @@ class _StoryboardRowsAndLabels {
     );
   }
 }
+
+/// A V row's name and glyph — what its label row shows, and what its chip
+/// says once the row is picked up (I-39), so the two cannot name the row
+/// differently.
+String _vRowName(int index) => 'V${index + 1}';
+const IconData _vRowGlyph = Icons.movie_outlined;

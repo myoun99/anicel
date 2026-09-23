@@ -839,6 +839,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 timelineRowAddressOfDragSubject(subject),
               ),
               onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
+              // I-39: what a picked-up row carries, named at the pointer.
+              rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
             ),
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
