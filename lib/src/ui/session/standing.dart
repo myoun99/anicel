@@ -656,7 +656,8 @@ class Standing {
   ///   - otherwise another row takes the standing: the head of the fold it
   ///     is in (the attach group's base, the outermost shut folder — the
   ///     fold law's swallower, R5 #11), else the nearest shown row ABOVE it
-  ///     on screen, else the first shown row (UI-R6 #3's order).
+  ///     on screen, else the first shown row (UI-R6 #3's order). See
+  ///     [_standInFor].
   ///
   /// [filterSparesStanding]: a filter never hides the row you are editing
   /// ([TimelineRowFilter.allowsRow]). False when the PROGRAM picked the row —
@@ -695,7 +696,7 @@ class Standing {
         return;
       }
     }
-    final standIn = _standInFor(active, stack, folders, hiddenBy);
+    final standIn = _standInFor(active, stack, hiddenBy);
     if (standIn != null && standIn.id != active.id) {
       selectLayer(standIn.id);
     }
@@ -716,41 +717,32 @@ class Standing {
     }
   }
 
-  /// The row that stands in for hidden [layer]: out through the folds that
-  /// swallow it to the first head on screen, else the nearest shown row
-  /// above, else the first shown row. Null when no row is on screen.
+  /// The row that stands in for hidden [layer]: the base of the attach group
+  /// that folded it away, else the nearest shown row above it, else the
+  /// first shown row. Null when no row is on screen.
+  ///
+  /// A shut FOLDER needs no arm of its own: its row sits right above its run
+  /// on screen, so the nearest shown row above a member IS the outermost
+  /// shut folder. An attach group's base can sit BELOW its rows (an above
+  /// attach), and the fold law hands to the base wherever it sits (UI-R24
+  /// #4) — a landing answers the same.
   ///
   /// Candidates are judged WITHOUT the filter's exemption — none of them is
   /// standing yet.
   Layer? _standInFor(
     Layer layer,
     List<Layer> stack,
-    LayerFolderIndex folders,
     LayerRowHiddenBy? Function(Layer layer) hiddenBy,
   ) {
     var candidate = layer;
-    // A head is always further out than what it swallows, so the walk ends;
-    // the bound only keeps a malformed stack from spinning.
-    for (var hop = 0; hop <= stack.length; hop += 1) {
-      final Layer? head;
-      switch (hiddenBy(candidate)) {
-        case null:
-          return candidate;
-        case LayerRowHiddenBy.attachFold:
-          final baseId = attachGroupBaseOf(candidate, stack);
-          head = stack.where((row) => row.id == baseId).firstOrNull;
-        case LayerRowHiddenBy.folderFold:
-          head = folders
-              .ancestryOf(candidate.folderId)
-              .where((folder) => folder.collapsed)
-              .lastOrNull;
-        case LayerRowHiddenBy.section || LayerRowHiddenBy.filter:
-          head = null;
+    if (hiddenBy(layer) == LayerRowHiddenBy.attachFold) {
+      final baseId = attachGroupBaseOf(layer, stack);
+      // A base never rides a group of its own, so one step is the whole way.
+      final base = stack.where((row) => row.id == baseId).firstOrNull;
+      if (base != null && hiddenBy(base) == null) {
+        return base;
       }
-      if (head == null) {
-        break;
-      }
-      candidate = head;
+      candidate = base ?? layer;
     }
     final display = horizontalLayerDisplayOrder(stack);
     final from = display.indexWhere((row) => row.id == candidate.id);

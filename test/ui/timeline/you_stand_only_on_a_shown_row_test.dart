@@ -21,6 +21,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
 /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
@@ -45,6 +46,7 @@ const _bMinus2 = LayerId('b-2');
 Layer _drawing(
   String id, {
   LayerId? attachedTo,
+  AttachedPlacement placement = AttachedPlacement.below,
   LayerId? folderId,
   LayerMark mark = LayerMark.none,
 }) => Layer(
@@ -53,7 +55,7 @@ Layer _drawing(
   frames: [Frame(id: FrameId('$id-cel'), duration: 1, strokes: const [])],
   timeline: const {},
   attachedToLayerId: attachedTo,
-  attachedPlacement: AttachedPlacement.below,
+  attachedPlacement: placement,
   folderId: folderId,
   mark: mark,
 );
@@ -112,7 +114,11 @@ Future<void> _pick(WidgetTester tester, String flyout, String item) async {
 }
 
 /// The report's stack: A, then B's group with B-1 below B.
-final _reported = [_drawing('a'), _drawing('b-1', attachedTo: _b), _drawing('b')];
+final _reported = [
+  _drawing('a'),
+  _drawing('b-1', attachedTo: _b),
+  _drawing('b'),
+];
 
 void main() {
   group('① a HAND-OFF lands on a shown row', () {
@@ -222,6 +228,57 @@ void main() {
 
       expect(session.activeLayerId, const LayerId('red-a'));
       expect(_row(const LayerId('blue-x')), findsNothing);
+    });
+  });
+
+  group('① the stand-in is the fold\'s head, not merely the row above', () {
+    // An ABOVE attach sits over its base on screen, so the row above it is
+    // someone else's — and the fold law hands to the base (UI-R24 #4).
+    const plusOne = LayerId('b+1');
+    EditorSessionManager session(List<Layer> layers) {
+      final s = EditorSessionManager(initialProject: _project(layers));
+      addTearDown(s.dispose);
+      return s;
+    }
+
+    test('a row inside a folded group above its base stands on the base',
+        () {
+      final s = session([
+        _drawing('a'),
+        _drawing('b'),
+        _drawing('b+1', attachedTo: _b, placement: AttachedPlacement.above),
+        _drawing('x'),
+      ]);
+      s.selectLayer(plusOne);
+      s.railView.collapsedAttachBaseIds.value = {_b};
+
+      s.standing.keepStandingShown();
+
+      expect(s.activeLayerId, _b, reason: 'x is the row above, b the head');
+    });
+
+    test('a head the filter hides hands on to the nearest shown row above IT',
+        () {
+      const red = LayerMark(process: LayerProcess.layout);
+      const blue = LayerMark(process: LayerProcess.conte);
+      final s = session([
+        _drawing('a', mark: red),
+        _drawing('b', mark: blue),
+        _drawing(
+          'b+1',
+          attachedTo: _b,
+          placement: AttachedPlacement.above,
+          mark: red,
+        ),
+        _drawing('x', mark: red),
+      ]);
+      s.selectLayer(plusOne);
+      s.railView.collapsedAttachBaseIds.value = {_b};
+      s.railView.rowFilter.value = TimelineRowFilter(markColors: {red});
+
+      s.standing.keepStandingShown();
+
+      expect(s.activeLayerId, const LayerId('x'));
     });
   });
 
