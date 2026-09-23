@@ -1313,6 +1313,40 @@ void main() {
     );
   });
 
+  testWidgets('a box that walks to another cel frames THAT cel\'s picture — '
+      'the box a fresh open there would show', (tester) async {
+    // ⛔The ×2 pins above read where the ink LANDS, which the pivot decides.
+    // The box's own size is what the user sees and grabs, and a walk that
+    // kept the old one passed them all.
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+    await env.setTool(CanvasTool.move);
+
+    // The oracle: the box a fresh open on frame two shows.
+    env.commands.beginTransform();
+    await tester.pump();
+    final fresh = antsOnScreen(tester)!.transformChrome!.box;
+    env.commands.cancelTransform();
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(
+      antsOnScreen(tester)!.transformChrome!.box,
+      isNot(fresh),
+      reason: '⛔전제: 두 셀의 그림 크기가 다르다',
+    );
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+    expect(antsOnScreen(tester)!.transformChrome!.box, fresh);
+  });
+
   /// 🚨★★★**BOTH AT ONCE — 「오른쪽으로 옮기고 2배 키운 상태」.**
   ///
   /// 🗣️유저 2026-09-20: 「즉 프레임 1을 오른쪽으로 옮기고, 2배 키운상태에서
@@ -2211,6 +2245,38 @@ void main() {
     );
   });
 
+  testWidgets('⑤메쉬의 점 조작도 한 걸음이다', (tester) async {
+    // ⛔The same law on the other warp. The 퍼스 pin above cannot see the
+    // grid: a step that restored the corners and not the mesh passed it.
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.mesh,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // Stamp rect (20,20)-(71,71), 3×3 cells → pitch 17: interior points at
+    // (37,37) and (54,54). Two of them, for the 퍼스 pin's reason.
+    await dragOnLayer(tester, const Offset(37, 37), const Offset(31, 42));
+    final firstMoved = antsOnScreen(tester)!.transformChrome!.handles;
+    await dragOnLayer(tester, const Offset(54, 54), const Offset(60, 49));
+    expect(
+      antsOnScreen(tester)!.transformChrome!.handles,
+      isNot(firstMoved),
+      reason: '⛔전제: 두 번째 점도 움직였다',
+    );
+
+    expect(env.commands.undoTransformStep(), isTrue);
+    await tester.pump();
+    expect(
+      antsOnScreen(tester)!.transformChrome!.handles,
+      firstMoved,
+      reason: '두 번째 점만 돌아왔다 — 걸음이 격자를 들고 있다',
+    );
+  });
+
   testWidgets('⑤걸음은 그림이 아니라 값이다 — 되돌려도 히스토리는 그대로', (
     tester,
   ) async {
@@ -2276,6 +2342,23 @@ void main() {
       width(after),
       closeTo(wasWide, 0.5),
       reason: '⛔그리고 다른 축은 그대로 — 변 핸들은 한 축이다',
+    );
+  });
+
+  testWidgets('a WIDE marquee opens a wide box — width and height are two '
+      'numbers', (tester) async {
+    // ⛔Every other box in this file is square, so a width read where the
+    // height belongs passed all of them.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 30), const Offset(90, 50));
+    env.commands.beginTransform();
+    await tester.pump();
+
+    final box = antsOnScreen(tester)!.transformChrome!.box;
+    expect(
+      (box[1] - box[0]).distance,
+      greaterThan((box[3] - box[0]).distance * 2),
+      reason: '70×20 의 선택은 70×20 의 상자다',
     );
   });
 
@@ -2513,6 +2596,37 @@ void main() {
     await tester.pump();
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
     expect(env.commands.hasSelection, isFalse);
+    expect(env.history.undoCount, entriesBefore);
+  });
+
+  testWidgets('Escape after grabbing a HANDLE of the implicit box ends the '
+      'whole session — the grab is what opened it', (tester) async {
+    // ⛔The pin above grabs INSIDE the box and reverts by name. A handle
+    // opens the session through its own door, and Escape asks that door
+    // whether this box opened the lift.
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    final entriesBefore = env.history.undoCount;
+    final chrome = antsOnScreen(tester)!.transformChrome!;
+    final topLeft = chrome.handles.reduce(
+      (a, b) =>
+          (a - chrome.box.first).distance <= (b - chrome.box.first).distance
+          ? a
+          : b,
+    );
+
+    await dragOnLayer(tester, topLeft, topLeft + const Offset(-10, -10));
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+    expect(env.commands.movePending, isTrue);
+
+    env.commands.cancelTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+    expect(
+      env.commands.movePending,
+      isFalse,
+      reason: '상자만 닫히고 떠 있는 그림이 남으면 취소가 반쪽이다',
+    );
+    expect(inkAt(env.coordinator, 30, 30), isNonZero);
     expect(env.history.undoCount, entriesBefore);
   });
 
@@ -2797,6 +2911,53 @@ void main() {
     expect(env.commands.movePending, isFalse);
   });
 
+  testWidgets('the OUTLINE crosses 퍼스 ↔ 메쉬: a pulled corner comes into '
+      'the grid, and a grid corner comes back as the quad', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14));
+    final pulledTopLeft = antsOnScreen(tester)!.transformChrome!.box.first;
+
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.mesh,
+    );
+    await tester.pump();
+    expect(
+      antsOnScreen(tester)!.transformChrome!.handles.first,
+      pulledTopLeft,
+      reason: '퍼스의 모서리가 격자의 모서리가 됐다',
+    );
+
+    // Stamp rect (20,20)-(71,71): the grid's bottom-right point is its last.
+    await dragOnLayer(tester, const Offset(71, 71), const Offset(80, 78));
+    final gridBottomRight = antsOnScreen(
+      tester,
+    )!.transformChrome!.handles.last;
+
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.perspective,
+    );
+    await tester.pump();
+    final quad = antsOnScreen(tester)!.transformChrome!.box;
+    expect(
+      (quad[2] - gridBottomRight).distance,
+      lessThan(1e-6),
+      reason: '격자의 모서리가 퍼스로 돌아왔다',
+    );
+    expect(
+      (quad.first - pulledTopLeft).distance,
+      lessThan(1e-6),
+      reason: '⛔그리고 처음 당긴 모서리도 그대로 — 보관본이 아니라 격자에서 왔다',
+    );
+  });
+
   testWidgets('메쉬 mode: the control grid comes up WITH the box, a dragged '
       'point + Enter commits ONE warped entry', (tester) async {
     final env = await pumpSelectionPanel(
@@ -2927,6 +3088,65 @@ void main() {
     expect(values?.scale, 1);
   });
 
+  testWidgets('리셋 flattens the WARP in 퍼스 and 메쉬 alike, and keeps nothing '
+      'aside for a mode switch to bring back', (tester) async {
+    // 유저 확정 08-13: 「리셋은 전부」. The pin above only reads the numbers,
+    // which a reset that left the warp standing also zeroes.
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    final flatQuad = antsOnScreen(tester)!.transformChrome!.box;
+
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14));
+    expect(
+      antsOnScreen(tester)!.transformChrome!.box,
+      isNot(flatQuad),
+      reason: '⛔전제: 모서리가 움직였다',
+    );
+    env.commands.resetTransform();
+    await tester.pump();
+    expect(antsOnScreen(tester)!.transformChrome!.box, flatQuad);
+
+    // Pulled again and put aside by a narrowing switch: a reset there must
+    // leave nothing for the widening switch to restore.
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14));
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.normal,
+    );
+    await tester.pump();
+    env.commands.resetTransform();
+    await tester.pump();
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.perspective,
+    );
+    await tester.pump();
+    expect(
+      antsOnScreen(tester)!.transformChrome!.box,
+      flatQuad,
+      reason: '⛔보관해 둔 워프가 되살아나면 리셋이 전부가 아니다',
+    );
+
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.mesh,
+    );
+    await tester.pump();
+    final flatGrid = antsOnScreen(tester)!.transformChrome!.handles;
+    await dragOnLayer(tester, const Offset(37, 37), const Offset(31, 42));
+    expect(
+      antsOnScreen(tester)!.transformChrome!.handles,
+      isNot(flatGrid),
+      reason: '⛔전제: 격자 점이 움직였다',
+    );
+    env.commands.resetTransform();
+    await tester.pump();
+    expect(antsOnScreen(tester)!.transformChrome!.handles, flatGrid);
+  });
+
   testWidgets('적용 with nothing transformed REPLAYS the last committed '
       'values, and does not commit them until pressed again', (tester) async {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
@@ -2962,6 +3182,38 @@ void main() {
     await tester.pump();
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
+
+  for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
+    testWidgets('적용 over a box changed only by its WARP commits it — a '
+        'point pulled is a change though every number is at rest ($mode)', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester, transformMode: mode);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      final entriesBefore = env.history.undoCount;
+
+      // A quad corner, or an interior grid point (pitch 17 from (20,20)).
+      final grab = mode == TransformMode.perspective
+          ? const Offset(20, 20)
+          : const Offset(37, 37);
+      await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
+      final values = env.commands.transformValues!;
+      expect(values.tx, 0, reason: '⛔전제: 숫자는 그대로다');
+      expect(values.scale, 1);
+
+      env.commands.applyTransform();
+      await tester.pump();
+      expect(
+        env.commands.movePending,
+        isFalse,
+        reason: '재현이 아니라 확정 — 당긴 점도 변형이다',
+      );
+      expect(env.history.undoCount, entriesBefore + 1);
+    });
+  }
 
   testWidgets('the preview clips ONLY while a handle is being dragged, and '
       'goes back to the whole rect the moment it is released', (tester) async {
