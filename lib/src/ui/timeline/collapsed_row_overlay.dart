@@ -373,11 +373,13 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
               sheet: sheet,
               content: content,
               cell: cell,
-              playback: playback - first,
-              drawn: switch (widget.drawnFrameCount) {
-                final drawn? => drawn - first,
-                null => null,
-              },
+              stops: (
+                cut: playback - first,
+                drawn: switch (widget.drawnFrameCount) {
+                  final drawn? => drawn - first,
+                  null => null,
+                },
+              ),
             ),
           },
         ),
@@ -400,15 +402,14 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   /// ⑩ 뿌리 C) painted neither, so the one ground the design kept was on the
   /// one path nobody saw.
   ///
-  /// [playback] and [drawn] are counted from the first frame laid out here,
-  /// which is this stack's origin: it lays every overlay at a frame count
-  /// times the cell from its own left edge.
+  /// [stops] — the cut end and the drawn end — are counted from the first
+  /// frame laid out here, which is this stack's origin: it lays every
+  /// overlay at a frame count times the cell from its own left edge.
   Widget _whereTheFilmStops({
     required Widget sheet,
     required Widget content,
     required double cell,
-    required int playback,
-    required int? drawn,
+    required ({int cut, int? drawn}) stops,
   }) => TimelineFrameGridStack(
     gridSheet: sheet,
     rowsBody: SizedBox.expand(child: content),
@@ -418,8 +419,8 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     playheadExtent: 0,
     playhead: const SizedBox.shrink(),
     frameCellExtent: cell,
-    playbackFrameCount: playback,
-    drawnFrameCount: drawn,
+    playbackFrameCount: stops.cut,
+    drawnFrameCount: stops.drawn,
   );
 
   /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.
