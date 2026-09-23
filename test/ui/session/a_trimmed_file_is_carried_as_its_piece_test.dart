@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-11: 「자를때 원본 전체만 안들어가고 자른것만 안으로
 /// 들어가도록」 — answered 2026-09-23: Q1 「잘라낸 동영상으로 다시 인코딩」,
@@ -36,13 +37,9 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-pieces');
   });
 
-  tearDown(() async {
+  tearDown(() {
     PdfRenderService.debugResetForTests();
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
+    deleteTempQuietly(tempDir);
   });
 
   EditorSessionManager session() {

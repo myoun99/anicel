@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨The ROAD THE APP TAKES. `flutter_test_config.dart` cuts every piece
 /// inline ([TrimmedPieces.debugCutInline]) because a widget test's clock
@@ -26,13 +27,9 @@ void main() {
     TrimmedPieces.debugCutInline = false;
   });
 
-  tearDown(() async {
+  tearDown(() {
     TrimmedPieces.debugCutInline = true;
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
+    deleteTempQuietly(tempDir);
   });
 
   EditorSessionManager session() {
