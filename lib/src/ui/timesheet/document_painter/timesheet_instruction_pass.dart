@@ -27,7 +27,6 @@ class _TimesheetInstructionPass {
     required double columnWidth,
     required double centerX,
     required double cellTop,
-    required bool drawTexts,
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
     final cellBottom = cellTop + rowHeight;
@@ -115,9 +114,6 @@ class _TimesheetInstructionPass {
       );
     }
 
-    if (!drawTexts) {
-      return;
-    }
     // Writing goes BOLD (R6-①a): it sits directly on the bar/mark and has
     // to stay readable over it.
     if (isFirst && (cell.valueA ?? '').isNotEmpty) {
