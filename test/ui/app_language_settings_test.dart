@@ -44,35 +44,15 @@ void main() {
     expect(await store.load(), settings);
   });
 
-  test('the session persists changes through the injected store and '
-      'restores them on construction', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-lang');
-    deleteAfterSessionEnds(directory);
-    final path = '${directory.path}/language_settings.json';
-
-    final first = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      languageSettingsStore: AppLanguageSettingsStore(filePath: path),
-    );
-    first.setLanguageSettings(
-      const AppLanguageSettings(
-        programLanguage: AppLanguage.ja,
-        notationLanguage: AppLanguage.en,
-      ),
-    );
-    // The save is fire-and-forget; give it a beat.
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    first.dispose();
-
-    final second = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      languageSettingsStore: AppLanguageSettingsStore(filePath: path),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(second.languageSettings.value.programLanguage, AppLanguage.ja);
-    expect(second.languageSettings.value.notationLanguage, AppLanguage.en);
-    second.dispose();
-  });
+  // 🪦The SESSION round-trip lived here — persist through the injected
+  // store, restore on construction — and it raced its own save: it gave the
+  // fire-and-forget write a fixed 50 ms and failed under a bulk run
+  // (2026-09-24; it passed alone). It also never reset the app-wide value
+  // the first session had set, so it passed with the restore switched off —
+  // measured: that mutant stayed green here and went red in the sibling.
+  // `editor_app_settings_test` takes the same round-trip for every family,
+  // language included, waiting on the files and resetting in between.
+  // ⛔Do not bring a second copy back.
 
   test('the sheet header labels follow the notation language', () {
     expect(
