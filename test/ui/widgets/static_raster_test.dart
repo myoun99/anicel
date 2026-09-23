@@ -137,39 +137,6 @@ void main() {
     expect(inner[0], innerPainted + 1);
   });
 
-  testWidgets('a dense surface bakes even where a capture does not pay', (
-    tester,
-  ) async {
-    StaticRaster.debugCapturePaysOverride = false;
-    final counter = <int>[0];
-    final parentRepaint = ValueNotifier<int>(0);
-    addTearDown(parentRepaint.dispose);
-    Widget surface({required bool dense}) => _host(
-      _RepaintingParent(
-        repaint: parentRepaint,
-        child: StaticRaster(
-          debugLabel: 'test',
-          dense: dense,
-          child: CustomPaint(painter: _CountingPainter(counter: counter)),
-        ),
-      ),
-    );
-
-    await tester.pumpWidget(surface(dense: true));
-    final render = tester.renderObject<RenderStaticRaster>(
-      find.byType(StaticRaster),
-    );
-    expect(render.captureCount, 1, reason: 'many small draws: baked once');
-    expect(render.standDown, StandDownReason.none);
-    expect(StaticRaster.censusBytes, greaterThan(0));
-
-    // Declared dense no longer: it goes back to painting through.
-    await tester.pumpWidget(surface(dense: false));
-    expect(render.captureCount, 1, reason: 'no further bakes');
-    expect(render.standDown, StandDownReason.renderer);
-    expect(StaticRaster.censusBytes, 0, reason: 'and it let the image go');
-  });
-
   testWidgets('an ancestor repainting does not re-bake the child', (
     tester,
   ) async {

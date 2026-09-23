@@ -68,9 +68,16 @@ import '../panels/panel_visibility_scope.dart';
 /// Cheap by construction: the walk only runs on the frames where we were
 /// going to repaint the whole subtree anyway.
 ///
-/// It binds only where a capture happens at all ([capturePays], or a
-/// [dense] surface): under Impeller a surface is a zone and no more, and a
-/// boundary inside one costs nothing.
+/// It binds only where a capture happens at all ([capturePays]): under
+/// Impeller a surface is a zone and no more, and a boundary inside one
+/// costs nothing.
+///
+/// ⛔A capture on Impeller is not a copy either. Measured 2026-09-24 on the
+/// real Windows app: a library cell baked came out 264 pixels different
+/// (≤9/255) from the same cell painted, and a tip preview baked ≤19/255 —
+/// translucent content composited from an offscreen does not round as it
+/// does painted in place. The panel-sized bakes happened to agree; the
+/// renderer switch keeps everything painting, so nothing depends on luck.
 ///
 /// ## 🚨 The second invariant: a baked subtree may not paint outside its
 /// own box
@@ -93,24 +100,8 @@ class StaticRaster extends SingleChildRenderObjectWidget {
     required this.debugLabel,
     this.enabled = true,
     this.maxConsecutiveCaptures = 3,
-    this.dense = false,
     required Widget super.child,
   });
-
-  /// A subtree that costs more to replay than one capture of it costs, on
-  /// ANY renderer — many small draws in a small box — so it is baked even
-  /// where [capturePays] says a bake does not pay for itself in general.
-  ///
-  /// 🔬Measured 2026-09-24 (H40), the real Windows app under Impeller with
-  /// the user's own library: a sampled tip's preview draws its 16×16 grid
-  /// as up to 256 translucent rects, one preview per library cell, and
-  /// turning the library's tip icons off took about 2.6 ms off EVERY idle
-  /// frame (the whole library about 4–8 ms). The capture that replaces
-  /// them is a 24-pixel square.
-  ///
-  /// Pure addition: a dense subtree left undeclared paints through, like
-  /// every other surface under Impeller — slower, never wrong.
-  final bool dense;
 
   /// Names this surface in diagnostics. Use the panel's name.
   final String debugLabel;
@@ -255,7 +246,6 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       debugLabel: debugLabel,
       enabled: enabled,
       maxConsecutiveCaptures: maxConsecutiveCaptures,
-      dense: dense,
       devicePixelRatio: _devicePixelRatioOf(context),
       visible: PanelVisibilityScope.maybeOf(context),
     );
@@ -270,7 +260,6 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       ..debugLabel = debugLabel
       ..enabled = enabled
       ..maxConsecutiveCaptures = maxConsecutiveCaptures
-      ..dense = dense
       ..devicePixelRatio = _devicePixelRatioOf(context)
       ..visible = PanelVisibilityScope.maybeOf(context);
   }
@@ -354,30 +343,12 @@ class RenderStaticRaster extends RenderProxyBox {
     required this.debugLabel,
     required bool enabled,
     required int maxConsecutiveCaptures,
-    bool dense = false,
     required double devicePixelRatio,
     ValueListenable<bool>? visible,
   }) : _enabled = enabled,
        _maxConsecutiveCaptures = maxConsecutiveCaptures,
-       _dense = dense,
        _devicePixelRatio = devicePixelRatio,
        _visible = visible;
-
-  /// See [StaticRaster.dense].
-  bool _dense;
-  bool get dense => _dense;
-  set dense(bool value) {
-    if (_dense == value) {
-      return;
-    }
-    _dense = value;
-    _dropRaster();
-    markNeedsPaint();
-  }
-
-  /// Whether this surface captures at all: where the renderer rewards a
-  /// bake, or where this subtree is dense enough to reward one anyway.
-  bool get _captures => StaticRaster.capturePays || _dense;
 
   /// Whether the panel this surface lives in is the ACTIVE tab of its
   /// group, when there is one to ask.
@@ -656,7 +627,7 @@ class RenderStaticRaster extends RenderProxyBox {
     // ⚠️Only where a capture can happen at all: a CAPTURE freezes an inner
     // boundary, painting through never does, and the walk visits the whole
     // subtree on every paint of a surface that has none.
-    if (_captures) {
+    if (StaticRaster.capturePays) {
       _nestedBoundary = _childHasRepaintBoundary();
     } else {
       _nestedBoundary = false;
@@ -690,7 +661,7 @@ class RenderStaticRaster extends RenderProxyBox {
       _paintThrough(context, offset);
       return;
     }
-    if (!_captures) {
+    if (!StaticRaster.capturePays) {
       _standDown = StandDownReason.renderer;
       _dropRaster();
       _paintThrough(context, offset);

@@ -1015,9 +1015,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         // cell now stops at its own boundary: the list default Flutter's
         // own lists keep (`addRepaintBoundaries`).
         //
-        // ⚠️A boundary, not a [StaticRaster] zone: the cell holds its tip
-        // preview's own dense bake, so a bake around it could only ever
-        // stand down (nested).
+        // ⚠️A boundary, not a [StaticRaster] bake: measured the same day, a
+        // cell baked under Impeller came out 264 pixels (≤9/255) different
+        // from the cell painted — see [StaticRaster.capturePays].
         final zone = RepaintBoundary(child: row);
         // The rows carry tooltips too, and a row drag re-parents them
         // exactly the same way (유저, R4 #11 — same defect, other list).
