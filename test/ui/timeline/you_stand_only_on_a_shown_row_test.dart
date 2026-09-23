@@ -12,8 +12,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show createTrackSeLayer;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
@@ -60,35 +63,39 @@ Layer _drawing(
   mark: mark,
 );
 
-Project _project(List<Layer> layers, {List<Layer> secondCut = const []}) =>
-    Project(
-      id: const ProjectId('standing-law'),
-      name: 'Standing law',
-      createdAt: DateTime.utc(2026, 9, 24),
-      tracks: [
-        Track(
-          id: const TrackId('track'),
-          name: 'Video',
-          cuts: [
-            Cut(
-              id: _cut,
-              name: 'Cut',
-              duration: 12,
-              canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: layers,
-            ),
-            if (secondCut.isNotEmpty)
-              Cut(
-                id: const CutId('cut-2'),
-                name: 'Cut 2',
-                duration: 12,
-                canvasSize: const CanvasSize(width: 640, height: 360),
-                layers: secondCut,
-              ),
-          ],
+Project _project(
+  List<Layer> layers, {
+  List<Layer> secondCut = const [],
+  List<Layer> seLayers = const [],
+}) => Project(
+  id: const ProjectId('standing-law'),
+  name: 'Standing law',
+  createdAt: DateTime.utc(2026, 9, 24),
+  tracks: [
+    Track(
+      id: const TrackId('track'),
+      name: 'Video',
+      seLayers: seLayers,
+      cuts: [
+        Cut(
+          id: _cut,
+          name: 'Cut',
+          duration: 12,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: layers,
         ),
+        if (secondCut.isNotEmpty)
+          Cut(
+            id: const CutId('cut-2'),
+            name: 'Cut 2',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 640, height: 360),
+            layers: secondCut,
+          ),
       ],
-    );
+    ),
+  ],
+);
 
 Future<EditorSessionManager> _open(WidgetTester tester, Project project) async {
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
@@ -205,6 +212,89 @@ void main() {
 
       expect(session.activeLayerId, const LayerId('red-a'));
       expect(_row(const LayerId('blue-x')), findsNothing);
+    });
+
+    testWidgets('undoing a new row hands off past a row the FILTER hides', (
+      tester,
+    ) async {
+      const red = LayerMark(process: LayerProcess.layout);
+      const blue = LayerMark(process: LayerProcess.conte);
+      final session = await _open(
+        tester,
+        _project([
+          _drawing('red-a', mark: red),
+          _drawing('blue-x', mark: blue),
+        ]),
+      );
+      await _pick(tester, 'legend-mark', 'legend-filter-mark-layout');
+      session.selectLayer(const LayerId('red-a'));
+      // A drawing row is born LO (F-76), so the new row passes the filter.
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+      await tester.pumpAndSettle();
+
+      // The walk hands the new row's place to blue-x, which the filter hides.
+      session.undo();
+      await tester.pumpAndSettle();
+
+      expect(session.activeLayerId, const LayerId('red-a'));
+      expect(_row(const LayerId('blue-x')), findsNothing);
+    });
+
+    testWidgets('deleting the SELECTED rows hands off past a row the FILTER '
+        'hides', (tester) async {
+      const red = LayerMark(process: LayerProcess.layout);
+      const blue = LayerMark(process: LayerProcess.conte);
+      final session = await _open(
+        tester,
+        _project([
+          _drawing('red-a', mark: red),
+          _drawing('red-1', mark: red),
+          _drawing('blue-x', mark: blue),
+          _drawing('red-2', mark: red),
+        ]),
+      );
+      await _pick(tester, 'legend-mark', 'legend-filter-mark-layout');
+      session.selectLayer(const LayerId('red-1'));
+      session.rowSelection.value = const [
+        LayerRowAddress(LayerId('red-1')),
+        LayerRowAddress(LayerId('red-2')),
+      ];
+
+      // The walk hands the lowest deleted row's place to blue-x.
+      session.layerVerbs.deleteSelectedLayers();
+      await tester.pumpAndSettle();
+
+      expect(session.activeLayerId, const LayerId('red-a'));
+      expect(_row(const LayerId('blue-x')), findsNothing);
+    });
+
+    testWidgets('deleting a track SE row hands off past an SE row the FILTER '
+        'hides', (tester) async {
+      const red = LayerMark(process: LayerProcess.layout);
+      const blue = LayerMark(process: LayerProcess.conte);
+      const track = TrackId('track');
+      Layer se(int slot, LayerMark mark) =>
+          createTrackSeLayer(trackId: track, slot: slot).copyWith(mark: mark);
+      final session = await _open(
+        tester,
+        _project(
+          [_drawing('red-a', mark: red)],
+          seLayers: [se(1, red), se(2, blue), se(3, red)],
+        ),
+      );
+      final first = se(1, red).id;
+      final filtered = se(2, blue).id;
+      await _pick(tester, 'legend-mark', 'legend-filter-mark-layout');
+      session.selectLayer(first);
+      await tester.pumpAndSettle();
+
+      // The track's walk hands S1's place to S2, which the filter hides.
+      session.layerVerbs.deleteActiveLayer();
+      await tester.pumpAndSettle();
+
+      expect(session.activeLayerId, isNot(filtered));
+      expect(_row(filtered), findsNothing);
+      expect(_row(session.activeLayerId!), findsOneWidget);
     });
 
     testWidgets('coming back to a cut whose row the filter now hides stands '
@@ -375,6 +465,28 @@ void main() {
 
       expect(made, isNot(_a));
       expect(session.railView.hiddenSections.value, isEmpty);
+      expect(_row(made), findsOneWidget);
+    });
+
+    testWidgets('…and the filter spares it there, the way it spares the row '
+        'you are on — the section opening does not hand it off', (
+      tester,
+    ) async {
+      final session = await _open(
+        tester,
+        _project([
+          _drawing('a', mark: const LayerMark(process: LayerProcess.layout)),
+        ]),
+      );
+      await _pick(tester, 'legend-mark', 'legend-filter-mark-layout');
+      await _pick(tester, 'legend-sections', 'legend-section-camera');
+
+      // An instruction row carries no mark: the LO filter refuses it.
+      session.layerStack.addLayerOfKind(LayerKind.instruction);
+      await tester.pumpAndSettle();
+      final made = session.activeLayerId!;
+
+      expect(made, isNot(_a));
       expect(_row(made), findsOneWidget);
     });
   });
