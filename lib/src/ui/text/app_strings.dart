@@ -1537,6 +1537,31 @@ enum AppStrings {
   String get tlColFillReference => _s('tlColFillReference');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
+
+  // The rail row's controls (rail-subject-tooltips): one whole sentence per
+  // control, state and row. ⛔Never a noun slotted into a template — French
+  // contracts it into its article (« du calque », « de la piste ») and
+  // Japanese hangs a particle on it, so no one template reads right in all
+  // five languages.
+  String get railLayerBlendMode => _s('railLayerBlendMode');
+  String get railFolderBlendMode => _s('railFolderBlendMode');
+  String get railHideLayer => _s('railHideLayer');
+  String get railShowLayer => _s('railShowLayer');
+  String get railHideCutPicture => _s('railHideCutPicture');
+  String get railShowCutPicture => _s('railShowCutPicture');
+  String get railBypassLayerFx => _s('railBypassLayerFx');
+  String get railApplyLayerFx => _s('railApplyLayerFx');
+  String get railBypassMixedLayerFx => _s('railBypassMixedLayerFx');
+  String get railBypassTrackFx => _s('railBypassTrackFx');
+  String get railApplyTrackFx => _s('railApplyTrackFx');
+  String get railRemoveFromTimesheet => _s('railRemoveFromTimesheet');
+  String get railAddToTimesheet => _s('railAddToTimesheet');
+  String get railCollapseLanes => _s('railCollapseLanes');
+  String get railExpandLanes => _s('railExpandLanes');
+  String get railOnionSkinOn => _s('railOnionSkinOn');
+  String get railOnionSkin => _s('railOnionSkin');
+  String get railFillReferenceOn => _s('railFillReferenceOn');
+  String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
 
   /// 색 라벨이 안 붙은 상태. ⚠️「수정 없음」이 아니라 라벨 자체가 없는 것 —
@@ -2482,6 +2507,25 @@ enum AppStrings {
     'tlColFillReference': 'Fill reference column',
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
+    'railLayerBlendMode': 'Layer blend mode',
+    'railFolderBlendMode': 'Folder blend mode',
+    'railHideLayer': 'Hide layer',
+    'railShowLayer': 'Show layer',
+    'railHideCutPicture': 'Hide cut picture',
+    'railShowCutPicture': 'Show cut picture',
+    'railBypassLayerFx': 'Bypass layer FX',
+    'railApplyLayerFx': 'Apply layer FX',
+    'railBypassMixedLayerFx': 'Bypass all layer FX (some are off)',
+    'railBypassTrackFx': 'Bypass track FX',
+    'railApplyTrackFx': 'Apply track FX',
+    'railRemoveFromTimesheet': 'Remove from timesheet',
+    'railAddToTimesheet': 'Add to timesheet',
+    'railCollapseLanes': 'Collapse lanes',
+    'railExpandLanes': 'Expand lanes',
+    'railOnionSkinOn': 'Onion skin (on)',
+    'railOnionSkin': 'Onion skin',
+    'railFillReferenceOn': 'Fill reference layer (on)',
+    'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
@@ -3740,6 +3784,25 @@ enum AppStrings {
     'tlColFillReference': '塗り参照列',
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
+    'railLayerBlendMode': 'レイヤーの合成モード',
+    'railFolderBlendMode': 'フォルダーの合成モード',
+    'railHideLayer': 'レイヤーを隠す',
+    'railShowLayer': 'レイヤーを表示',
+    'railHideCutPicture': 'カットの絵を隠す',
+    'railShowCutPicture': 'カットの絵を表示',
+    'railBypassLayerFx': 'レイヤーFXをバイパス',
+    'railApplyLayerFx': 'レイヤーFXを適用',
+    'railBypassMixedLayerFx': 'レイヤーFXをすべてバイパス（一部オフ）',
+    'railBypassTrackFx': 'トラックFXをバイパス',
+    'railApplyTrackFx': 'トラックFXを適用',
+    'railRemoveFromTimesheet': 'シートから外す',
+    'railAddToTimesheet': 'シートに載せる',
+    'railCollapseLanes': 'レーンを畳む',
+    'railExpandLanes': 'レーンを展開',
+    'railOnionSkinOn': 'オニオンスキン（オン）',
+    'railOnionSkin': 'オニオンスキン',
+    'railFillReferenceOn': '塗り参照レイヤー（オン）',
+    'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
@@ -5020,6 +5083,25 @@ enum AppStrings {
     'tlColFillReference': '채색 참조 열',
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
+    'railLayerBlendMode': '레이어 블렌드 모드',
+    'railFolderBlendMode': '폴더 블렌드 모드',
+    'railHideLayer': '레이어 숨기기',
+    'railShowLayer': '레이어 표시',
+    'railHideCutPicture': '컷 그림 숨기기',
+    'railShowCutPicture': '컷 그림 표시',
+    'railBypassLayerFx': '레이어 FX 우회',
+    'railApplyLayerFx': '레이어 FX 적용',
+    'railBypassMixedLayerFx': '레이어 FX 모두 우회 (일부 꺼짐)',
+    'railBypassTrackFx': '트랙 FX 우회',
+    'railApplyTrackFx': '트랙 FX 적용',
+    'railRemoveFromTimesheet': '시트에서 내리기',
+    'railAddToTimesheet': '시트에 올리기',
+    'railCollapseLanes': '레인 접기',
+    'railExpandLanes': '레인 펼치기',
+    'railOnionSkinOn': '어니언 스킨 (켜짐)',
+    'railOnionSkin': '어니언 스킨',
+    'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
+    'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
@@ -6375,6 +6457,26 @@ enum AppStrings {
     'tlColFillReference': 'Colonne référence de remplissage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
+    'railLayerBlendMode': 'Mode de fusion du calque',
+    'railFolderBlendMode': 'Mode de fusion du dossier',
+    'railHideLayer': 'Masquer le calque',
+    'railShowLayer': 'Afficher le calque',
+    'railHideCutPicture': "Masquer l'image du plan",
+    'railShowCutPicture': "Afficher l'image du plan",
+    'railBypassLayerFx': 'Contourner les FX du calque',
+    'railApplyLayerFx': 'Appliquer les FX du calque',
+    'railBypassMixedLayerFx':
+        'Contourner tous les FX du calque (certains sont désactivés)',
+    'railBypassTrackFx': 'Contourner les FX de la piste',
+    'railApplyTrackFx': 'Appliquer les FX de la piste',
+    'railRemoveFromTimesheet': 'Retirer de la feuille',
+    'railAddToTimesheet': 'Mettre sur la feuille',
+    'railCollapseLanes': 'Replier les pistes',
+    'railExpandLanes': 'Déplier les pistes',
+    'railOnionSkinOn': "Pelure d'oignon (activée)",
+    'railOnionSkin': "Pelure d'oignon",
+    'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
+    'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
@@ -7606,6 +7708,25 @@ enum AppStrings {
     'tlColFillReference': '填充参考列',
     'tlColTimesheet': '摄影表列',
     'tlOpenOnionPanel': '打开洋葱皮面板',
+    'railLayerBlendMode': '图层混合模式',
+    'railFolderBlendMode': '文件夹混合模式',
+    'railHideLayer': '隐藏图层',
+    'railShowLayer': '显示图层',
+    'railHideCutPicture': '隐藏镜头画面',
+    'railShowCutPicture': '显示镜头画面',
+    'railBypassLayerFx': '旁通图层 FX',
+    'railApplyLayerFx': '应用图层 FX',
+    'railBypassMixedLayerFx': '旁通全部图层 FX（部分已关闭）',
+    'railBypassTrackFx': '旁通轨道 FX',
+    'railApplyTrackFx': '应用轨道 FX',
+    'railRemoveFromTimesheet': '移出摄影表',
+    'railAddToTimesheet': '放上摄影表',
+    'railCollapseLanes': '折叠轨道',
+    'railExpandLanes': '展开轨道',
+    'railOnionSkinOn': '洋葱皮（开）',
+    'railOnionSkin': '洋葱皮',
+    'railFillReferenceOn': '填充参考图层（开）',
+    'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',

@@ -552,7 +552,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return RailSwipeColumnPointer(
       child: AppIconButton(
         keyValue: '$keyPrefix-lane-toggle-${layer.id}',
-        tooltip: lanesExpanded ? 'Collapse lanes' : 'Expand lanes',
+        tooltip: lanesExpanded
+            ? AppText.strings.railCollapseLanes
+            : AppText.strings.railExpandLanes,
         size: _box(slot: layerLaneToggleSlotWidth, across: 24, iconSize: 16),
         icon: Icon(layerRailTwirlIcon(expanded: lanesExpanded)),
         onPressed: () => onToggleLanes!(layer.id),
@@ -747,8 +749,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: AppIconButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
         tooltip: layer.isFillReference
-            ? 'Fill reference layer (on)'
-            : 'Fill reference layer',
+            ? AppText.strings.railFillReferenceOn
+            : AppText.strings.railFillReference,
         size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
         icon: Icon(
           Icons.format_color_fill,
@@ -800,7 +802,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: RailSwipeColumnPointer(
         child: AppIconButton(
           keyValue: '$keyPrefix-layer-onion-${layer.id}',
-          tooltip: onionSkinEnabled ? 'Onion skin (on)' : 'Onion skin',
+          tooltip: onionSkinEnabled
+              ? AppText.strings.railOnionSkinOn
+              : AppText.strings.railOnionSkin,
           size: _box(slot: layerOnionSlotWidth, across: 26, iconSize: 15),
           icon: Icon(
             Icons.filter_none,
@@ -869,7 +873,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
-      subject: isGroup ? 'Folder' : 'Layer',
       onBlendModeSelected: (mode) => onSelected(layer.id, mode),
     );
   }

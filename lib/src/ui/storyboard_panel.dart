@@ -4048,7 +4048,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     : RailSwipeColumnPointer(
                         child: FxToggleButton(
                           keyValue: 'storyboard-track-fx-${track.id.value}',
-                          subject: 'track',
+                          subject: RailSubject.track,
                           state: trackFxState,
                           onToggle: onToggleTrackFx!,
                         ),
@@ -4064,7 +4064,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                             keyValue:
                                 'storyboard-cut-visibility-'
                                 '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                            subject: 'cut picture',
+                            subject: RailSubject.track,
                             isVisible:
                                 subjectCut == null ||
                                 (cutPictureVisibleOf?.call(subjectCut!.id) ??
