@@ -91,6 +91,38 @@ const gcTagMarker = "@Tags(['gc'])";
   return (crowd: crowd, alone: alone);
 }
 
+/// What a change to [changedDart] can have broken, out of [tests].
+Set<String> selectTests({
+  required Set<String> changedDart,
+  required List<String> tests,
+  required Map<String, Set<String>> imports,
+  required String Function(String path) read,
+}) => {
+  // A changed test runs because it changed, whatever it imports.
+  ...changedDart.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+  // Everything that can reach a changed file, however far away.
+  for (final test in tests)
+    if (closureOf(test, imports).any(changedDart.contains)) test,
+  // And every source scan that reads where a changed file lives — the one
+  // dependency no edge carries.
+  ...scansReaching(changedDart, tests, read),
+};
+
+/// The [tests] that read, as text, a `lib` path holding one of the [changed]
+/// files — the source scans no import edge reaches. See
+/// [libPrefixesReadAsText] for the round they were missing from.
+List<String> scansReaching(
+  Set<String> changed,
+  Iterable<String> tests,
+  String Function(String path) read,
+) => [
+  for (final test in tests)
+    if (libPrefixesReadAsText(read(test)).any(
+      (prefix) => changed.any((file) => file.startsWith(prefix)),
+    ))
+      test,
+];
+
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
@@ -133,17 +165,12 @@ Future<void> main(List<String> args) async {
     ..sort();
 
   final changedDart = changed.where((f) => f.endsWith('.dart')).toSet();
-  final selected = <String>{};
-
-  // A changed test runs because it changed, whatever it imports.
-  selected.addAll(
-    changedDart.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+  final selected = selectTests(
+    changedDart: changedDart,
+    tests: tests,
+    imports: imports,
+    read: (path) => File(path).readAsStringSync(),
   );
-
-  // Everything that can reach a changed file, however far away.
-  for (final test in tests) {
-    if (closureOf(test, imports).any(changedDart.contains)) selected.add(test);
-  }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
