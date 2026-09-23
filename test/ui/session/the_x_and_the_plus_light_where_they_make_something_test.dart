@@ -131,8 +131,13 @@ void main() {
       expect(rowOf(session, id), {0: 5, 5: 3, 8: 16});
     });
 
-    test('answers the same on an animation row: dark on a block\'s first '
-        'cell, lit inside its hold and on an empty cell', () {
+    test('answers the same on an animation row — and there a block\'s first '
+        'cell MAKES something, so it is lit (F-151)', () {
+      // ↩️This read 「dark on a block's first cell」 while the press refused
+      // there. 유저 2026-09-16 (F-151) made that press push the block and
+      // the ones glued behind it — so the ＋ lights, by the same F-107 law
+      // (lit only where the press makes something). The conte panel's first
+      // cell above still refuses: that row covers its cut edge to edge.
       final (session, _) = conteScene();
       session.selectLayer(animationRowOf(session));
       session.selectFrameIndex(0);
@@ -142,8 +147,8 @@ void main() {
 
       expect(
         session.canCreateInstance,
-        isFalse,
-        reason: 'the block\'s first cell',
+        isTrue,
+        reason: 'the block\'s first cell — its press pushes now',
       );
       session.selectFrameIndex(2);
       expect(session.canCreateInstance, isTrue, reason: 'inside the hold');
