@@ -325,10 +325,26 @@ class ProjectFileDoor {
       }
       return;
     }
+    // Every complete archive this save writes and cannot land — beside the
+    // file, or in the room on the way to a coordinated replace.
+    final leftBehind = <String>[];
     try {
-      await _writeProjectToFile(filePath, asked: asked, onProgress: onProgress);
+      await _writeProjectToFile(
+        filePath,
+        asked: asked,
+        onProgress: onProgress,
+        leftBehind: leftBehind,
+      );
     } on Object catch (error) {
-      throw await _keptInTheFailedCopy(error, filePath, onProgress);
+      if (error is SaveNotSwappedIn) {
+        leftBehind.add(error.archive);
+      }
+      throw await _keptInTheFailedCopy(
+        error,
+        filePath,
+        onProgress,
+        leftBehind,
+      );
     }
     if (failedCopy != null) {
       // The file took this save: the failed copy is superseded, and goes
@@ -340,10 +356,13 @@ class ProjectFileDoor {
 
   /// [error] kept [filePath] from taking a save; the work goes to this
   /// session's failed copy, and the answer is what the person is told.
+  /// What the refused save wrote — [leftBehind] — goes only once the work is
+  /// safe there, on every road alike.
   Future<SaveFailure> _keptInTheFailedCopy(
     Object error,
     String filePath,
     void Function(double)? onProgress,
+    List<String> leftBehind,
   ) async {
     final cause = saveFailureCauseOf(error, projectPath: filePath);
     final copy = _file.failedCopy ?? FailedSaveCopies.addressFor(filePath);
@@ -354,10 +373,10 @@ class ProjectFileDoor {
       // only complete copy of this work left.
       return SaveFailure(cause: cause, error: error, copyError: copyError);
     }
-    if (error is SaveNotSwappedIn) {
-      // Safe in the failed copy, so the archive the refused save wrote goes
-      // — out of the user's folder (Q1), once nothing reads from it.
-      AnicelFileService.retireWhenUnread(error.archive, _stores);
+    // Safe in the failed copy, so what the refused save wrote goes — out of
+    // the user's folder (Q1), once nothing reads from it.
+    for (final archive in leftBehind) {
+      AnicelFileService.retireWhenUnread(archive, _stores);
     }
     return SaveFailure(cause: cause, error: error, failedCopy: copy);
   }
@@ -663,6 +682,7 @@ class ProjectFileDoor {
   Future<void> _writeProjectToFile(
     String filePath, {
     required SaveAsked asked,
+    required List<String> leftBehind,
     void Function(double)? onProgress,
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
@@ -713,11 +733,11 @@ class ProjectFileDoor {
         if (!FolderPicker.grantsAreScoped) {
           rethrow;
         }
-        // The staging road writes the work again in this run's room, so
-        // what the direct write left beside the file goes (Q1) — nothing
-        // reads from it, its refs were never adopted.
+        // What the direct write left beside the file goes once the work is
+        // safe: swept when the replace lands, retired with the failed copy
+        // when it does not — never before either (Q1).
         if (refusal is SaveNotSwappedIn) {
-          AnicelFileService.retireWhenUnread(refusal.archive, _stores);
+          leftBehind.add(refusal.archive);
         }
         celsLostToAMissingFile = await _saveViaCoordinatedReplace(
           filePath,

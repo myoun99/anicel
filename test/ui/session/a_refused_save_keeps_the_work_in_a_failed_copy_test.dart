@@ -33,6 +33,7 @@ void main() {
 
   tearDown(() {
     FolderPicker.debugOperatingSystem = null;
+    FolderPicker.debugCoordinatedReplacer = null;
     deleteTempQuietly(folder);
   });
 
@@ -91,6 +92,37 @@ void main() {
       s.projectFile.hasUnsavedChanges,
       isTrue,
       reason: 'the project file still does not have it',
+    );
+  });
+
+  test('🚨the road with no coordinator (Android) writes twice — beside the '
+      'file, then in the room — and both go once the work is in the failed '
+      'copy', () async {
+    FolderPicker.debugOperatingSystem = 'android';
+    // Answers false, as a platform with no coordinator does.
+    FolderPicker.debugCoordinatedReplacer = ({
+      required String sourcePath,
+      required String destinationPath,
+    }) async => false;
+    final s = drawnSession();
+    final path = refusingLocation('project.anicel');
+
+    final failure = await failureOf(
+      s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
+    );
+
+    expect(failure.cause, SaveFailureCause.replaceRefused);
+    expect(holdsADrawing(failure.failedCopy!), isTrue);
+    expect(straysBeside(path), isEmpty, reason: 'Q1: 원본 옆에 두지 않는다');
+    expect(
+      [
+        for (final entity in Directory(
+          SessionScratch.stagedFolder(),
+        ).listSync())
+          if (entity.path.contains('replace.tmp-')) entity.path,
+      ],
+      isEmpty,
+      reason: 'the room\'s own attempt goes with it',
     );
   });
 
