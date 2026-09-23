@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/project_file.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -195,24 +196,44 @@ void main() {
     );
   });
 
-  test('a failed copy outlives its binding — another project in the same '
-      'run can still back it up', () async {
-    final s = drawnSession();
-    final path = refusingLocation('project.anicel');
-    final copy = (await failureOf(
-      s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
-    )).failedCopy!;
+  for (final (moment, rebind) in [
+    (
+      'another project is opened',
+      (ProjectFile file, String another) => file.bindToOpenedFile(
+        another,
+        entryNames: const {},
+        unsaved: false,
+      ),
+    ),
+    (
+      'an import leaves the session unbound',
+      (ProjectFile file, String another) => file.unbind(),
+    ),
+  ]) {
+    test('🚨a failed copy outlives its binding — when $moment, the next '
+        'project\'s saves leave it for a backup', () async {
+      final s = drawnSession();
+      final path = refusingLocation('project.anicel');
+      final copy = (await failureOf(
+        s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
+      )).failedCopy!;
+      final another = '${folder.path.replaceAll('\\', '/')}/another.anicel';
 
-    s.projectFile.bindToOpenedFile(
-      '${folder.path}/another.anicel',
-      entryNames: const {},
-      unsaved: false,
-    );
+      rebind(s.projectFile, another);
+      expect(s.projectFile.failedCopy, isNull, reason: 'not this binding\'s');
+      await s.projectDoor.saveProjectToFile(
+        another,
+        asked: SaveAsked.byAPerson,
+      );
 
-    expect(s.projectFile.failedCopy, isNull, reason: 'not this binding\'s');
-    expect(s.failedSaveCopies.entries.map((e) => e.copyPath), [copy]);
-    expect(File(copy).existsSync(), isTrue);
-  });
+      expect(
+        File(copy).existsSync(),
+        isTrue,
+        reason: 'the save another project\'s file took is not this work',
+      );
+      expect(s.failedSaveCopies.entries.map((e) => e.copyPath), [copy]);
+    });
+  }
 
   test('🎯a backup is the failed copy, brought up to date first — and the '
       'session stays where it saves', () async {
