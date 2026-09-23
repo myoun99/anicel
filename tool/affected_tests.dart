@@ -136,33 +136,34 @@ const gcTagMarker = "@Tags(['$gcTag'])";
   );
 }
 
-/// What a change to [changedDart] can have broken, out of [tests].
+/// What a change to [changed] — every changed file, Dart or not — can have
+/// broken, out of [tests].
 Set<String> selectTests({
-  required Set<String> changedDart,
+  required Set<String> changed,
   required List<String> tests,
   required Map<String, Set<String>> imports,
   required String Function(String path) read,
 }) => {
   // A changed test runs because it changed, whatever it imports.
-  ...changedDart.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+  ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
   // Everything that can reach a changed file, however far away.
   for (final test in tests)
-    if (closureOf(test, imports).any(changedDart.contains)) test,
-  // And every source scan that reads where a changed file lives — the one
+    if (closureOf(test, imports).any(changed.contains)) test,
+  // And every test that reads, as text, where a changed file lives — the one
   // dependency no edge carries.
-  ...scansReaching(changedDart, tests, read),
+  ...scansReaching(changed, tests, read),
 };
 
-/// The [tests] that read, as text, a `lib` path holding one of the [changed]
-/// files — the source scans no import edge reaches. See
-/// [libPrefixesReadAsText] for the round they were missing from.
+/// The [tests] that read, as text, a path holding one of the [changed]
+/// files — the source scans and file reads no import edge reaches. See
+/// [pathsReadAsText] for the rounds they were missing from.
 List<String> scansReaching(
   Set<String> changed,
   Iterable<String> tests,
   String Function(String path) read,
 ) => [
   for (final test in tests)
-    if (libPrefixesReadAsText(read(test)).any(
+    if (pathsReadAsText(read(test)).any(
       (prefix) => changed.any((file) => file.startsWith(prefix)),
     ))
       test,
@@ -201,9 +202,8 @@ Future<void> main(List<String> args) async {
   final imports = buildImportGraph();
   final tests = _suitesIn(imports);
 
-  final changedDart = changed.where((f) => f.endsWith('.dart')).toSet();
   final selected = selectTests(
-    changedDart: changedDart,
+    changed: changed,
     tests: tests,
     imports: imports,
     read: (path) => File(path).readAsStringSync(),
@@ -211,12 +211,12 @@ Future<void> main(List<String> args) async {
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
-    _report('no test reaches the ${changedDart.length} changed Dart file(s).');
+    _report('no test reaches the ${changed.length} changed file(s).');
     exit(0);
   }
 
   _report('${present.length} of ${tests.length} test files reach the '
-      '${changedDart.length} changed Dart file(s).');
+      '${changed.length} changed file(s).');
   exit(await _runTests(present, listOnly: listOnly));
 }
 

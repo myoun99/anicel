@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart' show scansReaching, selectTests;
-import '../../tool/import_graph.dart' show libPrefixesReadAsText;
+import '../../tool/import_graph.dart' show pathsReadAsText;
 
 /// 🚨★★★A SOURCE SCAN RUNS WHEN WHAT IT READS CHANGES.
 ///
@@ -21,37 +21,55 @@ import '../../tool/import_graph.dart' show libPrefixesReadAsText;
 ///
 /// ⛔A rule I have to remember is the failure mode this project keeps
 /// hitting — so the selection reads the scans itself.
+///
+/// 🚨2026-09-24, one root over: the selection read `lib` alone, so a test
+/// that spawned a process went green through it — the law that forbids that
+/// walks `test/`, and a changed test never selected it.
 void main() {
   group('what a scan reads', () {
     test('a walk of the whole tree reads all of lib', () {
-      expect(libPrefixesReadAsText("Directory('lib').listSync()"), {'lib'});
+      expect(pathsReadAsText("Directory('lib').listSync()"), {'lib'});
     });
 
     test('a walk handed to the shared helper, or split over lines', () {
       expect(
-        libPrefixesReadAsText("dartFilesUnder('lib/src/ui')"),
+        pathsReadAsText("dartFilesUnder('lib/src/ui')"),
         {'lib/src/ui'},
       );
-      expect(libPrefixesReadAsText("Directory(\n  'lib',\n)"), {'lib'});
+      expect(pathsReadAsText("Directory(\n  'lib',\n)"), {'lib'});
     });
 
     test('an interpolated path reads as far as its static part', () {
       expect(
-        libPrefixesReadAsText(r"Directory('lib/src/$layer')"),
+        pathsReadAsText(r"Directory('lib/src/$layer')"),
         {'lib/src/'},
       );
     });
 
-    test('⛔one named Dart file is an import edge already, not a walk', () {
+    test('🚨every source root is read — the tests and the tools as much as '
+        'the code', () {
+      expect(pathsReadAsText("dartFilesUnder('test')"), {'test'});
+      expect(pathsReadAsText("Directory('tool')"), {'tool'});
+    });
+
+    test('a file read by name is read too, whatever its root or extension', () {
       expect(
-        libPrefixesReadAsText("File('lib/src/ui/text/app_strings.dart')"),
-        isEmpty,
+        pathsReadAsText("File('tool/lane.sh').readAsStringSync()"),
+        {'tool/lane.sh'},
       );
       expect(
-        libPrefixesReadAsText("import 'package:anicel/src/ui/x.dart';"),
+        pathsReadAsText("File('lib/src/ui/text/app_strings.dart')"),
+        {'lib/src/ui/text/app_strings.dart'},
+      );
+    });
+
+    test('⛔what only looks like a root is not one', () {
+      expect(
+        pathsReadAsText("import 'package:anicel/src/ui/x.dart';"),
         isEmpty,
       );
-      expect(libPrefixesReadAsText("'library'"), isEmpty);
+      expect(pathsReadAsText("'library'"), isEmpty);
+      expect(pathsReadAsText("'testing' 'tools' 'toolbar'"), isEmpty);
     });
   });
 
@@ -59,10 +77,14 @@ void main() {
     const scanAll = 'test/a_test.dart';
     const scanServices = 'test/b_test.dart';
     const plain = 'test/c_test.dart';
+    const scanTests = 'test/d_test.dart';
+    const readsScript = 'test/e_test.dart';
     final sources = {
       scanAll: "for (final f in Directory('lib').listSync()) {}",
       scanServices: "dartFilesUnder('lib/src/services')",
       plain: "import 'package:anicel/src/ui/x.dart';",
+      scanTests: "for (final f in dartFilesUnder('test')) {}",
+      readsScript: "File('tool/lane.sh').readAsStringSync()",
     };
     List<String> reaching(Set<String> changed) =>
         scansReaching(changed, sources.keys, (path) => sources[path]!);
@@ -75,20 +97,28 @@ void main() {
       );
     });
 
-    test('⛔a change outside lib selects no scan', () {
-      expect(reaching({'test/helpers/x.dart'}), isEmpty);
+    test('🚨a changed TEST selects the scans that walk the tests', () {
+      expect(reaching({'test/helpers/x.dart'}), [scanTests]);
+    });
+
+    test('🚨a changed file that is not Dart selects what reads it', () {
+      expect(reaching({'tool/lane.sh'}), [readsScript]);
+    });
+
+    test('⛔a change nothing reads selects no scan', () {
+      expect(reaching({'docs/index.html'}), isEmpty);
     });
 
     test('🚨the run is handed the scans beside what the imports reach', () {
       final selected = selectTests(
-        changedDart: {'lib/src/ui/x.dart'},
+        changed: {'lib/src/ui/x.dart', 'tool/lane.sh'},
         tests: sources.keys.toList(),
         imports: {
           plain: {'lib/src/ui/x.dart'},
         },
         read: (path) => sources[path]!,
       );
-      expect(selected, {scanAll, plain});
+      expect(selected, {scanAll, plain, readsScript});
     });
   });
 
@@ -97,6 +127,18 @@ void main() {
     expect(
       scansReaching(
         {'lib/src/ui/canvas/flip_hud_overlay.dart'},
+        [law],
+        (path) => File(path).readAsStringSync(),
+      ),
+      [law],
+    );
+  });
+
+  test('🚨and the one that escaped a day later, by the test that broke it', () {
+    const law = 'test/architecture/tests_do_not_race_the_code_test.dart';
+    expect(
+      scansReaching(
+        {'test/services/persistence/save_failure_test.dart'},
         [law],
         (path) => File(path).readAsStringSync(),
       ),

@@ -33,13 +33,15 @@ final _directive = RegExp(
 /// contract tests under `test/architecture/` walk `Directory('lib')` whole
 /// and name nothing. Such a walk is no edge of this graph — there is no file
 /// named for it to find — and since 2026-09-23 the selection reaches it
-/// another way ([libPrefixesReadAsText]). The heuristic below is still exact
-/// for the tests that DO name a file.
+/// another way ([pathsReadAsText]). The heuristic below is still exact for
+/// the tests that DO name a file.
 final _sourceReference = RegExp('''['"](lib/[A-Za-z0-9_/.\\-]*\\.dart)['"]''');
 
-/// Every `lib` path [source] spells as a string that is NOT one Dart file —
-/// `'lib'`, `'lib/src/ui'`, the static head of `'lib/src/$layer'`: where a
-/// source scan walks, reading what every file there SAYS.
+/// Every path under a source root — `lib`, `test`, `tool` — that [source]
+/// spells as a string: a directory a scan walks (`'lib'`, `'test'`,
+/// `'lib/src/ui'`, the static head of `'lib/src/$layer'`) or a file it reads
+/// (`'tool/lane.sh'`, a fixture). What is there is read as TEXT, so a change
+/// under it is a change to what the test reads.
 ///
 /// 🚨THE GAP IT CLOSES (2026-09-23). A contract test that walks
 /// `Directory('lib')` has no import edge to anything it reads, so the
@@ -49,23 +51,32 @@ final _sourceReference = RegExp('''['"](lib/[A-Za-z0-9_/.\\-]*\\.dart)['"]''');
 /// reader of `framesRunVertically`, nothing selected the one test that
 /// forbids it, and master stayed red until an unrelated change ran it.
 ///
-/// ⚠️A PREFIX, NOT A PARSE. Any literal that starts the way a lib path does
-/// counts, whatever it is handed to — `Directory(…)`, the shared
-/// `dartFilesUnder(…)`, a `const` for either — and an interpolation ends it
-/// where its static part ends. Wrong only ever by selecting MORE, the one
-/// safe direction for a selection to be wrong in. A path assembled behind a
-/// variable (`'$root/lib'`) is not read; no scan builds one today.
+/// 🚨AND THE SAME GAP ONE ROOT OVER (2026-09-24). It read `lib` alone: a test
+/// that spawned `attrib` went green through a 1,100-file selection, because
+/// `tests_do_not_race_the_code_test` walks `dartFilesUnder('test')` and a
+/// changed TEST file never selected it — the landing's gate caught it
+/// instead. A file read by name went unseen the same way whatever its root:
+/// the test reading `tool/lane.sh` never ran for a change to the script.
+/// One law now — any root, a directory or a file, any extension.
+///
+/// ⚠️A PREFIX, NOT A PARSE. Any literal that starts the way a source path
+/// does counts, whatever it is handed to — `Directory(…)`, `File(…)`, the
+/// shared `dartFilesUnder(…)`, a `const` for any of them — and an
+/// interpolation ends it where its static part ends. Wrong only ever by
+/// selecting MORE, the one safe direction for a selection to be wrong in:
+/// `{'tool': 'eraser'}` names a map key, and a change under `tool/` runs that
+/// test too. A path assembled behind a variable (`'$root/lib'`) is not read;
+/// no scan builds one today.
 ///
 /// ⛔NOT AN EDGE: [importsOf] stays what it was. A walk depends on what the
 /// files say, not on where one of them lives, so `code_map`'s question —
 /// 「who would notice if this moved」 — is not its question.
-Set<String> libPrefixesReadAsText(String source) => {
-  for (final match in _libPathLiteral.allMatches(source))
-    if (!match.group(1)!.endsWith('.dart')) match.group(1)!,
+Set<String> pathsReadAsText(String source) => {
+  for (final match in _sourcePathLiteral.allMatches(source)) match.group(1)!,
 };
 
-final _libPathLiteral = RegExp(
-  r'''['"](lib(?:/[A-Za-z0-9_/.\-]*)?)(?:\$[^'"]*)?['"]''',
+final _sourcePathLiteral = RegExp(
+  r'''['"]((?:lib|test|tool)(?:/[A-Za-z0-9_/.\-]*)?)(?:\$[^'"]*)?['"]''',
 );
 
 /// The repo-relative Dart files [source] (living at [from]) depends on.
