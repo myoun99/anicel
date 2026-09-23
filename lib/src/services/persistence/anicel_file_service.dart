@@ -907,21 +907,16 @@ class AnicelFileService {
         // the file moves to its new home; then each round's moves are
         // announced the same way.
         var written = appended;
-        final rehomed = compact
-            ? _rehomedRefs(appended, heldByDirtyCels)
-            : null;
-        if (rehomed != null) {
+        if (compact) {
           Future<void> moveRefs(Map<int, AnicelRelocation> moved) =>
               _askToMoveRefs(port!, moved);
-          await moveRefs(rehomed);
+          await moveRefs(_rehomedRefs(appended, heldByDirtyCels));
           written = await compactAnicelInPlace(
             path: filePath,
             layout: appended,
             release: moveRefs,
             onProgress: progress.within,
           );
-        }
-        if (compact) {
           progress.step();
         }
         progress.finish();
@@ -934,21 +929,18 @@ class AnicelFileService {
   /// push-down may write over its bytes: the entry this save wrote for its
   /// key ([appended]) — by the offset the ref points at now.
   ///
-  /// ⛔Null when one of them has no such entry (its bytes would not
-  /// resolve, so nothing was written for it): that ref has nowhere to go,
-  /// so nothing is written over this save, and the next one packs the file
-  /// instead.
-  static Map<int, AnicelRelocation>? _rehomedRefs(
+  /// ⚠️Every one of them HAS that entry. A dirty cel's bytes resolve from
+  /// the file its ref names, and a cel only gives up its bytes when that
+  /// file is gone ([_CelWork.resolveBlob]) — this is the file the append
+  /// just wrote into.
+  static Map<int, AnicelRelocation> _rehomedRefs(
     AnicelZipLayout appended,
     Map<String, int> heldByDirtyCels,
   ) {
     final rehomed = <int, AnicelRelocation>{};
     for (final MapEntry(key: name, value: dataOffset)
         in heldByDirtyCels.entries) {
-      final home = appended.entryNamed(name);
-      if (home == null) {
-        return null;
-      }
+      final home = appended.entryNamed(name)!;
       rehomed[dataOffset] = (dataOffset: home.dataOffset, length: home.length);
     }
     return rehomed;
