@@ -403,7 +403,10 @@ class _CutStampSettings extends StatelessWidget {
           tool: 'cut-stamp',
           children: [
             Text(
-              'Holding ${piece.image.width}×${piece.image.height} px',
+              AppText.strings.toolCutHoldingTemplate
+                  .replaceAll('{width}', '${piece.image.width}')
+                  .replaceAll('{height}', '${piece.image.height}'),
+              key: const ValueKey<String>('cut-stamp-holding'),
               style: theme.textTheme.labelMedium,
             ),
             // 🪦A copy of this preview stood here in its own 88-tall box —

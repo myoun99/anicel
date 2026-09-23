@@ -1376,6 +1376,7 @@ enum AppStrings {
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
   String get toolCutNothingHeld => _s('toolCutNothingHeld');
+  String get toolCutHoldingTemplate => _s('toolCutHoldingTemplate');
   String get toolLibraryEmpty => _s('toolLibraryEmpty');
   String get toolCutPasteAtOrigin => _s('toolCutPasteAtOrigin');
   String get toolCutFlipHorizontal => _s('toolCutFlipHorizontal');
@@ -2407,6 +2408,7 @@ enum AppStrings {
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
     'toolCutNothingHeld': 'Nothing held yet',
+    'toolCutHoldingTemplate': 'Holding {width}×{height} px',
     'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
     'toolCutFlipHorizontal': 'Flip horizontal',
@@ -3619,6 +3621,7 @@ enum AppStrings {
     // TVPaint's own term for this verb in Japanese studios.
     'toolShapeFill': '図形の塗り',
     'toolCutNothingHeld': 'まだ何も持っていません',
+    'toolCutHoldingTemplate': '{width}×{height} px を持っています',
     'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
     'toolCutFlipHorizontal': '左右反転',
@@ -4926,6 +4929,7 @@ enum AppStrings {
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
     'toolCutNothingHeld': '아직 든 것이 없습니다',
+    'toolCutHoldingTemplate': '{width}×{height} px 를 들고 있습니다',
     'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
     'toolCutFlipHorizontal': '좌우 반전',
@@ -6326,6 +6330,7 @@ enum AppStrings {
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
     'toolCutNothingHeld': 'Rien en main pour l\'instant',
+    'toolCutHoldingTemplate': 'En main : {width}×{height} px',
     'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
     'toolCutFlipHorizontal': 'Miroir horizontal',
@@ -7585,6 +7590,7 @@ enum AppStrings {
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
     'toolCutNothingHeld': '尚未持有任何内容',
+    'toolCutHoldingTemplate': '持有 {width}×{height} px',
     'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',
     'toolCutFlipHorizontal': '水平翻转',

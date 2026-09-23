@@ -638,6 +638,7 @@ void main() {
     'toolTransform': (s) => s.toolTransform,
     'toolShapeFill': (s) => s.toolShapeFill,
     'toolCutNothingHeld': (s) => s.toolCutNothingHeld,
+    'toolCutHoldingTemplate': (s) => s.toolCutHoldingTemplate,
     'toolLibraryEmpty': (s) => s.toolLibraryEmpty,
     'toolCutPasteAtOrigin': (s) => s.toolCutPasteAtOrigin,
     'toolCutFlipHorizontal': (s) => s.toolCutFlipHorizontal,
