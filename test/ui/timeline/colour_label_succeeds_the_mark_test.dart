@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
-import 'package:flutter/services.dart' show FontLoader;
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -22,6 +21,7 @@ import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import '../../helpers/app_faces.dart';
 import '../../helpers/library_source.dart';
 
 /// I-4 — 색 라벨이 `LayerMark` 를 **승계**했다는 것을 재는 계약.
@@ -585,17 +585,7 @@ Widget markPanelForPixelTest({
 /// ⚠️The plate is measured ALONE, at the size the real panel gives it.
 /// Scanned inside the panel, the reading was the grid's rules, not glyphs.
 void _everyLabelSitsAtOneHeight() {
-  Future<void> loadFace(String family, String file) async {
-    final bytes = File(file).readAsBytesSync();
-    final loader = FontLoader(family)
-      ..addFont(Future.value(ByteData.view(bytes.buffer)));
-    await loader.load();
-  }
-
-  setUpAll(() async {
-    await loadFace('BIZ UDPGothic', 'assets/fonts/BIZUDPGothic-Regular.ttf');
-    await loadFace('Nanum Gothic', 'assets/fonts/NanumGothic-Regular.ttf');
-  });
+  setUpAll(loadTheAppFaces);
   tearDown(() => AppText.settings.value = const AppLanguageSettings());
 
   const ratio = 8.0;

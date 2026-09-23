@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
 import 'timeline_zoom_limits.dart';
@@ -50,6 +53,34 @@ class TimelineViewCluster extends StatelessWidget {
 
   /// Host-specific controls after the zoom slider (orientation toggle).
   final List<Widget> trailing;
+
+  /// The counter's type, colour aside — what its two lines are measured in.
+  static const TextStyle _counterMetrics = TextStyle(
+    fontFamily: 'monospace',
+    fontSize: 10.5,
+    height: 1.24,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// The zoom bar's height as drawn, at 1×.
+  static const double _zoomBarHeight = 18;
+
+  /// What the cluster adds to the height it was drawn at where it is shown:
+  /// the counter's TWO lines grown under the OS text size, or the zoom bar's
+  /// one line, whichever grows more.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」). 🔬At 1.5× in the app's face the counter overflowed the
+  /// bar by 11px — the one place this family did not clip silently.
+  static double growthIn(BuildContext context) => math.max(
+    2 * TextMeasure(context, _counterMetrics).lineGrowthOf('0'),
+    _zoomBarGrowthIn(context),
+  );
+
+  static double _zoomBarGrowthIn(BuildContext context) => TextMeasure(
+    context,
+    Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
+  ).lineGrowthOf(TextMeasure.everyScript);
 
   String _frameLabel(int oneBasedFrame) => showSeconds
       ? secondsPlusFramesLabel(oneBasedFrame, projectFrameRate.countingBase)
@@ -117,11 +148,7 @@ class TimelineViewCluster extends StatelessWidget {
           builder: (context, _) {
             final local = _frameLabel(frameCursor.value + 1);
             final global = globalFrame?.value;
-            final style = TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 10.5,
-              height: 1.24,
-              fontWeight: FontWeight.w600,
+            final style = _counterMetrics.copyWith(
               color: colorScheme.primary,
             );
             return Column(
@@ -174,7 +201,7 @@ class TimelineViewCluster extends StatelessWidget {
             // Zoom reads as percent of the default frame width.
             unit: '%',
             displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
-            height: 18,
+            height: _zoomBarHeight + _zoomBarGrowthIn(context),
             // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of
             // its length on 24→96px and left the whole narrow half — the
             // half the user zooms out into — inside its first few pixels.

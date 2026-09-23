@@ -102,6 +102,7 @@ class _StaticCommandGroup extends StatefulWidget {
 
 class _StaticCommandGroupState extends State<_StaticCommandGroup> {
   Widget? _cached;
+  TextScaler? _builtAt;
 
   @override
   void didUpdateWidget(covariant _StaticCommandGroup oldWidget) {
@@ -112,15 +113,26 @@ class _StaticCommandGroupState extends State<_StaticCommandGroup> {
   }
 
   @override
-  Widget build(BuildContext context) => _cached ??= StaticRaster(
-    // Each group is its own ZONE. The bar used to be baked as one
-    // surface, which meant a single button's state changing re-baked
-    // every button on the row; now dirt from one group stops at that
-    // group's own boundary. Siblings, never nesting — a bake inside a
-    // bake is the one thing that freezes.
-    debugLabel: 'command-group',
-    child: widget.builder(context),
-  );
+  Widget build(BuildContext context) {
+    // The pills size themselves to their words (text-scale-fixed-height-bars,
+    // 유저 2026-09-18: 「막대가 글자 크기를 따라 자란다」), so the OS text size
+    // is a fact every group shows. Read here, it is also the dependency that
+    // brings this build back when the size changes under a running app.
+    final scaler = MediaQuery.textScalerOf(context);
+    if (scaler != _builtAt) {
+      _builtAt = scaler;
+      _cached = null;
+    }
+    return _cached ??= StaticRaster(
+      // Each group is its own ZONE. The bar used to be baked as one
+      // surface, which meant a single button's state changing re-baked
+      // every button on the row; now dirt from one group stops at that
+      // group's own boundary. Siblings, never nesting — a bake inside a
+      // bake is the one thing that freezes.
+      debugLabel: 'command-group',
+      child: widget.builder(context),
+    );
+  }
 }
 
 class TimelineActionToolbar extends StatelessWidget {
@@ -629,7 +641,8 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// [tooltip] is what the tooltip says — its words and the action whose
   /// live key follows them (I-19), one answer to one question.
-  Widget _commaButton({
+  Widget _commaButton(
+    BuildContext context, {
     required ValueKey<String> key,
     required String label,
     required ({String text, String action}) tooltip,
@@ -651,8 +664,8 @@ class TimelineActionToolbar extends StatelessWidget {
           style: TextButton.styleFrom(
             // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
             // rather than to stand on its own in the bar.
-            minimumSize: const Size(21, 24),
-            maximumSize: const Size(24, 24),
+            minimumSize: Size(21, CommandPill.heightIn(context) - 4),
+            maximumSize: Size(24, CommandPill.heightIn(context) - 4),
             padding: EdgeInsets.zero,
             visualDensity: VisualDensity.compact,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -672,7 +685,10 @@ class TimelineActionToolbar extends StatelessWidget {
             // fade to nine other buttons.
             animationDuration: Duration.zero,
           ),
-          child: Text(label, style: const TextStyle(fontSize: 12.5)),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: CommandPill.verbFontSize),
+          ),
         ),
       ),
     );
@@ -1139,6 +1155,7 @@ class TimelineActionToolbar extends StatelessWidget {
             // block kind.
             for (var comma = 1; comma <= 4; comma += 1)
               _commaButton(
+                context,
                 key: ValueKey<String>('set-comma-$comma-button'),
                 label: '$comma',
                 tooltip: (
@@ -1159,6 +1176,7 @@ class TimelineActionToolbar extends StatelessWidget {
               ),
             Builder(
               builder: (context) => _commaButton(
+                context,
                 key: const ValueKey<String>('set-comma-n-button'),
                 label: 'N',
                 tooltip: (

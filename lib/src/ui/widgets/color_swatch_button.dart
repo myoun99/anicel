@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -179,12 +180,13 @@ Future<void> showColorPickerPopup(
     // Widened from 216 for the readout: R/G/B at three fixed digits each
     // plus the hex is 246 wide, and the bar keeps those cells fixed on
     // purpose (a readout that reflows while you drag cannot be watched).
-    // So the WINDOW gives way, not the numbers.
-    width: 248,
+    // So the WINDOW gives way, not the numbers — and under a larger OS text
+    // size the readout needs more than 248, so it gives way further.
+    width: math.max(248, ColorStatusBar.naturalWidthIn(anchorContext)),
     // The wheel, the action row above it and the readout below it. Grown
     // by the readout's own height when it arrived, so the wheel keeps the
     // 180 it was drawn at.
-    height: 252 + _noneRowHeight + ColorStatusBar.height,
+    height: 252 + _noneRowHeight + ColorStatusBar.heightIn(anchorContext),
     builder: (context, _) => _ColorPickerBody(
       initialColor: color,
       onChanged: onChanged,

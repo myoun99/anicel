@@ -1544,9 +1544,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // useless is not a floor.
     EditorWorkspace.timelineTabId =>
       _timelineOrientation.value == TimelineOrientation.horizontal
-          ? TimelinePanel.minPanelHeight
-          : TimelinePanel.minSheetPanelHeight,
-    EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeight,
+          ? TimelinePanel.minPanelHeightIn(context)
+          : TimelinePanel.minSheetPanelHeightIn(context),
+    EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeightIn(
+      context,
+    ),
     // The conte has no fixed ROWS — it is a page that scales — but it does
     // have one conditional chrome row, the action field under a selected
     // cell, and that row is not flexible.

@@ -1,4 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import '../widgets/command_pill.dart';
+import 'timeline_view_cluster.dart';
 
 /// The ONE command-bar row both frame panels wear: the host's transport and
 /// action controls on the left, the shared `TimelineViewCluster` pinned
@@ -23,7 +28,26 @@ class TimelineCommandBar extends StatelessWidget {
   ///
   /// 28 is what the app theme's compact density leaves an `IconButton`, and
   /// the transport is built from those; [padding] adds the other 8.
+  ///
+  /// At 1× — see [heightIn] for the bar where it is shown.
   static const double height = 36;
+
+  /// What the bar adds to [height] where it is shown: the most any of its
+  /// words grow under the OS text size — the pills' one line or the view
+  /// cluster's (the counter's two). Still a STATED size, as above: stated
+  /// in the words the bar holds instead of in pixels.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」 — its stated cost: 「타임라인 위 줄과 컬러 패널이
+  /// 두꺼워진다」).
+  static double growthIn(BuildContext context) => math.max(
+    CommandPill.growthIn(context),
+    TimelineViewCluster.growthIn(context),
+  );
+
+  /// The bar where it is shown — what every floor and fold that holds it
+  /// asks, so it and they cannot disagree.
+  static double heightIn(BuildContext context) => height + growthIn(context);
 
   static const EdgeInsets padding = EdgeInsets.fromLTRB(8, 4, 8, 4);
 
@@ -54,7 +78,7 @@ class TimelineCommandBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final leading = this.leading;
     return SizedBox(
-      height: height,
+      height: heightIn(context),
       child: Padding(
         padding: padding,
         child: Row(

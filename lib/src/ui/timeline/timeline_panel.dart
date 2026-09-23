@@ -424,6 +424,15 @@ class TimelinePanel extends StatefulWidget {
       LayerRailSplitter.thickness +
       layerRailFrameReserveExtent;
 
+  /// The two floors above where the panel is shown: the command bar grows
+  /// with the OS text size ([TimelineCommandBar.heightIn]), and a floor
+  /// that did not grow with it would let the dock cut the grid under it.
+  static double minPanelHeightIn(BuildContext context) =>
+      minPanelHeight + TimelineCommandBar.growthIn(context);
+
+  static double minSheetPanelHeightIn(BuildContext context) =>
+      minSheetPanelHeight + TimelineCommandBar.growthIn(context);
+
   /// The ACTIVE view's zoom (the host routes it to the timeline or the
   /// storyboard value depending on the shown mode).
   final double pixelsPerFrame;

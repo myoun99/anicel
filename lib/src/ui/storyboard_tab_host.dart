@@ -72,6 +72,11 @@ class StoryboardTabHost extends StatefulWidget {
   static const double minPanelHeight =
       TimelineCommandBar.height + StoryboardPanel.minPanelHeight;
 
+  /// [minPanelHeight] where the tab is shown — the bar grows with the OS
+  /// text size ([TimelineCommandBar.heightIn]).
+  static double minPanelHeightIn(BuildContext context) =>
+      minPanelHeight + TimelineCommandBar.growthIn(context);
+
   final EditorSessionManager session;
   final double pixelsPerFrame;
   final ValueChanged<double> onPixelsPerFrameChanged;

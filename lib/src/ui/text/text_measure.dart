@@ -19,6 +19,11 @@ class TextMeasure {
     : _scaler = MediaQuery.textScalerOf(context),
       _direction = Directionality.of(context);
 
+  /// A line in every script the app's labels write — Latin, Hangul, kana,
+  /// kanji, a digit. The two faces set different line metrics, so a box
+  /// sized for ONE of them is sized for whichever the language picks.
+  static const String everyScript = 'Mg가あ漢1';
+
   final TextStyle? style;
   final TextScaler _scaler;
   final TextDirection _direction;
@@ -40,4 +45,24 @@ class TextMeasure {
   /// The widest of [texts] on one line — 0 when there are none.
   double widest(Iterable<String> texts) =>
       texts.fold(0, (width, text) => math.max(width, size(text).width));
+
+  /// How much taller one line of [text] stands here than it does at 1× —
+  /// what a box drawn around that line at 1× has to add for the line to
+  /// still fit.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, answering 「OS 글자
+  /// 크기를 키웠을 때」: 「막대가 글자 크기를 따라 자란다」). A bar's height is
+  /// the height it was drawn at PLUS this, which is 0 at 1× — so nothing
+  /// drawn at 1× moves.
+  double lineGrowthOf(String text) {
+    final atOne = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: _direction,
+      textScaler: TextScaler.noScaling,
+      maxLines: 1,
+    )..layout();
+    final growth = size(text).height - atOne.height;
+    atOne.dispose();
+    return math.max(0, growth);
+  }
 }

@@ -48,9 +48,19 @@ class ColorPickerPanel extends StatelessWidget {
   /// around them, and the status bar every kind shares.
   ///
   /// Published so the dock that hands out heights can honour it — the bars
-  /// are the one picker with nothing that can shrink.
-  static const double rgbContentExtent =
-      ColorRgbPanel.contentHeight + _pickerPadding + ColorStatusBar.height;
+  /// are the one picker with nothing that can shrink. The status bar is
+  /// asked where the panel is shown: it grows with the OS text size.
+  static double rgbContentExtentIn(BuildContext context) =>
+      ColorRgbPanel.contentHeight +
+      _pickerPadding +
+      ColorStatusBar.heightIn(context);
+
+  /// What every kind needs ACROSS: the readout laid out whole. Its cells are
+  /// fixed on purpose (the digits must not move), so a group narrower than
+  /// this scrolls sideways rather than cutting the blue channel off — and
+  /// the readout widens with the OS text size.
+  static double minContentWidthIn(BuildContext context) =>
+      ColorStatusBar.naturalWidthIn(context);
 
   static const double _pickerPadding = 8 + 10;
 

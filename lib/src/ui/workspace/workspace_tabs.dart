@@ -124,8 +124,9 @@ class _WorkspaceTabs {
       // scrolls rather than clipping the blue channel off the bottom. The
       // wheel and the palette both shrink on their own and say nothing.
       minContentHeight: kind == ColorPickerKind.rgb
-          ? ColorPickerPanel.rgbContentExtent
+          ? ColorPickerPanel.rgbContentExtentIn(_state.context)
           : null,
+      minContentWidth: ColorPickerPanel.minContentWidthIn(_state.context),
       builder: (context) {
         final palette = _state.widget.colorPalette;
         final onPaletteChanged = _state.widget.onColorPaletteChanged;
@@ -697,7 +698,7 @@ class _WorkspaceTabs {
           // 접으면 버튼행만 (유저 확정): the panel keeps its command bar and
           // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
           // every verb a rough pass needs is still on screen while folded.
-          collapsedExtent: TimelineCommandBar.height,
+          collapsedExtent: TimelineCommandBar.heightIn(_state.context),
           sillTrailing: (context) => FramePanelSillControls(
             session: _state.widget.session,
             scope: PlaybackScope.activeCut,
@@ -829,7 +830,7 @@ class _WorkspaceTabs {
           keepAlive: true,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
-          collapsedExtent: TimelineCommandBar.height,
+          collapsedExtent: TimelineCommandBar.heightIn(_state.context),
           sillTrailing: (context) => FramePanelSillControls(
             session: _state.widget.session,
             scope: PlaybackScope.allCuts,
