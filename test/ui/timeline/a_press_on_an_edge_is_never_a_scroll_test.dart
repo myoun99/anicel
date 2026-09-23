@@ -303,8 +303,8 @@ void main() {
                 timeline: const {
                   2: TimelineExposure.drawing(FrameId('se-f'), length: 8),
                 },
-                audioClips: const [
-                  AudioClip(filePath: 'steps.wav', frameId: FrameId('se-f')),
+                audioClips: [
+                  AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
                 ],
               ),
               frameStartIndex: 0,

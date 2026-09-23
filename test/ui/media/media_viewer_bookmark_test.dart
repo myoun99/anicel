@@ -25,7 +25,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// and does not make the project dirty (유저 확정 ⑮). Open a reference,
 /// draw nothing, close — and nothing was saved, because nothing asked to.
 
-const _conte = MediaAsset(
+final _conte = MediaAsset(
   path: 'C:/work/conte.pdf',
   name: 'conte',
   kind: MediaAssetKind.pdf,
@@ -33,7 +33,7 @@ const _conte = MediaAsset(
 
 Project _project({MediaViewerBookmarks bookmarks = const {}}) =>
     createDefaultProject().copyWith(
-      mediaAssets: const [_conte],
+      mediaAssets: [_conte],
       mediaViewerBookmarks: bookmarks,
     );
 

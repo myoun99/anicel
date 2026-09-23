@@ -217,8 +217,8 @@ void main() {
         repository: repository,
         cutId: null,
         layerId: const LayerId('se'),
-        audioClips: const [
-          AudioClip(filePath: '/take.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: '/take.wav', frameId: const FrameId('f1')),
         ],
       );
 

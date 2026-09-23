@@ -8,7 +8,6 @@ import '../../models/canvas_size.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
-import '../media/media_fingerprints.dart';
 import '../media/project_media_sources.dart'
     show ProjectConforms, mediaEntryNamesFor;
 import 'brush_drawing_binary_codec.dart';
@@ -382,7 +381,8 @@ class AnicelFileService {
     /// Entries something reads by OFFSET right now
     /// (`ProjectFile.heldArchiveEntries`): a save that packs the file in
     /// place leaves them where they are ([compactAnicelInPlace]'s
-    /// `staying`).
+    /// `staying`), and keeps them in the directory even when the project
+    /// no longer carries them.
     Set<String> heldEntries = const {},
 
     /// False writes a COPY: the stores do not adopt refs into [filePath]
@@ -870,11 +870,17 @@ class AnicelFileService {
           // above and the append below must agree on what leaves.
           namesLeaving: (layout) => {
             ...removedNames,
+            // ⛔A HELD entry does not leave, even when the project no longer
+            // carries it: something reads it by offset right now — a viewer
+            // on an asset just taken out of the pool, a canvas row an undo
+            // may bring back — and leaving would make its span a hole the
+            // push-down writes over. It leaves with the first save after the
+            // reader lets go (audit 2026-09-24, `carried-bytes-audit-0924`).
             ..._namesToDrop(
               layout,
               mediaToStore: mediaToStore,
               conforms: conforms,
-            ),
+            ).difference(heldEntries),
           },
         );
         if (sound == null) {
@@ -1516,10 +1522,10 @@ class AnicelFileService {
       // moment that happens is this one — a project opened from a folder
       // that traveled has every reference rewritten to where it landed.
       session: document.session.withFingerprints(
-        document.session.mediaFingerprints.narrowedTo({
-          for (final path in projectMediaPaths(remapped))
-            normalizeFingerprintPath(path),
-        }, moved: remap),
+        document.session.mediaFingerprints.narrowedTo(
+          projectMediaPaths(remapped),
+          moved: remap,
+        ),
       ),
     );
   }

@@ -85,7 +85,7 @@ void main() {
       initialProject: projectWith(
         cutLayers: [imageLayer('img', '/old/clip.wav')],
         seLayers: [audioLayer('se', '/old/clip.wav')],
-        assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+        assets: [MediaAsset(path: '/old/clip.wav', name: 'clip')],
       ),
     );
 
@@ -113,7 +113,7 @@ void main() {
     final repository = ProjectRepository(
       initialProject: projectWith(
         cutLayers: [audioLayer('other', '/somewhere/else.wav')],
-        assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+        assets: [MediaAsset(path: '/old/clip.wav', name: 'clip')],
       ),
     );
 
@@ -138,7 +138,7 @@ void main() {
   test('a track with nothing to relink keeps its IDENTITY', () {
     final before = projectWith(
       cutLayers: [audioLayer('other', '/somewhere/else.wav')],
-      assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+      assets: [MediaAsset(path: '/old/clip.wav', name: 'clip')],
     );
     final repository = ProjectRepository(initialProject: before);
 
@@ -159,7 +159,7 @@ void main() {
   test('undo puts the whole previous project back', () {
     final before = projectWith(
       cutLayers: [imageLayer('img', '/old/clip.wav')],
-      assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+      assets: [MediaAsset(path: '/old/clip.wav', name: 'clip')],
     );
     final repository = ProjectRepository(initialProject: before);
     final command = relink(repository);
@@ -188,7 +188,7 @@ void main() {
       final repository = ProjectRepository(
         initialProject: projectWith(
           cutLayers: const [],
-          assets: const [MediaAsset(path: '/old/clip.wav', name: 'clip')],
+          assets: [MediaAsset(path: '/old/clip.wav', name: 'clip')],
         ),
       );
 
@@ -206,7 +206,7 @@ void main() {
       final repository = ProjectRepository(
         initialProject: projectWith(
           cutLayers: const [],
-          assets: const [
+          assets: [
             MediaAsset(
               path: '/old/clip.wav',
               name: 'clip',

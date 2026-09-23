@@ -65,9 +65,9 @@ Project _project({bool withSound = true}) => Project(
               ),
             },
             audioClips: [
-              const AudioClip(
+              AudioClip(
                 filePath: 'tone.wav',
-                frameId: FrameId('se-frame'),
+                frameId: const FrameId('se-frame'),
               ),
             ],
           ),

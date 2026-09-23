@@ -87,7 +87,7 @@ final Project _project = Project(
             0: const TimelineExposure.drawing(FrameId('se-frame'), length: 10),
           },
           audioClips: [
-            const AudioClip(filePath: 'tone.wav', frameId: FrameId('se-frame')),
+            AudioClip(filePath: 'tone.wav', frameId: const FrameId('se-frame')),
           ],
         ),
       ],

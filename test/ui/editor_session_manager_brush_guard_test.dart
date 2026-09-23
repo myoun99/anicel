@@ -58,7 +58,7 @@ void main() {
     expect(layerAcceptsBrushInput(drawn), isTrue);
 
     final referenced = drawn.copyWith(
-      mediaReference: const MediaReference(assetPath: 'C:/bg.png'),
+      mediaReference: MediaReference(assetPath: 'C:/bg.png'),
     );
     expect(layerAcceptsBrushInput(referenced), isFalse);
 

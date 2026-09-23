@@ -65,8 +65,8 @@ void main() {
             4: const TimelineExposure.drawing(FrameId('f1'), length: 40),
           },
           frames: [frame('f1')],
-          audioClips: const [
-            AudioClip(filePath: 'C:/snd/a.wav', frameId: FrameId('f1')),
+          audioClips: [
+            AudioClip(filePath: 'C:/snd/a.wav', frameId: const FrameId('f1')),
           ],
         ),
         seLayer('cut-1-se-2'),

@@ -37,13 +37,13 @@ import 'package:anicel/src/ui/widgets/drag_chip.dart';
 /// its top-left on the pointer — and a layer drag names every row it
 /// carries.
 void main() {
-  const pooled = r'C:\art\bg.png';
+  const pooled = 'C:/art/bg.png';
 
   Project project() => Project(
     id: const ProjectId('chip-project'),
     name: 'Chip Project',
     createdAt: DateTime.utc(2026, 9, 24),
-    mediaAssets: const [
+    mediaAssets: [
       MediaAsset(path: pooled, name: 'bg', kind: MediaAssetKind.image),
     ],
     tracks: [

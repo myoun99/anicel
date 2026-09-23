@@ -32,6 +32,8 @@ class CutFolderImportDoor {
     required TimelineAccess timeline,
     required ImportLanding landing,
     required MediaStagingStore staging,
+    required HoldMediaBytes holdBytes,
+    required bool Function(String path) projectHolds,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -39,7 +41,9 @@ class CutFolderImportDoor {
        _renderCaches = renderCaches,
        _timeline = timeline,
        _landing = landing,
-       _staging = staging;
+       _staging = staging,
+       _holdBytes = holdBytes,
+       _projectHolds = projectHolds;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -49,6 +53,14 @@ class CutFolderImportDoor {
   final TimelineAccess _timeline;
   final ImportLanding _landing;
   final MediaStagingStore _staging;
+
+  /// Where a file's bytes are — the project's own copy first — and whether
+  /// the project already holds them: the two questions every placement door
+  /// asks (`ProjectImportDoors`), asked here too. 🪦A folder imported again
+  /// baked its cels from the files on disk and staged a second copy of what
+  /// the project already carried (audit 2026-09-24).
+  final HoldMediaBytes _holdBytes;
+  final bool Function(String path) _projectHolds;
 
   /// Imports a CUT FOLDER (the field's delivery structure) parsed by
   /// [parseCutFolder]: one fully-formed cut — symbol layers with named
@@ -123,7 +135,8 @@ class CutFolderImportDoor {
       // letting the registration overtake it is the one thing carrying
       // must not do.
       await _staging.stageCarriedBytes([
-        for (final asset in plan.assets) asset.path,
+        for (final asset in plan.assets)
+          if (!_projectHolds(asset.path)) asset.path,
       ]);
     }
 
@@ -147,7 +160,7 @@ class CutFolderImportDoor {
         final List<DecodedImageFrame> frames;
         try {
           frames = await decodeImageFrames(
-            await MediaFileBytes(bake.sourceFile).read(),
+            await readHeldMediaBytes(_holdBytes, bake.sourceFile),
           );
         } on Object {
           continue; // Unreadable file — the cel stays empty.

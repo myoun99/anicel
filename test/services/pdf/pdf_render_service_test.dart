@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +48,30 @@ void main() {
     expect(fake.renderRequests, [(0, 10, 20)]);
   });
 
+  group('a window PDFium asks for', () {
+    final window = Uint8List(64);
+
+    test('read whole, is its size', () {
+      expect(readPdfWindow(_Reader((size) => size), window, 0, 64), 64);
+    });
+
+    test('read SHORT, is 0 — PDFium takes any other number for success', () {
+      expect(readPdfWindow(_Reader((size) => size - 1), window, 0, 64), 0);
+    });
+
+    test('a read that throws is 0, not a page drawn from a stale buffer', () {
+      expect(
+        readPdfWindow(
+          _Reader((_) => throw const FileSystemException('gone')),
+          window,
+          0,
+          64,
+        ),
+        0,
+      );
+    });
+  });
+
   test('debugResetForTests clears the override and the probe verdict', () {
     PdfRenderService.debugOpenerOverride = (_) async =>
         FakePdfDocument(pageSizes: const [ui.Size(1, 1)]);
@@ -53,4 +79,17 @@ void main() {
     PdfRenderService.debugResetForTests();
     expect(PdfRenderService.availability, isNull);
   });
+}
+
+/// A window reader that answers [answer] for any window.
+class _Reader implements MediaWindowReader {
+  _Reader(this.answer);
+
+  final int Function(int size) answer;
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) => answer(size);
+
+  @override
+  void close() {}
 }

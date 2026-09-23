@@ -29,6 +29,27 @@ import '../media/viewer_document.dart';
 /// PDF is vector, so resolution is a call-site decision: canvas-fit for
 /// placement bakes, zoom-tier for the viewer.
 
+/// One window PDFium asked for, out of [reader]: ALL of it, or 0.
+///
+/// 🚨PDFium takes ANY non-zero answer for success, and pdfrx hands it -1
+/// when a read throws — so a failed or short read became a page drawn from
+/// whatever the buffer held. PDFium asks only within the file's length, so
+/// anything short of the whole window is a failure, and 0 is the one answer
+/// it reads as one (audit 2026-09-24).
+int readPdfWindow(
+  MediaWindowReader reader,
+  Uint8List buffer,
+  int position,
+  int size,
+) {
+  try {
+    final got = reader.readIntoSync(buffer, position, size);
+    return got == size ? got : 0;
+  } on Object {
+    return 0;
+  }
+}
+
 abstract final class PdfRenderService {
   /// Test seam: when set, [open] routes here and [availability] reads
   /// true — widget tests drive fake documents without any FFI.
@@ -74,10 +95,10 @@ abstract final class PdfRenderService {
   ///
   /// A whole file is PDFium's to read by its path. Anything else — a PDF
   /// carried inside the `.anicel`, or its framed copy — is served a window
-  /// at a time through [MediaByteSource.readIntoSync], the shape that
-  /// method was written in for this door: a hundred-page conte is never
-  /// pulled whole, and never unpacked to a temp file (유저 2026-08-27
-  /// 「사본 남으면 진짜 용서안할게」).
+  /// at a time, through a reader that keeps its file open for as long as
+  /// the document is ([MediaByteSource.openWindowReader]): a hundred-page
+  /// conte is never pulled whole, and never unpacked to a temp file (유저
+  /// 2026-08-27 「사본 남으면 진짜 용서안할게」).
   static Future<ViewerDocument?> open(MediaByteSource source) async {
     final override = debugOpenerOverride;
     if (override != null) {
@@ -89,14 +110,29 @@ abstract final class PdfRenderService {
     final file = source.wholeFilePath;
     final document = file != null
         ? await pdfrx.PdfDocument.openFile(file)
-        : await pdfrx.PdfDocument.openCustom(
-            read: source.readIntoSync,
-            fileSize: source.lengthSync(),
-            // pdfrx keys its caches by this name; the source names its own
-            // span, which no other open document shares.
-            sourceName: '$source',
-          );
+        : await _openWindowed(source);
     return _PdfrxDocumentHandle(document);
+  }
+
+  /// [source] opened on a reader that keeps its file open for the
+  /// document's whole life ([MediaByteSource.openWindowReader]) — closed
+  /// when the document is, or at once when it never opens.
+  static Future<pdfrx.PdfDocument> _openWindowed(
+    MediaByteSource source,
+  ) async {
+    final reader = source.openWindowReader();
+    try {
+      return await pdfrx.PdfDocument.openCustom(
+        read: (buffer, position, size) =>
+            readPdfWindow(reader, buffer, position, size),
+        fileSize: source.lengthSync(),
+        sourceName: '$source',
+        onDispose: reader.close,
+      );
+    } on Object {
+      reader.close();
+      rethrow;
+    }
   }
 
   /// Test seam for [pageSpan], for the same reason as [debugOpenerOverride]:

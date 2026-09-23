@@ -54,12 +54,12 @@ void main() {
   test('warming asks for the movie too — its soundtrack is a sound this '
       'project references', () {
     final session = sessionWith([
-      const MediaAsset(
+      MediaAsset(
         path: 'dialogue.wav',
         name: 'dialogue',
         kind: MediaAssetKind.audio,
       ),
-      const MediaAsset(
+      MediaAsset(
         path: 'reference.mp4',
         name: 'reference',
         kind: MediaAssetKind.video,
@@ -78,12 +78,12 @@ void main() {
     // source with no conform can never match one, so a still asked once is
     // a still asked on every open, forever.
     final session = sessionWith([
-      const MediaAsset(
+      MediaAsset(
         path: 'layout.png',
         name: 'layout',
         kind: MediaAssetKind.image,
       ),
-      const MediaAsset(
+      MediaAsset(
         path: 'script.pdf',
         name: 'script',
         kind: MediaAssetKind.pdf,

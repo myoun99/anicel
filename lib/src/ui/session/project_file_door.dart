@@ -275,8 +275,10 @@ class ProjectFileDoor {
     // Raised for the WHOLE save, so a tick that comes due inside one stands
     // down instead of starting a SECOND write of the same file — an
     // incremental append reads the tail it is about to extend, and two of
-    // them interleaving is a torn archive rather than a lost edit.
-    _file.beginSave();
+    // them interleaving is a torn archive rather than a lost edit. And a
+    // press that comes while a save runs WAITS for it: the tick is not the
+    // only writer ([ProjectFile.beginSaveWhenSettled]).
+    await _file.beginSaveWhenSettled();
     // The breadcrumb a silent kill cannot erase. A save is the work this
     // app is most likely to die inside — and when iOS kills for memory
     // there is no exception, no crash report, and nothing in App Store
@@ -413,8 +415,7 @@ class ProjectFileDoor {
   /// not moved to [destination]: a backup is a copy the person keeps, and
   /// the project file is still where this session's saves belong.
   Future<void> backUpFailedCopy(String copy, String destination) async {
-    await _file.saveSettled();
-    _file.beginSave();
+    await _file.beginSaveWhenSettled();
     try {
       // The project it belongs to from the list, not the binding: a
       // project whose very first save was refused has no path bound.
@@ -834,7 +835,7 @@ class ProjectFileDoor {
     if (isCancelled?.call() ?? false) {
       throw const MaterializeCancelled();
     }
-    _playbackRig.playback.stop();
+    _playbackRig.letGoOfTheProject();
     // BEFORE the project lands: a bookmark tracks the file rather than the
     // path, so resolving one is how a referenced movie that was renamed or
     // moved is found again — and the project has to be told, or the pool

@@ -61,8 +61,8 @@ Project _project() {
                 timeline: const {
                   1: TimelineExposure.drawing(FrameId('sea-f1'), length: 3),
                 },
-                audioClips: const [
-                  AudioClip(filePath: 'steps.wav', frameId: FrameId('sea-f1')),
+                audioClips: [
+                  AudioClip(filePath: 'steps.wav', frameId: const FrameId('sea-f1')),
                 ],
               ),
             ],
@@ -407,10 +407,10 @@ void main() {
                         strokes: const [],
                       ),
                     ],
-                    audioClips: const [
+                    audioClips: [
                       AudioClip(
                         filePath: 'steps.wav',
-                        frameId: FrameId('sea-f1'),
+                        frameId: const FrameId('sea-f1'),
                         gain: 0.75,
                       ),
                     ],
@@ -477,11 +477,11 @@ void main() {
                     timeline: const {
                       1: TimelineExposure.drawing(FrameId('sea-f1'), length: 3),
                     },
-                    audioClips: const [
-                      AudioClip(filePath: 'a.wav', frameId: FrameId('sea-f1')),
-                      AudioClip(filePath: 'b.wav', frameId: FrameId('sea-f1')),
-                      AudioClip(filePath: 'c.wav', frameId: FrameId('sea-f1')),
-                      AudioClip(filePath: 'd.wav', frameId: FrameId('sea-f1')),
+                    audioClips: [
+                      AudioClip(filePath: 'a.wav', frameId: const FrameId('sea-f1')),
+                      AudioClip(filePath: 'b.wav', frameId: const FrameId('sea-f1')),
+                      AudioClip(filePath: 'c.wav', frameId: const FrameId('sea-f1')),
+                      AudioClip(filePath: 'd.wav', frameId: const FrameId('sea-f1')),
                     ],
                   ),
                 ],

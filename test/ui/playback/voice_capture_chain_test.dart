@@ -163,9 +163,9 @@ void main() {
         0: TimelineExposure.drawing(FrameId('f1'), length: 4),
         6: TimelineExposure.drawing(FrameId('f2'), length: 4),
       },
-      audioClips: const [
-        AudioClip(filePath: 'a.wav', frameId: FrameId('f1'), clipped: true),
-        AudioClip(filePath: 'b.wav', frameId: FrameId('f2')),
+      audioClips: [
+        AudioClip(filePath: 'a.wav', frameId: const FrameId('f1'), clipped: true),
+        AudioClip(filePath: 'b.wav', frameId: const FrameId('f2')),
       ],
     );
     await tester.pumpWidget(

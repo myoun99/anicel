@@ -489,10 +489,10 @@ void main() {
                     name: 'S1',
                     kind: LayerKind.se,
                     frames: const [],
-                    audioClips: const [
+                    audioClips: [
                       AudioClip(
                         filePath: 'hit.wav',
-                        frameId: FrameId('se-frame'),
+                        frameId: const FrameId('se-frame'),
                       ),
                     ],
                   ),

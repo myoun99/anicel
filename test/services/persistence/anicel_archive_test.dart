@@ -33,7 +33,7 @@ void main() {
       'bake-only); media under the save directory records relative paths '
       'and remaps on the way in', () {
     final project = createDefaultProject().copyWith(
-      mediaAssets: const [
+      mediaAssets: [
         MediaAsset(path: 'D:/work/proj/audio/boom.wav', name: 'boom'),
         MediaAsset(path: 'E:/elsewhere/hiss.wav', name: 'hiss'),
       ],
@@ -151,8 +151,8 @@ void main() {
         track.copyWith(
           seLayers: [
             track.seLayers.first.copyWith(
-              audioClips: const [
-                AudioClip(filePath: 'old/a.wav', frameId: FrameId('x')),
+              audioClips: [
+                AudioClip(filePath: 'old/a.wav', frameId: const FrameId('x')),
               ],
             ),
             ...track.seLayers.skip(1),

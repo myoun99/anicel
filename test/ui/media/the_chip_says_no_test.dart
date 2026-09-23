@@ -183,19 +183,19 @@ void main() {
       'listens to the workspace\'s channel', (tester) async {
     final verdict = ValueNotifier<bool?>(null);
     addTearDown(verdict.dispose);
-    const picture = MediaAsset(
+    final picture = MediaAsset(
       path: r'C:\art\bg.png',
       name: 'bg',
       kind: MediaAssetKind.image,
     );
-    const sound = MediaAsset(path: r'C:\snd\door.wav', name: 'door');
+    final sound = MediaAsset(path: r'C:\snd\door.wav', name: 'door');
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: MediaDropVerdictScope(
             verdict: verdict,
             child: MediaPoolPanel(
-              assets: const [picture, sound],
+              assets: [picture, sound],
               usesOf: (_) => const [],
               onImportRequested: () {},
               onRenameAsset: (_, _) {},

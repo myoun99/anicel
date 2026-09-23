@@ -11,6 +11,7 @@
 // acyclic: `Standing` and `RangeSelections` reach IN here for the warmer,
 // and if the rig reached back out for `selectCut` neither could be built.
 
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import '../../models/playback_quality.dart';
@@ -98,6 +99,16 @@ class PlaybackRig implements PlaybackRun {
     renderCaches: _renderCaches,
     run: this,
   );
+
+  /// Stops whatever runs and lets go of every movie the canvas opened — for
+  /// a door that is about to replace the WHOLE project (an `.anicel` or a
+  /// `.tvpp` opened over the current one). Where those doors only stopped
+  /// the transport, the canvas's movies outlived the project they came
+  /// from ([MovieCelHydrator.reset]).
+  void letGoOfTheProject() {
+    playback.stop();
+    unawaited(_movieCels.reset());
+  }
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(

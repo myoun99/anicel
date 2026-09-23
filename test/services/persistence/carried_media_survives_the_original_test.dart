@@ -363,6 +363,26 @@ void main() {
     expect(session.projectFile.mediaByteSourceFor(to).readSync(), original);
   });
 
+  test('a file picked in the OS\'s spelling is relinked in the pool\'s — '
+      'and re-staged under it (audit 2026-09-24 ②)', () async {
+    final from = compressibleFile('take.wav');
+    await pool.addMediaAssets([from], carried: true);
+    final to = '${root.path}/moved.wav'.replaceAll(r'\', '/');
+    File(to).writeAsBytesSync(File(from).readAsBytesSync());
+
+    await pool.relinkMediaAsset(from, to.replaceAll('/', r'\'));
+
+    expect(
+      session.repository.requireProject().mediaAssets.map((a) => a.path),
+      [to],
+    );
+    expect(
+      session.mediaStagingStore.find(to),
+      isNotNull,
+      reason: 'the carried asset is staged under the key the pool holds',
+    );
+  });
+
   group('🚨relink: the two kinds know different things', () {
     test('a BY-HAND relink re-stages from the file the user picked', () async {
       final from = compressibleFile('take.wav');

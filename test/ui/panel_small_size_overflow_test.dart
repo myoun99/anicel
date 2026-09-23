@@ -69,7 +69,7 @@ void main() {
   );
 
   Widget mediaPanel() => MediaPoolPanel(
-    assets: const [
+    assets: [
       MediaAsset(
         path: 'C:/very/long/path/to/some/audio/file/kick.wav',
         name: 'kick',

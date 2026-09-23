@@ -1,3 +1,5 @@
+import 'media_asset.dart' show normalizedMediaPath;
+
 /// A layer's link to an EXTERNAL media source (§6-z23, the two-axis
 /// model): the layer KIND says what the row is (image vs animation), and
 /// THIS field alone says whether its pixels come from a library asset.
@@ -15,8 +17,10 @@
 /// layer's first frame — the time mapping for sequence/video sources,
 /// [AudioClip.offsetFrames]'s exact analogue; stills ignore it.
 class MediaReference {
-  const MediaReference({required this.assetPath, this.frameOffset = 0});
+  MediaReference({required String assetPath, this.frameOffset = 0})
+    : assetPath = normalizedMediaPath(assetPath);
 
+  /// In the pool's one spelling ([normalizedMediaPath]).
   final String assetPath;
   final int frameOffset;
 

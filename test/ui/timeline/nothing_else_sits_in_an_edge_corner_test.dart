@@ -57,8 +57,8 @@ void main() {
       kind: LayerKind.se,
       frames: [Frame(id: const FrameId('f1'), duration: 1, strokes: const [])],
       timeline: const {2: TimelineExposure.drawing(FrameId('f1'), length: 4)},
-      audioClips: const [
-        AudioClip(filePath: 'a.wav', frameId: FrameId('f1'), clipped: true),
+      audioClips: [
+        AudioClip(filePath: 'a.wav', frameId: const FrameId('f1'), clipped: true),
       ],
     );
 

@@ -79,7 +79,7 @@ Future<void> _pump(
 }
 
 void main() {
-  const foot = r'C:\snd\foot.wav';
+  const foot = 'C:/snd/foot.wav';
 
   testWidgets('an empty pool says so', (tester) async {
     await _pump(tester, _Callbacks());
@@ -97,13 +97,13 @@ void main() {
         foot: ['C1 · walk'],
       }
       // clap exists on disk; foot is the missing one.
-      ..existingPaths = {r'C:\snd\clap.wav'};
+      ..existingPaths = {'C:/snd/clap.wav'};
     await _pump(
       tester,
       callbacks,
-      assets: const [
+      assets: [
         MediaAsset(path: foot, name: '발소리'),
-        MediaAsset(path: r'C:\snd\clap.wav', name: 'clap.wav'),
+        MediaAsset(path: 'C:/snd/clap.wav', name: 'clap.wav'),
       ],
     );
 
@@ -128,18 +128,18 @@ void main() {
     // mark has nothing to open.
     expect(
       find.byKey(
-        const ValueKey<String>(r'media-asset-missing-C:\snd\clap.wav'),
+        const ValueKey<String>('media-asset-missing-C:/snd/clap.wav'),
       ),
       findsNothing,
     );
-    expect(mark(r'C:\snd\clap.wav').onPressed, isNull);
+    expect(mark('C:/snd/clap.wav').onPressed, isNull);
     // ⛔「없다가 생기는 UI 금지」: the mark keeps its place on a row nothing
     // uses, so a name does not move when its last use goes.
     final usedMark = find.byKey(
       const ValueKey<String>('media-asset-in-use-$foot'),
     );
     final unusedMark = find.byKey(
-      const ValueKey<String>(r'media-asset-in-use-C:\snd\clap.wav'),
+      const ValueKey<String>('media-asset-in-use-C:/snd/clap.wav'),
     );
     expect(tester.getRect(unusedMark).left, tester.getRect(usedMark).left);
     expect(tester.getSize(unusedMark), tester.getSize(usedMark));
@@ -154,7 +154,7 @@ void main() {
     await _pump(
       tester,
       _Callbacks()..existingPaths = {foot},
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
     );
 
     final draggable = tester.widget<Draggable<MediaAssetDragData>>(
@@ -174,13 +174,13 @@ void main() {
       _Callbacks(),
       assets: [
         for (var i = 0; i < 30; i += 1)
-          MediaAsset(path: 'C:\\snd\\s$i.wav', name: 's$i.wav'),
+          MediaAsset(path: 'C:/snd/s$i.wav', name: 's$i.wav'),
       ],
     );
 
     final pen = await tester.startGesture(
       tester.getCenter(
-        find.byKey(const ValueKey<String>(r'media-asset-row-C:\snd\s0.wav')),
+        find.byKey(const ValueKey<String>('media-asset-row-C:/snd/s0.wav')),
       ),
       kind: PointerDeviceKind.stylus,
     );
@@ -219,7 +219,7 @@ void main() {
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot')],
+      assets: [MediaAsset(path: foot, name: 'foot')],
     );
 
     await tester.tap(
@@ -252,11 +252,11 @@ void main() {
 
   testWidgets('pool-name: a row shows the NAME and the EXTENSION apart — the '
       'name is what gets cut short, the extension never is', (tester) async {
-    const street = r'C:\bg\street.png';
+    const street = 'C:/bg/street.png';
     await _pump(
       tester,
       _Callbacks()..existingPaths = {street},
-      assets: const [MediaAsset(path: street, name: '거리')],
+      assets: [MediaAsset(path: street, name: '거리')],
     );
 
     expect(find.text('거리'), findsOneWidget);
@@ -264,12 +264,12 @@ void main() {
   });
 
   testWidgets('relink picks the new file', (tester) async {
-    const moved = r'C:\snd\moved\foot.wav';
+    const moved = 'C:/snd/moved/foot.wav';
     final callbacks = _Callbacks();
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
       picker: () async => moved,
     );
 
@@ -291,7 +291,7 @@ void main() {
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
     );
 
     await tester.tap(
@@ -329,7 +329,7 @@ void main() {
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
     );
 
     await pickRemove(tester);
@@ -350,7 +350,7 @@ void main() {
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
     );
 
     await pickRemove(tester);
@@ -390,7 +390,7 @@ void main() {
     await _pump(
       tester,
       callbacks,
-      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      assets: [MediaAsset(path: foot, name: 'foot.wav')],
     );
 
     await tester.tap(
@@ -426,7 +426,7 @@ void main() {
       await _pump(
         tester,
         callbacks,
-        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        assets: [MediaAsset(path: foot, name: 'foot.wav')],
       );
 
       await tapPromote(tester);
@@ -452,7 +452,7 @@ void main() {
       await _pump(
         tester,
         callbacks,
-        assets: const [MediaAsset(path: foot, name: 'foot.wav', carried: true)],
+        assets: [MediaAsset(path: foot, name: 'foot.wav', carried: true)],
       );
 
       await tester.tap(find.byIcon(Icons.more_vert).first);
@@ -478,7 +478,7 @@ void main() {
       await _pump(
         tester,
         _Callbacks()..existingPaths = {foot},
-        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        assets: [MediaAsset(path: foot, name: 'foot.wav')],
         storedBytes: const {foot: 55 * 1024 * 1024},
         conformBytes: const {foot: 660 * 1024 * 1024},
       );
@@ -495,7 +495,7 @@ void main() {
       await _pump(
         tester,
         _Callbacks()..existingPaths = {foot},
-        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+        assets: [MediaAsset(path: foot, name: 'foot.wav')],
         storedBytes: const {foot: 55 * 1024 * 1024},
       );
 

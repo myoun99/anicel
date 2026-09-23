@@ -35,8 +35,8 @@ void main() {
         timeline: const {
           1: TimelineExposure.drawing(FrameId('se-cel'), length: 3),
         },
-        audioClips: const [
-          AudioClip(filePath: 'a.wav', frameId: FrameId('se-cel')),
+        audioClips: [
+          AudioClip(filePath: 'a.wav', frameId: const FrameId('se-cel')),
         ],
       ),
     );

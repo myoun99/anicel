@@ -307,6 +307,105 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('🚨an entry something holds does not leave with the save that '
+        'stops carrying it — a viewer on an asset just taken out of the '
+        'pool reads on', (tester) async {
+      final path = normalizedMediaPath('${directory.path}/dropped.anicel');
+      final (:session, :movie) = await savedWithAMovie(tester, path);
+      final bytes = File(movie).readAsBytesSync();
+      final entry = anicelMediaEntryName(movie, framed: false);
+      final held = (await tester.runAsync(
+        () => session.projectFile.holdMediaBytes(movie),
+      ))!;
+      final range = held.source.range!;
+
+      expect(session.mediaPool.removeMediaAsset(movie), isTrue);
+      pastTheRatio(path);
+      await tester.runAsync(
+        () => session.projectDoor.saveProjectToFile(
+          path,
+          asked: SaveAsked.byAPerson,
+        ),
+      );
+
+      final kept = parseAnicelZipLayoutFile(path).entryNamed(entry);
+      expect(kept, isNotNull, reason: 'held, it stays in the directory');
+      expect(kept!.dataOffset, range.offset, reason: 'and where it was read');
+      final raf = File(path).openSync();
+      try {
+        raf.setPositionSync(range.offset);
+        expect(raf.readSync(range.length), bytes);
+      } finally {
+        raf.closeSync();
+      }
+
+      held.release();
+      await tester.runAsync(
+        () => session.projectDoor.saveProjectToFile(
+          path,
+          asked: SaveAsked.byAPerson,
+        ),
+      );
+      expect(
+        parseAnicelZipLayoutFile(path).entryNamed(entry),
+        isNull,
+        reason: 'let go of, it leaves with the next save',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a path in the OS spelling finds what the pool spelling '
+        'carries', (tester) async {
+      final path = normalizedMediaPath('${directory.path}/spelled.anicel');
+      final (:session, :movie) = await savedWithAMovie(tester, path);
+      final osSpelling = movie.replaceAll('/', r'\');
+
+      final held = (await tester.runAsync(
+        () => session.projectFile.holdMediaBytes(osSpelling),
+      ))!;
+
+      expect(
+        held.source.range?.path,
+        path,
+        reason: 'the carried entry, not the original',
+      );
+      expect(session.projectFile.heldArchiveEntries, {
+        anicelMediaEntryName(movie, framed: false),
+      });
+      held.release();
+      expect(session.projectFile.heldArchiveEntries, isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('🚨a torn tail still names what the file carries — a reader '
+        'reads the entry, not an original that is gone', (tester) async {
+      final path = normalizedMediaPath('${directory.path}/torn.anicel');
+      final (:session, :movie) = await savedWithAMovie(tester, path);
+      File(movie).deleteSync();
+      // An append crash tears only the tail (the crash contract).
+      final healthy = parseAnicelZipLayoutFile(path);
+      File(path).openSync(mode: FileMode.append)
+        ..truncateSync(healthy.centralDirectoryOffset + 7)
+        ..closeSync();
+      expect(
+        () => parseAnicelZipLayoutFile(path),
+        throwsFormatException,
+        reason: 'the premise: the tail is torn',
+      );
+
+      final held = (await tester.runAsync(
+        () => session.projectFile.holdMediaBytes(movie),
+      ))!;
+
+      expect(
+        held.source.range?.path,
+        path,
+        reason: 'the body still holds the bytes; the save already knew it',
+      );
+      held.release();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('🎯the viewer holds a carried movie for as long as it shows '
         'it, and gives it back when it closes', (tester) async {
       final path = normalizedMediaPath('${directory.path}/viewed.anicel');

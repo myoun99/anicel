@@ -274,13 +274,13 @@ void main() {
     ProjectRepository open({bool withAsset = true}) => ProjectRepository(
       initialProject: projectWith(
         assets: withAsset
-            ? const [MediaAsset(path: '/still.png', name: 'still')]
+            ? [MediaAsset(path: '/still.png', name: 'still')]
             : const [],
         cuts: [
           cut('c', [
             layer(
               'l',
-              mediaReference: const MediaReference(assetPath: '/still.png'),
+              mediaReference: MediaReference(assetPath: '/still.png'),
             ),
           ]),
         ],

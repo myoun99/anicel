@@ -24,8 +24,8 @@ import 'package:anicel/src/services/project_lookup.dart'
     show layerAnywhereOrNull;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-const _movie = r'C:\media\walk.mp4';
-const _clap = r'C:\media\clap.wav';
+const _movie = 'C:/media/walk.mp4';
+const _clap = 'C:/media/clap.wav';
 
 Frame _frame(String id, {String? name}) =>
     Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
@@ -71,7 +71,7 @@ Project _project() => Project(
   id: const ProjectId('remove-a-used-file'),
   name: 'Remove a used file',
   createdAt: DateTime.utc(2026, 9, 15),
-  mediaAssets: const [
+  mediaAssets: [
     MediaAsset(path: _movie, name: 'walk.mp4'),
     MediaAsset(path: _clap, name: 'clap.wav'),
   ],
@@ -101,17 +101,17 @@ Project _project() => Project(
               endEdge: TimelineRunEdgeMark(mode: TimelineRunEdgeMode.hold),
             ),
           },
-          clips: const [
-            AudioClip(filePath: _movie, frameId: FrameId('step')),
-            AudioClip(filePath: _clap, frameId: FrameId('hit')),
+          clips: [
+            AudioClip(filePath: _movie, frameId: const FrameId('step')),
+            AudioClip(filePath: _clap, frameId: const FrameId('hit')),
           ],
         ),
         // A frame no block shows: there is no block to delete, only a link.
         _seRow(
           's2',
           frames: [_frame('lonely')],
-          clips: const [
-            AudioClip(filePath: _movie, frameId: FrameId('lonely')),
+          clips: [
+            AudioClip(filePath: _movie, frameId: const FrameId('lonely')),
           ],
         ),
       ],
@@ -129,8 +129,8 @@ Project _project() => Project(
           timeline: {
             0: const TimelineExposure.drawing(FrameId('beat'), length: 3),
           },
-          clips: const [
-            AudioClip(filePath: _movie, frameId: FrameId('beat')),
+          clips: [
+            AudioClip(filePath: _movie, frameId: const FrameId('beat')),
           ],
         ),
         _seRow('t2-s2', frames: const []),
@@ -218,8 +218,8 @@ void main() {
     expect([for (final frame in layer('s1')!.frames) frame.id], [
       const FrameId('hit'),
     ]);
-    expect(layer('s1')!.audioClips, const [
-      AudioClip(filePath: _clap, frameId: FrameId('hit')),
+    expect(layer('s1')!.audioClips, [
+      AudioClip(filePath: _clap, frameId: const FrameId('hit')),
     ]);
     // No block shows this frame, so the frame stays and the link goes.
     expect([for (final frame in layer('s2')!.frames) frame.id], [

@@ -21,8 +21,8 @@ void main() {
     kind: LayerKind.se,
     frames: const [],
     timeline: const {10: TimelineExposure.drawing(FrameId('f'), length: 30)},
-    audioClips: const [
-      AudioClip(filePath: 'voice.wav', frameId: FrameId('f')),
+    audioClips: [
+      AudioClip(filePath: 'voice.wav', frameId: const FrameId('f')),
     ],
   );
 
@@ -61,8 +61,8 @@ void main() {
         0: TimelineExposure.drawing(FrameId('f'), length: 4),
         8: TimelineExposure.drawing(FrameId('f'), length: 4),
       },
-      audioClips: const [
-        AudioClip(filePath: 'voice.wav', frameId: FrameId('f'), offsetFrames: 3),
+      audioClips: [
+        AudioClip(filePath: 'voice.wav', frameId: const FrameId('f'), offsetFrames: 3),
       ],
     );
     final spans = seAudioSpans(layer, leadInAtStart: 5);

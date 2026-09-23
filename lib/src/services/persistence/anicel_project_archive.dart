@@ -31,6 +31,7 @@ import 'package:archive/archive.dart';
 import '../../core/path_names.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -320,7 +321,7 @@ String _anicelPoolEntryName(
   required bool framed,
   String infix = '',
 }) {
-  final normalized = poolPath.replaceAll('\\', '/');
+  final normalized = normalizedMediaPath(poolPath);
   var hash = 0x811c9dc5;
   for (final unit in normalized.codeUnits) {
     hash ^= unit;
@@ -615,8 +616,8 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
-    mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
-    mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
+    mediaRelativePaths: _keyedByPoolPath(decoded['mediaPaths']),
+    mediaEntryNames: _keyedByPoolPath(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
       grants: anicelGrantsField(decoded['grants']),
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
@@ -624,6 +625,18 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     ),
   );
 }
+
+/// A document map keyed by pool path, its keys in the pool's spelling.
+///
+/// The project beside it was just spelled by its own constructors
+/// ([normalizedMediaPath]); a file written while a door still let another
+/// spelling in would otherwise name, under `C:\…\cut/A1.png`, an asset the
+/// pool now calls `C:/…/cut/A1.png` — and an entry the project carries
+/// would read as one it does not.
+Map<String, String> _keyedByPoolPath(Object? json) => {
+  for (final entry in anicelStringMapField(json).entries)
+    normalizedMediaPath(entry.key): entry.value,
+};
 
 /// A document field read as a `{string: string}` map — anything that is
 /// not a string pair is not one, and is left out rather than throwing.

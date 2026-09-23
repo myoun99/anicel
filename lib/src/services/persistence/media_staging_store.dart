@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import '../../core/path_names.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import 'media_blob_codec.dart';
 import 'session_scratch.dart';
 
@@ -23,8 +24,9 @@ import 'session_scratch.dart';
 ///
 /// ⛔**This is not a second copy of the asset.** It is the only copy the
 /// project controls until the first save, and it stops being anything the
-/// moment the save absorbs it. 유저 08-27: 「사본 남으면 진짜 용서안할게」 —
-/// which is what [retire] and the room's own lifetime are for.
+/// moment the save absorbs it — or, when a reader still has it open, the
+/// moment that reader lets go ([hold]). 유저 08-27: 「사본 남으면 진짜
+/// 용서안할게」 — which is what [retire] and the room's own lifetime are for.
 ///
 /// ⚠️**It is also not a new category in the container.** `Recovery/` held
 /// project snapshots and `Conformed/` held audio derived from project
@@ -117,7 +119,17 @@ class MediaStagingStore {
   ///
   /// Framed-first, through [mediaFramedOrPlainPaths] — the one place that
   /// knows a file this app wrote may wear either name.
+  ///
+  /// ⛔A copy whose retirement is only waiting on a reader ([hold]) is not
+  /// the staged copy any more: a save absorbed it, and what still reads it
+  /// is finishing. 🪦Found as current, it was re-used as the copy of a file
+  /// carried AGAIN under the same path — old bytes for the new carry — and
+  /// then deleted when the reader let go, taking the only copy with it
+  /// (audit 2026-09-24).
   StagedMedia? find(String poolPath) {
+    if (_retireWhenLetGo.contains(normalizedMediaPath(poolPath))) {
+      return null;
+    }
     for (final candidate in mediaFramedOrPlainPaths(_basePathFor(poolPath))) {
       final file = File(candidate);
       if (file.existsSync()) {
@@ -205,6 +217,7 @@ class MediaStagingStore {
       if (already != null) {
         done.add(already);
       } else if (File(path).existsSync()) {
+        _replaceACopyInRetirement(path);
         todo.add(path);
       }
     }
@@ -229,6 +242,21 @@ class MediaStagingStore {
       );
     }
     return done;
+  }
+
+  /// A carry of [poolPath] made while an older copy's retirement waits on
+  /// its reader ([find]) REPLACES that copy: both spellings go now, before
+  /// the new one is written — the old reader keeps what it opened wherever
+  /// the OS allows that, and where it does not (Windows, while the file is
+  /// open) the carry fails and says so, rather than leaving an old copy
+  /// that [find] would answer first.
+  void _replaceACopyInRetirement(String poolPath) {
+    final key = normalizedMediaPath(poolPath);
+    if (!_retireWhenLetGo.contains(key)) {
+      return;
+    }
+    _deleteCopies(key);
+    _retireWhenLetGo.remove(key);
   }
 
   /// [stageCarriedBytes] for bytes that have no file yet — a voice take,
@@ -261,6 +289,7 @@ class MediaStagingStore {
     if (already != null) {
       return already;
     }
+    _replaceACopyInRetirement(poolPath);
     Directory(directoryPath).createSync(recursive: true);
     final written = writeMediaBlob(
       basePath: _basePathFor(poolPath),
@@ -331,16 +360,17 @@ class MediaStagingStore {
   /// `ProjectFile.holdMediaBytes` keeps for an archive entry the in-place
   /// push-down would move, kept for the step that would take this one.
   void Function() hold(String poolPath) {
-    _held.update(poolPath, (count) => count + 1, ifAbsent: () => 1);
+    final key = normalizedMediaPath(poolPath);
+    _held.update(key, (count) => count + 1, ifAbsent: () => 1);
     return () {
-      final left = _held[poolPath]! - 1;
+      final left = _held[key]! - 1;
       if (left > 0) {
-        _held[poolPath] = left;
+        _held[key] = left;
         return;
       }
-      _held.remove(poolPath);
-      if (_retireWhenLetGo.remove(poolPath)) {
-        retire(poolPath);
+      _held.remove(key);
+      if (_retireWhenLetGo.remove(key)) {
+        _retireLetGo(key);
       }
     };
   }
@@ -352,15 +382,35 @@ class MediaStagingStore {
   /// bytes shrank, and a save must not leave half of an absorbed import
   /// behind (유저 08-27: 「사본 남으면 진짜 용서안할게」).
   void retire(String poolPath) {
-    if (_held.containsKey(poolPath)) {
-      _retireWhenLetGo.add(poolPath);
+    final key = normalizedMediaPath(poolPath);
+    if (_held.containsKey(key)) {
+      _retireWhenLetGo.add(key);
       return;
     }
-    for (final candidate in mediaFramedOrPlainPaths(_basePathFor(poolPath))) {
+    _deleteCopies(key);
+  }
+
+  /// Both spellings of [key]'s copy, gone — whichever is on disk depends on
+  /// whether the bytes shrank.
+  void _deleteCopies(String key) {
+    for (final candidate in mediaFramedOrPlainPaths(_basePathFor(key))) {
       final file = File(candidate);
       if (file.existsSync()) {
         file.deleteSync();
       }
+    }
+  }
+
+  /// [retire], for a copy its last reader just let go of — inside that
+  /// reader's CLOSE, which has nothing to do with a file that will not go.
+  /// One the OS is still holding (an antivirus, an indexer) stays in the
+  /// run's room, which takes it when the run ends ([SessionScratch]) — and
+  /// no reader's close throws over it (audit 2026-09-24).
+  void _retireLetGo(String key) {
+    try {
+      retire(key);
+    } on FileSystemException {
+      // Left to the room — see above.
     }
   }
 
@@ -412,7 +462,7 @@ class MediaStagingStore {
   /// same name over there; a second spelling of this rule is exactly the
   /// drift the derived-name design exists to make impossible.
   static String stagedNameFor(String poolPath) {
-    final normalized = poolPath.replaceAll(r'\', '/');
+    final normalized = normalizedMediaPath(poolPath);
     final base = fileNameOfPath(normalized);
     var hash = 0x811c9dc5;
     for (final unit in normalized.codeUnits) {

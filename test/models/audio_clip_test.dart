@@ -10,27 +10,27 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 
 void main() {
   test('AudioClip round-trips through json', () {
-    const clip = AudioClip(
-      filePath: r'C:\sound\voice.wav',
-      frameId: FrameId('se-frame'),
+    final clip = AudioClip(
+      filePath: 'C:/sound/voice.wav',
+      frameId: const FrameId('se-frame'),
     );
 
     expect(AudioClip.fromJson(clip.toJson()), clip);
-    expect(clip.toJson(), {'file': r'C:\sound\voice.wav', 'frame': 'se-frame'});
+    expect(clip.toJson(), {'file': 'C:/sound/voice.wav', 'frame': 'se-frame'});
   });
 
   test('offsetFrames round-trips, serializes only when set and stays '
       'backward compatible', () {
-    const trimmed = AudioClip(
+    final trimmed = AudioClip(
       filePath: 'a.wav',
-      frameId: FrameId('se-frame'),
+      frameId: const FrameId('se-frame'),
       offsetFrames: 12,
     );
     expect(trimmed.toJson()['offset'], 12);
     expect(AudioClip.fromJson(trimmed.toJson()), trimmed);
 
     // Untrimmed clips keep the old json shape; old files decode to 0.
-    const plain = AudioClip(filePath: 'a.wav', frameId: FrameId('se-frame'));
+    final plain = AudioClip(filePath: 'a.wav', frameId: const FrameId('se-frame'));
     expect(plain.toJson().containsKey('offset'), isFalse);
     expect(
       AudioClip.fromJson({'file': 'a.wav', 'frame': 'se-frame'}).offsetFrames,
@@ -42,9 +42,9 @@ void main() {
 
   test('gain and fades round-trip, serialize only when set and stay '
       'backward compatible', () {
-    const shaped = AudioClip(
+    final shaped = AudioClip(
       filePath: 'a.wav',
-      frameId: FrameId('se-frame'),
+      frameId: const FrameId('se-frame'),
       gain: 1.5,
       fadeInFrames: 6,
       fadeOutFrames: 12,
@@ -55,7 +55,7 @@ void main() {
     expect(AudioClip.fromJson(shaped.toJson()), shaped);
 
     // Default envelope keeps the old json shape; old files decode to it.
-    const plain = AudioClip(filePath: 'a.wav', frameId: FrameId('se-frame'));
+    final plain = AudioClip(filePath: 'a.wav', frameId: const FrameId('se-frame'));
     expect(plain.toJson().containsKey('gain'), isFalse);
     expect(plain.toJson().containsKey('fadeIn'), isFalse);
     expect(plain.toJson().containsKey('fadeOut'), isFalse);
@@ -88,8 +88,8 @@ void main() {
     expect(Layer.fromJson(bare.toJson()), bare);
 
     final withClips = bare.copyWith(
-      audioClips: const [
-        AudioClip(filePath: 'a.wav', frameId: FrameId('se-frame')),
+      audioClips: [
+        AudioClip(filePath: 'a.wav', frameId: const FrameId('se-frame')),
       ],
     );
     final restored = Layer.fromJson(withClips.toJson());
@@ -114,8 +114,8 @@ void main() {
 
   test('seAudioSpans windows the sound per carrying block (linked reuse)', () {
     final layer = seLayer().copyWith(
-      audioClips: const [
-        AudioClip(filePath: 'steps.wav', frameId: FrameId('se-frame')),
+      audioClips: [
+        AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-frame')),
       ],
     );
 

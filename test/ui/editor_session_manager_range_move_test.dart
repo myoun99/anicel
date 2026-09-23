@@ -561,8 +561,8 @@ void main() {
         timeline: const {
           2: TimelineExposure.drawing(FrameId('se-cel'), length: 3),
         },
-        audioClips: const [
-          AudioClip(filePath: 'a.wav', frameId: FrameId('se-cel')),
+        audioClips: [
+          AudioClip(filePath: 'a.wav', frameId: const FrameId('se-cel')),
         ],
       ),
     );
@@ -898,8 +898,8 @@ void main() {
         timeline: const {
           0: TimelineExposure.drawing(FrameId('se-cel'), length: 1),
         },
-        audioClips: const [
-          AudioClip(filePath: 'a.wav', frameId: FrameId('se-cel')),
+        audioClips: [
+          AudioClip(filePath: 'a.wav', frameId: const FrameId('se-cel')),
         ],
       ),
     );

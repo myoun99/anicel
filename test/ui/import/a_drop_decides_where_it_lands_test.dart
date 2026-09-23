@@ -277,7 +277,7 @@ void main() {
     );
     s.repository.insertLayer(cutId: cut.id, layer: image);
     final reference = drawing.copyWith(
-      mediaReference: const MediaReference(assetPath: 'take.png'),
+      mediaReference: MediaReference(assetPath: 'take.png'),
     );
 
     expect(s.acceptsPlacedFrames(drawing.id), isTrue);

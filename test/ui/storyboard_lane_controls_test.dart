@@ -51,8 +51,8 @@ Layer _seLayer() => Layer(
   kind: LayerKind.se,
   frames: [Frame(id: const FrameId('lane-f'), duration: 8, strokes: const [])],
   timeline: {0: const TimelineExposure.drawing(FrameId('lane-f'), length: 8)},
-  audioClips: const [
-    AudioClip(filePath: 'voice.wav', frameId: FrameId('lane-f')),
+  audioClips: [
+    AudioClip(filePath: 'voice.wav', frameId: const FrameId('lane-f')),
   ],
 );
 

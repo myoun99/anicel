@@ -44,6 +44,11 @@ sealed class MediaByteSource {
   /// byte range.
   int readIntoSync(Uint8List buffer, int position, int size);
 
+  /// A reader of these bytes that keeps its file open until it is closed
+  /// ([MediaWindowReader]) — for a document that reads them window after
+  /// window for as long as it is open.
+  MediaWindowReader openWindowReader();
+
   /// Whether the source is there at all.
   ///
   /// 🚨 Separate from [statSync] on purpose, and it did not start that way.
@@ -162,19 +167,63 @@ class MediaSourceStamp {
   }
 }
 
-/// [size] bytes of [path] starting at [position], into the front of
-/// [buffer]; the count actually read.
+/// A reader of a medium's bytes a window at a time that keeps ONE file
+/// handle for its whole life — [close] it when done.
 ///
+/// 🚨For a reader that goes back to the same bytes for as long as a
+/// document is open — PDFium turning pages. [MediaByteSource.readIntoSync]
+/// opens and closes the file for every window, and a document asks for
+/// thousands of them; and a handle kept open is what keeps reading the
+/// file it opened, where a fresh open per window would find whatever a
+/// whole rewrite had put at that path (audit 2026-09-24).
+abstract interface class MediaWindowReader {
+  /// Fills [buffer] with up to [size] bytes from [position], and answers
+  /// how many landed — [MediaByteSource.readIntoSync]'s shape.
+  int readIntoSync(Uint8List buffer, int position, int size);
+
+  void close();
+}
+
 /// The one IO primitive under every source that lives in a file — the
-/// plain file, the app-support file and the archive entry (which adds its
-/// own offset to [position] and clamps [size] first).
-int _readFileWindowSync(String path, int position, Uint8List buffer, int size) {
-  final handle = File(path).openSync();
+/// plain file, the app-support file and the archive entry, which reads
+/// from its own [base] and is clamped to its own [length].
+final class _FileWindowReader implements MediaWindowReader {
+  _FileWindowReader(String path, {this.base = 0, this.length})
+    : _file = File(path).openSync();
+
+  final RandomAccessFile _file;
+  final int base;
+  final int? length;
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) {
+    final limit = length;
+    if (position < 0 || size <= 0 || (limit != null && position >= limit)) {
+      return 0;
+    }
+    final wanted = limit == null || size < limit - position
+        ? size
+        : limit - position;
+    _file.setPositionSync(base + position);
+    return _file.readIntoSync(buffer, 0, wanted);
+  }
+
+  @override
+  void close() => _file.closeSync();
+}
+
+/// [size] bytes from [position] through a [reader] opened for this one
+/// read — what [MediaByteSource.readIntoSync] is for a source in a file.
+int _readOnce(
+  MediaWindowReader reader,
+  Uint8List buffer,
+  int position,
+  int size,
+) {
   try {
-    handle.setPositionSync(position);
-    return handle.readIntoSync(buffer, 0, size);
+    return reader.readIntoSync(buffer, position, size);
   } finally {
-    handle.closeSync();
+    reader.close();
   }
 }
 
@@ -202,8 +251,11 @@ class MediaFileBytes extends MediaByteSource {
   String? get wholeFilePath => path;
 
   @override
+  MediaWindowReader openWindowReader() => _FileWindowReader(path);
+
+  @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
-      _readFileWindowSync(path, position, buffer, size);
+      _readOnce(openWindowReader(), buffer, position, size);
 
   /// Asks the PATH rather than through `File`: `File(dir).existsSync()`
   /// answers false for a directory, which would report "nothing here" for a
@@ -252,11 +304,13 @@ class MediaFileBytes extends MediaByteSource {
 /// are STORE'd, so the range IS the payload and a save can stream it
 /// through to the next file without re-encoding a thing.
 ///
-/// ⚠️ **Not held across a save.** Offsets belong to one layout, and a
-/// compaction rewrites the file — a source kept from before would read a
-/// window of whatever now occupies those bytes, which is a project that
-/// opens fine and plays the wrong sound. These are made from the archive's
-/// current layout at the moment of use, so there is nothing to go stale.
+/// ⚠️ **Not KEPT across a save — only HELD.** Offsets belong to one layout,
+/// and a compaction rewrites the file — a source kept from before would
+/// read a window of whatever now occupies those bytes, which is a project
+/// that opens fine and plays the wrong sound. These are made from the
+/// archive's current layout at the moment of use; a reader that goes on
+/// reading one holds its entry (`ProjectFile.holdMediaBytes`), and a save
+/// neither moves a held entry nor drops it.
 class MediaArchiveBytes extends MediaByteSource {
   const MediaArchiveBytes({
     required this.archivePath,
@@ -335,19 +389,12 @@ class MediaArchiveBytes extends MediaByteSource {
   /// gets a short read rather than the bytes of whatever follows it in the
   /// archive.
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) {
-    if (position < 0 || position >= length || size <= 0) {
-      return 0;
-    }
-    final available = length - position;
-    final wanted = size < available ? size : available;
-    return _readFileWindowSync(
-      archivePath,
-      dataOffset + position,
-      buffer,
-      wanted,
-    );
-  }
+  MediaWindowReader openWindowReader() =>
+      _FileWindowReader(archivePath, base: dataOffset, length: length);
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) =>
+      _readOnce(openWindowReader(), buffer, position, size);
 
   @override
   bool operator ==(Object other) =>
@@ -451,7 +498,55 @@ class MediaFramedBytes extends MediaByteSource {
   }
 
   @override
-  int readIntoSync(Uint8List buffer, int position, int size) {
+  int readIntoSync(Uint8List buffer, int position, int size) =>
+      _readDecoded(readStored, buffer, position, size);
+
+  /// The stored bytes read through ONE handle for the reader's whole life
+  /// ([MediaWindowReader]) — and decoded through this source's block
+  /// ([_lastBlock]), so neither the file nor a block is opened again per
+  /// window.
+  @override
+  MediaWindowReader openWindowReader() {
+    final stored = this.stored;
+    if (stored == null) {
+      return _FramedWindowReader(this, readStored, () {});
+    }
+    final reader = stored.openWindowReader();
+    return _FramedWindowReader(this, reader.readIntoSync, reader.close);
+  }
+
+  /// The block the last window decoded, kept for the next one.
+  ///
+  /// 🚨A document reads in WINDOWS far smaller than a block — PDFium asks
+  /// for a few hundred bytes at a time — and every window used to decode
+  /// its whole block again: 512KB of zstd per small read, on the thread
+  /// that paints, for a carried PDF (which is nearly always framed — PDFs
+  /// shrink by about 40%). One block is what a window lives in; keeping it
+  /// costs one block per open source (audit 2026-09-24).
+  ({int index, Uint8List bytes})? _lastBlock;
+
+  Uint8List _block(int i, int Function(Uint8List, int, int) readFrom) {
+    final last = _lastBlock;
+    if (last != null && last.index == i) {
+      return last.bytes;
+    }
+    final index = header;
+    final compressed = Uint8List(index.blockLengths[i]);
+    final got = readFrom(compressed, index.offsetOf(i), compressed.length);
+    if (got < compressed.length) {
+      throw const FormatException('framed media block is short');
+    }
+    final block = decompressMediaBlock(compressed);
+    _lastBlock = (index: i, bytes: block);
+    return block;
+  }
+
+  int _readDecoded(
+    int Function(Uint8List, int, int) readFrom,
+    Uint8List buffer,
+    int position,
+    int size,
+  ) {
     final index = header;
     final range = index.blocksFor(position, size);
     if (range == null) {
@@ -459,12 +554,7 @@ class MediaFramedBytes extends MediaByteSource {
     }
     var wrote = 0;
     for (var i = range.first; i <= range.last; i += 1) {
-      final compressed = Uint8List(index.blockLengths[i]);
-      final got = readStored(compressed, index.offsetOf(i), compressed.length);
-      if (got < compressed.length) {
-        throw const FormatException('framed media block is short');
-      }
-      final block = decompressMediaBlock(compressed);
+      final block = _block(i, readFrom);
       // Where this block sits in the FILE, intersected with what was
       // asked for. The first block usually starts before `position` and
       // the last usually runs past the end of the request.
@@ -537,8 +627,11 @@ class MediaAppFileBytes extends MediaByteSource {
   String? get wholeFilePath => framed ? null : path;
 
   @override
+  MediaWindowReader openWindowReader() => _FileWindowReader(path);
+
+  @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
-      _readFileWindowSync(path, position, buffer, size);
+      _readOnce(openWindowReader(), buffer, position, size);
 
   @override
   bool existsSync() => File(path).existsSync();
@@ -640,4 +733,21 @@ Future<T?> openOnHeldBytes<T extends Object>(
     return null;
   }
   return keep(opened, held.release);
+}
+
+/// [MediaFramedBytes.openWindowReader]'s reader: the framed source's own
+/// decoding, fed from a reader of its stored bytes that stays open.
+final class _FramedWindowReader implements MediaWindowReader {
+  _FramedWindowReader(this._framed, this._readStored, this._close);
+
+  final MediaFramedBytes _framed;
+  final int Function(Uint8List, int, int) _readStored;
+  final void Function() _close;
+
+  @override
+  int readIntoSync(Uint8List buffer, int position, int size) =>
+      _framed._readDecoded(_readStored, buffer, position, size);
+
+  @override
+  void close() => _close();
 }

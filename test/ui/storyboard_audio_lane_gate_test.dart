@@ -69,8 +69,8 @@ Project _project() => Project(
               length: 4,
             ),
           },
-          audioClips: const [
-            AudioClip(filePath: 'a.wav', frameId: FrameId('agate-cel-sound')),
+          audioClips: [
+            AudioClip(filePath: 'a.wav', frameId: const FrameId('agate-cel-sound')),
           ],
         ),
         // Slot 1 (S2): nothing imported.

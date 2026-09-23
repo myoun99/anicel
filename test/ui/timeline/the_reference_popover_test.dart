@@ -380,7 +380,7 @@ void main() {
 
   test('the pool state is where the file\'s bytes live — carried or linked',
       () {
-    const linked = MediaAsset(
+    final linked = MediaAsset(
       path: 'bg.png',
       name: 'bg.png',
       kind: MediaAssetKind.image,

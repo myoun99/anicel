@@ -275,7 +275,11 @@ class MediaPool {
   ///
   /// ⚠️Async because the re-stage below runs in an isolate — see
   /// [MediaStagingStore.stageCarriedBytes].
-  Future<void> relinkMediaAsset(String oldPath, String newPath) async {
+  Future<void> relinkMediaAsset(String pickedOld, String picked) async {
+    // In the pool's one spelling: the pool, the conforms, the fingerprints
+    // and the staging are all keyed by it ([normalizedMediaPath]).
+    final oldPath = normalizedMediaPath(pickedOld);
+    final newPath = normalizedMediaPath(picked);
     _conforms.invalidate(newPath);
     _project.cutCommandCoordinator.relinkMediaAsset(
       oldPath: oldPath,
@@ -316,7 +320,11 @@ class MediaPool {
   /// single form does it: the file behind the path changed, so a conform
   /// fingerprinted against the old one is stale even though the pool entry
   /// now looks correct.
-  void relinkMediaAssets(Map<String, String> moves) {
+  void relinkMediaAssets(Map<String, String> picked) {
+    final moves = {
+      for (final move in picked.entries)
+        normalizedMediaPath(move.key): normalizedMediaPath(move.value),
+    };
     if (moves.isEmpty) {
       return;
     }

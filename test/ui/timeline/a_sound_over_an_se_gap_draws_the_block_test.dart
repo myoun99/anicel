@@ -42,7 +42,7 @@ void main() {
         id: const ProjectId('se-project'),
         name: 'SE',
         createdAt: DateTime.utc(2026, 9, 12),
-        mediaAssets: const [
+        mediaAssets: [
           MediaAsset(path: sound, name: 'door_close', kind: MediaAssetKind.audio),
         ],
         tracks: [

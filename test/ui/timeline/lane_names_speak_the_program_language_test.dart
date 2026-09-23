@@ -48,7 +48,7 @@ void main() {
     frames: [Frame(id: const FrameId('se-f'), duration: 1, strokes: const [])],
     timeline: const {2: TimelineExposure.drawing(FrameId('se-f'), length: 8)},
     audioClips: [
-      const AudioClip(filePath: 'steps.wav', frameId: FrameId('se-f')),
+      AudioClip(filePath: 'steps.wav', frameId: const FrameId('se-f')),
     ],
   );
   final effects = [

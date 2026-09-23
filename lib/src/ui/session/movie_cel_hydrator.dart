@@ -247,16 +247,36 @@ class MovieCelHydrator {
 
 
   /// Closes every movie this opened, each by the reader that opened it.
-  Future<void> dispose() async {
+  Future<void> dispose() {
     _disposed = true;
+    return _closeEveryMovie();
+  }
+
+  /// Lets go of every movie this opened and forgets what each turned out
+  /// to be — for a session whose whole project is about to be REPLACED
+  /// (`PlaybackRig.letGoOfTheProject`).
+  ///
+  /// 🚨Movies are kept by PATH, and a path answers the project's own copy
+  /// ([_holdBytes]): kept across a load, a row of the next project with the
+  /// same path decoded the LAST project's bytes and facts, and that
+  /// project's file stayed open until the app quit (audit 2026-09-24).
+  Future<void> reset() => _closeEveryMovie();
+
+  Future<void> _closeEveryMovie() async {
     final opened = [..._opened.values];
     _opened.clear();
     _facts.clear();
     _decoded.clear();
     for (final document in opened) {
-      final movie = await document;
-      if (movie != null) {
-        await movie.close();
+      // ⚠️Each on its own: one movie that failed to open, or will not
+      // close, must not keep the rest open — and the bytes they hold.
+      try {
+        final movie = await document;
+        if (movie != null) {
+          await movie.close();
+        }
+      } on Object {
+        // Nothing further to put back for that one.
       }
     }
   }

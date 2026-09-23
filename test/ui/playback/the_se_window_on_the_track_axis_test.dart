@@ -43,7 +43,7 @@ void main() {
       start: TimelineExposure.drawing(const FrameId('f'), length: length),
     },
     kind: LayerKind.se,
-    audioClips: const [AudioClip(filePath: '/take.wav', frameId: FrameId('f'))],
+    audioClips: [AudioClip(filePath: '/take.wav', frameId: const FrameId('f'))],
   );
 
   Cut cut(String id, {int duration = 10, int leadingGap = 0}) => Cut(

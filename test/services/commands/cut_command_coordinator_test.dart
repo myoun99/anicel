@@ -1860,7 +1860,7 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      const pool = [MediaAsset(path: '/snd/foot.wav', name: '발소리')];
+      final pool = [MediaAsset(path: '/snd/foot.wav', name: '발소리')];
 
       fixture.coordinator.updateMediaAssets(pool);
       expect(fixture.project.mediaAssets, pool);
@@ -1890,9 +1890,9 @@ void main() {
           0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
           2: const TimelineExposure.drawing(FrameId('f2'), length: 2),
         },
-        audioClips: const [
-          AudioClip(filePath: oldPath, frameId: FrameId('f1')),
-          AudioClip(filePath: '/snd/other.wav', frameId: FrameId('f2')),
+        audioClips: [
+          AudioClip(filePath: oldPath, frameId: const FrameId('f1')),
+          AudioClip(filePath: '/snd/other.wav', frameId: const FrameId('f2')),
         ],
       );
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [seLayer]);
@@ -1905,7 +1905,7 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      fixture.coordinator.updateMediaAssets(const [
+      fixture.coordinator.updateMediaAssets([
         MediaAsset(path: oldPath, name: '발소리'),
         MediaAsset(path: '/snd/other.wav', name: 'other.wav'),
       ]);
@@ -2004,8 +2004,8 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      const clips = [
-        AudioClip(filePath: 'voice.wav', frameId: FrameId('se-voice')),
+      final clips = [
+        AudioClip(filePath: 'voice.wav', frameId: const FrameId('se-voice')),
       ];
 
       fixture.coordinator.updateLayerAudioClips(
@@ -2056,8 +2056,8 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      const clips = [
-        AudioClip(filePath: 'foot.wav', frameId: FrameId('se-foot')),
+      final clips = [
+        AudioClip(filePath: 'foot.wav', frameId: const FrameId('se-foot')),
       ];
 
       fixture.coordinator.updateLayerAudioClips(
@@ -2080,8 +2080,8 @@ void main() {
         kind: LayerKind.se,
         frames: const [],
         timeline: const {},
-        audioClips: const [
-          AudioClip(filePath: 'voice.wav', frameId: FrameId('se-voice')),
+        audioClips: [
+          AudioClip(filePath: 'voice.wav', frameId: const FrameId('se-voice')),
         ],
       );
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [se]);

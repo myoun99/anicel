@@ -158,7 +158,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The pool's entry for [path], or null for a file the pool has not seen.
   MediaAsset? _poolEntryFor(String path) => widget.session.repository
       .requireProject()
-      .mediaAssetByPath(normalizedMediaPath(path));
+      .mediaAssetByPath(path);
 
   void _setSettings(
     Iterable<String> paths,
