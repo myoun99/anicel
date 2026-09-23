@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +26,7 @@ void main() {
 
   Directory tempDirectory() {
     final directory = Directory.systemTemp.createTempSync('png_export_svc');
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     return directory;
   }
 

@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🔑 The percentage has to be REAL.
 ///
@@ -32,13 +33,7 @@ void main() {
     projectPath = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());

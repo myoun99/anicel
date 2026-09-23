@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/session/project_import_doors.dart';
 
 import '../helpers/fake_pdf_document.dart';
 import '../helpers/solid_png_fixture.dart';
+import '../helpers/temp_dir.dart';
 
 /// The R3b import verbs end to end: a real PNG on disk becomes a layer /
 /// cut whose cels live in the brush-frame store like drawn ones, with
@@ -33,13 +34,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-import-test');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   // ⚠️[seed] is 0xAARRGGBB and its alpha byte is IGNORED — these fixtures are
   // always opaque and vary the colour only to tell two files apart.

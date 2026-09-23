@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory temp;
@@ -29,11 +30,7 @@ void main() {
 
   tearDown(() {
     AppExport.settings.value = AppExportSettings();
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows can hold a handle a beat.
-    }
+    deleteTempQuietly(temp);
   });
 
   Frame frame(String id) =>

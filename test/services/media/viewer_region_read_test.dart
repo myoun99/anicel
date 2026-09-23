@@ -9,6 +9,7 @@ import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/media/video_viewer_document.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// I-14: a cut reads a BOX of a page at the page's own size
 /// (`ViewerDocument.readRegionRgba`). These pin the real documents' reads:
@@ -38,11 +39,7 @@ void main() {
     tester,
   ) async {
     final dir = Directory.systemTemp.createTempSync('anicel-region-read');
-    addTearDown(() {
-      try {
-        dir.deleteSync(recursive: true);
-      } on Object catch (_) {}
-    });
+    deleteAfterSessionEnds(dir);
     final read = await tester.runAsync(() async {
       final completer = Completer<ui.Image>();
       ui.decodeImageFromPixels(

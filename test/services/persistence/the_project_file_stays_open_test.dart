@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE SESSION HOLDS THE PROJECT FILE, AND LETS GO TO BE SAVED OVER.**
 ///
@@ -26,12 +27,7 @@ void main() {
 
   tearDown(() {
     OpenProjectFile.debugResetForTests();
-    try {
-      scratch.deleteSync(recursive: true);
-    } on Object {
-      // A handle this test failed to release would keep Windows from
-      // deleting the folder; the test that failed is the report.
-    }
+    deleteTempQuietly(scratch);
   });
 
   String write(String name, int fill, {int length = 4096}) {

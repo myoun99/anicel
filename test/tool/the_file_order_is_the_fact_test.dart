@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_check.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★A LATER LINE WITH AN EARLIER STAMP.
 ///
@@ -28,7 +29,7 @@ import '../../tool/board_check.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-order'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   String complaints(List<String> lines) {
     File('${dir.path}/board.jsonl').writeAsStringSync(lines.join('\n'));

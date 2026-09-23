@@ -65,6 +65,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 void main() {
   const side = 32;
@@ -359,11 +360,7 @@ void main() {
     const celSize = CanvasSize(width: tileCount * tileSize, height: tileSize);
     final celBox = Size(celSize.width.toDouble(), celSize.height.toDouble());
     final tempDir = Directory.systemTemp.createTempSync('anicel-ghost-standin');
-    addTearDown(() {
-      try {
-        tempDir.deleteSync(recursive: true);
-      } on Object catch (_) {}
-    });
+    deleteAfterSessionEnds(tempDir);
     final tiles = <TileCoord, BitmapTile>{};
     for (var x = 0; x < tileCount; x += 1) {
       final pixels = Uint8List(tileSize * tileSize * 4);

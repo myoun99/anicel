@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨A QUESTION IS A CARD WITH OPTIONS — not a card whose `kind` is a magic
 /// word (유저 2026-08-31: 「너가 질문으로 옮긴것들, **질문으로 옮김이라는
@@ -21,7 +22,7 @@ import '../../tool/board_model.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-asks'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   List<BoardCard> cardsFrom(List<String> lines) {
     final file = File('${dir.path}/board.jsonl')

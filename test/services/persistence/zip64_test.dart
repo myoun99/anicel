@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// ZIP64 — what happens past the limits a 1989 format was given.
 ///
@@ -24,13 +25,7 @@ void main() {
     temp = Directory.systemTemp.createTempSync('qa_zip64_');
   });
 
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   /// Entries small enough that sixty-six thousand of them is a few
   /// megabytes — the COUNT is what is being tested, never the bytes.

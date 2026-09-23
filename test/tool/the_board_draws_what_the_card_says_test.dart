@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
 import '../../tool/board_server.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★THE FIRST TEST THAT LOOKS AT WHAT THE BOARD DRAWS.
 ///
@@ -21,7 +22,7 @@ import '../../tool/board_server.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-draw'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   String page(List<String> lines) {
     final f = File('${dir.path}/board.jsonl')

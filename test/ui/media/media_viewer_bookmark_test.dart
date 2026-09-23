@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The viewers remember what they were looking at, WITH THE FILM (유저
 /// 확정 ⑤㉑, 2026-08-12): which reference belongs beside which drawing is
@@ -155,13 +156,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('anicel-bookmark'),
     ))!;
-    addTearDown(() {
-      try {
-        dir.deleteSync(recursive: true);
-      } on Object {
-        // Windows keeps handles briefly.
-      }
-    });
+    deleteAfterSessionEnds(dir);
     final loose = File('${dir.path}${Platform.pathSeparator}pose.pdf');
     await tester.runAsync(() async => loose.writeAsBytes(const [1, 2, 3]));
 

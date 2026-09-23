@@ -20,6 +20,7 @@ import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
@@ -31,13 +32,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-import-ui');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   // ⚠️[fill] is ONE BYTE repeated into every channel, alpha included — these
   // tests vary it only to tell two fixtures apart, so the shared writer is

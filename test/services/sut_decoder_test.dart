@@ -9,6 +9,7 @@ import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
+import '../helpers/temp_dir.dart';
 
 /// Builds synthetic Clip Studio brush databases mirroring the real layout
 /// (verified against CSP 1.x/3.x exports): `Node` tool entries, `Variant`
@@ -23,26 +24,7 @@ void main() {
     fixtureIndex = 0;
   });
 
-  tearDown(() async {
-    // Windows keeps a handle on a just-closed sqlite file for a moment,
-    // and a test killed mid-fixture leaves one open outright — a teardown
-    // that throws there REPLACES the real failure with a confusing
-    // "directory is not empty". Retry briefly, the brush-tip library's
-    // pattern.
-    for (var attempt = 0; ; attempt += 1) {
-      try {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-        return;
-      } on FileSystemException {
-        if (attempt >= 20) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDirectory));
 
   /// An effector blob. [curve] appends the response-curve block Clip Studio
   /// writes in the tail: a `12, <point count>, 16, 0, 0, 0, 0` marker at int

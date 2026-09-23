@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The one question both doors ask before a session is torn down:
 /// **will the work survive it?**
@@ -61,13 +62,7 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_unsaved_gate_');
   });
-  tearDown(() {
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(folder));
 
   Future<
     ({

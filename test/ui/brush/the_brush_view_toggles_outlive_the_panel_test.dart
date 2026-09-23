@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨F-73 ① (유저 2026-09-11): 「브러시 탭 그룹 이름이나 스트로크 프리뷰 상태가
 /// 저장안됨. 그룹 이름을 해제하거나 스트로크 이름이랑 프리뷰 해제하고 패널닫고
@@ -110,7 +111,7 @@ void main() {
     final directory = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('brush_view_toggles'),
     ))!;
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = WorkspaceLayoutStore(
       filePath: '${directory.path}/workspace_layout.json',
     );

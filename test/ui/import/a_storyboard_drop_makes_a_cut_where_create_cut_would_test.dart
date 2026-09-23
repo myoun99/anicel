@@ -10,6 +10,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-12: 「타임라인이랑 같은 법으로 프레임영역에 떨구면 프레임
 /// 블록 만들듯이 컷 만들어지도록」. A picture let go on the storyboard's frame
@@ -23,13 +24,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-storyboard-drop');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);

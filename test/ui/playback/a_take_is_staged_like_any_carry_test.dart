@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A TAKE IS A CARRIED ASSET, AND CARRIED ASSETS LIVE IN THE RUN'S
 /// ROOM** (유저 2026-09-08: 「위치를 앱컨테이너/실제파일 이렇게 두군데로만
@@ -48,7 +49,7 @@ void main() {
 
   tearDown(() {
     AppStorage.channelDocumentsPath = previousDocumentsPath;
-    return directory.delete(recursive: true);
+    deleteTempQuietly(directory);
   });
 
   EditorSessionManager session() => EditorSessionManager(

@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/temp_dir.dart';
 
 /// A hydrate that never answers must FAIL here, not hang the suite — the
 /// playback warmer waits on it before every frame, so a hang is a warmer
@@ -72,11 +73,7 @@ void main() {
 
   tearDown(() async {
     debugVideoDecodeBackend = null;
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
+    deleteTempQuietly(tempDir);
   });
 
   EditorSessionManager session() => EditorSessionManager(

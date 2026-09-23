@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/media/image_viewer_document.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The answer to 유저 2026-08-29「한장짜리면 결국 그대로 올라가는건
 /// 어쩔수없는거지?」 — no. A still image is a one-page document that
@@ -32,7 +33,7 @@ void main() {
   late Directory dir;
 
   setUp(() => dir = Directory.systemTemp.createTempSync('image-doc-test'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   test('a still image is a ONE-page document that knows its own size', () async {
     final file = await _writePng(dir, 'a.png', width: 400, height: 300);

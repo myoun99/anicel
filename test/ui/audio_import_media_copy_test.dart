@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/temp_dir.dart';
 
 /// The import's CARRY-or-reference choice, at the file level.
 ///
@@ -28,7 +29,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-media-carry-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager sessionWithFakeConforms() => EditorSessionManager(
     initialProject: createDefaultProject(),

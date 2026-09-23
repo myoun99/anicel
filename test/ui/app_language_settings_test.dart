@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// UI-R10 #7: TWO language settings — program (app chrome) and notation
 /// (what prints on submissions). Defaults: program=en, notation=ja.
@@ -28,23 +29,7 @@ void main() {
 
   test('the store round-trips both settings', () async {
     final directory = await Directory.systemTemp.createTemp('qa-lang');
-    // 🚨CLEANUP IS NOT A RESULT (2026-09-16). Windows keeps a handle on
-    // the file a moment after the last write — the store's own, an
-    // indexer, a scanner — and a tearDown that deleted outright turned
-    // that grip into a red test: a case in this file failed a whole
-    // affected batch with `PathAccessException … errno 32` while other
-    // lanes were gating the same machine, saying nothing about the
-    // product. The delete is still attempted; only its failure is
-    // swallowed, because the temp directory is the OS's to reap.
-    // ⚠️165 more sites wear the old shape — the sweep and its ratchet
-    // are the `temp-dir-teardown-is-not-a-test` card.
-    addTearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
+    deleteAfterSessionEnds(directory);
     final store = AppLanguageSettingsStore(
       filePath: '${directory.path}/language_settings.json',
     );
@@ -62,14 +47,7 @@ void main() {
   test('the session persists changes through the injected store and '
       'restores them on construction', () async {
     final directory = await Directory.systemTemp.createTemp('qa-lang');
-    // Same as above: the cleanup may not fail the test.
-    addTearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
+    deleteAfterSessionEnds(directory);
     final path = '${directory.path}/language_settings.json';
 
     final first = EditorSessionManager(

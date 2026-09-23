@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import '../helpers/project_scratch_folder.dart';
+import '../helpers/temp_dir.dart';
 
 /// UI-R22 #6 / UI-R22F #1: ONE owner decides what a touch contact means
 /// on the timeline — scroll (the PRODUCT default) or edit (the R17-⑥
@@ -43,7 +45,7 @@ void main() {
     expect(AppInputSettings.fromJson(settings.toJson()), settings);
 
     final dir = await Directory.systemTemp.createTemp('input');
-    addTearDown(() => dir.delete(recursive: true));
+    deleteAfterSessionEnds(dir);
     final store = AppInputSettingsStore(
       filePath: '${dir.path}/input_settings.json',
     );
@@ -59,7 +61,7 @@ void main() {
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('wheel-remnant');
     });
-    tearDown(() => dir.delete(recursive: true));
+    tearDown(() => deleteTempQuietly(dir));
 
     AppInputSettingsStore store() =>
         AppInputSettingsStore(filePath: '${dir.path}/input_settings.json');

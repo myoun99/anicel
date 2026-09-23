@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
 import '../../tool/board_server.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★ONE CHECK, ONE BOX — and `send()` reads the first textarea in the
 /// card, which is why two of them was not a tidiness problem.
@@ -23,7 +24,7 @@ import '../../tool/board_server.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('one-box'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   String page(List<String> lines) {
     final f = File('${dir.path}/board.jsonl')

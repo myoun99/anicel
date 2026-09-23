@@ -20,6 +20,7 @@ import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
+import '../helpers/temp_dir.dart';
 
 const _ink = BrushGroupId('ink');
 const _paint = BrushGroupId('paint');
@@ -44,23 +45,7 @@ void main() {
     );
   });
 
-  tearDown(() async {
-    // Every verb persists fire-and-forget, so a write may still hold the
-    // file when the test ends — Windows refuses the delete until it lands.
-    for (var attempt = 0; ; attempt += 1) {
-      try {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-        return;
-      } on FileSystemException {
-        if (attempt >= 20) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDirectory));
 
   /// A library loaded from a seeded file.
   Future<BrushPresetLibrary> seeded({
@@ -317,21 +302,7 @@ void main() {
       tipService = BrushTipLibraryService(directoryPath: tipDirectory.path);
     });
 
-    tearDown(() async {
-      for (var attempt = 0; ; attempt += 1) {
-        try {
-          if (await tipDirectory.exists()) {
-            await tipDirectory.delete(recursive: true);
-          }
-          return;
-        } on FileSystemException {
-          if (attempt >= 20) {
-            rethrow;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-        }
-      }
-    });
+    tearDown(() => deleteTempQuietly(tipDirectory));
 
     test('a preset carrying its tip INLINE hands it to the tip library', () async {
       // ⚠️This used to stage a version-4 file and call itself "the migration
@@ -613,23 +584,7 @@ void _exportRoundTripTests() {
     tempDirectory = await Directory.systemTemp.createTemp('brush_export_test');
   });
 
-  tearDown(() async {
-    // Same retry as the suite's own tearDown: a fire-and-forget persist may
-    // still hold the file, and Windows refuses the delete until it lands.
-    for (var attempt = 0; ; attempt += 1) {
-      try {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-        return;
-      } on FileSystemException {
-        if (attempt >= 20) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDirectory));
 
   BrushPresetLibrary libraryOf({
     required BrushPresetFileService service,

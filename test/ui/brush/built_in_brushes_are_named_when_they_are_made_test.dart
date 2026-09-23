@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   void speak(AppLanguage language) =>
@@ -31,21 +32,7 @@ void main() {
     });
     tearDown(() async {
       AppText.settings.value = const AppLanguageSettings();
-      // Every verb persists fire-and-forget, so a write may still hold the
-      // file when the test ends — Windows refuses the delete until it lands.
-      for (var attempt = 0; ; attempt += 1) {
-        try {
-          if (await directory.exists()) {
-            await directory.delete(recursive: true);
-          }
-          return;
-        } on FileSystemException {
-          if (attempt >= 20) {
-            rethrow;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-        }
-      }
+      deleteTempQuietly(directory);
     });
     return () => directory;
   }

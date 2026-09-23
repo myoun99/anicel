@@ -5,6 +5,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/save_crash_replay.dart';
+import '../../helpers/temp_dir.dart';
 
 /// deleting-save-compacts-Q1 (유저 2026-09-23): 「한 번에 밀어 내리기 — 떼기
 /// 커밋 → 구멍 뒤 살아 있는 바이트를 구멍으로 → 꼬리 자르기」.
@@ -19,7 +20,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-pack');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   Uint8List filled(int length, int seed) => Uint8List.fromList(
     List<int>.generate(length, (i) => (i * seed + 7) & 0xFF),

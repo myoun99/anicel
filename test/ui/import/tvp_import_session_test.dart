@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../models/import/tvpp_test_builder.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
+import '../../helpers/temp_dir.dart';
 
 /// An import through the SESSION, which is where the ids come from.
 ///
@@ -33,7 +34,7 @@ void main() {
 
   late Directory temp;
   setUp(() => temp = Directory.systemTemp.createTempSync('tvpp-session'));
-  tearDown(() => temp.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(temp));
 
   String writeTvpp() {
     final b = TvppBuilder();

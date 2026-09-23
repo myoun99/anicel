@@ -6,6 +6,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// §6-t: rasterizing a reference layer drops the asset registration only
 /// when NOTHING ELSE references its path. The last referrer's rasterize
@@ -23,13 +24,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-rasterize-test');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) => writeSolidPng(tempDir, name);
 

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
 import '../../tool/board_say.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★A CARD THAT HAS ENDED DOES NOT TAKE A NEW SUBJECT.
 ///
@@ -25,7 +26,7 @@ import '../../tool/board_say.dart';
 void main() {
   Map<String, String> endedFrom(List<String> lines) {
     final d = Directory.systemTemp.createTempSync('ended');
-    addTearDown(() => d.deleteSync(recursive: true));
+    deleteAfterSessionEnds(d);
     File('${d.path}/board.jsonl').writeAsStringSync(lines.join('\n'));
     return endedCards(readBoard(File('${d.path}/board.jsonl')));
   }

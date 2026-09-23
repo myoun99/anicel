@@ -15,6 +15,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'helpers/native_engine_path.dart';
+import 'helpers/temp_dir.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///
@@ -130,7 +131,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // THE WHOLE POINT.** package:test runs every `addTearDown` callback
   // before any `tearDown`. Written as a plain `tearDown` here this is the
   // OUTERMOST one, so it ran dead last — after each suite's own
-  // `tearDown(() => directory.delete(recursive: true))`, which is the
+  // `tearDown(() => deleteTempQuietly(directory))`, which is the
   // exact line it exists to unblock (five suites failed that way with
   // errno 32). Registered from `setUp` it lands in the earlier phase and
   // gets there first.
@@ -145,10 +146,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   try {
     await testMain();
   } finally {
-    try {
-      sandbox.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(sandbox);
   }
 }

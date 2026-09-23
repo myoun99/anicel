@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The incremental append's claim — "my bytes are already in this file" —
 /// is VERIFIED against the file, not assumed from the path.
@@ -37,7 +38,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-claims');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String project, String frame) => BrushFrameKey(
     projectId: ProjectId(project),

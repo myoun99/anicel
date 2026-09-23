@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**WHAT `conform-in-project` = always ACTUALLY BUYS.**
 ///
@@ -31,13 +32,7 @@ void main() {
     root = Directory.systemTemp.createTempSync('anicel_carried_conform');
   });
 
-  tearDown(() {
-    try {
-      root.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(root));
 
   Float32List ramp(int frames) {
     final out = Float32List(frames);

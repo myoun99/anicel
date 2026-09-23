@@ -9,6 +9,7 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**COMPRESSING THE CONFORM MUST NOT MOVE ONE SAMPLE.**
 ///
@@ -35,7 +36,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-conform-framed');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   /// Stereo audio whose VALUE encodes its position, so a window read from
   /// the wrong offset cannot accidentally look right.

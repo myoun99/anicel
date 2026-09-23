@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THIS MOVES SOMEBODY'S SETTINGS. IT NEVER DELETES.**
 ///
@@ -23,13 +24,7 @@ void main() {
     container = Directory.systemTemp.createTempSync('qa_settings_room');
   });
 
-  tearDown(() {
-    try {
-      container.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(container));
 
   String root() => container.path.replaceAll(r'\', '/');
   File at(String name) => File('${root()}/$name');

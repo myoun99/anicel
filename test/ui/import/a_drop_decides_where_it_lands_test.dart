@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -40,13 +41,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-drop-spot');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);

@@ -7,6 +7,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**EVERY MOVIE THAT IS OPEN STAYS OPEN.**
 ///
@@ -53,7 +54,7 @@ void main() {
       return null;
     }
     final directory = Directory.systemTemp.createTempSync('qa_two');
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
 
     String write(String name, int red, int blue) {
       final path = '${directory.path}${Platform.pathSeparator}$name';

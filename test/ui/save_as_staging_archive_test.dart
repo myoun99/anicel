@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/temp_dir.dart';
 
 /// The Save As staging writer (실측 iPhone+Drive, 08-26): what the export
 /// picker places must already BE the project. A never-saved project used
@@ -32,13 +33,7 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_stage_archive_');
   });
-  tearDown(() {
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(folder));
 
   test('🚨 a NEVER-saved session stages a complete archive and keeps every '
       'ref to itself — deleting the copy costs nothing', () async {

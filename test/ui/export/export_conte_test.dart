@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
 import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The Conte export tab (work-order step 6): the picture conte as one
 /// VECTOR PDF (embedded OFL fonts, per-run JP/KR fallback) or as page
@@ -41,11 +42,7 @@ void main() {
 
   tearDown(() {
     AppExport.settings.value = AppExportSettings();
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows may hold a handle a beat; leaking a temp dir beats failing.
-    }
+    deleteTempQuietly(temp);
   });
 
   Layer storyboardLayer(String cutId, Map<int, int> divisions) => Layer(

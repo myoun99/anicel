@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/temp_dir.dart';
 
 /// Appending media without holding it.
 ///
@@ -17,13 +18,7 @@ void main() {
   late Directory temp;
 
   setUp(() => temp = Directory.systemTemp.createTempSync('qa_stream_'));
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   /// A minimal .anicel with one entry, to append onto.
   String seedArchive() {

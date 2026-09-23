@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/color_palette_file_service.dart';
+import '../helpers/project_scratch_folder.dart';
 
 void main() {
   test('recent colors dedupe to the front and cap at the limit', () {
@@ -25,7 +26,7 @@ void main() {
   test('palette persists through the file service; corrupt files yield '
       'defaults', () async {
     final directory = await Directory.systemTemp.createTemp('palette-test');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final path = '${directory.path}/palette.json';
 
     final service = ColorPaletteFileService(filePath: path);

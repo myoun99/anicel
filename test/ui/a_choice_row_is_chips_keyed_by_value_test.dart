@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 
 import '../helpers/solid_png_fixture.dart';
+import '../helpers/temp_dir.dart';
 
 /// A picker ROW in this app is one law spelled once per value: a chip
 /// keyed `<row>-<value>`, labelled from a per-value table, shown selected
@@ -39,13 +40,7 @@ void main() {
       tempDir = await Directory.systemTemp.createTemp('anicel-choice-row');
     });
 
-    tearDown(() async {
-      try {
-        await tempDir.delete(recursive: true);
-      } on Object {
-        // Windows keeps handles briefly.
-      }
-    });
+    tearDown(() => deleteTempQuietly(tempDir));
 
     Future<String> writePng(String name) =>
         writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);

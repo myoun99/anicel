@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_fingerprint_ledger.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The fingerprint's LIFE: recorded for free, kept out of the project,
 /// written to the file, and read back pointing at the right asset.
@@ -29,13 +30,7 @@ void main() {
     projectPath = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager session() =>
       EditorSessionManager(initialProject: createDefaultProject());

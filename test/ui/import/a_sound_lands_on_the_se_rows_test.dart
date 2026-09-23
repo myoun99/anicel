@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨A SOUND ON THE TIMELINE GOES TO THE SE ROWS (유저 2026-09-11, 미디어 배치
 /// 라운드 6: 「SE1부터 시작해서 뒤든 앞이든 겹치지 않는, 공간이 존재하는
@@ -38,13 +39,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-sound-rows');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   /// [seconds] of a quiet tone, written as the conform's own WAV.
   Future<String> writeSound(String name, double seconds) async {

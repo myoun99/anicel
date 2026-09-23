@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_server.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★AN EXE IS MADE OF MORE THAN ITS ENTRY FILE.
 ///
@@ -28,7 +29,7 @@ import '../../tool/board_server.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('exe-src'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   File write(String name, String body) =>
       File('${dir.path}/$name')..writeAsStringSync(body);

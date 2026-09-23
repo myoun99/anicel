@@ -19,6 +19,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE PROJECT FILE CAN VANISH WHILE THE PROJECT IS OPEN.**
 ///
@@ -44,7 +45,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-vanished');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String project, String frame) => BrushFrameKey(
     projectId: ProjectId(project),

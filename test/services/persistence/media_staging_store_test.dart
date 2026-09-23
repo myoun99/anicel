@@ -7,6 +7,7 @@ import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**품기 HOLDS THE BYTES FROM THE MOMENT IT IS PRESSED.**
 ///
@@ -27,11 +28,7 @@ void main() {
     store = MediaStagingStore(directoryPath: '${root.path}/Staged');
   });
 
-  tearDown(() {
-    if (root.existsSync()) {
-      root.deleteSync(recursive: true);
-    }
-  });
+  tearDown(() => deleteTempQuietly(root));
 
   /// A source file with compressible content.
   String sourceFile(String name, {int length = 200 * 1024}) {

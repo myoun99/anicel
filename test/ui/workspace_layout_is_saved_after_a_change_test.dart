@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// THE WORKSPACE LAYOUT IS SAVED AFTER A CHANGE — MEASURED.
 ///
@@ -26,7 +27,7 @@ void main() {
     final directory = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('layout_save'),
     ))!;
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = WorkspaceLayoutStore(
       filePath: '${directory.path}/workspace_layout.json',
     );

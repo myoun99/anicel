@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 
+import 'temp_dir.dart';
+
 /// Removes [directory] once the test is over, ending the session's hold on
 /// the `.anicel` inside it first.
 ///
@@ -19,9 +21,12 @@ import 'package:anicel/src/services/persistence/open_project_file.dart';
 /// has to be part of THIS callback rather than a corpus-wide `tearDown`:
 /// `addTearDown` callbacks all run before any `tearDown`, so a global one
 /// fires long after the delete it was meant to unblock.
+///
+/// The delete itself is [deleteTempQuietly]'s: cleaning up is not the
+/// test's result, so a handle the OS still holds must not fail it.
 void deleteAfterSessionEnds(Directory directory) {
   addTearDown(() {
     OpenProjectFile.instance.release();
-    return directory.delete(recursive: true);
+    deleteTempQuietly(directory);
   });
 }

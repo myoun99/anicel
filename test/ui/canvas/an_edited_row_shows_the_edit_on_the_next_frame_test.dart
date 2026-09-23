@@ -24,6 +24,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/temp_dir.dart';
 
 /// H27 — 「이전 변형하기 전 그림이 남아있었음」.
 ///
@@ -80,11 +81,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('anicel-h27');
   });
 
-  tearDown(() {
-    try {
-      tempDir.deleteSync(recursive: true);
-    } on Object catch (_) {}
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   BitmapSurface filledSurface({
     required int r,

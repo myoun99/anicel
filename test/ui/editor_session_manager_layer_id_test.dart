@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/temp_dir.dart';
 
 /// Layer ids have to be unique across the project a session is editing, and
 /// the session mints them from a counter that starts at 1.
@@ -28,7 +29,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-layer-id');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   List<LayerId> everyLayerId(EditorSessionManager session) => [
     for (final track in session.repository.requireProject().tracks)

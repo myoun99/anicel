@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/models/app_workspace_colors.dart';
 
 import '../../helpers/library_source.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The EIGHT app-level settings families the session hands to
 /// `EditorAppSettings`: each has to be persisted through ITS OWN injected
@@ -54,7 +55,7 @@ void main() {
   test('every settings family crosses a session boundary through its own '
       'injected store', () async {
     final directory = await Directory.systemTemp.createTemp('qa-app-settings');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     const names = [
       'lang',
       'accent',

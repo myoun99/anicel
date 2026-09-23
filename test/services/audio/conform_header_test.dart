@@ -6,6 +6,7 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE CONFORM STOPPED WEARING A WAV, AND NOTHING ELSE MOVED.**
 ///
@@ -31,13 +32,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('qa-conform-header');
   });
 
-  tearDown(() {
-    try {
-      dir.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(dir));
 
   var next = 0;
 

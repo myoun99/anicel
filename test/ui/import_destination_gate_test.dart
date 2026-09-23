@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/import_landing.dart';
 import '../helpers/fake_pdf_document.dart';
 import '../helpers/psd_fixture.dart';
 import '../helpers/solid_png_fixture.dart';
+import '../helpers/temp_dir.dart';
 
 /// ⛔THE DESTINATION GATE IS ONE LAW, SO IT IS ONE OBJECT.
 ///
@@ -33,13 +34,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-gate-test');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0x000000FF);

@@ -5,6 +5,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/save_crash_replay.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🗣️유저 2026-09-23: 「전부 재사용으로 하고싶은데 거기서 저장중 크래시만
 /// 어떻게 안전책 만들수없나?」 — every dead byte reused, and a save that
@@ -24,7 +25,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-dies');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   Uint8List filled(int length, int seed) => Uint8List.fromList(
     List<int>.generate(length, (i) => (i * seed + 7) & 0xFF),

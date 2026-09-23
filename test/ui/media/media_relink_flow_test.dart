@@ -7,6 +7,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_relink_flow.dart';
+import '../../helpers/temp_dir.dart';
 
 /// RELINK-2's flow, driven whole — no test reached it before, which is how
 /// its grant leak lived: the folder the user pointed at was picked with the
@@ -22,11 +23,7 @@ void main() {
   });
   tearDown(() {
     FolderPicker.debugFolderPicker = null;
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(folder);
   });
 
   testWidgets('relink keeps the grant it just took, and takes it before '

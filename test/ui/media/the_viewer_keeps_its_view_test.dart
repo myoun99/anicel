@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// F-39 — 유저 2026-08-27: 「뷰어패널이나 캔버스베이스패널? 확대나 팬 상태같은게
 /// 저장안되는거같음. 뭐냐면 확대해두고 패널 닫고 다시열면 초기화되있음. 다시
@@ -36,9 +37,7 @@ void main() {
     PdfRenderService.debugResetForTests();
     slot.dispose();
     session.dispose();
-    try {
-      dir.deleteSync(recursive: true);
-    } on Object catch (_) {}
+    deleteTempQuietly(dir);
   });
 
   Widget host() => MaterialApp(

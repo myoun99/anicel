@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// UI-R22 #5: the program accent is customizable and persists.
 ///
@@ -62,7 +63,7 @@ void main() {
 
   test('the store round-trips through its json file', () async {
     final dir = await Directory.systemTemp.createTemp('accents');
-    addTearDown(() => dir.delete(recursive: true));
+    deleteAfterSessionEnds(dir);
     final store = AppAccentSettingsStore(
       filePath: '${dir.path}/accent_settings.json',
     );

@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨THE COLUMN LAW of the import/placement window (유저 2026-09-11, 미디어
 /// 배치 라운드 5·6): a column stands only when some row of THIS window has
@@ -24,13 +25,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-columns');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);

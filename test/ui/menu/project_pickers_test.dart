@@ -7,6 +7,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
     show anicelProjectSuffix;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import '../../helpers/temp_dir.dart';
 
 /// PICK-6: the project open and Save-As flows, now that a project is ONE
 /// file.
@@ -32,11 +33,7 @@ void main() {
     FolderPicker.debugFilePicker = null;
     FolderPicker.debugFileExporter = null;
     FolderPicker.debugSaveDestinationPicker = null;
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(folder);
   });
 
   /// What the last file pick was told to accept — the argument

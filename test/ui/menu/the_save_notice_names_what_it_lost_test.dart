@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★THE SAVE'S NOTICE SAYS WHICH PICTURES IT COULD NOT CARRY
 /// (C-save-percent).
@@ -63,11 +64,7 @@ void main() {
     FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugFileExporter = null;
     session.dispose();
-    try {
-      placedFolder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(placedFolder);
   });
 
   testWidgets('🚨the notice names each picture — a drawing by its cut, row '

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory temp;
@@ -14,13 +15,7 @@ void main() {
     path = '${temp.path}/audio_sync_settings.json';
   });
 
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   test('a saved offset comes back', () async {
     final store = AudioSyncSettingsStore(filePath: path);

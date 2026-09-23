@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🔑 THE WIRING — the part the user actually presses.
 ///
@@ -25,13 +26,7 @@ void main() {
     directory = Directory.systemTemp.createTempSync('qa-save-progress-ui-');
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   /// Runs [action] inside a real Navigator + ScaffoldMessenger, which the
   /// window and the error notice both need, and answers whether the window

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/temp_dir.dart';
 
 /// F-142 · F-141 (유저 2026-09-16).
 ///
@@ -27,9 +28,7 @@ void main() {
     FolderPicker.debugDownloadRequester = null;
     FolderPicker.debugCoordinatedReader = null;
     FolderPicker.debugOperatingSystem = null;
-    if (temp.existsSync()) {
-      temp.deleteSync(recursive: true);
-    }
+    deleteTempQuietly(temp);
   });
 
   String at(String name) => '${temp.path}${Platform.pathSeparator}$name';

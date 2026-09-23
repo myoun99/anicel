@@ -10,6 +10,7 @@ import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/media_pool.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**품기 END TO END: THE ORIGINAL GOES AWAY AND THE PROJECT STILL
 /// HAS IT.**
@@ -43,9 +44,7 @@ void main() {
 
   tearDown(() {
     session.dispose();
-    if (root.existsSync()) {
-      root.deleteSync(recursive: true);
-    }
+    deleteTempQuietly(root);
   });
 
   /// A file that compresses, so the framed path is the one under test.

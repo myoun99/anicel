@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/native_engine_path.dart';
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory temp;
@@ -48,11 +49,7 @@ void main() {
 
   tearDown(() {
     AppExport.settings.value = AppExportSettings();
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows may hold a handle a beat; leaking a temp dir beats failing.
-    }
+    deleteTempQuietly(temp);
   });
 
   // Cels are numbered by their frame NAME (an unnamed frame is the

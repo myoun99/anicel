@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/temp_dir.dart';
 
 /// 실측 (08-26, iPhone + Google Drive): a File Provider can refuse plain
 /// in-place writes outright. The save's fallback writes the whole archive
@@ -26,11 +27,7 @@ void main() {
     FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugCoordinatedReplacer = null;
     FolderPicker.debugCoordinatedToucher = null;
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
+    deleteTempQuietly(folder);
     // The fallback deliberately leaves its staging file for the run's room
     // to take at exit; a test must not leave it for the NEXT test.
     final staged = Directory(SessionScratch.stagedFolder());

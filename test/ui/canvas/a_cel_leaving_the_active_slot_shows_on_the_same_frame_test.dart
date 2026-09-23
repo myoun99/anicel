@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
 /// (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
@@ -80,11 +81,7 @@ void main() {
     tempDir = Directory.systemTemp.createTempSync('anicel-leaving-the-slot');
   });
 
-  tearDown(() {
-    try {
-      tempDir.deleteSync(recursive: true);
-    } on Object catch (_) {}
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   /// A store whose [layers] are each one blue, FILE-BACKED cel of eight
   /// tiles — file-backed because `storeBakedSurface` alone registers pixels

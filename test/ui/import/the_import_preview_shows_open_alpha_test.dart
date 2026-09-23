@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/canvas/paper_background.dart'
 import 'package:anicel/src/ui/import/import_preview.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨Open alpha in the import window reads as the app's ONE checker — the
 /// export preview's own (유저 2026-09-11: 「임포트의 미리보기에서 배경이
@@ -21,17 +22,11 @@ void main() {
     final dir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('anicel-preview'),
     );
-    addTearDown(() async {
-      try {
-        await dir!.delete(recursive: true);
-      } on Object {
-        // Windows keeps handles briefly.
-      }
-    });
+    deleteAfterSessionEnds(dir!);
     // Every pixel fully transparent: nothing but the checker should show.
     final path = await tester.runAsync(
       () => writeSolidPng(
-        dir!,
+        dir,
         'open.png',
         width: 4,
         height: 4,

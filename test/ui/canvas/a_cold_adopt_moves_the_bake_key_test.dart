@@ -22,6 +22,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 유저 2026-08-27, iPhone (H27 잔여): 「**변형툴의 외곽에만** 그림이 남음 …
 /// 변형중에는 해당 그림 사라지고 … 이전에 확정했던게 존재하고 변형중이 아닌
@@ -61,11 +62,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('anicel-bake-key');
   });
 
-  tearDown(() {
-    try {
-      dir.deleteSync(recursive: true);
-    } on Object catch (_) {}
-  });
+  tearDown(() => deleteTempQuietly(dir));
 
   BrushFrameStore drawnStore() {
     final tiles = <TileCoord, BitmapTile>{};

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨ONE PARSE, TWO BYTE SOURCES.
 ///
@@ -24,13 +25,7 @@ void main() {
     temp = Directory.systemTemp.createTempSync('qa_zip_two_sources_');
   });
 
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   /// Every field of every entry, in order — an equality that fails on a
   /// single wrong offset rather than on a count.

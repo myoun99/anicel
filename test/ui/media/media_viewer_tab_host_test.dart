@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
 /// canvas shell, page stepping, and the honest refusals. The PDF renderer
@@ -402,13 +403,7 @@ void main() {
     final tempDir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('anicel-viewer'),
     ))!;
-    addTearDown(() async {
-      try {
-        await tempDir.delete(recursive: true);
-      } on Object {
-        // Windows keeps handles briefly.
-      }
-    });
+    deleteAfterSessionEnds(tempDir);
     await pumpViewer(tester);
 
     final path = await tester.runAsync(
