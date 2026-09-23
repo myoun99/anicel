@@ -42,6 +42,7 @@ import '../../helpers/temp_dir.dart';
 /// `media_carried_read_side_test`).
 void main() {
   late Directory directory;
+  late _ReadingVideoBackend movies;
 
   setUp(() {
     directory = Directory.systemTemp.createTempSync('anicel-viewer-carries');
@@ -53,7 +54,7 @@ void main() {
       }
       return FakePdfDocument(pageSizes: const [ui.Size(8, 8)]);
     };
-    debugVideoDecodeBackend = _ReadingVideoBackend();
+    debugVideoDecodeBackend = movies = _ReadingVideoBackend();
   });
 
   tearDown(() {
@@ -214,6 +215,69 @@ void main() {
       );
     });
   }
+
+  // ⏸INTERIM — board `carried-movie-compressed-Q1`. A movie kept COMPRESSED
+  // has no decoder that reads it where it lies, so the viewer reads the
+  // original while there is one, exactly as it did before 2026-09-24.
+  group('a carried movie kept COMPRESSED', () {
+    /// A session carrying a movie whose staged copy is FRAMED — the shape a
+    /// 6.7%-smaller MP4 takes — with its original beside it.
+    Future<({EditorSessionManager session, String path})> framed() async {
+      final path = normalizedMediaPath(
+        await _written(directory, 'take.mp4', [
+          ..._movieMagic.codeUnits,
+          for (final byte in _noise(512)) byte,
+        ]),
+      );
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject().copyWith(
+          mediaAssets: [
+            MediaAsset(
+              path: path,
+              name: 'take',
+              kind: MediaAssetKind.video,
+              carried: true,
+            ),
+          ],
+        ),
+        mediaStagingStore: MediaStagingStore(
+          directoryPath: '${directory.path}/Staged',
+        ),
+        audioConformStore: soundConformStore(),
+      );
+      addTearDown(session.dispose);
+      final staged = File(
+        session.mediaStagingStore.pathFor(path, framed: true),
+      );
+      staged.parent.createSync(recursive: true);
+      staged.writeAsBytesSync(const [0, 1, 2, 3]);
+      return (session: session, path: path);
+    }
+
+    testWidgets('opens from its original while the original is there', (
+      tester,
+    ) async {
+      final (:session, :path) = (await tester.runAsync(framed))!;
+
+      await view(tester, session, path, MediaAssetKind.video);
+
+      expect(page(), findsOneWidget);
+      expect(movies.openedAt.single.path, path);
+    });
+
+    testWidgets('and without it says the movie is only read in place', (
+      tester,
+    ) async {
+      final (:session, :path) = (await tester.runAsync(framed))!;
+      File(path).deleteSync();
+
+      await view(tester, session, path, MediaAssetKind.video);
+
+      expect(page(), findsNothing);
+      expect(find.textContaining('read in place'), findsOneWidget);
+      expect(movies.openedAt, isEmpty, reason: 'never handed to a decoder');
+    });
+  });
 }
 
 const _pdfMagic = '%PDF-';

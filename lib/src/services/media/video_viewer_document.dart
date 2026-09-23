@@ -8,6 +8,13 @@ import 'media_byte_source.dart';
 import 'video_decode_worker.dart';
 import 'viewer_document.dart';
 
+/// Whether a movie decoder can be pointed at [source] where it lies — a file
+/// of its own, or a plain stretch of one. A movie kept FRAMED cannot: the OS
+/// decoders read the container's own bytes, never the app's blocks (board
+/// `carried-movie-compressed`).
+bool movieReadInPlace(MediaByteSource source) =>
+    source.wholeFilePath != null || source.range != null;
+
 /// A movie, as a [ViewerDocument]: one page per FRAME.
 ///
 /// 유저 2026-08-29: 「비디오 지금 불러오는거 못하니까 불러와서 재생가능하게
@@ -62,14 +69,14 @@ final class VideoViewerDocument implements ViewerDocument {
   /// would be the exact lie this function was just fixed for. So is a movie
   /// kept FRAMED (compressed in blocks): no decoder reads it in place.
   static Future<VideoViewerDocument?> open(MediaByteSource source) async {
-    final file = source.wholeFilePath;
-    final stretch = source.range;
-    if (file == null && stretch == null) {
+    if (!movieReadInPlace(source)) {
       throw const ViewerDocumentException(
         'that movie is kept compressed in the project, and a movie is only '
         'read in place',
       );
     }
+    final file = source.wholeFilePath;
+    final stretch = source.range;
     final path = file ?? stretch!.path;
     final range = file != null
         ? null

@@ -1,5 +1,6 @@
 import '../widgets/empty_state_text.dart';
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -712,7 +713,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       case MediaAssetKind.pdf:
         return _openOnItsBytes(request.path, PdfRenderService.open);
       case MediaAssetKind.video:
-        return _openOnItsBytes(request.path, VideoViewerDocument.open);
+        return _openOnItsBytes(
+          request.path,
+          (source) => VideoViewerDocument.open(
+            _compressedMovieFromItsOriginal(source, request.path),
+          ),
+        );
       case MediaAssetKind.audio:
         // 🪦This used to read 「Sound has no picture — the one medium that
         // stays absent」. 유저 2026-09-08: 「오디오파일도 열려야하고 …
@@ -767,6 +773,21 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     return HeldViewerDocument(document, held.release);
   }
+
+  /// ⏸**INTERIM, until board `carried-movie-compressed-Q1` is answered.** A
+  /// carried movie kept COMPRESSED has no reader that decodes it where it
+  /// lies ([movieReadInPlace]), so while the file it came from is still
+  /// there, that file is read instead — what this viewer did for every
+  /// carried movie before 2026-09-24. Without it, the movie says why it
+  /// cannot be read, as it did.
+  /// ⚠️The one place the viewer still prefers an original to the project's
+  /// own copy (「품은 순간 … 불변」) — which is exactly what the card asks.
+  MediaByteSource _compressedMovieFromItsOriginal(
+    MediaByteSource source,
+    String path,
+  ) => movieReadInPlace(source) || !File(path).existsSync()
+      ? source
+      : MediaFileBytes(path);
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------
 
