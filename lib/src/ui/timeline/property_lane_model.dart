@@ -405,17 +405,6 @@ class PropertyLaneEditCallbacks {
   onSetValue;
 }
 
-/// Builds the grid's display rows: every layer row, plus the property lane
-/// rows of layers whose twirl-down is expanded. Sections listed in
-/// [hiddenSections] contribute NO rows at all (the toolbar's SE/CAMERA
-/// visibility toggles — the layers themselves are untouched); both
-/// orientations consume the same policy (Axis rule).
-///
-/// [rowFilter] additionally hides individual layer rows failing its
-/// predicate (R2 row filter, a VIEW state); [activeLayerId] is exempt so a
-/// filter can never hide the layer you're editing. [fxEnabledOf] resolves
-/// the session-level fx state the filter's fx-only facet reads.
-///
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
 /// the subtree members' exposure intervals merged into runs. Pure display
 /// — nameless, no comma edits, no moves.
@@ -475,10 +464,81 @@ PropertyLaneRow previewedLaneRow({
   return committed;
 }
 
-/// [collapsedAttachBaseIds] folds ATTACH GROUPS (UI-R20 #9): attach rows
-/// whose base is listed contribute no rows — same VIEW-state contract as
-/// the hidden sections, and the active layer is exempt here too (folding
-/// the group never hides the attach row you're working on).
+/// Why a layer's row is OFF THE SCREEN — the one answer the grids draw by
+/// ([buildTimelineDisplayRows]) and the standing law lands by
+/// (`Standing.keepStandingShown`).
+///
+/// 🚨F-169 (유저 2026-09-24): 「보이는거만 선택가능하고 안보이는거 선택되는
+/// 상황엔 다른 보이는레이어 선택하도록」. The rows answered 「which rows show」
+/// with an exemption for whatever stood, and the session's hand-off answered
+/// 「which row stands」 without asking which rows showed — so a delete handed
+/// the standing row into a folded attach group, and the group looked unfolded.
+enum LayerRowHiddenBy {
+  /// Its section is hidden (the toolbar's SE/CAMERA toggles).
+  section,
+
+  /// Its attach group is twirled shut (UI-R20 #9).
+  attachFold,
+
+  /// The row filter refuses it (R2).
+  filter,
+
+  /// A folder above it is collapsed (R27 #24).
+  folderFold,
+}
+
+/// [layer]'s row: null when it is on screen, otherwise the FIRST of the
+/// rail's reasons that hides it, asked in [LayerRowHiddenBy]'s order.
+///
+/// [folders] indexes the MODEL stack and [attachBaseId] is
+/// [attachGroupBaseOf] against it — the row builder needs that base again
+/// for the indent, so it is asked once, outside.
+///
+/// [standingLayerId] is the row the FILTER spares — a filter never hides
+/// the row you are editing ([TimelineRowFilter.allowsRow]). The folds and
+/// the sections spare nothing: ↩️an attach group used to spare its active
+/// row the same way (UI-R20 #9), and that exemption is what put a handed-off
+/// row on the screen inside a shut group (F-169). Nothing stands inside a
+/// fold now — the standing law hands off to the fold's head, or opens it.
+LayerRowHiddenBy? layerRowHiddenBy(
+  Layer layer, {
+  required LayerFolderIndex folders,
+  required LayerId? attachBaseId,
+  Set<TimelineSection> hiddenSections = const {},
+  TimelineRowFilter rowFilter = TimelineRowFilter.none,
+  Set<LayerId> collapsedAttachBaseIds = const {},
+  LayerId? standingLayerId,
+  bool Function(LayerId layerId)? fxEnabledOf,
+}) {
+  if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
+    return LayerRowHiddenBy.section;
+  }
+  if (attachBaseId != null && collapsedAttachBaseIds.contains(attachBaseId)) {
+    return LayerRowHiddenBy.attachFold;
+  }
+  if (!rowFilter.allowsLayerRow(
+    layer,
+    standing: layer.id == standingLayerId,
+    fxEnabled: fxEnabledOf?.call(layer.id) ?? true,
+  )) {
+    return LayerRowHiddenBy.filter;
+  }
+  // R27 #24: a collapsed folder folds ALL its members, the active layer
+  // included. The old active-layer exemption meant folding a folder
+  // whose member was selected simply didn't look folded; the folder row
+  // takes the selection instead (EditorSessionManager.toggleLayerCollapsed).
+  if (folders.subtreeCollapsed(layer.folderId)) {
+    return LayerRowHiddenBy.folderFold;
+  }
+  return null;
+}
+
+/// Builds the grid's display rows: every layer row [layerRowHiddenBy]
+/// leaves on screen, plus the property lane rows of layers whose twirl-down
+/// is expanded. Both orientations consume the same policy (Axis rule).
+///
+/// [activeLayerId] is the row the filter spares; [fxEnabledOf] resolves
+/// the session-level fx state the filter's fx-only facet reads.
 List<TimelineDisplayRow> buildTimelineDisplayRows({
   required List<Layer> layers,
   required Set<LayerId> expandedLayerIds,
@@ -547,27 +607,18 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
         organizerBaseId != pendingLaneBaseId) {
       flushPendingLanes();
     }
-    if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
-      continue;
-    }
     final attachBaseId = attachGroupBaseOf(layer, modelStack);
-    if (attachBaseId != null &&
-        layer.id != activeLayerId &&
-        collapsedAttachBaseIds.contains(attachBaseId)) {
-      continue;
-    }
-    if (!rowFilter.allowsLayerRow(
-      layer,
-      standing: layer.id == activeLayerId,
-      fxEnabled: fxEnabledOf?.call(layer.id) ?? true,
-    )) {
-      continue;
-    }
-    // R27 #24: a collapsed folder folds ALL its members, the active layer
-    // included. The old active-layer exemption meant folding a folder
-    // whose member was selected simply didn't look folded; the folder row
-    // takes the selection instead (EditorSessionManager.toggleLayerCollapsed).
-    if (folders.subtreeCollapsed(layer.folderId)) {
+    if (layerRowHiddenBy(
+          layer,
+          folders: folders,
+          attachBaseId: attachBaseId,
+          hiddenSections: hiddenSections,
+          rowFilter: rowFilter,
+          collapsedAttachBaseIds: collapsedAttachBaseIds,
+          standingLayerId: activeLayerId,
+          fxEnabledOf: fxEnabledOf,
+        ) !=
+        null) {
       continue;
     }
     rows.add(

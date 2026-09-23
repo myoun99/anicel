@@ -196,6 +196,9 @@ class LayerStack {
     // the controller's active layer directly, so none of them went through
     // [selectLayer].
     _standing.seatVerbRowOnActiveLayer();
+    // F-169 ②: you went there, so what the rail's view hides it with opens
+    // (a new SE row in a hidden SE section shows the section).
+    _standing.keepStandingShown(reveal: true);
     _changes.notifyChanged();
   }
 

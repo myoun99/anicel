@@ -2,12 +2,18 @@ import '../../services/editing/active_cut_helpers.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_folder.dart' show attachGroupBaseOf;
+import '../../models/layer_folder.dart'
+    show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
+import '../timeline/property_lane_model.dart'
+    show LayerRowHiddenBy, layerRowHiddenBy;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
+import '../timeline/timeline_section_policy.dart'
+    show timelineSectionForLayerKind;
 import 'playback_rig.dart';
+import 'rail_view.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'visibility_solo.dart';
@@ -44,6 +50,8 @@ class Standing {
     required VisibilitySolo solo,
     required TrackSeDisplay trackSe,
     required RangeSelections rangeSelections,
+    required RailView railView,
+    required bool Function(LayerId layerId) fxEnabledOf,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -54,9 +62,16 @@ class Standing {
        _rowSelectionVerbs = rowSelectionVerbs,
        _solo = solo,
        _trackSe = trackSe,
-       _rangeSelections = rangeSelections;
+       _rangeSelections = rangeSelections,
+       _railView = railView,
+       _fxEnabledOf = fxEnabledOf;
 
   final RangeSelections _rangeSelections;
+
+  /// What the rail leaves off the screen, and the fx answer its filter asks —
+  /// the standing law's two inputs besides the stack ([keepStandingShown]).
+  final RailView _railView;
+  final bool Function(LayerId layerId) _fxEnabledOf;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -560,6 +575,9 @@ class Standing {
     // The cut comes back on the row it was left on; never visited (or the
     // layer is gone — the rebuild's own guard) falls back to the top row.
     _controllers.rebuild(preferredActiveLayerId: nextActiveLayerId);
+    // F-169: the row is the program's pick, not yours — and the rail's view
+    // may have changed since you left it.
+    keepStandingShown(filterSparesStanding: false);
     if (fromGap) {
       // Activating a cut FROM the gap lands on ITS first frame (UI-R10
       // #14): the stale gap-global cursor never leaks into the new cut
@@ -623,34 +641,125 @@ class Standing {
     }
   }
 
-  /// Filter-set hook (UI-R6 #3): when the active layer fails [passes], the
-  /// selection moves to the nearest PASSING layer ABOVE it on screen
-  /// (horizontal display order), falling back to the first passing layer.
-  void moveSelectionToFilteredLayer(bool Function(Layer layer) passes) {
-    final active = _selection.activeLayer;
-    if (active == null || passes(active)) {
+  /// 🚨★★THE STANDING LAW (F-169, 유저 2026-09-24): ①「보이는거만 선택가능하고
+  /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
+  /// 레이어로 이동하면 펼치고 해당 레이어에 서게」.
+  ///
+  /// Asked after everything that can leave the active layer's row off the
+  /// screen — a cut command's rebuild (a delete's hand-off, an undo, a redo),
+  /// a cut switch, a new row, and the rail's own view changes — through the
+  /// same [layerRowHiddenBy] the grids draw by. When the row is hidden:
+  ///   - [reveal]: you WENT there — made the row, or an undo brought you back
+  ///     to it. What the rail's VIEW hides it with opens: its attach group
+  ///     unfolds, its section shows. A folder's fold is the document's, not
+  ///     the view's, and does not open here.
+  ///   - otherwise another row takes the standing: the head of the fold it
+  ///     is in (the attach group's base, the outermost shut folder — the
+  ///     fold law's swallower, R5 #11), else the nearest shown row ABOVE it
+  ///     on screen, else the first shown row (UI-R6 #3's order).
+  ///
+  /// [filterSparesStanding]: a filter never hides the row you are editing
+  /// ([TimelineRowFilter.allowsRow]). False when the PROGRAM picked the row —
+  /// a hand-off, a cut switch — or the filter was just set (UI-R6 #3): an
+  /// exemption is not a way onto the screen.
+  void keepStandingShown({
+    bool reveal = false,
+    bool filterSparesStanding = true,
+  }) {
+    final activeId = _selection.activeLayerId;
+    final stack = _project.layers;
+    final activeIndex = stack.indexWhere((layer) => layer.id == activeId);
+    if (activeIndex == -1) {
       return;
     }
-    final display = horizontalLayerDisplayOrder(_project.layers);
-    final activeIndex = display.indexWhere((layer) => layer.id == active.id);
-    Layer? target;
-    // Screen-up = earlier in horizontal display order.
-    for (var index = activeIndex - 1; index >= 0; index -= 1) {
-      if (passes(display[index])) {
-        target = display[index];
+    final active = stack[activeIndex];
+    final folders = LayerFolderIndex(stack);
+    LayerRowHiddenBy? hiddenBy(Layer layer, {LayerId? spared}) =>
+        layerRowHiddenBy(
+          layer,
+          folders: folders,
+          attachBaseId: attachGroupBaseOf(layer, stack),
+          hiddenSections: _railView.hiddenSections.value,
+          rowFilter: _railView.rowFilter.value,
+          collapsedAttachBaseIds: _railView.collapsedAttachBaseIds.value,
+          standingLayerId: spared,
+          fxEnabledOf: _fxEnabledOf,
+        );
+    if (hiddenBy(active, spared: filterSparesStanding ? active.id : null) ==
+        null) {
+      return;
+    }
+    if (reveal) {
+      _openViewAround(active, stack);
+      if (hiddenBy(active, spared: active.id) == null) {
+        return;
+      }
+    }
+    final standIn = _standInFor(active, stack, folders, hiddenBy);
+    if (standIn != null && standIn.id != active.id) {
+      selectLayer(standIn.id);
+    }
+  }
+
+  /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and
+  /// the attach group it rides unfolds. One write each, only when shut.
+  void _openViewAround(Layer layer, List<Layer> stack) {
+    final section = timelineSectionForLayerKind(layer.kind);
+    final hidden = _railView.hiddenSections.value;
+    if (hidden.contains(section)) {
+      _railView.hiddenSections.value = {...hidden}..remove(section);
+    }
+    final baseId = attachGroupBaseOf(layer, stack);
+    final folded = _railView.collapsedAttachBaseIds.value;
+    if (baseId != null && folded.contains(baseId)) {
+      _railView.collapsedAttachBaseIds.value = {...folded}..remove(baseId);
+    }
+  }
+
+  /// The row that stands in for hidden [layer]: out through the folds that
+  /// swallow it to the first head on screen, else the nearest shown row
+  /// above, else the first shown row. Null when no row is on screen.
+  ///
+  /// Candidates are judged WITHOUT the filter's exemption — none of them is
+  /// standing yet.
+  Layer? _standInFor(
+    Layer layer,
+    List<Layer> stack,
+    LayerFolderIndex folders,
+    LayerRowHiddenBy? Function(Layer layer) hiddenBy,
+  ) {
+    var candidate = layer;
+    // A head is always further out than what it swallows, so the walk ends;
+    // the bound only keeps a malformed stack from spinning.
+    for (var hop = 0; hop <= stack.length; hop += 1) {
+      final Layer? head;
+      switch (hiddenBy(candidate)) {
+        case null:
+          return candidate;
+        case LayerRowHiddenBy.attachFold:
+          final baseId = attachGroupBaseOf(candidate, stack);
+          head = stack.where((row) => row.id == baseId).firstOrNull;
+        case LayerRowHiddenBy.folderFold:
+          head = folders
+              .ancestryOf(candidate.folderId)
+              .where((folder) => folder.collapsed)
+              .lastOrNull;
+        case LayerRowHiddenBy.section || LayerRowHiddenBy.filter:
+          head = null;
+      }
+      if (head == null) {
         break;
       }
+      candidate = head;
     }
-    if (target == null) {
-      for (final layer in display) {
-        if (passes(layer)) {
-          target = layer;
-          break;
-        }
+    final display = horizontalLayerDisplayOrder(stack);
+    final from = display.indexWhere((row) => row.id == candidate.id);
+    // Screen-up = earlier in horizontal display order.
+    for (var index = from - 1; index >= 0; index -= 1) {
+      if (hiddenBy(display[index]) == null) {
+        return display[index];
       }
     }
-    if (target != null) {
-      selectLayer(target.id);
-    }
+    return display.where((row) => hiddenBy(row) == null).firstOrNull;
   }
 }

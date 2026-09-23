@@ -724,9 +724,9 @@ class _WorkspaceTabs {
               _state._showSecondsDisplay,
               _state._expandedLaneLayerIds,
               _state._expandedLaneGroupKeys,
-              _state._hiddenTimelineSections,
-              _state._collapsedAttachBaseIds,
-              _state._timelineRowFilter,
+              _state.widget.session.railView.hiddenSections,
+              _state.widget.session.railView.collapsedAttachBaseIds,
+              _state.widget.session.railView.rowFilter,
             ]),
             builder: (context) => TimelineTabHost(
               session: _state.widget.session,
@@ -802,11 +802,13 @@ class _WorkspaceTabs {
               onToggleLayerLanes: _state._toggleLayerLanes,
               expandedLaneGroupKeys: _state._expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
-              hiddenSections: _state._hiddenTimelineSections.value,
+              hiddenSections:
+                  _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
-              rowFilter: _state._timelineRowFilter.value,
+              rowFilter: _state.widget.session.railView.rowFilter.value,
               onSetRowFilter: _state._setTimelineRowFilter,
-              collapsedAttachBaseIds: _state._collapsedAttachBaseIds.value,
+              collapsedAttachBaseIds:
+                  _state.widget.session.railView.collapsedAttachBaseIds.value,
               onToggleAttachGroup: _state._rail._toggleAttachGroup,
               // Unified layer controls: the camera row's visibility/opacity
               // drive the same camera-view state as the canvas overlay and
@@ -873,7 +875,7 @@ class _WorkspaceTabs {
               // R5 #9: ONE filter across the surfaces — the same state the
               // timeline and the sheet read, so a chip set on one is set
               // wherever the legend appears.
-              rowFilter: _state._timelineRowFilter.value,
+              rowFilter: _state.widget.session.railView.rowFilter.value,
               onSetRowFilter: _state._setTimelineRowFilter,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: (value) {

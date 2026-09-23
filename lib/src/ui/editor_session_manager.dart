@@ -141,6 +141,7 @@ import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
+import 'session/rail_view.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
@@ -661,8 +662,12 @@ class EditorSessionManager extends ChangeNotifier
   bool get canUndo => historyManager.canUndo;
   bool get canRedo => historyManager.canRedo;
 
+  /// What the rail leaves off the screen (sections, the row filter, folded
+  /// attach groups) — held here because the standing law reads it (F-169).
+  late final RailView railView = RailView();
+
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -1092,6 +1097,8 @@ class EditorSessionManager extends ChangeNotifier
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
+    bool reveal = false,
+    bool filterSparesStanding = true,
   }) {
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
@@ -1103,6 +1110,11 @@ class EditorSessionManager extends ChangeNotifier
       preferredFrameIndex:
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
+    );
+    // F-169: wherever the command left you, it is a row on screen.
+    standing.keepStandingShown(
+      reveal: reveal,
+      filterSparesStanding: filterSparesStanding,
     );
     // Layer add/delete/undo may have moved the active row: keep the solo
     // mode following it (or exit if the command switched cuts).
@@ -1231,6 +1243,7 @@ class EditorSessionManager extends ChangeNotifier
     opacityDragPreview.dispose,
     onionSkin.dispose,
     trackFrameRangeSelection.dispose,
+    railView.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     historyManager.dispose,
@@ -1802,9 +1815,20 @@ class EditorSessionManager extends ChangeNotifier
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
     );
+    // F-169, the standing law's two questions. A row the step brought BACK
+    // is where you stood when it went (② 「언두시에 접혀있는 레이어로 이동하면
+    // 펼치고 해당 레이어에 서게」); any other new row is a HAND-OFF — the row
+    // you stood on is gone and the walk picked this one, which the filter's
+    // exemption must not put on the screen (①).
+    final broughtBack =
+        preferredLayerId != null &&
+        beforeLayers.every((layer) => layer.id != preferredLayerId);
     refreshAfterCutCommand(
       preferredActiveLayerId: preferredLayerId,
       preferredFrameIndex: previousFrameIndex,
+      reveal: broughtBack,
+      filterSparesStanding:
+          broughtBack || preferredLayerId == previousActiveLayerId,
     );
     notifyListeners();
   }
@@ -1837,7 +1861,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold, keepStandingShown: standing.keepStandingShown);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);

@@ -861,45 +861,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     const <String>{},
   );
 
-  /// SE/camera timeline sections hidden from the grids (view state —
-  /// survives tab switches, session-only; toggled from the timeline
-  /// toolbar, the retired fold/collapse UI's replacement).
-  final ValueNotifier<Set<TimelineSection>> _hiddenTimelineSections =
-      ValueNotifier(const <TimelineSection>{});
-
-  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9; view state —
-  /// survives tab switches, session-only). Default expanded: a fresh
-  /// attach layer must be visible the moment it's made.
-  final ValueNotifier<Set<LayerId>> _collapsedAttachBaseIds = ValueNotifier(
-    const <LayerId>{},
-  );
+  // The hidden sections, the row filter and the folded attach groups are the
+  // SESSION's (`RailView`, F-169): the standing law reads them.
 
   void _toggleTimelineSection(TimelineSection section) {
-    _hiddenTimelineSections.value = toggledSet(
-      _hiddenTimelineSections.value,
-      section,
-    );
+    final hiddenSections = widget.session.railView.hiddenSections;
+    hiddenSections.value = toggledSet(hiddenSections.value, section);
+    // F-169: hiding the section you stand in hands the standing on.
+    widget.session.standing.keepStandingShown();
   }
 
-  /// The rail's row FILTER (R2 view state): hides layer rows failing its
-  /// predicate; survives tab switches, session-only, never persisted.
-  final ValueNotifier<TimelineRowFilter> _timelineRowFilter = ValueNotifier(
-    TimelineRowFilter.none,
-  );
-
   void _setTimelineRowFilter(TimelineRowFilter filter) {
-    _timelineRowFilter.value = filter;
+    widget.session.railView.rowFilter.value = filter;
     // UI-R6 #3: a non-passing active layer moves to the nearest passing
     // layer above it (instead of lingering through the exemption).
-    if (filter.isActive) {
-      widget.session.standing.moveSelectionToFilteredLayer(
-        (layer) => filter.allowsLayerRow(
-          layer,
-          standing: false,
-          fxEnabled: widget.session.effectsAndFx.isLayerFxEnabled(layer.id),
-        ),
-      );
-    }
+    widget.session.standing.keepStandingShown(filterSparesStanding: false);
   }
 
   /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
@@ -1154,9 +1130,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       activeLayerId: session.activeLayerId,
       currentRow: session.currentRow,
       direction: direction,
-      hiddenSections: _hiddenTimelineSections.value,
-      rowFilter: _timelineRowFilter.value,
-      collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+      hiddenSections: session.railView.hiddenSections.value,
+      rowFilter: session.railView.rowFilter.value,
+      collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
       // R10 #19: property rows are stops now, so the walk needs the same
       // lane list the grids draw.
       expandedLayerIds: _expandedLaneLayerIds.value,
@@ -1403,9 +1379,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
     _expandedLaneGroupKeys.dispose();
-    _hiddenTimelineSections.dispose();
-    _collapsedAttachBaseIds.dispose();
-    _timelineRowFilter.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {

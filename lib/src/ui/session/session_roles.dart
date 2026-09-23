@@ -106,6 +106,8 @@ abstract interface class ChangeSink {
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
+    bool reveal = false,
+    bool filterSparesStanding = true,
   });
   void refreshLiveAudioSchedule();
   bool standsDownFromRetime(LayerId layerId);

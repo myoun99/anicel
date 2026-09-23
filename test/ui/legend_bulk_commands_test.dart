@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
@@ -10,7 +11,7 @@ import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 import 'package:anicel/src/ui/session/opacity_verbs.dart';
 import 'package:anicel/src/ui/session/standing.dart';
 import 'package:anicel/src/ui/session/visibility_solo.dart';
-import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
@@ -337,41 +338,42 @@ void main() {
   });
 
   test('filter engagement moves a FAILING active selection to the nearest '
-      'passing layer above, else the first passing (UI-R6 #3)', () {
+      'passing layer above, else the first passing (UI-R6 #3 — the standing '
+      'law since F-169)', () {
     final s = session();
-    final display = horizontalLayerDisplayOrder(s.layers);
-    expect(
-      display.length,
-      greaterThanOrEqualTo(4),
-      reason: 'fixture: cel + instruction + camera + 2 SE rows',
-    );
-    final activeIndex = display.indexWhere(
-      (layer) => layer.id == s.activeLayerId,
-    );
-    expect(
-      activeIndex,
-      display.length - 1,
-      reason: 'fixture: the drawing cel is the bottom row',
-    );
-
-    // Two passing rows above: the NEAREST above wins.
-    final near = display[activeIndex - 1];
-    final far = display[0];
+    final cel = s.activeLayerId!;
+    final added = <LayerId>[];
+    for (var index = 0; index < 3; index += 1) {
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      added.add(s.activeLayerId!);
+    }
+    // On screen, top down: added[2], added[1], added[0], cel — and above
+    // them the instruction, SE and camera rows, which carry no mark.
+    const key = LayerMark(process: LayerProcess.key);
+    const inbetween = LayerMark(process: LayerProcess.inbetween);
+    marks(s).setLayerMark(added[1], key);
+    marks(s).setLayerMark(added[2], key);
+    marks(s).setLayerMark(cel, inbetween);
     final standing = standingOf(s);
-    standing.moveSelectionToFilteredLayer(
-      (layer) => layer.id == near.id || layer.id == far.id,
-    );
-    expect(s.activeLayerId, near.id);
+    void setFilter(LayerMark mark) {
+      s.railView.rowFilter.value = TimelineRowFilter(markColors: {mark});
+      standing.keepStandingShown(filterSparesStanding: false);
+    }
 
-    // Nothing above the top row: falls back to the first passing anywhere.
-    s.selectLayer(far.id);
-    final below = display[2];
-    s.standing.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
-    expect(s.activeLayerId, below.id);
+    // Two passing rows above, a failing one in between: the NEAREST
+    // passing row wins.
+    s.selectLayer(cel);
+    setFilter(key);
+    expect(s.activeLayerId, added[1]);
+
+    // Nothing passing above: falls back to the first passing anywhere.
+    s.selectLayer(added[2]);
+    setFilter(inbetween);
+    expect(s.activeLayerId, cel);
 
     // A passing active stays put.
-    s.standing.moveSelectionToFilteredLayer((layer) => layer.id == below.id);
-    expect(s.activeLayerId, below.id);
+    setFilter(inbetween);
+    expect(s.activeLayerId, cel);
   });
 
   test('fx bulk bypass/restore writes every row switch', () {
