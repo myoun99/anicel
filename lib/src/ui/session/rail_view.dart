@@ -4,6 +4,10 @@ import '../../models/layer_id.dart';
 import '../timeline/timeline_row_filter.dart';
 import '../timeline/timeline_section_policy.dart';
 
+/// The standing law's shape (`Standing.keepStandingShown`), for the doors
+/// that seat a row outside the session's own rebuild.
+typedef StandingLaw = void Function({bool reveal, bool filterSparesStanding});
+
 /// THE RAIL'S VIEW — which layer rows the rail leaves off the screen by a
 /// choice of the user's that is not the document's: the hidden sections,
 /// the row filter and the folded attach groups. View state: session-only,

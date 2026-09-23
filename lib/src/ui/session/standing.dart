@@ -690,15 +690,21 @@ class Standing {
         null) {
       return;
     }
+    // ③ (유저 2026-09-24): 「스크롤 너머의 다른 인덱스에 있는거라면 … 스크롤밖이면
+    // 스크롤 조정하는것도 … 법/규칙 통일」. Either way the row you stand on
+    // just came onto the screen without a pointer on it, so the rails bring
+    // it into view — the law every pointerless move keeps (R5, 2026-08-09).
     if (reveal) {
       _openViewAround(active, stack);
       if (hiddenBy(active, spared: active.id) == null) {
+        _rangeSelections.revealSelection();
         return;
       }
     }
     final standIn = _standInFor(active, stack, hiddenBy);
     if (standIn != null && standIn.id != active.id) {
       selectLayer(standIn.id);
+      _rangeSelections.revealSelection();
     }
   }
 

@@ -488,6 +488,9 @@ class EditorSessionManager extends ChangeNotifier
     selectFrameIndex(
       activeCutControllers.clampedFrameIndex(lastPosition.localFrameIndex),
     );
+    // F-169: the follow seats a cut's row without the standing law — it has
+    // to stay quiet mid-playback (R12-B) — so the stop is where it answers.
+    standing.keepStandingShown();
     // The mid-playback cut follow is QUIET (R12-B) — this is the one
     // session notify that catches every activeCut consumer up with where
     // playback landed.
@@ -3325,6 +3328,7 @@ class EditorSessionManager extends ChangeNotifier
     liveStrokeLanding: liveStrokeLanding,
     solo: visibilitySolo,
     failedCopies: failedSaveCopies,
+    keepStandingShown: standing.keepStandingShown,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_placement.dart';
@@ -24,7 +26,12 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
+    show PlaybackScope;
+import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
 /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
@@ -341,10 +348,34 @@ void main() {
       ]);
       s.selectLayer(plusOne);
       s.railView.collapsedAttachBaseIds.value = {_b};
+      final reveals = s.revealSelectionTick.value;
 
       s.standing.keepStandingShown();
 
       expect(s.activeLayerId, _b, reason: 'x is the row above, b the head');
+      // ③: the row it hands to may sit past the scroll, and nothing was
+      // pointing at it — the rails are asked to bring it into view.
+      expect(s.revealSelectionTick.value, reveals + 1);
+
+      s.standing.keepStandingShown();
+      expect(
+        s.revealSelectionTick.value,
+        reveals + 1,
+        reason: 'a row already on screen moves nothing, so asks no scroll',
+      );
+    });
+
+    test('③ a group opened for where you went asks for the scroll too', () {
+      final s = session(_reported);
+      s.selectLayer(_bMinus1);
+      s.railView.collapsedAttachBaseIds.value = {_b};
+      final reveals = s.revealSelectionTick.value;
+
+      s.standing.keepStandingShown(reveal: true);
+
+      expect(s.activeLayerId, _bMinus1);
+      expect(s.railView.collapsedAttachBaseIds.value, isEmpty);
+      expect(s.revealSelectionTick.value, reveals + 1);
     });
 
     test('a head the filter hides hands on to the nearest shown row above IT',
@@ -488,6 +519,60 @@ void main() {
 
       expect(made, isNot(_a));
       expect(_row(made), findsOneWidget);
+    });
+  });
+
+  group('the doors that seat a row outside the session\'s rebuild', () {
+    test('② a file opens standing where it was saved — a rail view that '
+        'folds that row away opens for it', () async {
+      final dir = Directory.systemTemp.createTempSync('anicel-standing-law');
+      deleteAfterSessionEnds(dir);
+      final path = '${dir.path}/standing.anicel';
+      final saved = EditorSessionManager(initialProject: _project(_reported));
+      addTearDown(saved.dispose);
+      saved.selectLayer(_bMinus1);
+      await saved.projectDoor.saveProjectToFile(
+        path,
+        asked: SaveAsked.byAPerson,
+      );
+
+      final opening = EditorSessionManager(initialProject: _project(_reported));
+      addTearDown(opening.dispose);
+      opening.railView.collapsedAttachBaseIds.value = {_b};
+      await opening.projectDoor.openProjectFromFile(path);
+
+      expect(opening.activeLayerId, _bMinus1);
+      expect(opening.railView.collapsedAttachBaseIds.value, isEmpty);
+    });
+
+    test('① a playback that follows into another cut stops on a row the '
+        'rail shows', () async {
+      const base = LayerId('c');
+      final s = EditorSessionManager(
+        initialProject: _project(
+          [_drawing('a')],
+          secondCut: [_drawing('c-1', attachedTo: base), _drawing('c')],
+        ),
+      );
+      addTearDown(s.dispose);
+      s.railView.collapsedAttachBaseIds.value = {base};
+      s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
+      s.playbackRig.playback.seekToGlobalFrame(12);
+      expect(
+        s.activeCutId,
+        const CutId('cut-2'),
+        reason: 'fixture: the follow crossed into the second cut',
+      );
+      expect(
+        s.activeLayerId,
+        const LayerId('c-1'),
+        reason: 'fixture: the quiet follow seats the bottom row, folded away',
+      );
+
+      s.playbackRig.playback.stop();
+      await pumpEventQueue();
+
+      expect(s.activeLayerId, base);
     });
   });
 }

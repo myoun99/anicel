@@ -45,6 +45,7 @@ import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
 import 'project_file.dart';
+import 'rail_view.dart' show StandingLaw;
 import 'visibility_solo.dart';
 import 'playback_rig.dart';
 import 'render_caches.dart';
@@ -112,6 +113,7 @@ class ProjectFileDoor {
     required LiveStrokeLanding liveStrokeLanding,
     required VisibilitySolo solo,
     required FailedSaveCopies failedCopies,
+    required StandingLaw keepStandingShown,
   }) : _file = file,
        _failedCopies = failedCopies,
        _project = project,
@@ -130,7 +132,8 @@ class ProjectFileDoor {
        _audioConformStore = audioConformStore,
        _frameSeekCommitted = frameSeekCommitted,
        _mediaPool = mediaPool,
-       _liveStrokeLanding = liveStrokeLanding;
+       _liveStrokeLanding = liveStrokeLanding,
+       _keepStandingShown = keepStandingShown;
 
   final ProjectFile _file;
   final ProjectAccess _project;
@@ -138,6 +141,9 @@ class ProjectFileDoor {
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
   final VisibilitySolo _solo;
+
+  /// The standing law, asked once the opened cut has seated its row.
+  final StandingLaw _keepStandingShown;
 
   final SelectionAccess _selection;
   final ChangeSink _changes;
@@ -897,6 +903,9 @@ class ProjectFileDoor {
       preferredActiveLayerId: resume.layerId,
       preferredFrameIndex: resume.frameIndex,
     );
+    // F-169 ②: the row the work was saved standing on is where you go back
+    // to, so what the rail's view hides it with opens.
+    _keepStandingShown(reveal: true);
     toolChoice?.resume(resume.tools);
     _file.bindToOpenedFile(
       bindTo ?? filePath,

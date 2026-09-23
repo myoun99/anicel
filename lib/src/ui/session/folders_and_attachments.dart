@@ -13,6 +13,7 @@ import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'rail_view.dart' show StandingLaw;
 import 'row_selection.dart';
 import 'layer_id_mint.dart';
 import 'session_roles.dart';
@@ -34,7 +35,7 @@ class FoldersAndAttachments {
     required LayerIdMint layerIds,
     required ActiveCutEdits activeCut,
     required FoldHandOff handOffOnFold,
-    required void Function({bool reveal}) keepStandingShown,
+    required StandingLaw keepStandingShown,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -54,7 +55,7 @@ class FoldersAndAttachments {
 
   /// The standing law with its reveal — a new attach row is where you went
   /// (`Standing.keepStandingShown`).
-  final void Function({bool reveal}) _keepStandingShown;
+  final StandingLaw _keepStandingShown;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
