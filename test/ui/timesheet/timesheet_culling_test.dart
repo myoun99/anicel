@@ -242,41 +242,192 @@ void main() {
     });
   }
 
-  // …and the half a span runs on into keeps NONE of its writing: the walk
-  // stops at that half's top. On the PRINTED page, where the halves sit
-  // side by side — the continuous sheet lets a page's writing run on down
-  // into the next by design. Judged against a second dialogue rather than
-  // against culling off, because the walk runs in both of those renders.
-  testWidgets('an SE entry keeps its writing in the half it starts in — the '
-      'half it runs on into reads the same whatever it says', (tester) async {
-    // A different LENGTH: the test font draws every glyph as the same
-    // box, so only where the glyphs land can tell two dialogues apart.
-    final other = sheetWith(seEntry('らりるれろわを'));
-    final column = document.columns.indexWhere(
-      (column) => column.kind == TimesheetColumnKind.se,
-    );
-    final printed = TimesheetDocumentLayout(document: document);
-    final left = printed.halfLeft(0, 1) + printed.columnLeftInHalf(column);
+  // 🗣️F-165 (유저 2026-09-18): 「왼쪽영역에서 시작한 블록이면 대사가 다 왼쪽
+  // 시작한곳의 영역에 몰아서 써져있음. 오른쪽 영역에 나눠서 들어가야」. On the
+  // PRINTED page, where the halves sit side by side, the words are laid over
+  // the WHOLE span and each half writes the ones that land on its rows.
+  //
+  // ↩️These pins said the opposite on 09-11 — 「the half a span runs on
+  // into keeps NONE of its writing」 — set to kill a mutant of F-78's culling
+  // walk, not as a decision about the page. F-165 is that decision.
+  //
+  // Judged against a dialogue-less entry of the same span: the test font
+  // draws every glyph as the same box, so what tells words from none is
+  // only whether a box is there.
+  final silent = sheetWith(seEntry(''));
+  final seColumn = document.columns.indexWhere(
+    (column) => column.kind == TimesheetColumnKind.se,
+  );
+  final printed = TimesheetDocumentLayout(document: document);
+  TimesheetDocumentPainter printedAt(
+    TimesheetDocument sheet,
+    CanvasViewport viewport,
+  ) => TimesheetDocumentPainter(
+    document: sheet,
+    layout: TimesheetDocumentLayout(document: sheet),
+    viewport: viewport,
+  );
+
+  testWidgets('the half an SE entry runs on into writes its share of the '
+      'words — and culling keeps it', (tester) async {
+    final left = printed.halfLeft(0, 1) + printed.columnLeftInHalf(seColumn);
     final top =
         printed.halfRowsTop(0) + 5 * TimesheetDocumentLayout.rowHeight;
     final viewport = CanvasViewport(panX: 40 - left, panY: -top, zoom: 1);
-    TimesheetDocumentPainter painterFor(TimesheetDocument sheet) =>
-        TimesheetDocumentPainter(
-          document: sheet,
-          layout: TimesheetDocumentLayout(document: sheet),
-          viewport: viewport,
-        );
     const size = Size(360, 520);
-    late ByteData mine;
-    late ByteData theirs;
+    late ByteData words;
+    late ByteData none;
+    late ByteData whole;
     await tester.runAsync(() async {
-      mine = await _render(painterFor(document), size, culling: true);
-      theirs = await _render(painterFor(other), size, culling: true);
+      words = await _render(printedAt(document, viewport), size, culling: true);
+      none = await _render(printedAt(silent, viewport), size, culling: true);
+      whole = await _render(
+        printedAt(document, viewport),
+        size,
+        culling: false,
+      );
     });
     expect(
-      _differingBytes(mine, theirs),
+      _differingBytes(words, none),
+      greaterThan(0),
+      reason: 'the rows the entry runs on into carry its words',
+    );
+    expect(
+      _differingBytes(words, whole),
       0,
-      reason: 'the dialogue belongs to the page its entry starts on',
+      reason: 'culling may not take the share away: the walk reaches the '
+          'half\'s top, where the entry comes in',
+    );
+  });
+
+  testWidgets('…and writes nothing above its first row — the column '
+      'header over the half stays as it was', (tester) async {
+    final rowsTop = printed.halfRowsTop(0);
+    final left = printed.halfLeft(0, 1) + printed.columnLeftInHalf(seColumn);
+    final viewport = CanvasViewport(
+      panX: 40 - left,
+      panY: -(rowsTop - 60),
+      zoom: 1,
+    );
+    const size = Size(360, 200);
+    late ByteData words;
+    late ByteData none;
+    await tester.runAsync(() async {
+      words = await _render(printedAt(document, viewport), size, culling: true);
+      none = await _render(printedAt(silent, viewport), size, culling: true);
+    });
+    final a = words.buffer.asUint8List();
+    final b = none.buffer.asUint8List();
+    final width = size.width.toInt();
+    var above = 0;
+    // The band right over the half's first row line (two pixels of slack).
+    for (var y = 60 - 16; y < 60 - 2; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        final i = (y * width + x) * 4;
+        if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2]) {
+          above += 1;
+        }
+      }
+    }
+    expect(
+      _differingBytes(words, none),
+      greaterThan(0),
+      reason: 'fixture: the half\'s first rows carry words',
+    );
+    expect(above, 0, reason: 'the words start on the half\'s own rows');
+  });
+
+  testWidgets('the half an SE entry starts in writes only its own rows — '
+      'nothing spills past the half\'s last row', (tester) async {
+    final rowsBottom =
+        printed.halfRowsTop(0) +
+        printed.halfStrips.first.rowCount * TimesheetDocumentLayout.rowHeight;
+    final left = printed.halfLeft(0, 0) + printed.columnLeftInHalf(seColumn);
+    // The half's last rows at the top of the view, what lies under it below.
+    final viewport = CanvasViewport(
+      panX: 40 - left,
+      panY: -(rowsBottom - 60),
+      zoom: 1,
+    );
+    const size = Size(360, 520);
+    late ByteData words;
+    late ByteData none;
+    await tester.runAsync(() async {
+      words = await _render(printedAt(document, viewport), size, culling: true);
+      none = await _render(printedAt(silent, viewport), size, culling: true);
+    });
+    final a = words.buffer.asUint8List();
+    final b = none.buffer.asUint8List();
+    final width = size.width.toInt();
+    var spilled = 0;
+    // The band right under the half's last row line (two pixels of slack):
+    // a glyph written past the half would reach into it. Further down is
+    // the next page, whose own share of the words is meant to be there.
+    for (var y = 62; y < 62 + 16; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        final i = (y * width + x) * 4;
+        if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2]) {
+          spilled += 1;
+        }
+      }
+    }
+    expect(
+      _differingBytes(words, none),
+      greaterThan(0),
+      reason: 'fixture: the start half\'s last rows carry words',
+    );
+    expect(spilled, 0, reason: 'the words below the half belong to the next');
+  });
+
+  testWidgets('each half writes its SHARE of the words, not all of them — '
+      'the start half used to take every one', (tester) async {
+    const glyphCount = 25; // 'あいう…の' above
+    final strip = printed.halfStrips.first;
+    final halfHeight = strip.rowCount * TimesheetDocumentLayout.rowHeight;
+    final size = Size(120, halfHeight + 40);
+
+    /// The glyph boxes down the SE column's centre line in [half] of page 0:
+    /// the test font draws each glyph as a solid box, the column has no
+    /// interior rules, and the red bars are red — so a dark run is a glyph.
+    Future<int> glyphsIn(int half) async {
+      final left =
+          printed.halfLeft(0, half) + printed.columnLeftInHalf(seColumn);
+      final width = printed.columnWidthFor(TimesheetColumnKind.se);
+      final top = printed.halfRowsTop(0);
+      final viewport = CanvasViewport(
+        panX: 40 - left,
+        panY: -(top - 20),
+        zoom: 1,
+      );
+      late ByteData bytes;
+      await tester.runAsync(() async {
+        bytes = await _render(printedAt(document, viewport), size, culling: true);
+      });
+      final rgba = bytes.buffer.asUint8List();
+      final x = (40 + width / 2).round();
+      var runs = 0;
+      var inRun = false;
+      // Below the name box, down to the half's last row.
+      for (var y = 20 + 18; y < 20 + halfHeight.toInt(); y += 1) {
+        final i = (y * size.width.toInt() + x) * 4;
+        final dark = rgba[i] < 100 && rgba[i + 1] < 100 && rgba[i + 2] < 100;
+        if (dark && !inRun) {
+          runs += 1;
+        }
+        inRun = dark;
+      }
+      return runs;
+    }
+
+    final first = await glyphsIn(0);
+    final next = await glyphsIn(1);
+    expect(first, greaterThan(0), reason: 'the start half writes its share');
+    expect(next, greaterThan(0), reason: 'and so does the half after it');
+    expect(
+      first,
+      lessThan(glyphCount),
+      reason: 'the entry runs on for three more halves: the start half '
+          'cannot be holding every word',
     );
   });
 }

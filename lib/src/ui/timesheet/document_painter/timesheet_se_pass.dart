@@ -85,7 +85,6 @@ class _TimesheetSePass {
     required double cellTop,
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
-    const nameBoxHeight = 12.0;
     final spanLength = cell.spanLength ?? 1;
     final rowsHere = spanLength.clamp(1, rowCount - row);
     final spanBottom = cellTop + rowsHere * rowHeight;
@@ -102,14 +101,13 @@ class _TimesheetSePass {
       );
     }
 
-    var dialogueTop = cellTop + 3;
     if (seName.isNotEmpty) {
       // R6-②: a soft accent tint with dark ink writing — the full-strength
       // accent read too loud against the paper. FULL column width (R7-②:
       // the name box, the red bars and the SE column must share ONE exact
       // width — the old 1px inset read as a mismatched overlay).
       canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, nameBoxHeight),
+        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
         Paint()..color = _painter.accent.withValues(alpha: 0.3),
       );
       _painter._text(
@@ -122,22 +120,17 @@ class _TimesheetSePass {
         centeredAtX: true,
         maxWidth: columnWidth - 4,
       );
-      dialogueTop = cellTop + nameBoxHeight + 4;
     }
 
-    final dialogueExtent = spanBottom - 2 - dialogueTop;
-    if (dialogueExtent > 4 && (cell.label ?? '').isNotEmpty) {
-      paintDialogueFitColumn(
-        canvas,
-        cell.label!,
-        topCenter: Offset(centerX, dialogueTop),
-        extent: dialogueExtent,
-        style: const TextStyle(
-          color: TimesheetDocumentPainter._ink,
-          fontSize: 9,
-        ),
-      );
-    }
+    paintSeDialogueShare(
+      canvas,
+      start: cell,
+      spanOffset: cell.spanOffset ?? 0,
+      row: row,
+      rowCount: rowCount,
+      centerX: centerX,
+      cellTop: cellTop,
+    );
 
     if (spanLength == 1) {
       paintSeRedBar(
@@ -147,6 +140,66 @@ class _TimesheetSePass {
         y: spanBottom - 1,
       );
     }
+  }
+
+  static const double _nameBoxHeight = 12.0;
+
+  /// This page half's share of an SE entry's dialogue: the glyphs that the
+  /// layout over the WHOLE span lands on this half's rows, from [row] down —
+  /// [start] is the span's first cell, and carries the words and the name
+  /// box they sit under — written inside those rows, so a glyph never
+  /// straddles the edge of the half.
+  ///
+  /// 🗣️F-165 (유저 2026-09-18): 「왼쪽영역에서 시작한 블록이면 대사가 다
+  /// 왼쪽 시작한곳의 영역에 몰아서 써져있음. 오른쪽 영역에 나눠서
+  /// 들어가야하는데 … 제대로 근본/구조적으로 해결」. The start cell fitted the
+  /// whole dialogue into the rows its OWN half had left, and the half the
+  /// entry ran on into wrote nothing. It is the law the camera marks already
+  /// keep (`_paintInstructionMarkSlice`): the geometry derives from the
+  /// cell's place in its span, and each half paints only its own rows.
+  ///
+  /// ↩️F-78 (09-11) pinned 「the half it runs on into keeps NONE of its
+  /// writing」 — to kill a mutant of the culling walk, not by any decision
+  /// about the page; F-165 is the decision, and it is the opposite.
+  void paintSeDialogueShare(
+    Canvas canvas, {
+    required TimesheetCell start,
+    required int spanOffset,
+    required int row,
+    required int rowCount,
+    required double centerX,
+    required double cellTop,
+  }) {
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    final glyphs = (start.label ?? '').characters.toList(growable: false);
+    final spanTop = cellTop - spanOffset * rowHeight;
+    final spanBottom = spanTop + (start.spanLength ?? 1) * rowHeight - 2;
+    final dialogueTop =
+        spanTop + ((start.seName ?? '').isEmpty ? 3 : _nameBoxHeight + 4);
+    // Which words are this half's: where the whole span's layout lands them.
+    final top = math.max(dialogueTop, cellTop);
+    final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
+    final centers = dialogueGlyphCenters(
+      glyphCount: glyphs.length,
+      mainExtent: spanBottom - dialogueTop,
+    );
+    final share = [
+      for (var i = 0; i < glyphs.length; i += 1)
+        if (dialogueTop + centers[i] >= top && dialogueTop + centers[i] < bottom)
+          glyphs[i],
+    ];
+    if (share.isEmpty || bottom - top <= 4) {
+      return;
+    }
+    // …and written inside this half's rows, so no glyph straddles the edge
+    // of the page half.
+    paintDialogueFitColumn(
+      canvas,
+      share.join(),
+      topCenter: Offset(centerX, top),
+      extent: bottom - top,
+      style: const TextStyle(color: TimesheetDocumentPainter._ink, fontSize: 9),
+    );
   }
 
   /// The full-width thin red bar closing an SE block (and mirrored before

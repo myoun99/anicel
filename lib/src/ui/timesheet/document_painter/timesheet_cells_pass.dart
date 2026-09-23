@@ -392,6 +392,21 @@ class _TimesheetCellsPass {
           slot,
           rowCount: rowCount,
         );
+        // F-165: an entry that began in an earlier half writes the rest of
+        // its dialogue here, from this half's top — its share of the words
+        // laid over the whole span ([_TimesheetSePass.paintSeDialogueShare]).
+        final offset = cell.spanOffset ?? 0;
+        if (seColumn && row == 0 && offset > 0) {
+          _painter._se.paintSeDialogueShare(
+            canvas,
+            start: cells[frame - offset],
+            spanOffset: offset,
+            row: row,
+            rowCount: rowCount,
+            centerX: centerX,
+            cellTop: cellTop,
+          );
+        }
       }
     }
   }
