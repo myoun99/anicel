@@ -230,6 +230,28 @@ void main() {
     expect(painted.widths, hasLength(1));
     expect(painted.widths.single, closeTo(widthIn(face), 0.5));
   });
+
+  test('a changed face repaints the names — the face turns with the '
+      'language', () {
+    final guides = CutGuides(guides: [symmetry()]);
+    final viewport = CanvasViewport();
+    GuideOverlayPainter writtenIn(String family) => GuideOverlayPainter(
+      guides: guides,
+      viewport: viewport,
+      canvasSize: const CanvasSize(width: 300, height: 200),
+      emphasized: true,
+      color: const Color(0xFF00FF00),
+      face: TextStyle(fontFamily: family),
+      vanishingPointLabel: 'VP',
+    );
+    final first = writtenIn('First');
+    expect(
+      first.shouldRepaint(writtenIn('First')),
+      isFalse,
+      reason: 'the premise: the same inputs do not repaint',
+    );
+    expect(first.shouldRepaint(writtenIn('Second')), isTrue);
+  });
 }
 
 /// The natural width of every paragraph painted, in painting order.

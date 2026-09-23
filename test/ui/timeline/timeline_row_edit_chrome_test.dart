@@ -14,7 +14,10 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
-    show TimelineRowRunAddTarget, TimelineRowRunTagTarget;
+    show
+        TimelineRowEditChromePainter,
+        TimelineRowRunAddTarget,
+        TimelineRowRunTagTarget;
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import '../../helpers/app_faces.dart';
@@ -276,6 +279,24 @@ void main() {
             'wrote in the OS\'s',
       );
     }
+  });
+
+  testWidgets('a changed face repaints the run glyphs — the face turns with '
+      'the language', (tester) async {
+    Future<TimelineRowEditChromePainter> writtenIn(String family) async {
+      await tester.pumpWidget(
+        harness(seeks: [], face: TextStyle(fontFamily: family)),
+      );
+      return timelineRowChromePainter(tester, 'layer-a')!;
+    }
+
+    final first = await writtenIn('First');
+    expect(
+      (await writtenIn('First')).shouldRepaint(first),
+      isFalse,
+      reason: 'the premise: a rebuild with the same inputs does not repaint',
+    );
+    expect((await writtenIn('Second')).shouldRepaint(first), isTrue);
   });
 }
 
