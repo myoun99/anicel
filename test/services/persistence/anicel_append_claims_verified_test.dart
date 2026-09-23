@@ -232,10 +232,11 @@ void main() {
       // re-streaming every megabyte on every Ctrl+S, silently.
       //
       // 🚨WHAT TELLS THE TWO PATHS APART. It used to be the file GROWING —
-      // an append left the superseded bytes behind — and that stopped being
-      // true when a save started sliding its live bytes down over the holes
-      // (deleting-save-compacts-Q1, 유저 2026-09-23: 「한 번에 밀어 내리기」).
-      // Size was only ever a shadow of the question anyway.
+      // an append left the superseded bytes behind — and that is no longer
+      // true of the save that packs the file in place
+      // (deleting-save-compacts-Q1, 유저 2026-09-23: 「한 번에 밀어 내리기」):
+      // it is still the incremental path, and it shrinks. Size was only ever
+      // a shadow of the question anyway.
       //
       // ⛔The real difference: a full rewrite REBUILDS the archive from what
       // the project holds, so anything the project never names is gone; an
