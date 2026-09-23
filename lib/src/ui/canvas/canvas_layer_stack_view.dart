@@ -178,6 +178,14 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// The paint half — everything that folds into a color filter or an image
   /// filter.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+
+  /// Whether this row's image may be stored as its ink alone — asked of the
+  /// same pose, blend and chain the draw is handed ([inkCropDrawsTheSame]).
+  bool get inkSuffices => inkCropDrawsTheSame(
+    pose: pose,
+    blendMode: blendMode,
+    effects: paintEffects,
+  );
 }
 
 /// Paints the editing canvas's whole composite tree from the layer-frame
@@ -518,6 +526,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       source: image.image,
       clone: image.image.clone(),
       worldRect: held.worldRect,
+      extent: held.extent,
       revision: held.revision,
       quality: held.quality,
       content: held.content,
@@ -611,6 +620,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       source: image.image,
       clone: image.image.clone(),
       worldRect: image.worldRect,
+      extent: image.extent,
       revision: revision,
       quality: quality,
       content: image.content,
@@ -709,6 +719,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             revision,
             leftTheActiveSlot,
           ),
+          inkSuffices: layer.inkSuffices,
         );
       } on Object catch (error, stack) {
         _noteFailure(layer.frameKey, error, stack, 'sync sweep');
@@ -787,6 +798,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         canvasSize: widget.canvasSize,
         quality: quality,
         sourceEffects: layer.sourceEffects,
+        inkSuffices: layer.inkSuffices,
       );
     } on Object catch (error, stack) {
       if (!mounted) {
@@ -867,6 +879,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           image: held.clone,
           content: held.content,
           worldRect: held.worldRect,
+          extent: held.extent,
           opacity: request.opacity,
           blendMode: request.blendMode,
           pose: request.pose,
@@ -1175,6 +1188,8 @@ typedef _HeldImage = ({
   ui.Image source,
   ui.Image clone,
   Rect worldRect,
+  // The rect the whole content image covers ([LayerFrameImage.extent]).
+  Rect extent,
   int? revision,
   PlaybackQuality quality,
   // What the pixels ARE ([LayerFrameImage.content]) — what the paint tree
@@ -1227,6 +1242,7 @@ final class _PaintImage extends _PaintRow {
     required this.image,
     required this.content,
     required this.worldRect,
+    required this.extent,
     required this.opacity,
     required this.blendMode,
     required this.pose,
@@ -1236,6 +1252,11 @@ final class _PaintImage extends _PaintRow {
   });
 
   final ui.Image image;
+
+  /// The rect the whole content image covers — [worldRect] itself, or more
+  /// when the cache stored the ink alone ([LayerFrameImage.extent]). What the
+  /// row stands for when a folder asks how far its buffer reaches.
+  final Rect extent;
 
   /// What [image]'s pixels ARE ([LayerFrameImage.content]) — the one thing
   /// [matches] and [signature] compare about the picture.
@@ -1260,6 +1281,7 @@ final class _PaintImage extends _PaintRow {
       other is _PaintImage &&
       identical(content, other.content) &&
       worldRect == other.worldRect &&
+      extent == other.extent &&
       opacity == other.opacity &&
       blendMode == other.blendMode &&
       pose == other.pose &&
@@ -1274,6 +1296,7 @@ final class _PaintImage extends _PaintRow {
   int get signature => Object.hash(
     identityHashCode(content),
     worldRect,
+    extent,
     opacity,
     blendMode,
     pose,
@@ -1452,10 +1475,13 @@ Rect _paintNodeExtent(
   }
 
   switch (node) {
+    // The rect the row stands for, not the part of it that holds the ink: a
+    // folder's buffer — and so where its blur is worked out — reaches as far
+    // as it did when every image was whole.
     case CompositeLeaf(
-      payload: _PaintImage(:final worldRect, :final pose, :final anchorPoint),
+      payload: _PaintImage(:final extent, :final pose, :final anchorPoint),
     ):
-      return posed(worldRect, pose, anchorPoint);
+      return posed(extent, pose, anchorPoint);
     case CompositeLeaf(
       payload: _PaintActiveSurface(:final pose, :final anchorPoint),
     ):

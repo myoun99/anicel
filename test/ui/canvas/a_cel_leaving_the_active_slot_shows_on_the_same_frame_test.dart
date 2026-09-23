@@ -512,6 +512,7 @@ class _HandedImages extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) => _noted(
     key,
     super.prepareSyncOrNull(
@@ -520,6 +521,7 @@ class _HandedImages extends LayerFrameImageCache {
       quality: quality,
       sourceEffects: sourceEffects,
       makePictures: makePictures,
+      inkSuffices: inkSuffices,
     ),
   );
 
@@ -530,6 +532,7 @@ class _HandedImages extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
+    bool inkSuffices = false,
   }) async => _noted(
     key,
     await super.prepare(
@@ -538,6 +541,7 @@ class _HandedImages extends LayerFrameImageCache {
       quality: quality,
       sourceEffects: sourceEffects,
       shouldAbort: shouldAbort,
+      inkSuffices: inkSuffices,
     ),
   );
 }

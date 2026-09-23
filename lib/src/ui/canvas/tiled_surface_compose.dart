@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/playback_quality.dart';
 import '../../core/dev_profile.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -34,6 +36,35 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
   final canvas = surface.canvasSize.canvasRect;
   final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
   return tiles == null ? canvas : canvas.expandToInclude(tiles);
+}
+
+/// The part of [surfaceContentWorldRect] that holds the stored tiles —
+/// where every pixel of the composed image that is not transparent sits.
+///
+/// On the halving grid of the whole image: the tiles' rect pushed out to
+/// multiples of 2^[PlaybackQuality.deepestLevel] counted from the content's
+/// origin, and cut back to the content. So at every level of the display's
+/// pyramid its edges fall on whole texels of the whole content's level, and
+/// the part of that level it covers can be cut out as it is.
+ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
+  final content = surfaceContentWorldRect(surface);
+  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  if (tiles == null) {
+    return content;
+  }
+  final grid = (1 << PlaybackQuality.deepestLevel).toDouble();
+  double outward(double value, double origin, {required bool up}) {
+    final blocks = (value - origin) / grid;
+    return origin +
+        (up ? blocks.ceilToDouble() : blocks.floorToDouble()) * grid;
+  }
+
+  return ui.Rect.fromLTRB(
+    outward(tiles.left, content.left, up: false),
+    outward(tiles.top, content.top, up: false),
+    math.min(content.right, outward(tiles.right, content.left, up: true)),
+    math.min(content.bottom, outward(tiles.bottom, content.top, up: true)),
+  );
 }
 
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by

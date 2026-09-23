@@ -401,6 +401,11 @@ class CutFrameCompositeCache {
               quality: signature.quality,
               sourceEffects: halves.source,
               shouldAbort: shouldAbort,
+              inkSuffices: inkCropDrawsTheSame(
+                pose: layer.pose,
+                blendMode: layer.blendMode,
+                effects: halves.paint,
+              ),
             );
             if (layerImage == null) {
               // Null is EITHER an empty frame (skip the layer) or an abort
@@ -423,11 +428,11 @@ class CutFrameCompositeCache {
             // ALREADY at this quality tier's raster — so the scale reaches
             // the effect resolver too, or a half-size preview would show a
             // double-strength blur.
-            final worldRect = layerImage.worldRect;
             drawPosedLayerImage(
               canvas,
               image: layerImage.image,
-              worldRect: worldRect,
+              worldRect: layerImage.worldRect,
+              extent: layerImage.extent,
               canvasSize: cut.canvasSize,
               pose: layer.pose,
               anchorPoint: layer.anchorPoint,
@@ -448,12 +453,12 @@ class CutFrameCompositeCache {
               // parity suites pin. A pasteboard-extent one maps src onto
               // its world rect instead; the canvas-sized toImage below
               // crops the off-canvas remainder, so playback and export
-              // stay stage-only either way.
-              drawAtOrigin:
+              // stay stage-only either way — asked of what is laid down.
+              drawAtOriginWhen: (worldRect, image) =>
                   worldRect.left == 0 &&
                   worldRect.top == 0 &&
-                  layerImage.image.width == (worldRect.width * scale).round() &&
-                  layerImage.image.height == (worldRect.height * scale).round(),
+                  image.width == (worldRect.width * scale).round() &&
+                  image.height == (worldRect.height * scale).round(),
             );
         }
       }

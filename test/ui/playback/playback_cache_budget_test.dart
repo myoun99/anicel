@@ -55,7 +55,13 @@ void main() {
     ],
   );
 
-  ({LayerFrameImageCache layers, CutFrameCompositeCache composites}) caches() {
+  // Ink in two opposite corners reaches every tile, so every tier of the
+  // layer image is stored whole and the byte counts below are whole images.
+  // A cel whose ink sits in one corner is stored as that corner
+  // (`inkCropDrawsTheSame`) — what that costs is counted on its own.
+  ({LayerFrameImageCache layers, CutFrameCompositeCache composites}) caches({
+    List<(double, double)> ink = const [(1, 1), (6, 6)],
+  }) {
     final store = BrushFrameStore();
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey(
@@ -71,17 +77,18 @@ void main() {
       historyPolicy: const BrushHistoryPolicy(),
     ).commitSourceStroke(
       sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 1, y: 1),
-          color: 0xFF000000,
-          size: 2,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.round,
-          pressure: 1,
-          sequence: 0,
-        ),
+        for (final (sequence, (x, y)) in ink.indexed)
+          BrushDab(
+            center: CanvasPoint(x: x, y: y),
+            color: 0xFF000000,
+            size: 2,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: sequence,
+          ),
       ],
     );
     final layers = LayerFrameImageCache(frameStore: store);
@@ -133,6 +140,27 @@ void main() {
       });
     },
   );
+
+  testWidgets('a cel whose ink sits in one corner costs the budget that '
+      'corner', (tester) async {
+    await tester.runAsync(() async {
+      final c = caches(ink: const [(1, 1)]);
+      for (final quality in PlaybackQuality.values) {
+        await c.composites.prepareComposite(
+          cut: cut(),
+          frameIndex: 0,
+          quality: quality,
+        );
+      }
+      // The ink is the 4×4 tile at the origin: 4×4 + 2×2 + 1×1 texels over
+      // the three tiers, where the whole canvas is 8×8 + 4×4 + 2×2 — which
+      // the composites, being the frame, still are.
+      expect(c.layers.estimatedBytes, (16 + 4 + 1) * 4);
+      expect(c.composites.estimatedBytes, (64 + 16 + 4) * 4);
+      c.composites.dispose();
+      c.layers.dispose();
+    });
+  });
 
   /// 🚨★★★ WHAT IS ON SCREEN RESERVES ITS OWN PIXELS FIRST.
   ///

@@ -37,6 +37,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) {
     syncAttempts.add(key.frameId);
     if (failing.contains(key.frameId)) {
@@ -54,6 +55,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
+    bool inkSuffices = false,
   }) async => null;
 }
 

@@ -211,6 +211,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepareSyncOrNull(
           key: key,
@@ -218,6 +219,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
           quality: quality,
           sourceEffects: sourceEffects,
           makePictures: makePictures,
+          inkSuffices: inkSuffices,
         )
       : null;
 
@@ -228,6 +230,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
+    bool inkSuffices = false,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepare(
           key: key,
@@ -235,6 +238,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
           quality: quality,
           sourceEffects: sourceEffects,
           shouldAbort: shouldAbort,
+          inkSuffices: inkSuffices,
         )
       : Future<LayerFrameImage?>.value(null);
 }

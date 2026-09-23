@@ -490,4 +490,107 @@ void main() {
       cache.dispose();
     });
   });
+
+  group('the ink alone', () {
+    // 64×48 in tiles of 16, one dab in the tile at (32, 16): the ink is that
+    // tile, the content the canvas.
+    const inkCanvas = CanvasSize(width: 64, height: 48);
+    const content = ui.Rect.fromLTWH(0, 0, 64, 48);
+
+    BrushFrameStore storeWithInk() {
+      final store = BrushFrameStore();
+      BrushFrameEditingCoordinator(
+        initialFrameKey: key('ink'),
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: inkCanvas,
+          tileSize: 16,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(sourceDabs: [dab(x: 40, y: 22)]);
+      return store;
+    }
+
+    testWidgets('a row that draws exactly from its ink is stored as its ink — '
+        'at every level, the same rect', (tester) async {
+      await tester.runAsync(() async {
+        final cache = LayerFrameImageCache(frameStore: storeWithInk());
+        addTearDown(cache.dispose);
+        for (final (quality, worldRect) in const [
+          (PlaybackQuality.full, ui.Rect.fromLTWH(32, 16, 16, 16)),
+          (PlaybackQuality.half, ui.Rect.fromLTWH(32, 16, 16, 16)),
+          (PlaybackQuality.quarter, ui.Rect.fromLTWH(32, 16, 16, 16)),
+        ]) {
+          final image = (await cache.prepare(
+            key: key('ink'),
+            canvasSize: inkCanvas,
+            quality: quality,
+            sourceEffects: const [],
+            inkSuffices: true,
+          ))!;
+          expect(image.isInk, isTrue, reason: '$quality');
+          expect(image.worldRect, worldRect, reason: '$quality');
+          expect(image.extent, content, reason: '$quality');
+          expect(
+            image.image.width,
+            worldRect.width / (1 << quality.level),
+            reason: '$quality: one texel per level pixel',
+          );
+        }
+      });
+    });
+
+    testWidgets('a route that needs the whole image never gets the ink, and '
+        'the whole image serves one that would take either', (tester) async {
+      await tester.runAsync(() async {
+        final cache = LayerFrameImageCache(frameStore: storeWithInk());
+        addTearDown(cache.dispose);
+        Future<LayerFrameImage> asked({required bool inkSuffices}) async =>
+            (await cache.prepare(
+              key: key('ink'),
+              canvasSize: inkCanvas,
+              quality: PlaybackQuality.full,
+              sourceEffects: const [],
+              inkSuffices: inkSuffices,
+            ))!;
+        expect((await asked(inkSuffices: true)).isInk, isTrue);
+        final whole = await asked(inkSuffices: false);
+        expect(whole.isInk, isFalse);
+        expect(whole.worldRect, content);
+        expect(whole.image.width, 64);
+        expect(identical(await asked(inkSuffices: true), whole), isTrue);
+      });
+    });
+
+    testWidgets('the sync road stores the ink too, and the snapshot that '
+        'settles keeps both rects', (tester) async {
+      await tester.runAsync(() async {
+        final store = storeWithInk();
+        final cache = LayerFrameImageCache(frameStore: store);
+        addTearDown(cache.dispose);
+        final now = cache.prepareSyncOrNull(
+          key: key('ink'),
+          canvasSize: inkCanvas,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          makePictures: true,
+          inkSuffices: true,
+        )!;
+        expect(now.isInk, isTrue);
+        expect(now.worldRect, const ui.Rect.fromLTWH(32, 16, 16, 16));
+        final settled = (await cache.prepare(
+          key: key('ink'),
+          canvasSize: inkCanvas,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          inkSuffices: true,
+        ))!;
+        expect(identical(settled.image, now.image), isFalse,
+            reason: 'fixture: the snapshot took the deferred image\'s place');
+        expect(settled.worldRect, now.worldRect);
+        expect(settled.extent, now.extent);
+        expect(identical(settled.content, now.content), isTrue);
+      });
+    });
+  });
 }

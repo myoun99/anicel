@@ -49,13 +49,14 @@ void main() {
       canvas,
       image: image,
       worldRect: worldRect,
+      extent: worldRect,
       canvasSize: const CanvasSize(width: 120, height: 80),
       pose: pose,
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       texelScale: texelScale,
       filterQuality: ui.FilterQuality.low,
-      drawAtOrigin: drawAtOrigin,
+      drawAtOriginWhen: (_, _) => drawAtOrigin,
     );
     expect(canvas.drawn, hasLength(1), reason: 'fixture: one image draw');
     return canvas.drawn.single;

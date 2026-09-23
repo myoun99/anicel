@@ -148,6 +148,7 @@ void main() {
       canvas,
       image: source,
       worldRect: const Rect.fromLTWH(0, 0, 32, 32),
+      extent: const Rect.fromLTWH(0, 0, 32, 32),
       canvasSize: const CanvasSize(width: 32, height: 32),
       pose: null,
       opacity: 1,

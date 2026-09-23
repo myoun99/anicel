@@ -25,6 +25,11 @@ enum PlaybackQuality {
     PlaybackQuality.quarter => 2,
   };
 
+  /// How many halvings the deepest preset takes — the pyramid's depth.
+  static final int deepestLevel = PlaybackQuality.values
+      .map((quality) => quality.level)
+      .reduce(math.max);
+
   /// The preset that is the display's [level] — the deepest preset for a
   /// level past it, reduced the rest of the way by the blit.
   static PlaybackQuality forLevel(int level) => switch (level) {

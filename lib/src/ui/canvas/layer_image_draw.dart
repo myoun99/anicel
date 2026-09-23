@@ -32,6 +32,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/transform_track.dart';
 import '../../services/composite_effect_paint.dart';
+import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
 import '../../services/layer_pose_paint.dart';
 
@@ -74,19 +75,25 @@ T withLayerPose<T>(
 
 /// One layer's image, posed, faded, blended, filtered and drawn.
 ///
-/// [worldRect] is where the image belongs in canvas space: the canvas rect
-/// for an ordinary cel, grown for pasteboard content. [rasterScale] is the
+/// [worldRect] is where the image's pixels belong in canvas space, and
+/// [extent] the rect the image stands for — the canvas grown by any
+/// pasteboard tiles; every pixel of [extent] outside [worldRect] is
+/// transparent. A cached cel may be stored as its ink alone
+/// (`LayerFrameImage`), and [_laidDown] decides whether that crop can be
+/// drawn as it is or the whole image has to be laid back first. Pass the
+/// same rect twice for an image that was never cropped. [rasterScale] is the
 /// quality tier the destination canvas is rastering at — it scales the
 /// destination rect AND reaches the effect resolver, because the images
 /// are already at that tier and a canvas-pixel blur radius that ignored it
 /// would show at double strength in a half-size preview.
 ///
-/// [drawAtOrigin] takes the legacy `drawImage(Offset.zero)` path instead
-/// of `drawImageRect`. It is a byte pin rather than an optimisation: two
-/// of the routes have always drawn their canvas-extent images that way and
-/// their output is held to the pixel by composite parity suites, so
-/// switching them to the general path is a change of rendered bytes and
-/// does not belong in a convergence.
+/// [drawAtOriginWhen] is a route's rule for taking the legacy
+/// `drawImage(Offset.zero)` path instead of `drawImageRect`, asked about
+/// the image and rect ACTUALLY laid down. It is a byte pin rather than an
+/// optimisation: two of the routes have always drawn their canvas-extent
+/// images that way and their output is held to the pixel by composite
+/// parity suites, so switching them to the general path is a change of
+/// rendered bytes and does not belong in a convergence.
 ///
 /// [texelScale] is how many target pixels one canvas unit is on [canvas]
 /// when [canvas] is a pixel raster whose grid is aligned to canvas space —
@@ -108,6 +115,7 @@ void drawPosedLayerImage(
   ui.Canvas canvas, {
   required ui.Image image,
   required ui.Rect worldRect,
+  required ui.Rect extent,
   required CanvasSize canvasSize,
   required TransformPose? pose,
   CanvasPoint? anchorPoint,
@@ -118,7 +126,7 @@ void drawPosedLayerImage(
   required double? texelScale,
   required ui.FilterQuality filterQuality,
   int? tint,
-  bool drawAtOrigin = false,
+  bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
 }) {
   withLayerPose(
     canvas,
@@ -155,6 +163,12 @@ void drawPosedLayerImage(
         tint: tint,
       );
       plan.finalPaint.applyTo(paint);
+      final copyScale = pose == null ? texelScale : null;
+      final laid = _laidDown(
+        (image: image, worldRect: worldRect, extent: extent),
+        texelScale: copyScale,
+        inkDrawsTheSame: _blendsInPlace(blendMode) && plan.outsetPixels == 0,
+      );
       // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
       // `rasterScale` answers "what space does the DRAW land in"; the steps
       // ask "how many image pixels is a canvas pixel". On this route the
@@ -162,9 +176,9 @@ void drawPosedLayerImage(
       // — which is exactly why one parameter was answering both until the
       // playback painter needed them to differ. Derived, so it cannot drift.
       final stepped = steppedForChain(
-        image: image,
+        image: laid.image,
         plan: plan,
-        canvasExtent: worldRect.width,
+        canvasExtent: laid.worldRect.width,
       );
       // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
       // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
@@ -179,8 +193,7 @@ void drawPosedLayerImage(
       // drawn this way was a hair softer on Android than the same layer
       // being drawn on, whose tiles are `none` — the active/inactive split
       // D14 ruled out (「그림 자체에 통일해서 적용」).
-      final copies =
-          pose == null && _isTexelCopy(stepped, worldRect, texelScale);
+      final copies = _isTexelCopy(stepped, laid.worldRect, copyScale);
       assert(() {
         if (copies) {
           debugTexelCopies += 1;
@@ -189,7 +202,7 @@ void drawPosedLayerImage(
       }());
       paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
       try {
-        if (drawAtOrigin) {
+        if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
           canvas.drawImage(stepped, ui.Offset.zero, paint);
           return;
         }
@@ -202,23 +215,150 @@ void drawPosedLayerImage(
             stepped.height.toDouble(),
           ),
           ui.Rect.fromLTWH(
-            worldRect.left * rasterScale,
-            worldRect.top * rasterScale,
-            worldRect.width * rasterScale,
-            worldRect.height * rasterScale,
+            laid.worldRect.left * rasterScale,
+            laid.worldRect.top * rasterScale,
+            laid.worldRect.width * rasterScale,
+            laid.worldRect.height * rasterScale,
           ),
           paint,
         );
       } finally {
-        // ⛔The steps made a NEW image; the one handed in belongs to the
-        // cache. Disposing that would take the layer's pixels with it.
-        if (!identical(stepped, image)) {
+        // ⛔The steps made a NEW image, and a whole image laid back is this
+        // draw's; the one handed in belongs to the cache. Disposing that
+        // would take the layer's pixels with it. The draw above holds its
+        // own reference to whatever it drew.
+        if (!identical(stepped, laid.image)) {
           stepped.dispose();
+        }
+        if (!identical(laid.image, image)) {
+          laid.image.dispose();
         }
       }
     },
   );
 }
+
+/// Whether a layer drawn through [pose], [blendMode] and [effects] puts the
+/// same bytes on a raster from its ink alone as from the whole image — so a
+/// route that lays it down texel for texel may have it stored as its ink
+/// (`LayerFrameImageCache.prepare`'s `inkSuffices`). [_laidDown] asks the
+/// same of each draw.
+///
+/// 🚨★★★A CROP IS ONLY EVER DRAWN WHERE THAT IS EXACT (유저 2026-09-23:
+/// 「1/4해상도같은 결과바뀌는건 절대로 허용안하고 … 보이는 결과 특히」). 🔬Measured
+/// on three engines — the Windows app (Impeller GLES), the test runner (Skia)
+/// and Impeller Vulkan, Android's default — the same ink drawn whole and
+/// cropped:
+/// · laid down texel for texel through `srcOver` or `plus`, with any opacity
+///   or colour filter, the two are the same bytes on all three;
+/// · through an advanced blend (multiply, screen, overlay, difference …)
+///   Vulkan differs by up to 29/255: it blends through a snapshot of the
+///   area drawn, and a smaller area rounds differently. Drawing the crop
+///   over the whole area does not close it (a few pixels still differ);
+/// · posed, the sampler's coordinates are normalised by the texture's size,
+///   so a smaller texture rounds differently on every GPU engine;
+/// · a blur reads the texture's bounds.
+/// Each of those gets the whole image; the whole image laid back from the
+/// crop draws the same bytes as the one the cache used to keep, on all three.
+bool inkCropDrawsTheSame({
+  required TransformPose? pose,
+  required LayerBlendMode blendMode,
+  required List<ResolvedLayerEffect> effects,
+}) =>
+    pose == null &&
+    _blendsInPlace(blendMode) &&
+    resolveCompositeEffectPlan(effects).outsetPixels == 0;
+
+/// Whether [blendMode] is one the engines blend pixel by pixel wherever it
+/// is drawn — `srcOver` and `plus` — rather than through the area drawn.
+bool _blendsInPlace(LayerBlendMode blendMode) =>
+    blendMode.paintBlendMode == ui.BlendMode.srcOver ||
+    blendMode.paintBlendMode == ui.BlendMode.plus;
+
+/// What a draw lays down: the [stored] image at its world rect where that is
+/// exact, and otherwise the image its extent stands for — laid back byte for
+/// byte, so the draw is the one this route always made.
+///
+/// A crop is drawn as it is only as a texel copy ([_isTexelCopy]) through a
+/// blend and chain that keep the ink alone exact ([inkDrawsTheSame], the
+/// draw's half of [inkCropDrawsTheSame]); anything else — the walk on the
+/// screen, a pose, an advanced blend, a blur — gets the whole image first.
+({ui.Image image, ui.Rect worldRect}) _laidDown(
+  ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored, {
+  required double? texelScale,
+  required bool inkDrawsTheSame,
+}) {
+  final (:image, :worldRect, :extent) = stored;
+  if (worldRect == extent) {
+    return (image: image, worldRect: worldRect);
+  }
+  if (inkDrawsTheSame && _isTexelCopy(image, worldRect, texelScale)) {
+    assert(() {
+      debugCropsLaidDown += 1;
+      return true;
+    }());
+    return (image: image, worldRect: worldRect);
+  }
+  assert(() {
+    debugWholesLaidBack += 1;
+    return true;
+  }());
+  return (
+    image: _wholeOf(image, worldRect: worldRect, extent: extent),
+    worldRect: extent,
+  );
+}
+
+/// The recording that copies [texels] of a cel's [whole] image out, texel
+/// for texel — how a cache comes to store the ink alone
+/// (`LayerFrameImageCache`). [_wholeOf] is its inverse: the two are the only
+/// ways between the ink and the whole, and both are texel copies at the
+/// identity, so the round trip is the same bytes.
+ui.PictureRecorder recordInkCutOut(ui.Image whole, ui.Rect texels) {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawImageRect(
+    whole,
+    texels,
+    ui.Rect.fromLTWH(0, 0, texels.width, texels.height),
+    ui.Paint()..filterQuality = ui.FilterQuality.none,
+  );
+  return recorder;
+}
+
+/// [image] laid back into [extent] at its own resolution — the whole image a
+/// cache keeps when it does not store the ink alone, transparent wherever
+/// the crop stores nothing. A texel copy at the identity, so its bytes are
+/// exactly the part of that image the crop kept.
+ui.Image _wholeOf(
+  ui.Image image, {
+  required ui.Rect worldRect,
+  required ui.Rect extent,
+}) {
+  final texels = image.width / worldRect.width;
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder).drawImage(
+    image,
+    ui.Offset(
+      (worldRect.left - extent.left) * texels,
+      (worldRect.top - extent.top) * texels,
+    ),
+    ui.Paint()..filterQuality = ui.FilterQuality.none,
+  );
+  return rasterPicture(
+    recorder,
+    (extent.width * texels).round(),
+    (extent.height * texels).round(),
+  );
+}
+
+/// How many draws laid a crop down as it is, and how many laid the whole
+/// image back first — the two arms of [_laidDown], so a pin can say the arm
+/// it compares actually ran. Written under `assert`.
+@visibleForTesting
+int debugCropsLaidDown = 0;
+
+@visibleForTesting
+int debugWholesLaidBack = 0;
 
 /// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
 /// whose pixels are [texelScale] canvas units apart: one texel per target

@@ -816,22 +816,23 @@ class _LayerStackPaintPass {
     final _PaintImage(
       :image,
       :worldRect,
+      :extent,
       :pose,
       :opacity,
       :blendMode,
       :tint,
       :effects,
     ) = node;
-    // Dest = the image's WORLD rect: the canvas rect for plain
-    // cels, grown for pasteboard content so off-canvas artwork of
-    // non-active layers shows at its position. The pose is already
-    // applied by the wrap above, which this node shares with the
-    // live surface — hence pose: null here rather than a second
-    // save/restore around the same matrix.
+    // Dest = the image's WORLD rect: where its pixels belong — the ink
+    // alone, or the whole content, off-canvas artwork of non-active layers
+    // included ([extent]). The pose is already applied by the wrap above,
+    // which this node shares with the live surface — hence pose: null here
+    // rather than a second save/restore around the same matrix.
     drawPosedLayerImage(
       canvas,
       image: image,
       worldRect: worldRect,
+      extent: extent,
       canvasSize: _painter.canvasSize,
       pose: null,
       opacity: opacity,

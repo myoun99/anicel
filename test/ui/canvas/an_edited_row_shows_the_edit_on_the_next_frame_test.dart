@@ -446,6 +446,7 @@ class _InFlightCache extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
+    bool inkSuffices = false,
   }) {
     if (_handed) return Completer<LayerFrameImage?>().future;
     _handed = true;
@@ -459,6 +460,7 @@ class _InFlightCache extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) => null;
 }
 
@@ -483,5 +485,6 @@ class _SyncColdCache extends LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) => null;
 }
