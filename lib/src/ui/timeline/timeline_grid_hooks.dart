@@ -241,7 +241,7 @@ class TimelineGridHooks {
   final void Function(LayerId layerId, int frameIndex, String path)?
   onHoverMediaAssetOnLayer;
 
-  /// The file left the rows without being let go: the drawing goes with it.
+  /// The file is off the rows, left or let go: the drawing goes with it.
   final void Function()? onLeaveMediaAssetOnLayer;
 
   /// A media-browser row let go on the LAYER AREA, at the gap [slot] of

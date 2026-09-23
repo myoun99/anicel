@@ -195,7 +195,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final void Function(LayerId layerId, int frameIndex, String path)?
   onHoverMediaAssetOnLayer;
 
-  /// The file left this row without being let go.
+  /// The file is off this row: it left, or it was let go.
   final VoidCallback? onLeaveMediaAssetOnLayer;
 
   /// The cells this row would GAIN if the file now being dragged were let
@@ -792,7 +792,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
   /// with what a release does.
   final void Function(LayerId layerId, int frameIndex, String path)? onHoverAt;
 
-  /// It left without being let go.
+  /// It left, or it was let go.
   final VoidCallback? onLeave;
 
   /// The frame this target's span starts at — the row's first visible frame

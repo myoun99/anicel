@@ -191,7 +191,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final void Function(LayerId layerId, int frameIndex, String path)?
   onHoverMediaAssetOnLayer;
 
-  /// It left without being let go.
+  /// It left, or it was let go.
   final void Function()? onLeaveMediaAssetOnLayer;
 
   /// The shared frames/seconds display toggle (block duration labels,

@@ -47,7 +47,18 @@ class MediaAssetDropTarget extends StatelessWidget {
   final void Function(MediaAssetDragData data, Offset globalPosition)?
   onHover;
 
-  /// The drag left without being let go.
+  /// The file is no longer over this entrance: it LEFT, or it was LET GO.
+  ///
+  /// 🚨F-155 (유저 2026-09-17): 「그림 존재하는데 블록이 회색임. 그상태에서
+  /// 코마 늘리니 정상적으로 흰색됬음」. The framework tells a target that
+  /// takes a drop about the drop and nothing else — its [DragTarget.onLeave]
+  /// never comes — so what a host drew while the file hovered, and cleared
+  /// here, outlived the release: a row went on showing the drag's stand-in
+  /// cels (no picture, so the empty-cel grey) over the picture that had
+  /// landed, until a koma drag took the preview channel over and handed it
+  /// back empty. The layer area alone had written the missing call into its
+  /// own drop. ⛔Not the hosts' business: the release ends the hover here,
+  /// for every entrance, the way it already ended the chip's verdict.
   final VoidCallback? onLeave;
 
   /// Whether the entrance lights its own border while a drag is over it.
@@ -61,17 +72,20 @@ class MediaAssetDropTarget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final verdict = MediaDropVerdictScope.maybeOf(context);
+    // Leaving and being let go both end the hover ([onLeave]).
+    void ended() {
+      verdict?.value = null;
+      onLeave?.call();
+    }
+
     return DragTarget<MediaAssetDragData>(
       onMove: (details) {
         verdict?.value = _yes(details.data, details.offset);
         onHover?.call(details.data, details.offset);
       },
-      onLeave: (_) {
-        verdict?.value = null;
-        onLeave?.call();
-      },
+      onLeave: (_) => ended(),
       onAcceptWithDetails: (details) {
-        verdict?.value = null;
+        ended();
         if (_yes(details.data, details.offset)) {
           onDrop(details.data, details.offset);
         }
