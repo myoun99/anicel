@@ -40,6 +40,14 @@ void main() {
     expect(AudioClip.fromJson({...clip.toJson(), 'file': os}).filePath, pool);
   });
 
+  test('a question asked by path, in either spelling, finds the entry', () {
+    final project = createDefaultProject().copyWith(
+      mediaAssets: [MediaAsset(path: pool, name: 'A1')],
+    );
+    expect(project.mediaAssetByPath(os)?.path, pool);
+    expect(project.mediaAssetByPath(pool)?.path, pool);
+  });
+
   test('a file that recorded another spelling names the same entries the '
       'pool now asks for', () {
     final project = createDefaultProject().copyWith(

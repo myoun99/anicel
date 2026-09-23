@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/temp_dir.dart';
+import '../../models/import/tvpp_test_builder.dart';
 
 /// Audit 2026-09-24, card `carried-bytes-audit-0924` ①.
 ///
@@ -120,6 +121,52 @@ void main() {
       session.requireActiveCut.layers.where(isMovieReference),
       isNotEmpty,
       reason: 'the premise: the opened project has a movie row',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a .tvpp opened in its place lets go of them too — the '
+      'other door that replaces the whole project', (tester) async {
+    final movie = normalizedMediaPath(
+      (await tester.runAsync(() => writeCarriedMovie(directory)))!,
+    );
+    final path = normalizedMediaPath('${directory.path}/held.anicel');
+    final session = await carriedAndSaved(
+      tester,
+      movie: movie,
+      projectPath: path,
+      staging: '${directory.path}/Staged',
+    );
+    await tester.runAsync(() => session.projectDoor.openProjectFromFile(path));
+    await tester.runAsync(
+      () => session.movieCels.hydrate(session.requireActiveCut, 0),
+    );
+    expect(
+      session.projectFile.heldArchiveEntries,
+      isNotEmpty,
+      reason: 'the premise: the canvas holds the entry it reads',
+    );
+
+    final b = TvppBuilder()
+      ..projectProperties(cameraWidth: 64, cameraHeight: 48)
+      ..clipProperties('next')
+      ..clipHeader(width: 64, height: 48)
+      ..layerHead('A', end: 0, count: 1, layerId: 901)
+      ..layerExt(const {})
+      ..zchkSlot(srawRecord(List<int>.filled(64 * 48, 0), 64, 48))
+      ..clipConfig();
+    final tvpp = '${directory.path}${Platform.pathSeparator}next.tvpp';
+    File(tvpp).writeAsBytesSync(b.bytes);
+    await tester.runAsync(() async {
+      expect(await session.tvppDoor.openAsProject(tvppPath: tvpp), isNotNull);
+      // The letting go is not awaited by the door; give it its turn.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+
+    expect(
+      session.projectFile.heldArchiveEntries,
+      isEmpty,
+      reason: 'the project it replaced is let go of, movies and all',
     );
     await tester.pumpAndSettle();
   });
