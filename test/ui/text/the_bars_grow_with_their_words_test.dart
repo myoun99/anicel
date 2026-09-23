@@ -14,15 +14,17 @@ import '../../helpers/app_faces.dart';
 /// fixed height does when the OS text size goes up, the answer was
 /// 「막대가 글자 크기를 따라 자란다」 — with its stated cost, 「타임라인 위 줄과
 /// 컬러 패널이 두꺼워진다」. The two bars it named: the command bar's pills
-/// and the colour readout.
+/// and the colour readout; a census of the whole screen found a third, the
+/// canvas view pill.
 ///
 /// 🔬Measured in the app's own face before the fix:
 /// - at 1× — the size everyone runs — the readout's hex was 56.5 wide in a
 ///   54 cell, so `#000000` wrapped its last digit onto a line the 26px bar
 ///   cut off;
-/// - at 1.5× the pills' names stood 25 in their 24 and the frame counter
-///   OVERFLOWED the command bar by 11px, stripes and all;
-/// - at 2× every word of both bars stood taller than its box.
+/// - at 1.5× the pills' names stood 25 in their 24, the frame counter
+///   OVERFLOWED the command bar by 11px, stripes and all, and the view
+///   pill's `100.00%` wrapped inside its 74;
+/// - at 2× every word of all three stood taller than its box.
 ///
 /// ⚠️In the app's face or not at all ([loadTheAppFaces]): the test font's
 /// glyphs are other widths, and the 1× case does not happen in it.
@@ -87,6 +89,25 @@ void main() {
         );
       });
 
+      testWidgets('no word of the canvas view pill is cut off', (tester) async {
+        atTextScale(tester, scale);
+        await openTheApp(tester);
+
+        final pill = find.byKey(const ValueKey<String>('canvas-view-pill'));
+        expect(pill, findsWidgets, reason: 'LIVENESS — a canvas shows');
+        expect(
+          find.descendant(
+            of: pill,
+            matching: find.byKey(
+              const ValueKey<String>('canvas-viewport-zoom-label'),
+            ),
+          ),
+          findsWidgets,
+          reason: 'LIVENESS — the readout is on a pill, not folded away',
+        );
+        expect(wordsCutOff(pill), isEmpty);
+      });
+
       testWidgets('no word of the colour readout is cut off', (tester) async {
         atTextScale(tester, scale);
         await openTheApp(tester);
@@ -149,7 +170,7 @@ void main() {
     );
   });
 
-  testWidgets('at 1× both bars are the height they were drawn at — nothing '
+  testWidgets('at 1× the bars are the height they were drawn at — nothing '
       'drawn at 1× moves', (tester) async {
     atTextScale(tester, 1.0);
     await openTheApp(tester);
@@ -161,6 +182,16 @@ void main() {
     expect(
       tester.getSize(find.byType(ColorStatusBar)).height,
       ColorStatusBar.height,
+    );
+    expect(
+      {
+        for (final pill in find
+            .byKey(const ValueKey<String>('canvas-view-pill'))
+            .evaluate())
+          (pill.renderObject! as RenderBox).size.height,
+      },
+      {28},
+      reason: 'every view pill as drawn',
     );
   });
 }

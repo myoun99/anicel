@@ -649,12 +649,28 @@ void main() {
       return out;
     }
 
-    for (final leadingCount in <int>[0, 3, 6]) {
+    // …and at 2× the OS text size, where the readouts the ladder adds up
+    // are wider (text-scale-fixed-height-bars): a ladder that budgeted their
+    // 1× widths would keep groups the capsule then clips.
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    for (final (scale, leadingCount) in const [
+      (1.0, 0),
+      (1.0, 3),
+      (1.0, 6),
+      (2.0, 0),
+      (2.0, 3),
+      (2.0, 6),
+    ]) {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
       final bad = <String>[];
       // 1px through the band where clusters actually shed — a coarser step
       // walked straight past a width that overflowed by 2px — and coarse
       // above it, where nothing sheds and only the arithmetic is on trial.
-      for (var width = 120.0; width <= 620.0; width += width < 340 ? 1 : 8) {
+      for (
+        var width = 120.0;
+        width <= 620.0;
+        width += scale > 1 ? 4 : (width < 340 ? 1 : 8)
+      ) {
         await pumpAt(width, leadingCount);
         for (final key in escapees(leadingCount)) {
           bad.add('${width.toInt()}px: $key');
@@ -668,7 +684,8 @@ void main() {
         bad,
         isEmpty,
         reason:
-            'with $leadingCount host controls, the pill pushed something '
+            'at $scale×, with $leadingCount host controls, the pill pushed '
+            'something '
             'outside its own clip',
       );
     }
@@ -685,9 +702,20 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.binding.setSurfaceSize(const Size(1200, 600));
 
-    for (final leadingCount in <int>[0, 2]) {
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    for (final (scale, leadingCount) in const [
+      (1.0, 0),
+      (1.0, 2),
+      (2.0, 0),
+      (2.0, 2),
+    ]) {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
       final bad = <String>[];
-      for (var width = 120.0; width <= 900.0; width += width < 620 ? 1 : 8) {
+      for (
+        var width = 120.0;
+        width <= 900.0;
+        width += scale > 1 ? 4 : (width < 620 ? 1 : 8)
+      ) {
         await tester.pumpWidget(
           floorPillHarness(
             width: width,
@@ -724,7 +752,8 @@ void main() {
         bad,
         isEmpty,
         reason:
-            'with $leadingCount host controls, the floor pill pushed '
+            'at $scale×, with $leadingCount host controls, the floor pill '
+            'pushed '
             'something outside its own clip',
       );
     }
