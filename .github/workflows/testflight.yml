@@ -71,13 +71,13 @@ jobs:
           QA_REQUIRE_NATIVE: '1'
         run: |
           set -euo pipefail
-          # The selector is ONE script: this build, the Codemagic one and
+          # The selector is ONE script: this build, the Mac build and
           # `lane.sh land` ask the same question and must get one answer. It
           # exits 1 when it selects nothing, which fails this step under -e.
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # A native crash is one line here; its stack is in the crash report
-          # macOS writes beside it — see codemagic.yaml's same step.
+          # macOS writes beside it, which `print_mac_crash_reports.py` prints.
           xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt" || {
             status=$?
             python3 tool/print_mac_crash_reports.py
@@ -136,7 +136,7 @@ jobs:
         run: |
           # The Fastfile builds the signing repository's basic-auth header
           # from MATCH_GIT_USER and MATCH_GIT_TOKEN — one place, for this
-          # workflow and both of Codemagic's.
+          # workflow and the Mac one.
           bundle exec fastlane ios beta
 
       # The logs are where a signing failure explains itself, and they
