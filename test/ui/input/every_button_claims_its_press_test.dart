@@ -403,18 +403,15 @@ void main() {
         ),
       );
 
-  /// Presses [finder] and reports whether the pointer was claimed WHILE it
+  /// Presses [position] and reports whether the pointer was claimed WHILE it
   /// was down — the only moment that counts, because a pan recogniser asks
   /// at `addPointer`, which happens during the down dispatch.
-  Future<bool> claimedWhileDown(
+  Future<bool> claimedAt(
     WidgetTester tester,
-    Finder finder, {
+    Offset position, {
     required int pointer,
   }) async {
-    final gesture = await tester.startGesture(
-      tester.getCenter(finder),
-      pointer: pointer,
-    );
+    final gesture = await tester.startGesture(position, pointer: pointer);
     final claimed = controlOwnsTap(pointer);
     await gesture.up();
     await tester.pump();
@@ -427,6 +424,13 @@ void main() {
     );
     return claimed;
   }
+
+  /// [claimedAt] a widget's centre.
+  Future<bool> claimedWhileDown(
+    WidgetTester tester,
+    Finder finder, {
+    required int pointer,
+  }) => claimedAt(tester, tester.getCenter(finder), pointer: pointer);
 
   testWidgets('the bar\'s 1·2·3·4·N claim their press', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
@@ -557,10 +561,23 @@ void main() {
 
     final grid = find.byKey(const ValueKey<String>('timeline-frame-grid-area'));
     expect(grid, findsOneWidget);
+    // ⚠️A QUARTER IN, not the centre. At 24px a frame the default cut's 24
+    // frames end at the centre of this window, and the cut's END HANDLE is a
+    // control that holds its press (F-163 재발, 유저 2026-09-23: 「버튼은
+    // 무조건 강한클레임」) — measured: the centre sat inside its 12px strip.
+    // A quarter in is an empty cell of the cut, which is what this asks.
+    final area = tester.getRect(grid);
     expect(
-      await claimedWhileDown(tester, grid, pointer: 60),
+      await claimedAt(
+        tester,
+        Offset(area.left + area.width / 4, area.center.dy),
+        pointer: 60,
+      ),
       isFalse,
       reason: 'scrolling still happens — everywhere that is not a control',
     );
+    // A press on a cell arms the cell's own timers (its double tap, its
+    // settled tap); let them lapse before the tree goes.
+    await tester.pump(const Duration(seconds: 1));
   });
 }
