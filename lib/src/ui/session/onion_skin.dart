@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../services/commands/toggle_id_in_set_command.dart';
+import '../../core/set_toggle.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -8,7 +8,6 @@ import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import '../../services/command.dart';
 import '../../services/onion_skin_plan.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
@@ -80,13 +79,13 @@ class OnionSkin {
     // 무슨소리지? 아무튼 어니언 적용 미적용만 되면 되는건데」. Press the
     // button, press Ctrl+Z, the ghosts come back. Where the bit lives is
     // plumbing.
-    _project.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: layerIds,
-        layerId: layerId,
-        debugLabel: 'Toggle onion skin',
-      ),
-    );
+    //
+    // ↩️F-162 (유저 2026-09-24): 「어니언/비지블솔로 등 내가 말한건 빼도록」 —
+    // the onion leaves the undo history, as the visibility solo did (F-125):
+    // it shows the drawing, it is not an edit of it, so a Ctrl+Z after a
+    // stroke takes the stroke back and leaves the ghosts alone. The other
+    // row buttons of 08-29 — the eye, the opacity, the twirl — stay undoable.
+    layerIds.value = toggledSet(layerIds.value, layerId);
     // Row/legend toggle glyphs read through the session listenable.
     _changes.notifyChanged();
   }
@@ -127,29 +126,18 @@ class OnionSkin {
     // "restores this id's membership" meant: 「조작끝낸 모든 레이어가
     // 안돌아간단거야 설마?」. It would not have, here.
     //
-    // ⛔Only the rows this press actually CHANGES go in the batch: a
-    // command for a row already in the target state is a no-op that still
-    // costs an entry to walk back through.
-    final changing = [
-      for (final layer in targets)
-        if (isLayerOnionSkinEnabled(layer.id) != enable) layer.id,
-    ];
-    if (changing.isEmpty) {
-      return;
+    // ↩️F-162 (유저 2026-09-24): the onion left the undo history, the row
+    // toggle and this sweep together — one law for the one bit. The sweep
+    // writes the set directly again, now on purpose.
+    final next = Set<LayerId>.of(layerIds.value);
+    for (final layer in targets) {
+      if (enable) {
+        next.add(layer.id);
+      } else {
+        next.remove(layer.id);
+      }
     }
-    _project.historyManager.execute(
-      CompositeCommand(
-        description: 'Toggle onion skin (${changing.length} layers)',
-        commands: [
-          for (final layerId in changing)
-            ToggleIdInSetCommand(
-              notifier: layerIds,
-              layerId: layerId,
-              debugLabel: 'Toggle onion skin',
-            ),
-        ],
-      ),
-    );
+    layerIds.value = next;
     _changes.notifyChanged();
   }
 

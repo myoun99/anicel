@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/services/commands/toggle_id_in_set_command.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🚨★★★**UNDOING SOMETHING THAT DID NOT MOVE THE DOCUMENT MUST NOT TIDY
@@ -17,15 +20,37 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// the document and does get the tidy-up). One question answers all of
 /// them: did the project object change.
 ///
-/// ⚠️**THE WITNESS IS THE ONION-SKIN TOGGLE, and deliberately so.** It is a
-/// REAL session verb that pushes a real command into the session's own
-/// history and touches no project (유저 2026-08-29 asked for it to be
-/// undoable: 「프로젝트 파일이 바뀌란건 무슨소리지? 아무튼 어니언 적용
-/// 미적용만 되면 되는건데」). ⛔A stroke driven through a standalone
+/// ⚠️**THE WITNESS IS A `ToggleIdInSetCommand` IN THE SESSION'S OWN
+/// HISTORY** — a real command that enters the history `undo()` walks and
+/// touches no project. ⛔A stroke driven through a standalone
 /// `BrushFrameEditingCoordinator` is NOT a witness — it never enters the
 /// session's history, so `undo()` steps something else entirely and the
 /// test passes or fails for the wrong reason. That mistake cost a round.
+///
+/// ↩️It was the onion-skin toggle, the session verb that pushed that command
+/// (유저 2026-08-29: 「아무튼 어니언 적용 미적용만 되면 되는건데」), until
+/// F-162 (유저 2026-09-24: 「어니언/비지블솔로 등 내가 말한건 빼도록」) took
+/// the onion out of the history. The command's other door — the property
+/// lane twirl — is the workspace's, which a session test cannot press, so
+/// the command is executed here as that door executes it.
 void main() {
+  /// What the lane twirl pushes: one row's membership of a view set.
+  ValueNotifier<Set<LayerId>> pushANonDocumentStep(
+    EditorSessionManager session,
+    LayerId layerId,
+  ) {
+    final twirled = ValueNotifier<Set<LayerId>>(<LayerId>{});
+    addTearDown(twirled.dispose);
+    session.historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: twirled,
+        layerId: layerId,
+        debugLabel: 'Toggle layer lanes',
+      ),
+    );
+    return twirled;
+  }
+
   EditorSessionManager sessionWithADrawing() {
     final session = EditorSessionManager(initialProject: createDefaultProject());
     session.createDrawingAtCurrentFrame();
@@ -54,7 +79,7 @@ void main() {
     );
 
     // An undoable edit that moves no row.
-    session.onionSkin.toggleLayerOnionSkin(layerId);
+    pushANonDocumentStep(session, layerId);
     session.undo();
 
     expect(
@@ -73,20 +98,19 @@ void main() {
     final session = sessionWithADrawing();
     addTearDown(session.dispose);
     final layerId = session.activeLayer!.id;
-    final before = session.onionSkin.layerIds.value.contains(layerId);
 
-    session.onionSkin.toggleLayerOnionSkin(layerId);
+    final twirled = pushANonDocumentStep(session, layerId);
     expect(
-      session.onionSkin.layerIds.value.contains(layerId),
-      !before,
-      reason: 'fixture premise: the toggle toggled',
+      twirled.value.contains(layerId),
+      isTrue,
+      reason: 'fixture premise: the step toggled',
     );
 
     session.undo();
 
     expect(
-      session.onionSkin.layerIds.value.contains(layerId),
-      before,
+      twirled.value.contains(layerId),
+      isFalse,
       reason: '🚨유저 2026-08-29: 「버튼 누르고 Ctrl+Z, 어니언이 돌아온다」 — '
           'staying silent about the DOCUMENT must not make the step itself '
           'stop undoing',
