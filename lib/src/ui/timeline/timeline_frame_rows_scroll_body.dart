@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
-import '../../models/timeline_row_address.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -43,7 +42,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
     required this.rows,
-    required this.activeLayerId,
     required this.playbackFrameCount,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -77,7 +75,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
-    this.currentRow,
     this.laneRange,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -117,7 +114,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
   /// preserve the scroll geometry of the rows sliced away.
   final List<TimelineDisplayRow> rows;
-  final LayerId? activeLayerId;
   final int playbackFrameCount;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
@@ -204,8 +200,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// handle's successor); null keeps rows display-only.
   final TimelineRangeGestureCallbacks? rangeGesture;
 
-  /// F-25: the standing row, so a lane BAND lights with its rail half.
-  final ValueListenable<TimelineRowAddress?>? currentRow;
 
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
@@ -254,7 +248,6 @@ typedef _RowMemoInputs = ({
   // back as the same instances from the repository, and `Layer.==` is a
   // deep walk over frames that this gate must never pay.
   ByIdentity<Layer> layer,
-  bool active,
   int playbackFrameCount,
   // The frame-axis GEOMETRY, present only for rows that still read it at
   // build time (R28 #4). The painted drawing rows take the live handle and
@@ -463,7 +456,6 @@ class _TimelineFrameRowsScrollBodyState
         widget.dragPreview?.value,
         layer.id,
       ),
-      active: layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
       geometry: _geometryFor(layer.kind),
       crossAxisExtent: widget.metrics.layerRowHeight,
@@ -551,7 +543,6 @@ class _TimelineFrameRowsScrollBodyState
         : TimelineLaneFrameRow(
             layer: layer,
             lane: _laneOf(row, layer),
-            currentRow: widget.currentRow,
             frameStartIndex: widget.frameStartIndex,
             frameEndIndexExclusive: widget.frameEndIndexExclusive,
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
@@ -601,7 +592,6 @@ class _TimelineFrameRowsScrollBodyState
 
     final inputs = (
       layer: ByIdentity(row.layer),
-      active: row.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
       // THE line: every row's geometry consumers are live now — painters
       // through `repaint`, span overlays through the span layout — so a zoom

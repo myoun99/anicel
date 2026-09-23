@@ -376,7 +376,6 @@ Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
       body: Material(
         child: TimelineFrameCellsRow(
           layer: layer,
-          active: true,
           playbackFrameCount: 24,
           // Classic geometry: the drag distances below assume 48px cells.
           geometry: testFrameGeometry(

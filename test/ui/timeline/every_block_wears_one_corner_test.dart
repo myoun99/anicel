@@ -167,7 +167,6 @@ void main() {
             child: SePaperSpan(
               axis: Axis.horizontal,
               frameCellExtent: cell,
-              startFrame: 0,
             ),
           ),
         ),

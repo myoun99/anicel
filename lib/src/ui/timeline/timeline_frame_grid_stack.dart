@@ -14,8 +14,8 @@ typedef _LiveTrim = ({
   ValueListenable<TimelineDragPreview?> preview,
 });
 
-/// The frame cells and everything layered on them, in z-order: the beat
-/// lines under the rows, the playhead over them, and where the film stops
+/// The frame cells and everything layered on them, in z-order: the grid
+/// sheet under the rows, the playhead over them, and where the film stops
 /// stated over everything — the out-of-cut wash, the のりしろ mark, the
 /// cut-end line and, while a cut is being trimmed, its grip.
 ///
@@ -28,7 +28,7 @@ class TimelineFrameGridStack extends StatelessWidget {
     super.key,
     this.axis = Axis.horizontal,
     required this.rowsBody,
-    this.beatLines,
+    this.gridSheet,
     required this.playheadExtent,
     required this.playhead,
     this.cutEndDrag,
@@ -42,9 +42,10 @@ class TimelineFrameGridStack extends StatelessWidget {
   final Axis axis;
   final Widget rowsBody;
 
-  /// The 6f/24f beat-line overlay (UI-R13 #7): spans EVERY row — SE,
-  /// camera, lanes — under the rows, over the ground.
-  final Widget? beatLines;
+  /// The grid sheet (UI-R13 #7 → I-44): spans EVERY row — SE, camera,
+  /// lanes — under the rows, over the panel's ground: the rows' grounds,
+  /// every frame line and every row seam.
+  final Widget? gridSheet;
 
   /// The playhead's extent along the frame axis — the content's. Its cross
   /// extent is the layer's own.
@@ -99,21 +100,22 @@ class TimelineFrameGridStack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final beatLines = this.beatLines;
+    final gridSheet = this.gridSheet;
     return Stack(
       children: [
-        // D32 (2026-08-18): the line overlay sits UNDER the rows now — an
-        // opaque beat line glowing over a blue paper block was the
-        // report. Blocks occlude the empty-space lines and draw their own
-        // interior seams through the same law (heldSeamLineFor: identical
-        // cadence and snap, ink multiplied onto the paper), so the grid
-        // reads as one line running through paper and dark ground alike.
-        // This is also the z-order the storyboard always had — three
-        // panels, one stacking. Empty cells paint nothing (UI-R21 #2), so
-        // the lines still show wherever there is no paper.
-        if (beatLines != null)
+        // D32 (2026-08-18): the grid sits UNDER the rows — an opaque beat
+        // line glowing over a blue paper block was the report. This is
+        // also the z-order the storyboard always had — three panels, one
+        // stacking. Empty cells paint nothing (UI-R21 #2), so the grid
+        // shows wherever there is no paper.
+        // 🚨I-44: and a block is where it does NOT show — 「블록에 존재하는
+        // 그리드선만 싹 삭제」. The blocks used to draw seams of their own on
+        // their paper (heldSeamLineFor); they draw paper alone now, and the
+        // only line crossing a block is the row seam, which the paper stops
+        // short of ([timelineRowPaperExtent]).
+        if (gridSheet != null)
           Positioned.fill(
-            child: IgnorePointer(child: RepaintBoundary(child: beatLines)),
+            child: IgnorePointer(child: RepaintBoundary(child: gridSheet)),
           ),
         rowsBody,
         _playheadSlot(),

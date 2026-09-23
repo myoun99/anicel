@@ -10,6 +10,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
 import 'timeline_se_row_visual.dart' show timelineBlockWarningBar;
 import '../repaint_props.dart';
@@ -192,6 +193,9 @@ List<Widget> timelineRowInstructionOverlays({
 /// Edge grips over instruction spans: reuses the exposure grip widget and
 /// callback shape — the session dispatches instruction rows to the span
 /// editor internally, so both row types share one drag pipeline.
+///
+/// [crossAxisExtent] is the ROW's: the grips stand on the row's paper, which
+/// stops a seam short of it (I-44, [timelineRowPaperExtent]).
 List<Widget> timelineRowInstructionEdgeGrips({
   required Layer layer,
   required int frameStartIndex,
@@ -216,7 +220,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               edge: edge,
               startIndex: start,
               endIndexExclusive: endExclusive,
-              crossAxisExtent: crossAxisExtent,
+              crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
             ),
             child: TimelineBlockEdgeGrip(
               layerId: layer.id,

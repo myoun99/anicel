@@ -364,9 +364,9 @@ bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
   return exposureState.isCovered;
 }
 
-/// The active-row WASH — painted once per row as an underlay (UI-R21 #2),
-/// never per cell: cell rasters are active-independent now, so switching
-/// the active layer re-rasters nothing.
+/// The active-row WASH — painted once per row, under it (UI-R21 #2; the
+/// grid sheet paints it since I-44), never per cell: cell rasters are
+/// active-independent, so switching the active layer re-rasters nothing.
 Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
     colorScheme.secondaryContainer.withValues(alpha: 0.35);
 
@@ -444,8 +444,8 @@ TimelineCellStyleColors timelineCellStyleColors({
   required bool selected,
   Color paper = timelineDrawingHeldColor,
 }) {
-  // UI-R21 #2: empty cells paint NOTHING — the row-level underlay owns
-  // the paper (a surface base plus the active-row wash), so the cell
+  // UI-R21 #2: empty cells paint NOTHING — the ground under them is the
+  // grid sheet's (I-44: the host colour, the active-row wash), so the cell
   // substrate carries no per-row state at all.
   const emptyBaseColor = Colors.transparent;
   final exposureColor = switch (exposureState) {

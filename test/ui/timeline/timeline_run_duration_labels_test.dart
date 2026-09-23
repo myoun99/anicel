@@ -63,7 +63,6 @@ void main() {
         body: Material(
           child: TimelineFrameCellsRow(
             layer: layer,
-            active: true,
             playbackFrameCount: 12,
             geometry: testFrameGeometry(
               frameCellExtent: cellWidth,

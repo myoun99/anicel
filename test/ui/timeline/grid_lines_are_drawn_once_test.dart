@@ -12,24 +12,22 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart';
-import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'timeline_cell_probe.dart';
 
-/// F-3 (first half) and F-7 — **one boundary, one line, one colour.**
+/// F-3, F-7 and I-44 — **one boundary, one line, one colour.**
 ///
-/// Two different failures of the same law. The grid overlay sits UNDER the
-/// rows (D32), so a row that paints owes the grid a redraw; the debt is only
-/// settled if the row OCCLUDES first. And the row seam is not part of the
-/// frame grid at all — it is the layer area's divider continued into the
-/// cells, so it does not take the grid's ground treatment.
+/// F-7 (유저 2026-08-24): 「fx열면 프레임영역의 선이 두꺼운데 선이
+/// 이중적용되고있는건가?」 — two drawers on one boundary. F-3 (08-25):
+/// 「가로선만 레이어영역 흰색계열로 통일」 — the row seam is the layer area's
+/// divider, flat, not a frame line taking the ground. I-44 (09-23/24):
+/// 「가로선이랑 세로선이 2개 중복해서있고 … 하나로 못합치나?」 → one sheet.
+///
+/// These ask the RUNNING grid, not a painter built by hand: "the law file is
+/// green and the panel is broken" was D43-2's whole shape.
 void main() {
-  const trackId = TrackId('grid-once-track');
   const drawingId = LayerId('grid-once-draw');
 
   Project project() => Project(
@@ -38,7 +36,7 @@ void main() {
     createdAt: DateTime.utc(2026, 8, 25),
     tracks: [
       Track(
-        id: trackId,
+        id: const TrackId('grid-once-track'),
         name: 'V',
         cuts: [
           Cut(
@@ -68,124 +66,102 @@ void main() {
     ],
   );
 
-  group('F-3: the row seam is the LAYER AREA\'s divider, flat', () {
-    testWidgets('the same colour inside a block and on empty space', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: project())),
-      );
-      await tester.pumpAndSettle();
+  Future<void> pump(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: project())),
+    );
+    await tester.pumpAndSettle();
+  }
 
-      final painter = timelineRowCellsPainterFor(tester, drawingId.value);
-      final expected = timelineGridRowSeamInk(painter.colorScheme).color;
+  Finder sheetsIn(Finder area) => find.descendant(
+    of: area,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomPaint && widget.painter is TimelineGridSheetPainter,
+    ),
+  );
 
-      // Frame 2 is inside the block (its paper is the layer's colour mark);
-      // frame 8 is empty space (the row's own ground). The FRAME grid line
-      // deliberately differs between those two — the seam must not.
-      final insideBlock = painter.rowSeamLineFor(2)!;
-      final onEmpty = painter.rowSeamLineFor(8)!;
-
-      expect(
-        insideBlock.color,
-        expected,
-        reason: 'the rail draws this divider flat over whatever ground the '
-            'row happens to have; multiplying it here is what made the same '
-            'line read darker on the frame side',
-      );
-      expect(onEmpty.color, expected);
-      expect(insideBlock.color, onEmpty.color);
-    });
-
-    testWidgets('while the FRAME boundary line still takes the ground', (
-      tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: project())),
-      );
-      await tester.pumpAndSettle();
-
-      final painter = timelineRowCellsPainterFor(tester, drawingId.value);
-      expect(
-        painter.heldSeamLineFor(2)!.color,
-        isNot(painter.heldSeamLineFor(8)!.color),
-        reason: '「세로나 그 외는 그대로」 — the frame grid rules the paper it '
-            'crosses, so it must keep darkening it. If this ever goes equal, '
-            'the seam fix has been over-applied to the wrong line',
-      );
-    });
+  testWidgets('the timeline draws its grid ONCE — one sheet, under the rows', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(
+      sheetsIn(
+        find.byKey(const ValueKey<String>('timeline-frame-grid-area')),
+      ),
+      findsOneWidget,
+      reason: 'the overlay, every row\'s redraw, every block\'s seams and '
+          'every fx band\'s own grid are ONE sheet now',
+    );
   });
 
-  group('F-7: a washed row occludes before it redraws', () {
-    testWidgets('the fx band paints an OPAQUE ground, not a 60% wash', (
-      tester,
-    ) async {
-      final layer = Layer(
-        id: const LayerId('fx'),
-        name: 'FX',
-        frames: const [],
-      );
-      const host = Color(0xFF101214);
+  testWidgets('F-3: the row seam runs flat across block and empty space '
+      'alike — one rect, the rail\'s ink', (tester) async {
+    await pump(tester);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: TimelineGridLaw(
-              ground: host,
-              framesPerSecond: 24,
-              child: SizedBox(
-                width: 600,
-                height: 40,
-                child: TimelineLaneFrameRow(
-                  layer: layer,
-                  lane: const PropertyLaneRow(
-                    laneId: 'position',
-                    label: 'Position',
-                    keyedFrames: {},
+    final sheet =
+        tester
+                .widget<CustomPaint>(
+                  sheetsIn(
+                    find.byKey(
+                      const ValueKey<String>('timeline-frame-grid-area'),
+                    ),
                   ),
-                  frameStartIndex: 0,
-                  frameEndIndexExclusive: 12,
-                  leadingFrameSpacerWidth: 0,
-                  trailingFrameSpacerWidth: 0,
-                  metrics: TimelineGridMetrics.defaults,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+                )
+                .painter!
+            as TimelineGridSheetPainter;
+    final spy = _FillSpy();
+    const size = Size(600, 200);
+    sheet.paint(spy, size);
 
-      final grid = find.byKey(
-        const ValueKey<String>('timeline-lane-grid-fx-position'),
-      );
-      expect(grid, findsOneWidget, reason: 'the band draws the law itself');
+    // The drawing row's paper spans frames 1..4 and 5.. is empty: one seam
+    // rect runs the whole width under both, in the rail's flat ink.
+    final seamInk = timelineGridRowSeamInk(sheet.colorScheme).color;
+    final seams = spy.fills
+        .where((fill) => fill.color.toARGB32() == seamInk.toARGB32())
+        .toList();
+    expect(seams, isNotEmpty);
+    for (final seam in seams) {
+      expect(seam.rect.left, 0);
+      expect(seam.rect.right, size.width);
+    }
 
-      final decorated = tester.widget<DecoratedBox>(
-        find.ancestor(of: grid, matching: find.byType(DecoratedBox)).first,
-      );
-      final color = (decorated.decoration as BoxDecoration).color!;
-
-      expect(
-        color.a,
-        1.0,
-        reason: 'a 60% wash DIMS the buried overlay instead of covering it, '
-            'so the band\'s own redraw lands as a second line on the same '
-            'boundary — which is the thick line that was reported',
-      );
-      expect(
-        color,
-        Color.alphaBlend(
-          AppColors.washDown.withValues(alpha: 0.6),
-          host,
-        ),
-        reason: 'and it is the SAME colour on screen: the wash composited '
-            'onto the host, not a new one',
-      );
-    });
+    // And the row itself rules nothing: its painter fills paper boxes only.
+    final row = timelineRowCellsPainterFor(tester, drawingId.value);
+    final rowSpy = _FillSpy();
+    row.paint(rowSpy, const Size(600, 28));
+    final window = row.visibleFrameWindow();
+    final papers = {
+      for (
+        var frame = window.startIndex;
+        frame < window.endIndexExclusive;
+        frame += 1
+      )
+        row.paperRectFor(frame),
+    };
+    expect(rowSpy.fills, isNotEmpty, reason: 'fixture premise: a block');
+    expect(
+      rowSpy.fills.every((fill) => papers.contains(fill.rect)),
+      isTrue,
+      reason: 'a seam or a frame line would be a box of its own',
+    );
   });
+}
+
+/// Every filled box a painter asks for, with its colour.
+class _FillSpy implements Canvas {
+  final fills = <({Rect rect, Color color})>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) =>
+      fills.add((rect: rect, color: paint.color));
+
+  @override
+  void drawRRect(RRect rrect, Paint paint) =>
+      fills.add((rect: rrect.outerRect, color: paint.color));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
@@ -24,6 +26,9 @@ import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
 /// drawn triangle is its own hit box (유저 답 09-23, (가)).
 void main() {
   const cross = timelineLayerRowHeight;
+  // I-44: the grips sit on the PAPER, which stops short of the row seam the
+  // grid sheet draws under the row.
+  final paper = timelineRowPaperExtent(cross);
   const cells = [2.4, 3.0, 4.0, 8.0, 12.0, 14.0, 24.0, 48.0, 96.0];
   const blockLengths = [1, 2, 5, 20];
   const start = 3;
@@ -45,7 +50,8 @@ void main() {
       edge: edge,
       startIndex: from,
       endIndexExclusive: from + length,
-      crossAxisExtent: cross,
+      // The rows hand the grip their PAPER (I-44).
+      crossAxisExtent: paper,
     ),
     frames(cell),
     crossAxisExtent: cross,
@@ -82,11 +88,11 @@ void main() {
           cell: cell,
         );
         expect(lead.width, moreOrLessEquals(cell / 3), reason: why);
-        expect(lead.height, moreOrLessEquals(cross / 2), reason: why);
+        expect(lead.height, moreOrLessEquals(paper / 2), reason: why);
         expect(lead.left, moreOrLessEquals(blockStart), reason: why);
-        expect(lead.bottom, moreOrLessEquals(cross), reason: why);
+        expect(lead.bottom, moreOrLessEquals(paper), reason: why);
         expect(tail.width, moreOrLessEquals(cell / 3), reason: why);
-        expect(tail.height, moreOrLessEquals(cross / 2), reason: why);
+        expect(tail.height, moreOrLessEquals(paper / 2), reason: why);
         expect(tail.right, moreOrLessEquals(blockEnd), reason: why);
         expect(tail.top, 0, reason: why);
 
@@ -106,8 +112,8 @@ void main() {
           axis: Axis.vertical,
         );
         expect(leadV.top, moreOrLessEquals(blockStart), reason: why);
-        expect(leadV.right, moreOrLessEquals(cross), reason: why);
-        expect(leadV.width, moreOrLessEquals(cross / 2), reason: why);
+        expect(leadV.right, moreOrLessEquals(paper), reason: why);
+        expect(leadV.width, moreOrLessEquals(paper / 2), reason: why);
         expect(leadV.height, moreOrLessEquals(cell / 3), reason: why);
         expect(tailV.bottom, moreOrLessEquals(blockEnd), reason: why);
         expect(tailV.left, 0, reason: why);
@@ -169,11 +175,11 @@ void main() {
         final box = gripBox(edge, length: 5, cell: cell);
         final path = triangle(edge, box);
         // The block's paper, drawn the way the cells painter draws it: the
-        // block corner law on the whole block rect.
-        final block = Rect.fromLTWH(start * cell, 0, 5 * cell, cross);
-        final paper = RRect.fromRectAndRadius(
+        // block corner law on the paper box (I-44: the row short of its seam).
+        final block = Rect.fromLTWH(start * cell, 0, 5 * cell, paper);
+        final rounded = RRect.fromRectAndRadius(
           block,
-          timelineBlockCornerRadiusAt(cellExtent: cell, crossExtent: cross),
+          timelineBlockCornerRadiusAt(cellExtent: cell, crossExtent: paper),
         );
         final lead = edge == TimelineBlockEdge.start;
         // A corner-anchored right triangle: ink iff inside both.
@@ -193,7 +199,7 @@ void main() {
             for (final dy in const [-eps, eps]) {
               final q = p.translate(dx, dy);
               if (inTriangle(q) != inTriangle(p) ||
-                  paper.contains(q) != paper.contains(p)) {
+                  rounded.contains(q) != rounded.contains(p)) {
                 return true;
               }
             }
@@ -213,7 +219,7 @@ void main() {
             }
             expect(
               path.contains(p),
-              inTriangle(p) && paper.contains(p),
+              inTriangle(p) && rounded.contains(p),
               reason: 'cell $cell, ${edge.name}: $p',
             );
           }
@@ -268,7 +274,8 @@ void main() {
       ],
       gripIdScope: 'probe',
       geometry: frames(cell),
-      crossAxisExtent: cross,
+      // As the cells row hands its chrome: the paper (I-44).
+      crossAxisExtent: paper,
       axis: Axis.horizontal,
       includeRunEdges: false,
     );
@@ -284,26 +291,27 @@ void main() {
     const blockStart = start * cell;
     const blockEnd = (start + 4) * cell;
     // The boxes themselves: the start edge low in the first cell, the end
-    // edge high in the last.
+    // edge high in the last — on the PAPER (I-44).
     expect(
-      hit(const Offset(blockStart + cell / 4, cross - cross / 6)),
+      hit(Offset(blockStart + cell / 4, paper - paper / 6)),
       'block-edge-grip-start-probe-0',
     );
     expect(
-      hit(const Offset(blockEnd - cell / 4, cross / 6)),
+      hit(Offset(blockEnd - cell / 4, paper / 6)),
       'block-edge-grip-end-probe-0',
     );
     // The same edge cells anywhere else — just above the start box and just
     // below the end box right by the edge, just past each box along the
-    // frame axis, and the opposite corners — belong to the cell: a press
-    // there selects or moves.
-    for (final point in const [
-      Offset(blockStart + 1, cross / 2 - 1),
-      Offset(blockStart + 1, 1),
-      Offset(blockStart + cell / 3 + 1, cross - 1),
-      Offset(blockEnd - 1, cross / 2 + 1),
-      Offset(blockEnd - 1, cross - 1),
-      Offset(blockEnd - cell / 3 - 1, 1),
+    // frame axis, the opposite corners, and the row seam's own pixel under
+    // the start box — belong to the cell: a press there selects or moves.
+    for (final point in [
+      Offset(blockStart + 1, paper / 2 - 1),
+      const Offset(blockStart + 1, 1),
+      Offset(blockStart + cell / 3 + 1, paper - 1),
+      Offset(blockStart + cell / 6, paper + 0.5),
+      Offset(blockEnd - 1, paper / 2 + 1),
+      Offset(blockEnd - 1, paper - 1),
+      const Offset(blockEnd - cell / 3 - 1, 1),
     ]) {
       expect(hit(point), isNull, reason: 'a press at $point is the cell\'s');
     }
@@ -475,7 +483,7 @@ void main() {
           gripIdScope: 'probe',
           layer: null,
           baseLayer: null,
-          crossAxisExtent: cross,
+          crossAxisExtent: paper,
           axis: Axis.horizontal,
           includeRunEdges: false,
         ),

@@ -113,7 +113,6 @@ void main() {
       await tester.pumpWidget(
         _body(
           layers: [_layer(activeLayerId.value), _layer('layer-inactive')],
-          activeLayerId: activeLayerId,
           currentFrameIndex: 1,
           exposureStateForLayer: (layer, frameIndex) => frameIndex == 1
               ? TimelineCellExposureState.drawingStart
@@ -367,7 +366,6 @@ Finder _rowFinder(Layer layer) =>
 
 Widget _body({
   required List<Layer> layers,
-  LayerId? activeLayerId,
   int currentFrameIndex = 0,
   int playbackFrameCount = 24,
   int frameStartIndex = 0,
@@ -392,7 +390,6 @@ Widget _body({
             expandedLayerIds: const {},
             lanesForLayer: (_) => const [],
           ),
-          activeLayerId: activeLayerId,
           playbackFrameCount: playbackFrameCount,
           frameStartIndex: frameStartIndex,
           frameEndIndexExclusive: frameEndIndexExclusive,

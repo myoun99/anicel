@@ -76,8 +76,10 @@ abstract interface class TimelineTileRasterSource {
 
   Axis get axis;
 
-  /// The counting fps, for the seam law's beat strengths (D32/D38).
-  int get framesPerSecond;
+  /// What an unworked block's translucent paper is pre-blended onto — the
+  /// host's ground (I-44: the grid sheet under the row must not show
+  /// through a block). Baked into the tile, so it is part of the look.
+  Color? get paperGround;
 
   /// What this row's COVERAGE follows, when that is not the layer itself
   /// (㉘: a camera row's keys live on `cut.camera`).
@@ -109,12 +111,9 @@ abstract interface class TimelineTileRasterSource {
     int frameIndex,
   );
 
-  /// The held-frame seam, or null. ONE line per boundary, drawn identically
-  /// by both passes.
-  ({Rect rect, Color color})? heldSeamLineFor(int frameIndex);
-
-  /// The row's own ground seam, or null (chromeless rows have none).
-  ({Rect rect, Color color})? rowSeamLineFor(int frameIndex);
+  /// The cell's PAPER box — the cell short of the row seam, which the grid
+  /// sheet draws under the row (I-44). Both passes fill exactly this.
+  Rect paperRectFor(int frameIndex);
 
   /// The glyph's ink. The tile emitter tints glyph blits with exactly this.
   Color foregroundInkFor(TimelineRowCellModel model);
@@ -133,3 +132,13 @@ abstract interface class TimelineTileRasterSource {
   /// tile lays it at its first cell, as the classic pass does at a window's.
   int? wordCellBefore(int frameIndex);
 }
+
+/// #29: THE spelling of [TimelineTileRasterSource.substrateGeneration] — the
+/// (project, cut) world a host's rows answer from. Every host that mounts
+/// rows on the one tile store names its world here: the store keeps ONE
+/// live generation and drops a raster request from any other, so two hosts
+/// spelling the same world two ways would starve each other of tiles.
+String timelineSubstrateGeneration({
+  required String projectId,
+  required String? cutId,
+}) => '$projectId:${cutId ?? '-'}';

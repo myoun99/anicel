@@ -14,7 +14,9 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show TimelineDisplayRow;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineBeatLinesPainter;
+    show TimelineGridSheetPainter, timelineStandingGround;
+import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart'
+    show TimelineRowsGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import 'timeline/timeline_cell_probe.dart';
@@ -618,34 +620,31 @@ void main() {
     },
   );
 
-  // D32 (2026-08-18): the beat-line overlay sits UNDER the rows — an
-  // opaque beat line used to glow over the blue paper blocks. Blocks
-  // occlude the empty-space lines and draw their own interior seams
-  // through the same law (heldSeamLineFor), so the grid reads as one
-  // line through paper and dark ground alike.
-  testWidgets('D32: the beat-line overlay paints BEFORE the rows', (
-    tester,
-  ) async {
+  // D32 (2026-08-18): the grid sits UNDER the rows — an opaque beat line
+  // used to glow over the blue paper blocks. I-44: and it is ONE sheet —
+  // the rows' grounds, every frame line and every seam — so the blocks are
+  // what lies over it, and no block carries a line of its own.
+  testWidgets('D32: the grid sheet paints BEFORE the rows', (tester) async {
     await tester.pumpWidget(_grid(playbackFrameCount: 24));
 
     final order = tester.allElements.toList();
-    final beatIndex = order.indexWhere(
+    final sheetIndex = order.indexWhere(
       (element) =>
           element.widget is CustomPaint &&
-          (element.widget as CustomPaint).painter is TimelineBeatLinesPainter,
+          (element.widget as CustomPaint).painter is TimelineGridSheetPainter,
     );
     final rowsIndex = order.indexWhere(
       (element) =>
           element.widget.key ==
           const ValueKey<String>('timeline-row-cells-layer-1'),
     );
-    expect(beatIndex, greaterThanOrEqualTo(0));
+    expect(sheetIndex, greaterThanOrEqualTo(0));
     expect(rowsIndex, greaterThanOrEqualTo(0));
     expect(
-      beatIndex,
+      sheetIndex,
       lessThan(rowsIndex),
       reason:
-          'Stack paints children in order: the overlay first means the '
+          'Stack paints children in order: the sheet first means the '
           'blocks sit over the lines, not the lines over the blocks',
     );
   });
@@ -1845,31 +1844,41 @@ void main() {
     // content answered a question nobody asked.
     //
     // ⇒ pinned as a REFUSAL so the same well-meant fix cannot come back:
-    // the content is the rows' extent, and the empty cells' lines are the
-    // ROW's to draw (`TimelineRowCellsPainter.rowGround`).
+    // the content is the rows' extent, and the grid rules the rows it is
+    // handed — the empty cells' lines included (I-44: the sheet's, drawn
+    // on the rows' own grounds) — and nothing past them.
     await tester.pumpWidget(
       _grid(
         layers: [_layer(id: 'layer-1', name: 'Layer 1')],
       ),
     );
 
-    final overlay = find.byWidgetPredicate(
+    final sheet = find.byWidgetPredicate(
       (widget) =>
-          widget is CustomPaint && widget.painter is TimelineBeatLinesPainter,
+          widget is CustomPaint && widget.painter is TimelineGridSheetPainter,
     );
-    expect(overlay, findsOneWidget);
+    expect(sheet, findsOneWidget);
     final body = tester.getSize(
       find.byKey(const ValueKey<String>('timeline-scrollable-body')),
     );
     expect(
-      tester.getSize(overlay).height,
+      tester.getSize(sheet).height,
       body.height,
-      reason: 'the overlay still fills the content it lives in',
+      reason: 'the sheet still fills the content it lives in',
     );
     expect(
       body.height,
       52,
       reason: 'and that content is ONE row tall — not the region\'s height',
+    );
+    final rows = (tester.widget<CustomPaint>(sheet).painter!
+            as TimelineGridSheetPainter)
+        .rows
+        .rows;
+    expect(
+      rows.fold<double>(0, (extent, row) => extent + row.extent),
+      body.height,
+      reason: 'every row it rules is a row that exists',
     );
   });
 
@@ -2697,31 +2706,70 @@ void main() {
     },
   );
 
-  testWidgets('the ACTIVE-row wash is a row underlay, not cell paint '
-      '(UI-R21 #2): exactly the active row carries it', (tester) async {
+  testWidgets('the ACTIVE-row wash is the grid sheet\'s ground, never cell '
+      'or row paint (UI-R21 #2, I-44): exactly the active row carries it', (
+    tester,
+  ) async {
     await tester.pumpWidget(_grid());
-    bool rowHasWash(String layerId) {
-      final context = tester.element(find.byType(LayerTimelineGrid));
-      final wash = timelineActiveRowWashColor(Theme.of(context).colorScheme);
-      return tester
-          .widgetList<ColoredBox>(
-            find.descendant(
-              of: find.byKey(
-                ValueKey<String>('timeline-frame-row-area-$layerId'),
+    final context = tester.element(find.byType(LayerTimelineGrid));
+    final scheme = Theme.of(context).colorScheme;
+    final sheet = tester.widget<TimelineRowsGridSheet>(
+      find.byType(TimelineRowsGridSheet),
+    );
+    final grounds = (tester
+            .widget<CustomPaint>(
+              find.descendant(
+                of: find.byType(TimelineRowsGridSheet),
+                matching: find.byType(CustomPaint),
               ),
-              matching: find.byType(ColoredBox),
-            ),
-          )
-          .any((box) => box.color == wash);
-    }
+            )
+            .painter! as TimelineGridSheetPainter)
+        .rows
+        .rows;
+    Color groundOf(String layerId) => grounds[sheet.rows.indexWhere(
+      (row) => !row.isLane && row.layer.id.value == layerId,
+    )].ground;
+    final host = scheme.surfaceContainerHighest;
 
     // _grid pins layer-1 active.
-    expect(rowHasWash('layer-1'), isTrue);
-    expect(rowHasWash('layer-2'), isFalse);
+    expect(groundOf('layer-1'), timelineStandingGround(host, scheme));
+    expect(groundOf('layer-2'), host);
+
+    // ⛔And the row lays no ground of its own: the underlay it used to carry
+    // buried the grid under it (D43-2's whole story).
+    final wash = timelineActiveRowWashColor(scheme);
+    for (final layerId in ['layer-1', 'layer-2']) {
+      expect(
+        tester
+            .widgetList<ColoredBox>(
+              find.descendant(
+                of: find.byKey(
+                  ValueKey<String>('timeline-frame-row-area-$layerId'),
+                ),
+                matching: find.byType(ColoredBox),
+              ),
+            )
+            .where((box) => box.color == wash || box.color == scheme.surface),
+        isEmpty,
+      );
+    }
+  });
+
+  testWidgets('I-44: a row\'s paper stands on the panel\'s ground — the '
+      'painter is handed the law\'s, which unworked paper is pre-blended '
+      'onto', (tester) async {
+    await tester.pumpWidget(_grid());
+    final context = tester.element(find.byType(LayerTimelineGrid));
+    expect(
+      timelineRowCellsPainterFor(tester, 'layer-1').paperGround,
+      Theme.of(context).colorScheme.surfaceContainerHighest,
+      reason: 'without it an unworked block stays translucent and the grid '
+          'sheet under the row shows through it',
+    );
   });
 
   test('cell style keeps covered cells paper-white; empty cells paint '
-      'NOTHING (the row underlay owns the paper, UI-R21 #2)', () {
+      'NOTHING (the grid sheet owns the ground, UI-R21 #2 → I-44)', () {
     const colorScheme = ColorScheme.light();
 
     final drawingStart = timelineCellStyleColors(

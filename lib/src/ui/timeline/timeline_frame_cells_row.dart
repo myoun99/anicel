@@ -18,6 +18,7 @@ import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
@@ -41,7 +42,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     required this.layer,
-    required this.active,
     required this.playbackFrameCount,
     required this.geometry,
     required this.crossAxisExtent,
@@ -73,7 +73,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
-    this.chromeless = false,
     this.unionLane,
   });
 
@@ -90,17 +89,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// generation can never skew from the rows on screen.
   final String substrateGeneration;
 
-  /// GROUND OFF — see [TimelineRowCellsPainter.chromeless] for the confirmed
-  /// look and for why the flag lives on the row instead of in its caller.
-  ///
-  /// The twin is [TimelineLayerControlsRow.chromeless]: the collapsed row
-  /// mounts BOTH halves of the real thing, and each half takes its ground off
-  /// the same way. That is the whole of ⑩'s root C — an overlay that owns no
-  /// drawing code cannot drift from what the panel shows.
-  final bool chromeless;
-
   final Layer layer;
-  final bool active;
   final int playbackFrameCount;
 
   /// The LIVE frame-axis geometry — the part a ZOOM STEP moves (R28 #4).
@@ -327,7 +316,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
       gripIdScope: layer.id.value,
       layer: layer,
       baseLayer: baseLayer,
-      crossAxisExtent: crossAxisExtent,
+      // I-44: the chrome stands on the block's PAPER — the row short of its
+      // seam — so the edge triangles sit in the paper's own corners.
+      crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
       axis: axis,
       includeRunEdges: wantsRunEdges,
     );
@@ -548,16 +539,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
     context: context,
     keyPrefix: keyPrefix,
     layer: layer,
-    active: active,
     geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
     substrateGeneration: substrateGeneration,
-    chromeless: chromeless,
-    // D32/D38: the interior seam law's beat strengths.
-    framesPerSecond: projectFrameRate.countingBase,
     foregroundPainter: _runLabelsPainter(),
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same

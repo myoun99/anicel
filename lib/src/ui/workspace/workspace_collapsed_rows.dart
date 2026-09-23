@@ -447,14 +447,21 @@ class _WorkspaceCollapsedRows {
         else
           TimelineFrameCellsRow(
             layer: layer,
-            active: true,
-            // 🚨GROUND OFF. Mounting the real row (⑩ root C) brought the
-            // timeline's own ground with it, because only the RAIL half knew
-            // how to take one off — 유저 2026-08-13: 「원래 구상대로라면
-            // 프레임셀쪽은 바탕색은 싹 없애고 … 전체적으로 반투명하게 하기로
-            // 하지 않았나?」. It had been confirmed in 2026-08-10 and the fix
-            // for one half undid it for the other.
-            chromeless: true,
+            // 🚨GROUND OFF — 유저 2026-08-13: 「원래 구상대로라면 프레임셀쪽은
+            // 바탕색은 싹 없애고 … 전체적으로 반투명하게 하기로 하지
+            // 않았나?」. Mounting the real row (⑩ root C) brought the
+            // timeline's ground with it until the row was taught to drop it
+            // (`chromeless`). ⇒ I-44: no row paints a ground any more — the
+            // grid sheet under the rows does, and the overlay's sheet has no
+            // ground to paint ([CollapsedRowOverlay]'s law: the artwork).
+            // The row is its paper, here as in the panel.
+            //
+            // The panel's world, spelled the panel's way: this row bakes on
+            // the one tile store now, which keeps ONE live generation.
+            substrateGeneration: timelineSubstrateGeneration(
+              projectId: session.repository.requireProject().id.value,
+              cutId: session.activeCutId?.value,
+            ),
             playbackFrameCount:
                 session.activeCutSpan.activeCutPlaybackFrameCount,
             geometry: geometry,

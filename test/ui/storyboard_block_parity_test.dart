@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGripInk, BlockEdgeGripPainter;
@@ -305,18 +307,22 @@ void main() {
       final endGrip = find.byKey(
         ValueKey<String>('storyboard-se-grip-$_seLayerId-0-end'),
       );
-      // I-43: a third of a cell along, half the row across — the dense
+      // I-44: the SE paper stops a seam short of the row (the grid sheet
+      // draws that seam under the row), and the grips stand on the paper.
+      final paper = timelineRowPaperExtent(rowHeight);
+      // I-43: a third of a cell along, half the paper across — the dense
       // rows' one placement.
       for (final grip in [startGrip, endGrip]) {
         final size = tester.getSize(grip);
         expect(size.width, moreOrLessEquals(_ppf / 3));
-        expect(size.height, moreOrLessEquals(rowHeight / 2));
+        expect(size.height, moreOrLessEquals(paper / 2));
       }
       // In the corners: the start grip in the block's first cell on the
-      // FAR side (frame 1, 8px; the bottom), the end grip in its last cell
-      // on the NEAR side (frame 6's leading edge, 48px; the top).
+      // FAR side (frame 1, 8px; the bottom of the paper), the end grip in
+      // its last cell on the NEAR side (frame 6's leading edge, 48px; the
+      // top).
       expect(tester.getTopLeft(startGrip).dx - rowLeft, 1 * _ppf);
-      expect(tester.getBottomLeft(startGrip).dy - rowTop, rowHeight);
+      expect(tester.getBottomLeft(startGrip).dy - rowTop, paper);
       expect(tester.getTopRight(endGrip).dx - rowLeft, 6 * _ppf);
       expect(tester.getTopRight(endGrip).dy - rowTop, 0);
     });

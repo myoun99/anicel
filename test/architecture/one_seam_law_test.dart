@@ -18,44 +18,48 @@ import '../helpers/library_source.dart';
 /// 다르지 않도록 통일」. 「절대」 is a claim about the NEXT change, so the
 /// test has to read the source, not the screen.
 ///
+/// ↩️It read the storyboard rail's own `_stripRowLine`. I-44 took that
+/// drawer away — every seam, in every panel, is drawn by the one grid sheet
+/// now — so the guard reads "whatever draws that line now", as it asked:
+/// the sheet's painter must take the seam from the law, and the storyboard
+/// must mount the sheet rather than rule its rows again.
+///
 /// ⛔Deliberately narrow. Panel borders, dialog outlines and the lane
 /// row's four-sided PLATE box also draw `outlineVariant` and are NOT
 /// seams; forcing them through this law would be inventing a rule nobody
 /// asked for.
 void main() {
-  test('the storyboard rail reads the seam law instead of respelling it', () {
-    final file = File('lib/src/ui/storyboard_panel.dart');
-    if (!file.existsSync()) {
-      fail('${file.path} is missing — this test guards code it cannot find');
+  test('the one grid sheet reads the seam law, and the storyboard mounts it '
+      'instead of ruling its rows again', () {
+    final law = File('lib/src/ui/timeline/timeline_beat_lines.dart');
+    final storyboard = File('lib/src/ui/storyboard_panel.dart');
+    for (final file in [law, storyboard]) {
+      if (!file.existsSync()) {
+        fail('${file.path} is missing — this test guards code it cannot find');
+      }
     }
-    // The rail is a part of the storyboard LIBRARY (the audit's SRP cut,
-    // 2026-09-02): the scan reads the file plus the parts it declares, so
-    // the per-row seam is found wherever the cut put it.
-    final source = librarySource(file.path);
 
-    final start = source.indexOf('Widget _stripRowLine(');
+    final lawSource = law.readAsStringSync();
+    final start = lawSource.indexOf('class TimelineGridSheetPainter');
     expect(
       start,
       isNot(-1),
       reason:
-          '_stripRowLine is the storyboard rail\'s per-row seam. If it was '
-          'renamed or inlined, point this test at whatever draws that line '
-          'now — do not delete the guard.',
+          'TimelineGridSheetPainter draws every row seam. If it was renamed, '
+          'point this test at whatever draws that line now — do not delete '
+          'the guard.',
     );
-
-    // The body: from the signature to the first line that closes a method
-    // at class indentation. Short and single-purpose, so this is enough.
-    final bodyEnd = source.indexOf('\n  }', start);
-    expect(bodyEnd, isNot(-1), reason: 'unterminated _stripRowLine body');
-    final body = source.substring(start, bodyEnd);
-
+    // The class: from its head to the next top-level declaration.
+    final classEnd = lawSource.indexOf('\n}', start);
+    expect(classEnd, isNot(-1), reason: 'unterminated painter class');
+    final body = lawSource.substring(start, classEnd);
     expect(
       body.contains('timelineGridRowSeamInk'),
       isTrue,
       reason:
-          'The storyboard rail must READ the seam law. Spelling the same '
-          'colour by hand looks identical today and diverges silently the '
-          'first time the law changes.',
+          'The sheet must READ the seam law. Spelling the same colour by hand '
+          'looks identical today and diverges silently the first time the '
+          'law changes.',
     );
     expect(
       body.contains('outlineVariant'),
@@ -63,6 +67,19 @@ void main() {
       reason:
           'Naming the seam colour directly is the copy this guard exists to '
           'stop — take it from timelineGridRowSeamInk.',
+    );
+
+    // The storyboard LIBRARY (the file plus the parts it declares — the
+    // audit's SRP cut put the rail rows in one): the sheet is mounted, and
+    // no row carries a seam of its own again.
+    final storyboardSource = librarySource(storyboard.path);
+    expect(storyboardSource.contains('TimelineGridSheet('), isTrue);
+    expect(
+      storyboardSource.contains('timelineGridRowSeamInk'),
+      isFalse,
+      reason:
+          'a storyboard that reads the seam ink is drawing a seam itself — '
+          'the per-row line I-44 moved into the sheet',
     );
   });
 }

@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show TimelineRowDragHooks;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridSheetPainter, timelineLaneGround;
 
 /// The V row's fx chain ON SCREEN: its lane rows show up under the Transform
 /// group, and grabbing a group header re-orders the chain — the layer rail's
@@ -163,6 +165,62 @@ void main() {
     );
     expect(labelStep, 26);
     expect(stripStep, labelStep);
+  });
+
+  /// I-44: the lane band paints no ground of its own any more — the one grid
+  /// sheet under the strips does, off the rail's own row table, so a lane
+  /// row stands on the lane ground and the V row beside it on the panel's.
+  testWidgets('I-44: the V row\'s fx lanes stand on the lane ground the one '
+      'sheet paints', (tester) async {
+    await _pumpPanel(tester, [_effect('fx-a', EffectKind.blur)]);
+
+    final sheet =
+        tester
+                .widget<CustomPaint>(
+                  find.descendant(
+                    of: find.byKey(
+                      const ValueKey<String>('storyboard-grid-sheet'),
+                    ),
+                    matching: find.byType(CustomPaint),
+                  ),
+                )
+                .painter!
+            as TimelineGridSheetPainter;
+    final top = tester
+        .getTopLeft(
+          find.byKey(
+            const ValueKey<String>('storyboard-timeline-scroll-content'),
+          ),
+        )
+        .dy;
+    Color groundAt(Finder row) {
+      final at = tester.getTopLeft(row).dy - top;
+      var edge = 0.0;
+      for (final band in sheet.rows.rows) {
+        if ((edge - at).abs() < 0.5) {
+          return band.ground;
+        }
+        edge += band.extent;
+      }
+      fail('no sheet row starts where $row does ($at)');
+    }
+
+    expect(
+      groundAt(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-lane-row-0-fx-group:fx-a'),
+        ),
+      ),
+      timelineLaneGround(sheet.ground),
+    );
+    expect(
+      groundAt(
+        find.byKey(
+          ValueKey<String>('storyboard-track-timeline-area-${_track.value}'),
+        ),
+      ),
+      sheet.ground,
+    );
   });
 
   testWidgets('dragging an fx header re-orders the V row\'s chain', (

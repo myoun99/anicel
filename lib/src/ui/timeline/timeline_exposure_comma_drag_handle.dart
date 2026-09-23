@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import 'axis_turn.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
@@ -42,8 +43,8 @@ const double _gripMainCells = 1 / 3;
 const double _gripCrossShare = 1 / 2;
 
 /// Where a block-edge grip sits, as a frame-span placement: a box a third of
-/// a cell along the frame axis and half the row across it, in the block's
-/// corner.
+/// a cell along the frame axis and half the block's PAPER across it, in the
+/// paper's corner.
 ///
 /// ★THE BOX IS THE GRIP (유저 답 2026-09-23: 「(가) 삼각형 상자 — 보이는 것 =
 /// 잡는 것」): the triangle fills half of it, and a press anywhere in it takes
@@ -52,6 +53,14 @@ const double _gripCrossShare = 1 / 2;
 /// than the strip it answered in, and B5②/B6 (2026-08-17) was that bar
 /// overhanging its strip at the storyboard's zoom. A mark that IS its box
 /// cannot overhang it.
+///
+/// 🚨I-44: [crossAxisExtent] is the PAPER's — the box the block's paper
+/// fills across its host. A timeline row's paper stops short of the row
+/// seam the grid sheet draws under the row, so the rows hand in
+/// [timelineRowPaperExtent] of their own height; the storyboard's cut plate
+/// hands in its picture strip, which no seam crosses. A triangle measured
+/// on the wrong box stands a seam's width off the corner it has to be (유저
+/// 2026-09-23: 「모서리랑 블록이랑 모서리가 통일안되서 … 확실하게 통일해줘」).
 ///
 /// THE law for both kinds of mount: the sparse rows lay a widget out by it,
 /// and the dense rows' chrome resolves the same placement through
@@ -75,7 +84,7 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
 
 /// The corner radius of the block a grip [box] sits in — THE block corner
 /// ([timelineBlockCornerRadiusAt]), read back from the box the placement made:
-/// a third of a cell along the frame axis, half the row across it.
+/// a third of a cell along the frame axis, half the paper across it.
 double blockEdgeGripCornerRadius(Rect box, {required Axis axis}) =>
     timelineBlockCornerRadiusAt(
       cellExtent: extentAlong(axis, box.size) / _gripMainCells,

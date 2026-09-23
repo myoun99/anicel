@@ -18,11 +18,13 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
 /// changed character wherever paper began.
 ///
 /// These pin the missing half: every surface that knows its ground puts
-/// its line through [timelineGridLineInkOnGround], the block seams' own
-/// function (pinned against real seams in [timeline_block_seam_test]).
+/// its line through [timelineGridLineInkOnGround] — the one function the
+/// block seams used too, while blocks still carried seams (I-44 took them
+/// off; the grid sheet under the rows draws every line now).
 class _LineSpy implements Canvas {
   final List<({Offset from, Offset to, Color color, double strokeWidth})>
   lines = [];
+  final List<({Rect rect, Color color})> rects = [];
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) {
@@ -36,6 +38,10 @@ class _LineSpy implements Canvas {
       strokeWidth: paint.strokeWidth,
     ));
   }
+
+  @override
+  void drawRect(Rect rect, Paint paint) =>
+      rects.add((rect: rect, color: paint.color));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -57,10 +63,10 @@ void main() {
     'paints as ${expected.toARGB32().toRadixString(16)}',
   );
 
-  group('the beat-lines overlay composites onto its host surface', () {
+  group('the grid sheet composites onto its host surface', () {
     _LineSpy paintOverlay({required Color? ground}) {
       final spy = _LineSpy();
-      TimelineBeatLinesPainter(
+      TimelineGridSheetPainter(
         frameCellExtent: 24,
         framesPerSecond: 24,
         colorScheme: scheme,
@@ -120,16 +126,17 @@ void main() {
     test('the ROW seam is FLAT — it is the rail\'s divider, not a grid line', () {
       const ground = Color(0xFF2A2A2E);
       final spy = _LineSpy();
-      TimelineBeatLinesPainter(
+      TimelineGridSheetPainter(
         frameCellExtent: 24,
         framesPerSecond: 24,
         colorScheme: scheme,
         ground: ground,
-        crossCellExtent: 40,
+        rows: const TimelineGridRows([(extent: 40, ground: ground)]),
       ).paint(spy, const Size(240, 100));
 
-      final seam = spy.lines.singleWhere(
-        (line) => line.from.dy == 40 && line.to.dy == 40,
+      // I-44: a filled rect at the row's LAST pixel, drawn by the sheet.
+      final seam = spy.rects.singleWhere(
+        (rect) => rect.rect == const Rect.fromLTRB(0, 39, 240, 40),
       );
       expect(seam.color, paintsAs(scheme.outlineVariant));
       expect(
@@ -298,7 +305,7 @@ void main() {
     // The point of the round, stated as one comparison: overlay and ruler
     // over the same paper, same boundary, same colour and width.
     final overlay = _LineSpy();
-    TimelineBeatLinesPainter(
+    TimelineGridSheetPainter(
       frameCellExtent: 24,
       framesPerSecond: 24,
       colorScheme: scheme,

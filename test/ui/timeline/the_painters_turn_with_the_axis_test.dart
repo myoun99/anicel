@@ -80,47 +80,66 @@ bool _inked(Uint32List pixels, Size size, int x, int y) =>
 void main() {
   final scheme = buildAppTheme().colorScheme;
 
-  group('TimelineBeatLinesPainter', () {
-    // 16px cells: cadence 1, so every frame boundary carries a line.
+  group('TimelineGridSheetPainter', () {
+    // 16px cells: cadence 1, so every frame boundary carries a line. Three
+    // rows of 10, the middle one on a ground of its own (an fx lane).
+    final host = scheme.surfaceContainerHighest;
+    final lane = timelineLaneGround(host);
     _CanvasSpy paint(Axis axis, Size size) {
       final spy = _CanvasSpy();
-      TimelineBeatLinesPainter(
+      TimelineGridSheetPainter(
         frameCellExtent: 16,
         framesPerSecond: 24,
         colorScheme: scheme,
-        ground: null,
+        ground: host,
         axis: axis,
-        crossCellExtent: 10,
+        rows: TimelineGridRows([
+          (extent: 10, ground: host),
+          (extent: 10, ground: lane),
+          (extent: 10, ground: host),
+        ]),
       ).paint(spy, size);
       return spy;
     }
 
-    test('horizontal: frame lines stand up the height, seams lie across '
-        'the width', () {
+    test('horizontal: frame lines stand up the height, the lane stretch and '
+        'the seams lie across the width', () {
       final spy = paint(Axis.horizontal, const Size(48, 30));
-      final frameLines = spy.lines.where((l) => l.from.dx == l.to.dx);
-      final seams = spy.lines.where((l) => l.from.dy == l.to.dy);
-      expect(frameLines.map((l) => l.from.dx), [16.5, 32.5, 48.5]);
-      expect(
-        frameLines.map((l) => (l.from.dy, l.to.dy)),
-        everyElement((0, 30)),
-      );
-      expect(seams.map((l) => l.from.dy), [10, 20]);
-      expect(seams.map((l) => (l.from.dx, l.to.dx)), everyElement((0, 48)));
+      // The host pass the whole height, then the lane's stretch again.
+      expect(spy.lines.map((l) => (l.from, l.to)), [
+        (const Offset(16.5, 0), const Offset(16.5, 30)),
+        (const Offset(32.5, 0), const Offset(32.5, 30)),
+        (const Offset(48.5, 0), const Offset(48.5, 30)),
+        (const Offset(16.5, 10), const Offset(16.5, 20)),
+        (const Offset(32.5, 10), const Offset(32.5, 20)),
+        (const Offset(48.5, 10), const Offset(48.5, 20)),
+      ]);
+      // The lane's ground, then every row's LAST pixel ruled.
+      expect(spy.rects, [
+        const Rect.fromLTRB(0, 10, 48, 20),
+        const Rect.fromLTRB(0, 9, 48, 10),
+        const Rect.fromLTRB(0, 19, 48, 20),
+        const Rect.fromLTRB(0, 29, 48, 30),
+      ]);
     });
 
-    test('vertical: frame lines lie across the width, seams stand up the '
-        'height', () {
+    test('vertical: frame lines lie across the width, the lane stretch and '
+        'the seams stand up the height', () {
       final spy = paint(Axis.vertical, const Size(30, 48));
-      final frameLines = spy.lines.where((l) => l.from.dy == l.to.dy);
-      final seams = spy.lines.where((l) => l.from.dx == l.to.dx);
-      expect(frameLines.map((l) => l.from.dy), [16.5, 32.5, 48.5]);
-      expect(
-        frameLines.map((l) => (l.from.dx, l.to.dx)),
-        everyElement((0, 30)),
-      );
-      expect(seams.map((l) => l.from.dx), [10, 20]);
-      expect(seams.map((l) => (l.from.dy, l.to.dy)), everyElement((0, 48)));
+      expect(spy.lines.map((l) => (l.from, l.to)), [
+        (const Offset(0, 16.5), const Offset(30, 16.5)),
+        (const Offset(0, 32.5), const Offset(30, 32.5)),
+        (const Offset(0, 48.5), const Offset(30, 48.5)),
+        (const Offset(10, 16.5), const Offset(20, 16.5)),
+        (const Offset(10, 32.5), const Offset(20, 32.5)),
+        (const Offset(10, 48.5), const Offset(20, 48.5)),
+      ]);
+      expect(spy.rects, [
+        const Rect.fromLTRB(10, 0, 20, 48),
+        const Rect.fromLTRB(9, 0, 10, 48),
+        const Rect.fromLTRB(19, 0, 20, 48),
+        const Rect.fromLTRB(29, 0, 30, 48),
+      ]);
     });
   });
 
@@ -297,7 +316,7 @@ void main() {
     }
   });
 
-  group('SePaperSpan dividers', () {
+  group('SePaperSpan paper', () {
     Future<_CanvasSpy> paint(WidgetTester tester, Axis axis, Size size) async {
       await tester.pumpWidget(
         Directionality(
@@ -306,13 +325,7 @@ void main() {
             child: SizedBox(
               width: size.width,
               height: size.height,
-              // 20px: at this zoom the grid keeps every boundary, so each
-              // cell still has its divider.
-              child: SePaperSpan(
-                axis: axis,
-                frameCellExtent: 20,
-                startFrame: 0,
-              ),
+              child: SePaperSpan(axis: axis, frameCellExtent: 20),
             ),
           ),
         ),
@@ -328,26 +341,22 @@ void main() {
       return spy;
     }
 
-    testWidgets('horizontal: one divider per cell, standing up the height', (
+    // I-44: no line crosses the paper, and the paper stops a seam short of
+    // the row's trailing cross edge — the bottom here, the right there.
+    testWidgets('horizontal: the paper stops above the seam, no line on it', (
       tester,
     ) async {
       final spy = await paint(tester, Axis.horizontal, const Size(80, 24));
-      expect(spy.lines.map((l) => (l.from, l.to)), [
-        (const Offset(20.5, 0), const Offset(20.5, 24)),
-        (const Offset(40.5, 0), const Offset(40.5, 24)),
-        (const Offset(60.5, 0), const Offset(60.5, 24)),
-      ]);
+      expect(spy.lines, isEmpty);
+      expect(spy.rrects, everyElement(const Rect.fromLTWH(0, 0, 80, 23)));
     });
 
-    testWidgets('vertical: one divider per cell, lying across the width', (
+    testWidgets('vertical: the paper stops left of the seam, no line on it', (
       tester,
     ) async {
       final spy = await paint(tester, Axis.vertical, const Size(24, 80));
-      expect(spy.lines.map((l) => (l.from, l.to)), [
-        (const Offset(0, 20.5), const Offset(24, 20.5)),
-        (const Offset(0, 40.5), const Offset(24, 40.5)),
-        (const Offset(0, 60.5), const Offset(24, 60.5)),
-      ]);
+      expect(spy.lines, isEmpty);
+      expect(spy.rrects, everyElement(const Rect.fromLTWH(0, 0, 23, 80)));
     });
   });
 

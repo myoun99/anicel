@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridLaw;
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
@@ -79,20 +81,26 @@ void main() {
   /// 그리드선 띄우고 그 부분도 전체적으로 반투명하게 하기로 하지 않았나?」 —
   /// and it had been confirmed in 2026-08-10. Only the rail half knew how to
   /// take a ground off, so the fix for one half undid the look of the other.
-  testWidgets('BOTH halves are chromeless — the row is laid on the artwork, '
-      'not on a panel', (tester) async {
+  ///
+  /// ⇒ I-44: the cells half has no ground to take off any more — no row
+  /// paints one; the grid sheet under the rows does, and the folded row's
+  /// law gives it none to paint. So the cells half is asked what it stands
+  /// on, and the rail half, which still has a ground of its own, keeps its
+  /// flag.
+  testWidgets('BOTH halves stand on the artwork, not on a panel', (
+    tester,
+  ) async {
     await pumpApp(tester);
     await collapseBottom(tester);
 
+    final cells = tester.element(inOverlay(find.byType(TimelineFrameCellsRow)));
+    final law = cells.findAncestorWidgetOfExactType<TimelineGridLaw>();
+    expect(law, isNotNull, reason: 'the folded row states its own ground');
     expect(
-      tester
-          .widget<TimelineFrameCellsRow>(
-            inOverlay(find.byType(TimelineFrameCellsRow)),
-          )
-          .chromeless,
-      isTrue,
-      reason: 'the cells half had no way to say this, which is why the ground '
-          'came back when it started mounting the real row',
+      law!.ground,
+      isNull,
+      reason: 'a folded row lies ON the artwork — there is nothing to paint '
+          'its rows on, and nothing to pre-blend its paper onto',
     );
     expect(
       tester
@@ -107,18 +115,21 @@ void main() {
   /// ⑨ — 「간편오버레이, **프레임셀쪽, 블록 뒤에 전체적으로 해당영역에 깔린
   /// 바탕색은 없애라니까?**」 (재지시).
   ///
-  /// 🚨The flag above was true the whole time and the ground was still
-  /// there, because `chromeless` reached the PAINTER and stopped: the row's
-  /// paper underlay is not painted per cell, it is two `ColoredBox`es laid
+  /// 🚨The flag was true the whole time and the ground was still there,
+  /// because `chromeless` reached the PAINTER and stopped: the row's paper
+  /// underlay was not painted per cell, it was two `ColoredBox`es laid
   /// row-wide under the whole strip (UI-R21 #2 moved them there so that
-  /// switching the active layer re-rasterises nothing).
+  /// switching the active layer re-rasterises nothing). I-44 took the pair
+  /// off every row — the grid sheet paints the rows' grounds now — so this
+  /// pins that nothing brought one back.
   ///
-  /// So asking the widget whether it is chromeless is not enough — the test
-  /// has to ask whether the ground is THERE. The two colours are named
-  /// rather than sampled: a pixel test would pass on any theme whose
-  /// surface happens to be near the artwork's colour.
-  testWidgets('and chromeless means the row-wide GROUND is gone too, not '
-      'just the empty cells', (tester) async {
+  /// Asking a flag is not enough — the test has to ask whether the ground is
+  /// THERE. The two colours are named rather than sampled: a pixel test
+  /// would pass on any theme whose surface happens to be near the artwork's
+  /// colour.
+  testWidgets('and no row-wide GROUND is painted, not just the empty cells', (
+    tester,
+  ) async {
     await pumpApp(tester);
     await collapseBottom(tester);
 

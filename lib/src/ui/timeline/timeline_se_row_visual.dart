@@ -325,11 +325,13 @@ class _WarningBarPainter extends CustomPainter with RepaintOnProps {
     final horizontal = axis == Axis.horizontal;
     final along = extentAlong(axis, size);
     final across = extentAcross(axis, size);
+    // The PAPER's corner (I-44): the block stops short of the row seam, and
+    // its corner is measured on what it covers.
     final corner = frameCount <= 0
         ? Radius.zero
         : timelineBlockCornerRadiusAt(
             cellExtent: along / frameCount,
-            crossExtent: crossAxisExtent,
+            crossExtent: timelineRowPaperExtent(crossAxisExtent),
           );
     // The line follows the paper's own rounding at both ends: the block's
     // corners, a full corner deep across, clip it.
@@ -612,25 +614,24 @@ class _SeNameBox extends StatelessWidget {
 }
 
 /// The paper frame block for hosts without paper cells underneath (the
-/// storyboard's SE track): near-white fill, hairline outline, rounded ends
-/// and the frame grid's own lines across it — visually the drawing rows'
-/// block, painted as one span.
+/// storyboard's SE track): near-white fill, hairline outline, rounded ends —
+/// visually the drawing rows' block, painted as one span.
+///
+/// 🚨I-44: no line crosses it. It drew the frame grid's own lines across
+/// itself (F-92 made them the timeline's law); 「블록에 존재하는 그리드선만
+/// 싹 삭제」 took them off every block, and the grid sheet under the row is
+/// the only thing that rules frames now. Its paper stops short of the row
+/// seam that sheet draws ([timelineRowPaperExtent]), as a drawing row's does.
 class SePaperSpan extends StatelessWidget {
   const SePaperSpan({
     super.key,
     required this.axis,
     required this.frameCellExtent,
-    required this.startFrame,
     this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
   final double frameCellExtent;
-
-  /// The frame the span starts on, on its host's frame axis. The grid thins
-  /// and weights a line by the FRAME its boundary starts, so a span that did
-  /// not know where it stands would draw a grid of its own.
-  final int startFrame;
 
   /// The block's own colour — its layer's mark (⑲). Defaulted, so a host
   /// with no layer in hand still gets the paper.
@@ -638,16 +639,11 @@ class SePaperSpan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final law = TimelineGridLaw.maybeOf(context);
     return CustomPaint(
       painter: _SePaperPainter(
         axis: axis,
         frameCellExtent: frameCellExtent,
-        startFrame: startFrame,
         paper: paper,
-        ground: law?.ground,
-        framesPerSecond: law?.framesPerSecond ?? 0,
-        colorScheme: Theme.of(context).colorScheme,
       ),
       child: const SizedBox.expand(),
     );
@@ -658,77 +654,30 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   _SePaperPainter({
     required this.axis,
     required this.frameCellExtent,
-    required this.startFrame,
     required this.paper,
-    required this.ground,
-    required this.framesPerSecond,
-    required this.colorScheme,
   });
 
   final Axis axis;
   final double frameCellExtent;
-  final int startFrame;
   final Color paper;
-  final Color? ground;
-  final int framesPerSecond;
-  final ColorScheme colorScheme;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final cross = timelineRowPaperExtent(extentAcross(axis, size));
+    final box = axis == Axis.horizontal
+        ? Rect.fromLTWH(0, 0, size.width, cross)
+        : Rect.fromLTWH(0, 0, cross, size.height);
     // THE block corner (F-79's one function) — this span is "visually the
     // drawing rows' block", and it rounded by a 4px of its own since the
     // first SE paper (07-09), so it never matched the blocks it mirrors.
     final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
+      box,
       timelineBlockCornerRadiusAt(
         cellExtent: frameCellExtent,
-        crossExtent: extentAcross(axis, size),
+        crossExtent: cross,
       ),
     );
     canvas.drawRRect(rrect, Paint()..color = paper);
-
-    canvas.save();
-    canvas.clipRRect(rrect);
-    final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    if (frameCellExtent > 0) {
-      // 🚨F-92 (유저 2026-09-12): 「스토리보드패널의 프레임셀 그리드,
-      // 타임라인패널이랑 다름 … 줌 축소해도 1f마다 블록에 세로선이있음.
-      // 타임라인이랑 다른 법 절대로 두지말고 관련 로직 싹 다 통일」. This drew
-      // a line at EVERY frame in a faint ink of its own. Which boundaries show
-      // at this zoom, where they sit and in what ink over this paper are the
-      // timeline cells' answers now: the one grid law
-      // ([timelineFrameBoundaryLineInk]) and the ground rule the cells
-      // painter resolves it on.
-      final seen = timelineGridGroundOver(under: ground, painted: paper);
-      final frames = (mainExtent / frameCellExtent).round();
-      for (var offset = 1; offset < frames; offset += 1) {
-        final ink = timelineFrameBoundaryLineInk(
-          frameIndex: startFrame + offset,
-          frameCellExtent: frameCellExtent,
-          framesPerSecond: framesPerSecond,
-          colorScheme: colorScheme,
-        );
-        if (ink == null) {
-          continue;
-        }
-        final along = timelineFrameBoundaryLinePosition(
-          offset,
-          frameCellExtent,
-        );
-        canvas.drawLine(
-          offsetAlong(axis, along: along, across: 0),
-          offsetAlong(axis, along: along, across: crossExtent),
-          Paint()
-            ..color = seen == null
-                ? ink.color
-                : timelineGridLineInkOnGround(ink, seen)
-            ..strokeWidth = ink.strokeWidth,
-        );
-      }
-    }
-    canvas.restore();
-
     canvas.drawRRect(
       rrect,
       Paint()
@@ -742,12 +691,8 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     axis,
     frameCellExtent,
-    startFrame,
     // A mark change repaints the block (⑲) — without this the row would
     // keep the colour it was first painted with.
     paper,
-    ground,
-    framesPerSecond,
-    colorScheme,
   );
 }

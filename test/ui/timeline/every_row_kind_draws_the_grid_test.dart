@@ -14,6 +14,9 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridSheetPainter;
+import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart';
 
 import 'timeline_cell_probe.dart';
 
@@ -52,12 +55,6 @@ void main() {
     },
   );
 
-  /// ⛔Folder rows derive their blocks from members and adjustment rows have
-  /// no exposures of their own, so a fixture cannot put a block on them —
-  /// they are surveyed for the EMPTY-cell grid instead, which is the same
-  /// line drawn by the other arm of the law.
-  const blocklessKinds = {LayerKind.folder, LayerKind.adjustment};
-
   Project project() => Project(
     id: const ProjectId('grid-project'),
     name: 'Grid',
@@ -91,31 +88,33 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('every row kind rules its frame boundaries', (tester) async {
+  testWidgets('every row kind stands on the one sheet, ruled with the rest', (
+    tester,
+  ) async {
     await pumpWorkspace(tester);
 
-    final missing = <String>[];
-    for (final kind in LayerKind.values) {
-      if (kind == LayerKind.se) {
-        continue;
-      }
-      final id = 'grid-${kind.name}';
-      if (find
-          .byKey(ValueKey<String>('timeline-row-cells-$id'))
-          .evaluate()
-          .isEmpty) {
-        missing.add('${kind.name}: no cells row on screen');
-        continue;
-      }
-      final painter = timelineRowCellsPainterFor(tester, id);
-      // Frame 2 is interior to the block on rows that carry one, and plain
-      // empty space on the two kinds that cannot carry one. Both arms of the
-      // law rule it.
-      final probe = blocklessKinds.contains(kind) ? 8 : 2;
-      if (painter.heldSeamLineFor(probe) == null) {
-        missing.add('${kind.name}: no frame boundary line at $probe');
-      }
-    }
+    // I-44: the frame lines and the row seams are the grid sheet's — drawn
+    // once, across every row it is handed. So the survey asks the sheet
+    // whether each kind's row is among them.
+    final sheet = tester.widget<TimelineRowsGridSheet>(
+      find.byKey(const ValueKey<String>('timeline-grid-sheet')),
+    );
+    final painter =
+        tester
+                .widget<CustomPaint>(
+                  find.descendant(
+                    of: find.byWidget(sheet),
+                    matching: find.byType(CustomPaint),
+                  ),
+                )
+                .painter!
+            as TimelineGridSheetPainter;
+    final ids = {for (final row in sheet.rows) row.layer.id.value};
+    final missing = [
+      for (final kind in LayerKind.values)
+        if (kind != LayerKind.se && !ids.contains('grid-${kind.name}'))
+          kind.name,
+    ];
 
     expect(
       missing,
@@ -123,12 +122,19 @@ void main() {
       reason: 'the grid is the sheet ruling — a row opting out of it is a '
           'row claiming its columns sit somewhere else',
     );
+    expect(
+      painter.rows.rows,
+      hasLength(sheet.rows.length),
+      reason: 'every row the sheet is handed gets its band and its seam',
+    );
   });
 
-  testWidgets('and every row kind rules its own bottom seam', (tester) async {
+  testWidgets('and no row kind draws a line of its own — only its paper', (
+    tester,
+  ) async {
     await pumpWorkspace(tester);
 
-    final missing = <String>[];
+    final lined = <String>[];
     for (final kind in LayerKind.values) {
       if (kind == LayerKind.se) {
         continue;
@@ -140,11 +146,39 @@ void main() {
           .isEmpty) {
         continue;
       }
-      if (timelineRowCellsPainterFor(tester, id).rowSeamLineFor(2) == null) {
-        missing.add(kind.name);
+      final painter = timelineRowCellsPainterFor(tester, id);
+      final window = painter.visibleFrameWindow();
+      final papers = {
+        for (
+          var frame = window.startIndex;
+          frame < window.endIndexExclusive;
+          frame += 1
+        )
+          painter.paperRectFor(frame),
+      };
+      final spy = _BoxSpy();
+      painter.paint(spy, const Size(2000, 28));
+      // 「블록에 존재하는 그리드선만 싹 삭제」: every box a row fills is a
+      // cell's paper — a seam or a frame line would be a box of its own.
+      if (spy.boxes.any((box) => !papers.contains(box))) {
+        lined.add(kind.name);
       }
     }
 
-    expect(missing, isEmpty);
+    expect(lined, isEmpty);
   });
+}
+
+/// Every filled box a painter asks for — rects and rounded rects alike.
+class _BoxSpy implements Canvas {
+  final boxes = <Rect>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) => boxes.add(rect);
+
+  @override
+  void drawRRect(RRect rrect, Paint paint) => boxes.add(rrect.outerRect);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

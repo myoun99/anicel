@@ -12,6 +12,10 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridLaw, timelineLaneGround, timelineRowPaperExtent;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineDrawingHeldColor;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 // 2.0 s of peaks → 48 frames at fps 24.
@@ -116,6 +120,69 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  /// I-44 (「합친다 — 그리드 한 장」): the grid sheet draws the lane's ground
+  /// and its lines UNDER the band now, so the span's 60% paper would let
+  /// them through — it is pre-blended onto the lane's resting ground, the
+  /// way an unworked block's is onto its row's, and it stops a seam short
+  /// of the lane's edge, as every block's paper does.
+  testWidgets('I-44: the span\'s paper is a block\'s — opaque on the lane '
+      'ground, a seam short of the lane\'s edge', (tester) async {
+    const host = Color(0xFF101214);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineGridLaw(
+            ground: host,
+            framesPerSecond: 24,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SeAudioLaneFrameRow(
+                layer: _seLayer(),
+                frameStartIndex: 0,
+                frameEndIndexExclusive: 16,
+                leadingFrameSpacerWidth: 0,
+                trailingFrameSpacerWidth: 0,
+                metrics: TimelineGridMetrics.defaults,
+                frameRate: ProjectFrameRate.fps24,
+                audioPeaksFor: (_) => _peaks,
+                onSetClipOffset: (_, _) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final span = find.byKey(
+      const ValueKey<String>('timeline-audio-lane-span-se-0-b2'),
+    );
+    final paper = find.descendant(
+      of: span,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is DecoratedBox &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).borderRadius != null,
+      ),
+    );
+    expect(paper, findsOneWidget);
+    final decoration =
+        tester.widget<DecoratedBox>(paper).decoration as BoxDecoration;
+    expect(
+      decoration.color,
+      Color.alphaBlend(
+        timelineDrawingHeldColor.withValues(alpha: 0.6),
+        timelineLaneGround(host),
+      ),
+    );
+    expect(decoration.color!.a, 1.0);
+    expect(
+      tester.getSize(paper).height,
+      timelineRowPaperExtent(TimelineGridMetrics.defaults.layerRowHeight),
+    );
+  });
 
   testWidgets('dragging the span toward the block start slides the sound '
       'deeper into the file (one commit on release)', (tester) async {

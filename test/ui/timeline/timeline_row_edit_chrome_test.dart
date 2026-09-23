@@ -59,7 +59,6 @@ void main() {
       body: Material(
         child: TimelineFrameCellsRow(
           layer: twoRunLayer(),
-          active: true,
           playbackFrameCount: 24,
           // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
           // and run 0's end cluster at [96,120].

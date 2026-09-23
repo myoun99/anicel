@@ -3,7 +3,6 @@ import '../widgets/boolean_dot.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
@@ -30,16 +29,9 @@ import 'layer_rail_columns.dart'
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
-import 'timeline_beat_lines.dart'
-    show
-        TimelineBeatLinesPainter,
-        TimelineGridLaw,
-        timelineGridGroundOver,
-        timelineGridRowSeamInk;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart'
     show
-        timelineActiveRowWashColor,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk;
@@ -1131,7 +1123,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
     this.laneRange,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
-    this.currentRow,
   });
 
   final Layer layer;
@@ -1163,54 +1154,20 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Key namespace ('timeline' | 'xsheet').
   final String keyPrefix;
 
-  /// 🚨F-25 (유저 2026-08-24): 「레이어 영역은 fx멤버에 서있을경우
-  /// 레이어/헤더/멤버 3군데가 바탕이 강조색되는데 프레임영역은 그러지 않으니
-  /// 통일」.
-  ///
-  /// The RAIL half of this row has read the standing row since 2026-08-07 —
-  /// 「layer ▸ Blur ▸ Radius all lit」 — and answers it through
-  /// [currentRowIsLane] / [currentRowIsInsideGroup], which exist so no
-  /// surface invents its own test. The FRAME half never asked, so the chain
-  /// lit on one side of the splitter and not the other.
-  ///
-  /// Null leaves the band unlit (the storyboard's display-only lanes, and
-  /// the harnesses that mount a row with no session).
-  final ValueListenable<TimelineRowAddress?>? currentRow;
-
+  /// ⛔NO GROUND, NO GRID, NO SEAM (I-44). This band used to paint all
+  /// three — its composited wash (F-7), a grid instance of its own on it
+  /// (D43-2 재개 c) and its own bottom border (D43-2 재개 d) — and to light
+  /// with the standing row (F-25). The grid sheet under the rows does every
+  /// one of them now, with the rail's own test for the light
+  /// ([timelineRowGround]); the band is its gesture and its markers.
   @override
   Widget build(BuildContext context) {
-    final standing = currentRow;
-    if (standing == null) {
-      return _buildBand(context, lit: false);
-    }
-    return ValueListenableBuilder<TimelineRowAddress?>(
-      valueListenable: standing,
-      builder: (context, row, _) => _buildBand(
-        context,
-        lit:
-            currentRowIsLane(row, layer.id, lane.laneId) ||
-            (lane.isGroupHeader &&
-                currentRowIsInsideGroup(row, layer.id, lane.laneId)),
-      ),
-    );
-  }
-
-  Widget _buildBand(BuildContext context, {required bool lit}) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final gridLaw = TimelineGridLaw.maybeOf(context);
-    final ground = _bandGround(colorScheme, gridLaw, lit: lit);
-    final band = DecoratedBox(
-      decoration: BoxDecoration(color: ground, border: _bandSeam(colorScheme)),
-      child: Stack(
+    return _withSpacers(
+      Stack(
         clipBehavior: Clip.none,
-        children: [
-          ?_gridUnderlay(colorScheme, gridLaw, ground),
-          ?_gestureLayer(),
-          ..._liveMarkers(),
-        ],
+        children: [?_gestureLayer(), ..._liveMarkers()],
       ),
     );
-    return _withSpacers(band);
   }
 
   bool get _horizontal => axis == Axis.horizontal;
@@ -1241,105 +1198,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// move-vs-select, so what looks selected is what a drag grabs.
   bool _selectionCoversRow(TimelineLaneSelection? selection) =>
       laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
-
-  // ── the ground ────────────────────────────────────────────────────────
-
-  /// 🚨D43-2 재개 c (유저 2026-08-22): 「**fx행쪽은 또 그리드선 다르고** 뭐
-  /// 일을 이따구로한거지? 너 무조건 통일 안했지 이거」.
-  ///
-  /// ⛔THE OVERLAY SITS UNDER THE ROWS (D32), SO EVERY ROW OWES THE GRID A
-  /// REDRAW. The frame rows do — `heldSeamLineFor`, the law's ink on their
-  /// own paper. This band never did: it washes at 60% and let the buried
-  /// overlay show THROUGH, which is a third composite of the same ink (the
-  /// law resolved against the PANEL's ground, then 40% of that surviving
-  /// under this wash). Same cadence, same ink, three different lines on
-  /// one screen — which is exactly what the user could see. The band draws
-  /// the law itself now, on the ground it actually makes: its wash
-  /// composited onto the host's colour, through the SAME painter class the
-  /// panel overlay uses, so there is no copy here to drift.
-  ///
-  /// 🚨F-7 (유저 2026-08-24): 「스토리보드패널, fx열면 프레임영역의 선이
-  /// 두꺼운데 선이 이중적용되고있는건가?」 — it was. Every other row pays
-  /// the redraw debt with an OPAQUE ground: it covers the overlay, then
-  /// draws the law itself, and one line lands. This band paid it with a 60%
-  /// wash — which dims the overlay's lines instead of covering them — and
-  /// then drew the law on top. Two lines, one boundary. ⇒ The band
-  /// composites its wash onto the host's ground and paints THAT, so it
-  /// occludes like every other row and its redraw is the only line. ⚠️Null
-  /// ground (a row lying over the ARTWORK) keeps the raw wash: there is
-  /// nothing to composite against, and no overlay under it to double.
-  ///
-  /// F-25: the standing wash the LAYER row's frame half already wears
-  /// ([TimelineRowCellsPainter]'s `rowGround`), composited the same way —
-  /// over the band's own ground, so the band stays OPAQUE and keeps
-  /// occluding the buried grid (F-7).
-  Color _bandGround(
-    ColorScheme colorScheme,
-    TimelineGridLaw? gridLaw, {
-    required bool lit,
-  }) {
-    final wash = AppColors.washDown.withValues(alpha: 0.6);
-    final ground =
-        timelineGridGroundOver(under: gridLaw?.ground, painted: wash) ?? wash;
-    return lit
-        ? Color.alphaBlend(timelineActiveRowWashColor(colorScheme), ground)
-        : ground;
-  }
-
-  /// The divider faces the NEXT lane: below in the timeline, to the right
-  /// in the X-sheet. The ROW SEAM comes from the law.
-  ///
-  /// 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 가로선 있는데
-  /// 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」. THIS was the
-  /// line that existed — a `BorderSide` written here in its own words
-  /// (outlineVariant at HALF width), while the frame cells rows drew
-  /// nothing at all and the overlay's seam wrote a third spelling. The
-  /// value comes from the law now, so the row that just grew a seam and
-  /// the row that always had one are the same line.
-  Border _bandSeam(ColorScheme colorScheme) {
-    final ink = timelineGridRowSeamInk(colorScheme);
-    final seam = BorderSide(color: ink.color, width: ink.strokeWidth);
-    return Border(
-      bottom: _horizontal ? seam : BorderSide.none,
-      right: _horizontal ? BorderSide.none : seam,
-    );
-  }
-
-  // ── the layers of the band, bottom to top ─────────────────────────────
-
-  /// THE GRID, first — under the gesture layer and the markers, the same
-  /// place it sits on every other row. Painted in the SAME composited
-  /// colour the band actually paints (F-7), computed once, so the ink and
-  /// the fill cannot disagree about what is underneath.
-  Widget? _gridUnderlay(
-    ColorScheme colorScheme,
-    TimelineGridLaw? gridLaw,
-    Color ground,
-  ) {
-    if (gridLaw == null) return null;
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: CustomPaint(
-          key: ValueKey<String>(
-            '$keyPrefix-lane-grid-${layer.id}-${lane.laneId}',
-          ),
-          painter: TimelineBeatLinesPainter(
-            axis: axis,
-            frameCellExtent: _cellExtent,
-            framesPerSecond: gridLaw.framesPerSecond,
-            colorScheme: colorScheme,
-            ground: ground,
-            // The band is ONE row: its own bottom border is the cross seam,
-            // so the overlay must not draw a second.
-            crossCellExtent: 0,
-            // The band's canvas starts at the visible window, not at frame
-            // 0 — the spacers are its siblings.
-            frameStartIndex: frameStartIndex,
-          ),
-        ),
-      ),
-    );
-  }
 
   /// The band-wide LANE gesture (UI-R23 #3 part 2), UNDER the markers: pans
   /// on the band select THIS lane; marker drags keep their arena priority

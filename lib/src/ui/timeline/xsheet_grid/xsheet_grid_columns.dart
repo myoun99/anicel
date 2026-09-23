@@ -121,9 +121,6 @@ class _XSheetGridColumns {
           : TimelineLaneFrameRow(
               axis: Axis.vertical,
               keyPrefix: 'xsheet',
-              // F-25, transposed: the sheet's lane COLUMN lights with its
-              // header, same law one axis over.
-              currentRow: _state.widget.hooks.currentRowHooks?.currentRow,
               layer: layer,
               // R10: the previewed lane while a key drag is in flight —
               // the same re-derivation the horizontal body does.
@@ -175,7 +172,6 @@ class _XSheetGridColumns {
       seSpillInLeadFrames: _state.widget.hooks.seSpillInLeadFrames[layer.id],
       layer: layer,
       baseLayer: entry.layer,
-      active: entry.layer.id == _state.widget.hooks.activeLayerId,
       playbackFrameCount: _state.widget.hooks.playbackFrameCount,
       geometry: _state._frameScroll.publishFrameGeometry(layer.kind),
       crossAxisExtent: _state._metrics.layerRowHeight,
