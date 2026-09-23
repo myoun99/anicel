@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/brush_settings.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import '../widgets/static_raster.dart';
 
 /// A small synchronous preview of a brush tip for preset lists.
 ///
@@ -22,21 +23,25 @@ class BrushTipPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurface;
-    // ⛔No `RepaintBoundary`. It looks free and is not, twice over: a
-    // boundary is a composited layer of its own, AND it sets
-    // `needsCompositing`, which is the only reason the host row's
-    // `Container(clipBehavior: Clip.antiAlias)` promotes to a real clip
-    // LAYER (`PaintingContext.pushClipPath` gates on exactly that). Two
-    // layers per row, per frame, to isolate a painter that redraws only
-    // when its preset does.
+    // A sampled tip is baked on its own, as a DENSE surface (H40,
+    // 2026-09-24): its grid is up to 256 translucent rects, and a panel
+    // bake never isolated it after all — the library's body has its grid's
+    // scroll viewport inside and paints through, so every idle frame
+    // replayed every cell's rects (the tip icons alone ≈2.6 ms a frame on
+    // the real Windows app). A parametric tip is two ovals and paints
+    // through.
     //
-    // What isolates this now is the panel-level bake — see
-    // [StaticRaster], installed on the tab funnel. A boundary INSIDE a
-    // bake would be worse than useless: the bake has to paint through
-    // whenever it finds one, or the boundary would freeze.
-    return CustomPaint(
-      painter: _BrushTipPreviewPainter(settings: settings, color: color),
-      size: Size.infinite,
+    // 🪦It used to say ⛔No `RepaintBoundary` here: a boundary is a layer of
+    // its own and promotes the host row's `Clip.antiAlias` to a clip LAYER —
+    // two layers per row, per frame, for a painter the panel bake was
+    // supposed to isolate. Two layers were the cheap side of that trade.
+    return StaticRaster(
+      debugLabel: 'tip preview',
+      dense: settings.tipMask != null,
+      child: CustomPaint(
+        painter: _BrushTipPreviewPainter(settings: settings, color: color),
+        size: Size.infinite,
+      ),
     );
   }
 }
@@ -107,13 +112,18 @@ class BrushTipMaskPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _BrushTipMaskPreviewPainter(
-        alpha: alpha,
-        side: side,
-        color: Theme.of(context).colorScheme.onSurface,
+    // Dense, like a sampled [BrushTipPreview]: the same grid of rects.
+    return StaticRaster(
+      debugLabel: 'tip preview',
+      dense: true,
+      child: CustomPaint(
+        painter: _BrushTipMaskPreviewPainter(
+          alpha: alpha,
+          side: side,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+        size: Size.infinite,
       ),
-      size: Size.infinite,
     );
   }
 }

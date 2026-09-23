@@ -131,11 +131,12 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
   Widget build(BuildContext context) {
     final devicePixelRatio = EffectiveDevicePixelRatio.of(context);
     final strokeInk = Theme.of(context).colorScheme.onSurface;
-    // ⛔No `RepaintBoundary` here either, for the same reason as
-    // [BrushTipPreview]: the row is isolated by the panel-level bake,
-    // and a boundary inside a bake forces the bake to paint through.
-    // The row is static between preset edits anyway — the raster it
-    // shows is cached in `BrushStrokePreviewCache`.
+    // ⛔No `RepaintBoundary` and no bake here: this is ONE image draw, and
+    // replaying it costs nothing measurable — turning the library's stroke
+    // samples off changed no idle frame on the real Windows app (H40,
+    // 2026-09-24), where the tip icons beside them cost 2.6 ms. The cell
+    // around it is its own boundary, and the raster it shows is cached in
+    // `BrushStrokePreviewCache`.
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth.isFinite

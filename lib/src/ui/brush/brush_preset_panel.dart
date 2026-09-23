@@ -1007,9 +1007,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           showStrokePreview: _showStrokePreview,
           showName: _showName,
         );
+        // Every cell its own repaint boundary (H40, 2026-09-24). The cells
+        // shared the grid viewport's boundary, so a hover highlight, each
+        // frame of a tap's ink splash and a pick's selection moving between
+        // two cells painted EVERY cell again — every tip preview and stroke
+        // sample in the group, off-screen ones included. The dirt of one
+        // cell now stops at its own boundary: the list default Flutter's
+        // own lists keep (`addRepaintBoundaries`).
+        //
+        // ⚠️A boundary, not a [StaticRaster] zone: the cell holds its tip
+        // preview's own dense bake, so a bake around it could only ever
+        // stand down (nested).
+        final zone = RepaintBoundary(child: row);
         // The rows carry tooltips too, and a row drag re-parents them
         // exactly the same way (유저, R4 #11 — same defect, other list).
-        return reorderable ? _dismissTooltipsOnPress(row) : row;
+        return reorderable ? _dismissTooltipsOnPress(zone) : zone;
       },
     );
   }

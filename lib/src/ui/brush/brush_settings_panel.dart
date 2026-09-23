@@ -12,6 +12,7 @@ import '../widgets/boolean_dot.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
+import '../widgets/static_raster.dart';
 import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
@@ -107,6 +108,32 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   void Function(BrushTipEntry tip)? get _deleteTip =>
       widget.onDeleteTip == null ? null : _deleteTipNow;
 
+  /// Every row its own ZONE — a sibling bake, the timeline command groups'
+  /// law, so a row's repaint stops at its own boundary (H40, 2026-09-24).
+  ///
+  /// A brush pick changes three or four rows. With the column one bake,
+  /// every one of the forty rows was painted again — 884 render objects of
+  /// ± buttons alone — and the whole 1.9 MB column captured again. Measured
+  /// on the real Windows app (profile, the user's work file open): the
+  /// pick's worst frame 14.3 → 11.3 ms with every row its own boundary.
+  ///
+  /// ⚠️The body's own bake stands down around them (nested) — the ledger
+  /// in `panel_static_raster_test` says so. Under Impeller nothing bakes
+  /// either way ([StaticRaster.capturePays]); the zones are what is left.
+  List<Widget> _zoned(List<Widget> rows) => [
+    for (final row in rows)
+      StaticRaster(debugLabel: 'settings:${_zoneName(row)}', child: row),
+  ];
+
+  /// Names a row's zone in the bake report.
+  static String _zoneName(Widget row) => switch (row) {
+    _GroupHeader(:final label) => 'header $label',
+    _PanelSlider(:final keyValue) || _PanelSwitch(:final keyValue) =>
+      keyValue,
+    BrushTipPickerRow(:final role) => 'tip picker ${role.name}',
+    _ => '${row.runtimeType}',
+  };
+
   /// [fresh], with every row that shows what the kept row at its place
   /// showed replaced by that kept instance.
   List<Widget> _keepRows(List<Widget> fresh) {
@@ -190,7 +217,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         key: const ValueKey<String>('brush-settings-panel'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
-        children: _keepRows([
+        children: _zoned(_keepRows([
           // 유저 확정 (rail-and-strip): SIZE, OPACITY and BLEND — each with
           // its pressure curve or lock — left this panel for the TOP STRIP.
           // They are the settings a hand changes mid-stroke, against a test
@@ -567,7 +594,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           // settings convention into the gap. It lives in the frame pill —
           // beside the other verbs that make and unmake a block, which is
           // the group it belongs to.
-        ]),
+        ])),
       ),
     );
   }

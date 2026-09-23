@@ -68,6 +68,10 @@ import '../panels/panel_visibility_scope.dart';
 /// Cheap by construction: the walk only runs on the frames where we were
 /// going to repaint the whole subtree anyway.
 ///
+/// It binds only where a capture happens at all ([capturePays], or a
+/// [dense] surface): under Impeller a surface is a zone and no more, and a
+/// boundary inside one costs nothing.
+///
 /// ## 🚨 The second invariant: a baked subtree may not paint outside its
 /// own box
 ///
@@ -89,8 +93,24 @@ class StaticRaster extends SingleChildRenderObjectWidget {
     required this.debugLabel,
     this.enabled = true,
     this.maxConsecutiveCaptures = 3,
+    this.dense = false,
     required Widget super.child,
   });
+
+  /// A subtree that costs more to replay than one capture of it costs, on
+  /// ANY renderer — many small draws in a small box — so it is baked even
+  /// where [capturePays] says a bake does not pay for itself in general.
+  ///
+  /// 🔬Measured 2026-09-24 (H40), the real Windows app under Impeller with
+  /// the user's own library: a sampled tip's preview draws its 16×16 grid
+  /// as up to 256 translucent rects, one preview per library cell, and
+  /// turning the library's tip icons off took about 2.6 ms off EVERY idle
+  /// frame (the whole library about 4–8 ms). The capture that replaces
+  /// them is a 24-pixel square.
+  ///
+  /// Pure addition: a dense subtree left undeclared paints through, like
+  /// every other surface under Impeller — slower, never wrong.
+  final bool dense;
 
   /// Names this surface in diagnostics. Use the panel's name.
   final String debugLabel;
@@ -113,6 +133,37 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// Global off switch. Painting goes straight through when false, so a
   /// suspicious rendering can be A/B'd against the same build.
   static final ValueNotifier<bool> globallyEnabled = ValueNotifier<bool>(true);
+
+  /// Whether a capture can pay for itself on the renderer this app runs on.
+  /// Where it cannot, every surface is a zone and nothing more: its own
+  /// repaint boundary, clipped as a bake would be, painting through.
+  ///
+  /// 🔬Measured 2026-09-24 on the real Windows app, a profile build with
+  /// the user's work file open, under Impeller (GLES through ANGLE there):
+  /// switching EVERY bake in the app off moved an idle frame's raster from
+  /// 4.78 to 4.82 ms — nothing — while one capture of the tool settings
+  /// panel added about 2.7 ms to the frame that took it (a brush pick's
+  /// worst frame, 14.3 ms baking against 11.6 ms not). The engine's
+  /// snapshot (`DisplayListToTexture`) allocates a fresh MSAA target
+  /// outside its render-target cache and builds a whole mip chain on every
+  /// capture, and Impeller replays a panel's display list about as cheaply
+  /// as it would blit the image standing in for it. So a bake there costs
+  /// at every change and buys nothing between them; zones cut into single
+  /// rows made it worse, 38 captures in the frame that opened the panel.
+  ///
+  /// Skia keeps baking: that is where the bakes were measured (2026-08-09)
+  /// and nothing here was measured against it.
+  ///
+  /// `ImageFilter.isShaderFilterSupported` is the engine's own Impeller
+  /// switch (`_impellerEnabled` in `dart:ui`), and the only door `dart:ui`
+  /// opens onto it.
+  static bool get capturePays =>
+      debugCapturePaysOverride ?? !ui.ImageFilter.isShaderFilterSupported;
+
+  /// Lets a test take the Impeller branch on the Skia test renderer. Null
+  /// asks the engine.
+  @visibleForTesting
+  static bool? debugCapturePaysOverride;
 
   /// Every attached bake in the app.
   ///
@@ -204,6 +255,7 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       debugLabel: debugLabel,
       enabled: enabled,
       maxConsecutiveCaptures: maxConsecutiveCaptures,
+      dense: dense,
       devicePixelRatio: _devicePixelRatioOf(context),
       visible: PanelVisibilityScope.maybeOf(context),
     );
@@ -218,6 +270,7 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       ..debugLabel = debugLabel
       ..enabled = enabled
       ..maxConsecutiveCaptures = maxConsecutiveCaptures
+      ..dense = dense
       ..devicePixelRatio = _devicePixelRatioOf(context)
       ..visible = PanelVisibilityScope.maybeOf(context);
   }
@@ -266,6 +319,11 @@ enum StandDownReason {
   /// Switched off by the caller or by the global A/B switch.
   disabled,
 
+  /// The renderer replays the subtree about as cheaply as it would blit a
+  /// bake, and a capture costs a whole offscreen render — see
+  /// [StaticRaster.capturePays]. Correct, and nothing to fix.
+  renderer,
+
   /// The panel is parked behind another tab.
   offstage,
 
@@ -296,12 +354,30 @@ class RenderStaticRaster extends RenderProxyBox {
     required this.debugLabel,
     required bool enabled,
     required int maxConsecutiveCaptures,
+    bool dense = false,
     required double devicePixelRatio,
     ValueListenable<bool>? visible,
   }) : _enabled = enabled,
        _maxConsecutiveCaptures = maxConsecutiveCaptures,
+       _dense = dense,
        _devicePixelRatio = devicePixelRatio,
        _visible = visible;
+
+  /// See [StaticRaster.dense].
+  bool _dense;
+  bool get dense => _dense;
+  set dense(bool value) {
+    if (_dense == value) {
+      return;
+    }
+    _dense = value;
+    _dropRaster();
+    markNeedsPaint();
+  }
+
+  /// Whether this surface captures at all: where the renderer rewards a
+  /// bake, or where this subtree is dense enough to reward one anyway.
+  bool get _captures => StaticRaster.capturePays || _dense;
 
   /// Whether the panel this surface lives in is the ACTIVE tab of its
   /// group, when there is one to ask.
@@ -576,7 +652,16 @@ class RenderStaticRaster extends RenderProxyBox {
     // diagnostic that is right on some paths and stale on others is worse
     // than none — the enforcement test reads it to decide whether a panel
     // needs a reason on the allowlist.
-    _nestedBoundary = _childHasRepaintBoundary();
+    //
+    // ⚠️Only where a capture can happen at all: a CAPTURE freezes an inner
+    // boundary, painting through never does, and the walk visits the whole
+    // subtree on every paint of a surface that has none.
+    if (_captures) {
+      _nestedBoundary = _childHasRepaintBoundary();
+    } else {
+      _nestedBoundary = false;
+      _nestedBoundaryPath = null;
+    }
 
     // The grid audit's visibility filter, and it is exact rather than
     // heuristic: an `Offstage`, a hidden `IndexedStack` child, an
@@ -601,6 +686,12 @@ class RenderStaticRaster extends RenderProxyBox {
       _standDown = (_visible?.value ?? true)
           ? StandDownReason.disabled
           : StandDownReason.offstage;
+      _dropRaster();
+      _paintThrough(context, offset);
+      return;
+    }
+    if (!_captures) {
+      _standDown = StandDownReason.renderer;
       _dropRaster();
       _paintThrough(context, offset);
       return;

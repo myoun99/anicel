@@ -95,6 +95,13 @@ const _knownToPaintThrough = <String, String>{
   'panel:media-viewer-sub':
       'the same widget as panel:media-viewer, in the rail instead of the '
       'floor: an InteractiveViewer, nothing static to bake',
+  // 🆕2026-09-24 (H40) — back, and this time a YIELD rather than the switch
+  // below: every row of the panel is its own `settings:` zone, so the body
+  // finds the first row's boundary and stands down around them — the
+  // timeline command bar's shape. A brush pick repaints the rows it
+  // changed instead of all forty.
+  'body:Brush Settings':
+      'yields to its rows, each its own `settings:` zone (H40)',
   // 🪦`body:Brush Settings` stood here from 2026-09-22 to 09-23, and it was
   // NOT a yield: Material's `Switch` always contains an `Opacity` —
   // `Opacity(opacity: onChanged == null ? disabledOpacity : 1)`,
@@ -154,6 +161,11 @@ const _mustBakeWhenActive = <String, List<String>>{
   // bar became zones, because an outer bake around inner ones is the
   // nesting that freezes. Each group bakes itself instead.
   EditorWorkspace.timelineTabId: <String>['command-group'],
+  // The same shape since H40: the body yields to its rows, so a row has to
+  // be seen baking or the yield is a story about nothing.
+  EditorWorkspace.brushSettingsTabId: <String>[
+    'settings:brush-tool-flow-slider',
+  ],
 };
 
 void main() {

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// 🔬H40 (유저 2026-09-11): 「고르는 프레임에서 끝나더라도 지금 안그래도 고를때
 /// 렉있어서 그부분도 효율적으로 가볍게 하고싶어」 — with the settings open, a
@@ -131,5 +132,37 @@ void main() {
     await tester.pump();
 
     expect(identical(tester.widget(find.byKey(flowKey)), flow), isFalse);
+  });
+
+  testWidgets('🚨a new brush re-bakes the rows whose numbers changed and no '
+      'other — every row is its own zone (H40, 2026-09-24)', (tester) async {
+    final (notifier, _) = await pumpPanel(tester);
+    RenderStaticRaster zoneOf(Key key) =>
+        tester.renderObject<RenderStaticRaster>(
+          find
+              .ancestor(of: find.byKey(key), matching: find.byType(StaticRaster))
+              .first,
+        );
+    final flow = zoneOf(flowKey);
+    final jitter = zoneOf(jitterKey);
+    expect(
+      identical(flow, jitter),
+      isFalse,
+      reason: 'two rows, two zones — not one bake over the column',
+    );
+    final flowBakes = flow.captureCount;
+    final jitterBakes = jitter.captureCount;
+    expect(flowBakes, greaterThan(0), reason: 'fixture: the zones bake here');
+
+    notifier.value = a.copyWith(flow: 0.9);
+    await tester.pump();
+
+    expect(flow.captureCount, flowBakes + 1, reason: 'the flow row changed');
+    expect(
+      jitter.captureCount,
+      jitterBakes,
+      reason: 'the jitter row shows the same number, so it is not painted '
+          'or baked again',
+    );
   });
 }
