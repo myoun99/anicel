@@ -440,6 +440,17 @@ enum LayerKind {
   /// notation — the pen must never draw on any of them.
   final bool acceptsBrushInput;
 
+  /// Whether this kind's rows can ghost (onion skin): the kinds the brush
+  /// lands on — a ghost is the row's own hand-drawn frames.
+  ///
+  /// 🚨F-145 (유저 2026-09-17): 「폴더등 어니언스킨 활성화 불가능한 곳에
+  /// 서있는데 왼쪽띠의 어니언스킨버튼이 활성화되있고 조작마저가능함.
+  /// 비활성화하도록. 낡지않을구조로」. Four readers asked [acceptsBrushInput]
+  /// for this and three doors — the rail button, the `O` key and the toggle
+  /// itself — did not ask at all. One name answers every one of them now, and
+  /// the toggle refuses on its own, so a door added later cannot forget.
+  bool get takesOnionSkin => acceptsBrushInput;
+
   /// Whether this kind's exposures leave NO GAPS: every block runs to the
   /// next one's start and the last runs to the cut's end (design E).
   ///

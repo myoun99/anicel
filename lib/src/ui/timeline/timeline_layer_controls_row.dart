@@ -791,7 +791,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// column whole. The sheet went without it until R10 R6's "싹다 넣어".
   Widget? _onionToggle(ColorScheme colorScheme) {
     final onToggle = onToggleLayerOnionSkin;
-    if (onToggle == null || !layer.kind.acceptsBrushInput) {
+    if (onToggle == null || !layer.kind.takesOnionSkin) {
       return null;
     }
     return acrossBox(
