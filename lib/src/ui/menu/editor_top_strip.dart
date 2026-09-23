@@ -1835,10 +1835,11 @@ String _backupNameFor(FailedSaveCopy copy) {
   final dot = name.lastIndexOf('.');
   final stem = dot <= 0 ? name : name.substring(0, dot);
   final at = copy.savedAt;
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '$stem-${at.year}${two(at.month)}${two(at.day)}-'
-      '${two(at.hour)}${two(at.minute)}$anicelProjectSuffix';
+  return '$stem-${at.year}${_twoDigits(at.month)}${_twoDigits(at.day)}-'
+      '${_twoDigits(at.hour)}${_twoDigits(at.minute)}$anicelProjectSuffix';
 }
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 /// Which of several failed copies to back up — each answer names its
 /// project and when it was written; the full paths are in the fold.
@@ -1848,8 +1849,7 @@ Future<FailedSaveCopy?> _pickFailedCopy(
 ) {
   final strings = AppText.strings;
   String clock(DateTime at) =>
-      '${at.hour.toString().padLeft(2, '0')}:'
-      '${at.minute.toString().padLeft(2, '0')}';
+      '${_twoDigits(at.hour)}:${_twoDigits(at.minute)}';
   return showDialog<FailedSaveCopy>(
     context: context,
     builder: (dialogContext) => AppConfirmDialog(
@@ -1858,7 +1858,8 @@ Future<FailedSaveCopy?> _pickFailedCopy(
       titleIcon: Icons.backup_outlined,
       message: strings.failedCopyVanishOnClose,
       details: [
-        for (final copy in copies) '${copy.projectPath} — ${clock(copy.savedAt)}',
+        for (final copy in copies)
+          '${copy.projectPath} — ${clock(copy.savedAt)}',
       ],
       detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
@@ -1869,7 +1870,8 @@ Future<FailedSaveCopy?> _pickFailedCopy(
         ),
         for (final (index, copy) in copies.indexed)
           AppWindowAction(
-            label: '${fileNameOfPath(copy.projectPath)} · ${clock(copy.savedAt)}',
+            label:
+                '${fileNameOfPath(copy.projectPath)} · ${clock(copy.savedAt)}',
             actionKey: ValueKey<String>('failed-copy-pick-$index'),
             onPressed: () => Navigator.of(dialogContext).pop(copy),
           ),

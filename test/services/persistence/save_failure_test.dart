@@ -59,6 +59,33 @@ void main() {
     );
   });
 
+  test('🚨Windows: access denied on a file that IS there but read-only is '
+      '「read-only」 — nothing holds it, it cannot be written', () {
+    final readOnly = File('${folder.path}/locked.anicel')
+      ..writeAsStringSync('x');
+    // No dart:io call makes a file read-only; the platform's own tool does.
+    void setReadOnly(bool on) {
+      final result = Platform.isWindows
+          ? Process.runSync('attrib', [
+              if (on) '+r' else '-r',
+              readOnly.path.replaceAll('/', r'\'),
+            ])
+          : Process.runSync('chmod', [
+              if (on) '444' else '644',
+              readOnly.path,
+            ]);
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+    }
+
+    setReadOnly(true);
+    addTearDown(() => setReadOnly(false));
+
+    expect(
+      windows(5, projectPath: readOnly.path),
+      SaveFailureCause.readOnly,
+    );
+  });
+
   test('Windows: the rest of the numbers', () {
     expect(windows(19), SaveFailureCause.readOnly);
     expect(windows(112), SaveFailureCause.diskFull);
