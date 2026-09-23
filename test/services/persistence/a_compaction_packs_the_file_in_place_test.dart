@@ -199,6 +199,10 @@ void main() {
       path,
       release: (moved) async {
         releases += 1;
+        // The session answers from another isolate — a hop, not a call.
+        // A save that did not wait for the answer would be writing its next
+        // round right here.
+        await Future<void>.delayed(Duration.zero);
         // Before the refs move: every one of them still reads its bytes —
         // this round wrote only where nobody points.
         everyRefReadsItsOwnBytes('release $releases, before moving');

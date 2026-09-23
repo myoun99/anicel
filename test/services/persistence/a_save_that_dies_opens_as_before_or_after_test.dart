@@ -130,6 +130,45 @@ void main() {
     );
   });
 
+  test('🚨a directory whose entries are not where it says is not the last '
+      'save — recovery never hands back bytes their own CRC disowns', () {
+    // A directory still whole on disk while the bytes it names have been
+    // reused — what the push-down leaves behind once it has moved past an
+    // old one — and a torn tail, so it is recovery that has to judge it.
+    final path = '${directory.path}/stale.anicel';
+    writeAnicelArchiveFile(
+      path: path,
+      entries: [
+        (name: 'x', bytes: filled(40, 3)),
+        (name: 'y', bytes: filled(40, 4)),
+      ],
+    );
+    // Another entry of the same shape, laid over x: every length the old
+    // directory reads still adds up, and only the header says whose bytes
+    // these are now.
+    final otherPath = '${directory.path}/other.anicel';
+    writeAnicelArchiveFile(
+      path: otherPath,
+      entries: [(name: 'z', bytes: filled(40, 9))],
+    );
+    final other = File(otherPath).readAsBytesSync();
+    final file = File(path).readAsBytesSync();
+    file.setRange(0, 30 + 1 + 40, other);
+    final torn = Uint8List.fromList([...file, 1, 2, 3]);
+
+    final recovered = recoverAnicelZipLayout(torn);
+
+    for (final entry in recovered.entries) {
+      final bytes = torn.sublist(entry.dataOffset, entry.dataOffset + entry.length);
+      expect(
+        anicelCrc32(bytes),
+        entry.crc32,
+        reason: '${entry.name} came back from a directory whose bytes were '
+            'reused',
+      );
+    }
+  });
+
   test('🚨the save after a compaction dies just as safely — it starts from '
       'the directory the cut left', () async {
     final path = spreadOutFixture();
