@@ -199,6 +199,48 @@ void main() {
     );
   });
 
+  testWidgets('🎯where a picker PLACES the file (iPad), the backup is the '
+      'failed copy, staged, placed — and only then said to be backed up', (
+    tester,
+  ) async {
+    FolderPicker.debugOperatingSystem = 'ios';
+    addTearDown(() => FolderPicker.debugFileExporter = null);
+    final placed = '${folder.path.replaceAll('\\', '/')}/placed.anicel';
+    String? offeredAs;
+    FolderPicker.debugFileExporter = ({
+      required String sourcePath,
+      String? suggestedName,
+    }) async {
+      offeredAs = suggestedName;
+      // What the platform picker does with the staged file: puts it there.
+      File(sourcePath).renameSync(placed);
+      return FolderGrant.granted(path: placed, kind: GrantKind.file);
+    };
+    final (:session, :context) = await mounted(tester);
+    final copy = keptCopy(session, 'take.anicel');
+    const saidBackedUp = ValueKey<String>('failed-copy-backup-placed');
+
+    var done = false;
+    var said = false;
+    // A real copy crosses into an isolate, which needs real time.
+    await tester.runAsync(() async {
+      unawaited(
+        backUpFailedCopy(context, session, copy: copy).then((_) => done = true),
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (!done && DateTime.now().isBefore(deadline)) {
+        await tester.pump(const Duration(milliseconds: 16));
+        said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+    });
+
+    expect(done, isTrue, reason: 'the backup never came back');
+    expect(File(placed).readAsStringSync(), 'the work');
+    expect(offeredAs, startsWith('take-'));
+    expect(said, isTrue, reason: 'placed, so now it says backed up');
+  });
+
   testWidgets('the close question says the failed copy goes with the '
       'program', (tester) async {
     final (:session, :context) = await mounted(tester);

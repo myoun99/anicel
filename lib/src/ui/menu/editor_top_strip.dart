@@ -1787,15 +1787,7 @@ Future<void> backUpFailedCopy(
       return;
     }
     if (pick.placed) {
-      await runWithAppProgress<void>(
-        context: context,
-        title: strings.commonSave,
-        titleIcon: Icons.backup_outlined,
-        runningLabel: strings.failedCopyBackingUp,
-        doneLabel: strings.failedCopyBackedUp,
-        windowKey: const ValueKey<String>('failed-copy-backup-placed'),
-        task: (report) async => report(1),
-      );
+      await _sayFailedCopyBackedUp(context);
       return;
     }
     await backUpTo(
@@ -1809,6 +1801,19 @@ Future<void> backUpFailedCopy(
     }
   }
 }
+
+/// The picker PLACED the staged backup, so it is backed up now — and now is
+/// when it says so: the other half of the order Save As keeps.
+Future<void> _sayFailedCopyBackedUp(BuildContext context) =>
+    runWithAppProgress<void>(
+      context: context,
+      title: AppText.strings.commonSave,
+      titleIcon: Icons.backup_outlined,
+      runningLabel: AppText.strings.failedCopyBackingUp,
+      doneLabel: AppText.strings.failedCopyBackedUp,
+      windowKey: const ValueKey<String>('failed-copy-backup-placed'),
+      task: (report) async => report(1),
+    );
 
 /// Which failed copy a backup is of: [copy] when the notice named one, the
 /// one there is, or the person's pick among several.
