@@ -17,7 +17,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
-import '../widgets/axis_gesture_detector.dart';
+import '../widgets/owning_axis_grip.dart';
 import 'timeline_beat_lines.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
@@ -534,20 +534,42 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     final fadeOut = _previewFadeOut;
     final editable = _editable;
     final showFadeMarks = widget.onSetFades != null && peaks != null;
-    return AxisGestureDetector(
+    // 🚨A DRAG FROM THE SOUND IS THE SOUND'S (F-163 재발, 유저 2026-09-23:
+    // 「버튼은 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). Sliding
+    // the sound is this span's verb, so it wears the grips' own pair
+    // ([OwningAxisGrip]). ↩️A plain one-axis drag: a pull across the lane
+    // moved 0 along it and the timeline's scroller walked over.
+    //
+    // A span that cannot be edited still HOLDS the press — the handlers stay
+    // mounted and do nothing — because a dead control is not a scroll either
+    // (`ControlPressClaim.onPressed`: 「a press on a dead button is still not
+    // a scroll」). A recogniser with no handlers is never offered the pointer.
+    return OwningAxisGrip(
       axis: widget.axis,
-      behavior: HitTestBehavior.opaque,
-      // .down: the drag measures from the pointer-down origin, so the
-      // recognizer's slop never eats into the slid amount.
-      dragStartBehavior: DragStartBehavior.down,
-      onDragStart: editable
-          ? (details) => _startDrag(details.localPosition)
-          : null,
-      onDragUpdate: editable
-          ? (details) => _updateDrag(details.primaryDelta!)
-          : null,
-      onDragEnd: editable ? (_) => _endDrag() : null,
-      onDragCancel: editable ? _cancelDrag : null,
+      configure: (recognizer) => recognizer
+        // .down: the drag measures from the pointer-down origin, so the
+        // recognizer's slop never eats into the slid amount.
+        ..dragStartBehavior = DragStartBehavior.down
+        ..onStart = ((details) {
+          if (editable) {
+            _startDrag(details.localPosition);
+          }
+        })
+        ..onUpdate = ((details) {
+          if (editable) {
+            _updateDrag(details.primaryDelta!);
+          }
+        })
+        ..onEnd = ((_) {
+          if (editable) {
+            _endDrag();
+          }
+        })
+        ..onCancel = () {
+          if (editable) {
+            _cancelDrag();
+          }
+        },
       child: MouseRegion(
         cursor: editable ? _resizeCursor : MouseCursor.defer,
         child: Stack(

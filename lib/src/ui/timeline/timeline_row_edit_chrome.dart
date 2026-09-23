@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
-import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
+import '../widgets/axis_bar_gesture.dart'
+    show
+        OwningHorizontalDragGestureRecognizer,
+        OwningVerticalDragGestureRecognizer;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -670,9 +673,21 @@ class _TimelineRowEditChromeLayerState
   /// lifts) — the release path #12 found missing.
   String? _pressedId;
 
+  /// 🚨★★★THE GRIP'S PRESS IS THE GRIP'S (F-163 재발, 유저 2026-09-23:
+  /// 「모서리 클릭해서 위아래 드래그하면 스크롤 작동해버리는거 … 버튼은
+  /// 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」).
+  ///
+  /// The recogniser half of `OwningAxisGrip`, because this layer routes its
+  /// presses by rect rather than mounting a widget per grip: it accepts on
+  /// the FIRST movement. ↩️A plain one-axis drag sat here after the widget
+  /// grips had been fixed — a pull ACROSS the frame axis moved 0 along it,
+  /// never reached a threshold, and the timeline's scroller walked over.
+  /// ⛔The claim half is not worn here and does not need to be: it answers
+  /// pans that ASK, and the only ones that could hear this press are this
+  /// layer's own, which the router gives one target per press.
   late final DragGestureRecognizer _gripDrag = widget.axis == Axis.horizontal
-      ? HorizontalDragGestureRecognizer(debugOwner: this)
-      : VerticalDragGestureRecognizer(debugOwner: this);
+      ? OwningHorizontalDragGestureRecognizer(debugOwner: this)
+      : OwningVerticalDragGestureRecognizer(debugOwner: this);
   late final TapGestureRecognizer _addTap = TapGestureRecognizer(
     debugOwner: this,
   );
@@ -1019,8 +1034,9 @@ class _TimelineRowEditChromeLayerState
         _gripDrag.addPointer(event);
       case TimelineRowRunAddTarget():
         // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
-        // flow. PEN-12 #6: TAPS take every device — a clean finger tap
-        // clicks [+] even while touch panning belongs to the scroll.
+        // flow. Both take every device — PEN-12 #6 gave the TAP every device
+        // and left the finger's PAN to the scroll, which is the half 09-23
+        // took back (「버튼은 무조건 강한클레임」, see build()).
         _addTap.addPointer(event);
         _addPan.addPointer(event);
       case TimelineRowRunTagTarget():
@@ -1070,18 +1086,22 @@ class _TimelineRowEditChromeLayerState
   @override
   Widget build(BuildContext context) {
     // PEN-11: device gesture settings — manual recognizers do not inject
-    // them (kTouchSlop 18 vs device ~8), and the device policy can change
-    // under a live tree, so both are refreshed on every build like
-    // GestureDetector does.
+    // them (kTouchSlop 18 vs device ~8), so they are refreshed on every
+    // build like GestureDetector does.
+    //
+    // ⛔NO DEVICE FILTER on anything here: every target is a CONTROL, and a
+    // press on a control is the control's on every device (유저 08-29:
+    // 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한
+    // 버그야」 · 09-23: 「버튼은 무조건 강한클레임」). ↩️The grip and the [+]
+    // pan took the timeline's edit-pan devices (UI-R22F), so while one finger
+    // scrolls the timeline a finger on them was handed to the scroller — the
+    // 「finger resting to scroll」 case the user has called an assumption.
+    // The range gesture beneath keeps that policy: empty cells are the
+    // SURFACE, not a control.
     final gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
-    final editDevices = AppInput.timelineEditPanDevices;
-    _gripDrag
-      ..gestureSettings = gestureSettings
-      ..supportedDevices = editDevices;
+    _gripDrag.gestureSettings = gestureSettings;
     _addTap.gestureSettings = gestureSettings;
-    _addPan
-      ..gestureSettings = gestureSettings
-      ..supportedDevices = editDevices;
+    _addPan.gestureSettings = gestureSettings;
     _tagPan.gestureSettings = gestureSettings;
 
     return CustomPaint(

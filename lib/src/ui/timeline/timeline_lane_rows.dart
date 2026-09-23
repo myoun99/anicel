@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
-import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer.dart';
@@ -521,9 +520,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // Tap types a value; a drag SCRUBS it (AE-style — horizontal for the
     // first component, vertical for Position's y; the drag-axis mapping is
     // the lane's, identical in both orientations) and commits once on
-    // release. EAGER slop + the input device policy (UI-R22F #2): a slow
-    // scrub must never lose the arena to the grid scroll, and touch
-    // follows the timeline policy like every other edit gesture.
+    // release. EAGER slop (UI-R22F #2): a slow scrub must never lose the
+    // arena to the grid scroll.
+    //
+    // ⛔EVERY DEVICE. The value field is a control — 「슬라이더위에서
+    // 조작하기 시작하면 슬라이더조작하는거고 그 외가 스크롤인거야」(유저
+    // 08-14), and 09-23 「버튼은 무조건 강한클레임」. ↩️It took the timeline's
+    // edit-pan devices, so while one finger scrolls the timeline a finger on
+    // a value scrolled the rail instead of scrubbing.
     return RawGestureDetector(
       gestures: laneEdit?.onSetValue == null
           ? const <Type, GestureRecognizerFactory>{}
@@ -534,8 +538,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                   >(() => EagerPanGestureRecognizer(debugOwner: this), (
                     recognizer,
                   ) {
-                    recognizer.supportedDevices =
-                        AppInput.timelineEditPanDevices;
                     // PEN-11: device gesture settings (RawGestureDetector
                     // does not inject them — kTouchSlop 18 vs device ~8).
                     recognizer.gestureSettings =

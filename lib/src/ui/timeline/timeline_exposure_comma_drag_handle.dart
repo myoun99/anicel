@@ -1,10 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerDeviceKind;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
-
-import '../../models/app_input_settings.dart' show AppInput;
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
@@ -348,7 +345,6 @@ class BlockEdgeGrip extends StatefulWidget {
     required this.resolveFrameCellExtent,
     required this.hooks,
     this.axis = Axis.horizontal,
-    this.supportedDevices,
   });
 
   final TimelineBlockEdge edge;
@@ -364,9 +360,11 @@ class BlockEdgeGrip extends StatefulWidget {
   /// The frame axis direction; geometry and gesture transpose with it.
   final Axis axis;
 
-  /// Null = every device operates the grip (the storyboard track, which
-  /// has no competing touch scroll).
-  final Set<PointerDeviceKind>? supportedDevices;
+  // ⛔No device set (F-163 재발, 유저 2026-09-23: 「버튼은 무조건
+  // 강한클레임」). ↩️The timeline mount passed its edit-pan devices, so while
+  // one finger scrolls the timeline a finger on a grip went to the scroller
+  // (UI-R22F); only the storyboard's mount left it open. A grip is a control,
+  // and a press on a control is the control's on every device.
 
   @override
   State<BlockEdgeGrip> createState() => _BlockEdgeGripState();
@@ -424,10 +422,6 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
         edge: edge,
         resolveFrameCellExtent: resolveFrameCellExtent,
         axis: axis,
-        // Drag-only grip: touch follows the timeline input policy (UI-R22F —
-        // when touch scrolls the timeline, a finger pan starting on a grip
-        // must scroll too, not comma-drag).
-        supportedDevices: AppInput.timelineEditPanDevices,
         hooks: BlockEdgeGripHooks(
           onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
           onUpdate: callbacks.onUpdate,
@@ -580,10 +574,6 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
                 _endDrag();
               })
               ..onCancel = _cancelDrag;
-            final devices = widget.supportedDevices;
-            if (devices != null) {
-              recognizer.supportedDevices = devices;
-            }
           },
           child: mark,
         ),

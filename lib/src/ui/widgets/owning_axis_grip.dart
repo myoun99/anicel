@@ -21,13 +21,21 @@ import 'axis_bar_gesture.dart';
 /// 엣지 클릭한채로 세로이동하면 **세로스크롤 작동함** … 저번에 말한대로
 /// 버튼은 절대 밖으로 제스쳐 새지않음. **해당 법 재사용/통일해서**」.
 ///
-/// ⚠️THREE GRIPS, one widget: the dock splitter wrote these four lines by
-/// hand, and the two timeline edges — the cut end and the comma — had
-/// neither half. ⛔It is deliberately NOT inside `AxisGestureDetector`: two
-/// of that widget's five users (the rail's swipe column, the SE lane) are
-/// not grips and already answer the press question their own way, and
-/// claiming twice made the swipe column stand down for itself. 🧪Measured
-/// 2026-09-23, two suites red.
+/// ⚠️ONE WIDGET for every drag verb that sits on a control: the dock
+/// splitter (which wrote these four lines by hand first), the block edge's
+/// comma grip, the cut end, and the sound's span in the SE audio lane. The
+/// dense rows' chrome routes its grips by rect instead of mounting widgets,
+/// so it wears the recogniser half directly (`TimelineRowEditChromeLayer`).
+/// ⛔It is deliberately NOT inside `AxisGestureDetector`: the rail's swipe
+/// column answers the press question its own way (the strong claim over the
+/// buttons' weak one), and claiming twice made it stand down for itself.
+/// 🧪Measured 2026-09-23, two suites red.
+///
+/// ↩️(F-163 재발, 유저 2026-09-23: 「버튼은 무조건 강한클레임」.) The first
+/// landing counted the SE lane with the swipe column as answering its own
+/// way — it did not: its span mounted a plain one-axis drag, and a pull
+/// across the lane scrolled the timeline, as the cut end's did. Both wear
+/// this now, as the splitter does.
 class OwningAxisGrip extends StatelessWidget {
   const OwningAxisGrip({
     super.key,

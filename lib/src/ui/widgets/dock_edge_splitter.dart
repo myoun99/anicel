@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
-import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
-import 'axis_bar_gesture.dart';
+import 'owning_axis_grip.dart';
 
 /// A draggable divider between two areas that share an extent.
 ///
@@ -139,7 +138,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   /// It was never robbed; it resigned.
   ///
   /// ★So the grip wins the arena instead, on the FIRST MOVEMENT
-  /// ([OwningHorizontalDragGestureRecognizer]). Hit testing runs
+  /// (`OwningHorizontalDragGestureRecognizer`). Hit testing runs
   /// deepest-first, so it has accepted before any scrollable reaches its own
   /// threshold — which fixes ⑧ (no diagonal can lose a race that is over) and
   /// T30 together (there is no rival left to resign to).
@@ -257,43 +256,23 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
           : SystemMouseCursors.resizeUpDown,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      // The grip is a drag verb like a slider's: no eager pan above it may
-      // start from a press that landed here, and the weak claim's absorber
-      // stands down for it. OPAQUE because a grip is mostly empty space and
-      // still has to be claimable.
-      child: DragVerbClaim(
-        behavior: HitTestBehavior.opaque,
-        child: RawGestureDetector(
+      // The grip is a drag verb like a slider's — [OwningAxisGrip], the pair
+      // this splitter wrote by hand first and the comma grips and the cut end
+      // now share. ⛔The hand copy stayed here after the pair was lifted out
+      // (F-163) — two copies of one law, which is the day one of them learns
+      // something the other does not.
+      child: OwningAxisGrip(
+        axis: _dragAxis,
+        configure: _configureDrag,
+        child: Listener(
           behavior: HitTestBehavior.opaque,
-          gestures: <Type, GestureRecognizerFactory>{
-            if (_dragAxis == Axis.horizontal)
-              OwningHorizontalDragGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    OwningHorizontalDragGestureRecognizer
-                  >(
-                    () =>
-                        OwningHorizontalDragGestureRecognizer(debugOwner: this),
-                    _configureDrag,
-                  )
-            else
-              OwningVerticalDragGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    OwningVerticalDragGestureRecognizer
-                  >(
-                    () => OwningVerticalDragGestureRecognizer(debugOwner: this),
-                    _configureDrag,
-                  ),
-          },
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: _pressDown,
-            onPointerUp: _pressUp,
-            onPointerCancel: _pressCancel,
-            child: SizedBox(
-              width: vertical ? DockEdgeSplitter.thickness : null,
-              height: vertical ? null : DockEdgeSplitter.thickness,
-              child: ColoredBox(color: _lineColor),
-            ),
+          onPointerDown: _pressDown,
+          onPointerUp: _pressUp,
+          onPointerCancel: _pressCancel,
+          child: SizedBox(
+            width: vertical ? DockEdgeSplitter.thickness : null,
+            height: vertical ? null : DockEdgeSplitter.thickness,
+            child: ColoredBox(color: _lineColor),
           ),
         ),
       ),
