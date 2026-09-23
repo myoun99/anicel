@@ -2115,6 +2115,7 @@ class EditorSessionManager extends ChangeNotifier
     landing: importLanding,
     fingerprints: mediaFingerprints,
     pool: mediaPool,
+    staging: mediaStagingStore,
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
   );

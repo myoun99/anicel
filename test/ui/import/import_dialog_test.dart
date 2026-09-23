@@ -998,10 +998,11 @@ void main() {
       reason: 'the pool names the piece; the original is where it came from',
     );
     final piecePath = pool.single.path;
-    // The piece is secured once its door returns — after the last page has
-    // baked, which is later than the renders being asked for.
+    // The piece is let go of once its door returns — after the last page
+    // has baked, which is later than the renders being asked for. Its bytes
+    // were held before it landed, so THAT is no sign the door is done.
     for (var tries = 0;
-        tries < 200 && s.mediaStagingStore.find(piecePath) == null;
+        tries < 200 && File(piecePath).existsSync();
         tries += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),

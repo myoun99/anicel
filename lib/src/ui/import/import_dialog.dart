@@ -642,7 +642,7 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     } finally {
       if (landed) {
-        await pieces.secure(piece.path);
+        pieces.secure(piece.path);
       } else {
         pieces.discard(piece.path);
       }

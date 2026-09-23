@@ -49,8 +49,8 @@ typedef _Trim = ({int inFrame, int? outFrame});
 /// ⚠️The piece's ADDRESS is in the staging room, where nothing but this app
 /// writes, and while it is being imported a real file stands there — the
 /// doors read files, and a piece read through them is imported exactly
-/// like any untrimmed carried file. [secure] then holds its bytes the way
-/// every carried asset's are held and lets that file go: afterwards the
+/// like any untrimmed carried file — the door holds its bytes as it holds
+/// every carried file's, and [secure] lets that file go: afterwards the
 /// address is what a voice take's is — a name in the pool, bytes in the
 /// store, and no second copy anywhere.
 class TrimmedPieces {
@@ -124,17 +124,22 @@ class TrimmedPieces {
     }
   }
 
-  /// Holds [piece]'s bytes like every carried asset's, then lets go of the
-  /// file the doors read — the staged copy is the only one left.
+  /// Lets go of the file the doors read, once its bytes are held: the door
+  /// that placed the piece held them before it landed, as it holds every
+  /// carried file's (`ProjectImportDoors._holdCarried`), and the staged
+  /// copy is then the only one left.
   ///
   /// ⚠️Only once they ARE held. Staging SKIPS a file it cannot open rather
   /// than throw — one unreadable file must not cost a folder import the
-  /// rest — and a piece deleted after a skip would take the only copy of
+  /// rest — and a piece let go of after a skip would take the only copy of
   /// its bytes with it. Left standing, it is carried the way any carried
   /// file nothing staged is: the save reads it where it is.
-  Future<void> secure(String piece) async {
-    final held = await _staging.stageCarriedBytes([piece]);
-    if (held.isNotEmpty) {
+  ///
+  /// 🪦It staged the bytes itself until the doors did (2026-09-23): a
+  /// second answer to 「who holds a placed file's bytes」, and the later
+  /// one — it ran after the landing had recorded the piece.
+  void secure(String piece) {
+    if (_staging.find(piece) != null) {
       _deleteIfThere(piece);
     }
   }
