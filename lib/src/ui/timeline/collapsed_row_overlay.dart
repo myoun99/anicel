@@ -9,11 +9,8 @@ import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
-import 'timeline_body_cut_end_boundary.dart';
-import 'timeline_body_norishiro_boundary.dart';
-import 'timeline_cut_end_handle.dart'
-    show timelineCutEndPreviewFrameCount, timelineDrawnEndOffset;
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_grid_stack.dart';
 import 'timeline_grid_metrics.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -351,6 +348,11 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
     // seam is ruled — and an unworked block's paper, with nothing to be
     // pre-blended onto, stays translucent (the cost the user took with I-44:
     // here alone the lines show faintly through it).
+    final sheet = TimelineGridSheet(
+      key: const ValueKey<String>('collapsed-grid-sheet'),
+      frameCellExtent: cell,
+      frameStartIndex: first,
+    );
     return OverflowBox(
       alignment: Alignment.centerLeft,
       minWidth: width,
@@ -360,30 +362,35 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
         child: TimelineGridLaw(
           ground: null,
           framesPerSecond: widget.framesPerSecond,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              IgnorePointer(
-                child: TimelineGridSheet(
-                  key: const ValueKey<String>('collapsed-grid-sheet'),
-                  frameCellExtent: cell,
-                  frameStartIndex: first,
-                ),
-              ),
-              content,
-              ..._whereTheFilmStops(colorScheme, first: first, cell: cell),
-            ],
-          ),
+          child: switch (snapshot.playbackFrameCount) {
+            // A snapshot with no cut end — the storyboard's track — has
+            // nowhere the film stops, and the open storyboard shades none.
+            null => Stack(
+              fit: StackFit.expand,
+              children: [IgnorePointer(child: sheet), content],
+            ),
+            final playback => _whereTheFilmStops(
+              sheet: sheet,
+              content: content,
+              cell: cell,
+              playback: playback - first,
+              drawn: switch (widget.drawnFrameCount) {
+                final drawn? => drawn - first,
+                null => null,
+              },
+            ),
+          },
         ),
       ),
     );
   }
 
-  /// WHERE THE FILM STOPS, stated over whatever stands here the way the
-  /// open grid states it over everything ([TimelineFrameGridStack]): the
-  /// out-of-cut wash from the DRAWN end (유저 2026-08-11), the のりしろ mark
-  /// and the cut-end line — the open grid's own three widgets at the open
-  /// grid's own offsets, so this is the open row seen through glass here too.
+  /// WHERE THE FILM STOPS, stated over whatever stands here by the open
+  /// grid's own stack ([TimelineFrameGridStack]): the grid sheet under the
+  /// row, and over it the out-of-cut wash from the DRAWN end (유저
+  /// 2026-08-11), the のりしろ mark and the cut-end line — so this is the open
+  /// row seen through glass here too, and `one_cut_end_stack_test` keeps it
+  /// the ONE stack that says so.
   ///
   /// 🚨The 08-10 design keeps ONE ground, and it is this wash: 「the only
   /// ground that survives is the out-of-cut shading, because that one IS the
@@ -393,56 +400,27 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   /// ⑩ 뿌리 C) painted neither, so the one ground the design kept was on the
   /// one path nobody saw.
   ///
-  /// A snapshot with no cut end (the storyboard's track) has nowhere the film
-  /// stops, and the open storyboard draws no wash either.
-  List<Widget> _whereTheFilmStops(
-    ColorScheme colorScheme, {
-    required int first,
+  /// [playback] and [drawn] are counted from the first frame laid out here,
+  /// which is this stack's origin: it lays every overlay at a frame count
+  /// times the cell from its own left edge.
+  Widget _whereTheFilmStops({
+    required Widget sheet,
+    required Widget content,
     required double cell,
-  }) {
-    final playback = widget.snapshot.playbackFrameCount;
-    if (playback == null) {
-      return const [];
-    }
-    final origin = first * cell;
-    final drawnEnd =
-        timelineDrawnEndOffset(
-          preview: null,
-          cutId: null,
-          playbackFrameCount: playback,
-          drawnFrameCount: widget.drawnFrameCount,
-          frameCellExtent: cell,
-        ) -
-        origin;
-    final cutEnd =
-        timelineCutEndPreviewFrameCount(
-              preview: null,
-              cutId: null,
-              playbackFrameCount: playback,
-            ) *
-            cell -
-        origin;
-    return [
-      IgnorePointer(
-        child: CustomPaint(
-          key: const ValueKey<String>('collapsed-out-of-cut-wash'),
-          painter: TimelineOutsideCutWashPainter(
-            outsideStart: drawnEnd,
-            colorScheme: colorScheme,
-          ),
-        ),
-      ),
-      TimelineBodyNoriShiroBoundary(
-        key: const ValueKey<String>('collapsed-norishiro-boundary'),
-        left: drawnEnd,
-        cutEnd: cutEnd,
-      ),
-      TimelineBodyCutEndBoundary(
-        key: const ValueKey<String>('collapsed-cut-end-boundary'),
-        left: cutEnd,
-      ),
-    ];
-  }
+    required int playback,
+    required int? drawn,
+  }) => TimelineFrameGridStack(
+    gridSheet: sheet,
+    rowsBody: SizedBox.expand(child: content),
+    // The cursor is the row's own layer — the real row mounts
+    // [TimelineCursorLayer], the strip paints its own — so the stack's
+    // playhead slot stands empty.
+    playheadExtent: 0,
+    playhead: const SizedBox.shrink(),
+    frameCellExtent: cell,
+    playbackFrameCount: playback,
+    drawnFrameCount: drawn,
+  );
 
   /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.
   /// **흰캔버스에서 안보이든말든 신경쓰지말고 그냥 없애.** 간편 오버레이에서
@@ -546,8 +524,9 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     // The grid is not this painter's: the timeline's own sheet lies under
     // it ([TimelineGridSheet], I-44) — this strip used to walk the same
     // boundaries with a loop of its own. Nor is where the film stops: the
-    // wash and the cut-end line are the overlay's, over this strip and the
-    // real row alike ([_CollapsedRowOverlayState._whereTheFilmStops]).
+    // wash and the cut-end line are the open grid's stack, laid over this
+    // strip and the real row alike ([_CollapsedRowOverlayState
+    // ._whereTheFilmStops]).
 
     // THE BLOCKS — a translucent body so they read as paper, an outline
     // so they read as blocks, and their name. Uncovered stretches print the

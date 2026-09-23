@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -266,15 +267,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+
   /// The 08-10 design keeps ONE ground, the out-of-cut wash — and the
   /// folded row that mounts the real row (every folded timeline row since
   /// ⑩ 뿌리 C) had none: only the fallback strip painted it, from the cut end
   /// in a colour of its own.
-  testWidgets('the REAL folded row says where the film stops, from the '
-      'drawn end, over the row', (tester) async {
+  testWidgets('the REAL folded row says where the film stops through the '
+      'open grid\'s own stack, from the drawn end', (tester) async {
     final session = await pumpApp(tester);
     await collapseBottom(tester);
-    expect(inOverlay(find.byType(TimelineFrameCellsRow)), findsOneWidget);
 
     final overlay = tester.widget<CollapsedRowOverlay>(
       find.byType(CollapsedRowOverlay),
@@ -286,53 +287,37 @@ void main() {
           'transition, so the offsets below alone could not tell the drawn '
           'end from the cut end',
     );
-    final cell = overlay.pixelsPerFrame;
-    final origin =
-        (overlay.frameAxisOffset?.value ?? 0) ~/ cell * cell;
-    final wash = inOverlay(
-      find.byKey(const ValueKey<String>('collapsed-out-of-cut-wash')),
-    );
-    expect(wash, findsOneWidget);
+    final stackFinder = inOverlay(find.byType(TimelineFrameGridStack));
+    expect(stackFinder, findsOneWidget);
     expect(
-      (tester.widget<CustomPaint>(wash).painter!
-              as TimelineOutsideCutWashPainter)
-          .outsideStart,
-      session.activeCutSpan.activeCutDrawnFrameCount * cell - origin,
+      find.descendant(
+        of: stackFinder,
+        matching: find.byType(TimelineFrameCellsRow),
+      ),
+      findsOneWidget,
+      reason: 'the row is the stack\'s body, so what the stack states is '
+          'stated over it',
+    );
+
+    final cell = overlay.pixelsPerFrame;
+    final first = (overlay.frameAxisOffset?.value ?? 0) ~/ cell;
+    final stack = tester.widget<TimelineFrameGridStack>(stackFinder);
+    expect(stack.frameCellExtent, cell);
+    expect(
+      stack.playbackFrameCount,
+      session.activeCutSpan.activeCutPlaybackFrameCount - first,
+      reason: 'counted from the first frame laid out, the stack\'s origin',
+    );
+    expect(
+      stack.drawnFrameCount,
+      session.activeCutSpan.activeCutDrawnFrameCount - first,
+    );
+    expect(
+      washOf(tester, stackFinder).outsideStart,
+      (session.activeCutSpan.activeCutDrawnFrameCount - first) * cell,
       reason: 'the open grid\'s wash starts at the DRAWN end (유저 '
           '2026-08-11), and the folded row is the open row seen through glass',
     );
-    expect(
-      tester
-          .widget<TimelineBodyCutEndBoundary>(
-            inOverlay(
-              find.byKey(const ValueKey<String>('collapsed-cut-end-boundary')),
-            ),
-          )
-          .left,
-      session.activeCutSpan.activeCutPlaybackFrameCount * cell - origin,
-    );
-
-    // Over the row, as the open stack lays it over everything.
-    final stack = tester.widget<Stack>(
-      find.ancestor(of: wash, matching: find.byType(Stack)).first,
-    );
-    final rowSlot = stack.children.indexWhere(
-      (child) => find
-          .descendant(
-            of: find.byWidget(child),
-            matching: find.byType(TimelineFrameCellsRow),
-          )
-          .evaluate()
-          .isNotEmpty,
-    );
-    final washSlot = stack.children.indexWhere(
-      (child) => find
-          .descendant(of: find.byWidget(child), matching: wash)
-          .evaluate()
-          .isNotEmpty,
-    );
-    expect(rowSlot, greaterThanOrEqualTo(0));
-    expect(washSlot, greaterThan(rowSlot));
   });
 
   group('where the film stops, on the overlay itself', () {
@@ -371,7 +356,9 @@ void main() {
                 frameAxisOffset: axis,
                 drawnFrameCount: 13,
                 frameRowBuilder: realRow
-                    ? (context, geometry) => const SizedBox.expand()
+                    ? (context, geometry) => const SizedBox.expand(
+                        key: ValueKey<String>('stand-in-row'),
+                      )
                     : null,
               ),
             ),
@@ -390,35 +377,48 @@ void main() {
           realRow: realRow,
         );
 
-        // The axis stands at 55px: frame 5 is the first laid out, so every
-        // offset is measured from 50.
-        expect(
-          (tester
-                      .widget<CustomPaint>(
-                        find.byKey(
-                          const ValueKey<String>('collapsed-out-of-cut-wash'),
-                        ),
-                      )
-                      .painter!
-                  as TimelineOutsideCutWashPainter)
-              .outsideStart,
-          130 - 50,
-        );
+        // The axis stands at 55px: frame 5 is the first laid out, so the
+        // counts the stack draws from are measured from there.
+        final stackFinder = find.byType(TimelineFrameGridStack);
+        final stack = tester.widget<TimelineFrameGridStack>(stackFinder);
+        expect(stack.playbackFrameCount, 10 - 5);
+        expect(stack.drawnFrameCount, 13 - 5);
+        expect(stack.frameCellExtent, 10);
+        expect(washOf(tester, stackFinder).outsideStart, 130 - 50);
         final noriShiro = tester.widget<TimelineBodyNoriShiroBoundary>(
-          find.byKey(const ValueKey<String>('collapsed-norishiro-boundary')),
+          find.byType(TimelineBodyNoriShiroBoundary),
         );
         expect(noriShiro.left, 130 - 50);
         expect(noriShiro.cutEnd, 100 - 50);
         expect(
           tester
               .widget<TimelineBodyCutEndBoundary>(
-                find.byKey(
-                  const ValueKey<String>('collapsed-cut-end-boundary'),
-                ),
+                find.byType(TimelineBodyCutEndBoundary),
               )
               .left,
           100 - 50,
         );
+        expect(
+          find.descendant(
+            of: stackFinder,
+            matching: realRow
+                ? find.byKey(const ValueKey<String>('stand-in-row'))
+                : find.byKey(const ValueKey<String>('collapsed-strip')),
+          ),
+          findsOneWidget,
+          reason: 'whichever stands here is the stack\'s body',
+        );
+        if (!realRow) {
+          expect(
+            tester
+                .getSize(find.byKey(const ValueKey<String>('collapsed-strip')))
+                .height,
+            CollapsedRowOverlay.defaultHeight,
+            reason: 'a painter with no child takes the room it is GIVEN — '
+                'the stack lays its body loose, so the body has to ask for '
+                'the whole row or the strip draws into nothing',
+          );
+        }
       });
     }
 
@@ -426,14 +426,29 @@ void main() {
         'nowhere the film stops', (tester) async {
       await pumpOverlay(tester, snapshot: snapshot(), realRow: true);
 
+      expect(find.byType(TimelineFrameGridStack), findsNothing);
+      expect(find.byType(TimelineBodyCutEndBoundary), findsNothing);
       expect(
-        find.byKey(const ValueKey<String>('collapsed-out-of-cut-wash')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('collapsed-cut-end-boundary')),
-        findsNothing,
+        find.byKey(const ValueKey<String>('collapsed-grid-sheet')),
+        findsOneWidget,
+        reason: 'the grid still lies under the row',
       );
     });
   });
 }
+
+/// The out-of-cut wash the [stack] paints — its own painter, found by type.
+TimelineOutsideCutWashPainter washOf(WidgetTester tester, Finder stack) =>
+    tester
+            .widget<CustomPaint>(
+              find.descendant(
+                of: stack,
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is CustomPaint &&
+                      widget.painter is TimelineOutsideCutWashPainter,
+                ),
+              ),
+            )
+            .painter!
+        as TimelineOutsideCutWashPainter;

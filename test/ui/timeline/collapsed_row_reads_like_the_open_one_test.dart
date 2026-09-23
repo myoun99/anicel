@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 
 /// 🚨T16ⓐ′ — the folded row is the OPEN row seen through glass, not a look
 /// of its own.
@@ -88,14 +89,13 @@ void main() {
     );
 
     // I-44: under the row, as in the open panel — it used to be laid OVER
-    // the row here, while the row drew its own lines as well.
-    final slot = find.ancestor(of: sheet, matching: find.byType(IgnorePointer));
-    final stack = tester.widget<Stack>(
-      find.ancestor(of: sheet, matching: find.byType(Stack)).first,
+    // the row here, while the row drew its own lines as well. It is the open
+    // grid's own stack that lays it now, in the slot under the rows (D32,
+    // `timeline_frame_grid_stack_test`), with where the film stops over them.
+    final stack = tester.widget<TimelineFrameGridStack>(
+      find.ancestor(of: sheet, matching: find.byType(TimelineFrameGridStack)),
     );
-    // First of all — what stands over the row (the out-of-cut wash and the
-    // cut-end marks) comes after it.
-    expect(stack.children.first, tester.widget<IgnorePointer>(slot.first));
+    expect(stack.gridSheet, tester.widget(sheet));
 
     // The row lies over the ARTWORK: no ground to paint rows on, so no row
     // is coloured and no seam is ruled; the lines stay the law's raw ink.
