@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/kept_span.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
@@ -230,10 +232,8 @@ void main() {
       expect(mediaFileName(piece), 'line_7-18.wav');
       final kept = QaAudioDecoder.instance!.decode(File(piece).readAsBytesSync())!;
       final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
-      int sampleAt(int frame) =>
-          frame * rate.denominator * 48000 ~/ rate.numerator;
-      final from = sampleAt(6) * 2;
-      final to = sampleAt(18) * 2;
+      final from = rate.frameToSample(6, 48000) * 2;
+      final to = rate.frameToSample(18, 48000) * 2;
       expect(kept.sampleRate, 48000);
       expect(kept.channels, 2);
       expect(kept.samples.length, to - from, reason: 'frames 7..18, no more');
@@ -270,8 +270,10 @@ void main() {
         File(cut!.path).readAsBytesSync(),
       )!;
       final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      // 24 project frames are 1.001 seconds of source: 48048 samples.
       int sampleAt(int frame) =>
           frame * rate.denominator * 1001 * 48000 ~/ (rate.numerator * 1000);
+      expect(sampleAt(24), 48048, reason: 'the premise: a whole sample');
       expect(
         kept.samples.first,
         all.samples[sampleAt(24) * 2],
@@ -281,32 +283,137 @@ void main() {
       await tester.pumpAndSettle();
     }, skip: skip);
 
-    testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
-        'project shows, one per project frame', (tester) async {
-      final encoder = QaVideoEncoder.instance;
-      if (encoder == null || !encoder.isSupported) {
-        return;
-      }
+    testWidgets('🚨a frame that starts between two samples starts where the '
+        'MIXER starts it — rounded up, never a sample of the frame before '
+        '(29.97: frame 1 begins at sample 1601.6)', (tester) async {
+      const rate = ProjectFrameRate.ntsc(30);
+      final s = EditorSessionManager(
+        initialProject: createDefaultProject().copyWith(frameRate: rate),
+      );
+      addTearDown(s.dispose);
+      final source = writeWav('line.wav', 1);
+
+      final cut = await tester.runAsync(
+        () => s.trimmedPieces.cut(
+          source,
+          MediaAssetKind.audio,
+          inFrame: 1,
+          outFrame: 3,
+        ),
+      );
+
+      final kept = QaAudioDecoder.instance!.decode(
+        File(cut!.path).readAsBytesSync(),
+      )!;
+      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      expect(rate.frameToSample(1, 48000), 1602, reason: 'the premise');
+      expect(
+        kept.samples.first,
+        all.samples[1602 * 2],
+        reason: 'sample 1601 is still frame 0 — the mixer starts frame 1 at '
+            '1602, and so does its piece',
+      );
+      expect(
+        kept.samples.length,
+        (rate.frameToSample(4, 48000) - 1602) * 2,
+        reason: 'up to where the mixer starts frame 4',
+      );
+      await tester.pumpAndSettle();
+    }, skip: skip);
+
+    testWidgets('🚨a sound whose last frame the window counts only because its '
+        'peaks round up is carried as EVERY frame of the span — silence past '
+        'its end — and the door keeps all of them', (tester) async {
       final s = session();
       final rate = s.projectSettings.projectFrameRate;
-      // Eight movie frames at 12fps, each its own flat red, over a sound —
-      // the size and sound the other encoder fixtures use (the OS encoder
-      // turns tiny frames away).
-      final source = inTemp('take3.mp4');
+      // 51800 samples: 25.9 frames of sound at 24fps, which the conform's
+      // 80-a-second buckets round up to 87 × 600 = 52200 — past frame 26's
+      // end, so the window counts 27 frames.
+      const rateHz = 48000;
+      final samples = Int16List(51800 * 2);
+      for (var i = 0; i < samples.length; i += 1) {
+        samples[i] = 5000;
+      }
+      final data = samples.buffer.asUint8List();
+      final source = inTemp('tail.wav');
+      File(source).writeAsBytesSync([
+        ...wav16HeaderBytes(
+          dataBytes: data.length,
+          sampleRate: rateHz,
+          channels: 2,
+        ),
+        ...data,
+      ]);
+      final peaks = await tester.runAsync(
+        () => s.audioConformStore.ensurePeaksFor(normalizedMediaPath(source)),
+      );
+      expect(
+        peaks!.durationFrames(rate),
+        greaterThan(rate.framesCoveringExactSeconds(51800, rateHz)),
+        reason: 'the premise: the window counts a frame the samples do not '
+            'reach',
+      );
+      final counted = peaks.durationFrames(rate);
+
+      final cut = await tester.runAsync(
+        () => s.trimmedPieces.cut(source, MediaAssetKind.audio, inFrame: 20),
+      );
+
+      expect(cut?.frames, counted - 20, reason: 'to the last frame it counts');
+      final kept = QaAudioDecoder.instance!.decode(
+        File(cut!.path).readAsBytesSync(),
+      )!;
+      expect(
+        kept.samples.length,
+        (rate.frameToSample(counted, rateHz) -
+                rate.frameToSample(20, rateHz)) *
+            2,
+        reason: 'every frame of the span, whole',
+      );
+      expect(kept.samples.last, 0.0, reason: 'silence past the sound\'s end');
+
+      final start = s.activeCutGlobalStartFrame;
+      await tester.runAsync(
+        () => s.importDoors.importSoundFile(
+          path: cut.path,
+          copyIntoProject: true,
+          outFrame: cut.frames - 1,
+          sourcePath: source,
+        ),
+      );
+      expect(
+        s.activeTrack.seLayers.first.timeline[start]?.length,
+        cut.frames,
+        reason: 'the block is the span the window showed — a piece that '
+            'stopped at the last sample would measure a frame short, and the '
+            'door would keep one less',
+      );
+      await tester.pumpAndSettle();
+    }, skip: skip);
+
+    /// Eight movie frames at [fps], each its own flat red, over a sound —
+    /// the size and sound the other encoder fixtures use (the OS encoder
+    /// turns tiny frames away).
+    void writeMovie(
+      QaVideoEncoder encoder,
+      String path,
+      ({int numerator, int denominator}) fps,
+    ) {
       expect(
         encoder.open(
-          path: source,
+          path: path,
           width: 64,
           height: 48,
-          fpsNumerator: 12,
-          fpsDenominator: 1,
+          fpsNumerator: fps.numerator,
+          fpsDenominator: fps.denominator,
           sampleRate: 44100,
           channels: 2,
         ),
         isTrue,
         reason: encoder.lastError,
       );
-      const samplesPerFrame = 44100 ~/ 12;
+      final samplesPerFrame =
+          44100 * fps.denominator ~/ fps.numerator;
       for (var frame = 0; frame < 8; frame += 1) {
         final rgba = Uint8List(64 * 48 * 4);
         for (var i = 0; i < 64 * 48; i += 1) {
@@ -325,6 +432,33 @@ void main() {
         );
       }
       expect(encoder.finish(), isTrue, reason: encoder.lastError);
+    }
+
+    /// Cuts IN 3 .. OUT 8 of such a movie in a project whose sounds play at
+    /// [speed], holds the piece against what the project showed — the span
+    /// and the frames the movie's own clock gives, at [pace] frames a
+    /// second — and answers how many frames it kept; null when this machine
+    /// has no encoder to cut with.
+    Future<int?> cutsWhatTheProjectShows(
+      WidgetTester tester, {
+      required ({int numerator, int denominator}) fps,
+      required ({int numerator, int denominator}) speed,
+      required double pace,
+    }) async {
+      final encoder = QaVideoEncoder.instance;
+      if (encoder == null || !encoder.isSupported) {
+        return null;
+      }
+      final s = EditorSessionManager(
+        initialProject: createDefaultProject().copyWith(
+          audioSpeedNumerator: speed.numerator,
+          audioSpeedDenominator: speed.denominator,
+        ),
+      );
+      addTearDown(s.dispose);
+      final rate = s.projectSettings.projectFrameRate;
+      final source = inTemp('take3.mp4');
+      writeMovie(encoder, source, fps);
 
       final kept = await tester.runAsync(
         () => s.trimmedPieces.cut(
@@ -335,29 +469,36 @@ void main() {
         ),
       );
 
-      expect(kept?.frames, 6);
       final decoder = QaVideoDecoder.instance!;
       final original = decoder.openDocument(source)!;
+      final clock = movieClockFor(
+        projectRate: rate,
+        audioSpeed: speed,
+        movie: original.info,
+      );
+      final span = KeptSpan(
+        length: clock.projectFramesCovering(original.info.frameCount),
+        inFrame: 3,
+        outFrame: 8,
+      );
+      expect(kept?.frames, span.count, reason: 'what the placement keeps');
       final cut = decoder.openDocument(kept!.path)!;
       try {
-        expect(cut.info.frameCount, 6, reason: 'project frames 4..9');
+        expect(cut.info.frameCount, span.count);
         expect(
           cut.info.fpsNumerator / cut.info.fpsDenominator,
-          rate.numerator / rate.denominator,
-          reason: 'at the project\'s own pace — frame n is frame n',
+          closeTo(pace, 1e-3),
+          reason: 'at the project\'s rate in the movie\'s own time — frame n '
+              'is frame n',
         );
-        final clock = movieClockFor(
-          projectRate: rate,
-          audioSpeed: (numerator: 1, denominator: 1),
-          movie: original.info,
-        );
-        for (var n = 0; n < 6; n += 1) {
-          final shown = decoder.frameOf(original, clock.movieFrameAt(3 + n))!;
-          final kept = decoder.frameOf(cut, n)!;
+        for (var n = 0; n < span.count; n += 1) {
+          final at = span.first + n;
+          final shown = decoder.frameOf(original, clock.movieFrameAt(at))!;
+          final piece = decoder.frameOf(cut, n)!;
           expect(
-            (kept[0] - shown[0]).abs(),
+            (piece[0] - shown[0]).abs(),
             lessThan(12),
-            reason: 'piece frame $n is what project frame ${3 + n} showed',
+            reason: 'piece frame $n is what project frame $at showed',
           );
         }
       } finally {
@@ -365,6 +506,41 @@ void main() {
         decoder.closeDocument(cut);
       }
       await tester.pumpAndSettle();
+      return span.count;
+    }
+
+    testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
+        'project shows, one per project frame', (tester) async {
+      final kept = await cutsWhatTheProjectShows(
+        tester,
+        fps: (numerator: 12, denominator: 1),
+        speed: (numerator: 1, denominator: 1),
+        pace: 24,
+      );
+      if (kept != null) {
+        expect(kept, 6, reason: 'project frames 4..9 of a 12fps take');
+      }
+    }, skip: skip);
+
+    testWidgets('🚨with the 1001/1000 pull on, a 23.976 take in a 24 project '
+        'is cut FRAME FOR FRAME — the piece runs at 24000/1001, and its span '
+        'is the pulled clock\'s, not the wall clock\'s', (tester) async {
+      final kept = await cutsWhatTheProjectShows(
+        tester,
+        fps: (numerator: 24000, denominator: 1001),
+        speed: (numerator: 1001, denominator: 1000),
+        pace: 24000 / 1001,
+      );
+      if (kept != null) {
+        expect(
+          kept,
+          5,
+          reason: 'its eight frames ARE project frames 0..7 (MovieClock: 「a '
+              '23.976→24 change keeps every frame where it was」), so OUT 8 '
+              'stops at 7 — without the pull they would cover nine, and each '
+              'project frame would show the take\'s frame before',
+        );
+      }
     }, skip: skip);
   });
 }

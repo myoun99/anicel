@@ -2104,6 +2104,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     project: this,
     frameRate: () => projectSettings.projectFrameRate,
+    soundPeaks: audioConformStore.ensurePeaksFor,
   );
 
   late final ProjectImportDoors importDoors = ProjectImportDoors(

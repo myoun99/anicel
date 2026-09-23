@@ -6,19 +6,20 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../native/qa_video_encoder.dart';
 import '../audio/audio_conform_runner.dart' show decodeAudioSource;
-import '../audio/sound_span.dart' show int16SamplesOf, sourceSamplesOfFrames;
+import '../audio/sound_span.dart' show int16PcmOfFrames;
 import 'media_byte_source.dart';
 
-/// Writes the movie at [sourcePath] over the project frames [inFrame] ..
-/// [outFrame] (null: to its end) to [piecePath] as an MP4 — the piece a
-/// trimmed movie is carried as (유저 2026-09-23: 「잘라낸 동영상으로 다시
-/// 인코딩」, and 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Answers
-/// the span it kept, or why it could not.
+/// Writes the movie at [sourcePath] over the project frames [trim] keeps of
+/// it to [piecePath] as an MP4 — the piece a trimmed movie is carried as
+/// (유저 2026-09-23: 「잘라낸 동영상으로 다시 인코딩」, and 「비디오든
+/// 이미지든 오디오든 관계없이 법 하나로」). Answers the span it kept, or why
+/// it could not.
 ///
 /// 🚨★★★**THE FRAMES THE PROJECT SHOWS, AT THE PROJECT'S OWN PACE.** A movie
 /// plays on the sound's clock ([MovieClock]), so project frame n shows
 /// movie frame `movieFrameAt(n)` — not movie frame n. The piece is those
-/// exact pictures, one per project frame, at rate / speed: placed from its
+/// exact pictures, one per project frame, at the project's rate in the
+/// movie's own time ([ProjectFrameRate.inSourceTime]): placed from its
 /// start it maps frame n to frame n and shows, frame for frame, what the
 /// trimmed original showed. Cut at the movie's own rate instead, its first
 /// frame would fall a fraction of a frame from where the span began and a
@@ -26,16 +27,14 @@ import 'media_byte_source.dart';
 /// is drawing against.
 ///
 /// Its sound is the same span in the source's own time
-/// ([sourceSamplesOfFrames]), handed to the encoder frame by frame.
+/// ([int16PcmOfFrames]), handed to the encoder frame by frame.
 ///
 /// Uses the encoder's own budget, as the export does by default.
-({KeptSpan? kept, String? failure}) writeMovieSpan({
-  required String sourcePath,
-  required String piecePath,
-  required int inFrame,
-  int? outFrame,
-  required ProjectFrameRate rate,
-  required ({int numerator, int denominator}) speed,
+({KeptSpan? kept, String? failure}) writeMovieSpan(
+  String sourcePath,
+  String piecePath, {
+  required ({int inFrame, int? outFrame}) trim,
+  required ProjectClock clock,
 }) {
   final decoder = QaVideoDecoder.instance;
   final encoder = QaVideoEncoder.instance;
@@ -51,19 +50,20 @@ import 'media_byte_source.dart';
   }
   try {
     final info = document.info;
-    final clock = movieClockFor(
-      projectRate: rate,
-      audioSpeed: speed,
+    final movie = movieClockFor(
+      projectRate: clock.rate,
+      audioSpeed: clock.speed,
       movie: info,
     );
     // The same span the placement would have kept of the whole movie.
     final kept = KeptSpan(
-      length: clock.projectFramesCovering(info.frameCount),
-      inFrame: inFrame,
-      outFrame: outFrame,
+      length: movie.projectFramesCovering(info.frameCount),
+      inFrame: trim.inFrame,
+      outFrame: trim.outFrame,
     );
-    final pace = _pace(rate, speed);
-    final sound = decodeAudioSource(MediaFileBytes(sourcePath));
+    final pace = clock.rate.inSourceTime(clock.speed);
+    final decoded = decodeAudioSource(MediaFileBytes(sourcePath));
+    final sound = decoded != null && decoded.channels > 0 ? decoded : null;
     if (!encoder.open(
       path: piecePath,
       width: info.width,
@@ -81,15 +81,14 @@ import 'media_byte_source.dart';
       for (var at = kept.first; at <= kept.last; at += 1) {
         final rgba = decoder.frameOf(
           document,
-          clock.movieFrameAt(at),
+          movie.movieFrameAt(at),
           into: frame,
         );
         if (rgba == null) {
           return (kept: null, failure: decoder.lastError);
         }
         if (!encoder.writeFrame(rgba) ||
-            (sound != null &&
-                !_writeSoundOf(encoder, sound, at, rate, speed))) {
+            (sound != null && !_writeSoundOf(encoder, sound, at, pace))) {
           return (kept: null, failure: encoder.lastError);
         }
       }
@@ -107,35 +106,13 @@ import 'media_byte_source.dart';
   }
 }
 
-/// rate / speed as a reduced fraction — the pace at which the piece's own
-/// clock maps project frame n to its frame n.
-({int numerator, int denominator}) _pace(
-  ProjectFrameRate rate,
-  ({int numerator, int denominator}) speed,
-) {
-  final numerator = rate.numerator * speed.denominator;
-  final denominator = rate.denominator * speed.numerator;
-  final divisor = numerator.gcd(denominator);
-  return (numerator: numerator ~/ divisor, denominator: denominator ~/ divisor);
-}
-
 /// The source samples project frame [frame] plays, handed to [encoder].
 bool _writeSoundOf(
   QaVideoEncoder encoder,
   ({Float32List samples, int channels, int sampleRate}) sound,
   int frame,
-  ProjectFrameRate rate,
-  ({int numerator, int denominator}) speed,
+  ProjectFrameRate pace,
 ) {
-  final pcm = int16SamplesOf(
-    sound,
-    sourceSamplesOfFrames(
-      first: frame,
-      count: 1,
-      rate: rate,
-      speed: speed,
-      sampleRate: sound.sampleRate,
-    ),
-  );
-  return pcm.isEmpty || encoder.writeAudio(pcm, pcm.length ~/ sound.channels);
+  final pcm = int16PcmOfFrames(sound, (first: frame, count: 1), pace);
+  return encoder.writeAudio(pcm, pcm.length ~/ sound.channels);
 }

@@ -69,7 +69,21 @@ void main() {
   /// has no page routes to transition; `app_theme.dart` has the
   /// measurement. Shrinking it is not available, and skipping the override
   /// means keeping four offscreens over the window on every frame.
-  const wideSignatures = 386;
+  ///
+  /// ⚠️386 → 387 on 2026-09-23, one named as the rule above asks.
+  /// `_ImportDialogState._placeThrough` (six) is the ONE dispatch every
+  /// placed file goes through, and a trimmed file carried in now goes
+  /// through it as its PIECE (유저 2026-09-23: 자른 구간만 품는다, 「비디오든
+  /// 이미지든 오디오든 관계없이 법 하나로」) — the span cut into a file of
+  /// its own and placed whole by the same doors, which is why the doors know
+  /// nothing of pieces. The two it gained are the piece's: the settings it
+  /// is placed with — the original's, re-based onto the piece — which it
+  /// used to read off the path, and where it was cut from, the parameter
+  /// every door takes for the pool's provenance. The sound and movie cutters
+  /// the same round wrote came in under the line: the frame rate and the
+  /// audio speed travel as the one clock they are (`ProjectClock`), and the
+  /// window's IN/OUT as one trim.
+  const wideSignatures = 387;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

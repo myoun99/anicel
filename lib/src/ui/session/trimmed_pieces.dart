@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show ProjectClock;
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_engine_abi.dart';
+import '../../services/audio/audio_peaks_extractor.dart' show AudioPeaks;
 import '../../services/audio/sound_span.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/animated_png_writer.dart';
@@ -16,6 +18,10 @@ import '../../services/media/movie_span.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
 import 'session_roles.dart';
+
+/// The IN/OUT the window chose for a file — what a [KeptSpan] is made of
+/// once the file's own length is known (OUT null for its last frame).
+typedef _Trim = ({int inFrame, int? outFrame});
 
 /// 🚨★★★**A TRIMMED FILE THAT IS CARRIED BRINGS ONLY ITS SPAN.**
 ///
@@ -34,6 +40,12 @@ import 'session_roles.dart';
 ///  * a PDF → the kept pages as a PDF ([PdfRenderService.pageSpan])
 ///  * an animated image → APNG of the kept frames ([encodeAnimatedPng])
 ///
+/// 🚨The span is measured the way the kind's DOOR measures the file — a
+/// movie on the sound's clock, a sound off its conform's peaks, a PDF by its
+/// pages, an animation by its frames — so the piece keeps exactly what the
+/// untrimmed file would have kept under the same IN/OUT, and what the
+/// window showed.
+///
 /// ⚠️The piece's ADDRESS is in the staging room, where nothing but this app
 /// writes, and while it is being imported a real file stands there — the
 /// doors read files, and a piece read through them is imported exactly
@@ -46,13 +58,19 @@ class TrimmedPieces {
     required MediaStagingStore staging,
     required ProjectAccess project,
     required ProjectFrameRate Function() frameRate,
+    required Future<AudioPeaks?> Function(String path) soundPeaks,
   }) : _staging = staging,
        _project = project,
-       _frameRate = frameRate;
+       _frameRate = frameRate,
+       _soundPeaks = soundPeaks;
 
   final MediaStagingStore _staging;
   final ProjectAccess _project;
   final ProjectFrameRate Function() _frameRate;
+
+  /// A sound's length and picture as the project measures it — the
+  /// conform's, the one wait the window and the sound's door both take.
+  final Future<AudioPeaks?> Function(String path) _soundPeaks;
 
   /// Test seam: cut on this isolate instead of a worker.
   ///
@@ -84,12 +102,13 @@ class TrimmedPieces {
         '${_staging.directoryPath}/${_uniqueName('cutting')}.'
         '${_extensionOf(kind)}';
     Directory(_staging.directoryPath).createSync(recursive: true);
+    final trim = (inFrame: inFrame, outFrame: outFrame);
     try {
       final kept = switch (kind) {
-        MediaAssetKind.video => await _movie(source, work, inFrame, outFrame),
-        MediaAssetKind.audio => await _sound(source, work, inFrame, outFrame),
-        MediaAssetKind.pdf => await _pages(source, work, inFrame, outFrame),
-        MediaAssetKind.image => await _frames(source, work, inFrame, outFrame),
+        MediaAssetKind.video => await _movie(source, work, trim),
+        MediaAssetKind.audio => await _sound(source, work, trim),
+        MediaAssetKind.pdf => await _pages(source, work, trim),
+        MediaAssetKind.image => await _frames(source, work, trim),
       };
       if (kept == null) {
         _deleteIfThere(work);
@@ -115,61 +134,40 @@ class TrimmedPieces {
   /// Lets go of a piece whose import did not land.
   void discard(String piece) => _deleteIfThere(piece);
 
-  Future<KeptSpan?> _movie(
-    String source,
-    String work,
-    int inFrame,
-    int? outFrame,
-  ) async {
-    final rate = _frameRate();
-    final speed = _speed();
+  Future<KeptSpan?> _movie(String source, String work, _Trim trim) async {
+    final clock = _clock();
     final library = debugQaEngineLibraryPathOverride;
     final written = await _run(() {
       debugQaEngineLibraryPathOverride ??= library;
-      return writeMovieSpan(
-        sourcePath: source,
-        piecePath: work,
-        inFrame: inFrame,
-        outFrame: outFrame,
-        rate: rate,
-        speed: speed,
-      );
+      return writeMovieSpan(source, work, trim: trim, clock: clock);
     });
     return written.kept;
   }
 
-  Future<KeptSpan?> _sound(
-    String source,
-    String work,
-    int inFrame,
-    int? outFrame,
-  ) async {
-    final rate = _frameRate();
-    final speed = _speed();
-    final library = debugQaEngineLibraryPathOverride;
-    final cut = await _run(() {
-      debugQaEngineLibraryPathOverride ??= library;
-      return soundSpanAsWav(
-        MediaFileBytes(source),
-        inFrame: inFrame,
-        outFrame: outFrame,
-        rate: rate,
-        speed: speed,
-      );
-    });
-    if (cut == null) {
+  Future<KeptSpan?> _sound(String source, String work, _Trim trim) async {
+    final peaks = await _soundPeaks(normalizedMediaPath(source));
+    if (peaks == null) {
       return null;
     }
-    File(work).writeAsBytesSync(cut.wav, flush: true);
-    return cut.kept;
+    final clock = _clock();
+    final kept = KeptSpan(
+      length: peaks.durationFrames(clock.rate),
+      inFrame: trim.inFrame,
+      outFrame: trim.outFrame,
+    );
+    final library = debugQaEngineLibraryPathOverride;
+    final wav = await _run(() {
+      debugQaEngineLibraryPathOverride ??= library;
+      return soundSpanAsWav(MediaFileBytes(source), kept, clock);
+    });
+    if (wav == null) {
+      return null;
+    }
+    File(work).writeAsBytesSync(wav, flush: true);
+    return kept;
   }
 
-  Future<KeptSpan?> _pages(
-    String source,
-    String work,
-    int inFrame,
-    int? outFrame,
-  ) async {
+  Future<KeptSpan?> _pages(String source, String work, _Trim trim) async {
     final document = await PdfRenderService.open(source);
     if (document == null) {
       return null;
@@ -183,7 +181,11 @@ class TrimmedPieces {
     if (pages < 1) {
       return null;
     }
-    final kept = KeptSpan(length: pages, inFrame: inFrame, outFrame: outFrame);
+    final kept = KeptSpan(
+      length: pages,
+      inFrame: trim.inFrame,
+      outFrame: trim.outFrame,
+    );
     final bytes = await PdfRenderService.pageSpan(
       source,
       first: kept.first,
@@ -196,12 +198,7 @@ class TrimmedPieces {
     return kept;
   }
 
-  Future<KeptSpan?> _frames(
-    String source,
-    String work,
-    int inFrame,
-    int? outFrame,
-  ) async {
+  Future<KeptSpan?> _frames(String source, String work, _Trim trim) async {
     final decoded = await decodeImageFrames(await MediaFileBytes(source).read());
     try {
       if (decoded.isEmpty) {
@@ -209,8 +206,8 @@ class TrimmedPieces {
       }
       final kept = KeptSpan(
         length: decoded.length,
-        inFrame: inFrame,
-        outFrame: outFrame,
+        inFrame: trim.inFrame,
+        outFrame: trim.outFrame,
       );
       final first = decoded[kept.first].image;
       final frames = <AnimatedPngFrame>[];
@@ -240,8 +237,12 @@ class TrimmedPieces {
     }
   }
 
-  ({int numerator, int denominator}) _speed() =>
-      _project.repository.requireProject().audioSpeed;
+  /// The project's rate and the speed its sounds play at — how a timed
+  /// source's frames fall on the project's.
+  ProjectClock _clock() => (
+    rate: _frameRate(),
+    speed: _project.repository.requireProject().audioSpeed,
+  );
 
   /// `<name>_<in>-<out>.<ext>`, 1-based like the window's own IN/OUT, and
   /// free — of the pool, of the store, and of the room.
