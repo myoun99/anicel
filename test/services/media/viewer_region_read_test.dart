@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/media/image_viewer_document.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/media/video_viewer_document.dart';
 
@@ -54,7 +55,9 @@ void main() {
       image.dispose();
       final file = File('${dir.path}/page.png')
         ..writeAsBytesSync(png!.buffer.asUint8List());
-      final document = await ImageViewerDocument.open(file.path);
+      final document = await ImageViewerDocument.open(
+        MediaFileBytes(file.path),
+      );
       try {
         return await document.readRegionRgba(
           0,
@@ -75,7 +78,9 @@ void main() {
     );
     debugVideoDecodeBackend = backend;
     addTearDown(() => debugVideoDecodeBackend = null);
-    final document = (await VideoViewerDocument.open('reference.mp4'))!;
+    final document = (await VideoViewerDocument.open(
+      const MediaFileBytes('reference.mp4'),
+    ))!;
     final read = await document.readRegionRgba(
       3,
       (left: 3, top: 2, width: 5, height: 4),

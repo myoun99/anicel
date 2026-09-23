@@ -157,7 +157,7 @@ void main() {
     final cutsBefore = cutCount(s);
     var opened = 0;
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async {
+    PdfRenderService.debugOpenerOverride = (_) async {
       opened += 1;
       return FakePdfDocument(pageSizes: const [ui.Size(595, 842)]);
     };

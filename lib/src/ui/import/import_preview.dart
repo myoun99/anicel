@@ -298,7 +298,7 @@ class _ImportPreviewState extends State<ImportPreview> {
       return;
     }
     if (path.toLowerCase().endsWith('.pdf')) {
-      final pdf = await PdfRenderService.open(path);
+      final pdf = await PdfRenderService.open(MediaFileBytes(path));
       if (!mounted || _loadedPath != path) {
         unawaited(pdf?.dispose());
         return;

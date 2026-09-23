@@ -170,6 +170,38 @@ void main() {
       expect(store.list(), isEmpty);
     });
 
+    test('🚨a copy a reader holds open outlives the save that absorbs it, '
+        'and goes when the last reader lets go', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+      final first = store.hold(path);
+      final second = store.hold(path);
+
+      store.retire(path);
+      expect(
+        store.find(path),
+        isNotNull,
+        reason: 'Windows refuses to delete a file a reader holds open',
+      );
+      first();
+      expect(store.find(path), isNotNull, reason: 'one reader is left');
+      second();
+
+      expect(store.find(path), isNull);
+      expect(store.list(), isEmpty, reason: 'no file left behind');
+    });
+
+    test('a hold let go of with no retirement pending takes nothing', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+
+      store.hold(path)();
+
+      expect(store.find(path), isNotNull, reason: 'the save has not come');
+      store.retire(path);
+      expect(store.find(path), isNull, reason: 'held by no one, it goes');
+    });
+
     // 🪦**THE SWEEP TESTS MOVED WITH THE SWEEP, AND THEN TWO OF THEM WERE
     // REVERSED.** They pinned `sweepAbandoned` — 30 days, nothing taken
     // while everything is recent, the window shared with recovery

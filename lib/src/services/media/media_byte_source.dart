@@ -101,6 +101,14 @@ sealed class MediaByteSource {
   /// the source is the only thing that knows. Every caller that rebuilt this
   /// triple by hand was one archive-layout change from being wrong.
   ({String path, int offset, int length})? get range => null;
+
+  /// The file these bytes ARE, whole, for a reader that opens a file by its
+  /// path — or null when they are a stretch of one, or framed.
+  ///
+  /// A reader handed a path reads through the platform's own file access
+  /// and never holds the bytes in the Dart heap first; anything else has to
+  /// be read to it. Only the source knows which it is — see [range].
+  String? get wholeFilePath => null;
 }
 
 /// Cheap facts about a source, from `stat` alone — the CHEAP half of "has
@@ -189,6 +197,9 @@ class MediaFileBytes extends MediaByteSource {
   /// second path for the ordinary case.
   @override
   ({String path, int offset, int length})? get range => _wholeFileRange(path);
+
+  @override
+  String? get wholeFilePath => path;
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) =>
@@ -521,6 +532,9 @@ class MediaAppFileBytes extends MediaByteSource {
   @override
   ({String path, int offset, int length})? get range =>
       framed ? null : _wholeFileRange(path);
+
+  @override
+  String? get wholeFilePath => framed ? null : path;
 
   @override
   int readIntoSync(Uint8List buffer, int position, int size) =>

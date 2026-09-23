@@ -310,12 +310,52 @@ class MediaStagingStore {
     File(staged.path).renameSync(destination);
   }
 
-  /// Drops the staged copy of [poolPath] — the save absorbed it.
+  /// Staged copies a reader holds OPEN right now ([hold]), and how many
+  /// hold each.
+  final Map<String, int> _held = {};
+
+  /// Held copies whose retirement came while a reader had them — each goes
+  /// when its last hold does.
+  final Set<String> _retireWhenLetGo = {};
+
+  /// Keeps [poolPath]'s staged copy where it is until the answer is called
+  /// — once, after the reader has CLOSED.
+  ///
+  /// 🚨★★★**A READER HOLDS THE FILE OPEN, AND WINDOWS WILL NOT DELETE AN
+  /// OPEN FILE.** PDFium and the OS movie decoders read a page or a frame at
+  /// a time from the path for as long as the viewer shows it, and the save
+  /// that absorbs a copy retires it the moment the archive has the bytes —
+  /// exactly while the viewer is still showing it. A delete that threw
+  /// there would fail a save whose file is already written, so the
+  /// retirement waits for the reader instead ([retire]): the rule
+  /// `ProjectFile.holdMediaBytes` keeps for an archive entry the in-place
+  /// push-down would move, kept for the step that would take this one.
+  void Function() hold(String poolPath) {
+    _held.update(poolPath, (count) => count + 1, ifAbsent: () => 1);
+    return () {
+      final left = _held[poolPath]! - 1;
+      if (left > 0) {
+        _held[poolPath] = left;
+        return;
+      }
+      _held.remove(poolPath);
+      if (_retireWhenLetGo.remove(poolPath)) {
+        retire(poolPath);
+      }
+    };
+  }
+
+  /// Drops the staged copy of [poolPath] — the save absorbed it. A copy a
+  /// reader holds goes when the reader lets go ([hold]).
   ///
   /// BOTH spellings, because which one is on disk depends on whether the
   /// bytes shrank, and a save must not leave half of an absorbed import
   /// behind (유저 08-27: 「사본 남으면 진짜 용서안할게」).
   void retire(String poolPath) {
+    if (_held.containsKey(poolPath)) {
+      _retireWhenLetGo.add(poolPath);
+      return;
+    }
     for (final candidate in mediaFramedOrPlainPaths(_basePathFor(poolPath))) {
       final file = File(candidate);
       if (file.existsSync()) {

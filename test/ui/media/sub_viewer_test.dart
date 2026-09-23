@@ -109,9 +109,9 @@ void main() {
   setUp(() {
     // Two documents of different lengths: a readout can then never be
     // mistaken for the other viewer's.
-    PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+    PdfRenderService.debugOpenerOverride = (source) async => FakePdfDocument(
       pageSizes: List<Size>.filled(
-        path.endsWith('layout.pdf') ? 5 : 2,
+        source.wholeFilePath!.endsWith('layout.pdf') ? 5 : 2,
         const Size(595, 842),
       ),
     );

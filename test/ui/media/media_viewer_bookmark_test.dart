@@ -62,7 +62,7 @@ Future<void> _pumpEditor(WidgetTester tester, Project project) async {
 
 void main() {
   setUp(() {
-    PdfRenderService.debugOpenerOverride = (path) async =>
+    PdfRenderService.debugOpenerOverride = (_) async =>
         FakePdfDocument(pageSizes: List<Size>.filled(5, const Size(595, 842)));
   });
 

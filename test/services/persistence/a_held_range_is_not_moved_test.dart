@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
+import 'package:anicel/src/services/media/held_viewer_document.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/media/video_viewer_document.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
@@ -23,14 +25,14 @@ import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**WHAT A READER HOLDS BY OFFSET, A SAVE DOES NOT MOVE.**
 ///
-/// The viewer opens a carried movie whose original is gone on its stretch
-/// of the `.anicel`, and the decoder reads that stretch by offset, frame
-/// after frame. Since 2026-09-23 a save packs the file IN PLACE
-/// (deleting-save-compacts-Q1) — live bytes slide down, and the next round
-/// writes over where they were — so a movie moved under an open document
-/// hands the decoder whatever landed there. The cels' refs move with their
-/// bytes; a decoder cannot. Its entry stays put until it lets go, and the
-/// first save after that packs the hole.
+/// The viewer opens a carried movie on its stretch of the `.anicel`, and
+/// the decoder reads that stretch by offset, frame after frame — a carried
+/// PDF likewise, a page at a time. Since 2026-09-23 a save packs the file
+/// IN PLACE (deleting-save-compacts-Q1) — live bytes slide down, and the
+/// next round writes over where they were — so a movie moved under an open
+/// document hands the decoder whatever landed there. The cels' refs move
+/// with their bytes; a decoder cannot. Its entry stays put until it lets
+/// go, and the first save after that packs the hole.
 void main() {
   late Directory directory;
 
@@ -131,17 +133,21 @@ void main() {
     );
   });
 
-  test('the movie document gives its range back only AFTER the decoder has '
-      'closed it', () async {
+  test('a held document gives its bytes back only AFTER the decoder has '
+      'closed them', () async {
     final events = <String>[];
-    debugVideoDecodeBackend = _ClosingBackend(events);
-    final document = await VideoViewerDocument.open(
-      '${directory.path}/project.anicel',
-      range: (offset: 4096, length: 512),
-      onClosed: () => events.add('released'),
+    final backend = _ClosingBackend(events);
+    debugVideoDecodeBackend = backend;
+    final archive = '${directory.path}/project.anicel';
+    final movie = await VideoViewerDocument.open(
+      MediaArchiveBytes(archivePath: archive, dataOffset: 4096, length: 512),
     );
+    expect(backend.openedAt, [
+      (path: archive, range: (offset: 4096, length: 512)),
+    ], reason: 'the premise: opened on its stretch of the archive');
+    final document = HeldViewerDocument(movie!, () => events.add('released'));
 
-    await document!.dispose();
+    await document.dispose();
 
     expect(events, ['closed', 'released']);
   });
@@ -207,13 +213,17 @@ void main() {
       final entry = anicelMediaEntryName(movie, framed: false);
 
       final first = (await tester.runAsync(
-        () => file.holdArchiveRange(movie),
+        () => file.holdMediaBytes(movie),
       ))!;
       final second = (await tester.runAsync(
-        () => file.holdArchiveRange(movie),
+        () => file.holdMediaBytes(movie),
       ))!;
 
-      expect(first.range.path, path, reason: 'the premise: a stretch of it');
+      expect(
+        first.source.range?.path,
+        path,
+        reason: 'the premise: a stretch of it',
+      );
       expect(file.heldArchiveEntries, {entry});
       first.release();
       first.release();
@@ -231,7 +241,7 @@ void main() {
 
       file.beginSave();
       var held = false;
-      final asked = file.holdArchiveRange(movie).then((_) => held = true);
+      final asked = file.holdMediaBytes(movie).then((_) => held = true);
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
@@ -254,8 +264,9 @@ void main() {
       final entry = anicelMediaEntryName(movie, framed: false);
       pastTheRatio(path);
       final held = (await tester.runAsync(
-        () => session.projectFile.holdArchiveRange(movie),
+        () => session.projectFile.holdMediaBytes(movie),
       ))!;
+      final range = held.source.range!;
       final before = File(path).lengthSync();
 
       await tester.runAsync(
@@ -271,11 +282,11 @@ void main() {
         reason: 'the premise: this save packed the file',
       );
       final kept = parseAnicelZipLayoutFile(path).entryNamed(entry)!;
-      expect(kept.dataOffset, held.range.offset);
+      expect(kept.dataOffset, range.offset);
       final raf = File(path).openSync();
       try {
-        raf.setPositionSync(held.range.offset);
-        expect(raf.readSync(held.range.length), bytes);
+        raf.setPositionSync(range.offset);
+        expect(raf.readSync(range.length), bytes);
       } finally {
         raf.closeSync();
       }
@@ -290,7 +301,7 @@ void main() {
       );
       expect(
         parseAnicelZipLayoutFile(path).entryNamed(entry)!.dataOffset,
-        lessThan(held.range.offset),
+        lessThan(range.offset),
         reason: 'let go of, it packs like anything else',
       );
       await tester.pumpAndSettle();
@@ -300,8 +311,8 @@ void main() {
         'it, and gives it back when it closes', (tester) async {
       final path = normalizedMediaPath('${directory.path}/viewed.anicel');
       final (:session, :movie) = await savedWithAMovie(tester, path);
-      // The original gone, the stretch of the .anicel is the only way in.
-      File(movie).deleteSync();
+      final backend = FakeVideoBackend(frameCount: 4);
+      debugVideoDecodeBackend = backend;
       final slot = MediaViewerSlot();
       addTearDown(slot.dispose);
       await tester.pumpWidget(
@@ -324,6 +335,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(
+        backend.openedAt.last.path,
+        path,
+        reason: 'the ORIGINAL is still there, and the carried copy is what '
+            'the viewer reads — 「품은 순간 … 불변」',
+      );
       expect(session.projectFile.heldArchiveEntries, {
         anicelMediaEntryName(movie, framed: false),
       });

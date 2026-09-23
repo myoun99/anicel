@@ -457,7 +457,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+    PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
     );
     final pdfPath = await tester.runAsync(() async {
@@ -872,7 +872,7 @@ void main() {
     /// A five-page document whose preview opens — what shows the ends.
     Future<String> fivePages(WidgetTester tester) async {
       addTearDown(PdfRenderService.debugResetForTests);
-      PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
         pageSizes: List.filled(5, const ui.Size(595, 842)),
       );
       return (await tester.runAsync(() async {
@@ -962,8 +962,8 @@ void main() {
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
       return file.path;
     });
-    PdfRenderService.debugOpenerOverride = (path) async =>
-        path == pdfPath ? fake : piece;
+    PdfRenderService.debugOpenerOverride = (source) async =>
+        source.wholeFilePath == pdfPath ? fake : piece;
     final cutFrom = <(String, int, int)>[];
     PdfRenderService.debugPageSpanOverride = (path, first, count) async {
       cutFrom.add((path, first, count));
@@ -1077,7 +1077,7 @@ void main() {
       await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
       return file.path;
     });
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     final cutFrom = <(String, int, int)>[];
     PdfRenderService.debugPageSpanOverride = (path, first, count) async {
       cutFrom.add((path, first, count));

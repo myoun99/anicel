@@ -181,7 +181,7 @@ class TrimmedPieces {
   }
 
   Future<KeptSpan?> _pages(String source, String work, _Trim trim) async {
-    final document = await PdfRenderService.open(source);
+    final document = await PdfRenderService.open(MediaFileBytes(source));
     if (document == null) {
       return null;
     }

@@ -193,7 +193,7 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
 
     slot.request.value = const MediaViewerRequest(
@@ -281,8 +281,8 @@ void main() {
         ui.Size(595, 842),
       ],
     );
-    PdfRenderService.debugOpenerOverride = (path) async =>
-        path.endsWith('sub.pdf') ? subPdf : mainPdf;
+    PdfRenderService.debugOpenerOverride = (source) async =>
+        source.wholeFilePath!.endsWith('sub.pdf') ? subPdf : mainPdf;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -451,7 +451,7 @@ void main() {
       ],
       framesPerSecond: 10,
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/clip.mp4',
@@ -495,7 +495,7 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',

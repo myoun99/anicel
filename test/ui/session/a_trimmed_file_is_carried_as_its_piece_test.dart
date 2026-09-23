@@ -145,7 +145,7 @@ void main() {
   testWidgets('🎯a trimmed PDF is carried as a PDF of the kept pages, cut by '
       'the renderer from the original', (tester) async {
     final pdf = FakePdfDocument(pageSizes: List.filled(5, const ui.Size(8, 8)));
-    PdfRenderService.debugOpenerOverride = (path) async => pdf;
+    PdfRenderService.debugOpenerOverride = (_) async => pdf;
     final asked = <(String, int, int)>[];
     PdfRenderService.debugPageSpanOverride = (path, first, count) async {
       asked.add((path, first, count));

@@ -59,7 +59,7 @@ void main() {
       pageSizes: List<ui.Size>.filled(pages, const ui.Size(595, 842)),
       framesPerSecond: framesPerSecond,
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

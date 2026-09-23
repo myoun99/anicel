@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
 
 /// The PDF rasterizer seam (R4). PDFium arrives through pdfrx's build-time
@@ -67,18 +68,34 @@ abstract final class PdfRenderService {
     }
   }
 
-  /// Opens [path]. Null means the RENDERER is absent; a file that fails
-  /// to open (corrupt, password-locked) throws instead — the two states
-  /// deserve different messages.
-  static Future<ViewerDocument?> open(String path) async {
+  /// Opens the PDF [source] holds. Null means the RENDERER is absent; a
+  /// file that fails to open (corrupt, password-locked) throws instead —
+  /// the two states deserve different messages.
+  ///
+  /// A whole file is PDFium's to read by its path. Anything else — a PDF
+  /// carried inside the `.anicel`, or its framed copy — is served a window
+  /// at a time through [MediaByteSource.readIntoSync], the shape that
+  /// method was written in for this door: a hundred-page conte is never
+  /// pulled whole, and never unpacked to a temp file (유저 2026-08-27
+  /// 「사본 남으면 진짜 용서안할게」).
+  static Future<ViewerDocument?> open(MediaByteSource source) async {
     final override = debugOpenerOverride;
     if (override != null) {
-      return override(path);
+      return override(source);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final document = await pdfrx.PdfDocument.openFile(path);
+    final file = source.wholeFilePath;
+    final document = file != null
+        ? await pdfrx.PdfDocument.openFile(file)
+        : await pdfrx.PdfDocument.openCustom(
+            read: source.readIntoSync,
+            fileSize: source.lengthSync(),
+            // pdfrx keys its caches by this name; the source names its own
+            // span, which no other open document shares.
+            sourceName: '$source',
+          );
     return _PdfrxDocumentHandle(document);
   }
 

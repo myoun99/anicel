@@ -25,12 +25,9 @@ import '../../services/persistence/media_blob_codec.dart';
 import '../../services/persistence/media_staging_store.dart';
 import 'session_roles.dart';
 
-/// A stretch of a file a reader holds ([ProjectFile.holdArchiveRange]), and
-/// how it gives it back.
-typedef HeldArchiveRange = ({
-  ({String path, int offset, int length}) range,
-  void Function() release,
-});
+/// A medium's bytes a reader holds ([ProjectFile.holdMediaBytes]), and how
+/// it gives them back.
+typedef HeldMediaBytes = ({MediaByteSource source, void Function() release});
 
 /// The project file this session is bound to, and everything derived from
 /// that binding: what the archive carries, how big those bytes are, and
@@ -260,8 +257,17 @@ class ProjectFile {
   /// and a compaction moves every byte. The archive range carries the
   /// entry's CRC, and the conform pipeline treats a mismatch as transient
   /// — a read that raced a compaction retries against fresh offsets
-  /// rather than decoding whatever moved into the window.
-  MediaByteSource mediaByteSourceFor(String poolPath) {
+  /// rather than decoding whatever moved into the window. A reader that
+  /// keeps reading takes [holdMediaBytes] instead.
+  MediaByteSource mediaByteSourceFor(String poolPath) =>
+      _whereTheBytesAre(poolPath).source;
+
+  /// THE order a medium's bytes are looked for in — the archive, then the
+  /// staged copy, then the file it came from — and how to keep the answer
+  /// where it is while a reader reads it ([holdMediaBytes]), which returns
+  /// the letting go. Null for the original: nothing in the app moves it.
+  ({MediaByteSource source, void Function() Function()? hold})
+  _whereTheBytesAre(String poolPath) {
     final entryName = _mediaEntryNames[poolPath];
     final archivePath = _projectFilePath;
     if (entryName != null && archivePath != null) {
@@ -278,7 +284,10 @@ class ProjectFile {
           // consumer asked for「the bytes of this asset」and must keep
           // getting them — the block index is this layer's business, and
           // the reader still serves a window rather than the whole file.
-          return mediaSourceDecodingFrames(range);
+          return (
+            source: mediaSourceDecodingFrames(range),
+            hold: () => _holdEntry(entryName),
+          );
         }
       } on Object {
         // A torn or momentarily unreadable archive: the file fallback
@@ -292,33 +301,37 @@ class ProjectFile {
     if (staged != null) {
       // Through [mediaAppFileSource] rather than assembling the pair here:
       // framed-or-not is written into the name, and one place reads it.
-      return mediaAppFileSource(staged.path);
+      return (
+        source: mediaAppFileSource(staged.path),
+        hold: () => _staging.hold(poolPath),
+      );
     }
-    return MediaFileBytes(poolPath);
+    return (source: MediaFileBytes(poolPath), hold: null);
   }
 
-  /// Entries a reader holds by OFFSET right now ([holdArchiveRange]), and
+  /// Entries a reader holds by OFFSET right now ([holdMediaBytes]), and
   /// how many hold each.
   final Map<String, int> _heldEntries = {};
 
-  /// The archive entries [holdArchiveRange] has handed out and not had
-  /// back — what a save that packs the file in place must leave where it
-  /// is.
+  /// The archive entries [holdMediaBytes] has handed out and not had back —
+  /// what a save that packs the file in place must leave where it is.
   Set<String> get heldArchiveEntries => {..._heldEntries.keys};
 
-  /// [poolPath]'s bytes as a stretch of a file, HELD until `release`: while
-  /// held, no save moves them ([heldArchiveEntries]). Null when they are no
-  /// plain stretch of anything — a framed entry, which only a decoder can
-  /// serve ([mediaByteSourceFor]).
+  /// [poolPath]'s bytes — the answer [mediaByteSourceFor] gives — HELD until
+  /// `release`: while held, no save moves or removes them.
   ///
-  /// 🚨★★★**FOR A READER THAT KEEPS A DOCUMENT OPEN ON THE RANGE** — the
-  /// viewer's carried movie, which the OS decoder reads by offset frame
-  /// after frame. [mediaByteSourceFor] is resolved per call and held by no
-  /// one; a document is held by definition. Since 2026-09-23 a save packs
-  /// the file IN PLACE — live bytes slide down, and the next round writes
-  /// over where they were — where it used to write a new file beside the
-  /// old one, which an open reader went on reading untouched. A held entry
-  /// is the one span the push-down does not move.
+  /// 🚨★★★**FOR A READER THAT KEEPS READING** — a document the viewer holds
+  /// open: a movie the OS decoder reads by offset frame after frame, a PDF
+  /// read a page at a time. [mediaByteSourceFor] is resolved per call and
+  /// held by no one; a document is held by definition. Two steps of a save
+  /// would pull bytes from under it, and each answer is kept from its own:
+  ///  * an archive entry from the IN-PLACE push-down (since 2026-09-23 live
+  ///    bytes slide down, and the next round writes over where they were —
+  ///    where a save used to write a new file beside the old one, which an
+  ///    open reader went on reading untouched) — [heldArchiveEntries];
+  ///  * a staged copy from the retirement that follows its absorption —
+  ///    [MediaStagingStore.hold].
+  /// The original is the user's file, and nothing here moves it.
   ///
   /// ⚠️Waits out a save already running: it may be moving these very bytes,
   /// and a range read off the directory it is about to supersede would be
@@ -326,36 +339,35 @@ class ProjectFile {
   ///
   /// `release` is idempotent — call it once the reader has CLOSED, not
   /// when it decides to.
-  Future<HeldArchiveRange?> holdArchiveRange(String poolPath) async {
+  Future<HeldMediaBytes> holdMediaBytes(String poolPath) async {
     await saveSettled();
-    final range = mediaByteSourceFor(poolPath).range;
-    if (range == null) {
-      return null;
-    }
-    // Only a stretch of the .anicel can move; a staged copy or the
-    // original is a file of its own.
-    final name = range.path == _projectFilePath
-        ? _mediaEntryNames[poolPath]
-        : null;
-    if (name != null) {
-      _heldEntries.update(name, (count) => count + 1, ifAbsent: () => 1);
-    }
+    final (:source, :hold) = _whereTheBytesAre(poolPath);
+    final letGo = hold?.call();
     var released = false;
     return (
-      range: range,
+      source: source,
       release: () {
-        if (released || name == null) {
+        if (released) {
           return;
         }
         released = true;
-        final left = _heldEntries[name]! - 1;
-        if (left == 0) {
-          _heldEntries.remove(name);
-        } else {
-          _heldEntries[name] = left;
-        }
+        letGo?.call();
       },
     );
+  }
+
+  /// Keeps archive entry [name] where it is until the answer is called —
+  /// what [heldArchiveEntries] reports to a save that packs in place.
+  void Function() _holdEntry(String name) {
+    _heldEntries.update(name, (count) => count + 1, ifAbsent: () => 1);
+    return () {
+      final left = _heldEntries[name]! - 1;
+      if (left == 0) {
+        _heldEntries.remove(name);
+      } else {
+        _heldEntries[name] = left;
+      }
+    };
   }
 
   /// Resolved per call rather than cached: the cache root is a live
@@ -505,7 +517,7 @@ class ProjectFile {
 
   /// Waits out a save in flight, and the next if one starts in between —
   /// what a reader of an archive a save may be writing does first: a range
-  /// held for a document ([holdArchiveRange]), a failed copy backed up.
+  /// held for a document ([holdMediaBytes]), a failed copy backed up.
   Future<void> saveSettled() async {
     while (_saveInFlight) {
       await _saveEnded.future;

@@ -415,7 +415,7 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final document = await PdfRenderService.open(path);
+    final document = await PdfRenderService.open(MediaFileBytes(path));
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
     }

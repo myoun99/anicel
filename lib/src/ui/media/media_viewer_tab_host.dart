@@ -1,6 +1,5 @@
 import '../widgets/empty_state_text.dart';
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -15,6 +14,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../native/qa_native_engine.dart';
+import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/video_viewer_document.dart';
@@ -35,7 +35,6 @@ import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
-import '../session/project_file.dart' show HeldArchiveRange;
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -700,74 +699,20 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   /// Opens whatever [request] names, or null when this medium has nothing
   /// to show — the one place that knows which document a kind makes.
-  /// Where a CARRIED movie's bytes are when the file it was imported from is
-  /// gone — or null when the ordinary path is the right answer.
   ///
-  /// 🚨★★★**CARRYING WAS ONLY HALF TRUE FOR MOVIES.** The project keeps the
-  /// bytes, and every other medium reads them back through
-  /// [ProjectFile.mediaByteSourceFor]; a movie could not, because
-  /// the OS decoders take a PATH and the bytes are a stretch of the
-  /// `.anicel`. Deleting the import original — the exact act carrying exists
-  /// to survive — left a video the project plainly contains unviewable
-  /// (card `carried-video-cannot-be-viewed`).
-  ///
-  /// ⛔The original wins whenever it is still there: an OS opening a file
-  /// for itself beats any range wrapped around one, and this path exists
-  /// for the case where there is no file to open.
-  ///
-  /// ⚠️A FRAMED entry answers null, and that is not a gap being papered
-  /// over: [ProjectFile.mediaByteSourceFor] wraps those in a
-  /// decoder, so what comes back is not a plain range and no OS reader can
-  /// be pointed at it. The archive side is what keeps a movie addressable.
-  ///
-  /// 🪦This used to reach into `MediaArchiveBytes` and rebuild the triple by
-  /// hand — a type test plus three field reads, which is a copy of the law
-  /// waiting for the archive layout to change under it. The source answers
-  /// [MediaByteSource.range] itself now, and the conform asks the same
-  /// question through the same door.
-  ///
-  /// 🚨HELD, not read: the decoder reads the range by offset for as long as
-  /// the document is open, and a save packs the `.anicel` in place — so the
-  /// range is held ([ProjectFile.holdArchiveRange]) until the document has
-  /// closed, and no save moves it meanwhile.
-  Future<HeldArchiveRange?> _holdCarriedMovieRange(String path) async {
-    if (File(path).existsSync()) {
-      return null;
-    }
-    return widget.session.projectFile.holdArchiveRange(path);
-  }
-
-  /// A carried movie opened on its HELD range, which goes back when the
-  /// document closes — or at once, when it never opens.
-  Future<ViewerDocument?> _openCarriedMovie(HeldArchiveRange held) async {
-    final range = held.range;
-    try {
-      final document = await VideoViewerDocument.open(
-        range.path,
-        range: (offset: range.offset, length: range.length),
-        onClosed: held.release,
-      );
-      if (document == null) {
-        held.release();
-      }
-      return document;
-    } on Object {
-      held.release();
-      rethrow;
-    }
-  }
-
+  /// 🚨★★★**WHERE THE BYTES ARE IS ASKED ONCE, NOT PER KIND** (유저
+  /// 2026-09-11: 「막힌부분 파일 뭐든 관계없이 법 하나로 통일해서
+  /// 해결하도록」). An arm here names only how its medium DECODES; where the
+  /// bytes are is [_openOnItsBytes]'s one question for every kind that reads
+  /// them.
   Future<ViewerDocument?> _openDocument(MediaViewerRequest request) async {
     switch (request.kind) {
       case MediaAssetKind.image:
-        return ImageViewerDocument.open(request.path);
+        return _openOnItsBytes(request.path, ImageViewerDocument.open);
       case MediaAssetKind.pdf:
-        return PdfRenderService.open(request.path);
+        return _openOnItsBytes(request.path, PdfRenderService.open);
       case MediaAssetKind.video:
-        final held = await _holdCarriedMovieRange(request.path);
-        return held == null
-            ? VideoViewerDocument.open(request.path)
-            : _openCarriedMovie(held);
+        return _openOnItsBytes(request.path, VideoViewerDocument.open);
       case MediaAssetKind.audio:
         // 🪦This used to read 「Sound has no picture — the one medium that
         // stays absent」. 유저 2026-09-08: 「오디오파일도 열려야하고 …
@@ -785,6 +730,42 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 color: AudioViewerDocument.ink,
               );
     }
+  }
+
+  /// [open] on [path]'s bytes, wherever the project keeps them
+  /// ([ProjectFile.holdMediaBytes]: its own copy first, then the file it came
+  /// from), HELD until the document has closed ([HeldViewerDocument]) — a
+  /// PDF reads a page at a time and a movie a frame at a time, and no save
+  /// may move or remove the bytes under them meanwhile.
+  ///
+  /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
+  /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
+  /// (유저 2026-08-30), so an original edited or deleted after the import
+  /// changes nothing the viewer shows.
+  /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
+  /// whose original was gone — or a project opened on another machine —
+  /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
+  /// 🪦And a movie read the original whenever it was still there: 「⛔The
+  /// original wins whenever it is still there: an OS opening a file for
+  /// itself beats any range wrapped around one」. It does, and it showed the
+  /// EDITED file for a carried movie whose original had changed since.
+  Future<ViewerDocument?> _openOnItsBytes(
+    String path,
+    Future<ViewerDocument?> Function(MediaByteSource source) open,
+  ) async {
+    final held = await widget.session.projectFile.holdMediaBytes(path);
+    final ViewerDocument? document;
+    try {
+      document = await open(held.source);
+    } on Object {
+      held.release();
+      rethrow;
+    }
+    if (document == null) {
+      held.release();
+      return null;
+    }
+    return HeldViewerDocument(document, held.release);
   }
 
   // --- Lazy rendering (§6-m: the visible page at the current zoom) ------

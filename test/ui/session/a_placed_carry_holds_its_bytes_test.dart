@@ -98,7 +98,7 @@ void main() {
     (
       name: 'a PDF',
       write: () async {
-        PdfRenderService.debugOpenerOverride = (path) async =>
+        PdfRenderService.debugOpenerOverride = (_) async =>
             FakePdfDocument(pageSizes: const [ui.Size(8, 8), ui.Size(8, 8)]);
         return writeBytes('conte.pdf', '%PDF-1.4 two pages'.codeUnits);
       },

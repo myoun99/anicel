@@ -336,7 +336,7 @@ void main() {
       // A4 portrait in points; three pages = three frames (§6-k).
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842), ui.Size(595, 842)],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     final doors = importDoorsOf(s);
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
 
@@ -404,7 +404,7 @@ void main() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async =>
+    PdfRenderService.debugOpenerOverride = (_) async =>
         FakePdfDocument(pageSizes: const [ui.Size(595, 842)]);
 
     final imported = await tester.runAsync(() async {

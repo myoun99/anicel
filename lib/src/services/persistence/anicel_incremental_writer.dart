@@ -1094,8 +1094,9 @@ AnicelZipLayout appendAnicelEntries({
 ///
 /// 🚨A span that starts at one of [staying] stays where it is too, however
 /// big the hole in front of it: something is reading it by OFFSET right now
-/// (`ProjectFile.holdArchiveRange` — the viewer's carried movie, decoded
-/// frame after frame from where the save found it). Moving it would hand
+/// (`ProjectFile.holdMediaBytes` — a carried movie the viewer decodes frame
+/// after frame, a carried PDF it reads a page at a time, from where the
+/// save found them). Moving it would hand
 /// that reader whatever the next round wrote there. Its hole waits for the
 /// first save after the reader lets go — deferred, not given up.
 ({List<AnicelCompactionMove> moves, int end}) planAnicelPushDown(
