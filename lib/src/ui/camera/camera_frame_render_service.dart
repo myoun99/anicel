@@ -327,6 +327,8 @@ class CameraFrameRenderService {
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: layer.effects,
+              // Drawn through the camera's projection: never a texel copy.
+              texelScale: null,
               filterQuality: filterQuality,
               drawAtOrigin: atCanvasExtent,
             );

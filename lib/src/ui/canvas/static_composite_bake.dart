@@ -79,6 +79,24 @@ class StaticCompositeBake {
     _dropRecordings();
   }
 
+  /// Whether the recordings were made composing the display buffer or
+  /// walking straight onto the screen. Null means "nothing recorded yet".
+  bool? _intoTheBuffer;
+
+  /// Declares which of the two the paint is composing. A change drops the
+  /// recordings, like a new extent: a buffer's recordings draw their texel
+  /// copies unfiltered (`drawPosedLayerImage`) and the walk's resample on
+  /// screen, so one replayed in the other would put the wrong sampling on
+  /// the same rows — the buffer can give way to the walk mid-key when a live
+  /// draw grows it past its cap.
+  void ensureIntoTheBuffer(bool intoTheBuffer) {
+    if (_intoTheBuffer == intoTheBuffer) {
+      return;
+    }
+    _intoTheBuffer = intoTheBuffer;
+    _dropRecordings();
+  }
+
   /// Drops every recorded slot. Cheap and always safe: the next paint
   /// re-records, which is exactly what the code did before this existed.
   void invalidate() {

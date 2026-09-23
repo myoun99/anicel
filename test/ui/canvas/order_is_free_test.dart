@@ -153,6 +153,7 @@ void main() {
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       effects: [deleteWhite()],
+      texelScale: 1,
       filterQuality: ui.FilterQuality.none,
     );
     final picture = recorder.endRecording();

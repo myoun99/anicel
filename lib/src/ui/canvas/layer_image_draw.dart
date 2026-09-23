@@ -23,6 +23,8 @@ library;
 
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/draw_space.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -86,13 +88,22 @@ T withLayerPose<T>(
 /// switching them to the general path is a change of rendered bytes and
 /// does not belong in a convergence.
 ///
+/// [texelScale] is how many target pixels one canvas unit is on [canvas]
+/// when [canvas] is a pixel raster whose grid is aligned to canvas space —
+/// the display buffer, a sub-tree raster, the playback composite — and null
+/// when it is not (the screen, a projection). It is what tells a texel copy
+/// from a resample ([_isTexelCopy]). ⛔REQUIRED, the A4 way: a route that
+/// inherited a guess would draw a resample unfiltered.
+///
 /// A4 — [filterQuality] is REQUIRED, deliberately. A default here is how
 /// the sampling drift this file exists to end comes back: a new route
 /// "just draws" and inherits a quality nobody chose. Requiring the
 /// argument blocks the CLASS, not the instance — every route answers the
 /// sampling question at its call site, in writing, and the source
 /// contract test (`layer_image_draw_contract_test.dart`) freezes the
-/// raw-draw census so new image draws have to come through here.
+/// raw-draw census so new image draws have to come through here. It is the
+/// answer for a draw that RESAMPLES; a texel copy resamples nothing and is
+/// drawn at `none` whatever the route asked.
 void drawPosedLayerImage(
   ui.Canvas canvas, {
   required ui.Image image,
@@ -104,6 +115,7 @@ void drawPosedLayerImage(
   required LayerBlendMode blendMode,
   List<ResolvedLayerEffect> effects = const <ResolvedLayerEffect>[],
   double rasterScale = 1,
+  required double? texelScale,
   required ui.FilterQuality filterQuality,
   int? tint,
   bool drawAtOrigin = false,
@@ -116,7 +128,6 @@ void drawPosedLayerImage(
     rasterScale: rasterScale,
     body: () {
       final paint = ui.Paint()
-        ..filterQuality = filterQuality
         ..color = alphaOnly(opacity)
         // R26 #30: the layer blend applies at composite time, so every
         // route shows the picture playback composes.
@@ -155,6 +166,28 @@ void drawPosedLayerImage(
         plan: plan,
         canvasExtent: worldRect.width,
       );
+      // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
+      // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep
+      // — the sub-tree blit, the tile blits, the buffer carry — asked of a
+      // layer image: below 100% the buffer and the playback composite lay
+      // each level image down one texel per pixel, and filtering that is
+      // only a copy on paper. 🔬Measured against the source image: bilinear
+      // at 1:1 IS the copy on the Windows app (Impeller GLES) and the test
+      // runner, and is NOT on Impeller Vulkan — Android's default — up to
+      // 9/255 off at a 2340×1654 image and 4/255 at the fit-zoom level,
+      // growing with the size. `none` is the copy on all three. So a layer
+      // drawn this way was a hair softer on Android than the same layer
+      // being drawn on, whose tiles are `none` — the active/inactive split
+      // D14 ruled out (「그림 자체에 통일해서 적용」).
+      final copies =
+          pose == null && _isTexelCopy(stepped, worldRect, texelScale);
+      assert(() {
+        if (copies) {
+          debugTexelCopies += 1;
+        }
+        return true;
+      }());
+      paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
       try {
         if (drawAtOrigin) {
           canvas.drawImage(stepped, ui.Offset.zero, paint);
@@ -186,3 +219,24 @@ void drawPosedLayerImage(
     },
   );
 }
+
+/// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
+/// whose pixels are [texelScale] canvas units apart: one texel per target
+/// pixel, starting on a whole pixel.
+bool _isTexelCopy(ui.Image image, ui.Rect worldRect, double? texelScale) {
+  if (texelScale == null) {
+    return false;
+  }
+  bool whole(double value) => value == value.roundToDouble();
+  return image.width == worldRect.width * texelScale &&
+      image.height == worldRect.height * texelScale &&
+      whole(worldRect.left * texelScale) &&
+      whole(worldRect.top * texelScale);
+}
+
+/// How many layer draws were texel copies — so a pin can say WHICH routes
+/// copy: the test runner draws a bilinear 1:1 exactly as it draws a copy, so
+/// the pixels cannot tell whether a route declared its raster. Written
+/// under `assert`.
+@visibleForTesting
+int debugTexelCopies = 0;

@@ -289,10 +289,15 @@ class CutFrameCompositeCache {
     // scale of the canvas it is drawn into, and that canvas is 1:1.
     const rasterScale = 1.0;
 
+    // [texelScale]: raster pixels per canvas unit on [canvas] — the tier's
+    // own at the top, times the scale a sub-tree raster snapped its grid to
+    // below a folder (smaller only when its cap clamps it). Every canvas here
+    // is a raster aligned to canvas space.
     Future<void> paintNodes(
       ui.Canvas canvas,
-      List<CompositeNodeSignature> nodes,
-    ) async {
+      List<CompositeNodeSignature> nodes, {
+      required double texelScale,
+    }) async {
       for (final node in nodes) {
         if (aborted) {
           return;
@@ -336,7 +341,11 @@ class CutFrameCompositeCache {
               // outside the raster, so the buffer grows by its spread.
               bounds: effectBufferBounds(rasterBounds, groupPlan.outsetPixels),
               rasterScale: rasterScale,
-              paintSubtree: (into, _) => paintNodes(into, children),
+              paintSubtree: (into, subtreeScale) => paintNodes(
+                into,
+                children,
+                texelScale: texelScale * subtreeScale,
+              ),
               // ⛔No abort guard here. The expensive half already returned
               // early inside `paintNodes`; skipping the blit as well would
               // only save a draw of an image that is about to be thrown
@@ -371,7 +380,11 @@ class CutFrameCompositeCache {
               canvas: canvas,
               bounds: pass.bufferBounds,
               rasterScale: rasterScale,
-              paintSubtree: (into, _) => paintNodes(into, children),
+              paintSubtree: (into, subtreeScale) => paintNodes(
+                into,
+                children,
+                texelScale: texelScale * subtreeScale,
+              ),
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,
             );
@@ -425,8 +438,10 @@ class CutFrameCompositeCache {
               // scale; `drawPosedLayerImage` turns it into a [DrawSpace] for
               // the chain itself.
               rasterScale: scale,
+              texelScale: texelScale,
               // A4: today's value, now in writing — bilinear, as this
-              // route has always sampled.
+              // route has always sampled a posed layer. An unposed one lands
+              // texel for texel and is copied.
               filterQuality: ui.FilterQuality.low,
               // A canvas-extent image at this raster's resolution takes
               // the legacy whole-image draw, whose bytes the composite
@@ -455,7 +470,7 @@ class CutFrameCompositeCache {
     final walkWatch = InputInspector.visible.value
         ? (Stopwatch()..start())
         : null;
-    await paintNodes(canvas, signature.nodes);
+    await paintNodes(canvas, signature.nodes, texelScale: scale);
     if (aborted) {
       recorder.endRecording().dispose();
       return null;

@@ -578,7 +578,7 @@ class _LayerStackPaintPass {
             case CompositeLeaf(payload: final _PaintActiveSurface active):
               _paintActiveSurfaceNode(canvas, node, active, rasterScale);
             case CompositeLeaf(payload: final _PaintImage image):
-              _paintImageNode(canvas, image);
+              _paintImageNode(canvas, image, rasterScale);
           }
         },
       );
@@ -809,12 +809,14 @@ class _LayerStackPaintPass {
     }
   }
 
-  /// A cel or a cached row image; the pose is applied by the wrap around
-  /// the walk, so the draw itself is unposed.
-  void _paintImageNode(Canvas canvas, _PaintImage node) {
+  /// A cel or a cached row image, drawn into a canvas at [rasterScale]; the
+  /// pose is applied by the wrap around the walk, so the draw itself is
+  /// unposed.
+  void _paintImageNode(Canvas canvas, _PaintImage node, double rasterScale) {
     final _PaintImage(
       :image,
       :worldRect,
+      :pose,
       :opacity,
       :blendMode,
       :tint,
@@ -835,6 +837,12 @@ class _LayerStackPaintPass {
       opacity: opacity,
       blendMode: blendMode,
       effects: effects,
+      // The canvas is an aligned raster at [rasterScale] only while the
+      // display buffer is composed — the buffer itself, a sub-tree raster in
+      // it, the backdrop raster on its grid — and a pose wrapped round this
+      // draw (invisible from in here) transforms it. The walk draws onto the
+      // screen: never a texel copy.
+      texelScale: _composingTheBuffer && pose == null ? rasterScale : null,
       // 🚨THE ZOOM DECIDES, HERE TOO (T21 / D14). This used to be a
       // flat `low` — 「the same sampling every non-active layer has
       // always taken on this route」 — and that is exactly half of
@@ -872,10 +880,15 @@ class _LayerStackPaintPass {
     double rasterScale,
   ) {
     final at = list.indexWhere(_LayerStackPainter._enclosesActiveSurface);
+    // Inside the buffer a slot's texel copies are copies at [rasterScale]
+    // only — and a sub-tree raster's scale is its own (a capped one is
+    // smaller) — so the scale is part of what the slot IS. The walk copies
+    // nothing, and names its slots as it always did.
+    final slot = _composingTheBuffer ? 'd$depth@$rasterScale' : 'd$depth';
     if (at < 0) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:all',
+        '$slot:all',
         (into) => _paintNodes(into, list, rasterScale),
       );
       return;
@@ -883,7 +896,7 @@ class _LayerStackPaintPass {
     if (at > 0) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:before',
+        '$slot:before',
         (into) => _paintNodes(into, list.sublist(0, at), rasterScale),
       );
     }
@@ -893,7 +906,7 @@ class _LayerStackPaintPass {
     if (at < list.length - 1) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:after',
+        '$slot:after',
         (into) => _paintNodes(into, list.sublist(at + 1), rasterScale),
       );
     }
@@ -1011,11 +1024,20 @@ class _LayerStackPaintPass {
     }
   }
 
+  /// Whether the content being painted is the display buffer's — a raster
+  /// aligned to canvas space, where a level image lands texel for texel —
+  /// rather than the walk's screen ([_paintImageNode]).
+  bool _composingTheBuffer = false;
+
   void _paintContent(
     Canvas into, {
     required bool intoTheBuffer,
     required double rasterScale,
   }) {
+    _composingTheBuffer = intoTheBuffer;
+    // A recording made for the buffer draws its texel copies unfiltered and
+    // the walk's resamples them on screen, so neither may replay the other.
+    _painter.bake?.ensureIntoTheBuffer(intoTheBuffer);
     // ⛔No bake handed down (a host that does not own one, or a tree with
     // no live surface at all) keeps the original walk. The bake is an
     // optimisation, never a second way to be correct.
