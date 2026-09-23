@@ -232,6 +232,18 @@ void main() {
     });
   });
 
+  test('the glyph cache tells two faces of one word apart', () {
+    const first = TextStyle(fontSize: 9, fontFamily: 'First');
+    const second = TextStyle(fontSize: 9, fontFamily: 'Second');
+    timelineGlyphPainter('12', first);
+    expect(
+      timelineGlyphPainter('12', second).text!.style!.fontFamily,
+      'Second',
+      reason: '↩️the cache keyed on colour, weight and size alone, so a '
+          'number laid out in one face was served in another',
+    );
+  });
+
   group('a lane key\'s NAME', () {
     Future<void> pumpLane(
       WidgetTester tester, {
