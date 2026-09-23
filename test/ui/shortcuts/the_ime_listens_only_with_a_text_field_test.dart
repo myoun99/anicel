@@ -1,8 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/keyboard_ime_switch.dart';
 
@@ -104,7 +102,7 @@ void main() {
       expect(ime, isNull);
       expect(said, isEmpty);
     },
-    variant: TargetPlatformVariant({
+    variant: const TargetPlatformVariant({
       TargetPlatform.macOS,
       TargetPlatform.iOS,
       TargetPlatform.android,
