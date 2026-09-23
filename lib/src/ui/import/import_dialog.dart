@@ -600,8 +600,13 @@ class _ImportDialogState extends State<ImportDialog> {
   /// ONE step, here, for every kind; the doors behind it are the ones an
   /// untrimmed file goes through.
   ///
-  /// ⚠️Not a file the pool already holds: its carrying was decided when it
-  /// arrived, and placing a stretch of it takes the pooled file as it is.
+  /// ⚠️Not a file the pool already holds, and not an exception of this
+  /// round's making — two standing answers meet here. The pool's answer
+  /// stands for a file it holds (유저 2026-09-11: 「풀에서 가져올때는 가 로
+  /// 하자」, [_settingsFor]), so its Keep is the pool's, not this window's;
+  /// and a file the pool carries is inside already, every byte of it — a
+  /// piece of it would be a second copy (유저 08-27: 「사본 남으면 진짜
+  /// 용서안할게」). Placing a stretch of it takes the pooled file as it is.
   Future<bool> _placeCarryingOnlyTheSpan(
     String path,
     MediaAssetKind? kind,

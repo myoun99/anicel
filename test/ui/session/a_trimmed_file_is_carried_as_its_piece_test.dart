@@ -14,7 +14,9 @@ import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart'
     show ImportDestination;
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_pdf_document.dart';
@@ -184,6 +186,29 @@ void main() {
 
     expect(File(piece).existsSync(), isFalse);
     expect(s.mediaStagingStore.find(piece), isNull);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('🚨a piece the staging did NOT take is left standing — '
+      'staging skips a file it cannot open, and deleting the piece then would '
+      'lose the only copy of its bytes', (tester) async {
+    final s = session();
+    final pieces = TrimmedPieces(
+      staging: _StagingThatTakesNothing(
+        directoryPath: s.mediaStagingStore.directoryPath,
+      ),
+      project: s,
+      frameRate: () => s.projectSettings.projectFrameRate,
+      soundPeaks: s.audioConformStore.ensurePeaksFor,
+    );
+    final gif = await tester.runAsync(() => writeGif('walk.gif'));
+    final piece = (await tester.runAsync(
+      () => pieces.cut(gif!, MediaAssetKind.image, outFrame: 0),
+    ))!.path;
+
+    await tester.runAsync(() => pieces.secure(piece));
+
+    expect(File(piece).existsSync(), isTrue);
     await tester.pumpAndSettle();
   });
 
@@ -540,4 +565,15 @@ void main() {
       }
     }, skip: skip);
   });
+}
+
+/// What [MediaStagingStore.stageCarriedBytes] answers for a file it could
+/// not open: nothing held.
+class _StagingThatTakesNothing extends MediaStagingStore {
+  _StagingThatTakesNothing({required super.directoryPath});
+
+  @override
+  Future<List<StagedMedia>> stageCarriedBytes(
+    Iterable<String> poolPaths,
+  ) async => const [];
 }

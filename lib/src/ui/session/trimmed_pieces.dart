@@ -126,9 +126,17 @@ class TrimmedPieces {
 
   /// Holds [piece]'s bytes like every carried asset's, then lets go of the
   /// file the doors read — the staged copy is the only one left.
+  ///
+  /// ⚠️Only once they ARE held. Staging SKIPS a file it cannot open rather
+  /// than throw — one unreadable file must not cost a folder import the
+  /// rest — and a piece deleted after a skip would take the only copy of
+  /// its bytes with it. Left standing, it is carried the way any carried
+  /// file nothing staged is: the save reads it where it is.
   Future<void> secure(String piece) async {
-    await _staging.stageCarriedBytes([piece]);
-    _deleteIfThere(piece);
+    final held = await _staging.stageCarriedBytes([piece]);
+    if (held.isNotEmpty) {
+      _deleteIfThere(piece);
+    }
   }
 
   /// Lets go of a piece whose import did not land.
