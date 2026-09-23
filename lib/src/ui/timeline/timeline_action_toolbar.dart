@@ -641,8 +641,7 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// [tooltip] is what the tooltip says — its words and the action whose
   /// live key follows them (I-19), one answer to one question.
-  Widget _commaButton(
-    BuildContext context, {
+  Widget _commaButton({
     required ValueKey<String> key,
     required String label,
     required ({String text, String action}) tooltip,
@@ -657,8 +656,10 @@ class TimelineActionToolbar extends StatelessWidget {
       // buttons honest scans `IconButton(`, so a TEXT button walked straight
       // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
       // The BOX is still theirs (a pill promised it); the LAW never was.
-      child: ControlPressClaim(onPressed: onPressed, 
-        child: TextButton(
+      child: ControlPressClaim(onPressed: onPressed,
+        // A context of its own for the one fact the box reads from where it
+        // is shown: the pill's height, which grows with the OS text size.
+        child: Builder(builder: (context) => TextButton(
           key: key,
           onPressed: silentPress(onPressed),
           style: TextButton.styleFrom(
@@ -689,7 +690,7 @@ class TimelineActionToolbar extends StatelessWidget {
             label,
             style: const TextStyle(fontSize: CommandPill.verbFontSize),
           ),
-        ),
+        )),
       ),
     );
   }
@@ -1155,7 +1156,6 @@ class TimelineActionToolbar extends StatelessWidget {
             // block kind.
             for (var comma = 1; comma <= 4; comma += 1)
               _commaButton(
-                context,
                 key: ValueKey<String>('set-comma-$comma-button'),
                 label: '$comma',
                 tooltip: (
@@ -1176,7 +1176,6 @@ class TimelineActionToolbar extends StatelessWidget {
               ),
             Builder(
               builder: (context) => _commaButton(
-                context,
                 key: const ValueKey<String>('set-comma-n-button'),
                 label: 'N',
                 tooltip: (
