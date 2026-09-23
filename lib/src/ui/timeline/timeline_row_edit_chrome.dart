@@ -1063,6 +1063,27 @@ class _TimelineRowEditChromeLayerState
     }
   }
 
+  /// PEN-11: device gesture settings — manual recognizers do not inject
+  /// them (kTouchSlop 18 vs device ~8), so they are refreshed on every build
+  /// like GestureDetector does.
+  ///
+  /// ⛔NO DEVICE FILTER on anything here: every target is a CONTROL, and a
+  /// press on a control is the control's on every device (유저 08-29:
+  /// 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한
+  /// 버그야」 · 09-23: 「버튼은 무조건 강한클레임」). ↩️The grip and the [+]
+  /// pan took the timeline's edit-pan devices (UI-R22F), so while one finger
+  /// scrolls the timeline a finger on them was handed to the scroller — the
+  /// 「finger resting to scroll」 case the user has called an assumption. The
+  /// range gesture beneath keeps that policy: empty cells are the SURFACE,
+  /// not a control.
+  void _refreshGestureSettings(BuildContext context) {
+    final gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
+    _gripDrag.gestureSettings = gestureSettings;
+    _addTap.gestureSettings = gestureSettings;
+    _addPan.gestureSettings = gestureSettings;
+    _tagPan.gestureSettings = gestureSettings;
+  }
+
   MouseCursor get _cursor {
     final hovered = _hoveredId;
     if (hovered == null) {
@@ -1085,25 +1106,7 @@ class _TimelineRowEditChromeLayerState
 
   @override
   Widget build(BuildContext context) {
-    // PEN-11: device gesture settings — manual recognizers do not inject
-    // them (kTouchSlop 18 vs device ~8), so they are refreshed on every
-    // build like GestureDetector does.
-    //
-    // ⛔NO DEVICE FILTER on anything here: every target is a CONTROL, and a
-    // press on a control is the control's on every device (유저 08-29:
-    // 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한
-    // 버그야」 · 09-23: 「버튼은 무조건 강한클레임」). ↩️The grip and the [+]
-    // pan took the timeline's edit-pan devices (UI-R22F), so while one finger
-    // scrolls the timeline a finger on them was handed to the scroller — the
-    // 「finger resting to scroll」 case the user has called an assumption.
-    // The range gesture beneath keeps that policy: empty cells are the
-    // SURFACE, not a control.
-    final gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
-    _gripDrag.gestureSettings = gestureSettings;
-    _addTap.gestureSettings = gestureSettings;
-    _addPan.gestureSettings = gestureSettings;
-    _tagPan.gestureSettings = gestureSettings;
-
+    _refreshGestureSettings(context);
     return CustomPaint(
       key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
