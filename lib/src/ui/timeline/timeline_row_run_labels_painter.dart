@@ -3,7 +3,9 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../text/word_condensation.dart';
 import 'axis_turn.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
@@ -46,6 +48,9 @@ class TimelineRunLabel {
   final Offset anchor;
 }
 
+/// The koma number's type size — the same at every zoom (B, 2026-09-24).
+const double timelineRunLabelFontSize = 9;
+
 /// R26 #7 / R27 #3: every frame block prints ITS OWN length — one label per
 /// block, not the glued run's total. The shared display toggle picks frames
 /// (`48`) or seconds+frames (`2+00`).
@@ -70,6 +75,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
     required this.crossAxisExtent,
     required this.showSeconds,
     required this.countingBase,
+    required this.baseTextStyle,
     this.axis = Axis.horizontal,
     // F-24: the labels no longer ask what they are sitting on, so this
     // painter no longer watches the cel-content revision either — the ink
@@ -77,6 +83,10 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   }) : super(repaint: geometry);
 
   final Layer layer;
+
+  /// The ambient text style the row sits in — the app's face. The number
+  /// is printed the way the block's NAME is ([timelineBlockWordStyle]).
+  final TextStyle baseTextStyle;
 
   /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints this
   /// painter rather than rebuilding the row that built it.
@@ -106,16 +116,17 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   /// name at a glance, it is what is on screen today wherever the ink was
   /// already dark, and the report was about the number turning WHITE —
   /// not about how strong it is.
-  TextStyle get labelStyle => TextStyle(
-    fontSize: timelineFittedGlyphFontSize(
-      9,
-      frameCellExtent,
-      // The vertical half of the fit rule (#15): a squeezed row shrinks
-      // its numbers like a squeezed cell does.
-      crossExtent: crossAxisExtent,
-    ),
-    fontWeight: FontWeight.w700,
-    color: timelineInBlockInk().withValues(alpha: 0.72),
+  ///
+  /// 🚨ONE SIZE AT EVERY ZOOM (유저 2026-09-24, B): the number narrows into
+  /// its block instead ([paint]). ↩️It shrank with the cell and with a
+  /// squeezed row (R26 #38 · #15), and it was set from a bare `TextStyle`,
+  /// which named no face — so it drew in the OS's font while the name beside
+  /// it drew in the app's.
+  TextStyle get labelStyle => timelineBlockWordStyle(
+    baseTextStyle,
+    ink: timelineInBlockInk().withValues(alpha: 0.72),
+    fontSize: timelineRunLabelFontSize,
+    bold: true,
   );
 
   /// Every label this row would draw, in block order — THE probe surface.
@@ -184,35 +195,28 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       canvas.save();
       canvas.clipRect(blockRect);
       // R10: CENTRED on the block's last cell along the frame axis, and
-      // pushed to the far end of the cross axis with a 1px inset — the
-      // timeline's bottom, the X-sheet's right. The cross axis is what
-      // keeps the badge clear of the cel name, which centres in the cell.
+      // pushed to the far end of the cross axis — the paper's far edge, a
+      // seam short of the row's (I-44): the timeline's bottom, the X-sheet's
+      // right. The cross axis is what keeps the badge clear of the cel
+      // name, which centres in the cell.
       // ↩️F-96: centred while it fits; a number wider than the cell ends at
-      // the cell and grows back into its block ([timelineBlockWordStart]).
-      final lastCellStart = blockEnd - frameCellExtent;
-      final offset = axis == Axis.horizontal
-          ? Offset(
-              timelineBlockWordStart(
-                cellStart: lastCellStart,
-                cellExtent: frameCellExtent,
-                wordExtent: glyph.width,
-                growth: TimelineBlockWordGrowth.towardBlockStart,
-              ),
-              crossAxisExtent - glyph.height - 1,
-            )
-          : Offset(
-              crossAxisExtent - glyph.width - 1,
-              timelineBlockWordStart(
-                cellStart: lastCellStart,
-                cellExtent: frameCellExtent,
-                wordExtent: glyph.height,
-                growth: TimelineBlockWordGrowth.towardBlockStart,
-              ),
-            );
+      // the cell and grows back into its block — and (B) narrows only once
+      // it would leave the block ([timelineBlockWordLayout]).
+      final paper = timelineRowPaperExtent(crossAxisExtent);
+      final layout = timelineBlockWordLayout(glyph.size, (
+        axis: axis,
+        room: axis == Axis.horizontal
+            ? Rect.fromLTRB(blockStart, 0, blockEnd, paper)
+            : Rect.fromLTRB(0, blockStart, paper, blockEnd),
+        cellStart: blockEnd - frameCellExtent,
+        cellExtent: frameCellExtent,
+        growth: TimelineBlockWordGrowth.towardBlockStart,
+        acrossAlignment: 1,
+      ));
       // 🚨F-24: the block's OWN ink, the one the cel name inside the block
       // already wears — not the ground law. The number and the name sit on
       // the same paper and now say so in the same colour.
-      glyph.paint(canvas, offset);
+      paintFittedText(canvas, glyph, layout.origin, layout.fit);
       canvas.restore();
     }
   }
@@ -220,7 +224,14 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   @override
   // Geometry is absent on purpose — it arrives through `repaint`.
   Object get props =>
-      (ByIdentity(layer), crossAxisExtent, showSeconds, countingBase, axis);
+      (
+        ByIdentity(layer),
+        crossAxisExtent,
+        showSeconds,
+        countingBase,
+        baseTextStyle,
+        axis,
+      );
   // ⛔The cel-content comparison went with F-24. It was here because a
   // moved revision was a moved GROUND (the empty-cel blend) and the ink
   // read that ground; the ink is the block's own now, so what a block

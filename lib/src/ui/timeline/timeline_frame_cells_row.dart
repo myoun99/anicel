@@ -545,7 +545,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
     substrateGeneration: substrateGeneration,
-    foregroundPainter: _runLabelsPainter(),
+    foregroundPainter: _runLabelsPainter(context),
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -577,7 +577,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// 글자는 행 단위 오버레이가 그린다), **블록 길이와는 상관이 없다.** 한 술어가
   /// 두 질문에 답하고 있었다. ⇒ 이제 조건은 「블록을 가졌나」 하나다. 그게
   /// `LayerKind.holdsDrawings` 이고 se 는 거기서 true 다.
-  CustomPainter? _runLabelsPainter() {
+  CustomPainter? _runLabelsPainter(BuildContext context) {
     if (!layer.kind.holdsDrawings) return null;
     return TimelineRowRunLabelsPainter(
       layer: layer,
@@ -585,6 +585,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
       crossAxisExtent: crossAxisExtent,
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
+      // The block's own print, face and all: a painter that set its type
+      // from scratch drew the koma in the OS's font beside a name in the
+      // app's (「앱은 한 글꼴」, 08-28).
+      baseTextStyle: DefaultTextStyle.of(context).style,
       axis: axis,
     );
   }

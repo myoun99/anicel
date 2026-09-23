@@ -10,7 +10,9 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
+import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
+import 'axis_turn.dart' show extentAlong;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
@@ -281,8 +283,7 @@ class TimelineRowCellsPainter extends CustomPainter
     );
     final frameName = frameNameForLayer?.call(layer, frameIndex);
     // Hold ghosts keep their dash at ANY zoom (it paints as a line, not
-    // text — UI-R12 #18): the continuing stroke is structure, so it never
-    // joins the narrow-cell text suppression below.
+    // text — UI-R12 #18): the continuing stroke is structure.
     final holdGhost =
         runEdgeGhostAt(layer, frameIndex)?.mode == TimelineRunEdgeMode.hold;
     String glyph;
@@ -647,14 +648,12 @@ class TimelineRowCellsPainter extends CustomPainter
     return timelineBlockWordStyle(
       baseTextStyle,
       ink: foregroundInkFor(model),
-      // R26 #38/#4: names and marks SHRINK with the cell instead of
-      // blanking out below ~14px — "절대 안 사라지도록". #15 adds the
-      // vertical half: a squeezed row shrinks them the same way.
-      fontSize: timelineFittedGlyphFontSize(
-        baseTextStyle.fontSize ?? 12,
-        frameCellExtent,
-        crossExtent: crossAxisExtent,
-      ),
+      // 🚨ONE SIZE AT EVERY ZOOM (유저 2026-09-24, B): the word narrows into
+      // its block instead ([cellWordLayoutFor]). ↩️R26 #38/#4 shrank names
+      // and marks with the cell rather than blanking them below ~14px, and
+      // #15 shrank them with a squeezed row — both are the narrowing now, on
+      // the axis that ran short.
+      fontSize: baseTextStyle.fontSize ?? 12,
       bold:
           !model.ghost &&
           !isEmptyX &&
@@ -662,33 +661,53 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
-  /// Where the word of the cell at [frameIndex] is laid, row-local: along
-  /// the frame axis by the block-word law — a name that outgrows its cell
-  /// starts at the cell and grows on into its block (F-96,
-  /// [timelineBlockWordStart]) — and centred across it. PUBLIC: the tile
-  /// emitter bakes its word exactly here.
+  /// Where the word of the cell at [frameIndex] is laid, row-local, and how
+  /// far it is narrowed — the block-word law ([timelineBlockWordLayout]):
+  /// centred on its cell while it fits, growing on into its block past that
+  /// (F-96), and narrowed only where it would leave the block or its paper
+  /// (B, 유저 2026-09-24: 「이름은 블록안에서만」). PUBLIC: the tile emitter
+  /// bakes its word exactly here.
   @override
-  Offset cellWordOriginFor(int frameIndex, Size word) {
+  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) {
     final cell = cellRectFor(frameIndex);
-    return axis == Axis.horizontal
-        ? Offset(
-            timelineBlockWordStart(
-              cellStart: cell.left,
-              cellExtent: cell.width,
-              wordExtent: word.width,
-              growth: TimelineBlockWordGrowth.towardBlockEnd,
-            ),
-            cell.center.dy - word.height / 2,
-          )
-        : Offset(
-            cell.center.dx - word.width / 2,
-            timelineBlockWordStart(
-              cellStart: cell.top,
-              cellExtent: cell.height,
-              wordExtent: word.height,
-              growth: TimelineBlockWordGrowth.towardBlockEnd,
-            ),
-          );
+    final horizontal = axis == Axis.horizontal;
+    final cellStart = horizontal ? cell.left : cell.top;
+    final roomEnd = _wordRoomEnd(frameIndex, extentAlong(axis, word));
+    final paper = timelineRowPaperExtent(crossAxisExtent);
+    return timelineBlockWordLayout(word, (
+      axis: axis,
+      room: horizontal
+          ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
+          : Rect.fromLTRB(0, cellStart, paper, roomEnd),
+      cellStart: cellStart,
+      cellExtent: frameCellExtent,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0,
+    ));
+  }
+
+  /// Where the room the word at [frameIndex] may grow into ENDS along the
+  /// frame axis: the end of its block, looked up only as far as a word of
+  /// [extent] could reach. A word on no block — an empty stretch's `x` —
+  /// has its own cell.
+  ///
+  /// The block is the EXPOSURE's ([_stateAt]), not the chrome's: a repeat
+  /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
+  /// and its name stays inside that run as a drawn block's does.
+  double _wordRoomEnd(int frameIndex, double extent) {
+    final cell = cellRectFor(frameIndex);
+    final start = axis == Axis.horizontal ? cell.left : cell.top;
+    var end = start + frameCellExtent;
+    var index = frameIndex;
+    while (end - start < extent &&
+        timelineExposureBlockSegmentAt(
+          frameIndex: index,
+          stateAt: _stateAt,
+        ).continuesToNext) {
+      index += 1;
+      end += frameCellExtent;
+    }
+    return end;
   }
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null when
@@ -752,15 +771,19 @@ class TimelineRowCellsPainter extends CustomPainter
       // pass must land on the same grid — otherwise the classic↔tile
       // swap on row activation reads as the text thinning/thickening.
       // F-96: centred while the word fits its cell, growing on into the
-      // block when it does not ([cellWordOriginFor]).
-      final raw = cellWordOriginFor(frameIndex, glyph.size);
+      // block when it does not, narrowed only past the block
+      // ([cellWordLayoutFor]).
+      final layout = cellWordLayoutFor(frameIndex, glyph.size);
+      final raw = layout.origin;
       final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
-      glyph.paint(
+      paintFittedText(
         canvas,
+        glyph,
         Offset(
           (raw.dx * dpr).roundToDouble() / dpr,
           (raw.dy * dpr).roundToDouble() / dpr,
         ),
+        layout.fit,
       );
     }
   }

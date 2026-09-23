@@ -28,22 +28,7 @@ double dialogueGlyphCellExtent({
   required double mainExtent,
 }) => glyphCount <= 0 ? 0 : mainExtent / glyphCount;
 
-/// How far a glyph is narrowed ALONG the flow so it keeps to its cell.
-///
-/// F-93 (유저 2026-09-12): 「se블록의 대사 텍스트. 타임라인 줌을 낮추면 대사
-/// 글자끼리 겹쳐져서 시인성이 안좋음. 이렇게 겹쳐질땐 글자 한글자의 좌우 길이?
-/// 를 줄여서 한 칸에 한 글자라는 느낌이 나도록」. The glyphs were spread one
-/// to a cell and painted at their own size, so a zoomed-out block ran them
-/// into each other.
-///
-/// `1` while [glyphExtent] — the glyph's advance along the flow — fits
-/// [cellExtent]; the ratio once it would run past it. Along the flow only:
-/// across it the glyph keeps its size. ⛔Never above `1` — a roomy cell
-/// spreads the glyphs apart, which is the centres' job, and does not
-/// stretch them.
-double dialogueGlyphCondensation({
-  required double glyphExtent,
-  required double cellExtent,
-}) => glyphExtent > cellExtent && glyphExtent > 0
-    ? cellExtent / glyphExtent
-    : 1.0;
+// 🪦`dialogueGlyphCondensation` — F-93's narrowing of a glyph into its cell —
+// became every block word's rule and moved to `word_condensation.dart`
+// (`wordCondensation`): the dialogue's glyphs spread one to a cell and narrow
+// into it there, as a name narrows into its block.

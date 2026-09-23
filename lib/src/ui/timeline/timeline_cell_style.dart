@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_on_ground.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 
 class TimelineCellStyleColors {
@@ -145,8 +147,8 @@ Color timelineInBlockInk({bool dimmed = false}) => dimmed
     ? timelineDrawingInkColor.withValues(alpha: 0.55)
     : timelineDrawingInkColor;
 
-/// How a WORD inside a block is printed: its ink, its fitted size, the bold
-/// rule, and the box that makes centring read as centred.
+/// How a WORD inside a block is printed: its ink, its size, the bold rule,
+/// and the box that makes centring read as centred.
 ///
 /// 🚨ONE print for the frame block's name and the lane key's name (유저
 /// 2026-09-12: 「내부에 있는 텍스트 디자인? 색도 똑같이 그대로 재사용」). What
@@ -223,6 +225,67 @@ double timelineBlockWordStart({
       return centred < endAligned ? centred : endAligned;
   }
 }
+
+/// Where a WORD in a block lands and how far it is narrowed — ONE answer
+/// for every word a block writes, painted or laid out as a widget.
+///
+/// 🚨유저 2026-09-24 (`block-word-size-at-zoom-Q1` 답 B): 「이름은
+/// 블록안에서만 있도록 하게하고싶은건 변함없고, 잘 보이는게 중요해서 B」 —
+/// the type keeps its size at every zoom, the word uses its whole block, and
+/// only past the block does it narrow — and 「법같은거 최대한 통일하면서.
+/// 컷블록의 텍스트든 se텍스트든 뭐든」. ⚠️The cost they took with it: blocks
+/// of different lengths print one name at different widths (「통일감을
+/// 헤치고있어서 그부분만 신경쓰이는데 … 나중에 거슬린다 싶으면 A」 — A
+/// narrows by the zoom instead).
+///
+/// Each axis is narrowed on its own only as far as the slot's room demands
+/// ([wordFit]); the narrowed word is then laid by F-96 along the frame axis
+/// ([timelineBlockWordStart]) — centred on its cell while it fits the cell,
+/// growing into its block from the cell's edge past that.
+({Offset origin, WordFit fit}) timelineBlockWordLayout(
+  Size word,
+  TimelineBlockWordSlot slot,
+) {
+  final axis = slot.axis;
+  final room = slot.room;
+  final fit = wordFit(word, room.size);
+  final fitted = Size(word.width * fit.x, word.height * fit.y);
+  final along = timelineBlockWordStart(
+    cellStart: slot.cellStart,
+    cellExtent: slot.cellExtent,
+    wordExtent: extentAlong(axis, fitted),
+    growth: slot.growth,
+  );
+  final acrossRoom = extentAcross(axis, room.size);
+  final acrossStart = axis == Axis.horizontal ? room.top : room.left;
+  final across =
+      acrossStart +
+      (acrossRoom - extentAcross(axis, fitted)) *
+          (slot.acrossAlignment + 1) /
+          2;
+  return (
+    origin: offsetAlong(axis, along: along, across: across),
+    fit: fit,
+  );
+}
+
+/// Where a block word may go ([timelineBlockWordLayout]).
+///
+/// `room` is what the word may cover: along the frame axis, the stretch of
+/// its BLOCK it can grow into — from its cell to the block's end for a word
+/// that grows toward the end, from the block's start to its cell's end for
+/// one that grows back — and across it, the block's paper. `cellStart` and
+/// `cellExtent` are the word's own cell along the frame axis;
+/// `acrossAlignment` is where it sits across its room (-1 the near edge, 0
+/// the middle, 1 the far edge).
+typedef TimelineBlockWordSlot = ({
+  Axis axis,
+  Rect room,
+  double cellStart,
+  double cellExtent,
+  TimelineBlockWordGrowth growth,
+  double acrossAlignment,
+});
 
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
@@ -322,6 +385,12 @@ const double timelineSecondGridAlpha = 1.0;
 /// Text used to blank out below ~14px cells; the user's rule is "엄청
 /// 작아지는 한이 있어도 절대 안 사라지도록" — so the type shrinks with the
 /// cell instead, down to a hard floor that still reads as a mark.
+///
+/// ⛔NOT FOR A BLOCK'S WORDS any more (유저 2026-09-24, `block-word-size-at-
+/// zoom-Q1` 답 B): a word keeps its type and narrows into its block instead
+/// ([timelineBlockWordLayout]), which says it just as surely. What still
+/// shrinks here is what cannot be narrowed on one axis — a key MARK is a
+/// square (D39-2) — and the rulers' numbers, which are no block's writing.
 ///
 /// [crossExtent] is the cell's OTHER dimension (#15's vertical half of
 /// the same rule): the fit takes whichever axis is tighter, so squeezing

@@ -30,8 +30,10 @@ import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
+import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart'
     show
+        TimelineBlockWordGrowth,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk;
@@ -1170,7 +1172,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  bool get _horizontal => axis == Axis.horizontal;
   double get _cellExtent => metrics.frameCellWidth;
 
   /// Cross-axis extent: rail-row height in the timeline, column width in
@@ -1279,23 +1280,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
     );
   }
 
-  /// The key's NAME, at the diamond's upper right (user 2026-07-30) — "same
-  /// name, same value" made visible where the link lives. Clipped to the
-  /// room before the next key so two names cannot collide, and gone
-  /// entirely once the cells are too narrow to read a word between two
-  /// diamonds.
+  /// The key's NAME — "same name, same value" made visible where the link
+  /// lives (user 2026-07-30), in the middle of its cell over the mark (㉗,
+  /// F-17-Q1 답 B).
   ///
-  /// Horizontal only: the X-sheet's lane is a COLUMN one cell wide, so
-  /// there is no "right of the diamond" there to put a word in.
-  List<Widget> _keyNames() {
-    if (!_horizontal || _cellExtent < _laneKeyNameMinCellExtent) {
-      return const [];
-    }
-    return [
-      for (final entry in lane.keyNames.entries)
-        if (_inWindow(entry.key)) _keyName(entry.key, entry.value),
-    ];
-  }
+  /// ↩️It used to be gone below 14px cells and on the X-sheet — both mine,
+  /// 2026-08-11, when the name stood BESIDE the diamond: a word squeezed
+  /// between two diamonds read as noise, and a one-cell column had no
+  /// "right of the diamond". The name has sat in its own cell since F-17,
+  /// so neither reason survived, and the block-word law answers a narrow
+  /// cell the way it answers every block: the word keeps its type and
+  /// narrows into the cell (B, 유저 2026-09-24 — 「뭐든」).
+  List<Widget> _keyNames() => [
+    for (final entry in lane.keyNames.entries)
+      if (_inWindow(entry.key)) _keyName(entry.key, entry.value),
+  ];
 
   /// ㉗: EVERY key name sits in the middle of its cell — and since F-17
   /// every key name is PRINTED the same way too.
@@ -1318,32 +1317,16 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// 유저 2026-09-01: 「키에 이름 지정시, 헤더엔 제대로 중앙에 검정색으로
   /// 텍스트뜨는데 멤버엔 왜 텍스트가 회색계열인지? … 다른 규칙 두지말라했는데
   /// 왜 자꾸 멋대로 하는거지? 아예 통일하라고」. One print now: the frame
-  /// block's type rule at the union's size, in the paper's ink.
-  Widget _keyName(int frame, String text) {
-    return Positioned(
-      left: (frame - frameStartIndex) * _cellExtent,
-      top: 0,
-      width: _cellExtent,
-      height: _crossExtent,
-      child: IgnorePointer(
-        child: _LaneKeyName(
-          text: text,
-          // The frame blocks' own type rule, so a change there reaches this
-          // too (유저: 「프레임블록 쪽 텍스트 디자인을 바꾸면 한 번에
-          // 적용되도록」) — fitted to the UNION's mark on every row, so a
-          // member's word is the header's word.
-          fontSize: timelineFittedGlyphFontSize(
-            _laneKeyNameFontSize,
-            _cellExtent,
-            crossExtent: timelineLaneUnionKeyMarkerSize(
-              _crossExtent,
-              frameCellExtent: _cellExtent,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// block's type rule, in the paper's ink, one size on the header and the
+  /// member alike.
+  Widget _keyName(int frame, String text) => placedAlong(
+    axis,
+    along: (frame - frameStartIndex) * _cellExtent,
+    across: 0,
+    alongExtent: _cellExtent,
+    acrossExtent: _crossExtent,
+    child: IgnorePointer(child: _LaneKeyName(text: text)),
+  );
 
   /// The band between its two spacers, along the axis.
   Widget _withSpacers(Widget band) => Flex(
@@ -1362,61 +1345,49 @@ class TimelineLaneFrameRow extends StatelessWidget {
   );
 }
 
-/// One key marker. A DRAWING, and nothing else.
-///
-/// It used to own a drag that re-timed its own key the instant you pulled
-/// it, which is not how anything else on this axis behaves: a frame block
-/// is SELECTED first and the next drag moves the selection. The band
-/// beneath has implemented exactly that rule the whole time — press outside
-/// the selection to select, press inside it to move, tap to stand — so the
-/// fix was to stop competing with it (user, 2026-08-08).
-///
-/// The camera row kept the old drag for one round, because its lanes had no
-/// band to defer to. They do now.
-///
-/// Below this cell width a key name is not drawn: the diamonds are nearly
-/// touching by then, and a word squeezed between two of them reads as noise
-/// rather than as a label. The zoom itself is the gate — no separate
-/// setting, the same way the run labels fade out on their own.
-const double _laneKeyNameMinCellExtent = 14;
+/// A key name's type — the same at every zoom and on every row: the name
+/// narrows into its cell instead (B, 유저 2026-09-24).
 const double _laneKeyNameFontSize = 8;
 
-/// A named key's label, centred in its cell.
+/// A named key's label, centred in its cell — a block word whose block is
+/// that one cell ([TimelineBlockWord]).
 ///
-/// CLIPPED, not ellipsised: the slot is one cell, and a name that outgrows
-/// it should be cut rather than turned into "Wal…" — the first letters are
-/// what tell two names apart at a glance.
+/// ↩️It was CLIPPED to the cell (「the first letters are what tell two names
+/// apart」 — mine, 2026-08-11) and its type shrank with the zoom; the law
+/// every block word keeps now narrows it instead, so the whole name stays.
 ///
 /// 🪦`nameRoom` (the room before the next diamond) and `_laneKeyNameExtent`
 /// (a 9px strip above the mark) went with the beside-the-diamond layout
 /// they existed to serve — `F-17-Q1` 답 B.
 class _LaneKeyName extends StatelessWidget {
-  const _LaneKeyName({required this.text, required this.fontSize});
+  const _LaneKeyName({required this.text});
 
   final String text;
 
-  /// ㉗: set by the FRAME BLOCK's fit rule ([timelineFittedGlyphFontSize])
-  /// so the two never drift — on the header and the member alike (F-17).
-  final double fontSize;
-
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: Align(
-        child: Text(
-          text,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.clip,
-          // The frame block's own print — ink, size, weight and the box
-          // that makes centring read as centred (유저 2026-09-12: 「내부에
-          // 있는 텍스트 디자인? 색도 똑같이 그대로 재사용」).
-          style: timelineBlockWordStyle(
-            DefaultTextStyle.of(context).style,
-            ink: timelineInBlockInk(),
-            fontSize: fontSize,
-            bold: true,
-          ),
+    return TimelineBlockWord(
+      // One cell: the word is centred on both axes whichever way the frame
+      // axis runs.
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        // The frame block's own print — ink, size, weight and the box that
+        // makes centring read as centred (유저 2026-09-12: 「내부에 있는
+        // 텍스트 디자인? 색도 똑같이 그대로 재사용」).
+        style: timelineBlockWordStyle(
+          DefaultTextStyle.of(context).style,
+          ink: timelineInBlockInk(),
+          fontSize: _laneKeyNameFontSize,
+          bold: true,
         ),
       ),
     );
@@ -1439,10 +1410,12 @@ class _LaneKeyName extends StatelessWidget {
 ///
 /// D39 (2026-08-18): the law follows the ZOOM too — 「프레임블록
 /// 텍스트/엣지처럼 줌에 따라 작아지게」. The cross-derived base runs
-/// through [timelineFittedGlyphFontSize], the same shrink every mark
-/// printed on blocks already obeys, so a 4–8px cell no longer wears a
-/// fixed 13px diamond spilling across its neighbours. At the default
+/// through [timelineFittedGlyphFontSize], so a 4–8px cell no longer wears
+/// a fixed 13px diamond spilling across its neighbours. At the default
 /// 24px cell nothing changes (the fit's knee is 14).
+/// ⚠️The block TEXT this was matched to keeps its type since B (유저
+/// 2026-09-24) and narrows into its block instead; a mark cannot narrow on
+/// one axis (D39-2 below), so the marks keep this shrink.
 double timelineLaneKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
@@ -1504,30 +1477,16 @@ double _squareInCell(
 const double _keyMarkerFloor = 4.0;
 
 /// The union key's WORD for one frame — null when the row names no key
-/// there, or when the cell is too narrow to read one.
+/// there.
 ///
-/// The band's gate ([_keyNames]) and the band's print ([_LaneKeyName]), so
-/// the camera row says what every other row says about a named key.
-Widget? _unionKeyName(
-  PropertyLaneRow lane, {
-  required int frame,
-  required double cellExtent,
-  required double markerSize,
-}) {
+/// The band's print ([_LaneKeyName]), so the camera row says what every
+/// other row says about a named key.
+Widget? _unionKeyName(PropertyLaneRow lane, {required int frame}) {
   final name = lane.keyNames[frame];
-  if (name == null || cellExtent < _laneKeyNameMinCellExtent) {
+  if (name == null) {
     return null;
   }
-  return IgnorePointer(
-    child: _LaneKeyName(
-      text: name,
-      fontSize: timelineFittedGlyphFontSize(
-        _laneKeyNameFontSize,
-        cellExtent,
-        crossExtent: markerSize,
-      ),
-    ),
-  );
+  return IgnorePointer(child: _LaneKeyName(text: name));
 }
 
 /// The UNION summary markers of one row, as [TimelineFrameSpan] children
@@ -1585,12 +1544,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
             // The NAME rides the same span — 🗣️유저 2026-09-12:
             // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row
             // drew the mark and left the word to a band it does not have.
-            final word = _unionKeyName(
-              lane,
-              frame: frame,
-              cellExtent: cellExtent,
-              markerSize: markerSize,
-            );
+            final word = _unionKeyName(lane, frame: frame);
             return word == null
                 ? marker
                 : Stack(fit: StackFit.expand, children: [marker, word]);
@@ -1600,6 +1554,18 @@ List<Widget> timelineUnionKeyMarkerSpans({
   ];
 }
 
+/// One key marker. A DRAWING, and nothing else.
+///
+/// It used to own a drag that re-timed its own key the instant you pulled
+/// it, which is not how anything else on this axis behaves: a frame block
+/// is SELECTED first and the next drag moves the selection. The band
+/// beneath has implemented exactly that rule the whole time — press outside
+/// the selection to select, press inside it to move, tap to stand — so the
+/// fix was to stop competing with it (user, 2026-08-08).
+///
+/// The camera row kept the old drag for one round, because its lanes had no
+/// band to defer to. They do now.
+///
 /// [IgnorePointer] is load-bearing, not tidiness: `RenderDecoratedBox`
 /// answers hit tests TRUE anywhere inside its decoration, so a drawn
 /// diamond is a hit target in its own right and the Stack would stop at it

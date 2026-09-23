@@ -15,6 +15,7 @@ import '../media/media_asset_drop_target.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
+import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_span_layout.dart';
@@ -511,7 +512,7 @@ class SeSpanVisual extends StatelessWidget {
         // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
         // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
         // the way the dialogue glyphs beside it narrow rather than vanish
-        // ([dialogueGlyphCondensation]). ⛔The half-span ceiling is not a new
+        // (`wordCondensation`). ⛔The half-span ceiling is not a new
         // number: the old threshold `>= seNameBoxExtent * 2` already said the
         // box may never take more than half the span, and that stands. The
         // two meet at 32 — `32 / 2 == seNameBoxExtent` — so the chip narrows
@@ -594,18 +595,24 @@ class _SeNameBox extends StatelessWidget {
       // Own node even where an ancestor would merge labels (the dialog
       // preview) — tests and screen readers address the box directly.
       container: true,
-      child: Container(
+      child: ColoredBox(
         // R6-②: soft accent tint (the full-strength accent read too loud);
         // dark ink writing carries the contrast — matches the sheet.
         color: AppColors.accent.withValues(alpha: 0.3),
-        alignment: Alignment.center,
-        // scaleDown: a LONG name shrinks to the box instead of overflowing
-        // the row (the striped-error report — R4 improvement 2).
-        child: ClipRect(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: ExcludeSemantics(child: writing),
+        // A LONG name stays inside the chip instead of overflowing the row
+        // (the striped-error report — R4 improvement 2) — by the block-word
+        // law now (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its
+        // type and narrows, each axis on its own, into the chip. ↩️It shrank
+        // WHOLE into the chip (`FittedBox.scaleDown`), height with width.
+        child: TimelineBlockWord(
+          place: (
+            axis: axis,
+            cells: 1,
+            cellIndex: 0,
+            growth: TimelineBlockWordGrowth.towardBlockEnd,
+            acrossAlignment: 0,
           ),
+          child: ExcludeSemantics(child: writing),
         ),
       ),
     );

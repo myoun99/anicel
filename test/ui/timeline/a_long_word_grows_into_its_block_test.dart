@@ -114,6 +114,13 @@ void main() {
       reason: 'the name starts at its own cell instead of spilling back '
           'over the cells before its block',
     );
+    // B (유저 2026-09-24): 「이름은 블록안에서만」 — and it ends inside it.
+    expect(
+      spy.boxes[1].right,
+      lessThanOrEqualTo(painter.cellRectFor(6).left + 0.5),
+      reason: 'the name stops at its block\'s end instead of running on '
+          'over the cells after it',
+    );
   });
 
   test('a name that starts before the painted window still shows the part '
@@ -211,6 +218,7 @@ void main() {
       'into the block', () {
     const smallCell = 12.0;
     final painter = TimelineRowRunLabelsPainter(
+      baseTextStyle: const TextStyle(fontSize: 14),
       layer: layer,
       geometry: testFrameGeometry(
         frameCellExtent: smallCell,
@@ -243,7 +251,7 @@ void main() {
       isNot(contains('lastCellCentre - glyph.width / 2')),
       reason: 'the comma no longer centres on its last cell by hand',
     );
-    expect(source, contains('timelineBlockWordStart('));
+    expect(source, contains('timelineBlockWordLayout('));
     expect(
       source,
       contains('growth: TimelineBlockWordGrowth.towardBlockStart'),
@@ -252,12 +260,41 @@ void main() {
   });
 }
 
+/// Records the box each paragraph is PAINTED in, following the transforms —
+/// a word narrowed into its block (B) is drawn at the origin of a scaled
+/// canvas, so its offset alone says nothing about where it lands.
 class _Spy implements Canvas {
-  final texts = <Offset>[];
+  final boxes = <Rect>[];
+  final _saved = <Matrix4>[];
+  var _transform = Matrix4.identity();
+
+  List<Offset> get texts => [for (final box in boxes) box.topLeft];
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
-      texts.add(offset);
+  void save() => _saved.add(_transform.clone());
+
+  @override
+  void restore() => _transform = _saved.removeLast();
+
+  @override
+  void translate(double dx, double dy) =>
+      _transform = _transform.multiplied(Matrix4.translationValues(dx, dy, 0));
+
+  @override
+  void scale(double sx, [double? sy]) => _transform = _transform.multiplied(
+    Matrix4.diagonal3Values(sx, sy ?? sx, 1),
+  );
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) => boxes.add(
+    MatrixUtils.transformRect(
+      _transform,
+      offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
+    ),
+  );
+
+  @override
+  int getSaveCount() => _saved.length + 1;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

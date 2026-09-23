@@ -76,17 +76,16 @@ void main() {
     );
   });
 
-  test('and the fitted size still wins on a squeezed cell (#15 survives)', () {
+  test('and a squeezed cell keeps both the type and the box — the word '
+      'narrows instead (B)', () {
     final painter = painterAt(cellWidth: 6);
     final style = painter.glyphStyleFor(painter.cellModelAt(0));
     expect(
       style.fontSize,
-      lessThan(12),
-      reason:
-          'fixture premise: this cell really is narrow enough to shrink '
-          'the type, so the height rule above is not being read off an '
-          'untouched style',
+      12,
+      reason: '유저 2026-09-24 (B): one type size at every zoom. ↩️A cell '
+          'this narrow used to shrink it (#15)',
     );
-    expect(style.height, 1.0, reason: 'the box follows the fitted size');
+    expect(style.height, 1.0, reason: 'the box rule holds at every width');
   });
 }

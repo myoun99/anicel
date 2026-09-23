@@ -11,6 +11,7 @@ import 'flip_hud_model.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
 import '../text/vertical_writing_text.dart';
+import '../text/word_condensation.dart';
 
 /// The flip HUD's metrics. One place, because the two axes are the same
 /// window turned ninety degrees.
@@ -264,6 +265,8 @@ class FlipHudOverlay extends StatelessWidget {
           scrollCentre: scrollCentre,
           colorScheme: Theme.of(context).colorScheme,
           standing: standing,
+          // The app's face for every word it writes (「앱은 한 글꼴」).
+          baseTextStyle: DefaultTextStyle.of(context).style,
         ),
       ),
     );
@@ -276,6 +279,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     required this.axis,
     required this.frameStep,
     required this.colorScheme,
+    required this.baseTextStyle,
     this.scrollCentre,
     this.standing = false,
   });
@@ -284,6 +288,10 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   final FlipHudAxis axis;
   final bool frameStep;
   final ColorScheme colorScheme;
+
+  /// The ambient text style — the app's face, which a `TextStyle` set from
+  /// scratch does not name (it falls to the OS's font).
+  final TextStyle baseTextStyle;
 
   /// The X-sheet's window (F-28): the timeline's layout turned a quarter
   /// clockwise, which is exactly what the sheet is — the rail stands on top
@@ -581,10 +589,14 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     canvas.restore();
   }
 
+  /// The app's face and nothing else of the ambient style — its line height
+  /// would move every name the rail lays out by its box.
   TextStyle _railNameStyle(FlipHudRow row, Color ink) => TextStyle(
     fontSize: row.isLane ? 10.5 : 11.5,
     fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
     color: row.isLane ? ink.withValues(alpha: 0.82) : ink,
+    fontFamily: baseTextStyle.fontFamily,
+    fontFamilyFallback: baseTextStyle.fontFamilyFallback,
   );
 
   TextPainter _kindIconPainter(FlipHudRow row, Color ink) {
@@ -750,8 +762,13 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
-  /// [text] centred in [rect], fitted to the cell as the reader sees it —
-  /// upright on a [standing] window, the way the sheet sets a cel number.
+  /// [text] centred in [rect] as the reader sees it — upright on a
+  /// [standing] window, the way the sheet sets a cel number.
+  ///
+  /// 🚨A block word like every other (B, 유저 2026-09-24): one type size at
+  /// every width, narrowed — each axis on its own — only where the slot is
+  /// shorter than the word ([wordFit]). ↩️It shrank with the slot and was
+  /// cut to an ellipsis past it, in a style that named no face.
   void _paintGlyph(
     Canvas canvas,
     Rect rect,
@@ -760,25 +777,30 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     bool bold = false,
   }) {
     _upright(canvas, rect, (box) {
+      // The block word's own print — the face, and the box that makes
+      // centring read as centred ([timelineBlockWordStyle]).
       final painter = timelineGlyphPainter(
         text,
-        TextStyle(
-          fontSize: timelineFittedGlyphFontSize(
-            bold ? 14 : 12,
-            box.width,
-            crossExtent: box.height,
-          ),
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-          color: color,
+        timelineBlockWordStyle(
+          baseTextStyle.copyWith(fontWeight: FontWeight.w400),
+          ink: color,
+          fontSize: bold ? 14 : 12,
+          bold: bold,
         ),
-        maxWidth: math.max(8, box.width - 4),
       );
-      painter.paint(
+      // Two pixels of air either side, as the ellipsis used to keep.
+      final fit = wordFit(
+        painter.size,
+        Size(math.max(0.0, box.width - 4), box.height),
+      );
+      paintFittedText(
         canvas,
+        painter,
         Offset(
-          box.center.dx - painter.width / 2,
-          box.center.dy - painter.height / 2,
+          box.center.dx - painter.width * fit.x / 2,
+          box.center.dy - painter.height * fit.y / 2,
         ),
+        fit,
       );
     });
   }
@@ -853,6 +875,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     frameStep,
     scrollCentre,
     colorScheme,
+    baseTextStyle,
     standing,
   );
 }

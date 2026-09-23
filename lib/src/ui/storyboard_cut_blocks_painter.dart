@@ -13,6 +13,7 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
+import 'text/word_condensation.dart';
 import '../models/storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/timeline_cell_style.dart';
@@ -694,14 +695,15 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     String text,
     TextStyle style, {
     required Color ground,
-    double? maxWidth,
+    WordFit fit = wordFitsAsItIs,
   }) {
-    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
+    final glyph = timelineGlyphPainter(text, style);
+    // The plate carries the word as it is DRAWN — narrowed, when it is.
     final plate = Rect.fromLTWH(
       offset.dx - 1,
       offset.dy - 1,
-      glyph.width + 2,
-      glyph.height + 2,
+      glyph.width * fit.x + 2,
+      glyph.height * fit.y + 2,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -716,7 +718,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       text,
       style,
       ground: ground,
-      maxWidth: maxWidth,
+      fit: fit,
     );
   }
 
@@ -855,7 +857,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         canvas,
         text: block.title,
         style: _titleStyle,
-        maxWidth: inner.width,
+        room: inner.size,
         anchor: inner.topLeft,
         alignRight: false,
         alignBottom: false,
@@ -867,7 +869,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           canvas,
           text: total,
           style: _totalStyle,
-          maxWidth: inner.width,
+          room: inner.size,
           anchor: inner.bottomRight,
           alignRight: true,
           alignBottom: true,
@@ -916,6 +918,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     canvas.restore();
   }
 
+  /// A band's writing, held to one end of it.
+  ///
+  /// 🚨It keeps its type and narrows into the band (B, 유저 2026-09-24:
+  /// 「컷블록의 텍스트든 se텍스트든 뭐든」). ↩️A title too long for its band
+  /// was cut to an ellipsis — the `Text` + `TextOverflow.ellipsis` it was
+  /// painted in for — so a cut's name lost its end at zoom-out.
   void _paintBandText(
     Canvas canvas, {
     required String text,
@@ -927,46 +935,53 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     if (text.isEmpty || band.width <= 0) {
       return;
     }
-    final maxWidth = math.max(0.0, band.width - _padding * 2);
-    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
-    final dx = alignRight
-        ? band.right - _padding - glyph.width
-        : band.left + _padding;
+    final glyph = timelineGlyphPainter(text, style);
+    final fit = wordFit(
+      glyph.size,
+      Size(math.max(0.0, band.width - _padding * 2), band.height),
+    );
+    final width = glyph.width * fit.x;
+    final height = glyph.height * fit.y;
+    final dx = alignRight ? band.right - _padding - width : band.left + _padding;
     paintTimelineGlyphOnGround(
       canvas,
-      Offset(dx, band.top + (band.height - glyph.height) / 2),
+      Offset(dx, band.top + (band.height - height) / 2),
       text,
       style,
       ground: ground,
-      maxWidth: maxWidth,
+      fit: fit,
     );
   }
 
   /// A corner-anchored ground-law label — the folded block's writing (and
-  /// nothing else's: band text centres itself vertically instead).
+  /// nothing else's: band text centres itself vertically instead). It
+  /// narrows into its [room] as band text does.
   void _paintAnchoredLabel(
     Canvas canvas, {
     required String text,
     required TextStyle style,
-    required double maxWidth,
+    required Size room,
     required Offset anchor,
     required bool alignRight,
     required bool alignBottom,
     required Color ground,
   }) {
-    if (text.isEmpty || maxWidth <= 0) {
+    if (text.isEmpty || room.width <= 0) {
       return;
     }
-    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
-    final left = alignRight ? anchor.dx - glyph.width : anchor.dx;
-    final top = alignBottom ? anchor.dy - glyph.height : anchor.dy;
+    final glyph = timelineGlyphPainter(text, style);
+    final fit = wordFit(glyph.size, room);
+    final width = glyph.width * fit.x;
+    final height = glyph.height * fit.y;
+    final left = alignRight ? anchor.dx - width : anchor.dx;
+    final top = alignBottom ? anchor.dy - height : anchor.dy;
     paintTimelineGlyphOnGround(
       canvas,
       Offset(left, top),
       text,
       style,
       ground: ground,
-      maxWidth: maxWidth,
+      fit: fit,
     );
   }
 
@@ -1062,26 +1077,29 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     }
     final name = block.cellNames[index];
     if (name.isNotEmpty) {
+      // One size at every zoom, narrowed into the panel instead (B, 유저
+      // 2026-09-24). ↩️It shrank with the cell (R26 #38).
       final nameStyle = baseTextStyle.copyWith(
         color: timelineDrawingInkColor,
         fontWeight: FontWeight.bold,
-        fontSize: timelineFittedGlyphFontSize(
-          baseTextStyle.fontSize ?? 12,
-          _cellExtent,
-          crossExtent: slot.height,
-        ),
+        fontSize: baseTextStyle.fontSize ?? 12,
       );
       // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
       // thumbnail-display writing sits where the sheet's cut number does,
       // not centred the way block-display glyphs are — the two thumbnail
       // surfaces read as one.
       // D29-2: carried on its own plate, so its ground IS the cut title's.
+      final at = Offset(slot.left + _padding / 2, slot.top + 1);
       _paintPlatedGlyph(
         canvas,
-        Offset(slot.left + _padding / 2, slot.top + 1),
+        at,
         name,
         nameStyle,
         ground: _bandGround(block),
+        fit: wordFit(
+          timelineGlyphPainter(name, nameStyle).size,
+          Size(slot.right - _padding / 2 - at.dx, slot.bottom - 1 - at.dy),
+        ),
       );
     }
     final comma = block.cellCommaLabels[index];
@@ -1098,24 +1116,26 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       // run label's anchor, in the panel's own coordinates (the slot's
       // edges ARE the cell edges: panels tile the strip).
       // ↩️F-96: centred while it fits; a count wider than the cell ends at
-      // the cell and grows back into the panel — the run label's law
-      // ([timelineBlockWordStart]).
+      // the cell and grows back into the panel — and (B) narrows only once
+      // it would leave the panel: the run label's law
+      // ([timelineBlockWordLayout]).
       // D29-2: the same carry as the name above — the comma reads against
       // the band's fill, which is what the cut's own length reads against.
+      final layout = timelineBlockWordLayout(glyph.size, (
+        axis: Axis.horizontal,
+        room: Rect.fromLTRB(slot.left, slot.top, slot.right, slot.bottom - 1),
+        cellStart: slot.right - _cellExtent,
+        cellExtent: _cellExtent,
+        growth: TimelineBlockWordGrowth.towardBlockStart,
+        acrossAlignment: 1,
+      ));
       _paintPlatedGlyph(
         canvas,
-        Offset(
-          timelineBlockWordStart(
-            cellStart: slot.right - _cellExtent,
-            cellExtent: _cellExtent,
-            wordExtent: glyph.width,
-            growth: TimelineBlockWordGrowth.towardBlockStart,
-          ),
-          slot.bottom - glyph.height - 1,
-        ),
+        layout.origin,
         comma,
         commaStyle,
         ground: _bandGround(block),
+        fit: layout.fit,
       );
     }
   }

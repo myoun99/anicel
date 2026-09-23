@@ -83,6 +83,7 @@ void main() {
 
   test('the run labels painter prints only the block inside the window', () {
     final painter = TimelineRowRunLabelsPainter(
+      baseTextStyle: const TextStyle(fontSize: 14),
       layer: layerWith(timeline),
       geometry: testFrameGeometry(
         frameCellExtent: 48,

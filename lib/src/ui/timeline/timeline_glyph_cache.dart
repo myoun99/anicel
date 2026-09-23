@@ -1,12 +1,21 @@
 import 'package:flutter/painting.dart';
 
+import '../text/word_condensation.dart';
 import 'timeline_cell_style.dart' show timelineTextOnColor;
 
 /// UI-R16: ONE laid-out TextPainter cache for every timeline-family
 /// painter (row cell glyphs, ruler labels, x-sheet rail numbers).
 /// Text layout is the priciest part of a painter repaint in debug, and
 /// the same strings recur endlessly across repaints, rows and panels —
-/// cache per (text, color, weight, size) with LRU eviction.
+/// cache per (text, style) with LRU eviction.
+///
+/// ⛔The key is the WHOLE style. It used to be (color, weight, size) —
+/// and the painters that set their type from scratch never named a face,
+/// so the koma, the rulers and the flip window drew in the OS's font while
+/// the names beside them drew in the app's (「앱은 한 글꼴」, 08-28). Once
+/// the painters all carry the app's face, the same number in two faces —
+/// or two heights, or two spacings — must be two entries, not whichever
+/// was laid out first.
 final Map<Object, TextPainter> _cache = <Object, TextPainter>{};
 
 /// Roomy enough for the widest live set (a storyboard-zoom ruler shows
@@ -27,7 +36,7 @@ TextPainter timelineGlyphPainter(
   TextStyle style, {
   double? maxWidth,
 }) {
-  final key = (text, style.color, style.fontWeight, style.fontSize, maxWidth);
+  final key = (text, style, maxWidth);
   final cached = _cache.remove(key);
   if (cached != null) {
     _cache[key] = cached; // LRU touch.
@@ -64,12 +73,18 @@ void paintTimelineGlyphOnGround(
   TextStyle style, {
   required Color ground,
   double? maxWidth,
+  WordFit fit = wordFitsAsItIs,
 }) {
-  timelineGlyphPainter(
-    text,
-    style.copyWith(color: timelineTextOnColor(ground)),
-    maxWidth: maxWidth,
-  ).paint(canvas, offset);
+  paintFittedText(
+    canvas,
+    timelineGlyphPainter(
+      text,
+      style.copyWith(color: timelineTextOnColor(ground)),
+      maxWidth: maxWidth,
+    ),
+    offset,
+    fit,
+  );
 }
 
 /// A laid-out glyph and where it lands: a strip's writing as VALUES, so

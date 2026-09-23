@@ -5,12 +5,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show celNumberOrMark;
 import '../canvas/flip_hud_model.dart';
+import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
+import 'timeline_cell_style.dart'
+    show
+        TimelineBlockWordGrowth,
+        timelineBlockWordLayout,
+        timelineBlockWordStyle;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_grid_stack.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -315,6 +322,7 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
           row: row,
           pixelsPerFrame: cell,
           colorScheme: colorScheme,
+          baseTextStyle: DefaultTextStyle.of(context).style,
           frameStartIndex: first,
         ),
       );
@@ -488,6 +496,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     required this.row,
     required this.pixelsPerFrame,
     required this.colorScheme,
+    required this.baseTextStyle,
     this.frameStartIndex = 0,
   });
 
@@ -495,6 +504,9 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
   final FlipHudRow row;
   final double pixelsPerFrame;
   final ColorScheme colorScheme;
+
+  /// The ambient text style — the app's face for the strip's words.
+  final TextStyle baseTextStyle;
 
   /// The frame at this painter's left edge — the grid sheet's convention
   /// ([TimelineGridSheetPainter.frameStartIndex]), so the strip and the
@@ -602,7 +614,6 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           canvas,
           Rect.fromLTRB(x(frame), 0, x(frame + 1), size.height),
           'x',
-          center: true,
           color: const Color(0xB8E9E7E2),
         );
       }
@@ -615,44 +626,46 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// A word of the strip, by the law every block word keeps: its type at
+  /// every zoom, laid by F-96 from the first cell of its [room] and
+  /// narrowed only past the room (B, 유저 2026-09-24: 「뭐든」).
+  ///
+  /// ↩️It was set in a monospace face of its own and VANISHED once its room
+  /// was under 10px — against 「절대 안 사라지도록」 (R26 #38), which holds
+  /// for every word a block writes.
   void _label(
     Canvas canvas,
-    Rect rect,
+    Rect room,
     String text, {
-    bool center = false,
     Color color = const Color(0xF2FFFFFF),
   }) {
-    if (rect.width < 10) {
-      return;
-    }
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 9.5,
-          color: color,
-          // ⑩: flat here too — see [_halo]. The frame half had its own copy
-          // of the shadow, which is exactly how a look that was supposed to
-          // be gone survives a deletion.
-          shadows: _CollapsedRowOverlayState._halo,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '',
-    )..layout(maxWidth: rect.width - 4);
-    if (painter.width > rect.width - 3) {
-      return;
-    }
-    painter.paint(
-      canvas,
-      Offset(
-        center ? rect.center.dx - painter.width / 2 : rect.left + 3,
-        rect.center.dy - painter.height / 2,
+    final glyph = timelineGlyphPainter(
+      text,
+      timelineBlockWordStyle(
+        baseTextStyle,
+        ink: color,
+        fontSize: _labelFontSize,
+        bold: false,
+      ).copyWith(
+        // ⑩: flat here too — see [_halo]. The frame half had its own copy
+        // of the shadow, which is exactly how a look that was supposed to
+        // be gone survives a deletion.
+        shadows: _CollapsedRowOverlayState._halo,
       ),
     );
+    final layout = timelineBlockWordLayout(glyph.size, (
+      axis: Axis.horizontal,
+      room: room,
+      cellStart: room.left,
+      cellExtent: math.min(pixelsPerFrame, room.width),
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0,
+    ));
+    paintFittedText(canvas, glyph, layout.origin, layout.fit);
   }
+
+  /// The strip's type — its own size, the one law every block word keeps.
+  static const double _labelFontSize = 9.5;
 
   @override
   Object get props =>
@@ -661,6 +674,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         ByIdentity(row),
         pixelsPerFrame,
         colorScheme,
+        baseTextStyle,
         frameStartIndex,
       );
 }

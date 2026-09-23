@@ -1,6 +1,7 @@
 import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
@@ -8,6 +9,7 @@ import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../native/qa_native_engine.dart';
+import '../text/word_condensation.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_ops.dart';
@@ -291,20 +293,32 @@ class TimelineGridTileStore {
   final BakeOnceLru<String, _BakedGlyph?> _glyphs =
       BakeOnceLru<String, _BakedGlyph?>(capacity: _glyphCapacity);
 
-  static String _glyphKey(String text, TextStyle style, double dpr) =>
+  /// ⚠️The narrowing is part of the glyph (B, 유저 2026-09-24): a word that
+  /// runs past its block is baked narrow, and [wordCondensation] quantises
+  /// the factor so the distinct bakes stay few.
+  static String _glyphKey(
+    String text,
+    TextStyle style,
+    ({double dpr, WordFit fit}) at,
+  ) =>
       '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
-      '${style.fontFamily}|$dpr';
+      '${style.fontFamily}|${at.dpr}|${at.fit.x}|${at.fit.y}';
 
-  Future<_BakedGlyph?> _glyphA8(String text, TextStyle style, double dpr) {
-    final key = _glyphKey(text, style, dpr);
-    return _glyphs.ensure(key, () => _bakeGlyph(text, style, dpr));
+  Future<_BakedGlyph?> _glyphA8(
+    String text,
+    TextStyle style,
+    ({double dpr, WordFit fit}) at,
+  ) {
+    final key = _glyphKey(text, style, at);
+    return _glyphs.ensure(key, () => _bakeGlyph(text, style, at));
   }
 
   Future<_BakedGlyph?> _bakeGlyph(
     String text,
     TextStyle style,
-    double dpr,
+    ({double dpr, WordFit fit}) at,
   ) async {
+    final (:dpr, :fit) = at;
     // COVERAGE bake: white text on transparent, alpha channel out — the
     // GLYPH op multiplies the per-cell ink's alpha by it.
     final textPainter = timelineGlyphPainter(
@@ -314,30 +328,34 @@ class TimelineGridTileStore {
     if (textPainter.width <= 0 || textPainter.height <= 0) {
       return null;
     }
-    final width = (textPainter.width * dpr).ceil() + 2;
-    final height = (textPainter.height * dpr).ceil() + 2;
+    final width = (textPainter.width * fit.x * dpr).ceil() + 2;
+    final height = (textPainter.height * fit.y * dpr).ceil() + 2;
     // 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
     //
-    // `timelineFittedGlyphFontSize` floors the size at 4.0 so names 「절대
-    // 안 사라지도록」 (R26 #38/#4) — and at deep zoom-out they went anyway.
-    // 🧪Measured 2026-08-29: rasterising "12" at 4px leaves mean alpha 136
-    // over its box; rasterising at 12px and box-filtering to the same box
-    // leaves 212. Both peak at 255, so the ink was never missing — it was
-    // BLOTCHY, dark only where a stroke happened to land on the grid, and
-    // a blotch tinted with cell ink reads as nothing.
+    // Names used to shrink to a 4px floor at deep zoom-out (R26 #38/#4) and
+    // went anyway. 🧪Measured 2026-08-29: rasterising "12" at 4px leaves
+    // mean alpha 136 over its box; rasterising at 12px and box-filtering to
+    // the same box leaves 212. Both peak at 255, so the ink was never
+    // missing — it was BLOTCHY, dark only where a stroke happened to land on
+    // the grid, and a blotch tinted with cell ink reads as nothing. A word
+    // keeps its type now (B, 2026-09-24) but NARROWS, and a narrow stroke
+    // blotches the same way — so the size this asks about is the type times
+    // the tighter narrowing.
     //
     // ⛔ABOVE THE FLOOR NOTHING CHANGES. `_bakeAtScale` is 1 for any glyph
     // the rasteriser can already draw well, so zoom-in keeps the pixels it
     // has always had — 유저: 「줌인하면 텍스트는 선명하게 보고싶다」.
     //
     // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
-    // parameter, so the shrink happens HERE, before upload; the native ABI
-    // is untouched.
-    final bakeScale = _bakeAtScale(style.fontSize);
+    // parameter, so the shrink and the narrowing happen HERE, before
+    // upload; the native ABI is untouched.
+    final bakeScale = _bakeAtScale(
+      (style.fontSize ?? _legibleBakeSize) * math.min(fit.x, fit.y),
+    );
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder)
       ..translate(1, 1)
-      ..scale(dpr * bakeScale, dpr * bakeScale);
+      ..scale(dpr * bakeScale * fit.x, dpr * bakeScale * fit.y);
     textPainter.paint(canvas, Offset.zero);
     final picture = recorder.endRecording();
     final bigWidth = (width * bakeScale).ceil();
@@ -367,8 +385,8 @@ class TimelineGridTileStore {
     return _BakedGlyph(
       width: width,
       height: height,
-      logicalWidth: textPainter.width,
-      logicalHeight: textPainter.height,
+      logicalWidth: textPainter.width * fit.x,
+      logicalHeight: textPainter.height * fit.y,
       alpha: bakeScale == 1
           ? big
           : boxFilterA8(big, bigWidth, bigHeight, width, height),
@@ -503,7 +521,15 @@ class TimelineGridTileStore {
     final originMain = horizontal ? originRect.left : originRect.top;
 
     final glyphCells =
-        <({int frameIndex, String text, TextStyle style, int rgba, String key})>[];
+        <
+          ({
+            String text,
+            TextStyle style,
+            int rgba,
+            String key,
+            ({Offset origin, WordFit fit}) layout,
+          })
+        >[];
     // F-96: a word may start before the span and grow into it, so the
     // nearest earlier word is baked too — the tile's own edge cuts what lies
     // outside it, the way it cuts a word that grows past the span's end.
@@ -551,12 +577,18 @@ class TimelineGridTileStore {
         continue;
       }
       final style = painter.glyphStyleFor(model);
+      // Laid and narrowed where the classic pass lays it, from the word's
+      // NATURAL size ([TimelineTileRasterSource.cellWordLayoutFor]).
+      final layout = painter.cellWordLayoutFor(
+        frameIndex,
+        timelineGlyphPainter(model.glyph, style).size,
+      );
       glyphCells.add((
-        frameIndex: frameIndex,
         text: model.glyph,
         style: style,
         rgba: timelineGridPackRgba(ink),
-        key: _glyphKey(model.glyph, style, dpr),
+        key: _glyphKey(model.glyph, style, (dpr: dpr, fit: layout.fit)),
+        layout: layout,
       ));
     }
     if (glyphCells.isEmpty) {
@@ -568,7 +600,11 @@ class TimelineGridTileStore {
       if (baked.containsKey(cell.key)) {
         continue;
       }
-      final glyph = await _glyphA8(cell.text, cell.style, dpr);
+      final glyph = await _glyphA8(
+        cell.text,
+        cell.style,
+        (dpr: dpr, fit: cell.layout.fit),
+      );
       if (glyph != null) {
         baked[cell.key] = glyph;
       }
@@ -607,13 +643,8 @@ class TimelineGridTileStore {
       if (glyph == null) {
         continue;
       }
-      // Laid where the classic pass lays it, on the LOGICAL text size
-      // ([TimelineTileRasterSource.cellWordOriginFor]); the bake pads 1
-      // physical px on each side.
-      final origin = painter.cellWordOriginFor(
-        cell.frameIndex,
-        Size(glyph.logicalWidth, glyph.logicalHeight),
-      );
+      // The bake pads 1 physical px on each side.
+      final origin = cell.layout.origin;
       final local = horizontal
           ? origin.translate(-originMain, 0)
           : origin.translate(0, -originMain);
