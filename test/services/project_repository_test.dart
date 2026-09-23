@@ -1355,18 +1355,20 @@ void main() {
 
       test('a layer IN a cut is the scoped question, in its own words', () {
         expect(
-          () => repository.updateLayerInstructions(
+          () => repository.updateExposureMemo(
             cutId: const CutId('cut-1'),
             layerId: const LayerId('layer-x'),
-            instructions: const {},
+            blockStartIndex: 0,
+            memo: null,
           ),
           refusesWith('Layer not found in cut cut-1: layer-x'),
         );
         expect(
-          () => repository.updateLayerInstructions(
+          () => repository.updateExposureMemo(
             cutId: const CutId('cut-x'),
             layerId: const LayerId('layer-1'),
-            instructions: const {},
+            blockStartIndex: 0,
+            memo: null,
           ),
           refusesWith('Cut not found: cut-x'),
         );

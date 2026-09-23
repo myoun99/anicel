@@ -376,13 +376,9 @@ void main() {
     final instruction = s.layers.firstWhere(
       (l) => l.kind == LayerKind.instruction,
     );
-    s.repository.updateLayerInstructions(
-      cutId: s.requireActiveCut.id,
-      layerId: instruction.id,
-      instructions: const {
-        1: InstructionEvent(instructionId: 'pan', length: 2),
-      },
-    );
+    _laySpans(s, instruction, const {
+      1: InstructionEvent(instructionId: 'pan', length: 2),
+    });
 
     s.updateFrameRangeSelectionDrag(
       layerId: instruction.id,
@@ -524,14 +520,10 @@ void main() {
     final instruction = s.layers.firstWhere(
       (l) => l.kind == LayerKind.instruction,
     );
-    s.repository.updateLayerInstructions(
-      cutId: s.requireActiveCut.id,
-      layerId: instruction.id,
-      instructions: const {
-        1: InstructionEvent(instructionId: 'pan', length: 3),
-        7: InstructionEvent(instructionId: 'zoom', length: 2),
-      },
-    );
+    _laySpans(s, instruction, const {
+      1: InstructionEvent(instructionId: 'pan', length: 3),
+      7: InstructionEvent(instructionId: 'zoom', length: 2),
+    });
 
     // One mid-event cell → the whole [1,4) span.
     s.updateFrameRangeSelectionDrag(
@@ -607,7 +599,8 @@ void main() {
   });
 
   test('P3b-4 (#2): instruction→instruction row moves carry the events; '
-      'an overlapping landing voids; cross-kind hovers clear the preview', () {
+      'an overlapping landing pushes; cross-kind hovers clear the preview',
+      () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final first = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
@@ -615,13 +608,9 @@ void main() {
     final second = s.layers.lastWhere(
       (l) => l.kind == LayerKind.instruction && l.id != first.id,
     );
-    s.repository.updateLayerInstructions(
-      cutId: s.requireActiveCut.id,
-      layerId: first.id,
-      instructions: const {
-        1: InstructionEvent(instructionId: 'pan', length: 2),
-      },
-    );
+    _laySpans(s, first, const {
+      1: InstructionEvent(instructionId: 'pan', length: 2),
+    });
 
     s.updateFrameRangeSelectionDrag(
       layerId: first.id,
@@ -640,14 +629,13 @@ void main() {
     expect(row(first.id).instructions.containsKey(1), isTrue);
     expect(row(second.id).instructions, isEmpty);
 
-    // An overlapping landing on the target voids the drop.
-    s.repository.updateLayerInstructions(
-      cutId: s.requireActiveCut.id,
-      layerId: second.id,
-      instructions: const {
-        2: InstructionEvent(instructionId: 'zoom', length: 2),
-      },
-    );
+    // ↩️An overlapping landing used to VOID the drop — the span law, which
+    // refused rather than moved anything. A direction row's spans are its
+    // blocks now (R27), so the drop is the drawing rows' own: it pushes the
+    // block it lands among out of the way (R12-②), and nothing is lost.
+    _laySpans(s, second, const {
+      2: InstructionEvent(instructionId: 'zoom', length: 2),
+    });
     s.updateFrameRangeSelectionDrag(
       layerId: first.id,
       anchorIndex: 1,
@@ -655,10 +643,18 @@ void main() {
     );
     expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
     rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
-    expect(s.dragPreview.value, isNull, reason: '[3,5) overlaps [2,4)');
-    final undoProbe = s.canUndo;
+    expect(s.dragPreview.value, isNotNull, reason: '[3,5) meets [2,4)');
     rangeMove(s).endFrameRangeMoveDrag();
-    expect(s.canUndo, undoProbe, reason: 'void drops commit nothing');
+    expect(row(first.id).instructions, isEmpty);
+    expect(
+      {
+        for (final span in row(second.id).instructions.values)
+          span.instructionId: span.length,
+      },
+      {'pan': 2, 'zoom': 2},
+      reason: 'both spans kept, whole',
+    );
+    s.undo();
 
     // A cross-kind hover (instruction → drawing row) clears the preview.
     final drawing = s.layers.firstWhere((l) => l.kind == LayerKind.animation);
@@ -1315,13 +1311,9 @@ void main() {
       final (s, seIds, cam) = soundOnS2();
       // Put an instruction event inside the selected range.
       final camLayer = s.layers.firstWhere((l) => l.id == cam);
-      s.repository.replaceLayer(
-        layer: camLayer.copyWith(
-          instructions: const {
-            0: InstructionEvent(instructionId: 'pan', length: 1),
-          },
-        ),
-      );
+      _laySpans(s, camLayer, const {
+        0: InstructionEvent(instructionId: 'pan', length: 1),
+      });
 
       s.updateFrameRangeSelectionDrag(
         layerId: seIds[1],
@@ -1521,3 +1513,21 @@ void main() {
     expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
   });
 }
+
+/// [spans] laid on the direction row [row] of [s]'s active cut — each span a
+/// block on a cel of its own, the way a row from before R27 opens (the
+/// layer lays them, `Layer`'s constructor).
+void _laySpans(
+  EditorSessionManager s,
+  Layer row,
+  Map<int, InstructionEvent> spans,
+) => s.repository.replaceLayer(
+  layer: Layer(
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    frames: const [],
+    timeline: const {},
+    instructions: spans,
+  ),
+);

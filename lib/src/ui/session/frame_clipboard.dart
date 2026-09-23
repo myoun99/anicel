@@ -466,7 +466,9 @@ class FrameClipboard {
     if (layer == null || _copiedFrame == null) {
       return false;
     }
-    if (!layer.kind.holdsDrawings ||
+    // A direction row pastes blocks like every cel row: its span rides the
+    // block it is (R27).
+    if (!layer.kind.takesAuthoredCels ||
         // SYNCED attach rows own no timeline of their own.
         isSyncedAttachedLayer(layer) ||
         // A reference row's picture comes from the library.
@@ -533,7 +535,7 @@ class FrameClipboard {
       }
       final row = _project.rangeLayerById(id);
       if (row == null ||
-          !row.kind.holdsDrawings ||
+          !row.kind.takesAuthoredCels ||
           row.kind.holdsSingleCel ||
           isSyncedAttachedLayer(row)) {
         continue;

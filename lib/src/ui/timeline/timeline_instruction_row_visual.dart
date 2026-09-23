@@ -56,8 +56,8 @@ TimelineCellExposureState instructionCellExposureState(
       : TimelineCellExposureState.uncovered;
 }
 
-/// What an instruction row's BAND shows: its own cels where it has them,
-/// its instruction spans everywhere else.
+/// What a row's BAND shows: the span adapter on a row that is spans and
+/// nothing else (the transition), its own cels everywhere else.
 ///
 /// 🚨R27 #16 LEFT THE BAND EMPTY (유저 2026-08-27: 「지금 스샷보면 **블록의
 /// 배경색 흰색이 사라졌는데?**」). Giving the direction row cels flipped
@@ -66,10 +66,11 @@ TimelineCellExposureState instructionCellExposureState(
 /// Nothing was drawn at all. The row did not gain a feature; it lost its
 /// blocks.
 ///
-/// ★A UNION, not a choice, because both are true of that row now: the
-/// spans are why it exists and the cels are what R27 #16 gave it. Its own
-/// cels win where it has them (a drawing that starts mid-span really does
-/// start a block there); the spans fill the rest, exactly as before.
+/// ↩️That fix was a UNION — the direction row's own cels where it had
+/// them, its spans filling the rest — because its spans lived beside its
+/// cels. Since R27 its spans ARE its blocks (`LayerKind.spansRideBlocks`),
+/// so its own cels are the whole answer, and the union's second half had
+/// nothing left to fill.
 ///
 /// ⛔ONE FUNCTION, because there are TWO readers — the cells row and the
 /// cursor layer's range measure — and a row that DRAWS a block it will not
@@ -78,18 +79,9 @@ TimelineCellExposureState bandExposureState(
   Layer layer,
   int frameIndex, {
   required TimelineCellExposureState Function(Layer, int) ownCels,
-}) {
-  if (!layer.kind.carriesInstructions) {
-    return ownCels(layer, frameIndex);
-  }
-  if (layer.kind.bandIsInstructionsOnly) {
-    return instructionCellExposureState(layer, frameIndex);
-  }
-  final own = ownCels(layer, frameIndex);
-  return own == TimelineCellExposureState.uncovered
-      ? instructionCellExposureState(layer, frameIndex)
-      : own;
-}
+}) => layer.kind.bandIsInstructionsOnly
+    ? instructionCellExposureState(layer, frameIndex)
+    : ownCels(layer, frameIndex);
 
 /// The instruction spans of [layer] that reach the half-open window
 /// [frameStartIndex]..[frameEndIndexExclusive], in map order.

@@ -177,7 +177,10 @@ class FrameVerbs {
       return false;
     }
     final layer = _selection.activeLayer;
-    if (layer == null || !layer.kind.holdsDrawings) {
+    // ⛔[LayerKind.takesAuthoredCels], not `holdsDrawings`: a direction
+    // row's block is its span (R27), and 「복사든 뭐든 싹다」 was this
+    // button sitting dark over it.
+    if (layer == null || !layer.kind.takesAuthoredCels) {
       return false;
     }
     // D22: a SINGLE-CEL (image) row's one block is pinned by the covering
@@ -260,7 +263,12 @@ class FrameVerbs {
 
   bool get canRenameFrameAtCurrentFrame {
     final layer = _selection.activeLayer;
-    if (layer == null) {
+    // 🚨A direction row's cels have no names to edit (유저 2026-09-12:
+    // 「이름으로 링크 안됨은 안해도됨. 링크는 해도되게 해서 법을 최대한
+    // 통일하되 이름을 안보이게, 수정못하게 해서 링크를 애초에 불가능하도록.
+    // 이름없으면 독립적인거니까」) — so the link law stays the one every row
+    // keeps, and a name that can never be typed can never link two spans.
+    if (layer == null || layer.kind.spansRideBlocks) {
       return false;
     }
 

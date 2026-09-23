@@ -659,6 +659,21 @@ enum LayerKind {
   /// [carriesInstructions] — that half did not change.
   bool get bandIsInstructionsOnly => carriesInstructions && !isDrawingCel;
 
+  /// Whether this row's instruction spans ARE its blocks — each one the
+  /// block it sits on, carried as `TimelineExposure.instruction`.
+  ///
+  /// 🚨R27 (유저 2026-09-12, Q1): 「**블록 = 스팬, 스팬마다 제 그림 한 장**」 —
+  /// and the same day: 「추가로 디렉션 레이어의 프레임블록이 삭제안됨.
+  /// 삭제버튼 활성화안됨. 복사든 뭐든 싹다」. A span kept beside the blocks
+  /// was a thing no block verb could find; kept ON the block, every one of
+  /// them carries it.
+  ///
+  /// ★The other half of [bandIsInstructionsOnly]: a row that carries
+  /// instructions either has no timeline of its own (the transition — its
+  /// spans are a stored map) or has one, and then its spans live on it.
+  /// ⛔DERIVED, and pinned beside that one, so the halves cannot drift.
+  bool get spansRideBlocks => carriesInstructions && isDrawingCel;
+
   /// Whether a row can be GIVEN a cel — a frame authored at a timeline index,
   /// which is the thing a brush then writes into.
   ///
@@ -676,11 +691,16 @@ enum LayerKind {
   /// feedback above was about. So the split is here, and the furniture keeps
   /// asking the old one.
   ///
-  /// ⚠️SCOPED TO CREATION, deliberately, because the user's sentence was:
+  /// ↩️It was SCOPED TO CREATION, because the user's sentence then was:
   /// 「**그림 그릴 수 있는 기능**(추가로 없으면 블록을 회색으로. 로직은 통일)
-  /// **만** 추가하라했지」. Blanking an exposure, duplicating a block, pasting
-  /// and marking are other verbs on other rows' terms; widening them together
-  /// would be answering a question nobody asked.
+  /// **만** 추가하라했지」 — duplicating, pasting and retiming a block were
+  /// other verbs, and nobody had asked. Then somebody did (R27, 유저
+  /// 2026-09-12): 「추가로 디렉션 레이어의 프레임블록이 삭제안됨.
+  /// 삭제버튼 활성화안됨. 복사든 뭐든 싹다」, with the block made its span
+  /// ([spansRideBlocks]). So the BLOCK verbs ask this too — duplicate, paste,
+  /// the comma retime. ⚠️Blanking an exposure and marking a cell still ask
+  /// [holdsDrawings]: they are the timesheet's X and ● — furniture a
+  /// direction row does not wear.
   ///
   /// ⛔DERIVED, and the derivation is pinned by a test — the same discipline
   /// [bandIsInstructionsOnly] follows, so the two halves cannot drift

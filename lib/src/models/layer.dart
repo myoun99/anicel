@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import '../core/collection_equality.dart';
 import '../core/copy_with_sentinel.dart';
@@ -6,6 +7,7 @@ import 'attached_mode.dart';
 import 'attached_placement.dart';
 import 'audio_clip.dart';
 import 'camera_instruction.dart';
+import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
 import 'frame.dart';
 import 'frame_id.dart';
@@ -58,9 +60,15 @@ class Layer {
     this.attachedMode = AttachedMode.synced,
     Map<FrameId, FrameId> baseFrameLinks = const {},
     this.folderId,
-  }) : frames = List.unmodifiable(frames),
-       timeline = _immutableTimeline(timeline ?? _deriveTimeline(frames)),
-       instructions = immutableInstructionMap(instructions ?? const {}),
+  }) : frames = List.unmodifiable(
+         _spansLaidAsBlocks(kind, id, frames, timeline, instructions).frames,
+       ),
+       timeline = _immutableTimeline(
+         _spansLaidAsBlocks(kind, id, frames, timeline, instructions).timeline,
+       ),
+       _storedInstructions = immutableInstructionMap(
+         kind.spansRideBlocks ? const {} : instructions ?? const {},
+       ),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
        // ⛔NOT NORMALIZED. 유저 2026-08-27: 「ae는 순서 자유잖아. 자유롭게
@@ -78,7 +86,18 @@ class Layer {
 
   /// Camera-work instruction spans (instruction rows only; empty elsewhere).
   /// Keyed by start frame; see [InstructionEvent].
-  final SplayTreeMap<int, InstructionEvent> instructions;
+  ///
+  /// 🚨On a DIRECTION row this is READ OFF THE BLOCKS
+  /// ([LayerKind.spansRideBlocks], R27): every authored block carrying an
+  /// instruction is a span of the block's start and length. Nothing stores
+  /// it there, so nothing can write it there — the block verbs move, copy,
+  /// link and delete spans by moving, copying, linking and deleting blocks.
+  late final SplayTreeMap<int, InstructionEvent> instructions =
+      kind.spansRideBlocks ? _spansOnBlocks(timeline) : _storedInstructions;
+
+  /// The spans a row WITHOUT a timeline of its own stores (the transition,
+  /// and every row that carries none, as an empty map).
+  final SplayTreeMap<int, InstructionEvent> _storedInstructions;
 
   /// Sound files placed on this SE layer (empty on other kinds).
   final List<AudioClip> audioClips;
@@ -210,6 +229,28 @@ class Layer {
   ///
   /// 🚨ONE lookup. Twelve call sites used to spell this loop themselves
   /// (the audit's clone scan, 2026-09-03).
+  /// The spans a copy hands its constructor: [spans] when a caller wrote
+  /// some, else what this row stores.
+  ///
+  /// ⛔A DIRECTION row's spans cannot be written through a map
+  /// ([instructions] is read off its blocks), and a write that tried would
+  /// have to guess from positions alone which block a span meant — so a
+  /// span that moved would read as one deleted and one created, and the
+  /// drawing under it would stay behind. Loud instead: write the blocks.
+  Map<int, InstructionEvent> _instructionsForCopy(
+    Map<int, InstructionEvent>? spans,
+  ) {
+    if (spans != null &&
+        kind.spansRideBlocks &&
+        !mapEquals(spans, instructions)) {
+      throw StateError(
+        "A direction row's spans are its blocks — edit the timeline, "
+        'not the span map.',
+      );
+    }
+    return spans ?? _storedInstructions;
+  }
+
   Frame? frameById(FrameId id) {
     for (final frame in frames) {
       if (frame.id == id) {
@@ -254,7 +295,7 @@ class Layer {
       name: name ?? this.name,
       frames: nextFrames,
       timeline: timeline ?? this.timeline,
-      instructions: instructions ?? this.instructions,
+      instructions: _instructionsForCopy(instructions),
       audioClips: audioClips ?? this.audioClips,
       isVisible: isVisible ?? this.isVisible,
       collapsed: collapsed ?? this.collapsed,
@@ -304,8 +345,9 @@ class Layer {
     'timeline': timeline.entries
         .map((entry) => {'index': entry.key, 'exposure': entry.value.toJson()})
         .toList(),
-    if (instructions.isNotEmpty)
-      'instructions': instructionMapToJson(instructions),
+    // A direction row's spans are written with its blocks.
+    if (_storedInstructions.isNotEmpty)
+      'instructions': instructionMapToJson(_storedInstructions),
     if (audioClips.isNotEmpty)
       'audioClips': audioClips.map((clip) => clip.toJson()).toList(),
     'isVisible': isVisible,
@@ -634,6 +676,80 @@ SplayTreeMap<int, TimelineExposure> _immutableTimeline(
   return result;
 }
 
+/// A DIRECTION row's [spans] laid down as the blocks they are (R27,
+/// [LayerKind.spansRideBlocks]) — how a span handed to the constructor (a
+/// file from before R27, a fixture) becomes one. Every other row, and a
+/// direction row handed none, comes back as given.
+///
+/// Each span lands the gentlest way that loses nothing:
+///  · on an entry that STARTS where it does → that block carries it (a copy
+///    of the row hands its own spans back, and they land where they were);
+///  · on free cells → a blank cel of its own ([_spanCelId]) exposed for the
+///    span's length, clamped at the next entry;
+///  · inside an entry that starts earlier → nowhere. ⛔Not a divide: a
+///    constructor that cut a drawing in two would be the one thing here
+///    that changed a picture.
+({List<Frame> frames, SplayTreeMap<int, TimelineExposure> timeline})
+_spansLaidAsBlocks(
+  LayerKind kind,
+  LayerId id,
+  List<Frame> frames,
+  Map<int, TimelineExposure>? timeline,
+  Map<int, InstructionEvent>? spans,
+) {
+  final laid = SplayTreeMap<int, TimelineExposure>.of(
+    timeline ?? _deriveTimeline(frames),
+  );
+  if (!kind.spansRideBlocks || spans == null || spans.isEmpty) {
+    return (frames: frames, timeline: laid);
+  }
+  final cels = [...frames];
+  final taken = {for (final frame in frames) frame.id};
+  for (final MapEntry(key: start, value: span) in spans.entries) {
+    final head = laid[start];
+    if (head != null) {
+      if (!head.ghost) {
+        laid[start] = head.copyWith(instruction: () => span.writing);
+      }
+      continue;
+    }
+    if (coveringDrawingBlockAt(laid, start) != null) {
+      continue;
+    }
+    final next = nextDrawingBlockAfter(laid, start)?.startIndex;
+    final cel = _spanCelId(id, start, taken);
+    taken.add(cel);
+    cels.add(Frame(id: cel, duration: 1, strokes: const []));
+    laid[start] = TimelineExposure.drawing(
+      cel,
+      length: next == null ? span.length : math.min(span.length, next - start),
+      instruction: span.writing,
+    );
+  }
+  return (frames: cels, timeline: laid);
+}
+
+/// The cel a span laid down by [_spansLaidAsBlocks] exposes: named for its
+/// row and its start, so the same input lays down the same row every time,
+/// and stepped past any id the row already uses.
+FrameId _spanCelId(LayerId layer, int start, Set<FrameId> taken) {
+  final base = '${layer.value}-span-$start';
+  var id = FrameId(base);
+  for (var n = 2; taken.contains(id); n += 1) {
+    id = FrameId('$base-$n');
+  }
+  return id;
+}
+
+/// The spans a direction row's blocks carry — see [Layer.instructions].
+SplayTreeMap<int, InstructionEvent> _spansOnBlocks(
+  SplayTreeMap<int, TimelineExposure> timeline,
+) => SplayTreeMap.of({
+  for (final MapEntry(key: start, value: entry) in timeline.entries)
+    if (entry.instruction case final writing? when !entry.ghost)
+      start: InstructionEvent.of(writing, length: entry.length!),
+});
+
 SplayTreeMap<int, TimelineExposure> _deriveTimeline(List<Frame> frames) {
   final timeline = SplayTreeMap<int, TimelineExposure>();
   var index = 0;
@@ -658,6 +774,7 @@ class _RawTimelineItem {
     this.endEdge = TimelineRunEdgeMark.none,
     this.breakdownOffsets = const [],
     this.memo,
+    this.instruction,
   });
 
   final int index;
@@ -678,6 +795,11 @@ class _RawTimelineItem {
   /// that skipped the key silently threw away every memo the user typed
   /// the moment the project was reopened.
   final ExposureMemo? memo;
+
+  /// The block's instruction — a direction row's span (R27). Carried here
+  /// for [memo]'s reason: a decoder that skipped it would drop every span
+  /// on reopening.
+  final ExposureInstruction? instruction;
 }
 
 /// Decodes a timeline from JSON, migrating legacy formats in one pass:
@@ -741,6 +863,11 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
           ? null
           : ExposureMemo.fromJson(
               exposureJson['memo'] as Map<String, dynamic>,
+            ),
+      instruction: exposureJson['instruction'] == null
+          ? null
+          : ExposureInstruction.fromJson(
+              exposureJson['instruction'] as Map<String, dynamic>,
             ),
     );
   }
@@ -842,6 +969,10 @@ TimelineExposure? _exposureFromRawItem(
   // the next write anyway.
   if (item.memo != null && authored) {
     exposure = exposure.copyWith(memo: () => item.memo);
+  }
+  // Nor an instruction, for the same reason.
+  if (item.instruction != null && authored) {
+    exposure = exposure.copyWith(instruction: () => item.instruction);
   }
   return exposure;
 }

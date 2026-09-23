@@ -2036,11 +2036,10 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    timeline: this,
+    frameIds: this,
     controllers: activeCutControllers,
     cutVerbs: cutVerbs,
     camera: camera,
-    activeCut: _activeCutEdits,
   );
 
   // ---------------------------------------------------------------------

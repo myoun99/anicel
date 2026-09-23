@@ -18,6 +18,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/project.dart';
@@ -71,7 +72,7 @@ import 'update_track_effects_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
-import 'update_layer_instructions_command.dart';
+import 'update_layer_timeline_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
@@ -756,45 +757,52 @@ class CutCommandCoordinator {
     ),
   );
 
-  /// Replaces an instruction row's span map; one undo step, no-op when
-  /// unchanged. An optional [note] rewrites the cut note in the SAME undo
-  /// step (the creation flow auto-writes the memo shorthand — R5-⑥).
-  void updateLayerInstructions({
+  /// Writes a direction row's spans — which ARE its blocks (R27,
+  /// [LayerKind.spansRideBlocks]) — as the edit [spans] makes of the row;
+  /// one undo step, no-op when it changes nothing. An optional [note]
+  /// rewrites the cut note in the SAME undo step (the creation flow
+  /// auto-writes the memo shorthand — R5-⑥).
+  ///
+  /// ⛔Not a span map in and a span map out. A map says where spans are,
+  /// not which block each one was, and a direction row's span is a block
+  /// with a drawing on it: [spans] edits the row itself, so the drawing
+  /// goes where the span goes.
+  void updateDirectionSpans({
     required CutId cutId,
     required LayerId layerId,
-    required Map<int, InstructionEvent> instructions,
+    required Layer Function(Layer row) spans,
     String description = 'Edit instructions',
     String? note,
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (layer.kind != LayerKind.instruction) {
-      throw StateError('Instruction spans belong on instruction rows only.');
+    final before = _requireLayer(cutId: cutId, layerId: layerId);
+    if (!before.kind.spansRideBlocks) {
+      throw StateError('Direction spans belong on direction rows only.');
     }
-    if (mapEquals(layer.instructions, instructions)) {
-      return;
-    }
-
-    final instructionsCommand = UpdateLayerInstructionsCommand(
-      repository: repository,
-      cutId: cutId,
-      layerId: layerId,
-      instructions: instructions,
-      description: description,
+    final cut = _requireCut(cutId);
+    final after = rederiveRunBehaviors(
+      spans(before),
+      cutFrameCount: cut.duration,
     );
-    if (note == null || _requireCut(cutId).metadata.note == note) {
-      historyManager.execute(instructionsCommand);
+    final notes = note != null && cut.metadata.note != note;
+    if (after == before && !notes) {
       return;
     }
     historyManager.execute(
       CompositeCommand(
         description: description,
         commands: [
-          instructionsCommand,
-          UpdateCutNoteCommand(
-            repository: repository,
-            cutId: cutId,
-            note: note,
-          ),
+          if (after != before)
+            UpdateLayerTimelineCommand(
+              repository: repository,
+              before: before,
+              after: after,
+            ),
+          if (notes)
+            UpdateCutNoteCommand(
+              repository: repository,
+              cutId: cutId,
+              note: note,
+            ),
         ],
       ),
     );

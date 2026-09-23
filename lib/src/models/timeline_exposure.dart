@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'exposure_instruction.dart';
 import 'exposure_memo.dart';
 import 'frame_id.dart';
 import 'timeline_exposure_type.dart';
@@ -25,6 +26,7 @@ class TimelineExposure {
     this.ghostOf,
     this.breakdownOffsets = const [],
     this.memo,
+    this.instruction,
     this.startEdge = TimelineRunEdgeMark.none,
     this.endEdge = TimelineRunEdgeMark.none,
   }) : type = TimelineExposureType.drawing,
@@ -64,6 +66,13 @@ class TimelineExposure {
   /// there to author against.
   final ExposureMemo? memo;
 
+  /// This block's instruction — the span a DIRECTION row's block is (R27,
+  /// [ExposureInstruction]) — or null on every other row. BLOCK-OWNED like
+  /// [memo]: moves, copies and links carry it, so a linked block keeps its
+  /// own. Ghost entries never hold one — a ghost is a hold's projection, not
+  /// a span.
+  final ExposureInstruction? instruction;
+
   /// This block's share of its glued run's START-side and END-side edge
   /// properties (F-134 — see [TimelineRunEdgeMark]). BLOCK-OWNED like
   /// [breakdownOffsets] and [memo]: moves, copies and relinks carry them.
@@ -96,6 +105,7 @@ class TimelineExposure {
     int? length,
     List<int>? breakdownOffsets,
     ExposureMemo? Function()? memo,
+    ExposureInstruction? Function()? instruction,
     TimelineRunEdgeMark? startEdge,
     TimelineRunEdgeMark? endEdge,
   }) {
@@ -111,6 +121,7 @@ class TimelineExposure {
         nextLength,
       ),
       memo: memo == null ? this.memo : memo(),
+      instruction: instruction == null ? this.instruction : instruction(),
       startEdge: startEdge ?? this.startEdge,
       endEdge: endEdge ?? this.endEdge,
     );
@@ -131,6 +142,7 @@ class TimelineExposure {
     if (ghostOf != null) 'ghostOf': ghostOf!.toJson(),
     if (breakdownOffsets.isNotEmpty) 'breakdown': breakdownOffsets,
     if (memo != null && !memo!.isEmpty) 'memo': memo!.toJson(),
+    if (instruction != null) 'instruction': instruction!.toJson(),
     if (!startEdge.isNone) 'startEdge': startEdge.toJson(),
     if (!endEdge.isNone) 'endEdge': endEdge.toJson(),
   };
@@ -165,6 +177,11 @@ class TimelineExposure {
       memo: json['memo'] == null
           ? null
           : ExposureMemo.fromJson(json['memo'] as Map<String, dynamic>),
+      instruction: json['instruction'] == null
+          ? null
+          : ExposureInstruction.fromJson(
+              json['instruction'] as Map<String, dynamic>,
+            ),
       startEdge: TimelineRunEdgeMark.fromJsonOrNone(json['startEdge']),
       endEdge: TimelineRunEdgeMark.fromJsonOrNone(json['endEdge']),
     );
@@ -179,6 +196,7 @@ class TimelineExposure {
           other.length == length &&
           other.ghostOf == ghostOf &&
           other.memo == memo &&
+          other.instruction == instruction &&
           other.startEdge == startEdge &&
           other.endEdge == endEdge &&
           listEquals(other.breakdownOffsets, breakdownOffsets);
@@ -191,6 +209,7 @@ class TimelineExposure {
     ghostOf,
     Object.hashAll(breakdownOffsets),
     memo,
+    instruction,
     startEdge,
     endEdge,
   );
@@ -201,6 +220,7 @@ class TimelineExposure {
       '${ghostOf == null ? '' : ', $ghostOf'}'
       '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'}'
       '${memo == null ? '' : ', memo: $memo'}'
+      '${instruction == null ? '' : ', instruction: $instruction'}'
       '${startEdge.isNone ? '' : ', start: $startEdge'}'
       '${endEdge.isNone ? '' : ', end: $endEdge'})';
 }

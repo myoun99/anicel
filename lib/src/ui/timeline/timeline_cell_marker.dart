@@ -43,9 +43,13 @@ String timelineCellMarker({
     // markers ([timelineUnionKeyMarkerSpans]) — so the text channel says
     // nothing there, and in particular never the paper-cell mark that used
     // to surface mid-drag when the preview outran the committed name.
+    //
+    // 🚨A DIRECTION row too, cels and all (유저 2026-09-12: 「이름을
+    // 안보이게」): its block is its span (R27), and the span overlay is its
+    // writing — not the name, and not the ○ an unnamed cel would print.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
-              layer.kind.bandIsInstructionsOnly ||
+              layer.kind.carriesInstructions ||
               layer.kind == LayerKind.camera
           ? ''
           : celNumberOrMark(frameName),

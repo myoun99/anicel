@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../core/collection_equality.dart';
+import 'exposure_instruction.dart';
 
 /// Camera-work instruction vocabulary and events for instruction rows.
 ///
@@ -253,6 +254,10 @@ class CameraInstructionSet {
 }
 
 /// One span on an instruction row; keyed by its start frame on the layer.
+///
+/// On a DIRECTION row it is read off a block ([of]) rather than stored: the
+/// block holds the [writing] and answers the length (R27 —
+/// [ExposureInstruction] says why).
 class InstructionEvent {
   const InstructionEvent({
     required this.instructionId,
@@ -262,6 +267,23 @@ class InstructionEvent {
     this.valueB,
     this.memo,
   });
+
+  /// The span [writing] makes on a block [length] frames long.
+  InstructionEvent.of(ExposureInstruction writing, {required this.length})
+    : instructionId = writing.instructionId,
+      text = writing.text,
+      valueA = writing.valueA,
+      valueB = writing.valueB,
+      memo = writing.memo;
+
+  /// What this span says, without the length a block answers.
+  ExposureInstruction get writing => ExposureInstruction(
+    instructionId: instructionId,
+    text: text,
+    valueA: valueA,
+    valueB: valueB,
+    memo: memo,
+  );
 
   /// References a [CameraInstructionDef.id]; a dangling reference (its def
   /// was deleted) renders with the fallback glyph and the raw id.
@@ -310,25 +332,22 @@ class InstructionEvent {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'instructionId': instructionId,
-    'length': length,
-    if (text != null) 'text': text,
-    if (valueA != null) 'valueA': valueA,
-    if (valueB != null) 'valueB': valueB,
-    if (memo != null) 'memo': memo,
-  };
-
-  factory InstructionEvent.fromJson(Map<String, dynamic> json) {
-    return InstructionEvent(
-      instructionId: json['instructionId'] as String,
-      length: json['length'] as int,
-      text: json['text'] as String?,
-      valueA: json['valueA'] as String?,
-      valueB: json['valueB'] as String?,
-      memo: json['memo'] as String?,
-    );
+  /// The [writing]'s keys with the length beside them — one spelling of the
+  /// keys, shared with a block's ([ExposureInstruction.toJson]).
+  Map<String, dynamic> toJson() {
+    final json = writing.toJson();
+    return {
+      'instructionId': json.remove('instructionId'),
+      'length': length,
+      ...json,
+    };
   }
+
+  factory InstructionEvent.fromJson(Map<String, dynamic> json) =>
+      InstructionEvent.of(
+        ExposureInstruction.fromJson(json),
+        length: json['length'] as int,
+      );
 
   @override
   bool operator ==(Object other) =>

@@ -267,19 +267,27 @@ void main() {
       );
     });
 
-    test('🚨R27 #16: a DIRECTION span with no cel behind it is grey', () {
+    test('🚨R27 #16: a DIRECTION span with nothing drawn on it is grey', () {
       // 유저 2026-08-27: 「그림 그릴 수 있는 기능(추가로 **없으면 블록을
       // 회색으로**. 로직은 통일)만 추가하라했지」.
       //
       // ⚠️THE SECOND LAYER OF THE SAME BUG. The section test above this
       // used to send every CAM row home with `true`, so a direction row
-      // could never tint — and even once it could, a span-covered cell
-      // resolves NO FRAME, which every other row is right to call 「not a
-      // block, nothing to tint」. On this row the span IS the block.
+      // could never tint.
+      //
+      // ↩️It had a third: a span-covered cell resolved NO FRAME, which every
+      // other row is right to call 「not a block, nothing to tint」, so this
+      // row was the exception. Since R27 a span is a block on a blank cel
+      // of its own — laid here the way a row from before R27 opens — and
+      // it is grey by the rule every empty cel follows.
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       final row = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
-      final withSpan = row.copyWith(
+      final withSpan = Layer(
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        frames: const [],
         instructions: {
           2: const InstructionEvent(instructionId: 'fi', length: 3),
         },

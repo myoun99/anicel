@@ -20,7 +20,6 @@ import '../../../services/command.dart';
 import '../../../services/commands/rekey_brush_frames_command.dart';
 import '../../../services/commands/track_transition_commands.dart';
 import '../../../services/commands/update_cut_camera_command.dart';
-import '../../../services/commands/update_layer_instructions_command.dart';
 import '../../../services/commands/update_layer_timeline_command.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../../timeline/timeline_section_policy.dart';
@@ -88,15 +87,22 @@ typedef MultiRowStep = ({
 });
 
 /// The frame-axis riders shifted with a move: the camera keys (null when
-/// no camera row rides) and each instruction source's events by row.
+/// no camera row rides), the transition's events by row, and each
+/// DIRECTION row as the row its shifted blocks make (R27 — its spans are
+/// its blocks, so they ride as blocks).
 typedef FrameAxisRiders = ({
   Map<int, CameraPose>? camera,
   Map<LayerId, Map<int, InstructionEvent>> instructions,
+  Map<LayerId, Layer> directions,
 });
 
 /// No rider moves: a PURE row hop (frameDelta 0) leaves every key where
 /// it is, so the riders simply hold.
-const FrameAxisRiders noRiders = (camera: null, instructions: {});
+const FrameAxisRiders noRiders = (
+  camera: null,
+  instructions: {},
+  directions: {},
+);
 
 /// The KEY sources a frame-range move carries (P3b-2): the camera keys
 /// (with the camera row's id) and the instruction rows that own spans in
@@ -450,6 +456,12 @@ class FrameRangeMoveDrag {
   }) {
     final sources = <({Layer commit, int offset})>[];
     for (final row in rangeSelections.retimableSpanRows(span)) {
+      // A DIRECTION row rides as a key source ([_castKeySources]) — its
+      // spans are its blocks (R27) and they shift there, as they always
+      // did. Planning its blocks here as well would move them twice.
+      if (row.commit.kind.spansRideBlocks) {
+        continue;
+      }
       final hasBlock = drawingBlocks(row.display.timeline).any(
         (block) =>
             _wholeBlockIn(block, span.startIndex, span.endIndexExclusive),
@@ -596,6 +608,10 @@ class FrameRangeMoveDrag {
 
   Map<LayerId, Map<int, InstructionEvent>>? _instructionShifted;
 
+  /// The DIRECTION riders' shifted rows (R27), committed as their timeline
+  /// writes beside [_instructionShifted].
+  Map<LayerId, Layer>? _directionShifted;
+
   /// A ROW-CHANGE drop in flight within the SE / camera sections (P3b-4,
   /// 같은 섹션 행이동): the planned GLOBAL layer pair for an SE→SE drop,
   /// or the instruction-map pair for instruction→instruction.
@@ -615,13 +631,10 @@ class FrameRangeMoveDrag {
   /// how many rows you select" applies to SE rows too.
   List<SeRowMovePair>? _multiSeRowChanges;
 
-  ({
-    LayerId sourceId,
-    LayerId targetId,
-    Map<int, InstructionEvent> sourceAfter,
-    Map<int, InstructionEvent> targetAfter,
-  })?
-  _instructionRowChange;
+  /// A direction→direction ROW-CHANGE drop in flight (P3b-4): the drawing
+  /// rows' cross-layer plan, because the spans are the blocks (R27), and
+  /// the row it leaves — committed the block move's own way.
+  ({DrawingBlockMovePlan plan, Layer source})? _directionRowChange;
 
   /// THE selection this move reads and publishes, in the axis its sources
   /// are keyed by. Every step of the drag writes through here instead of
@@ -685,6 +698,7 @@ class FrameRangeMoveDrag {
       _multiPlans = null;
       _cameraShifted = null;
       _instructionShifted = null;
+      _directionShifted = null;
       _camera.showCameraKeysDragPreview(null);
       _slideSelectionOutline(
         selection,
@@ -742,29 +756,36 @@ class FrameRangeMoveDrag {
     final targetLayer = _project.layerById(targetLayerId);
     final sourceIsInstruction = sourceLayer?.kind == LayerKind.instruction;
     if (sourceIsInstruction && targetLayer?.kind == LayerKind.instruction) {
-      final plan = planInstructionRangeRowMove(
-        source: sourceLayer!.instructions,
-        target: targetLayer!.instructions,
+      // A direction row's spans are its blocks (R27): a drop on a sibling
+      // direction row is the drawing rows' own cross-layer move — the
+      // drawings travel with their spans, and their brush frames re-key.
+      final plan = planDrawingRangeMove(
+        source: sourceLayer!,
+        target: targetLayer!,
         rangeStartIndex: selection.startIndex,
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
+        sourceBank: _controllers.timelineController.bankLanesOf(
+          sourceLayer.id,
+        ),
+        cutFrameCount: _project.activeCutFrameCount,
       );
       if (plan == null) {
         keepLastValid();
         return true;
       }
-      _instructionRowChange = (
-        sourceId: selection.layerId,
-        targetId: targetLayerId,
-        sourceAfter: plan.sourceAfter,
-        targetAfter: plan.targetAfter,
-      );
+      _directionRowChange = (plan: plan, source: sourceLayer);
+      final frames = _project.activeCutFrameCount;
       _internals.dragPreview.value = BlockMoveDragPreview(
         previewLayers: {
-          selection.layerId: sourceLayer.copyWith(
-            instructions: plan.sourceAfter,
+          selection.layerId: rederiveRunBehaviors(
+            plan.sourceAfter,
+            cutFrameCount: frames,
           ),
-          targetLayerId: targetLayer.copyWith(instructions: plan.targetAfter),
+          targetLayerId: rederiveRunBehaviors(
+            plan.targetAfter!,
+            cutFrameCount: frames,
+          ),
         },
       );
       followOutline();
@@ -837,11 +858,10 @@ class FrameRangeMoveDrag {
   /// for BOTH the plain-slide and the rigid commit branches (C1/C④). The
   /// TRANSITION row's shifted spans land through the row's own
   /// track-owned writer (the edge drags' command): it has no cut to be
-  /// addressed by, so the cut gate must never swallow it. Cut-local
-  /// instruction rows keep the cut-addressed command they always had.
+  /// addressed by, so no cut gate may ever swallow it. (A cut's DIRECTION
+  /// row is not here — its spans are its blocks and ride as blocks, R27.)
   List<Command> _instructionShiftCommands(
     Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
-    Cut? cut,
   ) => [
     for (final entry in instructionShifted.entries)
       if (_transitions.trackTransitionOwner(entry.key) case final owner?)
@@ -853,14 +873,6 @@ class FrameRangeMoveDrag {
             instructions: SplayTreeMap<int, InstructionEvent>.from(entry.value),
           ),
           debugLabel: 'Move transition',
-        )
-      else if (cut != null)
-        UpdateLayerInstructionsCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          layerId: entry.key,
-          instructions: entry.value,
-          description: 'Move instruction keys',
         ),
   ];
 
@@ -912,12 +924,7 @@ class FrameRangeMoveDrag {
       return true;
     }
     // A valid rigid landing supersedes the slide / row-change plans.
-    _publishMultiRowMovePreview(
-      landing.plan,
-      landing.sePlans,
-      riders.camera,
-      riders.instructions,
-    );
+    _publishMultiRowMovePreview(landing.plan, landing.sePlans, riders);
     _landMultiRowOutline(step, targetLayerId, frameDelta, rowDelta);
     return true;
   }
@@ -1170,7 +1177,26 @@ class FrameRangeMoveDrag {
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
+    final directionShifted = <LayerId, Layer>{};
     for (final layer in _instructionSources ?? const <Layer>[]) {
+      if (layer.kind.spansRideBlocks) {
+        // A direction row's spans are its blocks (R27): they ride as the
+        // drawing rows' own slide, drawings and all.
+        final plan = planDrawingRangeMove(
+          source: layer,
+          target: layer,
+          rangeStartIndex: selection.startIndex,
+          rangeEndIndexExclusive: selection.endIndexExclusive,
+          frameDelta: frameDelta,
+          sourceBank: _controllers.timelineController.bankLanesOf(layer.id),
+          cutFrameCount: _project.activeCutFrameCount,
+        );
+        if (plan == null) {
+          return null;
+        }
+        directionShifted[layer.id] = plan.sourceAfter;
+        continue;
+      }
       final shifted = shiftInstructionEventsInRange(
         events: layer.instructions,
         rangeStartIndex: selection.startIndex,
@@ -1182,7 +1208,11 @@ class FrameRangeMoveDrag {
       }
       instructionShifted[layer.id] = shifted;
     }
-    return (camera: cameraShifted, instructions: instructionShifted);
+    return (
+      camera: cameraShifted,
+      instructions: instructionShifted,
+      directions: directionShifted,
+    );
   }
 
   List<LayerId> _landedLayerIds(
@@ -1212,18 +1242,20 @@ class FrameRangeMoveDrag {
   void _publishMultiRowMovePreview(
     MultiRowRangeMovePlan? plan,
     List<SeRowMovePair> sePlans,
-    Map<int, CameraPose>? cameraShifted,
-    Map<LayerId, Map<int, InstructionEvent>> instructionShifted,
+    FrameAxisRiders riders,
   ) {
+    final cameraShifted = riders.camera;
+    final instructionShifted = riders.instructions;
     _multiRowPlan = plan;
     _multiSeRowChanges = sePlans.isEmpty ? null : sePlans;
     _multiPlans = null;
     _seRowChange = null;
-    _instructionRowChange = null;
+    _directionRowChange = null;
     _cameraShifted = cameraShifted;
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
+    _directionShifted = riders.directions.isEmpty ? null : riders.directions;
     _camera.showCameraKeysDragPreview(cameraShifted);
     final sePreviews = {
       for (final se in sePlans) ...{
@@ -1240,18 +1272,17 @@ class FrameRangeMoveDrag {
               cutFrameCount: _project.activeCutFrameCount,
             ),
         for (final entry in sePreviews.entries) entry.key: entry.value.shown,
-        // R27 #8: the frame-axis riders preview their shifted spans in
-        // place (the cells row renders straight off layer.instructions).
+        // R27 #8: the frame-axis riders preview in place — a DIRECTION row
+        // as the row its shifted blocks make (its spans are its blocks).
         // ⛔The TRANSITION stays OFF this map: on the ACTIVE track
         // layerById finds its display clone under the same id, and a
         // global-keyed entry here would leak into the cut timeline's
         // read-only projection. It previews on its own channel below.
-        for (final entry in instructionShifted.entries)
-          if (_transitions.trackTransitionOwner(entry.key) == null &&
-              _project.layerById(entry.key) != null)
-            entry.key: _project
-                .layerById(entry.key)!
-                .copyWith(instructions: entry.value),
+        for (final entry in riders.directions.entries)
+          entry.key: rederiveRunBehaviors(
+            entry.value,
+            cutFrameCount: _project.activeCutFrameCount,
+          ),
       },
       // C2: the SE passengers' global forms, for the storyboard strips.
       previewGlobalLayers: {
@@ -1350,11 +1381,12 @@ class FrameRangeMoveDrag {
     _plan = null;
     _multiPlans = null;
     _seRowChange = null;
-    _instructionRowChange = null;
+    _directionRowChange = null;
     _multiRowPlan = null;
     _multiSeRowChanges = null;
     _cameraShifted = null;
     _instructionShifted = null;
+    _directionShifted = null;
     _dropPreviewChannels();
     _liveSpan = _selectionBefore;
   }
@@ -1516,7 +1548,7 @@ class FrameRangeMoveDrag {
     // Falling to the plain slide: any prior row-change / multi-row plan
     // is stale now (the slide, not the row change, is last valid).
     _seRowChange = null;
-    _instructionRowChange = null;
+    _directionRowChange = null;
     _multiRowPlan = null;
     _multiSeRowChanges = null;
     // …and the rigid step's RIDER shifts die WITH its plans: a stale
@@ -1526,6 +1558,7 @@ class FrameRangeMoveDrag {
     // them fresh below.
     _cameraShifted = null;
     _instructionShifted = null;
+    _directionShifted = null;
     final plans = _planSlide(multiSources, selection, frameDelta);
     final riders = plans == null
         ? null
@@ -1541,6 +1574,7 @@ class FrameRangeMoveDrag {
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
+    _directionShifted = riders.directions.isEmpty ? null : riders.directions;
     _publishSlidePreview(plans, riders);
     _slideSelectionOutline(
       selection,
@@ -1615,21 +1649,18 @@ class FrameRangeMoveDrag {
         previewGlobalLayers[commitForm.id] = global;
       }
     }
-    // Instruction rows preview with their shifted spans — the cells row
-    // renders straight off layer.instructions. ⛔The track-owned
-    // TRANSITION row stays OFF this map: on the ACTIVE track
-    // [ProjectAccess.layerById] DOES find its display clone under the
-    // same id (layer_controller inserts it), and a global-keyed entry
+    // A DIRECTION row previews as the row its shifted blocks make — its
+    // spans are its blocks (R27), so the cells row reads them there.
+    // ⛔The track-owned TRANSITION row stays OFF this map: on the ACTIVE
+    // track [ProjectAccess.layerById] DOES find its display clone under
+    // the same id (layer_controller inserts it), and a global-keyed entry
     // here would leak into the cut timeline's read-only projection. It
     // previews on its own channel below instead.
-    for (final entry in instructionShifted.entries) {
-      if (_transitions.trackTransitionOwner(entry.key) != null) {
-        continue;
-      }
-      final layer = _project.layerById(entry.key);
-      if (layer != null) {
-        previewLayers[entry.key] = layer.copyWith(instructions: entry.value);
-      }
+    for (final entry in riders.directions.entries) {
+      previewLayers[entry.key] = rederiveRunBehaviors(
+        entry.value,
+        cutFrameCount: _project.activeCutFrameCount,
+      );
     }
     _internals.dragPreview.value = BlockMoveDragPreview(
       previewLayers: previewLayers,
@@ -1659,8 +1690,8 @@ class FrameRangeMoveDrag {
       _commitSeRowMove(_seRowChange!, landedSelection);
       return;
     }
-    if (_instructionRowChange != null) {
-      _commitInstructionRowMove(_instructionRowChange!, landedSelection);
+    if (_directionRowChange case final change?) {
+      _commitDirectionRowMove(change, landedSelection);
       return;
     }
     if (_multiRowPlan != null || _multiSeRowChanges != null) {
@@ -1737,10 +1768,24 @@ class FrameRangeMoveDrag {
   /// cut-gated copy with the transition arm missing).
   List<Command> _riderCommands(Cut? cut) {
     final instructionShifted = _instructionShifted;
+    final directionShifted = _directionShifted;
     final cameraShifted = _cameraShifted;
     return [
       if (instructionShifted != null)
-        ..._instructionShiftCommands(instructionShifted, cut),
+        ..._instructionShiftCommands(instructionShifted),
+      // A DIRECTION rider lands as the timeline write any block move makes
+      // — its spans are its blocks (R27).
+      if (directionShifted != null)
+        for (final MapEntry(key: id, value: after) in directionShifted.entries)
+          if (_project.commitLayerById(id) case final before?)
+            UpdateLayerTimelineCommand(
+              repository: _project.repository,
+              before: before,
+              after: rederiveRunBehaviors(
+                after,
+                cutFrameCount: _project.activeCutFrameCount,
+              ),
+            ),
       if (cameraShifted != null && cut != null)
         UpdateCutCameraCommand(
           repository: _project.repository,
@@ -1858,44 +1903,22 @@ class FrameRangeMoveDrag {
     return commands;
   }
 
-  void _commitInstructionRowMove(
-    ({
-      Map<int, InstructionEvent> sourceAfter,
-      LayerId sourceId,
-      Map<int, InstructionEvent> targetAfter,
-      LayerId targetId,
-    })
-    instructionRowChange,
+  /// A direction→direction drop lands as the block move it is: both rows
+  /// and the brush re-key of every carried cel in ONE undo step
+  /// ([DrawingBlockMoveDragVerbs.singleRowMoveCommand]).
+  void _commitDirectionRowMove(
+    ({DrawingBlockMovePlan plan, Layer source}) change,
     TimelineFrameRangeSelection? landedSelection,
   ) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
-      _liveSpan = _selectionBefore;
-      return;
-    }
     _project.historyManager.execute(
-      CompositeCommand(
+      _blockMove.singleRowMoveCommand(
+        change.plan,
+        source: change.source,
         description: 'Move frame range',
-        commands: [
-          UpdateLayerInstructionsCommand(
-            repository: _project.repository,
-            cutId: cut.id,
-            layerId: instructionRowChange.sourceId,
-            instructions: instructionRowChange.sourceAfter,
-            description: 'Move instruction keys',
-          ),
-          UpdateLayerInstructionsCommand(
-            repository: _project.repository,
-            cutId: cut.id,
-            layerId: instructionRowChange.targetId,
-            instructions: instructionRowChange.targetAfter,
-            description: 'Move instruction keys',
-          ),
-        ],
       ),
     );
     _liveSpan = landedSelection;
-    _controllers.layerController.selectLayer(instructionRowChange.targetId);
+    _controllers.layerController.selectLayer(change.plan.targetAfter!.id);
     _changes.warmActiveCut();
     _changes.notifyChanged();
   }

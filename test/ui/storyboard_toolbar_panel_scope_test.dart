@@ -439,9 +439,9 @@ void main() {
     expect(selection.endIndexExclusive, 4);
     expect(s.trackFrameRangeSelection.value, isNull);
 
-    // D40 on an INSTRUCTION row: the chips live in layer.instructions, not
-    // the timeline — the resolver reads the SAME lanes the range snap does,
-    // so a row a drag can select on, the button can select too (T25).
+    // D40 on a DIRECTION row: its chips are its blocks (R27) — the
+    // resolver reads the SAME lanes the range snap does, so a row a drag
+    // can select on, the button can select too (T25).
     if (!s.activeCutOrNull!.layers.any(
       (layer) => layer.kind == LayerKind.instruction,
     )) {
@@ -450,9 +450,12 @@ void main() {
     final instruction = s.activeCutOrNull!.layers.firstWhere(
       (layer) => layer.kind == LayerKind.instruction,
     );
-    s.instructionVerbs.updateLayerInstructions(instruction.id, const {
-      6: InstructionEvent(instructionId: 'pan', length: 3),
-    });
+    s.instructionVerbs.upsertInstructionEventAt(
+      instruction.id,
+      6,
+      const InstructionEvent(instructionId: 'pan', length: 3),
+      createLengthFrames: 3,
+    );
     s.selectLayer(instruction.id);
     await tester.pumpAndSettle();
     await tester.tap(frameMenu);

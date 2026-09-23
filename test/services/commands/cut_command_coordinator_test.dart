@@ -1745,8 +1745,8 @@ void main() {
       expect(fixture.historyManager.undoCount, 1);
     });
 
-    test('updateLayerInstructions edits CAM rows through history and '
-        'dedupes', () {
+    test("updateDirectionSpans writes a direction row's blocks through "
+        'history and dedupes', () {
       final instruction = _layer(id: 'layer-1', kind: LayerKind.instruction);
       final cel = _layer(id: 'layer-2');
       final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [instruction, cel]);
@@ -1758,48 +1758,60 @@ void main() {
         ),
         activeCutId: cutA.id,
       );
-      final spans = {
-        0: const InstructionEvent(
-          instructionId: 'fi',
-          length: 12,
-          valueA: 'A',
-          valueB: 'B',
-        ),
-      };
+      const span = InstructionEvent(
+        instructionId: 'fi',
+        length: 12,
+        valueA: 'A',
+        valueB: 'B',
+      );
+      // A span IS a block (R27): the edit lays one, on a cel of its own.
+      Layer laid(Layer row) => row.copyWith(
+        frames: [...row.frames, _frame(id: 'span-cel')],
+        timeline: {
+          0: TimelineExposure.drawing(
+            const FrameId('span-cel'),
+            length: 12,
+            instruction: span.writing,
+          ),
+        },
+      );
 
-      fixture.coordinator.updateLayerInstructions(
+      fixture.coordinator.updateDirectionSpans(
         cutId: cutA.id,
         layerId: instruction.id,
-        instructions: spans,
+        spans: laid,
       );
       expect(
         requireLayerAnywhere(fixture.project, instruction.id).instructions[0],
-        spans[0],
+        span,
       );
       expect(fixture.historyManager.undoCount, 1);
 
-      // Unchanged map: no new history entry.
-      fixture.coordinator.updateLayerInstructions(
+      // An edit that changes nothing: no new history entry.
+      fixture.coordinator.updateDirectionSpans(
         cutId: cutA.id,
         layerId: instruction.id,
-        instructions: spans,
+        spans: (row) => row,
       );
       expect(fixture.historyManager.undoCount, 1);
 
       fixture.historyManager.undo();
-      expect(requireLayerAnywhere(fixture.project, instruction.id).instructions, isEmpty);
+      expect(
+        requireLayerAnywhere(fixture.project, instruction.id).instructions,
+        isEmpty,
+      );
       fixture.historyManager.redo();
       expect(
         requireLayerAnywhere(fixture.project, instruction.id).instructions[0],
-        spans[0],
+        span,
       );
 
-      // Only instruction rows carry spans.
+      // Only a direction row's spans ride its blocks.
       expect(
-        () => fixture.coordinator.updateLayerInstructions(
+        () => fixture.coordinator.updateDirectionSpans(
           cutId: cutA.id,
           layerId: cel.id,
-          instructions: spans,
+          spans: laid,
         ),
         throwsStateError,
       );
