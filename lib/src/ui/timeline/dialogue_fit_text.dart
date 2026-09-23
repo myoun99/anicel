@@ -103,15 +103,10 @@ class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
         text: TextSpan(text: glyphs[i], style: style),
         textDirection: TextDirection.ltr,
       )..layout();
-      final fit = wordFit(painter.size, Size(cellExtent, size.height));
-      paintFittedText(
+      paintWordCentredIn(
         canvas,
         painter,
-        Offset(
-          centers[i] - painter.width * fit.x / 2,
-          (size.height - painter.height * fit.y) / 2,
-        ),
-        fit,
+        Rect.fromLTWH(centers[i] - cellExtent / 2, 0, cellExtent, size.height),
       );
     }
   }

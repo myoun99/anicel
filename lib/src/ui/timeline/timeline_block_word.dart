@@ -2,6 +2,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../text/word_condensation.dart';
+import 'axis_turn.dart' show extentAlong;
 import 'timeline_cell_style.dart';
 
 /// Where a word sits in a block that is laid out as WIDGETS: the block is
@@ -83,9 +84,8 @@ class RenderTimelineBlockWord extends RenderProxyBox {
     }
     child.layout(const BoxConstraints(), parentUsesSize: true);
     final place = _place;
-    final along = place.axis == Axis.horizontal ? size.width : size.height;
     final cells = place.cells < 1 ? 1 : place.cells;
-    final cellExtent = along / cells;
+    final cellExtent = extentAlong(place.axis, size) / cells;
     _layout = timelineBlockWordLayout(child.size, (
       axis: place.axis,
       room: Offset.zero & size,
@@ -96,38 +96,37 @@ class RenderTimelineBlockWord extends RenderProxyBox {
     ));
   }
 
+  /// Where the word lands in this box, narrowed — ONE transform for what is
+  /// painted and for what a hit test or a rect of the word reports, so the
+  /// two cannot tell different stories.
+  Matrix4 get _childTransform {
+    final (:origin, :fit) = _layout;
+    return Matrix4.translationValues(origin.dx, origin.dy, 0)
+      ..scaleByDouble(fit.x, fit.y, 1, 1);
+  }
+
   @override
   void paint(PaintingContext context, Offset offset) {
     final child = this.child;
     if (child == null) {
       return;
     }
-    final (:origin, :fit) = _layout;
-    final transform = Matrix4.translationValues(
-      offset.dx + origin.dx,
-      offset.dy + origin.dy,
-      0,
-    )..scaleByDouble(fit.x, fit.y, 1, 1);
     context.pushClipRect(
       needsCompositing,
       offset,
       Offset.zero & size,
-      (context, _) => context.pushTransform(
+      (context, offset) => context.pushTransform(
         needsCompositing,
-        Offset.zero,
-        transform,
+        offset,
+        _childTransform,
         (context, offset) => context.paintChild(child, offset),
       ),
     );
   }
 
   @override
-  void applyPaintTransform(RenderBox child, Matrix4 transform) {
-    final (:origin, :fit) = _layout;
-    transform
-      ..translateByDouble(origin.dx, origin.dy, 0, 1)
-      ..scaleByDouble(fit.x, fit.y, 1, 1);
-  }
+  void applyPaintTransform(RenderBox child, Matrix4 transform) =>
+      transform.multiply(_childTransform);
 
   /// A word is read, not pressed: the row's own gestures own this box.
   @override

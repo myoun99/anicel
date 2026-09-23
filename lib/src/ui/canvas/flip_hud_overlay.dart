@@ -289,8 +289,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   final bool frameStep;
   final ColorScheme colorScheme;
 
-  /// The ambient text style — the app's face, which a `TextStyle` set from
-  /// scratch does not name (it falls to the OS's font).
+  /// The app's face — a bare `TextStyle` names none and falls to the OS's.
   final TextStyle baseTextStyle;
 
   /// The X-sheet's window (F-28): the timeline's layout turned a quarter
@@ -589,8 +588,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     canvas.restore();
   }
 
-  /// The app's face and nothing else of the ambient style — its line height
-  /// would move every name the rail lays out by its box.
+  /// The app's face alone — the ambient line height would move every name.
   TextStyle _railNameStyle(FlipHudRow row, Color ink) => TextStyle(
     fontSize: row.isLane ? 10.5 : 11.5,
     fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
@@ -763,12 +761,9 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// [text] centred in [rect] as the reader sees it — upright on a
-  /// [standing] window, the way the sheet sets a cel number.
-  ///
-  /// 🚨A block word like every other (B, 유저 2026-09-24): one type size at
-  /// every width, narrowed — each axis on its own — only where the slot is
-  /// shorter than the word ([wordFit]). ↩️It shrank with the slot and was
-  /// cut to an ellipsis past it, in a style that named no face.
+  /// [standing] window, the way the sheet sets a cel number. 🚨A block word
+  /// like every other (B, 유저 2026-09-24): its type at every width, narrowed
+  /// into the slot; ↩️it shrank, and was cut to an ellipsis past the slot.
   void _paintGlyph(
     Canvas canvas,
     Rect rect,
@@ -789,18 +784,14 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         ),
       );
       // Two pixels of air either side, as the ellipsis used to keep.
-      final fit = wordFit(
-        painter.size,
-        Size(math.max(0.0, box.width - 4), box.height),
-      );
-      paintFittedText(
+      paintWordCentredIn(
         canvas,
         painter,
-        Offset(
-          box.center.dx - painter.width * fit.x / 2,
-          box.center.dy - painter.height * fit.y / 2,
+        Rect.fromCenter(
+          center: box.center,
+          width: math.max(0, box.width - 4),
+          height: box.height,
         ),
-        fit,
       );
     });
   }
