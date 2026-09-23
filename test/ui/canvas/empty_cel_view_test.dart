@@ -298,6 +298,73 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🚨F-171: from the app as it opens — no cel ever drawn — the '
+      'FIRST press makes the block AND draws into it', (tester) async {
+    // 유저 (F-171): 「앱의 초기값 상태에서 프레임 자동생성 버튼 누르고 선
+    // 그으면 그 가장 처음 상태만 선이 안그어짐. 블록은 생기는데. 그 상태에서
+    // 프레임 삭제하고 다시 해보면 그 뒤부터는 프레임 생기고 선도 라이브로
+    // 그려짐. 다른 규칙 두지말고 법 완벽통일」.
+    //
+    // ⛔The case above draws on frame 0 FIRST, on purpose: that is what puts
+    // a coordinator behind the empty cell. This one does not — nothing has
+    // been drawn on this layer yet, which is the app as it opens.
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+      autoCreateFrameOnDraw: true,
+    );
+    final session = (await openApp(tester)).session;
+    final layerId = session.activeLayerId!;
+    Layer layer() => session.activeCutOrNull!.layers.firstWhere(
+      (candidate) => candidate.id == layerId,
+    );
+    expect(layer().frames, isEmpty, reason: 'premise: never drawn on');
+    final frame = session.currentFrameIndex;
+    // The editing view is already there to hear the press, standing down on
+    // the cel the press will make — and that stack is not the session's
+    // until the cel exists (nothing its verbs could act on).
+    expect(canvasView, findsOneWidget, reason: 'the view stands from the start');
+    final standingOn = tester
+        .widget<InteractiveBrushEditCanvasView>(canvasView)
+        .frameId;
+    expect(session.pixelEditingCoordinator, isNull);
+
+    final press = await tester.startGesture(
+      visibleCanvasPoint(tester),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await press.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await press.moveBy(const Offset(30, 20));
+    await tester.pump();
+    await press.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      layer().frames,
+      hasLength(1),
+      reason: '「블록은 생기는데」 — the block half already works',
+    );
+    expect(
+      session.layerContentBoundsAt(layer(), frame),
+      isNotNull,
+      reason: '「그 가장 처음 상태만 선이 안그어짐」 — the first stroke lands too',
+    );
+    expect(
+      layer().frames.single.id,
+      standingOn,
+      reason: 'the press made the very cel the view stood on — no stack is '
+          'left standing on a name nothing uses',
+    );
+    expect(
+      session.pixelEditingCoordinator?.activeFrameKey.frameId,
+      standingOn,
+      reason: 'and the stack is the session\'s once it stands on a cel',
+    );
+
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   // 「답은 추천대로」 = merged: one press on an empty cel is ONE undo, and
   // both halves go back together.
   testWidgets('and the block and the stroke undo as one', (tester) async {

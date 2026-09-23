@@ -1,5 +1,7 @@
 import '../../models/app_input_settings.dart';
 import '../../services/command.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer_id.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'frame_verbs.dart';
@@ -59,6 +61,26 @@ class AutoFrameForStroke {
       _autoFrameForStroke == null &&
       _frameVerbs.canCreateDrawingAtCurrentFrame;
 
+  /// 🚨F-171 — THE CEL A PRESS ON [layerId] WOULD MAKE, named before it
+  /// exists.
+  ///
+  /// 유저 (F-171): 「앱의 초기값 상태에서 프레임 자동생성 버튼 누르고 선
+  /// 그으면 그 가장 처음 상태만 선이 안그어짐. 블록은 생기는데. … 다른 규칙
+  /// 두지말고 법 완벽통일」.
+  ///
+  /// The canvas can only draw a press it heard, and it hears a press only
+  /// while its editing view is mounted — which needs an editing stack keyed
+  /// to a cel. Before anything was ever drawn there is no cel to key it to,
+  /// so the host stands the stack on THIS name, and the press makes exactly
+  /// this cel: the view that heard the press is already standing on it.
+  /// ↩️Until then the host fell back to a blank canvas, and the one press
+  /// made before any stack existed made its block and drew nothing — the
+  /// exception I-10 wrote down instead of closing.
+  FrameId frameIdForNextCel(LayerId layerId) =>
+      _nextCel.putIfAbsent(layerId, () => _frameIds.mintFrameId(layerId));
+
+  final Map<LayerId, FrameId> _nextCel = <LayerId, FrameId>{};
+
   /// Makes the block a stroke is about to be drawn into, and HOLDS its
   /// command. Returns false when nothing was made.
   bool beginAutoFrameForStroke() {
@@ -72,7 +94,7 @@ class AutoFrameForStroke {
     final command = _controllers.timelineController
         .createDrawingFrameCommandForLayer(
           layerId: layer.id,
-          frameId: _frameIds.mintFrameId(layer.id),
+          frameId: _nextCel.remove(layer.id) ?? _frameIds.mintFrameId(layer.id),
         );
     command.execute();
     _autoFrameForStroke = command;

@@ -100,6 +100,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onStrokeLanderChanged,
     this.onSelectionInteractionChanged,
     this.onPressNeedsCel,
+    this.standingFrameKeyOf,
     this.onAutoFrameSettled,
     this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
@@ -313,6 +314,16 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// no notice).
   final bool Function()? onPressNeedsCel;
 
+  /// 🚨F-171 — where the editing stack STANDS before any cel exists: the
+  /// cel the next press would make (`AutoFrameForStroke.frameIdForNextCel`).
+  ///
+  /// Asked when there is no editing stack and nothing under the playhead to
+  /// key one to, so the editing view is mounted — and hears the press — from
+  /// the first frame on, exactly as it does on any other empty cell. Null
+  /// leaves the blank canvas standing in, as it does for a host that makes
+  /// no cels.
+  final BrushFrameKey? Function()? standingFrameKeyOf;
+
   /// Settles a block [onPressNeedsCel] made that no stroke claimed
   /// (I-10). Safe in either order against the stroke's own take.
   final VoidCallback? onAutoFrameSettled;
@@ -421,12 +432,15 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     // captured at pointer-DOWN, so a view built afterwards never sees the
     // moves. 유저 (F-61): 「자동생성은 되는데 **선이 안그려지고있음**」.
     //
-    // ⚠️What is left for this one is the case the view cannot cover: a
-    // project with NO editing stack at all, where `contentOverride` stands
-    // in and the view is not built. There the block still gets made and the
-    // stroke still does not start — one press, once per project, before
-    // there has ever been a coordinator. Written down rather than papered
-    // over.
+    // ↩️What was left for this one was a project with NO editing stack at
+    // all, where `contentOverride` stood in and the view was not built: the
+    // block got made and the stroke did not start — one press, once per
+    // project. I-10 wrote that down rather than papering over it, and
+    // F-171 is the user finding it (「그 가장 처음 상태만 선이 안그어짐 … 다른
+    // 규칙 두지말고 법 완벽통일」). The stack stands on the cel the press will
+    // make now ([MainCanvasBrushHost.standingFrameKeyOf]), so the view hears
+    // that press like any other; this listener speaks only where nothing can
+    // stand (a host that makes no cels, a row that takes no strokes).
     final viewHearsTheEmptyPress = coordinator != null && _frameKeys.isEmpty;
     // R26 #35: without an editable cel a paint press does nothing at all
     // — the passive Listener above the panel turns that silence into the
@@ -609,6 +623,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
 
   void _selectResolvedFrame() {
     if (_frameKeys.isEmpty) {
+      _standWithoutACel();
       return;
     }
     final activeKey = widget.resolvedActiveFrameKey ?? _frameKeys.first;
@@ -616,11 +631,40 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     if (coordinator == null) {
       final made = _createCoordinator(initialFrameKey: activeKey);
       _coordinator = made;
-      widget.onCoordinatorChanged?.call(made);
+      _publish(made);
       return;
     }
     coordinator.selectFrame(activeKey);
+    _publish(coordinator);
   }
+
+  /// 🚨F-171: with no stack and no cel, the stack STANDS on the cel the
+  /// next press would make, so the editing view is there to hear it. A
+  /// standing stack touches no frame (only [BrushFrameEditingCoordinator.
+  /// selectFrame] does) and is not handed to the session until it stands on
+  /// a real cel — until then there is nothing the session's verbs could act
+  /// on.
+  void _standWithoutACel() {
+    if (_coordinator != null) {
+      return;
+    }
+    final key = widget.standingFrameKeyOf?.call();
+    if (key != null) {
+      _coordinator = _createCoordinator(initialFrameKey: key);
+    }
+  }
+
+  /// Hands the stack to the session the first time it stands on a cel.
+  void _publish(BrushFrameEditingCoordinator coordinator) {
+    if (identical(_published, coordinator)) {
+      return;
+    }
+    _published = coordinator;
+    widget.onCoordinatorChanged?.call(coordinator);
+  }
+
+  /// The stack the session was last handed — see [_publish].
+  BrushFrameEditingCoordinator? _published;
 
   BrushFrameEditingCoordinator _createCoordinator({
     required BrushFrameKey initialFrameKey,

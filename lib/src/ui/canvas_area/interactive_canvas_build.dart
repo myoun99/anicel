@@ -301,6 +301,21 @@ class _InteractiveCanvasBuild {
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,
+      // 🚨F-171: where the editing stack stands before the first cel — the
+      // cel a press would make, through the SAME gates a stroke target
+      // answers. The camera's backdrop and a gap make no cel.
+      standingFrameKeyOf: _inGap || isCameraLayerActive
+          ? null
+          : () {
+              final layerId = session.activeLayerId;
+              return layerId == null
+                  ? null
+                  : session.editingCanvas
+                        .brushEditorSelectionFor(
+                          session.autoFrame.frameIdForNextCel(layerId),
+                        )
+                        ?.toBrushFrameKey();
+            },
       canvasSize: _canvasSize,
       // The cut's guides reach the stroke pipeline through here;
       // the panel maps them into the active layer's artwork space
