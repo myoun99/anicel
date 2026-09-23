@@ -240,7 +240,7 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
               strings.sheetVisibleBoxes,
               style: Theme.of(context).textTheme.labelMedium,
             ),
-            // The app's one boolean (guide-sym ⑥⑦: 「진짜 불리언값 모든곳에
+            // The app's one boolean (guide-sym ⑥⑧: 「진짜 불리언값 모든곳에
             // 적용」). These were FilterChips, which mark ON with a check — the
             // mark 「선택 표시는 색상만」 names — and did not claim their press
             // in a window that scrolls.

@@ -206,7 +206,7 @@ void main() {
   });
 
   testWidgets('🚨a TOGGLE wears the app\'s one boolean, on AND off — the '
-      'ring keeps its place and only the dot changes (guide-sym ⑥⑦)', (
+      'ring keeps its place and only the dot changes (guide-sym ⑥⑧)', (
     tester,
   ) async {
     await tester.pumpWidget(

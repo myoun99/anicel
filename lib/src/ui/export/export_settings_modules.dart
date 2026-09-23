@@ -813,7 +813,7 @@ class ExportSizeModule extends StatelessWidget {
 }
 
 /// A compact labelled boolean row (the module toggle grammar) — the app's
-/// one boolean button (guide-sym ⑥⑦) beside its label.
+/// one boolean button (guide-sym ⑥⑧) beside its label.
 class ExportToggleRow extends StatelessWidget {
   const ExportToggleRow({
     super.key,

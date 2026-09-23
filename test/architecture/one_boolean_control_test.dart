@@ -5,7 +5,7 @@ import '../helpers/dart_sources.dart';
 /// 🚨★★★THE APP HAS ONE BOOLEAN — the ring, dotted when on
 /// (`lib/src/ui/widgets/boolean_dot.dart`).
 ///
-/// 유저 (guide-sym ⑥⑦, 2026-08-31): 「이 on off 버튼, 공용화시켜서
+/// 유저 (guide-sym ⑥⑧, 2026-08-31): 「이 on off 버튼, 공용화시켜서
 /// 다른곳에도 쓸수있게. 앞으로 이런 불리언값 바꾸는 버튼은 이걸 공통적으로
 /// 사용」 — and then 「좀 더 적용범위 넓혀서 진짜 불리언값 모든곳에 적용 …
 /// 동일한 on off 버튼 전수조사해서 적용」.

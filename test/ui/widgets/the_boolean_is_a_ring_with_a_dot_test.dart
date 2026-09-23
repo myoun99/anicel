@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
-/// The app's one boolean (guide-sym ⑥⑦) — what it looks like in each state,
+/// The app's one boolean (guide-sym ⑥⑧) — what it looks like in each state,
 /// and what it must never carry.
 void main() {
   Future<Icon> pumpDot(
@@ -40,6 +40,20 @@ void main() {
       (await pumpDot(tester, value: false)).icon,
       Icons.radio_button_unchecked,
     );
+  });
+
+  testWidgets('it tells a screen reader its state — toggled, on or off, as '
+      'the switch it replaced did', (tester) async {
+    final semantics = tester.ensureSemantics();
+    for (final value in [false, true]) {
+      await pumpDot(tester, value: value);
+      expect(
+        tester.getSemantics(find.byType(BooleanDot)),
+        isSemantics(hasToggledState: true, isToggled: value),
+        reason: 'value: $value',
+      );
+    }
+    semantics.dispose();
   });
 
   group('🚨the colour is 유저\'s rule: 「하나만 선택하는 그룹의 버튼이면 '

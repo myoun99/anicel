@@ -9,7 +9,7 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 /// enabled look and the pick-one question can be read. The Material switches
 /// these rows used to wrap carried them on the tile itself, so every test
 /// that asked 「is it on」 read a `SwitchListTile` — this is that read, for
-/// the control that replaced it (guide-sym ⑥⑦).
+/// the control that replaced it (guide-sym ⑥⑧).
 extension BooleanDotProbe on WidgetTester {
   BooleanDot booleanDotIn(Finder scope) => widget<BooleanDot>(
     find.descendant(of: scope, matching: find.byType(BooleanDot)),

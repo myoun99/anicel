@@ -286,7 +286,7 @@ class InputSettingsSection extends StatelessWidget {
                 strings.inputTabletHeading,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
-              // 🚨THE PICK-ONE GROUP 유저 named twice (guide-sym ⑥⑦): as the
+              // 🚨THE PICK-ONE GROUP 유저 named twice (guide-sym ⑥⑧): as the
               // model the app's boolean copies (「구체적으론
               // 환경설정-입력-태블릭서비스의 버튼처럼」) and among the buttons
               // it replaces (「아까말한 태블릿서비스나 … 그런 버튼들 싹 다」).

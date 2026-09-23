@@ -69,7 +69,7 @@ class SettingsSwitchRow extends StatelessWidget {
       help,
       ControlPressClaim(
         onPressed: enabled ? () => onChanged!(!value) : null,
-        // 🚨THE SHARED BOOLEAN (guide-sym ⑥⑦: 「앞으로 이런 불리언값 바꾸는
+        // 🚨THE SHARED BOOLEAN (guide-sym ⑥⑧: 「앞으로 이런 불리언값 바꾸는
         // 버튼은 이걸 공통적으로 사용」): the ring, dotted when on. The row
         // draws it and keeps the press — the whole row is the control, as
         // it always was, and a button of its own in here would fire twice.

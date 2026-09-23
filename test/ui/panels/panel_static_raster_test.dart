@@ -101,7 +101,7 @@ const _knownToPaintThrough = <String, String>{
   // switch.dart — and `RenderOpacity` is a repaint boundary at ANY alpha
   // above zero, 255 included, so the panel with the mixing toggle in it
   // could never bake (board `a-panel-with-a-switch-can-never-bake`). It
-  // left with the switch: the app's one boolean (guide-sym ⑥⑦) dims by
+  // left with the switch: the app's one boolean (guide-sym ⑥⑧) dims by
   // COLOUR. ⛔Not coming back — `one_boolean_control_test` refuses a
   // Material switch anywhere in `lib`.
   // 🪦A second entry for this same label stood here for an hour on

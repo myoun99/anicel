@@ -310,7 +310,7 @@ class _GuideRow extends StatelessWidget {
         selectedTileColor: colorScheme.surfaceContainerHigh,
         onTap: onSelected,
         title: Text(guide.name),
-        // 🚨THE BUTTON 유저 made the app's boolean from (guide-sym ⑥⑦,
+        // 🚨THE BUTTON 유저 made the app's boolean from (guide-sym ⑥⑧,
         // 2026-08-31: 「적용시 안에 동그라미 추가」) — [BooleanDot] carries
         // the ring, the dot and the user's two off colours.
         // ↩️It used to swap `circle_outlined` for `check_circle`: a check

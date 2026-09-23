@@ -149,7 +149,7 @@ void main() {
       isFalse,
       reason:
           'drawn as the app\'s one boolean, reading the lane — 유저 named '
-          'this very cell (guide-sym ⑥⑦: 「네임태그fx의 bold랑 쇼 '
+          'this very cell (guide-sym ⑥⑧: 「네임태그fx의 bold랑 쇼 '
           '다이얼로그」)',
     );
 

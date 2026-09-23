@@ -683,7 +683,7 @@ class _PanelSwitch extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
-          // The app's one boolean (guide-sym ⑥⑦) — and the reason this
+          // The app's one boolean (guide-sym ⑥⑧) — and the reason this
           // panel can bake: Material's switch always wrapped itself in an
           // `Opacity`, a repaint boundary the panel's bake could not cross
           // (board `a-panel-with-a-switch-can-never-bake`).

@@ -127,7 +127,7 @@ void main() {
   testWidgets('a header box is a boolean ROW: it reads the box, a press '
       'flips it, and the save carries it', (tester) async {
     // The boxes were FilterChips until the app's one boolean replaced them
-    // (guide-sym ⑥⑦: 「진짜 불리언값 모든곳에 적용」) — and no test pressed a
+    // (guide-sym ⑥⑧: 「진짜 불리언값 모든곳에 적용」) — and no test pressed a
     // single one.
     TimesheetInfo? result;
     await _openDialog(

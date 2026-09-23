@@ -598,7 +598,7 @@ class _OptionCell extends StatelessWidget {
                   children: [
                     // The claim above fires the toggle; the ring is only
                     // its look (enabled, or dead when locked) — the app's
-                    // one boolean, guide-sym ⑥⑦.
+                    // one boolean, guide-sym ⑥⑧.
                     BooleanDot(
                       value: value == true,
                       enabled: !locked && enabled,

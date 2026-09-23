@@ -67,7 +67,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.tabletService, TabletService.standard);
-    // 유저 named this pair as the pick-one group (guide-sym ⑥⑦), so the
+    // 유저 named this pair as the pick-one group (guide-sym ⑥⑧), so the
     // idle one steps back.
     expect(tester.booleanDotIn(wintab).inPickOneGroup, isTrue);
 

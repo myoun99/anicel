@@ -5,7 +5,7 @@ import 'app_icon_button.dart';
 
 /// 🚨★★★THE BOOLEAN — a ring, with a dot inside it when it is on.
 ///
-/// 유저 (guide-sym ⑥⑦, 2026-08-31): 「적용 미적용인 이름왼쪽에 동그란 버튼,
+/// 유저 (guide-sym ⑥⑧, 2026-08-31): 「적용 미적용인 이름왼쪽에 동그란 버튼,
 /// 지금 상태만으론 적용인지 미적용인지 알기 어려우니 **적용시 안에 동그라미
 /// 추가. 구체적으론 환경설정-입력-태블릭서비스의 버튼처럼.** / 그리고 이 on off
 /// 버튼, **공용화**시켜서 다른곳에도 쓸수있게. **앞으로 이런 불리언값 바꾸는
@@ -64,18 +64,25 @@ class BooleanDot extends StatelessWidget {
   /// bakes, to freeze on. And the surroundings disagree — a `ListTile` inks
   /// its trailing glyph in the DIM `onSurfaceVariant`, which would have
   /// dimmed exactly the standalone flag 유저 said stays 「흰색 그대로」.
+  ///
+  /// ⚠️The STATE is said to a screen reader here too — `toggled`, what the
+  /// Material switch it replaced said — so every control that draws the dot
+  /// reports it without saying it again.
   @override
-  Widget build(BuildContext context) => Icon(
-    value ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-    size: size,
-    color: switch ((enabled, value, inPickOneGroup)) {
-      (false, _, _) => AppColors.glyphDisabled,
-      (true, true, _) => AppColors.accent,
-      (true, false, true) => AppColors.text.withValues(
-        alpha: AppColors.offAlpha,
-      ),
-      (true, false, false) => AppColors.text,
-    },
+  Widget build(BuildContext context) => Semantics(
+    toggled: value,
+    child: Icon(
+      value ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      size: size,
+      color: switch ((enabled, value, inPickOneGroup)) {
+        (false, _, _) => AppColors.glyphDisabled,
+        (true, true, _) => AppColors.accent,
+        (true, false, true) => AppColors.text.withValues(
+          alpha: AppColors.offAlpha,
+        ),
+        (true, false, false) => AppColors.text,
+      },
+    ),
   );
 }
 

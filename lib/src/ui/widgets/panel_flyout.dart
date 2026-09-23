@@ -719,7 +719,7 @@ Widget _itemBody(
       bindings: bindings,
       enabled: entry.enabled,
     ),
-    // A TOGGLE wears the app's one boolean (guide-sym ⑥⑦), off as well as
+    // A TOGGLE wears the app's one boolean (guide-sym ⑥⑧), off as well as
     // on: the ring keeps its place and only the dot changes. ↩️It was a
     // check that appeared when on — the mark 「선택 표시는 색상만」 names,
     // on a row that widened as it turned on.

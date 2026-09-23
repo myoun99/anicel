@@ -138,7 +138,7 @@ void main() {
   /// (brush and rendering), `export_dialog` and `import_dialog` (import,
   /// export and saving).
   const bareMaterialControls = <String, int>{
-    // ↓2026-09-23, the app's one boolean (guide-sym ⑥⑦): every
+    // ↓2026-09-23, the app's one boolean (guide-sym ⑥⑧): every
     // `SwitchListTile`, radio and filter chip below became a claimed
     // `SettingsSwitchRow` — brush settings 2 → 1, tool settings 15 → 9,
     // input settings 5 → 3, and the timesheet dialog's 2 → gone.
@@ -366,7 +366,7 @@ void main() {
     // live callback under a claim too, and `(_) {}` is as silent as `() {}`.
     // ↩️press-law-switches gave a VALUE control its own silence,
     // `silentChange(`. It went with the Material switches it silenced (the
-    // app's one boolean replaced them, guide-sym ⑥⑦), and with it its
+    // app's one boolean replaced them, guide-sym ⑥⑧), and with it its
     // spelling here.
     final live = RegExp(
       r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'

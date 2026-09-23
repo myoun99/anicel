@@ -85,7 +85,7 @@ void main() {
   ///
   /// ↩️They were two Material SWITCHES (`CompactSwitch` and the settings
   /// row's `SwitchListTile`) until the app's one boolean replaced them —
-  /// the ring, dotted when on (guide-sym ⑥⑦; board
+  /// the ring, dotted when on (guide-sym ⑥⑧; board
   /// `a-panel-with-a-switch-can-never-bake`). The law these cases hold did
   /// not change with the look.
   final shapes =

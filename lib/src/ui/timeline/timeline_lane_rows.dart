@@ -478,7 +478,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               on ? 'off' : 'on',
             ),
           ),
-          // The app's one boolean (guide-sym ⑥⑦ — 유저 named this very cell:
+          // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very cell:
           // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
           // CHECK MARK is what 「선택 표시는 색상만」 names outright.
           child: Center(child: BooleanDot(value: on, size: 14)),
