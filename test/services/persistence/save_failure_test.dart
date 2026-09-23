@@ -1,6 +1,8 @@
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:anicel/src/services/persistence/save_failure.dart';
+import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
@@ -63,22 +65,8 @@ void main() {
       '「read-only」 — nothing holds it, it cannot be written', () {
     final readOnly = File('${folder.path}/locked.anicel')
       ..writeAsStringSync('x');
-    // No dart:io call makes a file read-only; the platform's own tool does.
-    void setReadOnly(bool on) {
-      final result = Platform.isWindows
-          ? Process.runSync('attrib', [
-              if (on) '+r' else '-r',
-              readOnly.path.replaceAll('/', r'\'),
-            ])
-          : Process.runSync('chmod', [
-              if (on) '444' else '644',
-              readOnly.path,
-            ]);
-      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
-    }
-
-    setReadOnly(true);
-    addTearDown(() => setReadOnly(false));
+    _setReadOnly(readOnly.path, on: true);
+    addTearDown(() => _setReadOnly(readOnly.path, on: false));
 
     expect(
       windows(5, projectPath: readOnly.path),
@@ -157,5 +145,34 @@ void main() {
       ),
       SaveFailureCause.unknown,
     );
+  });
+}
+
+/// Marks [path] read-only, or writable again — in-process: dart:io has no
+/// call for it, and a test may not spawn `attrib` or `chmod`
+/// (`tests_do_not_race_the_code_test`).
+void _setReadOnly(String path, {required bool on}) {
+  using((arena) {
+    if (Platform.isWindows) {
+      final setAttributes = DynamicLibrary.open('kernel32.dll')
+          .lookupFunction<
+            Int32 Function(Pointer<Utf16>, Uint32),
+            int Function(Pointer<Utf16>, int)
+          >('SetFileAttributesW');
+      final done = setAttributes(
+        path.toNativeUtf16(allocator: arena),
+        // FILE_ATTRIBUTE_READONLY, or FILE_ATTRIBUTE_NORMAL to clear it.
+        on ? 0x1 : 0x80,
+      );
+      expect(done, isNot(0), reason: 'SetFileAttributesW refused $path');
+    } else {
+      final chmod = DynamicLibrary.process()
+          .lookupFunction<
+            Int32 Function(Pointer<Utf8>, Uint32),
+            int Function(Pointer<Utf8>, int)
+          >('chmod');
+      final mode = on ? 0x124 : 0x1A4; // 0444, 0644
+      expect(chmod(path.toNativeUtf8(allocator: arena), mode), 0);
+    }
   });
 }
