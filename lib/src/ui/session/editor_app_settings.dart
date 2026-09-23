@@ -51,7 +51,9 @@ class EditorAppSettings {
     AudioSyncSettingsStore? audioSyncSettingsStore,
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
+    Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
+       _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
        _accentSettingsStore = accentSettingsStore,
        _workspaceColorsStore = workspaceColorsStore,
        _inputSettingsStore = inputSettingsStore,
@@ -192,11 +194,35 @@ class EditorAppSettings {
   /// that never restores has nothing to wait for.
   Future<void> languageRestored = Future<void>.value();
 
+  /// The device's preferred languages, in its own order — injectable
+  /// because a test that read the operating system would pass or fail by
+  /// the machine it ran on.
+  final Iterable<String> Function() _deviceLanguageCodes;
+
+  /// What the running app reads. ⛔MUTANT SURVIVES: every test injects the
+  /// device, so emptying this list stays green — it is the one line only
+  /// the real app exercises.
+  static Iterable<String> _platformLanguageCodes() => [
+    for (final locale in PlatformDispatcher.instance.locales)
+      locale.languageCode,
+  ];
+
   Future<void> _restoreLanguageSettings() async {
-    final restored = await _languageSettingsStore?.load();
-    if (restored != null) {
-      languageSettings.value = restored;
+    final store = _languageSettingsStore;
+    if (store == null) {
+      return;
     }
+    // 🚨F-157 (유저 2026-09-17): 「앱 기본 언어 설정값, 디바이스? 의 언어
+    // 설정 기준으로. 즉 앱컨테이너 설정에 language_settings.json 파일이
+    // 없을때 … 표기언어 기본값은 지금처럼 일본어 그대로」. No saved choice
+    // means the device's language for the program; the notation keeps its
+    // default. ⛔Nothing is written down: the file is the user's choice, so
+    // a device that changes its language is followed until they make one.
+    languageSettings.value =
+        await store.load() ??
+        AppLanguageSettings(
+          programLanguage: AppLanguage.forDevice(_deviceLanguageCodes()),
+        );
   }
 
   void setLanguageSettings(AppLanguageSettings settings) =>
