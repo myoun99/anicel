@@ -3981,7 +3981,7 @@ class ExportDialogState extends State<ExportDialog> {
     summary: applyLayerFx ? AppText.strings.exFxOn : AppText.strings.exFxOff,
     expansion: _expansion('options'),
     child: ExportToggleRow(
-      widgetKey: ValueKey<String>(keyValue),
+      keyValue: keyValue,
       label: label,
       value: applyLayerFx,
       onChanged: _isExporting
@@ -4004,7 +4004,7 @@ class ExportDialogState extends State<ExportDialog> {
     required bool value,
     required ExportTabSpec Function(bool value) write,
   }) => ExportToggleRow(
-    widgetKey: ValueKey<String>(keyValue),
+    keyValue: keyValue,
     label: label,
     value: value,
     onChanged: _isExporting ? null : (value) => _updateSpec(write(value)),

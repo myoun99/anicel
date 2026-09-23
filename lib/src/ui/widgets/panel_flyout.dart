@@ -6,6 +6,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
+import 'boolean_dot.dart';
 
 /// One entry of a [showPanelFlyout] list.
 ///
@@ -127,7 +128,8 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   /// child. Built lazily, like the top-level list.
   final List<PanelFlyoutEntry> Function()? submenuBuilder;
 
-  /// Trailing check when true; null means the item is not a toggle.
+  /// A toggle's state, as the app's one boolean ([BooleanDot]) whether it
+  /// is on or off; null means the item is not a toggle.
   ///
   /// ⛔A TOGGLE, not a selection. Which of several things is CURRENT is
   /// [selected] — see there for why the two may not share a glyph.
@@ -172,7 +174,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 /// what a pick writes, which is exactly what the parameters are.
 ///
 /// 🚨CURRENT IS [PanelFlyoutItem.selected], NEVER [PanelFlyoutItem.checked].
-/// All six copies said `checked`, which draws a check glyph on the current
+/// All six copies said `checked`, which drew a check glyph on the current
 /// row — the mark 「선택 표시는 색상만」 forbids and the one that widens
 /// the row it lands on. `checked` is a toggle's field; none of these is one.
 ///
@@ -717,9 +719,13 @@ Widget _itemBody(
       bindings: bindings,
       enabled: entry.enabled,
     ),
-    if (entry.checked ?? false) ...[
+    // A TOGGLE wears the app's one boolean (guide-sym ⑥⑦), off as well as
+    // on: the ring keeps its place and only the dot changes. ↩️It was a
+    // check that appeared when on — the mark 「선택 표시는 색상만」 names,
+    // on a row that widened as it turned on.
+    if (entry.checked case final on?) ...[
       const SizedBox(width: 8),
-      Icon(Icons.check, size: 14, color: AppColors.accent),
+      BooleanDot(value: on, enabled: entry.enabled, size: 14),
     ],
     // The one glyph a submenu row wears: it says there is another level,
     // which the row cannot say with colour the way «selected» does.

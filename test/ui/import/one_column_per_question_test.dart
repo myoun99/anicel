@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart' show mediaFileNameParts;
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
+import '../../helpers/boolean_dot_probe.dart';
 
 /// The import window's file list: one row per file, one COLUMN per
 /// question. Nothing named it (2026-09-05).
@@ -423,7 +425,11 @@ void main() {
       final t = toggle();
       await pumpTable(tester, extra: [t.column]);
 
-      expect(find.byType(Switch), findsNWidgets(2), reason: 'c.wav is a dash');
+      expect(
+        find.byType(BooleanDot),
+        findsNWidgets(2),
+        reason: 'c.wav is a dash',
+      );
       await tester.tap(cell('bake', 'a.png'));
       await tester.pumpAndSettle();
       await tester.tap(cell('bake', 'b.png'));
@@ -442,10 +448,8 @@ void main() {
 
       expect(t.picks, isEmpty);
       expect(
-        tester.widget<Switch>(
-          find.descendant(of: cell('bake', 'b.png'), matching: find.byType(Switch)),
-        ).onChanged,
-        isNull,
+        tester.booleanDotIn(cell('bake', 'b.png')).enabled,
+        isFalse,
         reason: 'shown disabled, not hidden',
       );
     });

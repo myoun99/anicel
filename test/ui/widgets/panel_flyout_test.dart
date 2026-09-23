@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/command_pill.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import '../../helpers/boolean_dot_probe.dart';
 
 void main() {
   Widget harness(Widget child) {
@@ -195,11 +197,54 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('flyout-item-current')),
-        matching: find.byIcon(Icons.check),
+        matching: find.byType(BooleanDot),
       ),
       findsNothing,
-      reason: 'selection is colour and never a check glyph',
+      reason: 'selection is colour, and the ring is a TOGGLE\'s mark — '
+          'the current row is not a toggle',
     );
+  });
+
+  testWidgets('🚨a TOGGLE wears the app\'s one boolean, on AND off — the '
+      'ring keeps its place and only the dot changes (guide-sym ⑥⑦)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutButton(
+          key: const ValueKey<String>('flyout-under-test'),
+          label: 'Test',
+          entriesBuilder: () => const [
+            PanelFlyoutItem(keyValue: 'on', label: 'Row', checked: true),
+            PanelFlyoutItem(keyValue: 'off', label: 'Row', checked: false),
+            PanelFlyoutItem(keyValue: 'plain', label: 'Row'),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-under-test')));
+    await tester.pumpAndSettle();
+
+    Finder row(String key) => find.byKey(ValueKey<String>(key));
+    expect(tester.booleanDotIn(row('on')).value, isTrue);
+    expect(tester.booleanDotIn(row('off')).value, isFalse);
+    expect(
+      find.descendant(of: row('plain'), matching: find.byType(BooleanDot)),
+      findsNothing,
+      reason: 'a null `checked` is not a toggle, so it has no ring',
+    );
+    expect(
+      find.byIcon(Icons.check),
+      findsNothing,
+      reason: 'a check mark is what 「선택 표시는 색상만」 names',
+    );
+
+    // ⛔THE ROW DOES NOT WIDEN AS IT TURNS ON. The mark used to appear only
+    // when on, so the ON row's label was the mark's width shorter.
+    Size labelOf(String key) => tester.getSize(
+      find.descendant(of: row(key), matching: find.text('Row')),
+    );
+    expect(labelOf('on'), labelOf('off'));
   });
 
   testWidgets('StrapIconButton: the body fires the primary action, the top '

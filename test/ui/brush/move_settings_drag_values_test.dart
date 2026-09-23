@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -279,7 +280,7 @@ void main() {
     );
     expect(switchKey, findsOneWidget);
     expect(
-      tester.widget<SwitchListTile>(switchKey).value,
+      tester.booleanDotIn(switchKey).value,
       isTrue,
       reason: 'Blend is the default, so AA starts ON',
     );
@@ -304,7 +305,7 @@ void main() {
       resampleMode: ResampleMode.pick,
       onResampleModeChanged: chosen.add,
     );
-    expect(tester.widget<SwitchListTile>(switchKey).value, isFalse);
+    expect(tester.booleanDotIn(switchKey).value, isFalse);
     await tester.tap(switchKey);
     await tester.pump();
     expect(chosen.last, ResampleMode.blend);
@@ -321,11 +322,11 @@ void main() {
     );
     expect(
       tester
-          .widget<SwitchListTile>(
+          .booleanDotIn(
             find.byKey(const ValueKey<String>('move-antialias-switch')),
           )
-          .onChanged,
-      isNull,
+          .enabled,
+      isFalse,
     );
     for (final key in const [
       'move-flip-horizontal-button',

@@ -8,6 +8,7 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
+import '../widgets/boolean_dot.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -682,10 +683,14 @@ class _PanelSwitch extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
-          Switch(
-            key: ValueKey<String>(keyValue),
+          // The app's one boolean (guide-sym ⑥⑦) — and the reason this
+          // panel can bake: Material's switch always wrapped itself in an
+          // `Opacity`, a repaint boundary the panel's bake could not cross
+          // (board `a-panel-with-a-switch-can-never-bake`).
+          BooleanDotButton(
+            keyValue: keyValue,
+            tooltip: label,
             value: value,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             onChanged: onChanged,
           ),
         ],

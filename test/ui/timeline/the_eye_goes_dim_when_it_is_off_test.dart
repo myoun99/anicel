@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 
 /// 🚨★★★유저 (F-58): 「비지블off일경우 색라벨이 불투명도가 낮아지는데. 이거
@@ -54,7 +55,7 @@ void main() {
     expect(off.color, isNotNull, reason: '「비지블off시 비지블버튼 자체를 비활성화색(어둡게)」');
     expect(
       off.color!.a,
-      closeTo(layerRailOffAlpha, 0.001),
+      closeTo(AppColors.offAlpha, 0.001),
       reason:
           '⛔and in the rail OWN off language — the alpha the onion '
           'and fx icons already wear, so a hidden row reads as off in one '

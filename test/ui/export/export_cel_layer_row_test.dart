@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/export/export_cel_layer_row.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -212,7 +213,7 @@ void main() {
           included: false,
         ),
       );
-      expect(opacity().opacity, layerRailOffAlpha);
+      expect(opacity().opacity, AppColors.offAlpha);
 
       await pump(
         tester,

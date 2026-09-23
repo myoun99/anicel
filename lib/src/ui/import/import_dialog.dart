@@ -1505,7 +1505,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
           const SizedBox(height: 10),
           ExportToggleRow(
-            key: const ValueKey<String>('import-subfolders-toggle'),
+            keyValue: 'import-subfolders-toggle',
             label: AppText.strings.imArchivedProcesses,
             value: _parseConfig.includeProcessSubfolders,
             onChanged: (value) => setState(() {
@@ -1516,7 +1516,7 @@ class _ImportDialogState extends State<ImportDialog> {
             }),
           ),
           ExportToggleRow(
-            key: const ValueKey<String>('import-multicut-toggle'),
+            keyValue: 'import-multicut-toggle',
             label: AppText.strings.imMultiCutFolders,
             value: _parseConfig.multiCutFolders,
             onChanged: (value) => setState(() {

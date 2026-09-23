@@ -702,7 +702,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// other menu in the app came from there. The toggles were
   /// `CheckedPopupMenuItem`s besides, so their check sat on the LEFT and
   /// indented five rows away from the six beside them, while the flyout's
-  /// own check sits on the right.
+  /// own toggle mark (a check then, the app's ring now) sits on the right.
   List<PanelFlyoutEntry> _menuItems() {
     PanelFlyoutItem item(
       String keyValue,

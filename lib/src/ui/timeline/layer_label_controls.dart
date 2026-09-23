@@ -493,13 +493,6 @@ Widget fxGlyph({
   );
 }
 
-/// The rail's 「off」 alpha: what a switched-off icon or plate wears.
-///
-/// ⚠️It was the literal 0.45, written at each of its wearers — the onion,
-/// the fx glyph, the hidden row's label plate — with a comment at one of
-/// them explaining that the other two had to match by hand.
-const double layerRailOffAlpha = 0.45;
-
 /// The ONE eye: whether this row shows.
 ///
 /// It was written inline in three rails (timeline, x-sheet, storyboard)
@@ -563,14 +556,14 @@ class LayerVisibilityToggleButton extends StatelessWidget {
           // 결과적으로 다른곳도 비활성화시 비활성화색 되도록」.
           //
           // ★HERE, so 「결과적으로 다른곳도」 is automatic rather than five
-          // edits. ⚠️[layerRailOffAlpha] is the rail's OWN off language —
+          // edits. ⚠️[AppColors.offAlpha] is the app's ONE off language —
           // the alpha the onion and fx icons already wear — so a hidden row
           // reads as off in one language rather than in three.
           color: isVisible
               ? null
               : IconTheme.of(
                   context,
-                ).color?.withValues(alpha: layerRailOffAlpha),
+                ).color?.withValues(alpha: AppColors.offAlpha),
         ),
         onPressed: onToggle,
       ),
@@ -1207,7 +1200,7 @@ class LayerMarkPlate extends StatelessWidget {
       // fx icons wear — so a hidden layer reads as off in one language
       // rather than in three.
       fill: !isVisible
-          ? layerMarkColor(mark).withValues(alpha: layerRailOffAlpha)
+          ? layerMarkColor(mark).withValues(alpha: AppColors.offAlpha)
           : layerMarkColor(mark),
       columns: [
         layerMarkChipText(mark).process,

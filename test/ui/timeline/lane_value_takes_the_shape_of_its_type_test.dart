@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -142,6 +143,14 @@ void main() {
       ),
       findsNothing,
       reason: 'and it is not ALSO the text readout — one cell, one control',
+    );
+    expect(
+      tester.booleanDotIn(toggle).value,
+      isFalse,
+      reason:
+          'drawn as the app\'s one boolean, reading the lane — 유저 named '
+          'this very cell (guide-sym ⑥⑦: 「네임태그fx의 bold랑 쇼 '
+          '다이얼로그」)',
     );
 
     await tester.tap(toggle);

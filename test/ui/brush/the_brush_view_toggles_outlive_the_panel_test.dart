@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -17,8 +18,8 @@ import '../../helpers/project_scratch_folder.dart';
 ///
 /// Through HomePage, the way it was met: the library's own rail group closed
 /// and opened again, the app started again on the same layout file, and the
-/// workspace reset — each read off the panel's OWN menu, whose check mark is
-/// the State that used to forget. ⚠️Not off the rows: in a widget test the
+/// workspace reset — each read off the panel's OWN menu, whose toggle mark
+/// (the app's ring, dotted when on) is the State that used to forget. ⚠️Not off the rows: in a widget test the
 /// workspace's library opens with none, so a row count would pass either way.
 void main() {
   final libraryGroup = find.byKey(
@@ -37,15 +38,13 @@ void main() {
   /// read, and closed again without picking anything.
   Future<bool> strokePreviewsChecked(WidgetTester tester) async {
     await tapKey(tester, 'brush-preset-menu-button');
-    final checked = find
-        .descendant(
-          of: find.byKey(
+    final checked = tester
+        .booleanDotIn(
+          find.byKey(
             const ValueKey<String>('brush-preset-view-stroke-toggle'),
           ),
-          matching: find.byIcon(Icons.check),
         )
-        .evaluate()
-        .isNotEmpty;
+        .value;
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     return checked;

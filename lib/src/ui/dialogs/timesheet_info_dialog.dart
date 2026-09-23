@@ -240,28 +240,25 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
               strings.sheetVisibleBoxes,
               style: Theme.of(context).textTheme.labelMedium,
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final field in TimesheetHeaderField.values)
-                  FilterChip(
-                    key: ValueKey<String>(
-                      'timesheet-info-visible-${field.name}',
-                    ),
-                    label: Text(_fieldLabel(field)),
-                    selected: !_hiddenFields.contains(field),
-                    onSelected: (visible) => setState(() {
-                      if (visible) {
-                        _hiddenFields.remove(field);
-                      } else {
-                        _hiddenFields.add(field);
-                      }
-                    }),
-                  ),
-              ],
-            ),
+            // The app's one boolean (guide-sym ⑥⑦: 「진짜 불리언값 모든곳에
+            // 적용」). These were FilterChips, which mark ON with a check — the
+            // mark 「선택 표시는 색상만」 names — and did not claim their press
+            // in a window that scrolls.
+            for (final field in TimesheetHeaderField.values)
+              SettingsSwitchRow(
+                tileKey: ValueKey<String>(
+                  'timesheet-info-visible-${field.name}',
+                ),
+                label: _fieldLabel(field),
+                value: !_hiddenFields.contains(field),
+                onChanged: (visible) => setState(() {
+                  if (visible) {
+                    _hiddenFields.remove(field);
+                  } else {
+                    _hiddenFields.add(field);
+                  }
+                }),
+              ),
             const SizedBox(height: 16),
             Text(
               strings.sheetNotation,
@@ -285,11 +282,9 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                   keyboardType: TextInputType.number,
                 ),
               ),
-            SwitchListTile(
-              key: const ValueKey<String>('timesheet-info-se-empty-fill'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(strings.sheetSeEmptyFill),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('timesheet-info-se-empty-fill'),
+              label: strings.sheetSeEmptyFill,
               value: _seEmptyFill,
               onChanged: (value) => setState(() => _seEmptyFill = value),
             ),

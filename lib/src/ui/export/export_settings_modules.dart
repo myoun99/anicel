@@ -9,8 +9,9 @@ import '../../models/export_spec.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../timeline/layer_label_controls.dart' show layerMarkChipText;
+import '../widgets/app_icon_button.dart' show AppIconButtonSize;
 import '../widgets/app_window.dart';
-import '../widgets/compact_switch.dart';
+import '../widgets/boolean_dot.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
@@ -811,20 +812,22 @@ class ExportSizeModule extends StatelessWidget {
   }
 }
 
-/// A compact labelled switch row (the module toggle grammar).
+/// A compact labelled boolean row (the module toggle grammar) — the app's
+/// one boolean button (guide-sym ⑥⑦) beside its label.
 class ExportToggleRow extends StatelessWidget {
   const ExportToggleRow({
     super.key,
+    required this.keyValue,
     required this.label,
     required this.value,
     required this.onChanged,
-    this.widgetKey,
   });
 
+  /// The button's key — where the tests press it and read it.
+  final String keyValue;
   final String label;
   final bool value;
   final ValueChanged<bool>? onChanged;
-  final Key? widgetKey;
 
   @override
   Widget build(BuildContext context) {
@@ -833,8 +836,10 @@ class ExportToggleRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         children: [
-          CompactSwitch(
-            switchKey: widgetKey,
+          BooleanDotButton(
+            keyValue: keyValue,
+            tooltip: label,
+            size: AppIconButtonSize.dense,
             value: value,
             onChanged: onChanged,
           ),

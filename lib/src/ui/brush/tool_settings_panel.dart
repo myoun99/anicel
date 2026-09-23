@@ -279,11 +279,9 @@ class _ShapeFillSettings extends StatelessWidget {
           selectionCommands: selectionCommands,
         ),
         const SizedBox(height: 8),
-        SwitchListTile(
-          key: const ValueKey<String>('fill-shape-anti-alias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brAntiAlias),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-shape-anti-alias-switch'),
+          label: AppText.strings.brAntiAlias,
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
@@ -425,19 +423,15 @@ class _CutStampSettings extends StatelessWidget {
             // Flip is a flag applied at stamp time, never baked into the
             // held bytes: baking would destroy the original, and flipping
             // is a byte re-order that keeps the 1:1 contract intact.
-            SwitchListTile(
-              key: const ValueKey<String>('cut-flip-horizontal-switch'),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppText.strings.toolCutFlipHorizontal),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('cut-flip-horizontal-switch'),
+              label: AppText.strings.toolCutFlipHorizontal,
               value: piece.flipHorizontal,
               onChanged: (value) => holder.updatePose(flipHorizontal: value),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('cut-flip-vertical-switch'),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppText.strings.toolCutFlipVertical),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('cut-flip-vertical-switch'),
+              label: AppText.strings.toolCutFlipVertical,
               value: piece.flipVertical,
               onChanged: (value) => holder.updatePose(flipVertical: value),
             ),
@@ -564,11 +558,9 @@ class _SelectionSettings extends StatelessWidget {
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
           ),
-          SwitchListTile(
-            key: const ValueKey<String>('selection-anti-alias-switch'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(AppText.strings.brAntiAliasEdge),
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('selection-anti-alias-switch'),
+            label: AppText.strings.brAntiAliasEdge,
             value: maskOptions.antiAlias,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(antiAlias: value)),
@@ -1001,11 +993,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // 유저 08-13 asked for the two letters and the polarity that goes
         // with them — AA on is the smoothing default, AA off is the
         // two-value copy.
-        SwitchListTile(
-          key: const ValueKey<String>('move-antialias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('AA'),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('move-antialias-switch'),
+          label: 'AA',
           value: options.resampleMode == ResampleMode.blend,
           onChanged: onOptions == null
               ? null
@@ -1132,11 +1122,9 @@ class _FillSettings extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.copyWith(gapClosePx: value.round())),
         ),
-        SwitchListTile(
-          key: const ValueKey<String>('fill-anti-alias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brAntiAlias),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-anti-alias-switch'),
+          label: AppText.strings.brAntiAlias,
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),

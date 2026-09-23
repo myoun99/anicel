@@ -1,4 +1,5 @@
 import '../widgets/app_icon_button.dart';
+import '../widgets/boolean_dot.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
 
@@ -477,13 +478,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               on ? 'off' : 'on',
             ),
           ),
-          child: Center(
-            child: Icon(
-              on ? Icons.check_box_outlined : Icons.check_box_outline_blank,
-              size: 14,
-              color: on ? colorScheme.primary : colorScheme.onSurfaceVariant,
-            ),
-          ),
+          // The app's one boolean (guide-sym ⑥⑦ — 유저 named this very cell:
+          // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
+          // CHECK MARK is what 「선택 표시는 색상만」 names outright.
+          child: Center(child: BooleanDot(value: on, size: 14)),
         ),
       );
     }
