@@ -13,7 +13,6 @@ import 'session_roles.dart';
 import 'visibility_solo.dart';
 import 'row_selection.dart';
 import 'track_se_display.dart';
-import 'frame_clipboard.dart';
 import 'range_selections.dart';
 
 /// WHERE THE USER STANDS — the cut, the row and the layer the next verb
@@ -41,7 +40,6 @@ class Standing {
     required ActiveCutControllers controllers,
     required SessionInternals internals,
     required PlaybackRig playbackRig,
-    required FrameClipboard clipboard,
     required RowSelection rowSelectionVerbs,
     required VisibilitySolo solo,
     required TrackSeDisplay trackSe,
@@ -53,7 +51,6 @@ class Standing {
        _controllers = controllers,
        _internals = internals,
        _playbackRig = playbackRig,
-       _clipboard = clipboard,
        _rowSelectionVerbs = rowSelectionVerbs,
        _solo = solo,
        _trackSe = trackSe,
@@ -68,7 +65,6 @@ class Standing {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final PlaybackRig _playbackRig;
-  final FrameClipboard _clipboard;
   final RowSelection _rowSelectionVerbs;
   final VisibilitySolo _solo;
   final TrackSeDisplay _trackSe;
@@ -560,7 +556,6 @@ class Standing {
       trackIdOfCut(_project.repository.requireProject(), cutId) ??
           _timeline.editingSession.selectedTrackId,
     );
-    _clipboard.keepWhileItsCutIsActive();
     _selection.clearFrameRangeSelection();
     // The cut comes back on the row it was left on; never visited (or the
     // layer is gone — the rebuild's own guard) falls back to the top row.

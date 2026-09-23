@@ -101,8 +101,10 @@ void main() {
     // 🚨**THE BAND, NOT THE CLIPBOARD.** A first attempt used the frame
     // board here and the mutation caught it: 「the guard ALWAYS fires」 left
     // every test green, because creating a cut SWITCHES cuts and the board
-    // is dropped on a cut switch anyway. The witness has to be something
-    // only `refreshAfterCutCommand` clears, on a step that stays put.
+    // was dropped on a cut switch anyway. It is dropped on nothing now
+    // (F-161), so it witnesses the refresh even less. The witness has to be
+    // something only `refreshAfterCutCommand` clears, on a step that stays
+    // put.
     session.updateFrameRangeSelectionDrag(
       layerId: layerId,
       anchorIndex: 0,
@@ -129,9 +131,12 @@ void main() {
 
   /// 🚨F-152 (유저 2026-09-16): 「복사하고 무언가 붙혀넣는다고 해서 복사한게
   /// 사라지지않게. 복사한거는 들고있음. 그 상태에서 여러군데 붙혀넣기
-  /// 가능하도록」. The band still goes on a step that moves rows; the COPY
-  /// does not — it carries its cels by value and names no row by index.
-  group('the copy stays in hand while its cut is the one being edited', () {
+  /// 가능하도록」 — and F-161 (09-17) took the cut's edge away: 「복사는 항상
+  /// 언제든 들고있게. 컷2의 레이어에서 붙여넣기 가능 … 보통 프로그램이
+  /// 그러니까」. The band still goes on a step that moves rows; the COPY does
+  /// not — it carries its cels, sounds and pictures by value and names no row
+  /// by index.
+  group('the copy is always in hand', () {
     test('paste, undo the paste, paste again', () {
       final session = sessionWithADrawing();
       addTearDown(session.dispose);
@@ -156,7 +161,7 @@ void main() {
       );
     });
 
-    test('a cut command in its own cut keeps it', () {
+    test('a cut command keeps it', () {
       final session = sessionWithADrawing();
       addTearDown(session.dispose);
       session.copyFrameAtCurrentFrame();
@@ -168,31 +173,45 @@ void main() {
       expect(session.clipboard.bankedRowLayerIds, banked);
     });
 
-    test('⛔leaving its cut drops it — an independent paste copies the '
-        'picture from the cut it stands in', () {
+    test('🚨leaving its cut keeps it, and it pastes on the next cut\'s '
+        'layer — 「컷2의 레이어에서 붙여넣기 가능」', () {
       final session = sessionWithADrawing();
       addTearDown(session.dispose);
       final cut1 = session.activeCutId!;
-
       session.copyFrameAtCurrentFrame();
-      session.cutVerbs.createCut();
-      final cut2 = session.activeCutId!;
-      expect(cut2, isNot(cut1), reason: 'premise: the new cut is active');
-      expect(session.clipboard.bankedRowLayerIds, isEmpty);
+      final banked = session.clipboard.bankedRowLayerIds;
 
+      session.cutVerbs.createCut();
+      expect(session.activeCutId, isNot(cut1), reason: 'premise: in cut 2');
+      expect(session.clipboard.bankedRowLayerIds, banked);
+
+      session.selectFrameIndex(3);
+      expect(
+        session.canPasteIndependentFrameAtCurrentFrame,
+        isTrue,
+        reason: 'the paste is lit in cut 2',
+      );
+      session.pasteIndependentFrameAtCurrentFrame();
+      expect(
+        session.activeLayer!.timeline[3],
+        isNotNull,
+        reason: 'it landed on cut 2\'s layer',
+      );
+    });
+
+    test('picking a cut keeps it too', () {
+      final session = sessionWithADrawing();
+      addTearDown(session.dispose);
+      final cut1 = session.activeCutId!;
+      session.cutVerbs.createCut();
       session.createDrawingAtCurrentFrame();
       session.copyFrameAtCurrentFrame();
-      expect(
-        session.clipboard.bankedRowLayerIds,
-        isNotEmpty,
-        reason: 'LIVENESS',
-      );
+      final banked = session.clipboard.bankedRowLayerIds;
+      expect(banked, isNotEmpty, reason: 'LIVENESS');
+
       session.selectCut(cut1);
-      expect(
-        session.clipboard.bankedRowLayerIds,
-        isEmpty,
-        reason: 'picking a cut is leaving one too',
-      );
+
+      expect(session.clipboard.bankedRowLayerIds, banked);
     });
   });
 }

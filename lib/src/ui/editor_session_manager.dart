@@ -530,7 +530,6 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     editingSession.setActiveCutId(position.cutId);
-    clipboard.keepWhileItsCutIsActive();
     activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
   }
 
@@ -666,7 +665,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -1097,8 +1096,6 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
   }) {
-    // F-152: the copy survives an undo and a cut command in its own cut.
-    clipboard.keepWhileItsCutIsActive();
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
@@ -3137,7 +3134,6 @@ class EditorSessionManager extends ChangeNotifier
       visibilitySolo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
-    clipboard.keepWhileItsCutIsActive();
     clearFrameRangeSelection();
     activeCutControllers.rebuild();
     return true;

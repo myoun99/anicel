@@ -1,4 +1,5 @@
 import '../../models/audio_clip.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -187,22 +188,26 @@ placedClipFor({
 ///
 /// ⚠️AFTER the splice, not before: the born cels have to be in the layer
 /// for the key to name something the app will read back.
+///
+/// [pictureOf] says where a source cel's picture IS: the store, now, for a
+/// duplicate — its source stands beside it — and the copy's own snapshot for
+/// a paste (F-161), whose source may be in another cut, drawn over since, or
+/// cut away.
 void carryBakedPictures({
   required SessionInternals internals,
   required BrushFrameStore store,
   required Cut cut,
-  required ({LayerId from, LayerId to}) between,
+  required LayerId to,
   required Map<FrameId, FrameId> minted,
+  required BitmapSurface? Function(FrameId source) pictureOf,
 }) {
   for (final entry in minted.entries) {
-    final surface = store.bakedSurfaceOrNull(
-      internals.brushFrameKeyForCut(cut, between.from, entry.key),
-    );
+    final surface = pictureOf(entry.key);
     if (surface == null) {
       continue;
     }
     store.storeBakedSurface(
-      internals.brushFrameKeyForCut(cut, between.to, entry.value),
+      internals.brushFrameKeyForCut(cut, to, entry.value),
       surface,
     );
   }

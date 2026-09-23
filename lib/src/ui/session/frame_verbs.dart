@@ -243,12 +243,16 @@ class FrameVerbs {
     );
     final cut = _project.activeCutOrNull;
     if (cut != null) {
+      final store = _renderCaches.brushFrameStore;
       carryBakedPictures(
         internals: _internals,
-        store: _renderCaches.brushFrameStore,
+        store: store,
         cut: cut,
-        between: (from: layer.id, to: layer.id),
+        to: layer.id,
         minted: minted,
+        pictureOf: (source) => store.bakedSurfaceOrNull(
+          _internals.brushFrameKeyForCut(cut, layer.id, source),
+        ),
       );
     }
     _changes.notifyChanged();

@@ -1,6 +1,6 @@
-import '../../models/cut_id.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -62,38 +62,20 @@ class FrameClipboard {
     for (final row in _copiedFrame?.rows ?? const <_CopiedRow>[]) row.layerId,
   ];
 
-  /// 🚨★★THE COPY STAYS IN HAND while its cut is the one being edited
-  /// (F-152, 유저 2026-09-16): 「복사하고 무언가 붙혀넣는다고 해서 복사한게
-  /// 사라지지않게. 복사한거는 들고있음. 그 상태에서 여러군데 붙혀넣기
-  /// 가능하도록. 블록이든 뭐든 복사의 기본로직으로서」.
+  /// The board goes when the project itself is replaced — and only then;
+  /// until then it is replaced by the next copy.
   ///
-  /// 🧪What threw it away was measured, not guessed: a paste never did, but
-  /// every UNDO that moves the document runs the cut-command refresh, and
-  /// the refresh dropped the board — so paste, undo the paste, paste again
-  /// found nothing. A cut command in the same cut (a length change, a
-  /// shift) did the same.
+  /// 🚨★★THE COPY IS ALWAYS IN HAND (F-161, 유저 2026-09-17): 「복붙은
+  /// 어디서든 가능하게 … 복사는 항상 언제든 들고있게. 컷2의 레이어에서
+  /// 붙여넣기 가능. 복사는 언제나 하나 들고있음. 보통 프로그램이 그러니까」.
+  /// F-152 (09-16) had asked it inside one cut first: 「복사하고 무언가
+  /// 붙혀넣는다고 해서 복사한게 사라지지않게. 복사한거는 들고있음」.
   ///
-  /// ↩️That drop predates the board carrying its cels and sounds BY VALUE.
-  /// Inside its own cut nothing it holds can go stale any more: an
-  /// independent paste mints from the carried cels, a linked one brings the
-  /// very same cel back (T3). What still ties it to its cut is the PICTURE:
-  /// an independent paste copies it from the store under the source's key
-  /// in the ACTIVE cut ([carryBakedPictures]), so from another cut it would
-  /// mint a blank cel.
-  ///
-  /// ⛔ONE QUESTION, ONE ANSWER. The cut switches, the gap park and the
-  /// cut-command refresh all ask it here, after the active cut is settled —
-  /// they used to answer it two ways (three unconditional drops beside
-  /// this test), which is how the refresh came to drop a copy whose cut
-  /// had not changed.
-  void keepWhileItsCutIsActive() {
-    final copied = _copiedFrame;
-    if (copied != null && copied.cutId != _project.activeCutId) {
-      _copiedFrame = null;
-    }
-  }
-
-  /// The board goes when the project itself is replaced.
+  /// ↩️What threw it away: every cut switch, gap park and cut-command
+  /// refresh — so an UNDO after a paste emptied it too (measured, F-152).
+  /// That drop predates the board carrying its cels, its sounds and now its
+  /// PICTURES by value ([_CopiedRow.pictures]); nothing it holds names a
+  /// place in one cut any more, so no cut change can make it stale.
   void clear() {
     _copiedFrame = null;
   }
@@ -235,7 +217,30 @@ class FrameClipboard {
       clip: clip,
       cels: cels,
       sounds: _soundsCarriedBy(row, cels),
+      pictures: _picturesCarriedBy(row, cels),
     );
+  }
+
+  /// The pictures [cels] show on [row], as they are NOW — taken at the copy,
+  /// for the reason [_celsCarriedBy] gives and F-161's: a paste may land in
+  /// another cut, whose store has no picture under the source's key, and a
+  /// source drawn over or cut away after the copy is not what was copied.
+  ///
+  /// ⚠️Surfaces are immutable with structural tile sharing, so holding one is
+  /// holding a reference, not a second set of pixels — until the source is
+  /// drawn over, when the board keeps the tiles it copied.
+  Map<FrameId, BitmapSurface> _picturesCarriedBy(Layer row, List<Frame> cels) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const {};
+    }
+    final store = _renderCaches.brushFrameStore;
+    return {
+      for (final cel in cels)
+        cel.id: ?store.bakedSurfaceOrNull(
+          _internals.brushFrameKeyForCut(cut, row.id, cel.id),
+        ),
+    };
   }
 
   /// The sounds [cels] carry on [row] — BY VALUE for the reason
@@ -415,7 +420,6 @@ class FrameClipboard {
   }) {
     final cels = _celsCarriedBy(layer, clip);
     _copiedFrame = _CopiedFrameReference(
-      cutId: _project.activeCutId,
       layerId: layer.id,
       frameId: frame.id,
       frameName: frame.name,
@@ -584,7 +588,8 @@ class FrameClipboard {
     // Which minted cel came from which source, per row — the pictures move
     // across this after the splice (F-62). Empty for a LINKED paste, which
     // mints nothing.
-    final mintedByLayer = <(LayerId, Map<FrameId, FrameId>)>[];
+    final mintedByLayer =
+        <(LayerId, Map<FrameId, FrameId>, Map<FrameId, BitmapSurface>)>[];
     final targets = <Layer>[layer, ..._pasteTargetRowsBesides(layer)];
     for (var i = 0; i < targets.length; i += 1) {
       final target = targets[i];
@@ -599,14 +604,18 @@ class FrameClipboard {
       final TimelineClipRow? mine;
       final List<Frame> mineCels;
       final List<AudioClip> mineSounds;
+      final Map<FrameId, BitmapSurface> minePictures;
       if (board.length <= 1) {
         mine = clip;
         mineCels = copied.cels;
         mineSounds = copied.sounds;
+        // The anchor row is the board's first — the pictures live on rows.
+        minePictures = board.first.pictures;
       } else if (i < board.length) {
         mine = board[i].clip;
         mineCels = board[i].cels;
         mineSounds = board[i].sounds;
+        minePictures = board[i].pictures;
       } else {
         continue;
       }
@@ -620,7 +629,7 @@ class FrameClipboard {
         mint: () => _frameIds.mintFrameId(target.id),
       );
       if (placed.minted.isNotEmpty) {
-        mintedByLayer.add((target.id, placed.minted));
+        mintedByLayer.add((target.id, placed.minted, minePictures));
       }
       runs.add((
         layerId: target.id,
@@ -639,7 +648,7 @@ class FrameClipboard {
       description: independent ? 'Paste frames' : 'Paste linked frames',
     );
     final cut = _project.activeCutOrNull;
-    for (final (targetId, minted) in mintedByLayer) {
+    for (final (targetId, minted, pictures) in mintedByLayer) {
       if (cut == null) {
         break; // Gap state: no cut, so no key to store a picture under.
       }
@@ -647,8 +656,9 @@ class FrameClipboard {
         internals: _internals,
         store: _renderCaches.brushFrameStore,
         cut: cut,
-        between: (from: copied.layerId, to: targetId),
+        to: targetId,
         minted: minted,
+        pictureOf: (source) => pictures[source],
       );
     }
     if (replacing) {
@@ -714,6 +724,7 @@ class _CopiedRow {
     required this.clip,
     this.cels = const [],
     this.sounds = const [],
+    this.pictures = const {},
   });
 
   final LayerId layerId;
@@ -727,11 +738,15 @@ class _CopiedRow {
   /// The sounds those cels carry, BY VALUE for the same reason — a 잘라내기
   /// takes a lifted instance's sound out of the row with it (F-115).
   final List<AudioClip> sounds;
+
+  /// The pictures those cels showed when they were copied, by cel id — BY
+  /// VALUE so a paste in any cut brings the drawing (F-161). A cel with no
+  /// picture of its own is simply absent.
+  final Map<FrameId, BitmapSurface> pictures;
 }
 
 class _CopiedFrameReference {
   const _CopiedFrameReference({
-    required this.cutId,
     required this.layerId,
     required this.frameId,
     required this.frameName,
@@ -751,11 +766,6 @@ class _CopiedFrameReference {
   /// band writes ONE entry, so the single-row clipboard is this list of
   /// length one rather than a second shape standing beside it.
   final List<_CopiedRow> rows;
-
-  /// The cut the copy was made in — the board names its cels by id inside
-  /// it, so it lives exactly as long as that cut is the one being edited
-  /// ([FrameClipboard.keepWhileItsCutIsActive]).
-  final CutId? cutId;
 
   final LayerId layerId;
 
