@@ -13,7 +13,9 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -23,6 +25,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
@@ -140,6 +143,7 @@ void main() {
     required double zoom,
     required bool walk,
     BitmapSurfacePainter? active,
+    bool keepsComposites = false,
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -157,8 +161,9 @@ void main() {
                   viewport: CanvasViewport(zoom: zoom),
                   activeSurfacePainter: active,
                   // The law is what the paint BODY draws this frame; the
-                  // kept composite can re-serve the frame before.
-                  debugDisableBake: true,
+                  // kept composite can re-serve the frame before — unless
+                  // what is kept is the question.
+                  debugDisableBake: !keepsComposites,
                   debugDisableSingleBuffer: walk,
                 ),
               ),
@@ -294,6 +299,140 @@ void main() {
     );
   });
 
+  testWidgets('🚨and when its snapshot SETTLES, the display buffer keeps '
+      'what it already drew and the deferred picture is let go', (
+    tester,
+  ) async {
+    // 유저 2026-09-23, through the board/integration session's measurement
+    // (board `I-19`): 「솔로 버벅임」, layer select included. 🔬The F-130
+    // `solo` arm, 24 drawn rows, named it: a select rastered the WHOLE
+    // display buffer twice on consecutive frames. The first raster is the
+    // switch itself. The second was this — the cel composed in the build is
+    // a deferred image, its plain snapshot takes its place a moment later
+    // (same pixels), and the stack took the new handle for a new picture.
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final store = blueStore(['drawn', 'below']);
+    final drawn = keyOf('drawn');
+    final below = keyOf('below');
+    final images = _HandedImages(frameStore: store, watched: drawn);
+    addTearDown(images.dispose);
+    final live = surfaceOf(store, drawn);
+
+    Future<void> frame({required bool drawnIsActive}) => pumpStack(
+      tester,
+      images,
+      [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasLayerImageRequest(frameKey: below, opacity: 1),
+        ),
+        CompositeLeaf<CanvasStackRow>(
+          drawnIsActive
+              ? CanvasActiveLayerRow(opacity: 1, frameKey: drawn)
+              : CanvasLayerImageRequest(frameKey: drawn, opacity: 1),
+        ),
+      ],
+      zoom: 1,
+      walk: false,
+      active: drawnIsActive
+          ? BitmapSurfacePainter(
+              surface: live,
+              showTransparentBackground: false,
+              lineage: 'leaving-the-slot',
+            )
+          : null,
+      keepsComposites: true,
+    );
+
+    /// Lets every picture the engine owes land — the async pass's compose
+    /// and a snapshot's `toImage` both finish in real time.
+    Future<void> landEverything() async {
+      for (var i = 0; i < 6; i += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 30)),
+        );
+        await tester.pump();
+      }
+    }
+
+    // The row under it is warm, as every row is once the editor has sat
+    // idle: after the switch, the settle is the only thing still to come.
+    await tester.runAsync(
+      () => images.prepare(
+        key: below,
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      ),
+    );
+    await frame(drawnIsActive: true);
+    await landEverything();
+    final state = tester.state(find.byType(CanvasLayerStackView)) as dynamic;
+    // ignore: avoid_dynamic_calls
+    final buffer = state.debugBufferCacheInUse as DisplayBufferCache;
+    final rastersBeforeTheSwitch = buffer.fullCount;
+
+    // THE SWITCH: the cel is composed in the build, as a deferred image.
+    await frame(drawnIsActive: false);
+    final rastersAfterTheSwitch = buffer.fullCount;
+    expect(
+      rastersAfterTheSwitch,
+      greaterThan(rastersBeforeTheSwitch),
+      reason: 'fixture: the switch itself rasters the buffer — the one '
+          'raster a select has to pay',
+    );
+
+    await landEverything();
+    final inTheBuild = images.handed.first;
+    final settled = images.handed.last;
+    expect(
+      identical(settled.image, inTheBuild.image),
+      isFalse,
+      reason: 'fixture: the stack was handed a second handle — the snapshot '
+          'that settled in place of the deferred image',
+    );
+    expect(
+      identical(settled.content, inTheBuild.content),
+      isTrue,
+      reason: 'fixture: of the same pixels',
+    );
+    expect(
+      inTheBuild.image.debugGetOpenHandleStackTraces(),
+      isEmpty,
+      reason: 'the deferred picture pins every tile picture it drew for as '
+          'long as a handle on it lives, so the stack lets its clone go in '
+          'the build the settle asks for — not whenever the rows next '
+          'happen to change',
+    );
+
+    // Then the next rebuild, which anything causes, and a paint for any
+    // reason at all — the stack has no boundary of its own, so a hover or
+    // a cursor blink beside it is enough: both ask with whatever the stack
+    // holds by then.
+    await frame(drawnIsActive: false);
+    tester
+        .renderObject<RenderCustomPaint>(
+          find.descendant(
+            of: find.byType(CanvasLayerStackView),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .markNeedsPaint();
+    await tester.pump();
+    expect(
+      buffer.fullCount,
+      rastersAfterTheSwitch,
+      reason: 'the settle is the same pixels on a new handle — rastering the '
+          'whole buffer again for it is the second full raster a select '
+          'used to pay',
+    );
+    expect(
+      blueColumns(await paintStack(tester), 1),
+      viewSize.width.toInt(),
+      reason: 'and the cel is still all there',
+    );
+  });
+
   testWidgets('⛔a cel that was NOT on screen is not composed inside the '
       'build — it arrives with the asynchronous pass, as it always has', (
     tester,
@@ -351,4 +490,57 @@ void main() {
           'been widened and the stall came with it',
     );
   });
+}
+
+/// The cache as the stack sees it, remembering every image it hands over
+/// for [watched] in order — the one place the build's deferred picture and
+/// the snapshot that settles in its place can be seen side by side.
+class _HandedImages extends LayerFrameImageCache {
+  _HandedImages({required super.frameStore, required this.watched});
+
+  final BrushFrameKey watched;
+  final List<LayerFrameImage> handed = [];
+
+  LayerFrameImage? _noted(BrushFrameKey key, LayerFrameImage? image) {
+    if (key == watched && image != null) {
+      handed.add(image);
+    }
+    return image;
+  }
+
+  @override
+  LayerFrameImage? prepareSyncOrNull({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    required bool makePictures,
+  }) => _noted(
+    key,
+    super.prepareSyncOrNull(
+      key: key,
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: sourceEffects,
+      makePictures: makePictures,
+    ),
+  );
+
+  @override
+  Future<LayerFrameImage?> prepare({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    bool Function()? shouldAbort,
+  }) async => _noted(
+    key,
+    await super.prepare(
+      key: key,
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: sourceEffects,
+      shouldAbort: shouldAbort,
+    ),
+  );
 }

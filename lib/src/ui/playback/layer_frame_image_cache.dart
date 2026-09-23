@@ -20,10 +20,28 @@ import '../../core/pin_counts.dart';
 /// covers ([worldRect] == the canvas rect unless the cel has pasteboard
 /// tiles, which grow the extent so the editing stack can show them).
 class LayerFrameImage {
-  const LayerFrameImage({required this.image, required this.worldRect});
+  LayerFrameImage({
+    required this.image,
+    required this.worldRect,
+    Object? content,
+  }) : content = content ?? Object();
 
   final ui.Image image;
   final ui.Rect worldRect;
+
+  /// What these PIXELS are — a new token for every compose, and the SAME
+  /// token on the plain snapshot that later takes a deferred image's place
+  /// ([LayerFrameImageCache._settleWhenTheSnapshotLands]: 「same pixels,
+  /// same validity」).
+  ///
+  /// 🚨★★★That sentence used to live only in a comment, so a holder could
+  /// not tell a settle from a recompose — and treated it as one. 🔬Measured
+  /// 2026-09-23 (the F-130 `solo` arm, 24 drawn rows): the row a LAYER
+  /// SELECT drops out of the active slot is composed in the build, settles
+  /// one frame later, and the editing stack took the swap as a new picture
+  /// — the whole display buffer rastered a SECOND time, for pixels it
+  /// already had (229ms of 520 in the test VM's software raster).
+  final Object content;
 }
 
 class _LayerFrameImageEntry {
@@ -433,6 +451,9 @@ class LayerFrameImageCache {
           positioned: LayerFrameImage(
             image: snapshot,
             worldRect: entry.positioned.worldRect,
+            // The same pixels, so the same content — a holder swaps its
+            // handle and keeps everything it drew with the old one.
+            content: entry.positioned.content,
           ),
           sourceRevision: entry.sourceRevision,
           canvasSize: entry.canvasSize,

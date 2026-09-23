@@ -479,6 +479,66 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _imagesRevision += 1;
   }
 
+  /// Handles a settle replaced ([_settleHeldImage]), kept until the build
+  /// that replaces the painter drawing with them ([_releaseSettled]).
+  final List<ui.Image> _superseded = <ui.Image>[];
+
+  /// [image] takes the place of [held] for [key] WITHOUT moving
+  /// [_imagesRevision] — the third way into [_images], and the only one that
+  /// leaves the composite standing.
+  ///
+  /// 🚨★★★A SETTLE IS NOT A NEW PICTURE. The row a layer select drops out of
+  /// the active slot is composed in the build as a DEFERRED image and
+  /// settles one frame later into the plain snapshot of the same picture
+  /// ([LayerFrameImage.content] is how the cache says so). Taken as a new
+  /// picture, it bumped the revision, broke the composite key, and the whole
+  /// display buffer rastered a second time for pixels it already had —
+  /// 🔬measured 2026-09-23, F-130 `solo` arm, 24 drawn rows: two full buffer
+  /// rasters per select, the second one pure repetition (229ms of 520 in the
+  /// test VM's software raster). 유저 (via the board/integration session's
+  /// measurement, board `I-19`): 「솔로 버벅임」, layer select included.
+  ///
+  /// ⛔The revision's own law still holds: a recording never outlives a
+  /// clone it references. The replaced clone is not disposed here — the
+  /// painter on screen draws with it until the next build, which the
+  /// settle asks for — so it is PARKED ([_superseded]) and goes in that
+  /// build, with every bake slot that may replay it ([_releaseSettled]).
+  ///
+  /// ⚠️What stays behind is the display buffer's kept image: it drew the
+  /// deferred picture and pins it (`raster_picture.dart`) until the buffer
+  /// is next composed — one picture of the row held that much longer, in
+  /// place of a whole-buffer raster.
+  void _settleHeldImage(
+    BrushFrameKey key,
+    _HeldImage held,
+    LayerFrameImage image,
+  ) {
+    _superseded.add(held.clone);
+    _images[key] = (
+      source: image.image,
+      clone: image.image.clone(),
+      worldRect: held.worldRect,
+      revision: held.revision,
+      quality: held.quality,
+      content: held.content,
+    );
+  }
+
+  /// Lets the handles a settle replaced go, in the build whose painter
+  /// draws with their successors — and with them the bake's slots, which
+  /// may have recorded one ([StaticCompositeBake]: a picture that outlives
+  /// a dispose replays a dead handle).
+  void _releaseSettled() {
+    if (_superseded.isEmpty) {
+      return;
+    }
+    for (final clone in _superseded) {
+      clone.dispose();
+    }
+    _superseded.clear();
+    _bake.invalidate();
+  }
+
   @override
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
@@ -487,6 +547,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       entry.value.clone.dispose();
     }
     _images.clear();
+    _releaseSettled();
     // The buffer and the bake go with this view; the books must not keep
     // charging for a canvas nobody is looking at any more. Unhooked FIRST,
     // or disposing them would report their last bytes after this zero.
@@ -525,7 +586,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   /// Holds [image] for [key] unless it is the one already held — the pin,
   /// the clone and the revision together — and says whether the held set
-  /// changed. The sync sweep and the async pass both adopt through here.
+  /// changed, a settle's new handle included ([_settleHeldImage]). The sync
+  /// sweep and the async pass both adopt through here.
   bool _adoptImage(
     BrushFrameKey key,
     LayerFrameImage image,
@@ -536,6 +598,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (held != null && identical(held.source, image.image)) {
       return false;
     }
+    if (held != null && identical(held.content, image.content)) {
+      _settleHeldImage(key, held, image);
+      // Changed, so the next build hands the painter the new handle and
+      // lets the old one go. It repaints nothing: the rows match by
+      // content, and the composite keeps what it drew.
+      return true;
+    }
     if (held != null) _dropImage(key, held);
     widget.imageCache.retainPin(key, quality);
     _holdImage(key, (
@@ -544,6 +613,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       worldRect: image.worldRect,
       revision: revision,
       quality: quality,
+      content: image.content,
     ));
     return true;
   }
@@ -795,6 +865,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         }
         return _PaintImage(
           image: held.clone,
+          content: held.content,
           worldRect: held.worldRect,
           opacity: request.opacity,
           blendMode: request.blendMode,
@@ -883,6 +954,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   Widget build(BuildContext context) {
     _noteBoundaryOnGrid(context);
     final nodes = _resolvedTree(widget.nodes);
+    // This build's painter draws with a settle's new handles, so the ones
+    // they replaced can go ([_settleHeldImage]).
+    _releaseSettled();
     // 🚨(v) — the recordings survive only while everything they were
     // recorded against holds still.
     //
@@ -1103,6 +1177,9 @@ typedef _HeldImage = ({
   Rect worldRect,
   int? revision,
   PlaybackQuality quality,
+  // What the pixels ARE ([LayerFrameImage.content]) — what the paint tree
+  // and the composite key compare, so a settle changes neither.
+  Object content,
 });
 
 /// The painter's own node shape: the request tree with images resolved.
@@ -1148,6 +1225,7 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
 final class _PaintImage extends _PaintRow {
   const _PaintImage({
     required this.image,
+    required this.content,
     required this.worldRect,
     required this.opacity,
     required this.blendMode,
@@ -1158,6 +1236,17 @@ final class _PaintImage extends _PaintRow {
   });
 
   final ui.Image image;
+
+  /// What [image]'s pixels ARE ([LayerFrameImage.content]) — the one thing
+  /// [matches] and [signature] compare about the picture.
+  ///
+  /// ⛔Not `identical(image, …)`, which is what they compared until
+  /// 2026-09-23: a settle hands over a new handle to the same pixels, and
+  /// the handle's identity is what broke the composite key and rastered the
+  /// display buffer a second time
+  /// ([_CanvasLayerStackViewState._settleHeldImage]). Every compose makes a
+  /// new token, so a new PICTURE still moves both.
+  final Object content;
   final Rect worldRect;
   final double opacity;
   final LayerBlendMode blendMode;
@@ -1169,7 +1258,7 @@ final class _PaintImage extends _PaintRow {
   @override
   bool matches(_PaintRow other) =>
       other is _PaintImage &&
-      identical(image, other.image) &&
+      identical(content, other.content) &&
       worldRect == other.worldRect &&
       opacity == other.opacity &&
       blendMode == other.blendMode &&
@@ -1183,7 +1272,7 @@ final class _PaintImage extends _PaintRow {
 
   @override
   int get signature => Object.hash(
-    identityHashCode(image),
+    identityHashCode(content),
     worldRect,
     opacity,
     blendMode,
@@ -1540,11 +1629,13 @@ class _LayerStackPainter extends CustomPainter {
   static const int _backdropRasterMinReplayOps = 8;
 
   @override
-  void paint(Canvas canvas, Size size) =>
-      // The paint pass (Round 6): one paint of the stack, as its own object,
-      // constructed PER PAINT — its geometry fields are `late final`, and a
-      // painter can be asked to paint more than once.
-      _LayerStackPaintPass(this).paint(canvas, size);
+  void paint(Canvas canvas, Size size) => labProbe(
+    'layerStackPaint',
+    // The paint pass (Round 6): one paint of the stack, as its own object,
+    // constructed PER PAINT — its geometry fields are `late final`, and a
+    // painter can be asked to paint more than once.
+    () => _LayerStackPaintPass(this).paint(canvas, size),
+  );
 
   /// The coordinates whose token moved from [last] to [now]: one [now]
   /// holds under a different token (or newly), and one [now] no longer

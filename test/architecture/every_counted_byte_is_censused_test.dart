@@ -241,6 +241,11 @@ const _imageHolders = <String, String>{
       'counted:liveImageBytes',
   'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
       'counted:heldBytes',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
+      'clones a settle replaced, kept only until the build the settle asks '
+      'for; each is of a picture the display buffer\'s kept image drew and '
+      'still pins until its next compose, so nothing is held through them '
+      'that the buffer does not hold anyway',
   'lib/src/ui/envelope/envelope_image_cache.dart → _images':
       'a handful of decoded logos and stamps, one per role, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '

@@ -182,6 +182,12 @@ void main() {
         sourceEffects: const [],
       );
       expect(identical(first, rebuilt), isFalse);
+      expect(
+        identical(first!.content, rebuilt!.content),
+        isFalse,
+        reason: 'a new picture is new CONTENT — what a holder reads to know '
+            'the display it composed with the old one is stale',
+      );
       cache.dispose();
     });
   });
@@ -374,6 +380,12 @@ void main() {
       );
       expect(await bytesOf(kept.image), nowBytes, reason: 'the same picture');
       expect(kept.worldRect, now.worldRect);
+      expect(
+        identical(kept.content, now.content),
+        isTrue,
+        reason: 'the same CONTENT: the handle is all that changed, and a '
+            'holder that composed with the deferred image keeps what it drew',
+      );
       expect(
         identical(
           cache.validImageOrNull(

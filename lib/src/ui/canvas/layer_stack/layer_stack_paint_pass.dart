@@ -1183,7 +1183,14 @@ class _LayerStackPaintPass {
       cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
       derived = scroll.deferred;
     } else {
-      _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+      labProbe(
+        'displayBuffer.recordWhole',
+        () => _paintContent(
+          into,
+          intoTheBuffer: true,
+          rasterScale: 1 / _levelStep,
+        ),
+      );
       derived = false;
     }
     return _keepMiss(
@@ -1215,11 +1222,14 @@ class _LayerStackPaintPass {
     required bool carried,
     required LiveSurfaceTokens? tokens,
   }) {
-    final made = rasterPictureAndSnapshot(
-      recorder,
-      (rect.width / _levelStep).round(),
-      (rect.height / _levelStep).round(),
-      snapshot: cache != null && key != null && cache.wantsPromotion,
+    final made = labProbe(
+      'displayBuffer.raster',
+      () => rasterPictureAndSnapshot(
+        recorder,
+        (rect.width / _levelStep).round(),
+        (rect.height / _levelStep).round(),
+        snapshot: cache != null && key != null && cache.wantsPromotion,
+      ),
     );
     final image = made.deferred;
     if (cache == null || key == null) {

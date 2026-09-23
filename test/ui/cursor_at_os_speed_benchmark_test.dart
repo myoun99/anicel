@@ -300,6 +300,57 @@ void main() {
       );
     }
 
+    if (arms.contains('solo')) {
+      // 🗣️유저 2026-09-23, through the board/integration session's own
+      // measurement (board `I-19`): 「솔로 버벅임」 — ONE FRAME of layer
+      // select 260ms · solo on 132ms · solo off 331ms with 24 inked rows,
+      // and their counts put the difference outside the widgets (solo on and
+      // off rebuild the same 3,051 elements and paint the same 4,104 render
+      // objects, yet off costs +200ms). This arm reads the CANVAS side of
+      // those same three verbs, and every frame each one costs until the
+      // app is quiet again. Run it with `--dart-define=BRUSH_LAB_PROFILE=true`
+      // and the lab probes inside the frame print their share.
+      final rows =
+          int.tryParse(Platform.environment['F130_SOLO_ROWS'] ?? '') ?? 24;
+      await probe.armTool(brushTool, CanvasTool.brush);
+      await probe.drawOneStroke(session);
+      for (var i = 1; i < rows; i += 1) {
+        await addLayer(tester);
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton);
+        await tester.pumpAndSettle();
+        await probe.drawOneStroke(session);
+      }
+      // Let the prerender warm what it warms at rest, as the user's app does
+      // between clicks.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final layers = session.layers;
+      // ignore: avoid_print
+      print('[F130] solo: ${layers.length} rows, active '
+          '${session.activeLayer?.id.value}');
+      final other = layers.firstWhere(
+        (layer) => layer.id != session.activeLayer?.id,
+      );
+      await probe.measureVerb(
+        'select-a-row',
+        () => session.selectLayer(other.id),
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      await probe.measureVerb(
+        'solo-on',
+        session.visibilitySolo.toggleLayerVisibilitySolo,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      await probe.measureVerb(
+        'solo-off',
+        session.visibilitySolo.toggleLayerVisibilitySolo,
+      );
+    }
+
     // Drain the prerender scheduler's debounced warming (a pending timer at
     // teardown fails the harness's invariants).
     await tester.pump(const Duration(seconds: 1));
@@ -644,6 +695,57 @@ class _Probe {
       'scheduled ${a.frameScheduled}/${b.frameScheduled} '
       'pump ${_ms(a.pumpMicros)}/${_ms(b.pumpMicros)}ms'
       '${(a.painted == 0 && b.painted == 0) ? '' : '  ⚠️NOT QUIET'}',
+    );
+  }
+
+  /// One VERB — not a pointer — and every frame it costs until the app is
+  /// quiet again: the frame the verb asks for, then each frame the passes
+  /// it started ask for. A composition that lands late is a frame of its
+  /// own, and a stutter spread over three frames is still a stutter.
+  Future<void> measureVerb(String label, void Function() verb) async {
+    // ignore: avoid_print
+    print('[F130] >>> $label');
+    // ⚠️The counting hooks [measureOne] installs (build and paint profiling)
+    // are part of what they time, and they bill per WIDGET — so a verb that
+    // rebuilds a lot reads heavier than it is, next to one whose cost is a
+    // raster. `F130_PLAIN` times the same frames with nothing installed.
+    if (Platform.environment['F130_PLAIN'] != null) {
+      final times = <int>[];
+      final watch = Stopwatch()..start();
+      verb();
+      await tester.pump();
+      times.add(watch.elapsedMicroseconds);
+      for (var frame = 0;
+          frame < 30 && tester.binding.hasScheduledFrame;
+          frame += 1) {
+        watch
+          ..reset()
+          ..start();
+        await tester.pump(const Duration(milliseconds: 16));
+        times.add(watch.elapsedMicroseconds);
+      }
+      // ignore: avoid_print
+      print('[F130] $label (plain): frames ${times.map(_ms).join(' ')}');
+      return;
+    }
+    final first = await measureOne(() async => verb());
+    final later = <int>[];
+    for (var frame = 0;
+        frame < 30 && tester.binding.hasScheduledFrame;
+        frame += 1) {
+      final watch = Stopwatch()..start();
+      await tester.pump(const Duration(milliseconds: 16));
+      watch.stop();
+      later.add(watch.elapsedMicroseconds);
+    }
+    // ignore: avoid_print
+    print(
+      '[F130] $label: first frame ${_ms(first.pumpMicros)}ms (the verb '
+      '${_ms(first.dispatchMicros)}ms) | rebuilt ${_sum(first.rebuiltBy)} '
+      '{${_top(first.rebuiltBy, 4)}} | painted ${first.painted} '
+      '{${_top(first.paintedBy, 4)}} | pictures re-recorded '
+      '${first.picturesRerecorded} | later frames ${later.length}: '
+      '${later.map(_ms).join(' ')}',
     );
   }
 
