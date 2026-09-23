@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
@@ -20,6 +21,7 @@ import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import '../../helpers/app_faces.dart';
 import '../../helpers/library_source.dart';
 
 /// I-4 — 색 라벨이 `LayerMark` 를 **승계**했다는 것을 재는 계약.
@@ -35,6 +37,7 @@ void main() {
   _oneDecidesTheWritingDirection();
   _threeGlyphAbbreviations();
   _labelGlyphsKeepTheirAntiAliasing();
+  _everyLabelSitsAtOneHeight();
 
   // 🚨A GLOBAL. Saving and restoring rather than assigning a fresh default
   // back: writing `const AppAccentSettings()` in the teardown would not undo
@@ -527,7 +530,10 @@ void _labelGlyphsKeepTheirAntiAliasing() {
 }
 
 /// 픽셀 테스트가 쓰는 **진짜 패널**. 레일 한 줄에 라벨이 붙은 레이어 하나.
-Widget markPanelForPixelTest() {
+Widget markPanelForPixelTest({
+  TimelineOrientation orientation = TimelineOrientation.horizontal,
+  ThemeData? theme,
+}) {
   final layers = [
     Layer(
       id: const LayerId('a'),
@@ -542,6 +548,7 @@ Widget markPanelForPixelTest() {
     ),
   ];
   return MaterialApp(
+    theme: theme,
     home: Scaffold(
       body: TimelinePanel(
         layers: layers,
@@ -556,9 +563,173 @@ Widget markPanelForPixelTest() {
         onLayerOpacityChanged: (_, _) {},
         onToggleLayerTimesheet: (_) {},
         onLayerMarkSelected: (_, _) {},
-        orientation: TimelineOrientation.horizontal,
+        orientation: orientation,
         onOrientationChanged: (_) {},
       ),
     ),
   );
+}
+
+/// 🚨★★★**EVERY LABEL SITS AT ONE HEIGHT — on the sheet as on the rail.**
+///
+/// 유저 2026-09-17 (F-160): 「x시트의 색 라벨, LO만 글자가 아래로
+/// 치우쳐져있고 용지는 살짝 위로 치우쳐져있는거같은데 이런거 타임라인이랑
+/// 다른거있나? 다른거있으면 법 통일하고 제대로 중앙에오도록」.
+///
+/// ⛔**THE APP'S FACES ARE LOADED FIRST, and that is the whole test.**
+/// Without them the binding draws in its own box font, where every glyph is
+/// a rectangle — the first numbers this round read off it were wrong in
+/// both directions. A Korean label is TWO fonts (BIZ UDPGothic draws `LO`,
+/// Nanum Gothic draws 용지) and the drift lived in the difference.
+///
+/// ⚠️The plate is measured ALONE, at the size the real panel gives it.
+/// Scanned inside the panel, the reading was the grid's rules, not glyphs.
+void _everyLabelSitsAtOneHeight() {
+  setUpAll(loadTheAppFaces);
+  tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+  const ratio = 8.0;
+
+  /// Where [process]'s ink sits — its vertical centre, in logical pixels
+  /// from the plate's own centre — and how many different row widths it
+  /// has: a glyph has many, a box font's rectangle has two or three.
+  Future<({double drift, int shapes})> inkOf(
+    WidgetTester tester, {
+    required LayerProcess process,
+    required Axis axis,
+    required Size plate,
+  }) async {
+    final key = GlobalKey();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        // ⚠️A SCAFFOLD, not a bare Center: the theme's face reaches text
+        // only inside a Material. Without one the plate drew in the box
+        // font and the premise below caught it on all eight runs.
+        home: Scaffold(
+          body: Center(
+            child: RepaintBoundary(
+              key: key,
+              child: SizedBox.fromSize(
+                size: plate,
+                child: LayerMarkPlate(
+                  mark: LayerMark(process: process),
+                  axis: axis,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    late ByteData pixels;
+    late int width;
+    late int height;
+    await tester.runAsync(() async {
+      final boundary =
+          key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: ratio);
+      width = image.width;
+      height = image.height;
+      pixels = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    });
+
+    // ⛔The fill is ASKED, not guessed: the most common value flips to the
+    // ink whenever the glyphs cover most of the plate.
+    final fill =
+        (layerMarkColor(LayerMark(process: process)).g * 255).round() & 0xFF;
+    int? top;
+    int? bottom;
+    final widths = <int>{};
+    for (var y = 0; y < height; y++) {
+      var ink = 0;
+      for (var x = 0; x < width; x++) {
+        if ((pixels.getUint8((y * width + x) * 4 + 1) - fill).abs() > 40) {
+          ink += 1;
+        }
+      }
+      if (ink >= 2) {
+        top ??= y;
+        bottom = y;
+        widths.add(ink);
+      }
+    }
+    expect(top, isNotNull, reason: '⛔빈 것을 쟀다 — ${process.jsonValue}');
+    return (
+      drift: ((top! + bottom!) / 2 - (height - 1) / 2) / ratio,
+      shapes: widths.length,
+    );
+  }
+
+  // ⚠️Every language the app draws in ITS OWN faces. 중국어는 OS 에 맡긴다
+  // ([AppTypography.familyFor]) — the binding has no OS font to measure.
+  for (final language in AppLanguage.values.where(
+    (language) => language != AppLanguage.zhHans,
+  )) {
+    for (final surface in const [
+      (orientation: TimelineOrientation.horizontal, axis: Axis.horizontal,
+          prefix: 'timeline'),
+      (orientation: TimelineOrientation.vertical, axis: Axis.vertical,
+          prefix: 'xsheet'),
+    ]) {
+      testWidgets('🚨$language · ${surface.prefix}: every colour label\'s '
+          'ink sits at ONE height in its plate', (tester) async {
+        AppText.settings.value = AppLanguageSettings(programLanguage: language);
+        await tester.pumpWidget(
+          markPanelForPixelTest(
+            orientation: surface.orientation,
+            theme: buildAppTheme(),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final plate = tester
+            .getRect(
+              find.byKey(ValueKey<String>('${surface.prefix}-layer-mark-a')),
+            )
+            .size;
+
+        final drifts = <String, double>{};
+        for (final process in LayerProcess.values) {
+          final ink = await inkOf(
+            tester,
+            process: process,
+            axis: surface.axis,
+            plate: plate,
+          );
+          expect(
+            ink.shapes,
+            greaterThan(5),
+            reason:
+                '⛔전제: a REAL face drew ${layerProcessAbbrev(process)} — '
+                'a box font gives two or three row widths and would measure '
+                'nothing this test is about',
+          );
+          drifts[layerProcessAbbrev(process)] = ink.drift;
+        }
+
+        // ⚠️THE LINE SITS BETWEEN TWO MEASURED THINGS, not at a round number.
+        // • The TYPEFACE's own variation, which no layout can or should undo:
+        //   one font draws all of Japanese, and on the rail 仕上 sat at
+        //   −0.25px while 原画 sat at +0.44px — 上 simply puts its ink lower
+        //   in its square than 画 does. 0.69px.
+        // • The DEFECT: where two fonts meet (Korean — BIZ draws `LO`, Nanum
+        //   the Hangul), a glyph run that carried its own 1.15 line box put
+        //   `LO` 1.25px below the rest on the sheet.
+        // ⛔0.5 was tried first and failed Japanese on the RAIL — a surface
+        // this round never touched. A line that fails the typeface measures
+        // the font, not the law.
+        final spread =
+            drifts.values.reduce(math.max) - drifts.values.reduce(math.min);
+        expect(
+          spread,
+          lessThanOrEqualTo(1.0),
+          reason:
+              '🚨유저: 「LO만 글자가 아래로 치우쳐져있고 용지는 살짝 위로 … '
+              '법 통일하고 제대로 중앙에오도록」 · $drifts',
+        );
+      });
+    }
+  }
 }

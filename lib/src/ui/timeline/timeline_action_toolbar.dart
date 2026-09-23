@@ -102,6 +102,7 @@ class _StaticCommandGroup extends StatefulWidget {
 
 class _StaticCommandGroupState extends State<_StaticCommandGroup> {
   Widget? _cached;
+  TextScaler? _builtAt;
 
   @override
   void didUpdateWidget(covariant _StaticCommandGroup oldWidget) {
@@ -112,15 +113,26 @@ class _StaticCommandGroupState extends State<_StaticCommandGroup> {
   }
 
   @override
-  Widget build(BuildContext context) => _cached ??= StaticRaster(
-    // Each group is its own ZONE. The bar used to be baked as one
-    // surface, which meant a single button's state changing re-baked
-    // every button on the row; now dirt from one group stops at that
-    // group's own boundary. Siblings, never nesting — a bake inside a
-    // bake is the one thing that freezes.
-    debugLabel: 'command-group',
-    child: widget.builder(context),
-  );
+  Widget build(BuildContext context) {
+    // The pills size themselves to their words (text-scale-fixed-height-bars,
+    // 유저 2026-09-18: 「막대가 글자 크기를 따라 자란다」), so the OS text size
+    // is a fact every group shows. Read here, it is also the dependency that
+    // brings this build back when the size changes under a running app.
+    final scaler = MediaQuery.textScalerOf(context);
+    if (scaler != _builtAt) {
+      _builtAt = scaler;
+      _cached = null;
+    }
+    return _cached ??= StaticRaster(
+      // Each group is its own ZONE. The bar used to be baked as one
+      // surface, which meant a single button's state changing re-baked
+      // every button on the row; now dirt from one group stops at that
+      // group's own boundary. Siblings, never nesting — a bake inside a
+      // bake is the one thing that freezes.
+      debugLabel: 'command-group',
+      child: widget.builder(context),
+    );
+  }
 }
 
 class TimelineActionToolbar extends StatelessWidget {
@@ -212,7 +224,6 @@ class TimelineActionToolbar extends StatelessWidget {
     LayerKind.animation => 'animation',
     LayerKind.storyboard => 'storyboard',
     LayerKind.image => 'image',
-    LayerKind.text => 'text',
     LayerKind.se => 'se',
     LayerKind.instruction => 'instruction',
     LayerKind.adjustment => 'adjustment',
@@ -225,7 +236,6 @@ class TimelineActionToolbar extends StatelessWidget {
     LayerKind.animation => AppText.strings.tlKindAnimation,
     LayerKind.storyboard => AppText.strings.tlKindStoryboard,
     LayerKind.image => AppText.strings.tlKindImage,
-    LayerKind.text => AppText.strings.tlKindText,
     LayerKind.se => AppText.strings.tlKindSe,
     LayerKind.instruction => AppText.strings.tlKindInstruction,
     LayerKind.adjustment => AppText.strings.tlKindAdjustment,
@@ -254,7 +264,6 @@ class TimelineActionToolbar extends StatelessWidget {
         LayerKind.animation,
         LayerKind.storyboard,
         LayerKind.image,
-        LayerKind.text,
         LayerKind.se,
         LayerKind.instruction,
         // R6b: the row that filters everything below it. It lands above the
@@ -644,15 +653,17 @@ class TimelineActionToolbar extends StatelessWidget {
       // buttons honest scans `IconButton(`, so a TEXT button walked straight
       // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
       // The BOX is still theirs (a pill promised it); the LAW never was.
-      child: ControlPressClaim(onPressed: onPressed, 
-        child: TextButton(
+      child: ControlPressClaim(onPressed: onPressed,
+        // A context of its own for the one fact the box reads from where it
+        // is shown: the pill's height, which grows with the OS text size.
+        child: Builder(builder: (context) => TextButton(
           key: key,
           onPressed: silentPress(onPressed),
           style: TextButton.styleFrom(
             // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
             // rather than to stand on its own in the bar.
-            minimumSize: const Size(21, 24),
-            maximumSize: const Size(24, 24),
+            minimumSize: Size(21, CommandPill.heightIn(context) - 4),
+            maximumSize: Size(24, CommandPill.heightIn(context) - 4),
             padding: EdgeInsets.zero,
             visualDensity: VisualDensity.compact,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -672,8 +683,11 @@ class TimelineActionToolbar extends StatelessWidget {
             // fade to nine other buttons.
             animationDuration: Duration.zero,
           ),
-          child: Text(label, style: const TextStyle(fontSize: 12.5)),
-        ),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: CommandPill.verbFontSize),
+          ),
+        )),
       ),
     );
   }

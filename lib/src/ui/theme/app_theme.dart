@@ -440,11 +440,65 @@ abstract final class AppTypography {
   static const List<String> _fallback = <String>['Nanum Gothic'];
 }
 
+/// 🚨★★★**THE APP HAS NO PAGE ROUTES, AND PAYS FOR NO PAGE TRANSITION.**
+///
+/// `MaterialApp(home:)` still puts the whole editor inside a `PageRoute`,
+/// and the route asks the theme how to animate itself in. Whatever it
+/// builds STAYS in the tree after the animation is over — and what
+/// Flutter's defaults build is not free at rest:
+///
+///  * android (the tablet target, and what a widget test sees by default)
+///    gets `FadeForwardsPageTransitionsBuilder`, whose four
+///    `FadeTransition`s keep a full-window **`OpacityLayer` for ever**.
+///    ⛔That is not a 255-alpha no-op: `RenderAnimatedOpacityMixin` is a
+///    repaint boundary at ANY alpha above zero and always hands the engine
+///    an opacity layer, so the whole app composites through four
+///    offscreens on every frame the app produces.
+///  * windows/linux get `ZoomPageTransitionsBuilder`, whose
+///    `SnapshotWidget`s leave one more boundary in the chain.
+///
+/// 🔬Measured with the F-130 layer census (2026-09-22, one cursor move,
+/// nothing else on screen): layers re-added per move **13 on android
+/// (four of them `OpacityLayer`s) · 9 on windows**. With this builder the
+/// android chain is the windows one.
+///
+/// ⛔Nothing is lost: `Navigator.push`, `MaterialPageRoute` and
+/// `PageRouteBuilder` appear **nowhere** in `lib/` — the editor is the one
+/// route there is, so the only transition ever built is the one nobody
+/// sees, on the frame the app starts. Dialogs are `PopupRoute`s and keep
+/// their own fades.
+///
+/// ⚠️If a real page route is ever added, this is the line that decides how
+/// it animates — take the decision here rather than deleting it, and
+/// `the_app_pays_for_no_page_transition_test` will be the one that argues.
+class _NoPageTransition extends PageTransitionsBuilder {
+  const _NoPageTransition();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T>? route,
+    BuildContext? context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
+}
+
 ThemeData buildAppTheme() {
   final colorScheme = _buildColorScheme();
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: _NoPageTransition(),
+        TargetPlatform.fuchsia: _NoPageTransition(),
+        TargetPlatform.iOS: _NoPageTransition(),
+        TargetPlatform.linux: _NoPageTransition(),
+        TargetPlatform.macOS: _NoPageTransition(),
+        TargetPlatform.windows: _NoPageTransition(),
+      },
+    ),
     // The app speaks in one face — see [AppTypography] for why the ORDER of
     // the fallback is what routes each script.
     fontFamily: AppTypography.familyFor(AppText.language),

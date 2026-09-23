@@ -124,7 +124,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'timeline/timeline_frame_coordinate_policy.dart'
     show FrameScrubDedupe, frameIndexFromLocalX;
 import 'timeline/timeline_frame_range_policy.dart'
-    show endlessViewportFillFrames;
+    show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
 import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
@@ -437,6 +437,7 @@ class StoryboardPanel extends StatefulWidget {
     this.showSeconds = false,
     this.onShowSecondsChanged,
     this.railExtent,
+    this.frameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.revealSelectionTick,
@@ -714,6 +715,12 @@ class StoryboardPanel extends StatefulWidget {
   /// This rail's window size, set by the splitter beside it and persisted
   /// by the workspace. Null = a session-local one of our own.
   final LayerRailExtent? railExtent;
+
+  /// Where the FRAME axis stands, in pixels — kept by the host beside
+  /// [railExtent] because it has to outlive this panel (F-143: a fold
+  /// remounts it, and the offset that lived here went with it). Null = a
+  /// session-local one of our own, as with the rail.
+  final ValueNotifier<double>? frameAxisOffset;
 
   final ProjectFrameRate projectFrameRate;
 
@@ -1059,7 +1066,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   int get _countingFps => widget.projectFrameRate.countingBase;
 
   final ScrollController _verticalController = ScrollController();
-  final ScrollController _horizontalController = ScrollController();
+
+  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounts
+  /// this panel, and a newborn 0 was read back after layout and recorded as
+  /// a scroll over the position the host had kept. The timeline grids'
+  /// controllers are born the same way.
+  late final ScrollController _horizontalController = ScrollController(
+    initialScrollOffset: _horizontalScrollOffset.value,
+  );
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -1091,9 +1105,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// pinned ruler's translate follows it with zero panel rebuilds. Only
   /// an endless-extent change (growth/shrink) still goes through
   /// setState.
-  final ValueNotifier<double> _horizontalScrollOffset = ValueNotifier<double>(
-    0,
-  );
+  ///
+  /// The host's when it keeps one ([StoryboardPanel.frameAxisOffset]) —
+  /// read ONCE, as in the timeline grids.
+  late final ValueNotifier<double> _horizontalScrollOffset =
+      widget.frameAxisOffset ?? _ownedHorizontalScrollOffset;
+
+  /// The fallback frame-axis offset for hosts that keep none of their own.
+  final ValueNotifier<double> _ownedHorizontalScrollOffset =
+      ValueNotifier<double>(0);
 
   /// The QUANTIZED window bucket (UI-R16, shared policy): the ruler
   /// painters' repaint trigger — fires once per span crossing, so the
@@ -1108,9 +1128,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     frameAxisOffset: _horizontalScrollOffset,
     frameWindowBucket: _horizontalWindowBucket,
     cellExtent: () => _scale.pixelsPerFrame,
-    baseFrameCount: () => _totalFrames(
-      widget.project,
-      buildStoryboardTimelineLayout(widget.project),
+    baseFrameCount: () => _restingFramesOf(
+      _totalFrames(
+        widget.project,
+        buildStoryboardTimelineLayout(widget.project),
+      ),
     ),
     rebuild: _rebuild,
     isMounted: () => mounted,
@@ -1236,7 +1258,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _frameAxis.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();
-    _horizontalScrollOffset.dispose();
+    // ⛔Only our own — the host's outlives this panel by design.
+    _ownedHorizontalScrollOffset.dispose();
     _horizontalWindowBucket.dispose();
     _hoveredCutId.dispose();
     _frameGeometry.dispose();
@@ -1269,15 +1292,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   int _totalFrames(
     Project project,
     List<StoryboardTimelineLayoutEntry> entries,
-  ) {
-    var total = 0;
-    for (final entry in entries) {
-      if (entry.endFrame > total) {
-        total = entry.endFrame;
-      }
-    }
-    return total + project.trailingFrames;
-  }
+  ) => movieEndFramesOver(entries, trailingFrames: project.trailingFrames);
+
+  /// Where the movie ends under [preview]: the end of the project the
+  /// BLOCKS are drawn from mid-drag — whichever drag moves it, a cut's or
+  /// the end line's own. The strip's line, its grip and the ruler's line
+  /// all read this one (F-119).
+  int _movieEndUnder(TimelineDragPreview preview) =>
+      movieEndFrames(projectWithTimelineDragPreview(widget.project, preview));
 
   // ── where the storyboard stands: its own object ─────────────────────
   //
@@ -1450,8 +1472,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// fill — the old always-120 resting runway is gone, so past-content
   /// cells vanish once out of view and the scrollbar stops at the built
   /// cells. Only the ruler edge-drag overshoots and grows the extent.
-  int _renderedFramesFor(int totalFrames) =>
-      math.max(totalFrames + _frameAxis.trailingFrames, _viewportFillFrameCells);
+  int _renderedFramesFor(int totalFrames) => math.max(
+    _restingFramesOf(totalFrames) + _frameAxis.trailingFrames,
+    _viewportFillFrameCells,
+  );
+
+  /// The frames the strips' axis RESTS at before its endless room: the
+  /// movie's end line and the post-cut allowance past it — asked of the one
+  /// policy the timeline grids ask, so the scrollbar's far end shows the
+  /// line on every surface that draws one (F-174).
+  int _restingFramesOf(int totalFrames) =>
+      TimelineFrameRange.fromPlaybackDuration(
+        playbackFrameCount: totalFrames,
+        minimumVisibleFrameCells: 0,
+      ).visibleFrameCount;
 
   /// The scroll content's full width for [layoutEntries] (cuts + the
   /// endless runway). The rendered-cell term is EXACT (UI-R12 #16): any
@@ -1891,9 +1925,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                 cutId: null,
                                                 playbackFrameCount:
                                                     frame.totalFrames,
-                                                committedTrailingFrames:
-                                                    frame.project
-                                                        .trailingFrames,
+                                                movieEndUnder: _movieEndUnder,
                                               );
                                           return Positioned(
                                             key: const ValueKey<String>(
@@ -1922,8 +1954,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                             widget.dragPreview,
                                         committedTotalFrames:
                                             frame.totalFrames,
-                                        committedTrailingFrames:
-                                            frame.project.trailingFrames,
+                                        movieEndUnder: _movieEndUnder,
                                         scale: frame.scale,
                                         // Grabbed from the EMPTY side of
                                         // the line, never straddling it:
@@ -2075,7 +2106,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         width: frame.contentWidth,
                         renderedFrames: frame.renderedFrames,
                         contentFrames: frame.totalFrames,
-                        committedTrailingFrames: frame.project.trailingFrames,
+                        movieEndUnder: _movieEndUnder,
                         dragPreview: widget.dragPreview,
                         playhead: frame.playheadListenable,
                         frameReadySignal: widget.frameReadySignal,
@@ -2120,7 +2151,7 @@ class _StoryboardRuler extends StatefulWidget {
     required this.width,
     required this.renderedFrames,
     required this.contentFrames,
-    required this.committedTrailingFrames,
+    required this.movieEndUnder,
     this.dragPreview,
     required this.playhead,
     required this.frameReadySignal,
@@ -2146,9 +2177,9 @@ class _StoryboardRuler extends StatefulWidget {
   /// The cuts' actual end (runway dimming + the cut-end boundary line).
   final int contentFrames;
 
-  /// The trailing gap past the last cut, as committed — what a movie-end
-  /// drag's preview replaces on the ruler's end line (F-18).
-  final int committedTrailingFrames;
+  /// Where the movie ends under a drag — the panel's one reading, which the
+  /// strip's line and grip read too (F-18, F-119).
+  final int Function(TimelineDragPreview preview) movieEndUnder;
 
   /// The panel's drag channel; null keeps the ruler's end line committed.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
@@ -2315,10 +2346,11 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 currentFrameIndex: -1,
                 playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
-                // F-18: the ruler's end line follows the movie-end drag with
-                // the strip's line and grip — the same reader, the same gap.
+                // F-18: the ruler's end line follows the drag with the
+                // strip's line and grip — the same reader (F-119: every drag
+                // that moves the movie's end, not the end line's alone).
                 dragPreview: widget.dragPreview,
-                committedTrailingFrames: widget.committedTrailingFrames,
+                movieEndUnder: widget.movieEndUnder,
                 leadingFrameSpacerWidth: 0,
                 trailingFrameSpacerWidth: 0,
                 metrics: metrics,
@@ -4013,7 +4045,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     : RailSwipeColumnPointer(
                         child: FxToggleButton(
                           keyValue: 'storyboard-track-fx-${track.id.value}',
-                          subject: 'track',
+                          subject: RailSubject.track,
                           state: trackFxState,
                           onToggle: onToggleTrackFx!,
                         ),
@@ -4029,7 +4061,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                             keyValue:
                                 'storyboard-cut-visibility-'
                                 '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                            subject: 'cut picture',
+                            subject: RailSubject.track,
                             isVisible:
                                 subjectCut == null ||
                                 (cutPictureVisibleOf?.call(subjectCut!.id) ??
@@ -4073,7 +4105,7 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   const _StoryboardEndLineHandle({
     required this.dragPreview,
     required this.committedTotalFrames,
-    required this.committedTrailingFrames,
+    required this.movieEndUnder,
     required this.scale,
     required this.pixelsPerFrame,
     required this.movieEnd,
@@ -4084,7 +4116,7 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   /// project, so the finger left it behind on the first frame of a drag.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
   final int committedTotalFrames;
-  final int committedTrailingFrames;
+  final int Function(TimelineDragPreview preview) movieEndUnder;
   final TimelineScale scale;
   final double pixelsPerFrame;
   final StoryboardMovieEndCallbacks movieEnd;
@@ -4141,7 +4173,7 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
             preview: preview,
             cutId: null,
             playbackFrameCount: widget.committedTotalFrames,
-            committedTrailingFrames: widget.committedTrailingFrames,
+            movieEndUnder: widget.movieEndUnder,
           ),
         ),
         top: 0,

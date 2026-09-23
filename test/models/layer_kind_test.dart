@@ -14,7 +14,6 @@ void main() {
       expect(LayerKind.fromJson('animation'), LayerKind.animation);
       expect(LayerKind.fromJson('storyboard'), LayerKind.storyboard);
       expect(LayerKind.fromJson('image'), LayerKind.image);
-      expect(LayerKind.fromJson('text'), LayerKind.text);
       expect(LayerKind.fromJson('se'), LayerKind.se);
       expect(LayerKind.fromJson('camera'), LayerKind.camera);
     });
@@ -47,36 +46,15 @@ void main() {
       }
     });
 
-    test('the TEXT row (R5, §6-s): the drawing sibling that refuses the '
-        'brush — frames/exposure like animation, attach base, cel export, '
-        'no timesheet column, typed picture instead of penned', () {
-      expect(LayerKind.text.toJson(), 'text');
-      expect(LayerKind.text.holdsDrawings, isTrue);
-      expect(LayerKind.text.isDrawingCel, isTrue);
+    test('the retired TEXT kind loads as animation (F-154): its pictures '
+        'were ordinary baked cels, which is all rasterizing one ever left',
+        () {
+      expect(LayerKind.fromJson('text'), LayerKind.animation);
       expect(
-        LayerKind.text.acceptsBrushInput,
-        isFalse,
-        reason: 'the alias split: a text cel is typed, never penned',
+        [for (final kind in LayerKind.values) kind.jsonValue],
+        isNot(contains('text')),
+        reason: 'the alias is for reading old files; no kind writes it',
       );
-      expect(LayerKind.text.composites, isTrue);
-      expect(LayerKind.text.paintsArtwork, isTrue);
-      expect(LayerKind.text.exportsCels, isTrue);
-      expect(LayerKind.text.isClipboardCopyable, isTrue);
-      expect(LayerKind.text.coversWithoutGaps, isFalse);
-      expect(LayerKind.text.holdsSingleCel, isFalse);
-      expect(LayerKind.text.isFixed, isFalse);
-      // Every OTHER drawing-cel kind still takes the brush — the split
-      // must not widen.
-      for (final kind in LayerKind.values) {
-        if (kind == LayerKind.text) {
-          continue;
-        }
-        expect(
-          kind.acceptsBrushInput,
-          kind.isDrawingCel,
-          reason: '$kind',
-        );
-      }
     });
 
     test('the IMAGE row: one cel by definition, no timesheet column, an '
@@ -135,14 +113,12 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
   });
   column('isDrawingCel', (kind) => kind.isDrawingCel, {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.instruction,
   });
   column('acceptsBrushInput', (kind) => kind.acceptsBrushInput, {
@@ -162,7 +138,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -172,7 +147,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -182,7 +156,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -191,7 +164,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -201,7 +173,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -215,14 +186,12 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.instruction,
   });
   column('linksIntoLinkedCut', (kind) => kind.linksIntoLinkedCut, {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.folder,
     LayerKind.camera,
     LayerKind.adjustment,
@@ -235,7 +204,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.instruction,
   });
   column('isReadOnlyInCut', (kind) => kind.isReadOnlyInCut, {
@@ -245,7 +213,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
     LayerKind.folder,
@@ -258,7 +225,6 @@ void _theCapabilityTable() {
     LayerKind.storyboard,
     LayerKind.image,
     LayerKind.folder,
-    LayerKind.text,
     LayerKind.instruction,
     LayerKind.transition,
     LayerKind.camera,
@@ -273,7 +239,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
   });
@@ -281,7 +246,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.folder,
     LayerKind.camera,
   });
@@ -295,7 +259,6 @@ void _theCapabilityTable() {
     LayerKind.animation,
     LayerKind.storyboard,
     LayerKind.image,
-    LayerKind.text,
     LayerKind.se,
     LayerKind.instruction,
   });
@@ -306,7 +269,6 @@ void _theCapabilityTable() {
   });
   column('acceptsRepeatRegions', (kind) => kind.acceptsRepeatRegions, {
     LayerKind.animation,
-    LayerKind.text,
     LayerKind.se,
   });
 }

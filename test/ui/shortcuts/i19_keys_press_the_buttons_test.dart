@@ -59,25 +59,56 @@ Future<({List<String> before, List<String> after})> _onAFreshDrawing(
 }
 
 void main() {
-  testWidgets('Ctrl+C and Ctrl+V are the pill\'s Copy and Paste linked', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const AnicelApp());
-    await tester.pumpAndSettle();
-    await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
+  /// 🚨F-156 (유저 2026-09-17): 「붙여넣기 기본값 단축키 변경. 독립 붙여넣기를
+  /// 컨트롤+v로, 링크 붙여넣기를 컨트롤+b로」.
+  ///
+  /// ⚠️Counted in CELS as well as glyphs: an unnamed drawing prints the same
+  /// mark whether a paste linked it or minted a new one, so the cells alone
+  /// cannot tell the two keys apart — the old mapping passed a glyph test.
+  for (final (name, key, button, cels) in const [
+    (
+      'Ctrl+V is the pill\'s Paste independent — a cel of its own',
+      LogicalKeyboardKey.keyV,
+      'shared-paste-independent-button',
+      2,
+    ),
+    (
+      'Ctrl+B is the pill\'s Paste linked — the same cel again',
+      LogicalKeyboardKey.keyB,
+      'shared-paste-linked-button',
+      1,
+    ),
+  ]) {
+    testWidgets(name, (tester) async {
+      int celsOnTheRow() => tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session
+          .activeLayer!
+          .frames
+          .length;
+      Future<void> copyThenMove() async {
+        await _press(tester, LogicalKeyboardKey.keyC, control: true);
+        await tapHomeTimelineCell(
+          tester,
+          const ValueKey<String>('timeline-cell-default-layer-1-1'),
+        );
+      }
 
-    await _press(tester, LogicalKeyboardKey.keyC, control: true);
-    await tapHomeTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
-    await _press(tester, LogicalKeyboardKey.keyV, control: true);
+      final byButton = await _onAFreshDrawing(tester, () async {
+        await copyThenMove();
+        await tapToolbarButton(tester, ValueKey<String>(button));
+      });
+      expect(byButton.after, isNot(byButton.before), reason: 'LIVENESS');
+      expect(celsOnTheRow(), cels, reason: 'what the $button makes');
 
-    // The same two cells the buttons' own test reads after copy + linked
-    // paste (`home_frame_and_clipboard_test`).
-    expectCellText(_row, 0, '○');
-    expectCellText(_row, 1, '○');
-  });
+      final byKey = await _onAFreshDrawing(tester, () async {
+        await copyThenMove();
+        await _press(tester, key, control: true);
+      });
+      expect(byKey.after, byButton.after);
+      expect(celsOnTheRow(), cels);
+    });
+  }
 
   for (final (name, button, key, control) in const [
     ('Cut', 'shared-cut-button', LogicalKeyboardKey.keyX, true),
@@ -104,32 +135,6 @@ void main() {
     });
   }
 
-  testWidgets('Ctrl+B is the pill\'s Paste independent', (tester) async {
-    Future<void> copyThenMove() async {
-      await tapToolbarButton(
-        tester,
-        const ValueKey<String>('shared-copy-button'),
-      );
-      await tapHomeTimelineCell(
-        tester,
-        const ValueKey<String>('timeline-cell-default-layer-1-1'),
-      );
-    }
-
-    final byButton = await _onAFreshDrawing(tester, () async {
-      await copyThenMove();
-      await tapToolbarButton(
-        tester,
-        const ValueKey<String>('shared-paste-independent-button'),
-      );
-    });
-    expect(byButton.after, isNot(byButton.before));
-    final byKey = await _onAFreshDrawing(tester, () async {
-      await copyThenMove();
-      await _press(tester, LogicalKeyboardKey.keyB, control: true);
-    });
-    expect(byKey.after, byButton.after);
-  });
 
   testWidgets('= is the legend eye\'s 「Solo active layer」', (tester) async {
     await tester.pumpWidget(const AnicelApp());

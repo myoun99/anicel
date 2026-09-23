@@ -118,7 +118,6 @@ import 'session/edge_drag.dart';
 import 'session/movie_end_drag.dart';
 import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
-import 'session/text_cel_bakes.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
 import 'session/cut_under_playhead.dart';
@@ -250,10 +249,6 @@ class EditorSessionManager extends ChangeNotifier
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
     layerStack.attach();
-    // Text cel projections follow the model through EVERY mutation path
-    // (edit/undo/redo/paste/duplicate/link) — one history listener, the
-    // sweep re-renders whatever went stale (R5).
-    historyManager.addListener(textCelBakes.scheduleTextCelBakeSweep);
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
@@ -530,7 +525,6 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     editingSession.setActiveCutId(position.cutId);
-    clipboard.dropCopiedFrame();
     activeCutControllers.rebuild(preferredFrameIndex: position.localFrameIndex);
   }
 
@@ -666,7 +660,7 @@ class EditorSessionManager extends ChangeNotifier
   bool get canRedo => historyManager.canRedo;
 
   // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, clipboard: clipboard, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
 
   void selectCut(CutId cutId) => standing.selectCut(cutId);
   @override
@@ -1097,7 +1091,6 @@ class EditorSessionManager extends ChangeNotifier
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
   }) {
-    clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
       // The ACTIVE layer survives cut commands by default (UI-R20 #1:
@@ -1189,7 +1182,6 @@ class EditorSessionManager extends ChangeNotifier
   /// and then the reason is written here.
   List<void Function()> get _teardown => [
     () => AppMemory.settings.removeListener(_applyCacheBudgets),
-    textCelBakes.dispose,
     layerStack.dispose,
     currentRowListenable.dispose,
     rowSelectionVerbs.dispose,
@@ -1219,7 +1211,6 @@ class EditorSessionManager extends ChangeNotifier
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
-    () => historyManager.removeListener(textCelBakes.scheduleTextCelBakeSweep),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -1764,12 +1755,13 @@ class EditorSessionManager extends ChangeNotifier
 
     move();
     // 🚨★★★**THE TIDY-UP FOLLOWS THE DOCUMENT, NOT THE KEYPRESS.** Every
-    // step used to run [refreshAfterCutCommand] — which DROPS THE COPIED
-    // FRAME and CLEARS THE FRAME-RANGE SELECTION, rebuilds the cut
-    // controllers and wakes every session listener. That is what a CUT
-    // command owes. Pressing Ctrl+Z after a brush stroke owes none of it,
-    // and paid all of it: the user's clipboard and their band went away
-    // because of an edit that moved no row.
+    // step used to run [refreshAfterCutCommand] — which CLEARS THE
+    // FRAME-RANGE SELECTION (and dropped the copied frame too, until F-152
+    // kept it in hand), rebuilds the cut controllers and wakes every
+    // session listener. That is what a CUT command owes. Pressing Ctrl+Z
+    // after a brush stroke owes none of it, and paid all of it: the user's
+    // clipboard and their band went away because of an edit that moved no
+    // row.
     //
     // ⚠️And the forward direction never did this. `HistoryManager`'s own
     // doc says 「brush strokes execute here WITHOUT a session notify, so
@@ -2150,28 +2142,6 @@ class EditorSessionManager extends ChangeNotifier
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     frameSeekCommitted: frameSeekCommitted,
-  );
-
-  // --- Text cel bake sweep (R5, §6-s) --------------------------------------
-  //
-  // A text cel's truth is [Frame.textContent]; the raster every consumer
-  // composites is a PROJECTION baked into the ordinary cel store (the
-  // import-cel grammar). Every mutation path that can move the truth —
-  // edit, undo/redo, paste, duplicate, link merge, selection fills —
-  // funnels through the history manager, so ONE listener re-renders
-  // whatever projection went stale. Self-healing, no per-command hooks.
-
-  // ── the text-cel bakes: their own sweep, in their own file ─────────────
-  //
-  // A collaborator (session/text_cel_bakes.dart). Callers name it: a forwarder here
-  // would be a second name for the same verb (round 8, G4).
-  late final TextCelBakes textCelBakes = TextCelBakes(
-    project: this,
-    selection: this,
-    changes: this,
-    controllers: activeCutControllers,
-    internals: this,
-    renderCaches: renderCaches,
   );
 
   @override
@@ -3135,7 +3105,6 @@ class EditorSessionManager extends ChangeNotifier
       visibilitySolo.exitVisibilitySolo();
     }
     editingSession.setActiveCutId(null);
-    clipboard.dropCopiedFrame();
     clearFrameRangeSelection();
     activeCutControllers.rebuild();
     return true;
@@ -3315,13 +3284,13 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     grants: mediaGrants,
     fingerprints: mediaFingerprints,
-    textCelBakes: textCelBakes,
     clipboard: clipboard,
     layerClipboard: layerClipboard,
     audioConformStore: audioConformStore,
     frameSeekCommitted: frameSeekCommitted,
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
+    solo: visibilitySolo,
   );
 
   // ── the project-wide audio settings: their own object ────────────────

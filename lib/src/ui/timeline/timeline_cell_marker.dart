@@ -1,11 +1,12 @@
-import '../../models/frame.dart' show celNumberOrMark;
+import '../../models/frame.dart' show celNumberOrMark, inbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_se_row_visual.dart';
 
 /// THE marker a timeline cell shows for its exposure state: the timesheet
-/// `X`, a drawing's name or `○`, the mark `●`, or nothing.
+/// `X`, a drawing's name or the in-between mark, the mark on its own, or
+/// nothing.
 ///
 /// One table for the row painter and the dialog miniature
 /// (`TimelineFrameCell`). Until 2026-09-03 the miniature kept its own copy,
@@ -40,7 +41,7 @@ String timelineCellMarker({
     // row-level span overlays; the cells stay glyph-free paper. Camera
     // key summaries are span overlays too since B4 — the shared lane key
     // markers ([timelineUnionKeyMarkerSpans]) — so the text channel says
-    // nothing there, and in particular never the paper-cell ○ that used
+    // nothing there, and in particular never the paper-cell mark that used
     // to surface mid-drag when the preview outran the committed name.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
@@ -50,6 +51,6 @@ String timelineCellMarker({
           : celNumberOrMark(frameName),
     TimelineCellExposureState.held => '',
     TimelineCellExposureState.markHeld ||
-    TimelineCellExposureState.markUncovered => '●',
+    TimelineCellExposureState.markUncovered => inbetweenMark,
   };
 }

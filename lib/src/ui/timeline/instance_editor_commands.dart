@@ -8,7 +8,6 @@ import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show PropertyKeyInterpolation;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
-import '../../models/text_cel_style.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
@@ -18,7 +17,6 @@ import '../dialogs/instruction_event_dialog.dart';
 import '../dialogs/instruction_set_editor_dialog.dart';
 import '../dialogs/rename_frame_dialog.dart';
 import '../dialogs/se_instance_dialog.dart';
-import '../dialogs/text_cel_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart'
     show ExportPillItem, ExportPillStrip;
@@ -52,8 +50,7 @@ Future<void> activateCellEditor(
   // Pin the EDITING selection to the tapped cell: during playback the tap's
   // select routes to the playback clock and leaves the editing playhead
   // parked elsewhere — every editor below reads/writes selectedFrame, and a
-  // stale playhead made the dialog edit the wrong cell (worst on text rows,
-  // where Save overwrites the cel).
+  // stale playhead made the dialog edit the wrong cell.
   if (frameIndex >= 0 && session.currentFrameIndex != frameIndex) {
     session.selectFrameIndex(frameIndex);
   }
@@ -92,8 +89,6 @@ Future<void> activateCellEditor(
       // common window; this arm is reached only under a cell band holding
       // more than the camera, which claims the press as cells.
       break;
-    case LayerKind.text:
-      await _editTextCel(context, session);
     case LayerKind.folder:
     case LayerKind.adjustment:
       // A folder's band is the members' aggregate and an adjustment's is
@@ -402,35 +397,6 @@ Future<void> _editSeEntryWithDialog(
   if (result.unlinkedAudioTokens.isNotEmpty) {
     unlink(result.unlinkedAudioTokens);
   }
-}
-
-/// Text cells (R5): covered cells open the parameter editor; EMPTY cells
-/// create a blank cel directly (UI-R25 #2) — the next double-tap types into
-/// it.
-Future<void> _editTextCel(
-  BuildContext context,
-  EditorSessionManager session,
-) async {
-  if (session.selectedFrame == null) {
-    if (session.frameVerbs.canCreateDrawingAtCurrentFrame) {
-      session.createDrawingAtCurrentFrame();
-    }
-    return;
-  }
-
-  final cut = session.activeCutOrNull;
-  final content = session.textCelBakes.selectedTextCelContent;
-  return askThenCommit<TextCelContent>(
-    context,
-    dialog: (_) => TextCelDialog(
-      creating: content == null,
-      initialContent: content,
-      defaultPosition: cut == null
-          ? null
-          : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
-    ),
-    commit: session.textCelBakes.setTextCelContentForSelectedFrame,
-  );
 }
 
 /// Instruction cells: covered cells edit/delete the covering event in the

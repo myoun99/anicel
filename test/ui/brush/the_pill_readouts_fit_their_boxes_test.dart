@@ -1,13 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../../helpers/app_faces.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
 
@@ -22,15 +20,6 @@ import '../../helpers/canvas_pill.dart';
 /// mounted readout really carries (the theme's letter spacing included —
 /// it is 2px of a box that has 3px to spare).
 void main() {
-  Future<void> loadTheAppFace() async {
-    final loader = FontLoader('BIZ UDPGothic');
-    final bytes = File(
-      'assets/fonts/BIZUDPGothic-Regular.ttf',
-    ).readAsBytesSync();
-    loader.addFont(Future.value(ByteData.view(bytes.buffer)));
-    await loader.load();
-  }
-
   double widthOf(String text, TextStyle style) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: style),
@@ -44,7 +33,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     tester.view.physicalSize = const Size(1600, 1200);
     addTearDown(tester.view.reset);
-    await loadTheAppFace();
+    await loadTheAppFaces();
 
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     await tester.pumpWidget(

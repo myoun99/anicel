@@ -771,6 +771,23 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 🚨★★★**A VERB IN FLIGHT OWNS THE KEYBOARD TOO.**
+  ///
+  /// 🗣️유저 2026-09-21 (F-173): 「**선 그리는 도중 언두가 작동함.** 선
+  /// 말고도 **도구를 사용중이면 언두/리두 작동불가**하도록」.
+  ///
+  /// ⛔**A CONTACT DOWN IS THE WHOLE TEST, and the fact was already here**:
+  /// [_pointersDown] is fed by the global pointer route and the autosave
+  /// clock has read it as 「a stroke is in flight」 since F-1. A second way
+  /// to ask 「is the user in the middle of something」 is how the two come
+  /// to disagree ([[no-copy-to-share]]).
+  ///
+  /// ⚠️It stands BEFORE the three channels rather than beside them. They
+  /// answer 「is this key about the thing I am in the middle of?」 and each
+  /// falls through when it is not; this one says the key is not a key at
+  /// all yet, which is a different sentence and has to come first.
+  bool get _aVerbIsInFlight => _pointersDown.isNotEmpty;
+
   /// Undo means the thing the user is in the MIDDLE of, if there is one.
   ///
   /// While a polygon outline is open, it takes that trace's last vertex
@@ -783,6 +800,9 @@ class _HomePageState extends State<HomePage> {
   /// started, so undo falls straight through to the document — undo never
   /// becomes a dead key just because something was open a moment ago.
   void _undoInnerStepOrDocument() {
+    if (_aVerbIsInFlight) {
+      return;
+    }
     if (_canvasSelectionCommands.undoPolygonPoint()) {
       return;
     }
@@ -803,6 +823,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _redoVertexOrDocument() {
+    if (_aVerbIsInFlight) {
+      return;
+    }
     if (_canvasSelectionCommands.redoPolygonPoint()) {
       return;
     }

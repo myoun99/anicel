@@ -53,16 +53,17 @@ void main() {
       'block start; duplicates across the walk collapse', () {
     // Playhead at frame 6 (inside the linked-A block): current cel = a.
     // Before: b (frame 3); the a-block at 0 is SKIPPED (same cel as
-    // current). After: c.
+    // current). After: the empty cell at 7 is the next step — F-175 — so
+    // the one after peg is spent there and C is not reached.
     final plans = planOnionSkin(
       layer: layer,
       frameIndex: 6,
       settings: settings,
     );
-    expect(plans.map((p) => p.frameId.value), ['b', 'c']);
+    expect(plans.map((p) => p.frameId.value), ['b']);
   });
 
-  test('a silent peg keeps its slot (peg 2 stays two drawings back) and '
+  test('a silent peg keeps its slot (peg 2 stays two units back) and '
       'Images mode drops the tints', () {
     final plans = planOnionSkin(
       layer: layer,
@@ -73,9 +74,10 @@ void main() {
         afterPegs: const [OnionPeg(opacity: 0.3)],
       ),
     );
-    // At C: unique drawings before are a (5), b (3) — peg 1 (a) is at 0,
-    // peg 2 = b shows; nothing after C.
-    expect(plans.map((p) => p.frameId.value), ['b']);
+    // At C: the unit before is the EMPTY cell at 7 (F-175), then a (5) —
+    // peg 1 (the empty cell) is at 0 anyway, peg 2 = a shows; nothing
+    // after C.
+    expect(plans.map((p) => p.frameId.value), ['a']);
     expect(plans.single.opacity, 0.2);
     expect(plans.single.tint, isNull);
   });
@@ -102,6 +104,65 @@ void main() {
     // Furthest-first paint order on the before side.
     expect(plans[0].opacity, 0.2);
     expect(plans[1].opacity, 0.4);
+  });
+
+  group('F-175: an empty stretch is ONE step', () {
+    // 🗣️유저 2026-09-21: 「어니언스킨 블록 단위일때, 사이에 빈 공간 있는데도
+    // 그 너머의 첫번째 블럭이 인식됨. 빈 공간 한칸은 블럭으로서 한칸으로
+    // 쳐서 빈공간이면 다음 1번의 어니언스킨 안보이게.」
+
+    /// D: [0,2) · EMPTY [2,5) — three cells, one step · E: [5,6) · F: [6,7)
+    /// touching E with no gap.
+    final gapped = Layer(
+      id: const LayerId('gapped'),
+      name: 'G',
+      frames: [frame('d'), frame('e'), frame('f')],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('d'), length: 2),
+        5: const TimelineExposure.drawing(FrameId('e'), length: 1),
+        6: const TimelineExposure.drawing(FrameId('f'), length: 1),
+      },
+    );
+    const twoEachWay = OnionSkinSettings(
+      beforePegs: [OnionPeg(opacity: 0.4), OnionPeg(opacity: 0.2)],
+      afterPegs: [OnionPeg(opacity: 0.3), OnionPeg(opacity: 0.1)],
+    );
+
+    List<(String, double)> ghosts(int frameIndex) => [
+      for (final plan in planOnionSkin(
+        layer: gapped,
+        frameIndex: frameIndex,
+        settings: twoEachWay,
+      ))
+        (plan.frameId.value, plan.opacity),
+    ];
+
+    test('🚨after: peg 1 lands on the stretch and shows NOTHING; peg 2 '
+        'reaches the drawing beyond it', () {
+      // At D (frame 0): after peg 1 = the empty [2,5) → nothing; after
+      // peg 2 = E. The old walk jumped the stretch and made E peg 1.
+      expect(ghosts(0), [('e', 0.1)]);
+    });
+
+    test('🚨before: the same stretch is the same one step, however long', () {
+      // At E (frame 5): before peg 1 = the empty [2,5) → nothing; before
+      // peg 2 = D. Three empty cells are ONE step, as the sheet's single
+      // `x` says.
+      expect(ghosts(5).where((g) => g.$1 == 'd'), [('d', 0.2)]);
+      expect(
+        ghosts(5).map((g) => g.$1),
+        isNot(contains('e')),
+        reason: '⛔전제: the current cel never ghosts itself',
+      );
+    });
+
+    test('⛔the CONTROL: blocks that touch step straight onto each other',
+        () {
+      // At E (frame 5): after peg 1 = F, glued to E — no stretch between,
+      // so nothing is spent. Without this a walk that treated every step
+      // as empty would pass the two above.
+      expect(ghosts(5).where((g) => g.$1 == 'f'), [('f', 0.3)]);
+    });
   });
 
   group('frames step', () {

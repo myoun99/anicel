@@ -98,7 +98,7 @@ Layer createInstructionLayer({required CutId cutId, String? name}) {
 /// The first name [nameForIndex] makes that no layer in [layers] already
 /// wears, counting up from [firstIndex].
 ///
-/// ⛔FIVE ROW KINDS NAME THEMSELVES THIS WAY — direction rows, text rows,
+/// ⛔FOUR ROW KINDS NAME THEMSELVES THIS WAY — direction rows,
 /// fx rows, SE rows and cels. "Skip the names already in use" is the whole
 /// of it, and each wrote its own `while (true)`: the one that stopped
 /// skipping hands two rows the same name, which the timesheet then prints
@@ -123,11 +123,6 @@ String firstUnusedLayerName(
 /// names the cut already uses.
 String nextInstructionLayerName(List<Layer> layers) =>
     firstUnusedLayerName(layers, instructionLayerName);
-
-/// Names a new TEXT row: T1, T2, … skipping names the cut already uses
-/// (the SE scheme's grammar in the drawing section).
-String nextTextLayerName(List<Layer> layers) =>
-    firstUnusedLayerName(layers, (index) => 'T$index');
 
 /// Names a new ADJUSTMENT row: FX1, FX2, … skipping names the cut already
 /// uses (R6b). The row's job is its effect chain, so the name is a label,

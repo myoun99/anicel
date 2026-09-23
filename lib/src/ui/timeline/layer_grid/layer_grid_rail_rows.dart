@@ -123,7 +123,7 @@ class _LayerGridRailRows {
       layerControlsWidth: _state._metrics.layerControlsWidth,
       sectionLabelGutterWidth: _state._metrics.sectionLabelGutterWidth,
       opacityDragPreview: ByIdentity(_state.widget.hooks.opacityDragPreview),
-      blendLanguage: _state.widget.hooks.blendLanguage,
+      language: AppText.language,
     );
     final cached = _state._railRowMemo[row.layer.id];
     if (cached != null && cached.inputs == inputs) {
@@ -163,7 +163,7 @@ class _LayerGridRailRows {
       masterOpacityValue: _state.widget.masterOpacityValue,
       hasLaneToggles: _state.widget.hooks.onToggleLayerLanes != null,
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
-      blendLanguage: _state.widget.hooks.blendLanguage,
+      language: AppText.language,
       hasBlendBulk: _state.widget.legend?.onSetBlendModeForDisplayed != null,
     );
     final cached = _state._legendHeaderMemo;
@@ -192,7 +192,6 @@ class _LayerGridRailRows {
       onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
           ? null
           : _state._lanes._collapseAllLanes,
-      blendLanguage: _state.widget.hooks.blendLanguage,
     );
     _state._legendHeaderMemo = (inputs: inputs, header: header);
     return header;
@@ -295,7 +294,6 @@ class _LayerGridRailRows {
       isLinked:
           _state.widget.hooks.layerIsLinkedOf?.call(row.layer.id) ?? false,
       onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
-      blendLanguage: _state.widget.hooks.blendLanguage,
       opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
         row.layer.id,
       ),

@@ -12,20 +12,26 @@ import 'package:flutter_test/flutter_test.dart';
 /// "forwarded to the grids", said its doc — reached neither.
 ///
 /// `TimelineGridHooks` is the one list. This scan says the two grids' own
-/// constructors share nothing but the bundle and the three facts that are
-/// genuinely a surface's own — its layer ORDER, its rail WINDOW and its
-/// METRICS. A hook added to one grid by hand is red here.
+/// constructors share nothing but the bundle and the four facts that are
+/// genuinely a surface's own — its layer ORDER, its rail WINDOW, where its
+/// FRAME AXIS stands, and its METRICS. A hook added to one grid by hand is
+/// red here.
 void main() {
   const gridPath = 'lib/src/ui/timeline/layer_timeline_grid.dart';
   const sheetPath = 'lib/src/ui/timeline/xsheet_timeline_grid.dart';
   const hooksPath = 'lib/src/ui/timeline/timeline_grid_hooks.dart';
 
-  /// The three a surface keeps for itself, each for a stated reason.
+  /// The four a surface keeps for itself, each for a stated reason.
   const perSurface = {
     // The rail's display order and the sheet's are different reversals.
     'layers',
     // Persisted per surface by the workspace.
     'railExtent',
+    // Where the frame axis stands, kept per surface by the workspace so a
+    // fold does not throw it away (F-143). NOT a hook: the two axes run in
+    // different directions at different zooms, so one shared notifier
+    // would be wrong for both — it is `railExtent`'s kind, not the bundle's.
+    'frameAxisOffset',
     // The sheet's metrics are the timeline's turned on their side.
     'metrics',
   };
@@ -48,7 +54,7 @@ void main() {
     expect(ctorParams(sheetPath, 'XSheetTimelineGrid'), contains('hooks'));
   });
 
-  test('the grids share only the bundle and the three per-surface facts', () {
+  test('the grids share only the bundle and the four per-surface facts', () {
     final grid = ctorParams(gridPath, 'LayerTimelineGrid');
     final sheet = ctorParams(sheetPath, 'XSheetTimelineGrid');
     final shared = grid.intersection(sheet)..remove('hooks');

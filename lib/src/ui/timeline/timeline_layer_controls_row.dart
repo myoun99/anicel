@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -154,7 +153,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.opacityDragPreview,
     this.isLinked = false,
     this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
     this.opacityOverride,
     this.chromeless = false,
   });
@@ -296,9 +294,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// keeps the slot reserved but inert (passive hosts).
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// PROGRAM language for the blend-mode name.
-  final AppLanguage blendLanguage;
 
   /// Paint the CONTENTS and no ground: no fill, no active wash, no seams.
   ///
@@ -557,7 +552,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return RailSwipeColumnPointer(
       child: AppIconButton(
         keyValue: '$keyPrefix-lane-toggle-${layer.id}',
-        tooltip: lanesExpanded ? 'Collapse lanes' : 'Expand lanes',
+        tooltip: lanesExpanded
+            ? AppText.strings.railCollapseLanes
+            : AppText.strings.railExpandLanes,
         size: _box(slot: layerLaneToggleSlotWidth, across: 24, iconSize: 16),
         icon: Icon(layerRailTwirlIcon(expanded: lanesExpanded)),
         onPressed: () => onToggleLanes!(layer.id),
@@ -752,8 +749,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: AppIconButton(
         keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
         tooltip: layer.isFillReference
-            ? 'Fill reference layer (on)'
-            : 'Fill reference layer',
+            ? AppText.strings.railFillReferenceOn
+            : AppText.strings.railFillReference,
         size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
         icon: Icon(
           Icons.format_color_fill,
@@ -796,7 +793,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// column whole. The sheet went without it until R10 R6's "싹다 넣어".
   Widget? _onionToggle(ColorScheme colorScheme) {
     final onToggle = onToggleLayerOnionSkin;
-    if (onToggle == null || !layer.kind.acceptsBrushInput) {
+    if (onToggle == null || !layer.kind.takesOnionSkin) {
       return null;
     }
     return acrossBox(
@@ -805,7 +802,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: RailSwipeColumnPointer(
         child: AppIconButton(
           keyValue: '$keyPrefix-layer-onion-${layer.id}',
-          tooltip: onionSkinEnabled ? 'Onion skin (on)' : 'Onion skin',
+          tooltip: onionSkinEnabled
+              ? AppText.strings.railOnionSkinOn
+              : AppText.strings.railOnionSkin,
           size: _box(slot: layerOnionSlotWidth, across: 26, iconSize: 15),
           icon: Icon(
             Icons.filter_none,
@@ -873,9 +872,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       keyValue: '$keyPrefix-layer-blend-${layer.id}',
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
-      language: blendLanguage,
       isGroup: isGroup,
-      subject: isGroup ? 'Folder' : 'Layer',
       onBlendModeSelected: (mode) => onSelected(layer.id, mode),
     );
   }

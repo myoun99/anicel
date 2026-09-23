@@ -232,8 +232,7 @@ class CellInstances {
       // one cel exists (D22) — the catch-all lit the ＋ over both.
       LayerKind.animation ||
       LayerKind.storyboard ||
-      LayerKind.image ||
-      LayerKind.text => _frameVerbs.canCreateDrawingAtCurrentFrame,
+      LayerKind.image => _frameVerbs.canCreateDrawingAtCurrentFrame,
       LayerKind.folder || LayerKind.adjustment || LayerKind.transition => false,
       _ => true,
     };
@@ -273,8 +272,7 @@ class CellInstances {
       LayerKind.se ||
       LayerKind.animation ||
       LayerKind.storyboard ||
-      LayerKind.image ||
-      LayerKind.text => _selection.selectedFrame != null,
+      LayerKind.image => _selection.selectedFrame != null,
     };
   }
 

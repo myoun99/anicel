@@ -99,6 +99,21 @@ Frame? resolveAttachedFrameAt({
   return attached.frameById(frameId);
 }
 
+/// The BASE cel that [attached]'s own cel [attachedFrameId] mirrors —
+/// [Layer.baseFrameLinks] read backwards; null when no base cel links to
+/// it.
+///
+/// Read off the links of the very layer given, so a row painted from a
+/// drag's preview names its cels by what it SHOWS (F-147).
+FrameId? attachedBaseFrameIdOf(Layer attached, FrameId attachedFrameId) {
+  for (final link in attached.baseFrameLinks.entries) {
+    if (link.value == attachedFrameId) {
+      return link.key;
+    }
+  }
+  return null;
+}
+
 /// The attach layer's DERIVED timeline: the base's drawing blocks with each
 /// linked base cel replaced by the linked attach cel (unlinked blocks and
 /// orphan links show as empty cells). Read-only display material — the

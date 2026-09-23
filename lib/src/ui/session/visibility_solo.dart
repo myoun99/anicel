@@ -1,7 +1,10 @@
 import '../../core/set_toggle.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/project.dart';
+import '../../services/project_tree_editor.dart';
 import 'session_roles.dart';
 
 /// VISIBILITY SOLO — showing one layer alone and remembering what the others
@@ -112,6 +115,53 @@ class VisibilitySolo {
     _writeEyes(flips);
   }
 
+  /// 🚨★★★**THE FILE NEVER SEES A VIEW STATE.**
+  ///
+  /// 🗣️유저 2026-09-18 (F-153): 「활성레이어 솔로는 **저장시 저장안되도록**.
+  /// 지금 솔로 on한상태로 저장하고 열면 **적용된채로 모드는 off**되있는
+  /// 상태」 — answered on `solo-and-the-saved-file` with 「**저장이 솔로
+  /// 이전의 눈을 기록한다**」.
+  ///
+  /// ⛔**BOTH LAWS SURVIVE, and that is why it is here and not in the
+  /// door.** The eyes really do flip — 유저's own rule (「REAL eye flips」,
+  /// 08-29) — so a save cannot simply refuse to look at them; it has to
+  /// know what they were BEFORE, and the only thing that knows is the
+  /// snapshot this object is already holding for the exit.
+  ///
+  /// ⚠️Identity with no solo up: a caller never has to ask first, so no
+  /// write path can be the one that forgot.
+  ///
+  /// 🚨**THE SAME SEAM THE EXIT USES** ([updateLayerAnywhere], which is
+  /// what `repository.updateLayer` is). ⛔A walk of `tracks → cuts →
+  /// layers` written here instead would be the same algorithm spelled
+  /// twice — and the second spelling was already WRONG: the eye rows are
+  /// not only a cut's layers. A track's SE rows and its transition row
+  /// live BESIDE the cuts, reach the cut's row list as display clones,
+  /// and the solo flips them like any other row. Only the anywhere seam
+  /// knows all three places.
+  Project projectAsSavedWithoutSolo(Project project) {
+    final snapshot = _visibilitySoloSnapshot;
+    if (snapshot == null) {
+      return project;
+    }
+    var asSaved = project;
+    snapshot.forEach((layerId, wasVisible) {
+      // Null = the row was deleted during the solo; nothing to put back,
+      // exactly as [_writeEyes] skips it on the way out.
+      asSaved =
+          updateLayerAnywhere(asSaved, layerId, _eyeRestoredTo(wasVisible)) ??
+          asSaved;
+    });
+    return asSaved;
+  }
+
+  /// What 「put this row's eye back to what the snapshot remembers」 MEANS,
+  /// spelled once. [exitVisibilitySolo] writes it into the session and
+  /// [projectAsSavedWithoutSolo] writes it into the project being saved —
+  /// two sinks, one law.
+  Layer Function(Layer) _eyeRestoredTo(bool visible) => (layer) =>
+      layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible);
+
   void exitVisibilitySolo() {
     _layerVisibilitySoloEnabled = false;
     _visibilitySoloCutId = null;
@@ -131,9 +181,7 @@ class VisibilitySolo {
       try {
         _project.repository.updateLayer(
           layerId: layerId,
-          update: (layer) => layer.isVisible == visible
-              ? layer
-              : layer.copyWith(isVisible: visible),
+          update: _eyeRestoredTo(visible),
         );
       } on StateError {
         // Layer gone.

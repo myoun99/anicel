@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -176,7 +177,7 @@ void main() {
         ),
       );
 
-      expect(timelineCellModel(tester, 'layer-a', 0).glyph, '○');
+      expect(timelineCellModel(tester, 'layer-a', 0).glyph, unnamedDrawingMark);
       expect(timelineCellModel(tester, 'layer-a', 1).glyph, 'Pose A');
       expect(timelineCellModel(tester, 'layer-a', 2).glyph, '●');
     });

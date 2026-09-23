@@ -87,8 +87,10 @@ import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../text/text_measure.dart';
 import '../listenable_rebind.dart';
 import '../repaint_props.dart';
+import '../input/value_control_pointers.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -2366,7 +2368,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         child: _capsule(
                           colorScheme,
                           keyValue: 'canvas-view-pill',
-                          height: _CanvasViewportBottomBar.height,
+                          height: _CanvasViewportBottomBar.heightIn(context),
                           child: bottomBar,
                         ),
                       ),
@@ -2505,6 +2507,52 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// one: `test/ui/brush/the_pill_readouts_fit_their_boxes_test.dart`.
   static const double _zoomReadoutWidth = 74;
   static const double _rotationReadoutWidth = 58;
+
+  /// The readouts' type — the pill's only words (`1:1` is a glyph in an
+  /// icon slot, see [_BottomBarBuild._resetButton]).
+  static const double _zoomReadoutFontSize = 12;
+  static const double _rotationReadoutFontSize = 11;
+
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」). The widths above are what the widest numbers need at 1×;
+  /// where the pill is shown they are what those numbers MEASURE, never
+  /// less. 🔬At 1.5× in the app's face `100.00%` wrapped inside its 74.
+  static double _widestIn(
+    BuildContext context,
+    double fontSize,
+    String Function(String digit) number,
+    double drawnAt,
+  ) => math.max(
+    drawnAt,
+    TextMeasure(
+      context,
+      DefaultTextStyle.of(context).style.copyWith(fontSize: fontSize),
+    ).widest([for (final d in '0123456789'.split('')) number(d)]).ceilToDouble(),
+  );
+
+  static double zoomReadoutWidthIn(BuildContext context) => _widestIn(
+    context,
+    _zoomReadoutFontSize,
+    (d) => '1$d$d$d.$d$d%',
+    _zoomReadoutWidth,
+  );
+
+  static double rotationReadoutWidthIn(BuildContext context) => _widestIn(
+    context,
+    _rotationReadoutFontSize,
+    (d) => '-1$d$d.$d$d°',
+    _rotationReadoutWidth,
+  );
+
+  /// The pill where it is shown: [height] plus a readout line's growth.
+  static double heightIn(BuildContext context) =>
+      height +
+      TextMeasure(
+        context,
+        DefaultTextStyle.of(
+          context,
+        ).style.copyWith(fontSize: _zoomReadoutFontSize),
+      ).lineGrowthOf(TextMeasure.everyScript);
   static const double _swatchWidth = 18; // ColorSwatchButton.diameter
   static const double _swatchGap = 4;
   static const double _dividerWidth = 13; // 1px rule, 6px margin each side
@@ -3087,6 +3135,7 @@ class _PillFold {
     required bool hostVerbsCanUnfold,
     required int hostVerbCount,
     required bool hostSettingsListed,
+    required double zoomReadoutWidth,
   }) {
     // WHERE EACH GROUP STARTS. The floor lays them all out; every
     // other panel starts where a floor pill ENDS UP once it has run
@@ -3114,7 +3163,7 @@ class _PillFold {
         _CanvasViewportBottomBar._ownIconWidth + // Fit, which never folds
             (showReset ? _CanvasViewportBottomBar._ownIconWidth : 0) +
             (showZoomSteps ? 2 * _CanvasViewportBottomBar._ownIconWidth : 0) +
-            _CanvasViewportBottomBar._zoomReadoutWidth,
+            zoomReadoutWidth,
         if (showViewControls) viewControlsWidth,
         if (showColors) colorsWidth,
         if (anythingFolded()) _CanvasViewportBottomBar._gearWidth,
@@ -3150,7 +3199,12 @@ class _PillFold {
       showZoomSteps = false;
     }
 
-    final cramped = room < _CanvasViewportBottomBar.pillMinWidth + owed;
+    // The floor holds the readout, so it widens by what the readout does.
+    final cramped =
+        room <
+        _CanvasViewportBottomBar.pillMinWidth +
+            (zoomReadoutWidth - _CanvasViewportBottomBar._zoomReadoutWidth) +
+            owed;
     if (cramped) {
       showColors = false;
       showViewControls = false;

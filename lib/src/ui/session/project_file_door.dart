@@ -43,18 +43,20 @@ import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
 import 'project_file.dart';
+import 'visibility_solo.dart';
 import 'playback_rig.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'live_stroke_landing.dart';
-import 'text_cel_bakes.dart';
 
-/// What every road of a save carries besides its path: the media the
-/// archive stores, the conforms beside them, and the reporter the UI gave
-/// it. Made once per save and handed whole, so the four roads cannot
-/// disagree about what a save is.
+/// What every road of a save carries besides its path: THE PROJECT IT IS
+/// WRITING, the media the archive stores, the conforms beside them, and
+/// the reporter the UI gave it. Made once per save — by
+/// [ProjectFileDoor._carryFor], the only place that reads either — and
+/// handed whole, so the four roads cannot disagree about what a save is.
 typedef _SaveCarry = ({
+  Project project,
   Map<String, MediaByteSource> mediaToStore,
   ProjectConforms conforms,
   void Function(double)? onProgress,
@@ -100,15 +102,16 @@ class ProjectFileDoor {
     required MediaStagingStore staging,
     required MediaGrantLedger grants,
     required MediaFingerprintLedger fingerprints,
-    required TextCelBakes textCelBakes,
     required FrameClipboard clipboard,
     required LayerClipboard layerClipboard,
     required AudioConformStore audioConformStore,
     required ValueNotifier<int> frameSeekCommitted,
     required MediaPool mediaPool,
     required LiveStrokeLanding liveStrokeLanding,
+    required VisibilitySolo solo,
   }) : _file = file,
        _project = project,
+       _solo = solo,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
@@ -118,7 +121,6 @@ class ProjectFileDoor {
        _staging = staging,
        _grants = grants,
        _fingerprints = fingerprints,
-       _textCelBakes = textCelBakes,
        _clipboard = clipboard,
        _layerClipboard = layerClipboard,
        _audioConformStore = audioConformStore,
@@ -128,6 +130,11 @@ class ProjectFileDoor {
 
   final ProjectFile _file;
   final ProjectAccess _project;
+
+  /// 🚨Here for ONE question — what the eyes said before the solo — asked
+  /// in [_carryFor]. See the law there.
+  final VisibilitySolo _solo;
+
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
@@ -137,7 +144,6 @@ class ProjectFileDoor {
   final MediaStagingStore _staging;
   final MediaGrantLedger _grants;
   final MediaFingerprintLedger _fingerprints;
-  final TextCelBakes _textCelBakes;
   final FrameClipboard _clipboard;
   final LayerClipboard _layerClipboard;
   final AudioConformStore _audioConformStore;
@@ -235,8 +241,6 @@ class ProjectFileDoor {
     if (asked == SaveAsked.byAPerson) {
       _liveStrokeLanding.landNow();
     }
-    // The archive's parameters and raster must never disagree.
-    await _textCelBakes.flushTextCelBakes();
     return _file.editCount;
   }
 
@@ -291,23 +295,10 @@ class ProjectFileDoor {
     void Function(double)? onProgress,
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
-    final mediaToStore = projectMediaSources(
-      project: _project.repository.requireProject(),
-      projectFilePath: _file.path,
-      mediaEntryNames: _file.mediaEntryNames,
-      staging: _staging,
-    );
-    celsLostToAMissingFile = await _saveArchive(
-      path,
-      (
-        mediaToStore: mediaToStore,
-        conforms: _file.conformsToStore(),
-        onProgress: onProgress,
-      ),
-      adoptRefs: false,
-    );
+    final carry = _carryFor(onProgress: onProgress);
+    celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
-      entryNames: mediaEntryNamesFor(mediaToStore),
+      entryNames: mediaEntryNamesFor(carry.mediaToStore),
       cleanAsOf: cleanAsOf,
     );
   }
@@ -423,6 +414,50 @@ class ProjectFileDoor {
     return lost;
   }
 
+  /// 🚨★★★**THE FILE NEVER SEES A VIEW STATE.** What this save is writing,
+  /// decided ONCE — and the only place the door reads the project for a
+  /// write at all, so no road can reach past it.
+  ///
+  /// 🗣️유저 2026-09-18 (F-153): 「활성레이어 솔로는 **저장시 저장안되도록**.
+  /// 지금 솔로 on한상태로 저장하고 열면 **적용된채로 모드는 off**되있는
+  /// 상태」 — answered on `solo-and-the-saved-file` with 「**저장이 솔로
+  /// 이전의 눈을 기록한다**」.
+  ///
+  /// The solo really does flip the rows' eyes — 유저's own rule (「REAL eye
+  /// flips」, 2026-08-29) — so a save cannot just decline to look at them.
+  /// It asks the thing that already knows what they were:
+  /// [VisibilitySolo.projectAsSavedWithoutSolo], which is identity when no
+  /// solo is up.
+  ///
+  /// ⛔ONE read, not one per road. The media sources are resolved from the
+  /// SAME project, and [_saveArchive] writes it — three roads answered
+  ///「which project」 for themselves before this, and each was a place that
+  /// could have kept the solo's eyes.
+  ///
+  /// The media is resolved against the CURRENT project path, before it
+  /// moves. On a save-as that makes each source point into the file being
+  /// left behind, and the writer streams from there into the new one —
+  /// which is how a copy carries its media without a copy step of its own.
+  ///
+  /// ⚠️Call it AFTER `_settleWorkInFlight`: what is still in flight is not
+  /// in the project yet.
+  _SaveCarry _carryFor({void Function(double)? onProgress}) {
+    final project = _solo.projectAsSavedWithoutSolo(
+      _project.repository.requireProject(),
+    );
+    return (
+      project: project,
+      mediaToStore: projectMediaSources(
+        project: project,
+        projectFilePath: _file.path,
+        mediaEntryNames: _file.mediaEntryNames,
+        staging: _staging,
+      ),
+      conforms: _file.conformsToStore(),
+      onProgress: onProgress,
+    );
+  }
+
   /// THE save call, once. Four sites used to build it — the direct save,
   /// the staging road, the coordinated road and the door's own writer —
   /// and the clone gate counted the fourth (2026-09-13). What differs per
@@ -441,7 +476,7 @@ class ProjectFileDoor {
     bool adoptRefs = true,
     void Function(String tempPath)? onFullWriteLeftAt,
   }) => _anicelFileService.save(
-    project: _project.repository.requireProject(),
+    project: carry.project,
     brushFrameStore: _renderCaches.brushFrameStore,
     auxCelStores: _auxCelStores,
     filePath: filePath,
@@ -493,21 +528,8 @@ class ProjectFileDoor {
     // file it was saved FROM as well」; the retirement is gone and the
     // capture stayed, for the reason further down.
     final previousPath = _file.path;
-    // Resolved against the CURRENT project path, before it moves. On a
-    // save-as that makes each source point into the file being left
-    // behind, and the writer streams from there into the new one — which
-    // is how a copy carries its media without a copy step of its own.
-    final mediaToStore = projectMediaSources(
-      project: _project.repository.requireProject(),
-      projectFilePath: _file.path,
-      mediaEntryNames: _file.mediaEntryNames,
-      staging: _staging,
-    );
-    final carry = (
-      mediaToStore: mediaToStore,
-      conforms: _file.conformsToStore(),
-      onProgress: onProgress,
-    );
+    final carry = _carryFor(onProgress: onProgress);
+    final mediaToStore = carry.mediaToStore;
     // 🚨A Save As is「writing somewhere else」and nothing more subtle: the
     // target is not the file this session has been saving to. 유저
     // 2026-08-31 asked for it to be a full write every time — 「기존 파일에

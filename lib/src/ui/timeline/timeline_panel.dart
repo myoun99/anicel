@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../panels/panel_collapsed_scope.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
@@ -114,6 +113,8 @@ class TimelinePanel extends StatefulWidget {
     this.onShowSecondsChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
+    this.timelineFrameAxisOffset,
+    this.xsheetFrameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.expandedLaneLayerIds = const {},
     this.laneOpenOf,
@@ -142,7 +143,6 @@ class TimelinePanel extends StatefulWidget {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.blendLanguage = AppLanguage.en,
     this.layerOpacityOverrideOf,
   });
 
@@ -152,7 +152,6 @@ class TimelinePanel extends StatefulWidget {
   /// R27 #6: the layer label's blend-mode column.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-  final AppLanguage blendLanguage;
 
   /// R27 #9: live opacity source for view-state rows (the camera dim).
   final ValueListenable<double>? Function(LayerId layerId)?
@@ -425,6 +424,15 @@ class TimelinePanel extends StatefulWidget {
       LayerRailSplitter.thickness +
       layerRailFrameReserveExtent;
 
+  /// The two floors above where the panel is shown: the command bar grows
+  /// with the OS text size ([TimelineCommandBar.heightIn]), and a floor
+  /// that did not grow with it would let the dock cut the grid under it.
+  static double minPanelHeightIn(BuildContext context) =>
+      minPanelHeight + TimelineCommandBar.growthIn(context);
+
+  static double minSheetPanelHeightIn(BuildContext context) =>
+      minSheetPanelHeight + TimelineCommandBar.growthIn(context);
+
   /// The ACTIVE view's zoom (the host routes it to the timeline or the
   /// storyboard value depending on the shown mode).
   final double pixelsPerFrame;
@@ -441,6 +449,13 @@ class TimelinePanel extends StatefulWidget {
   /// timeline's rail width" is retired with them.
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
+
+  /// Where each grid's FRAME axis stands — kept by the host beside the rail
+  /// windows so it outlives a fold (F-143). One per grid, like the rails:
+  /// the two axes run in different directions at different zooms, and
+  /// switching between them has never carried a position across.
+  final ValueNotifier<double>? timelineFrameAxisOffset;
+  final ValueNotifier<double>? xsheetFrameAxisOffset;
 
   final ProjectFrameRate projectFrameRate;
 
@@ -624,7 +639,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      blendLanguage: widget.blendLanguage,
       layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
       layerEyeOnOf: widget.layerEyeOnOf,
     );
@@ -683,6 +697,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       hooks: hooks,
                       layers: horizontalLayers,
                       railExtent: widget.timelineRailExtent,
+                      frameAxisOffset: widget.timelineFrameAxisOffset,
                       displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
                       onToggleSection: widget.onToggleSection,
@@ -695,6 +710,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       hooks: hooks,
                       layers: xsheetLayerDisplayOrder(widget.layers),
                       railExtent: widget.xsheetRailExtent,
+                      frameAxisOffset: widget.xsheetFrameAxisOffset,
                       metrics: xsheetMetrics,
                     ),
             ),

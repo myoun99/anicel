@@ -3,6 +3,8 @@
 // isolates; the shared probes live in helpers/home_page_probes.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart'
+    show inbetweenMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 
@@ -20,7 +22,7 @@ void main() {
 
     await renameCurrentFrame(tester, '   ');
 
-    expectCellText('default-layer-1', 0, '○');
+    expectCellText('default-layer-1', 0, unnamedDrawingMark);
   });
 
   testWidgets('conflicting frame name dialog cancel leaves frames unchanged', (
@@ -54,7 +56,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectCellText('default-layer-1', 0, 'A1');
-    expectCellText('default-layer-1', 1, '○');
+    expectCellText('default-layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets('conflicting frame name link merges into existing material', (
@@ -102,7 +104,7 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
-    expectCellText('default-layer-1', 0, '○');
+    expectCellText('default-layer-1', 0, unnamedDrawingMark);
     expect(find.text('Cancelled'), findsNothing);
   });
 
@@ -160,8 +162,8 @@ void main() {
       const ValueKey<String>('shared-paste-linked-button'),
     );
 
-    expectCellText('default-layer-1', 0, '○');
-    expectCellText('default-layer-1', 1, '○');
+    expectCellText('default-layer-1', 0, unnamedDrawingMark);
+    expectCellText('default-layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets(
@@ -206,7 +208,12 @@ void main() {
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellText('default-layer-1', 1, '●');
+      expectCellText('default-layer-1', 1, inbetweenMark);
+      expect(
+        selectedCellStateLabel(tester),
+        'inbetween mark',
+        reason: '⛔전제: the held cell really carries a dot',
+      );
 
       // The paste authors a drawing start on the dot's cell: the covering
       // block shrinks to [0,1) and the cut-off dot goes with it.
@@ -215,8 +222,12 @@ void main() {
         const ValueKey<String>('shared-paste-linked-button'),
       );
 
-      expectNoCellText('default-layer-1', 1, '●');
-      expectCellText('default-layer-1', 1, '○');
+      // ⚠️ASKED BY STATE, NOT BY GLYPH. This used to read「the ● is gone and
+      // the ○ is there」, which worked only while a dot and an unnamed
+      // drawing looked different. 유저 made them one mark (F-149, 2026-09-16:
+      // 「이름 없는 기본상태를 속이 찬 동그라미로 통일적용」), so the glyph
+      // can no longer say which one the cell is — the cell's state can.
+      expectCellText('default-layer-1', 1, unnamedDrawingMark);
       expect(selectedCellStateLabel(tester), 'drawing start');
     },
   );

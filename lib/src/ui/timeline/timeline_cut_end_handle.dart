@@ -35,10 +35,9 @@ class TimelineCutEndDragCallbacks {
 }
 
 /// The playbackFrameCount a boundary consumer should DISPLAY: the live
-/// trim preview's duration while a drag targets [cutId]; the previewed MOVIE
-/// end while a movie-end drag runs on a surface whose end includes the
-/// trailing gap ([committedTrailingFrames] — the storyboard); the committed
-/// count otherwise.
+/// trim preview's duration while a drag targets [cutId]; on a surface whose
+/// end is the MOVIE's (the storyboard), whatever [movieEndUnder] says the
+/// drag in flight leaves; the committed count otherwise.
 ///
 /// 🚨F-18 (유저 2026-08-28): 「프레임영역은 라이브로 따라가는데 룰러에 있는
 /// 엔드라인은 라이브로 안보임. 이걸 통일이라고 한거냐?」 — the storyboard's
@@ -50,17 +49,25 @@ class TimelineCutEndDragCallbacks {
 /// 만든거지? 타임라인패널이랑 통일」). Its reason stays true: the storyboard's
 /// body builds from the committed project once, on purpose, so an end line
 /// reads the preview itself rather than the panel re-reading the project.
+///
+/// 🚨F-119 (유저 2026-09-12): 「마지막에 있던 컷 블록을 앞으로 당기면 최종
+/// 영상 엔드라인이 움직이면서 룰러랑 프레임영역이랑 어긋남」. ↩️The movie's
+/// end used to be read off a MOVIE-END drag's preview alone — the trailing
+/// gap — so pulling or trimming the last cut moved its blocks while every
+/// end line stood still until the release. The movie end under a drag is
+/// the end of the project the BLOCKS are drawn from, whichever drag it is:
+/// [movieEndUnder] is that one reading, and the surface hands it in.
 int timelineCutEndPreviewFrameCount({
   required TimelineDragPreview? preview,
   required CutId? cutId,
   required int playbackFrameCount,
-  int? committedTrailingFrames,
+  int Function(TimelineDragPreview preview)? movieEndUnder,
 }) {
+  if (movieEndUnder != null) {
+    return preview == null ? playbackFrameCount : movieEndUnder(preview);
+  }
   if (preview is CutTrimDragPreview && cutId != null) {
     return preview.previewDurations[cutId] ?? playbackFrameCount;
-  }
-  if (preview is MovieEndDragPreview && committedTrailingFrames != null) {
-    return playbackFrameCount - committedTrailingFrames + preview.trailingFrames;
   }
   return playbackFrameCount;
 }
@@ -80,14 +87,14 @@ int timelineDrawnEndPreviewFrameCount({
   required CutId? cutId,
   required int playbackFrameCount,
   required int? drawnFrameCount,
-  int? committedTrailingFrames,
+  int Function(TimelineDragPreview preview)? movieEndUnder,
 }) {
   final handle = (drawnFrameCount ?? playbackFrameCount) - playbackFrameCount;
   final cutEnd = timelineCutEndPreviewFrameCount(
     preview: preview,
     cutId: cutId,
     playbackFrameCount: playbackFrameCount,
-    committedTrailingFrames: committedTrailingFrames,
+    movieEndUnder: movieEndUnder,
   );
   return handle <= 0 ? cutEnd : cutEnd + handle;
 }

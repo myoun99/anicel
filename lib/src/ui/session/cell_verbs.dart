@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/frame.dart' show inbetweenMark;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/pixel_verb_subject.dart';
@@ -370,16 +371,16 @@ class CellVerbs {
             : 'Held: Copy / Rename / Mark';
       case TimelineCellExposureState.markHeld:
         return canPaste
-            ? 'Held + ●: Paste / Copy / Rename / Mark'
-            : 'Held + ●: Copy / Rename / Mark';
+            ? 'Held + $inbetweenMark: Paste / Copy / Rename / Mark'
+            : 'Held + $inbetweenMark: Copy / Rename / Mark';
       case TimelineCellExposureState.uncovered:
         // Dots are block-owned: an empty cell offers no Mark (author an
         // unnamed frame first).
         return canPaste ? 'X: Paste / New Frame' : 'X: New Frame';
       case TimelineCellExposureState.markUncovered:
         return canPaste
-            ? 'X + ●: Paste / New Frame / Mark'
-            : 'X + ●: New Frame / Mark';
+            ? 'X + $inbetweenMark: Paste / New Frame / Mark'
+            : 'X + $inbetweenMark: New Frame / Mark';
     }
   }
 
@@ -390,9 +391,11 @@ class CellVerbs {
       TimelineCellExposureState.drawingStart =>
         _internals.drawingStartStatusForLayer(layer, frameIndex),
       TimelineCellExposureState.held => 'Held drawing',
-      TimelineCellExposureState.markHeld => 'Held drawing + Mark ●',
+      TimelineCellExposureState.markHeld =>
+        'Held drawing + Mark $inbetweenMark',
       TimelineCellExposureState.uncovered => 'Empty (X)',
-      TimelineCellExposureState.markUncovered => 'Empty (X) + Mark ●',
+      TimelineCellExposureState.markUncovered =>
+        'Empty (X) + Mark $inbetweenMark',
     };
   }
 }

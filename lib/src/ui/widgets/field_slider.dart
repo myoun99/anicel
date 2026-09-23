@@ -8,6 +8,7 @@ import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import 'app_icon_button.dart';
@@ -271,13 +272,45 @@ class _FieldSliderState extends State<FieldSlider> {
     final far = math.max(_originFraction, t);
     // A stood-up bar's writing is the row turned a quarter clockwise, so its
     // x runs DOWN the bar while the fill grows UP it.
+    //
+    // ⚠️The ink is chosen against the ground at FULL strength and dimmed
+    // after: which ink reads on a ground is a fact about the ground, and a
+    // disabled bar must not flip from black to white because its fill went
+    // pale.
     return groundInkRunsForFill(
       near: _vertical ? 1 - far : near,
       far: _vertical ? 1 - near : far,
-      onFill: textOnColor(accent),
-      onTrack: textOnColor(AppColors.surface),
+      onFill: _asDrawn(textOnColor(accent)),
+      onTrack: _asDrawn(textOnColor(AppColors.surface)),
     );
   }
+
+  /// [color] the way this bar draws it — dimmed when the bar is disabled.
+  ///
+  /// 🚨★★★**A DISABLED BAR DIMS WITHOUT A LAYER** (유저 확정 2026-09-22,
+  /// 보드 `a-disabled-bar-dims-without-a-layer-Q1`: 「요소별로 흐리게
+  /// 칠한다」).
+  ///
+  /// 🪦An `Opacity(0.4)` wrapped the whole bar here. It is a COMPOSITING
+  /// BOUNDARY — `RenderOpacity` composites at any alpha above zero — and a
+  /// boundary anywhere inside a panel makes that panel's [StaticRaster]
+  /// give up and pay its full raster price on EVERY frame the app produces,
+  /// looking identical while doing it. 🔬One disabled bar cost the whole
+  /// brush settings panel its bake (measured 2026-09-22; the panel sweep
+  /// `panel_static_raster_test` is what found it, having just learned to
+  /// open the rail groups, and it is what keeps it gone).
+  ///
+  /// ⚠️What changed for the eye: a layer dims the bar ONCE, after its
+  /// pieces have covered each other; this dims each piece. Where the value
+  /// text sits over the fill, the fill now shows through the text at 24%.
+  /// The same 40% reading, and every pixel that is not an overlap is the
+  /// pixel that was there before.
+  ///
+  /// ⛔The 40% and the reason for it are [disabledInkOpacity]'s, not this
+  /// widget's: the pressure-curve well dims to the same figure on purpose
+  /// (「a disabled group reads as one thing rather than as three different
+  /// greys」), and two widgets spelling one rule is how the two drift.
+  Color _asDrawn(Color color) => dimmedIfDisabled(color, enabled: _enabled);
 
   /// The track's length along [FieldSlider.axis].
   double _trackExtent = 0;
@@ -643,10 +676,10 @@ class _FieldSliderState extends State<FieldSlider> {
         _trackExtent = _vertical ? constraints.maxHeight : constraints.maxWidth;
         return DecoratedBox(
           decoration: ShapeDecoration(
-            color: AppColors.surface,
+            color: _asDrawn(AppColors.surface),
             shape: AppShapes.container(
               _radius,
-              side: const BorderSide(color: AppColors.hairline),
+              side: BorderSide(color: _asDrawn(AppColors.hairline)),
             ),
           ),
           child: SuperellipseClip(
@@ -656,7 +689,7 @@ class _FieldSliderState extends State<FieldSlider> {
                 axis: widget.axis,
                 t: t,
                 originT: _originFraction,
-                accent: accent,
+                accent: _asDrawn(accent),
               ),
               child: SizedBox(
                 width: _vertical ? widget.height : null,
@@ -676,7 +709,11 @@ class _FieldSliderState extends State<FieldSlider> {
       // that dropped it would be 「없다가 생기는 UI」 — the row would be
       // wider the moment the control came alive, and everything beside it
       // would shift.
-      return _withStepper(Opacity(opacity: 0.4, child: bar));
+      //
+      // 🪦The `Opacity(0.4)` that stood here is gone: the bar's pieces dim
+      // themselves ([_asDrawn]) so that a disabled bar is not a compositing
+      // boundary inside its panel.
+      return _withStepper(bar);
     }
     bar = MouseRegion(
       cursor: _vertical

@@ -68,12 +68,24 @@ void main() {
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 
-  test('🚨the RGB extent PUBLISHES what the panel costs, so the dock that '
-      'hands out heights can honour it — the bars are the one picker with '
-      'nothing that can shrink', () {
+  testWidgets('🚨the RGB extent PUBLISHES what the panel costs, so the dock '
+      'that hands out heights can honour it — the bars are the one picker '
+      'with nothing that can shrink', (tester) async {
+    late BuildContext at1x;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            at1x = context;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
     expect(
-      ColorPickerPanel.rgbContentExtent,
+      ColorPickerPanel.rgbContentExtentIn(at1x),
       ColorRgbPanel.contentHeight + 18 + ColorStatusBar.height,
+      reason: 'at 1× the status bar is the height it was drawn at',
     );
   });
 

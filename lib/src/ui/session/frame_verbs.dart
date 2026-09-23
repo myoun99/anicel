@@ -243,12 +243,16 @@ class FrameVerbs {
     );
     final cut = _project.activeCutOrNull;
     if (cut != null) {
+      final store = _renderCaches.brushFrameStore;
       carryBakedPictures(
         internals: _internals,
-        store: _renderCaches.brushFrameStore,
+        store: store,
         cut: cut,
-        between: (from: layer.id, to: layer.id),
+        to: layer.id,
         minted: minted,
+        pictureOf: (source) => store.bakedSurfaceOrNull(
+          _internals.brushFrameKeyForCut(cut, layer.id, source),
+        ),
       );
     }
     _changes.notifyChanged();
@@ -545,15 +549,28 @@ class FrameVerbs {
     // SYNCED attach mirrors PRINT THE BASE's cel name (UI-R24 #2 — the
     // name follows the owner; mirror cels are unnameable): the mirror row
     // reads 1ㅇㅇ----- exactly like its base.
+    //
+    // 🚨F-147 (유저 2026-09-16): 「기준레이어 엣지 움직일때 어태치 동기
+    // 레이어의 해당 프레임블록의 프레임이름이 엣지 움직일때만 1로보이는 상황
+    // 발생 … 해당 관련로직 싹 점검」. The CEL used to be read off the
+    // committed base at [frameIndex], while the row paints [layer] — which a
+    // drag derives from the PREVIEWED base. Dragging 4's lead edge into the
+    // 1 before it put 4's start over a committed 1, and the mirror printed
+    // that. The cel is the one [layer] shows; only its NAME is the base's.
     if (isSyncedAttachedLayer(layer)) {
       final base = attachedBaseOf(
         layer,
         _project.activeCutOrNull?.layers ?? const <Layer>[],
       );
       if (base != null) {
-        return _controllers.timelineController
-            .resolveFrameForLayer(layer: base, frameIndex: frameIndex)
-            ?.name;
+        final shown = _controllers.timelineController.resolveFrameIdForLayer(
+          layer: layer,
+          frameIndex: frameIndex,
+        );
+        final baseCel = shown == null
+            ? null
+            : attachedBaseFrameIdOf(layer, shown);
+        return baseCel == null ? null : base.frameById(baseCel)?.name;
       }
     }
     return _controllers.timelineController
@@ -586,9 +603,9 @@ class FrameVerbs {
       TimelineCellExposureState.drawingStart => celNumberOrMark(frame?.name),
       TimelineCellExposureState.held => celNumber ?? '',
       TimelineCellExposureState.markHeld =>
-        celNumber == null ? '●' : '$celNumber ●',
+        celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',
       TimelineCellExposureState.uncovered => 'X',
-      TimelineCellExposureState.markUncovered => '●',
+      TimelineCellExposureState.markUncovered => inbetweenMark,
     };
   }
 }

@@ -21,7 +21,6 @@ void main() {
         LayerKind.animation,
         LayerKind.storyboard,
         LayerKind.image,
-        LayerKind.text,
         LayerKind.se,
         LayerKind.instruction,
         LayerKind.folder,

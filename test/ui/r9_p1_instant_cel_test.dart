@@ -133,7 +133,6 @@ void main() {
       for (final kind in [
         LayerKind.animation,
         LayerKind.image,
-        LayerKind.text,
         LayerKind.se,
         LayerKind.instruction,
         LayerKind.folder,

@@ -1,8 +1,9 @@
 import 'dart:ui' show Color, Offset;
 
-/// The shared canvas-text styling vocabulary (R5, ⓣ): the TEXT LAYER's
-/// cels and the SE name tags speak the same style so neither reinvents
-/// fonts, spacing, outlines or the red-box background. Serializable like
+/// The shared canvas-text styling vocabulary (R5, ⓣ): what the SE name tags
+/// speak — fonts, spacing, outlines, the red-box background — and what the
+/// planned text tool will too (↩️the TEXT LAYER's cels spoke it until F-154
+/// removed the kind). Serializable like
 /// [MediaReference] — a style is document data, never a hardcoded
 /// TextStyle.
 ///

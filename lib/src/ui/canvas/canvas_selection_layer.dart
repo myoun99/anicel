@@ -22,7 +22,6 @@ import '../../models/drawing_guide.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
-import '../dialogs/app_confirm_dialog.dart';
 import '../../models/app_input_settings.dart';
 import '../text/app_strings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
@@ -33,7 +32,6 @@ import '../../services/resample/resample_kernel.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
-import '../theme/app_theme.dart';
 import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
 import 'selection_float_overlay.dart';
@@ -41,6 +39,8 @@ import 'bitmap_surface_painter.dart';
 import 'tile_pyramid.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
+import '../input/value_control_pointers.dart';
+import '../widgets/app_icon_button.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -582,6 +582,43 @@ class _MoveSession {
   /// 기준점은 **항상 상자의 중심**」, and with a range live that is the one
   /// box on screen.
   SelectionAffine? landedAffine;
+}
+
+/// 🚨★★★**WHAT AN INTERRUPTION DOES TO AN OPEN EDIT. THERE ARE TWO.**
+///
+/// 🗣️유저 2026-09-17: 「**프레임이동이나 레이어이동등은 착지시킬 이유가
+/// 없는것들은 착지안하고 편집중 그대로 유지**. 근데 여기서 **다른 도구
+/// 선택하는 등만 착지**시키는거고」 — and again on 09-22, because it was
+/// still not true: 「변형중 프레임 이동 등 **가능한동작이면 가능하게 냅두고,
+/// 불가능한 동작이면 마지막 변형대로 커밋**하라고 내가 말하지않았냐? **두개로
+/// 딱 나누라고**?」 · 「**입구도 하나로 나누고 거기서 분기시키는게 깔끔**할거
+/// 같긴한데 그런부분 맡길테니」.
+///
+/// ⛔**THE ENUM IS THE POINT, NOT THE NAMES.** An interruption cannot be
+/// handled without picking one of these two, so a situation nobody has
+/// thought of yet — a new panel, a new shortcut, a new host — still has to
+/// say which it is, and there is no third thing for it to do by accident.
+/// 유저: 「절대 다른 상황 생겨도 대처가능하게해」.
+///
+/// ⚠️`the_session_ends_two_ways_test` holds the other half: nothing may
+/// end a session except through [_CanvasSelectionLayerState._interrupted].
+enum SessionInterruption {
+  /// The edit TRAVELS with the user — walking frames, layers or cuts.
+  ///
+  /// Nothing lands, because there is nothing to protect: a session writes
+  /// to no cel until it is confirmed, and the box, its numbers and its
+  /// region are what the user is still working on.
+  carry,
+
+  /// The edit CANNOT travel, so it lands exactly as the box shows it.
+  ///
+  /// 🚨★★★**IT LANDS, IT DOES NOT ASK.** ↩️A tool change over a pending
+  /// move used to open a 확정/되돌리기 dialog (R17-①, `c5e7b8a7`, the CSP
+  /// grammar) — a THIRD answer, and the one the user struck down twice on
+  /// 09-22 with 「두개로 딱 나누라고」. The dialog also disagreed with the
+  /// very same switch reaching this layer as a DISPOSE, which always
+  /// landed silently: select→move asked, select→brush did not.
+  land,
 }
 
 /// The whole of an open box's edit, as one step back.
@@ -1140,7 +1177,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // reason this is allowed to be a drop: the session never wrote to
       // the cel. Before `314aa6e8` the erase was already committed and
       // letting go here would have left a hole with the pixels gone.
-      _carrySessionToAnotherCel();
+      _interrupted(SessionInterruption.carry);
     }
     // Picking another mode (or another grid size) over an OPEN box widens
     // or narrows it in place — the whole point of holding the warp as
@@ -1173,66 +1210,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // change. This layer does not mount for the painting tools, so on the
     // switch that matters most it is being DISPOSED rather than updated
     // and would never see it. The panel above watches the tool instead.
-    // R17-①: a context change over a pending move ASKS (CSP grammar) —
-    // 확정 lands the session as one undo entry, 되돌리기 puts the pixels
-    // back exactly. Deferred post-frame: dialogs and history commands
-    // must never run inside the build phase.
+    // A TOOL CHANGE CANNOT CARRY THE EDIT, so it lands it — the second of
+    // the two answers, through the one door.
+    //
+    // ⚠️Deferred post-frame because history commands must never run inside
+    // the build phase, not because anything here is optional.
+    //
+    // ↩️R17-① asked instead (a 확정/되돌리기 dialog), and R27 #18 committed
+    // an open BOX beside it — so one switch had two answers depending on
+    // whether a box was open, and the very same switch to a painting tool
+    // reached [dispose] and silently landed both. 유저 struck the dialog
+    // down on 09-22: 「두개로 딱 나누라고」.
     if (oldWidget.tool != widget.tool) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
         }
-        // R27 #18: an open transform box must not outlive its tool. It
-        // used to stay on screen after a switch — and, worse, the stale
-        // `_transform != null` made the NEXT _beginTransform bail out at
-        // its own guard, so the second transform did nothing and the
-        // original picture just sat there. Committing folds the affine
-        // into the session (identity just closes the box).
-        if (_transform != null) {
-          _commitTransform();
-        }
-        if (_movePending) {
-          unawaited(_promptPendingMove());
-        }
+        _interrupted(SessionInterruption.land);
       });
-    }
-  }
-
-  /// The R17-① "확정시키겠습니까?" prompt. Modal: the session stays
-  /// pending until a choice lands (dismissing = confirm, the safe
-  /// default — pixels keep their moved position and stay undoable).
-  Future<void> _promptPendingMove() async {
-    if (!mounted || !_movePending) {
-      return;
-    }
-    // Read at call time: this layer holds no session, so the program
-    // language arrives through AppText — the wording was hardcoded
-    // Korean before and ignored the language setting entirely.
-    final strings = AppText.strings;
-    final confirmed = await askConfirm(
-      context,
-      ConfirmQuestion(
-        // ⚠️Hand-built keys, not `confirmDialogKeys`: the buttons here are
-        // named for what they DO (revert / apply), not cancel / confirm.
-        keys: (
-          window: const ValueKey<String>('selection-move-confirm-dialog'),
-          decline: const ValueKey<String>('selection-move-revert-button'),
-          accept: const ValueKey<String>('selection-move-apply-button'),
-        ),
-        title: strings.selectionMoveConfirmTitle,
-        titleIcon: Icons.open_with_outlined,
-        message: strings.selectionMoveConfirmBody,
-      ),
-      decline: ConfirmChoice(strings.selectionMoveRevert),
-      accept: ConfirmChoice(strings.selectionMoveApply),
-    );
-    if (!mounted || !_movePending) {
-      return;
-    }
-    if (confirmed == false) {
-      _revertMoveSession();
-    } else {
-      _confirmMoveSession();
     }
   }
 
@@ -1243,28 +1238,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_drag != null) {
       _notifyDragActive(false);
     }
-    // R16-①: unmounting with a pending move (tool switched to a
-    // non-selection tool) CONFIRMS it. The history execute defers
-    // post-frame (dispose can run inside a build); the interaction hold
-    // releases NOW so a leak can never lock seeks.
-    // R27 #18: an OPEN transform box at unmount used to drop its affine —
-    // the stamp landed back where it was LIFTED, so the transform read as
-    // "did it commit or not?". Fold the affine in first: whatever the box
-    // showed is what lands.
-    // P3a: the preview's `warped()` covers the quad and the mesh too, which this
-    // path never did — an unmount during a perspective or mesh session
-    // used to land the UNwarped float.
-    final pendingStamp = _pendingLiftStamp == null
-        ? null
-        : (_preview.warped() ?? _pendingLiftStamp);
-    if (pendingStamp != null) {
-      _session!.stamp = pendingStamp;
-    }
-    // ⛔THROUGH THE ONE DOOR, like every other ending. `_disposing` is what
-    // makes it wait: dispose can run inside a build, and the history
-    // execute must not.
+    // 🚨★★★**UNMOUNTING IS AN INTERRUPTION THAT CANNOT CARRY**, so it
+    // takes the same door as every other one. A switch to a painting tool
+    // arrives here rather than at [didUpdateWidget] — this layer does not
+    // mount for those tools — and the two used to answer it differently.
+    //
+    // ⚠️`_disposing` is what makes the landing wait: dispose can run inside
+    // a build, and the history execute must not. The interaction hold
+    // still releases NOW, above, so a leak can never lock seeks.
+    //
+    // ↩️This spelled its own fold — `_preview.warped() ?? _pendingLiftStamp`,
+    // with no identity guard and no region move — beside a function whose
+    // doc already said 「every path that ends a session while a box is open
+    // needs this」. Two implementations of one algorithm is a copy however
+    // differently it reads, and these two had already drifted apart.
     _disposing = true;
-    _endSession(_SessionEnd.confirm);
+    _interrupted(SessionInterruption.land);
     // The preview image is a GPU allocation and an in-flight decode holds
     // a callback into this state. Neither is reached by _clearTransform on
     // this path — dispose does not close the box, it folds it — so the
@@ -1533,6 +1522,56 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       sy: scale,
     ),
   );
+
+  /// 🚨★★★**THE ONE DOOR AN INTERRUPTION GOES THROUGH.**
+  ///
+  /// Every site that learns the world changed under an open edit calls
+  /// this and names its bucket; the branch is here and nowhere else. See
+  /// [SessionInterruption] for the two and why there are only two.
+  ///
+  /// ⛔It is safe to call with nothing open — both answers are no-ops on an
+  /// empty session — so a caller never has to ask first, and a caller that
+  /// forgot to ask can never be the bug.
+  void _interrupted(SessionInterruption by) {
+    switch (by) {
+      case SessionInterruption.carry:
+        _carrySessionToAnotherCel();
+      case SessionInterruption.land:
+        _landOpenSession();
+    }
+  }
+
+  /// [SessionInterruption.land]: whatever the box shows becomes the cel.
+  ///
+  /// ⛔**THE FLOAT THIS LAYER PUBLISHED IS TAKEN BACK HERE**, for every
+  /// landing and not just the dispose one. [_publishFloat] runs from BUILD,
+  /// so an ending that does not rebuild — a dispose, or a land that closes
+  /// the session in the same frame — leaves the composite holding a
+  /// picture nobody owns, drawn over the one that just landed (유저
+  /// 2026-09-22: 「캔버스 사라지고 이상해지는데」).
+  void _landOpenSession() {
+    // R27 #18: fold the affine in FIRST, so whatever the box showed is
+    // what lands rather than the stamp's pre-transform place. It covers
+    // the quad and the mesh too — `_preview.warped()` is the buffer the
+    // screen is already holding.
+    _foldOpenTransformIntoPendingStamp();
+    widget.floatOverlay?.value = null;
+    if (_disposing) {
+      // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
+      // of a commit that paints — closing the box, re-running the ants —
+      // has nothing to paint on, and `setState` on a defunct element is an
+      // assertion, not a no-op. The fold above already made the session
+      // hold what the box showed, which is the whole of the landing.
+      _endSession(_SessionEnd.confirm);
+      return;
+    }
+    if (_transform != null) {
+      _commitTransform();
+    }
+    if (_movePending) {
+      _confirmMoveSession();
+    }
+  }
 
   /// Remembers where the box stands, just before an operation moves it.
   ///
@@ -2198,10 +2237,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         shape.write(':${point.x},${point.y}');
       }
     } else if (affine != null && !affine.isIdentity) {
-      shape.write(
-        'a${affine.sx},${affine.sy},${affine.rotationDegrees},'
-        '${affine.tx},${affine.ty},${affine.pivot.x},${affine.pivot.y}',
-      );
+      // ⛔THE AFFINE SPELLS ITSELF. This used to list its fields here, and
+      // the list went stale the day the class grew an anchor — see
+      // [SelectionAffine.cacheKey].
+      shape.write('a${affine.cacheKey}');
     } else {
       // Identity, or no box at all: the untransformed float is already
       // the right picture and the resampler has nothing to do.
@@ -2808,6 +2847,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       widget.viewport.viewportToCanvas(ViewportPoint(x: local.dx, y: local.dy));
 
   void _handlePointerDown(PointerDownEvent event) {
+    // 🚨★★★**A PRESS THAT LANDED ON A CONTROL IS THAT CONTROL'S.**
+    //
+    // 🗣️유저 2026-09-22, saying it for the fifth time and calling it the
+    // last: 「왜 **확정/취소버튼을 클릭하면서 드래그하면 회전이 작동**하지?
+    // 버튼에 오는 동작은 **버튼이 무조건 가져가야하는거아냐**? … **마지막
+    // 경고니까 다신 이딴식으로 하지마. 버튼에 오는 동작은 무조건 버튼꺼야**」.
+    //
+    // ⛔THE LAW AND ITS KEEPER BOTH ALREADY EXISTED — `control_press_claim`
+    // and CLAUDE.md — and the confirm/cancel buttons wore the claim. What
+    // was missing is this line: every OTHER surface that starts a drag from
+    // the raw stream asks (`canvas_viewport_gesture_layer`,
+    // `eager_pan_gesture_recognizer`, `rail_column_swipe`,
+    // `instant_tap_region`) and this one did not. Its `Listener` is an
+    // ANCESTOR of the buttons floating in it, so the press arrived here
+    // after the button had taken it — and a press outside the box is the
+    // rotation.
+    //
+    // ⚠️Ordering is what makes it work and it is not luck: pointer-down is
+    // dispatched deepest-first, so the button's claim is already recorded
+    // by the time this ancestor hears the same event.
+    if (controlOwnsTap(event.pointer)) {
+      return;
+    }
     if (_drag != null) {
       // A second TOUCH is the navigate signal (same rule as strokes):
       // cancel the selection drag and let the gesture layer take over.
@@ -4246,51 +4308,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// The bar's footprint, as a NUMBER rather than a measurement.
   ///
   /// ⚠️The clamp runs while the bar is being BUILT, so there is nothing to
-  /// measure yet. [_sessionChromeButton] is sized to this constant instead
-  /// of the other way round — one source of truth, and the direction that
-  /// works.
-  static const double _chromeButtonDiameter = 30;
+  /// measure yet. The numbers are [AppIconButtonSize.bar]'s own, read off
+  /// the token rather than written again — 🚨and `maxWidth`, because a
+  /// clamp that assumed the narrow end would let the wide one hang off.
   static const double _chromeButtonGap = 6;
-  static const Size _confirmBarSize = Size(
-    _chromeButtonDiameter * 2 + _chromeButtonGap,
-    _chromeButtonDiameter,
+  static final Size _confirmBarSize = Size(
+    AppIconButtonSize.bar.maxWidth * 2 + _chromeButtonGap,
+    AppIconButtonSize.bar.height,
   );
 
-  /// ⛔The two buttons are ONE widget with two answers — a second copy of
-  /// the Material/claim/ink stack is how they would drift apart in press
-  /// behaviour, which is the thing `ControlPressClaim` exists to keep
-  /// identical everywhere.
-  Widget _sessionChromeButton({
-    required Key key,
-    required Color colour,
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox.square(
-      dimension: _chromeButtonDiameter,
-      child: Material(
-        key: key,
-        color: colour,
-        shape: const CircleBorder(),
-        elevation: 2,
-        child: ControlPressClaim(
-          onPressed: onPressed,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: silentPress(onPressed),
-            child: Center(
-              child: Icon(icon, size: 18, color: Colors.white),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _cancelButton() => _sessionChromeButton(
-    key: const ValueKey<String>('selection-move-cancel'),
-    colour: AppColors.surfaceHigh,
-    icon: Icons.close,
+  /// ⛔**THE APP'S ONE BUTTON** (「앱에 버튼은 한 종류」), reused rather than
+  /// re-made — 유저 2026-09-22: 「확정/취소버튼은 **우리 ui 있는거
+  /// 재사용할수있는거 하고** 아니면 우리스타일로 맞춰서 공용화해서 만들고」.
+  ///
+  /// ↩️It was a private Material + InkWell + [ControlPressClaim] circle in
+  /// this file, wearing the session's red/green. That is a second button to
+  /// keep in step with the app's forever, and the colour was chrome talking
+  /// about chrome — which [AppIconButton] already refuses (see its
+  /// `danger`). The pair says what it is with its ICON, and the box, the
+  /// ink, the tooltip and the press law all come from the one widget.
+  Widget _cancelButton() => AppIconButton(
+    keyValue: 'selection-move-cancel',
+    tooltip: AppText.strings.commonCancel,
+    icon: const Icon(Icons.close),
     onPressed: _cancelTransform,
   );
 
@@ -4306,20 +4346,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the warped preview kept painting on top until something closed the
   /// box, and the wrong landing went into history. Enter has branched on
   /// this since R16-①; the button never did.
-  Widget _confirmButton(CanvasSelectionRegion displayShape) =>
-      _sessionChromeButton(
-        key: const ValueKey<String>('selection-move-confirm'),
-        colour: AppColors.selectionSession(changed: _sessionHasChanges),
-        icon: Icons.check,
-        onPressed: () {
-          if (_transform != null) {
-            _commitTransform();
-          }
-          if (_movePending) {
-            _confirmMoveSession();
-          }
-        },
-      );
+  /// ⚠️[isSelected] is the ON state, and 「this session has changes」 is
+  /// exactly that — the same fact the ants and the box already show in the
+  /// session's red. The BUTTON says it the app's own way instead of
+  /// wearing a colour of its own.
+  Widget _confirmButton(CanvasSelectionRegion displayShape) => AppIconButton(
+    keyValue: 'selection-move-confirm',
+    tooltip: AppText.strings.commonApply,
+    icon: const Icon(Icons.check),
+    isSelected: _sessionHasChanges,
+    onPressed: () {
+      if (_transform != null) {
+        _commitTransform();
+      }
+      if (_movePending) {
+        _confirmMoveSession();
+      }
+    },
+  );
 
   Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, SelectionTransformChrome? chrome) {
     return Positioned.fill(
@@ -4537,22 +4581,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return displayShape;
   }
 
-  /// Confirm button anchor: just outside the selection bbox's top-right,
-  /// following the live drag offset. Anchored to what is actually
-  /// selected — the button rides the same corner the box draws.
+  /// Where 확정/취소 sit: **under the box, at its bottom-right** — 유저
+  /// 2026-09-22: 「위치는 위가아니라 **클튜처럼 아래**」.
   ///
-  /// …until the corner leaves [within], and then the bar stops riding and
-  /// stays. ⛔It is the only way out of a session on a tablet, so "where
-  /// the box is" loses to "on the screen" every time.
+  /// And when the outside is blocked they step INSIDE, which is the answer
+  /// 유저 gave on `transform-confirm-bar-placement`: 「위가 막히면 상자
+  /// 안쪽으로 들어간다」. ⛔The bar is the only way out of a session on a
+  /// tablet, so it never leaves the screen — but it also never stops
+  /// belonging to the box, which is why it goes inside rather than parking
+  /// at the edge on its own.
+  ///
+  /// ⚠️No drag offset: the bar is anchored to [region], and with the move
+  /// living in the affine the caller hands the TRANSFORMED shape — so it
+  /// already rides the corner it is supposed to ride.
   Offset _confirmButtonOffset(CanvasSelectionRegion region, Size within) {
     final bounds = region.selectedBounds;
-    final mapped = _mapCanvasToViewportOffset(
-      CanvasPoint(x: bounds.right, y: bounds.top),
+    final box = _mapCanvasToViewportOffset(
+      CanvasPoint(x: bounds.right, y: bounds.bottom),
     );
-    // ⚠️No drag offset: the button is anchored to [region], and with the
-    // move living in the affine the caller hands the TRANSFORMED shape —
-    // so it already rides the corner it is supposed to ride.
-    final rode = mapped + const Offset(8, -34);
+    const gap = 8.0;
+    // Right-aligned on the box's edge, a gap BELOW it.
+    final outside = Offset(
+      box.dx - _confirmBarSize.width,
+      box.dy + gap,
+    );
+    final roomBelow = outside.dy + _confirmBarSize.height <= within.height;
+    final rode = roomBelow
+        ? outside
+        // Blocked: the same corner, on the other side of the edge.
+        : Offset(outside.dx, box.dy - gap - _confirmBarSize.height);
     return Offset(
       rode.dx.clamp(0.0, math.max(0.0, within.width - _confirmBarSize.width)),
       rode.dy.clamp(0.0, math.max(0.0, within.height - _confirmBarSize.height)),

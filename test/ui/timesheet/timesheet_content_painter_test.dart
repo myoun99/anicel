@@ -189,7 +189,7 @@ void main() {
     expect(cells[2].kind, TimesheetCellKind.repeatStart);
     expect(
       cells[2].label,
-      '○',
+      unnamedDrawingMark,
       reason: 'the repeat restarts on the (unnamed) first cel',
     );
     expect(cells[2].spanLength, 6, reason: 'chain [2,8)');

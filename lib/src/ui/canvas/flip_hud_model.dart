@@ -29,7 +29,7 @@ class FlipHudRun {
   final int startIndex;
   final int length;
 
-  /// The cel name printed in the block. Empty prints the timeline's `○`.
+  /// The cel name printed in the block. Empty prints the in-between mark.
   final String label;
 
   /// A property key rather than a picture: drawn as the lane diamond

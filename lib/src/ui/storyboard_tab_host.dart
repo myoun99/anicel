@@ -50,6 +50,7 @@ class StoryboardTabHost extends StatefulWidget {
     required this.showSeconds,
     required this.onShowSecondsChanged,
     this.railExtent,
+    this.frameAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     required this.thumbnailFor,
     this.rowFilter = TimelineRowFilter.none,
@@ -71,6 +72,11 @@ class StoryboardTabHost extends StatefulWidget {
   static const double minPanelHeight =
       TimelineCommandBar.height + StoryboardPanel.minPanelHeight;
 
+  /// [minPanelHeight] where the tab is shown — the bar grows with the OS
+  /// text size ([TimelineCommandBar.heightIn]).
+  static double minPanelHeightIn(BuildContext context) =>
+      minPanelHeight + TimelineCommandBar.growthIn(context);
+
   final EditorSessionManager session;
   final double pixelsPerFrame;
   final ValueChanged<double> onPixelsPerFrameChanged;
@@ -80,6 +86,10 @@ class StoryboardTabHost extends StatefulWidget {
   /// This panel's rail window size (workspace-owned so it survives a tab
   /// switch AND a restart).
   final LayerRailExtent? railExtent;
+
+  /// Where the storyboard's frame axis stands — kept by the workspace beside
+  /// [railExtent] so it outlives a fold (F-143). Null = the panel's own.
+  final ValueNotifier<double>? frameAxisOffset;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
   /// switch like the zoom does. ⛔No setter and no steppers any more (B7,
@@ -602,6 +612,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     showSeconds: widget.showSeconds,
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.railExtent,
+                    frameAxisOffset: widget.frameAxisOffset,
                     projectFrameRate: _session.projectSettings.projectFrameRate,
                     // The strip's edges preview live and commit ONE undo on
                     // release, like the timeline's comma drags. Which verb a

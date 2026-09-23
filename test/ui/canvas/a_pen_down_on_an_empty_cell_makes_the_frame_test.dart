@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/auto_frame_for_stroke.dart';
@@ -141,10 +142,17 @@ void main() {
       autoCreateFrameOnDraw: true,
     );
     final session = sessionOnEmptyCell();
-    session.createDrawingAtCurrentFrame();
-    // The cell is covered now, so the manual button says no — and the auto
-    // path must say no for the SAME reason rather than growing a second
-    // answer to 「can this row take a cel here」.
+    // A storyboard row's panel head: the manual button refuses there (the
+    // row covers its cut edge to edge — nowhere to push, F-151) — and the
+    // auto path must say no for the SAME reason rather than growing a
+    // second answer to 「can this row take a cel here」.
+    //
+    // ↩️This stood on an animation block's head until F-151 made add push
+    // there. A pen on a head never reaches this path anyway — the canvas
+    // asks for a cel only while its view stands down on an EMPTY frame —
+    // so the fixture moved to a place the button still refuses.
+    session.layerStack.addLayerOfKind(LayerKind.storyboard);
+    session.selectFrameIndex(0);
     expect(session.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
     expect(autoFrameOf(session).canAutoCreateFrameForStroke, isFalse);
     expect(autoFrameOf(session).beginAutoFrameForStroke(), isFalse);

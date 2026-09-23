@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -125,11 +124,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
     this.showRowSolos = true,
-    this.blendLanguage = AppLanguage.en,
   });
-
-  /// PROGRAM language for the blend column's mode names (R27 #6).
-  final AppLanguage blendLanguage;
 
   final TimelineGridMetrics metrics;
 
@@ -676,7 +671,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     ))
                       PanelFlyoutItem(
                         keyValue: 'legend-blend-${mode.name}',
-                        label: mode.labelFor(blendLanguage),
+                        label: mode.labelFor(AppText.language),
                         onSelected: () => legend!.onSetBlendModeForDisplayed!(
                           displayedLayerIds!(),
                           mode,
@@ -781,7 +776,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     child: isVertical
                         ? VerticalWritingText(
                             key: const ValueKey<String>('legend-layer'),
-                            text: 'LAYER',
+                            // The same word as lying down: F-37 tabled the
+                            // timeline's heading and left this one English.
+                            text: AppText.strings.tlLegendLayer,
                             // Stands up with the names it heads (user,
                             // 2026-08-08): a heading lying down over a
                             // column of upright names reads as a different

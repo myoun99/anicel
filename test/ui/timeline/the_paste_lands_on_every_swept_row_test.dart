@@ -91,14 +91,6 @@ void main() {
   Layer layerOf(EditorSessionManager session, LayerId id) =>
       session.layers.firstWhere((l) => l.id == id);
 
-  /// Copies the source row's block onto the clipboard.
-  void copyTheBlock(EditorSessionManager session) {
-    session.selectLayer(source);
-    session.selectFrameIndex(0);
-    session.clearFrameRangeSelection();
-    session.copyFrameAtCurrentFrame();
-  }
-
   void sweep(
     EditorSessionManager session,
     List<LayerId> ids, {
@@ -111,6 +103,15 @@ void main() {
       endIndexExclusive: toExclusive,
       layerIds: ids,
     );
+  }
+
+  /// Copies the source row's block onto the clipboard — SELECTED, since that
+  /// is what copies a block rather than one comma of it (F-152).
+  void copyTheBlock(EditorSessionManager session) {
+    session.selectLayer(source);
+    session.selectFrameIndex(0);
+    sweep(session, [source], from: 0, toExclusive: 2);
+    session.copyFrameAtCurrentFrame();
   }
 
   test('presence first: only the source row is drawn', () {

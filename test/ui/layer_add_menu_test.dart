@@ -72,7 +72,6 @@ void main() {
       ('animation', LayerKind.animation),
       ('storyboard', LayerKind.storyboard),
       ('image', LayerKind.image),
-      ('text', LayerKind.text),
       ('se', LayerKind.se),
       ('instruction', LayerKind.instruction),
       ('adjustment', LayerKind.adjustment),

@@ -132,7 +132,6 @@ bool _exportsByRule(Layer layer, List<Layer> layers, CelsExportSpec spec) {
     case LayerKind.animation:
     case LayerKind.storyboard:
     case LayerKind.image:
-    case LayerKind.text:
       return _drawingCelExports(layer, layers, spec);
   }
 }

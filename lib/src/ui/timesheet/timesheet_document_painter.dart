@@ -415,9 +415,10 @@ void _enterDocumentSpace(
 }
 
 /// Paints the sheet document — the paper form (header band, Direction memo
-/// band, group/letter rows, second-heavy grid), cel numbers, holds, ○
-/// marks, X cells, camera keys, the data-driven cut-end strikethrough and
-/// the playhead row — under the panel viewport transform (the same
+/// band, group/letter rows, second-heavy grid), cel numbers, holds,
+/// in-between marks, X cells, camera keys, the data-driven cut-end
+/// strikethrough and the playhead row — under the panel viewport transform
+/// (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
 class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   TimesheetDocumentPainter({

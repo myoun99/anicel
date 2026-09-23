@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'frame_window_semantics.dart';
 
-import '../../models/frame.dart' show celNumberOrMark;
+import '../../models/frame.dart' show celNumberOrMark, inbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -333,7 +333,7 @@ class TimelineRowCellsPainter extends CustomPainter
         TimelineCellExposureState.drawingStart =>
           celNumberOrMark(frameName),
         TimelineCellExposureState.markHeld ||
-        TimelineCellExposureState.markUncovered => '●',
+        TimelineCellExposureState.markUncovered => inbetweenMark,
         _ => '',
       };
     } else {

@@ -312,10 +312,10 @@ void main() {
       expect(cells[1].kind, TimesheetCellKind.held);
       expect(cells[2].kind, TimesheetCellKind.held);
       expect(cells[4].kind, TimesheetCellKind.drawing);
-      expect(cells[4].label, '○', reason: 'unnamed = in-between mark glyph');
+      expect(cells[4].label, unnamedDrawingMark, reason: 'unnamed = in-between mark glyph');
       expect(cells[5].kind, TimesheetCellKind.held);
       expect(cells[6].kind, TimesheetCellKind.drawing);
-      expect(cells[6].label, '○', reason: 'a blank name is the mark too');
+      expect(cells[6].label, unnamedDrawingMark, reason: 'a blank name is the mark too');
     });
 
     test('X sits only on the first row of an empty run; block-owned dots '

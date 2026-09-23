@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/app_language.dart';
+import '../../models/frame.dart' show inbetweenMark;
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -261,10 +262,6 @@ enum AppStrings {
   String get fpsAudioPull => _s('fpsAudioPull');
 
   // --- The pending selection-move prompt (R17-①) ---
-  String get selectionMoveConfirmTitle => _s('selectionMoveConfirmTitle');
-  String get selectionMoveConfirmBody => _s('selectionMoveConfirmBody');
-  String get selectionMoveRevert => _s('selectionMoveRevert');
-  String get selectionMoveApply => _s('selectionMoveApply');
 
   /// Closes an open polygon outline. A tablet has no Enter key, so the
   /// confirm has to be reachable as a button too (the same reason the
@@ -674,7 +671,6 @@ enum AppStrings {
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
   String get tlKindImage => _s('tlKindImage');
-  String get tlKindText => _s('tlKindText');
   String get tlKindAdjustment => _s('tlKindAdjustment');
   String get tlKindFolder => _s('tlKindFolder');
   String get tlKindSe => _s('tlKindSe');
@@ -689,19 +685,6 @@ enum AppStrings {
   /// could never be translated at all.
   String get tlKindSemanticTemplate => _s('tlKindSemanticTemplate');
 
-  // --- The text cel editor (R5) ---
-  String get textCelNewTitle => _s('textCelNewTitle');
-  String get textCelEditTitle => _s('textCelEditTitle');
-  String get textCelTextLabel => _s('textCelTextLabel');
-  String get textCelFontLabel => _s('textCelFontLabel');
-  String get textCelFontSystem => _s('textCelFontSystem');
-  String get textCelSizeLabel => _s('textCelSizeLabel');
-  String get textCelAlignLabel => _s('textCelAlignLabel');
-  String get textCelAlignLeft => _s('textCelAlignLeft');
-  String get textCelAlignCenter => _s('textCelAlignCenter');
-  String get textCelAlignRight => _s('textCelAlignRight');
-  String get textCelColorLabel => _s('textCelColorLabel');
-  String get textCelBoldLabel => _s('textCelBoldLabel');
   String get seNameTagShowLineLabel => _s('seNameTagShowLineLabel');
   String get seNameTagLineInkLabel => _s('seNameTagLineInkLabel');
   String get seNameTagTrackingLabel => _s('seNameTagTrackingLabel');
@@ -714,9 +697,6 @@ enum AppStrings {
   /// the block's own text, so these never change with the playhead.
   String get seNameTagPreviewName => _s('seNameTagPreviewName');
   String get seNameTagPreviewLine => _s('seNameTagPreviewLine');
-  String get textCelOutlineLabel => _s('textCelOutlineLabel');
-  String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
-  String get textCelPositionLabel => _s('textCelPositionLabel');
 
   // --- The SE name tag editor (R5b) ---
 
@@ -1540,6 +1520,31 @@ enum AppStrings {
   String get tlColFillReference => _s('tlColFillReference');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
+
+  // The rail row's controls (rail-subject-tooltips): one whole sentence per
+  // control, state and row. ⛔Never a noun slotted into a template — French
+  // contracts it into its article (« du calque », « de la piste ») and
+  // Japanese hangs a particle on it, so no one template reads right in all
+  // five languages.
+  String get railLayerBlendMode => _s('railLayerBlendMode');
+  String get railFolderBlendMode => _s('railFolderBlendMode');
+  String get railHideLayer => _s('railHideLayer');
+  String get railShowLayer => _s('railShowLayer');
+  String get railHideCutPicture => _s('railHideCutPicture');
+  String get railShowCutPicture => _s('railShowCutPicture');
+  String get railBypassLayerFx => _s('railBypassLayerFx');
+  String get railApplyLayerFx => _s('railApplyLayerFx');
+  String get railBypassMixedLayerFx => _s('railBypassMixedLayerFx');
+  String get railBypassTrackFx => _s('railBypassTrackFx');
+  String get railApplyTrackFx => _s('railApplyTrackFx');
+  String get railRemoveFromTimesheet => _s('railRemoveFromTimesheet');
+  String get railAddToTimesheet => _s('railAddToTimesheet');
+  String get railCollapseLanes => _s('railCollapseLanes');
+  String get railExpandLanes => _s('railExpandLanes');
+  String get railOnionSkinOn => _s('railOnionSkinOn');
+  String get railOnionSkin => _s('railOnionSkin');
+  String get railFillReferenceOn => _s('railFillReferenceOn');
+  String get railFillReference => _s('railFillReference');
   String get tlLayerMark => _s('tlLayerMark');
 
   /// 색 라벨이 안 붙은 상태. ⚠️「수정 없음」이 아니라 라벨 자체가 없는 것 —
@@ -1653,10 +1658,6 @@ enum AppStrings {
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
-    'selectionMoveConfirmTitle': 'Commit move',
-    'selectionMoveConfirmBody': 'Commit the selection move?',
-    'selectionMoveRevert': 'Revert',
-    'selectionMoveApply': 'Commit',
     'selectionClosePolygon': 'Close shape',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
@@ -2489,6 +2490,25 @@ enum AppStrings {
     'tlColFillReference': 'Fill reference column',
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
+    'railLayerBlendMode': 'Layer blend mode',
+    'railFolderBlendMode': 'Folder blend mode',
+    'railHideLayer': 'Hide layer',
+    'railShowLayer': 'Show layer',
+    'railHideCutPicture': 'Hide cut picture',
+    'railShowCutPicture': 'Show cut picture',
+    'railBypassLayerFx': 'Bypass layer FX',
+    'railApplyLayerFx': 'Apply layer FX',
+    'railBypassMixedLayerFx': 'Bypass all layer FX (some are off)',
+    'railBypassTrackFx': 'Bypass track FX',
+    'railApplyTrackFx': 'Apply track FX',
+    'railRemoveFromTimesheet': 'Remove from timesheet',
+    'railAddToTimesheet': 'Add to timesheet',
+    'railCollapseLanes': 'Collapse lanes',
+    'railExpandLanes': 'Expand lanes',
+    'railOnionSkinOn': 'Onion skin (on)',
+    'railOnionSkin': 'Onion skin',
+    'railFillReferenceOn': 'Fill reference layer (on)',
+    'railFillReference': 'Fill reference layer',
     'tlLayerMark': 'Layer mark',
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
@@ -2533,7 +2553,6 @@ enum AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
-    'tlKindText': 'Text',
     'tlKindAdjustment': 'Adjustment',
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
@@ -2542,18 +2561,6 @@ enum AppStrings {
     'tlKindSemanticTemplate': '{kind} layer',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGIN',
-    'textCelNewTitle': 'New Text',
-    'textCelEditTitle': 'Edit Text',
-    'textCelTextLabel': 'Text',
-    'textCelFontLabel': 'Font',
-    'textCelFontSystem': 'System',
-    'textCelSizeLabel': 'Size',
-    'textCelAlignLabel': 'Align',
-    'textCelAlignLeft': 'Left',
-    'textCelAlignCenter': 'Center',
-    'textCelAlignRight': 'Right',
-    'textCelColorLabel': 'Ink',
-    'textCelBoldLabel': 'Bold',
     'seNameTagShowLineLabel': 'Show Dialogue',
     'seNameTagLineInkLabel': 'Dialogue Ink',
     'seNameTagTrackingLabel': 'Tracking',
@@ -2563,9 +2570,6 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Bold',
     'seNameTagPreviewName': 'Name',
     'seNameTagPreviewLine': 'Line',
-    'textCelOutlineLabel': 'Outline (white)',
-    'textCelBackgroundLabel': 'Box (red)',
-    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -2603,7 +2607,7 @@ enum AppStrings {
     'cnActionColumn': 'Action',
     'cnConte': 'Conte',
     'tlBlankX': 'Blank / X',
-    'tlMark': 'Mark ●',
+    'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
     'tlSetCommaTemplate': 'Set {n} comma exposure',
     'tlProjectAudioRate': 'Project audio sample rate',
@@ -2691,10 +2695,6 @@ enum AppStrings {
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
-    'selectionMoveConfirmTitle': '移動の確定',
-    'selectionMoveConfirmBody': '選択範囲の移動を確定しますか？',
-    'selectionMoveRevert': '元に戻す',
-    'selectionMoveApply': '確定',
     'selectionClosePolygon': '形を閉じる',
     'commonSave': '保存',
     'commonDelete': '削除',
@@ -3751,6 +3751,25 @@ enum AppStrings {
     'tlColFillReference': '塗り参照列',
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
+    'railLayerBlendMode': 'レイヤーの合成モード',
+    'railFolderBlendMode': 'フォルダーの合成モード',
+    'railHideLayer': 'レイヤーを隠す',
+    'railShowLayer': 'レイヤーを表示',
+    'railHideCutPicture': 'カットの絵を隠す',
+    'railShowCutPicture': 'カットの絵を表示',
+    'railBypassLayerFx': 'レイヤーFXをバイパス',
+    'railApplyLayerFx': 'レイヤーFXを適用',
+    'railBypassMixedLayerFx': 'レイヤーFXをすべてバイパス（一部オフ）',
+    'railBypassTrackFx': 'トラックFXをバイパス',
+    'railApplyTrackFx': 'トラックFXを適用',
+    'railRemoveFromTimesheet': 'シートから外す',
+    'railAddToTimesheet': 'シートに載せる',
+    'railCollapseLanes': 'レーンを畳む',
+    'railExpandLanes': 'レーンを展開',
+    'railOnionSkinOn': 'オニオンスキン（オン）',
+    'railOnionSkin': 'オニオンスキン',
+    'railFillReferenceOn': '塗り参照レイヤー（オン）',
+    'railFillReference': '塗り参照レイヤー',
     'tlLayerMark': 'レイヤーマーク',
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
@@ -3826,25 +3845,12 @@ enum AppStrings {
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
     'tlKindImage': '画像',
-    'tlKindText': 'テキスト',
     'tlKindAdjustment': '調整レイヤー',
     'tlKindFolder': 'フォルダー',
     'tlKindSe': 'SE',
     'tlKindTransition': 'トランジション',
     'tlKindCamera': 'カメラ',
     'tlKindSemanticTemplate': '{kind}レイヤー',
-    'textCelNewTitle': '新規テキスト',
-    'textCelEditTitle': 'テキストを編集',
-    'textCelTextLabel': 'テキスト',
-    'textCelFontLabel': 'フォント',
-    'textCelFontSystem': 'システム',
-    'textCelSizeLabel': 'サイズ',
-    'textCelAlignLabel': '揃え',
-    'textCelAlignLeft': '左',
-    'textCelAlignCenter': '中央',
-    'textCelAlignRight': '右',
-    'textCelColorLabel': 'インク',
-    'textCelBoldLabel': '太字',
     'seNameTagShowLineLabel': 'セリフを表示',
     'seNameTagLineInkLabel': 'セリフの色',
     'seNameTagTrackingLabel': '字間',
@@ -3854,9 +3860,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '太字',
     'seNameTagPreviewName': '名前',
     'seNameTagPreviewLine': 'セリフ',
-    'textCelOutlineLabel': 'フチ（白）',
-    'textCelBackgroundLabel': 'ボックス（赤）',
-    'textCelPositionLabel': '位置',
     'tlKindInstruction': 'ディレクション',
     'tlNoriShiro': 'のりしろ',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
@@ -3894,7 +3897,7 @@ enum AppStrings {
     'cnActionColumn': 'アクション',
     'cnConte': '絵コンテ',
     'tlBlankX': '中割なし / ×',
-    'tlMark': 'マーク ●',
+    'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
     'tlSetCommaTemplate': '{n}コマに設定',
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
@@ -3982,10 +3985,6 @@ enum AppStrings {
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
-    'selectionMoveConfirmTitle': '이동 확정',
-    'selectionMoveConfirmBody': '선택 영역 이동을 확정하시겠습니까?',
-    'selectionMoveRevert': '되돌리기',
-    'selectionMoveApply': '확정',
     'selectionClosePolygon': '도형 닫기',
     'commonSave': '저장',
     'commonDelete': '삭제',
@@ -5035,6 +5034,25 @@ enum AppStrings {
     'tlColFillReference': '채색 참조 열',
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
+    'railLayerBlendMode': '레이어 블렌드 모드',
+    'railFolderBlendMode': '폴더 블렌드 모드',
+    'railHideLayer': '레이어 숨기기',
+    'railShowLayer': '레이어 표시',
+    'railHideCutPicture': '컷 그림 숨기기',
+    'railShowCutPicture': '컷 그림 표시',
+    'railBypassLayerFx': '레이어 FX 우회',
+    'railApplyLayerFx': '레이어 FX 적용',
+    'railBypassMixedLayerFx': '레이어 FX 모두 우회 (일부 꺼짐)',
+    'railBypassTrackFx': '트랙 FX 우회',
+    'railApplyTrackFx': '트랙 FX 적용',
+    'railRemoveFromTimesheet': '시트에서 내리기',
+    'railAddToTimesheet': '시트에 올리기',
+    'railCollapseLanes': '레인 접기',
+    'railExpandLanes': '레인 펼치기',
+    'railOnionSkinOn': '어니언 스킨 (켜짐)',
+    'railOnionSkin': '어니언 스킨',
+    'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
+    'railFillReference': '채색 참조 레이어',
     'tlLayerMark': '레이어 마크',
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
@@ -5111,25 +5129,12 @@ enum AppStrings {
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
     'tlKindImage': '이미지',
-    'tlKindText': '텍스트',
     'tlKindAdjustment': '조정 레이어',
     'tlKindFolder': '폴더',
     'tlKindSe': 'SE',
     'tlKindTransition': '트랜지션',
     'tlKindCamera': '카메라',
     'tlKindSemanticTemplate': '{kind} 레이어',
-    'textCelNewTitle': '새 텍스트',
-    'textCelEditTitle': '텍스트 편집',
-    'textCelTextLabel': '텍스트',
-    'textCelFontLabel': '폰트',
-    'textCelFontSystem': '시스템',
-    'textCelSizeLabel': '크기',
-    'textCelAlignLabel': '정렬',
-    'textCelAlignLeft': '왼쪽',
-    'textCelAlignCenter': '가운데',
-    'textCelAlignRight': '오른쪽',
-    'textCelColorLabel': '잉크',
-    'textCelBoldLabel': '굵게',
     'seNameTagShowLineLabel': '대사 표시',
     'seNameTagLineInkLabel': '대사 잉크',
     'seNameTagTrackingLabel': '자간',
@@ -5139,9 +5144,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '굵게',
     'seNameTagPreviewName': '이름',
     'seNameTagPreviewLine': '대사',
-    'textCelOutlineLabel': '외곽선(흰색)',
-    'textCelBackgroundLabel': '박스(빨강)',
-    'textCelPositionLabel': '위치',
     'tlKindInstruction': '디렉션',
     'tlNoriShiro': '여백',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
@@ -5180,7 +5182,7 @@ enum AppStrings {
     'cnActionColumn': '액션',
     'cnConte': '콘티',
     'tlBlankX': '중간 없음 / ×',
-    'tlMark': '마크 ●',
+    'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
     'tlSetCommaTemplate': '{n}코마로 설정',
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
@@ -5272,10 +5274,6 @@ enum AppStrings {
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
-    'selectionMoveConfirmTitle': 'Valider le déplacement',
-    'selectionMoveConfirmBody': 'Valider le déplacement de la sélection ?',
-    'selectionMoveRevert': 'Rétablir',
-    'selectionMoveApply': 'Valider',
     'selectionClosePolygon': 'Fermer la forme',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
@@ -6394,6 +6392,26 @@ enum AppStrings {
     'tlColFillReference': 'Colonne référence de remplissage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
+    'railLayerBlendMode': 'Mode de fusion du calque',
+    'railFolderBlendMode': 'Mode de fusion du dossier',
+    'railHideLayer': 'Masquer le calque',
+    'railShowLayer': 'Afficher le calque',
+    'railHideCutPicture': "Masquer l'image du plan",
+    'railShowCutPicture': "Afficher l'image du plan",
+    'railBypassLayerFx': 'Contourner les FX du calque',
+    'railApplyLayerFx': 'Appliquer les FX du calque',
+    'railBypassMixedLayerFx':
+        'Contourner tous les FX du calque (certains sont désactivés)',
+    'railBypassTrackFx': 'Contourner les FX de la piste',
+    'railApplyTrackFx': 'Appliquer les FX de la piste',
+    'railRemoveFromTimesheet': 'Retirer de la feuille',
+    'railAddToTimesheet': 'Mettre sur la feuille',
+    'railCollapseLanes': 'Replier les pistes',
+    'railExpandLanes': 'Déplier les pistes',
+    'railOnionSkinOn': "Pelure d'oignon (activée)",
+    'railOnionSkin': "Pelure d'oignon",
+    'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
+    'railFillReference': 'Calque de référence de remplissage',
     'tlLayerMark': 'Repère de calque',
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
@@ -6455,7 +6473,6 @@ enum AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
-    'tlKindText': 'Texte',
     'tlKindAdjustment': 'Calque de réglage',
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
@@ -6464,18 +6481,6 @@ enum AppStrings {
     'tlKindSemanticTemplate': 'Calque {kind}',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGE',
-    'textCelNewTitle': 'Nouveau texte',
-    'textCelEditTitle': 'Modifier le texte',
-    'textCelTextLabel': 'Texte',
-    'textCelFontLabel': 'Police',
-    'textCelFontSystem': 'Système',
-    'textCelSizeLabel': 'Taille',
-    'textCelAlignLabel': 'Alignement',
-    'textCelAlignLeft': 'Gauche',
-    'textCelAlignCenter': 'Centre',
-    'textCelAlignRight': 'Droite',
-    'textCelColorLabel': 'Encre',
-    'textCelBoldLabel': 'Gras',
     'seNameTagShowLineLabel': 'Afficher le dialogue',
     'seNameTagLineInkLabel': 'Encre du dialogue',
     'seNameTagTrackingLabel': 'Interlettrage',
@@ -6485,9 +6490,6 @@ enum AppStrings {
     'seNameTagBoldLabel': 'Gras',
     'seNameTagPreviewName': 'Nom',
     'seNameTagPreviewLine': 'Réplique',
-    'textCelOutlineLabel': 'Contour (blanc)',
-    'textCelBackgroundLabel': 'Boîte (rouge)',
-    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -6527,7 +6529,7 @@ enum AppStrings {
     'cnActionColumn': 'Action',
     'cnConte': 'Storyboard',
     'tlBlankX': 'Vide / X',
-    'tlMark': 'Repère ●',
+    'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
     'tlSetCommaTemplate': 'Régler sur {n} comma',
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
@@ -6613,10 +6615,6 @@ enum AppStrings {
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
-    'selectionMoveConfirmTitle': '确认移动',
-    'selectionMoveConfirmBody': '要确认选区的移动吗？',
-    'selectionMoveRevert': '还原',
-    'selectionMoveApply': '确认',
     'selectionClosePolygon': '闭合形状',
     'commonSave': '保存',
     'commonDelete': '删除',
@@ -7629,6 +7627,25 @@ enum AppStrings {
     'tlColFillReference': '填充参考列',
     'tlColTimesheet': '摄影表列',
     'tlOpenOnionPanel': '打开洋葱皮面板',
+    'railLayerBlendMode': '图层混合模式',
+    'railFolderBlendMode': '文件夹混合模式',
+    'railHideLayer': '隐藏图层',
+    'railShowLayer': '显示图层',
+    'railHideCutPicture': '隐藏镜头画面',
+    'railShowCutPicture': '显示镜头画面',
+    'railBypassLayerFx': '旁通图层 FX',
+    'railApplyLayerFx': '应用图层 FX',
+    'railBypassMixedLayerFx': '旁通全部图层 FX（部分已关闭）',
+    'railBypassTrackFx': '旁通轨道 FX',
+    'railApplyTrackFx': '应用轨道 FX',
+    'railRemoveFromTimesheet': '移出摄影表',
+    'railAddToTimesheet': '放上摄影表',
+    'railCollapseLanes': '折叠轨道',
+    'railExpandLanes': '展开轨道',
+    'railOnionSkinOn': '洋葱皮（开）',
+    'railOnionSkin': '洋葱皮',
+    'railFillReferenceOn': '填充参考图层（开）',
+    'railFillReference': '填充参考图层',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
@@ -7668,25 +7685,12 @@ enum AppStrings {
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
     'tlKindImage': '图像',
-    'tlKindText': '文本',
     'tlKindAdjustment': '调整图层',
     'tlKindFolder': '文件夹',
     'tlKindSe': 'SE',
     'tlKindTransition': 'Transition',
     'tlKindCamera': 'Camera',
     'tlKindSemanticTemplate': '{kind}图层',
-    'textCelNewTitle': '新建文本',
-    'textCelEditTitle': '编辑文本',
-    'textCelTextLabel': '文本',
-    'textCelFontLabel': '字体',
-    'textCelFontSystem': '系统',
-    'textCelSizeLabel': '大小',
-    'textCelAlignLabel': '对齐',
-    'textCelAlignLeft': '左',
-    'textCelAlignCenter': '居中',
-    'textCelAlignRight': '右',
-    'textCelColorLabel': '墨色',
-    'textCelBoldLabel': '加粗',
     'seNameTagShowLineLabel': '显示台词',
     'seNameTagLineInkLabel': '台词颜色',
     'seNameTagTrackingLabel': '字距',
@@ -7696,9 +7700,6 @@ enum AppStrings {
     'seNameTagBoldLabel': '加粗',
     'seNameTagPreviewName': '名字',
     'seNameTagPreviewLine': '台词',
-    'textCelOutlineLabel': '描边（白）',
-    'textCelBackgroundLabel': '底框（红）',
-    'textCelPositionLabel': '位置',
     // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만
     // 원어/영어로 두기로 하자」). ja/ko already transliterate it rather than
     // translate it — ディレクション / 디렉션 — so zh standing alone with 指示
@@ -7742,7 +7743,7 @@ enum AppStrings {
     'cnActionColumn': '动作',
     'cnConte': '分镜',
     'tlBlankX': '空 / ×',
-    'tlMark': '标记 ●',
+    'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',
     'tlSetCommaTemplate': '设为 {n} 格',
     'tlProjectAudioRate': '项目音频采样率',

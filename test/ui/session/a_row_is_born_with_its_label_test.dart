@@ -55,8 +55,9 @@ void main() {
   test('⛔a kind the user did not name is born unlabelled', () {
     final session = freshSession();
 
-    session.layerStack.addLayerOfKind(LayerKind.text);
+    session.layerStack.addLayerOfKind(LayerKind.adjustment);
 
+    expect(session.activeLayer!.kind, LayerKind.adjustment, reason: 'fixture');
     expect(session.activeLayer!.mark, LayerMark.none);
   });
 

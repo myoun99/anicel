@@ -2,7 +2,6 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart' show AppLanguage;
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
 import '../../models/attached_placement.dart';
@@ -291,6 +290,24 @@ const double layerControlChipGap = 4;
 bool layerKindShowsBlendControl(LayerKind kind) =>
     kind.isDrawingCel || kind.groupsLayers;
 
+/// Which rail row a shared control stands on — what its tooltip names.
+///
+/// 🚨rail-subject-tooltips (found building F-124, 2026-09-17): the controls
+/// carried their row as an English WORD and assembled their tooltips from
+/// it (`'Hide $subject'`, `'Bypass $subject FX'`), which no translation
+/// reached and F-37's scan could not see — it skips every literal with a
+/// `$` in it. The row is named here; the words are the table's, one whole
+/// sentence per control and row.
+enum RailSubject {
+  /// A layer's row — the timeline, the x-sheet and the storyboard's layer
+  /// rows.
+  layer,
+
+  /// The storyboard's TRACK row: its eye shows the cut pictures, and its FX
+  /// switch is the track's own.
+  track,
+}
+
 /// R27 #6 / R28 #2: the row's blend-mode BUTTON. Reads the current mode's
 /// name; accent while non-normal (selection style: color only, no check
 /// glyph in the row itself).
@@ -307,9 +324,7 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.keyValue,
     required this.optionKeyPrefix,
     required this.blendMode,
-    required this.language,
     required this.onBlendModeSelected,
-    this.subject = 'Layer',
     this.isGroup = false,
     this.axis = Axis.horizontal,
   });
@@ -328,14 +343,12 @@ class LayerBlendModeChip extends StatelessWidget {
   final String optionKeyPrefix;
 
   final LayerBlendMode blendMode;
-  final AppLanguage language;
   final ValueChanged<LayerBlendMode> onBlendModeSelected;
-
-  /// Names the row kind in the tooltip ('Layer', 'Folder').
-  final String subject;
 
   /// GROUP rows get [LayerBlendMode.passThrough] in the list; a drawing
   /// layer has no members to pass through, so it never sees the option.
+  /// The tooltip names the row by it too: the group row is the folder —
+  /// the caller already derived its old `subject` word from this flag.
   final bool isGroup;
 
   @override
@@ -343,6 +356,14 @@ class LayerBlendModeChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final nonNormal = blendMode != LayerBlendMode.normal;
     final vertical = axis == Axis.vertical;
+    // 🚨F-170 (유저 2026-09-20): 「앱 초기 실행시, 레이어의 블렌드 모드가
+    // 영어가 되있음. Normal로. 그 상태에서 다른 레이어로 이동하거나 프레임
+    // 생성하면 표준이라고 한글로 바뀜」. The saved language lands after the
+    // first frame; every other word re-reads it when the app rebuilds for
+    // it, but this one was handed down as a VALUE by a host that does not
+    // rebuild, with English as the default. Asked here, at build, like
+    // every other vocabulary ([AppText.language]).
+    final language = AppText.language;
     return SizedBox(
       width: vertical ? 20 : layerBlendSlotWidth,
       height: vertical ? layerBlendSlotWidth : 20,
@@ -353,7 +374,9 @@ class LayerBlendModeChip extends StatelessWidget {
           key: ValueKey<String>(keyValue),
           axis: axis,
           label: blendMode.labelFor(language),
-          tooltip: '$subject blend mode',
+          tooltip: isGroup
+              ? AppText.strings.railFolderBlendMode
+              : AppText.strings.railLayerBlendMode,
           showCaret: false,
           expand: true,
           fontSize: 9.5,
@@ -489,18 +512,18 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     required this.keyValue,
     required this.isVisible,
     required this.onToggle,
-    this.subject = 'layer',
+    this.subject = RailSubject.layer,
     this.tooltip,
     this.size = layerVisibilitySlotWidth,
     this.iconSize = 18,
   });
 
-  /// Names the row kind in the tooltip ('layer', 'folder').
-  final String subject;
+  /// The row this eye stands on — what its tooltip names.
+  final RailSubject subject;
 
   /// The whole tooltip, when the caller has one of its own — the guides
   /// panel says 「가이드 표시」 rather than 'Show guide'. Null keeps the
-  /// Show/Hide pair built from [subject], which is what every rail wants.
+  /// Show/Hide pair for [subject], which is what every rail wants.
   final String? tooltip;
 
   /// The full widget key string ('timeline-layer-visibility-a').
@@ -513,6 +536,13 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// The x-sheet's column header runs a hair smaller than the rails.
   final double iconSize;
 
+  String _showHideFor(AppStrings strings) => switch (subject) {
+    RailSubject.layer =>
+      isVisible ? strings.railHideLayer : strings.railShowLayer,
+    RailSubject.track =>
+      isVisible ? strings.railHideCutPicture : strings.railShowCutPicture,
+  };
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -520,7 +550,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
       height: 26,
       child: AppIconButton(
         keyValue: keyValue,
-        tooltip: tooltip ?? (isVisible ? 'Hide $subject' : 'Show $subject'),
+        tooltip: tooltip ?? _showHideFor(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
@@ -619,7 +649,7 @@ class FxToggleButton extends StatelessWidget {
     required this.keyValue,
     required this.state,
     required this.onToggle,
-    this.subject = 'layer',
+    this.subject = RailSubject.layer,
     this.size = layerFxSlotWidth,
   });
 
@@ -635,10 +665,21 @@ class FxToggleButton extends StatelessWidget {
 
   final VoidCallback onToggle;
 
-  /// Names the row kind in the tooltip ('layer', 'folder', 'cut').
-  final String subject;
+  /// The row this switch stands on — what its tooltip names.
+  final RailSubject subject;
 
   final double size;
+
+  /// ⚠️A track's switch is never [LayerFxState.mixed] — its master is
+  /// stored state, not a reading of switches under it — so that arm words
+  /// what a press does there: bypass.
+  String _tooltipFor(AppStrings strings) => switch ((subject, state)) {
+    (RailSubject.layer, LayerFxState.mixed) => strings.railBypassMixedLayerFx,
+    (RailSubject.layer, LayerFxState.on) => strings.railBypassLayerFx,
+    (RailSubject.layer, LayerFxState.off) => strings.railApplyLayerFx,
+    (RailSubject.track, LayerFxState.off) => strings.railApplyTrackFx,
+    (RailSubject.track, _) => strings.railBypassTrackFx,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -648,11 +689,7 @@ class FxToggleButton extends StatelessWidget {
       height: 26,
       child: AppIconButton(
         keyValue: keyValue,
-        tooltip: switch (state) {
-          LayerFxState.mixed => 'Bypass all $subject FX (some are off)',
-          LayerFxState.on => 'Bypass $subject FX',
-          LayerFxState.off => 'Apply $subject FX',
-        },
+        tooltip: _tooltipFor(AppText.strings),
         // ⚠️`fxGlyph` sizes its own text, so the box's iconSize reaches
         // nothing here — it is passed for the ONE reader that does use it,
         // the button's own `IconTheme`, and left honest rather than zero.
@@ -693,7 +730,6 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.animation => Icons.filter_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
-    LayerKind.text => Icons.title_outlined,
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     // The cross-fade glyph: a transition span is two pictures overlapping.
@@ -723,7 +759,6 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.animation => strings.tlKindAnimation,
     LayerKind.storyboard => strings.tlKindStoryboard,
     LayerKind.image => strings.tlKindImage,
-    LayerKind.text => strings.tlKindText,
     LayerKind.se => strings.tlKindSe,
     LayerKind.instruction => strings.tlKindInstruction,
     LayerKind.transition => strings.tlKindTransition,
@@ -793,7 +828,9 @@ class LayerTimesheetToggleButton extends StatelessWidget {
       height: layerTimesheetSlotWidth,
       child: AppIconButton(
         keyValue: '$keyPrefix-layer-timesheet-$layerId',
-        tooltip: onTimesheet ? 'Remove from timesheet' : 'Add to timesheet',
+        tooltip: onTimesheet
+            ? AppText.strings.railRemoveFromTimesheet
+            : AppText.strings.railAddToTimesheet,
         size: const AppIconButtonBox(
           width: layerTimesheetSlotWidth,
           height: layerTimesheetSlotWidth,
@@ -1251,7 +1288,28 @@ Widget layerPlateGlyphs({
         minFontSize: 4,
         style: style,
       )
-    : Text(text, maxLines: 1, style: style);
+    : Text(
+        text,
+        maxLines: 1,
+        // 🚨★★★THE GLYPH CARRIES NO LEADING OF ITS OWN — on the sheet as on
+        // the rail. 유저 2026-09-17 (F-160): 「x시트의 색 라벨, LO만 글자가
+        // 아래로 치우쳐져있고 용지는 살짝 위로 … 타임라인이랑 다른거있나?
+        // 다른거있으면 법 통일하고 제대로 중앙에오도록」.
+        //
+        // There was one difference, and it was this line. The rail's painter
+        // lays every glyph at `height: 1.0` and lets the CELL be the leading
+        // ([paintVerticalText]); the sheet kept the caller's 1.15. A line box
+        // that tall seats its ink by each FONT's ascent and descent, and a
+        // Korean label is two fonts — BIZ UDPGothic draws `LO`, Nanum Gothic
+        // draws 용지 — so the two sat at different heights in one plate.
+        //
+        // 🧪Measured with the app's faces loaded (the test binding's own box
+        // font hides this completely): on the sheet `LO` sat 1.26px below
+        // the Hangul labels on a 14px plate; on the rail, 0.25px. At 1.0 the
+        // sheet reads 0.25px as well. The take text lays its glyphs through
+        // here too, so it is the same law for both plates.
+        style: style.copyWith(height: 1.0),
+      );
 
 class _LabelPlate extends StatelessWidget {
   const _LabelPlate({

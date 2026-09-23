@@ -24,8 +24,17 @@ class _BottomBarBuild {
   late final double _colorsWidth;
   late final double _viewControlsWidth;
 
+  /// The two readouts' widths where the pill is shown — what the ladder
+  /// adds up and what the labels are given, one number each.
+  late final double _zoomReadoutWidth;
+  late final double _rotationReadoutWidth;
+
   Widget build(BuildContext context) {
     _colorScheme = Theme.of(context).colorScheme;
+    _zoomReadoutWidth = _CanvasViewportBottomBar.zoomReadoutWidthIn(context);
+    _rotationReadoutWidth = _CanvasViewportBottomBar.rotationReadoutWidthIn(
+      context,
+    );
     // Normalized for display: multi-turn accumulation shows as its
     // visible angle.
 
@@ -155,7 +164,7 @@ class _BottomBarBuild {
             ? _CanvasViewportBottomBar._ownIconWidth
             : 0.0) +
         (_bar.onRotateByDrag != null
-            ? _CanvasViewportBottomBar._rotationReadoutWidth
+            ? _rotationReadoutWidth
             : 0.0) +
         (_bar.onRotateCw != null
             ? _CanvasViewportBottomBar._ownIconWidth
@@ -181,7 +190,7 @@ class _BottomBarBuild {
     // scrolling strip hands drags to its scroll arena before its children
     // ever see them).
     return SizedBox(
-      height: _CanvasViewportBottomBar.height,
+      height: _CanvasViewportBottomBar.heightIn(context),
       child: LayoutBuilder(builder: _layout),
     );
   }
@@ -285,6 +294,7 @@ class _BottomBarBuild {
       hostVerbsCanUnfold: _hostVerbsCanUnfold,
       hostVerbCount: _hostVerbs.length,
       hostSettingsListed: _bar.hostSettings.isNotEmpty,
+      zoomReadoutWidth: _zoomReadoutWidth,
     );
     // Last of all the host's controls go too — but Fit never does.
     // With the docked bar gone this is its only home, and a panel
@@ -408,7 +418,7 @@ class _BottomBarBuild {
             unit: '°',
           ),
           tooltip: AppText.strings.viewAngleDrag,
-          width: _CanvasViewportBottomBar._rotationReadoutWidth,
+          width: _rotationReadoutWidth,
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: _bar.onRotateByDrag!,
           onEditSubmit: (text) {
@@ -477,8 +487,13 @@ class _BottomBarBuild {
   Widget _resetButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-reset',
     tooltip: AppText.strings.viewResetView,
+    // A GLYPH in the icon slot, beside Fit and the zoom icons — and icons do
+    // not follow the OS text size. Scaled as text it outgrew the button it
+    // names (at 2× `1:1` wrapped in its 18px slot); the readouts beside it
+    // are the pill's words, and they grow (text-scale-fixed-height-bars).
     icon: const Text(
       '1:1',
+      textScaler: TextScaler.noScaling,
       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, height: 1),
     ),
     onPressed: _bar.viewEnabled ? _bar.onReset : null,
@@ -518,7 +533,7 @@ class _BottomBarBuild {
         unit: '%',
       ),
       tooltip: AppText.strings.viewZoomDrag,
-      width: _CanvasViewportBottomBar._zoomReadoutWidth,
+      width: _zoomReadoutWidth,
       enabled: _bar.viewEnabled,
       textStyle: const TextStyle(fontSize: 12),
       // ⛔No second bound here. `_zoomToAroundCenter` lands every absolute

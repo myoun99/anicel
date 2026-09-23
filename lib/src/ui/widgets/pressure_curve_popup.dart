@@ -5,6 +5,7 @@ import '../input/control_press_claim.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
+import '../theme/disabled_ink.dart';
 import 'anchored_popup.dart';
 import 'field_slider.dart' show sliderValueText;
 import '../text/app_strings.dart' show AppText;
@@ -134,7 +135,10 @@ class PressureCurveButton extends StatelessWidget {
                 shape: AppShapes.container(
                   AppShapes.wellRadius,
                   side: BorderSide(
-                    color: active ? AppColors.accent : _offEdge,
+                    color: dimmedIfDisabled(
+                      active ? AppColors.accent : _offEdge,
+                      enabled: enabled,
+                    ),
                     width: _borderWidth,
                   ),
                 ),
@@ -148,7 +152,10 @@ class PressureCurveButton extends StatelessWidget {
                     // has. A thumbnail that tried to show three would be
                     // three unreadable lines at 22x14.
                     curve: curves[BrushInputSource.pressure],
-                    color: active ? AppColors.accent : _offInk,
+                    color: dimmedIfDisabled(
+                      active ? AppColors.accent : _offInk,
+                      enabled: enabled,
+                    ),
                   ),
                 ),
               ),
@@ -158,8 +165,15 @@ class PressureCurveButton extends StatelessWidget {
       ),
     );
     // The same 40% the field slider dims to, so a disabled group reads as
-    // one thing rather than as three different greys.
-    return enabled ? button : Opacity(opacity: 0.4, child: button);
+    // one thing rather than as three different greys — [disabledInkOpacity]
+    // is where that figure lives now.
+    //
+    // 🪦It used to be `Opacity(0.4)` around the whole button, and that is a
+    // compositing boundary: it cost the panel it sits in its bake, on every
+    // frame (유저 확정 2026-09-22, 보드
+    // `a-disabled-bar-dims-without-a-layer-Q1`). The well's own two colours
+    // carry the dimming now.
+    return button;
   }
 }
 

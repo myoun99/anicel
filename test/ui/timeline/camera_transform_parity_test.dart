@@ -345,7 +345,7 @@ void main() {
 
   group('B4-① the union mark stays a diamond through a REAL drag', () {
     testWidgets('camera row: mid-drag the mark is the shared diamond at the '
-        'shifted frame — never the paper-cell ○', (tester) async {
+        'shifted frame — never the paper-cell mark', (tester) async {
       await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
@@ -391,7 +391,7 @@ void main() {
         expect(
           timelineCellModel(tester, _camId.value, frame).glyph,
           '',
-          reason: 'frame $frame: the camera row prints no text glyph — the ○ '
+          reason: 'frame $frame: the camera row prints no text glyph — the mark '
               'path is dead',
         );
       }

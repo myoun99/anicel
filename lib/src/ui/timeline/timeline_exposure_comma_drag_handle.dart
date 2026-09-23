@@ -12,7 +12,7 @@ import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_span_layout.dart';
-import '../widgets/axis_gesture_detector.dart';
+import '../widgets/owning_axis_grip.dart';
 import '../repaint_props.dart';
 
 /// How a grip reads right now. The ONLY thing a state change moves is the
@@ -444,21 +444,40 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
         },
         onPointerUp: (_) => _releasePress(),
         onPointerCancel: (_) => _releasePress(),
-        child: AxisGestureDetector(
+        // 🚨★★★**THE PRESS IS THE GRIP'S, SCROLLING INCLUDED** (F-163,
+        // 유저 2026-09-18: 「엣지 클릭한채로 세로이동하면 **세로스크롤
+        // 작동함** … **해당 법 재사용/통일해서**」). ↩️It mounted a plain
+        // single-axis drag, so a vertical pull moved 0 along this grip's
+        // own axis, never reached a threshold, and handed the timeline's
+        // vertical scroller a walkover. [OwningAxisGrip] is the splitter's
+        // own pair — the claim and the eager recogniser — reused.
+        child: OwningAxisGrip(
           axis: widget.axis,
-          behavior: HitTestBehavior.opaque,
-          supportedDevices: widget.supportedDevices,
-          // Drag from the DOWN position (R10): the slop the recognizer
-          // spends winning the arena is real travel of the hand, and
-          // Flutter's default throws it away — so the edge settled ~18px
-          // BEHIND the pointer and stayed there for the whole gesture.
-          // The timeline's other edit drags already read `down`, the
-          // cut-end handle among them — and that one is an edge too.
-          dragStartBehavior: DragStartBehavior.down,
-          onDragStart: (_) => _startDrag(),
-          onDragUpdate: (details) => _updateDrag(details.primaryDelta!),
-          onDragEnd: (_) => _endDrag(),
-          onDragCancel: _cancelDrag,
+          configure: (recognizer) {
+            recognizer
+              // Drag from the DOWN position (R10): the slop the recognizer
+              // spends winning the arena is real travel of the hand, and
+              // Flutter's default throws it away — so the edge settled
+              // ~18px BEHIND the pointer and stayed there for the whole
+              // gesture. The timeline's other edit drags already read
+              // `down`, the cut-end handle among them — and that one is an
+              // edge too.
+              ..dragStartBehavior = DragStartBehavior.down
+              ..onStart = ((_) {
+                _startDrag();
+              })
+              ..onUpdate = ((details) {
+                _updateDrag(details.primaryDelta!);
+              })
+              ..onEnd = ((_) {
+                _endDrag();
+              })
+              ..onCancel = _cancelDrag;
+            final devices = widget.supportedDevices;
+            if (devices != null) {
+              recognizer.supportedDevices = devices;
+            }
+          },
           child: bar,
         ),
       ),

@@ -799,6 +799,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     for (final railId in LayerRailId.values) railId: LayerRailExtent(),
   };
 
+  /// Where each frame grid's FRAME axis is scrolled to, in pixels at that
+  /// grid's own zoom — kept here, beside the rail windows, so it outlives a
+  /// FOLD the way the zoom outlives a tab switch.
+  ///
+  /// 🚨F-143 (유저 2026-09-16): 「간편 오버레이가 타임라인의 스크롤을
+  /// 그대로 안받음. 꽤 오른쪽으로 스크롤한채로 접으면 간편오버레이는 첫
+  /// 인덱스쪽을 보여주고있어서. 뭐지?싶어서 타임라인 열면 스크롤바가
+  /// 왼쪽으로 초기화되있는상태」. Each grid created its own, so folding the
+  /// panel disposed it: the folded row had nothing to read and drew from
+  /// frame 0, and the grid that came back started at 0. Owned here, the
+  /// folded row and the grid read ONE fact — the same way the folded row
+  /// already reads the rail's window「by construction rather than by
+  /// agreement」.
+  ///
+  /// ⚠️Session-only, unlike the rail windows: those ride the layout file
+  /// because 유저 asked for them to survive a restart. Nobody asked that of
+  /// a scroll position.
+  ///
+  /// One per rail, like [_railExtents]: the timeline, the sheet and the
+  /// storyboard each fold, and each had its own offset die with it.
+  final Map<String, ValueNotifier<double>> _frameAxisOffsets = {
+    for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
+  };
+
   /// Layers whose AE-style property-lane twirl-down is open (view state —
   /// survives tab switches, session-only).
   final ValueNotifier<Set<LayerId>> _expandedLaneLayerIds = ValueNotifier(
@@ -1405,6 +1429,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
         ..removeListener(_layoutPersistence.scheduleLayoutSave)
         ..dispose();
     }
+    for (final offset in _frameAxisOffsets.values) {
+      offset.dispose();
+    }
     _layout.dispose();
     super.dispose();
   }
@@ -1517,9 +1544,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     // useless is not a floor.
     EditorWorkspace.timelineTabId =>
       _timelineOrientation.value == TimelineOrientation.horizontal
-          ? TimelinePanel.minPanelHeight
-          : TimelinePanel.minSheetPanelHeight,
-    EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeight,
+          ? TimelinePanel.minPanelHeightIn(context)
+          : TimelinePanel.minSheetPanelHeightIn(context),
+    EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeightIn(
+      context,
+    ),
     // The conte has no fixed ROWS — it is a page that scales — but it does
     // have one conditional chrome row, the action field under a selected
     // cell, and that row is not flexible.

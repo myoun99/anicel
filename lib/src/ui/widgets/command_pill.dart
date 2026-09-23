@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'grip_band.dart';
@@ -63,7 +64,27 @@ class CommandPill extends StatelessWidget {
   /// The pill's outer height. [AppIconButtonSize.bar] plus 2px of breath on
   /// each side, which is what makes a pill sit inside a 36px command bar
   /// with the [GripBand.hitExtent] of its `＋` reaching into the margin.
+  ///
+  /// At 1× — see [heightIn] for the pill where it is shown.
   static const double height = 28;
+
+  /// The largest words a pill holds: the comma buttons' digits. The name
+  /// cell's 11.5 sits inside a line of this.
+  static const double verbFontSize = 12.5;
+
+  /// What a pill adds to [height] where it is shown: one line of its largest
+  /// words, grown under the OS text size.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」). 🔬In the app's face at 1.5× the name cells' words stood
+  /// 25 tall in their 24.
+  static double growthIn(BuildContext context) => TextMeasure(
+    context,
+    DefaultTextStyle.of(context).style.copyWith(fontSize: verbFontSize),
+  ).lineGrowthOf(TextMeasure.everyScript);
+
+  /// The pill where it is shown — every cell inside it is this less 4.
+  static double heightIn(BuildContext context) => height + growthIn(context);
 
   /// The breath after the LAST verb — THE SAME one the head pays on its
   /// leading edge.
@@ -95,12 +116,12 @@ class CommandPill extends StatelessWidget {
         // corner ratio is a token so a future control-shape change lands
         // here too.
         shape: AppShapes.control(
-          height,
+          heightIn(context),
           side: const BorderSide(color: AppColors.hairline),
         ),
       ),
       child: SizedBox(
-        height: height,
+        height: heightIn(context),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -218,7 +239,7 @@ class PillNameCell extends StatelessWidget {
           // `customBorder`, not a hand-typed `borderRadius`: the splash has to
           // wear the app's control shape like everything else, and a literal
           // radius here is what `app_shapes_coverage_test` exists to catch.
-          customBorder: AppShapes.control(CommandPill.height - 4),
+          customBorder: AppShapes.control(CommandPill.heightIn(context) - 4),
           // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu`
           // asserts on an empty list, so a pill whose last menu item is
           // retired used to crash on the press rather than simply having no
@@ -229,7 +250,7 @@ class PillNameCell extends StatelessWidget {
           // them are gated per state, so "empty right now" is a live answer.
           onTap: () {},
           child: Container(
-            height: CommandPill.height - 4,
+            height: CommandPill.heightIn(context) - 4,
             constraints: const BoxConstraints(minWidth: 24),
             alignment: Alignment.center,
             padding: EdgeInsets.symmetric(
@@ -320,8 +341,8 @@ class _StrapIconButtonState extends State<StrapIconButton> {
     // the width by making the affordance invisible.
     //
     // ⚠️Here that is not a cosmetic loss. The `＋` makes an ANIMATION layer
-    // and nothing else; the band was the ONLY route to a storyboard, image or
-    // text layer. Someone new to the app could not find it (유저: 「그 띠가
+    // and nothing else; the band was the ONLY route to a storyboard or image
+    // layer. Someone new to the app could not find it (유저: 「그 띠가
     // 너무 알기어렵다고해」), so discoverability WAS feature availability —
     // and 16px is not the expensive side of that trade. The bar scrolls
     // (유저: 「스크롤있으니까 상관없는데」).
@@ -410,7 +431,7 @@ class _ExpandButton extends StatelessWidget {
             onPointerCancel: (_) => onPressedChanged(false),
             child: SizedBox(
               width: width,
-              height: CommandPill.height,
+              height: CommandPill.heightIn(context),
               child: Center(
                 child: Icon(
                   Icons.arrow_drop_down,

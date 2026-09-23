@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../widgets/inline_numeric_field.dart';
 import 'color_hex.dart';
@@ -26,7 +29,70 @@ class ColorStatusBar extends StatefulWidget {
   });
   final int color;
   final ValueChanged<int> onColorChanged;
+
+  /// The bar's height as drawn, at 1×.
   static const double height = 26;
+
+  /// The bar where it is shown: [height] plus what one readout line grows
+  /// by under the OS text size.
+  ///
+  /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+  /// 따라 자란다」). The bar and every box that holds it — the RGB group's
+  /// floor, the picker popup — ask here, so they cannot disagree about it.
+  static double heightIn(BuildContext context) =>
+      height + _measureIn(context).lineGrowthOf(_hexProbes.first);
+
+  /// The width the readout takes laid out in full, padding included — what
+  /// a box of a fixed width must at least give it.
+  static double naturalWidthIn(BuildContext context) {
+    final cells = _cellsIn(context);
+    return 2 * _sidePadding +
+        _swatch +
+        _swatchGap +
+        cells.hex +
+        3 * (cells.label + cells.channel) +
+        2 * _channelGap;
+  }
+
+  static const double _sidePadding = 8;
+  static const double _swatch = 14;
+  static const double _swatchGap = 6;
+  static const double _channelGap = 4;
+
+  static const TextStyle _readout = TextStyle(
+    fontSize: 10,
+    // The whole point of the fixed cells: a 3 and an 8 must be the same
+    // width or the letters shuffle as the drag moves.
+    fontFeatures: [FontFeature.tabularFigures()],
+  );
+
+  /// Each hex at its widest: one glyph six times. A mixed hex is never
+  /// wider than the widest of these.
+  static final List<String> _hexProbes = [
+    for (final glyph in '0123456789ABCDEF'.split('')) '#${glyph * 6}',
+  ];
+  static final List<String> _channelProbes = [
+    for (final digit in '0123456789'.split('')) digit * 3,
+  ];
+
+  static TextMeasure _measureIn(BuildContext context) =>
+      TextMeasure(context, DefaultTextStyle.of(context).style.merge(_readout));
+
+  /// The cells' widths: the width they were drawn at, or what their widest
+  /// value measures in the face and at the size the bar is shown in — the
+  /// larger. 🔬At 1× in BIZ UDPGothic `#000000` is 56.5 wide, so the 54
+  /// drawn for it wrapped its last digit onto a line the bar cut off.
+  static ({double hex, double label, double channel}) _cellsIn(
+    BuildContext context,
+  ) {
+    final measure = _measureIn(context);
+    return (
+      hex: math.max(54, measure.widest(_hexProbes).ceilToDouble()),
+      label: measure.widest(const ['R ', 'G ', 'B ']).ceilToDouble(),
+      channel: math.max(22, measure.widest(_channelProbes).ceilToDouble()),
+    );
+  }
+
   @override
   State<ColorStatusBar> createState() => _ColorStatusBarState();
 }
@@ -36,12 +102,7 @@ enum _Editing { none, hex, r, g, b }
 
 class _ColorStatusBarState extends State<ColorStatusBar> {
   _Editing _editing = _Editing.none;
-  static const TextStyle _readout = TextStyle(
-    fontSize: 10,
-    // The whole point of the fixed cells: a 3 and an 8 must be the same
-    // width or the letters shuffle as the drag moves.
-    fontFeatures: [FontFeature.tabularFigures()],
-  );
+  static const TextStyle _readout = ColorStatusBar._readout;
   void _commitHex(String text) {
     setState(() => _editing = _Editing.none);
     final parsed = parseColorHex(text);
@@ -66,7 +127,7 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
     );
   }
 
-  Widget _channel(String label, _Editing which, int value) {
+  Widget _channel(String label, _Editing which, int value, double width) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -74,7 +135,7 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
         SizedBox(
           // Three digits, always — the cell holds its width at 5 and at
           // 255 so the next label never shifts.
-          width: 22,
+          width: width,
           child: _editing == which
               ? InlineNumericField(
                   fieldKey: ValueKey<String>(
@@ -114,9 +175,12 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final channels = colorChannels(widget.color);
+    final cells = ColorStatusBar._cellsIn(context);
     return Container(
-      height: ColorStatusBar.height,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      height: ColorStatusBar.heightIn(context),
+      padding: const EdgeInsets.symmetric(
+        horizontal: ColorStatusBar._sidePadding,
+      ),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
@@ -125,8 +189,8 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
         children: [
           Container(
             key: const ValueKey<String>('color-status-swatch'),
-            width: 14,
-            height: 14,
+            width: ColorStatusBar._swatch,
+            height: ColorStatusBar._swatch,
             // F-23: a chip that shows a colour is a circle, here as
             // everywhere ([ColorSlotPair] carries the whole reason).
             decoration: BoxDecoration(
@@ -135,9 +199,9 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
               border: Border.all(color: colorScheme.outlineVariant),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: ColorStatusBar._swatchGap),
           SizedBox(
-            width: 54,
+            width: cells.hex,
             child: _editing == _Editing.hex
                 ? InlineNumericField(
                     fieldKey: const ValueKey<String>('color-status-hex-input'),
@@ -162,11 +226,11 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   ),
           ),
           const Spacer(),
-          _channel('R', _Editing.r, channels.r),
-          const SizedBox(width: 4),
-          _channel('G', _Editing.g, channels.g),
-          const SizedBox(width: 4),
-          _channel('B', _Editing.b, channels.b),
+          _channel('R', _Editing.r, channels.r, cells.channel),
+          const SizedBox(width: ColorStatusBar._channelGap),
+          _channel('G', _Editing.g, channels.g, cells.channel),
+          const SizedBox(width: ColorStatusBar._channelGap),
+          _channel('B', _Editing.b, channels.b, cells.channel),
         ],
       ),
     );

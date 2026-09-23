@@ -10,6 +10,7 @@ import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
+import '../text/vertical_writing_text.dart';
 
 /// The flip HUD's metrics. One place, because the two axes are the same
 /// window turned ninety degrees.
@@ -42,9 +43,10 @@ abstract final class FlipHudMetrics {
 
   /// Distance from the touch point, across the drag axis. A left/right
   /// flip puts the window ABOVE the hand (wrist and palm own everything
-  /// below); an up/down flip puts it beside.
-  static const double frameAxisLift = 72;
-  static const double rowAxisSideOffset = 88;
+  /// below); an up/down flip puts it beside. On the timeline that is the
+  /// frame axis above and the row axis beside; on the sheet, the reverse.
+  static const double sidewaysFlipLift = 72;
+  static const double upDownFlipSideOffset = 88;
 
   /// Never closer than this to the panel's edge.
   static const double edgeInset = 16;
@@ -103,28 +105,36 @@ abstract final class FlipHudMetrics {
     return (flipHudSlotIndexAt(slots, snapshot.frameIndex) + 0.5) * width;
   }
 
-  static Size sizeFor(FlipHudAxis axis) => axis == FlipHudAxis.frame
-      ? const Size(railWidth + visibleSlots * blockSlotWidth, rowExtent)
-      : const Size(railWidth + blockSlotWidth, visibleRows * rowExtent);
+  /// The window's box. [standing] is the X-sheet's window: the timeline's
+  /// turned a quarter (F-28), so its sides swap.
+  static Size sizeFor(FlipHudAxis axis, {bool standing = false}) {
+    final laidOut = axis == FlipHudAxis.frame
+        ? const Size(railWidth + visibleSlots * blockSlotWidth, rowExtent)
+        : const Size(railWidth + blockSlotWidth, visibleRows * rowExtent);
+    return standing ? laidOut.flipped : laidOut;
+  }
 
   /// Pins the window beside the hand, clamped inside the panel.
+  ///
+  /// Where it goes follows the DRAG, not the axis: a strip that runs
+  /// [sideways] rides above the hand and one that runs down rides beside it.
   static Offset placementFor({
     required Offset anchor,
     required Size size,
-    required FlipHudAxis axis,
+    required bool sideways,
     required Size bounds,
   }) {
     double left;
     double top;
-    if (axis == FlipHudAxis.frame) {
+    if (sideways) {
       left = anchor.dx - size.width / 2;
-      top = anchor.dy - frameAxisLift - size.height;
+      top = anchor.dy - sidewaysFlipLift - size.height;
     } else {
       // Away from the nearer wall, so the window has room to be read.
       final toTheLeft = anchor.dx > bounds.width / 2;
       left = toTheLeft
-          ? anchor.dx - rowAxisSideOffset - size.width
-          : anchor.dx + rowAxisSideOffset;
+          ? anchor.dx - upDownFlipSideOffset - size.width
+          : anchor.dx + upDownFlipSideOffset;
       top = anchor.dy - size.height / 2;
     }
     final maxLeft = math.max(edgeInset, bounds.width - size.width - edgeInset);
@@ -158,13 +168,23 @@ class FlipHudOverlay extends StatelessWidget {
           if (axis == null || anchor == null) {
             return const SizedBox.shrink();
           }
-          final size = FlipHudMetrics.sizeFor(axis);
+          // 🚨F-28 (유저 2026-09-17): 「플립ui도 x시트에 맞춰서 회전해서
+          // 미세조정은 알아서 맞추도록. x시트랑 동일하면됨」. The window takes
+          // its shape from the sheet the flip reads its axis off, asked the
+          // way every entrance asks it ([FlipHudController.framesRunAlong]):
+          // where a sideways step does not walk frames — the X-sheet — it
+          // stands.
+          final framesSideways = controller.framesRunAlong(horizontal: true);
+          final standing = !framesSideways;
+          final size = FlipHudMetrics.sizeFor(axis, standing: standing);
           return LayoutBuilder(
             builder: (context, constraints) {
               final offset = FlipHudMetrics.placementFor(
                 anchor: anchor,
                 size: size,
-                axis: axis,
+                // A strip runs sideways exactly when a sideways step walks
+                // the axis it shows.
+                sideways: framesSideways == (axis == FlipHudAxis.frame),
                 bounds: constraints.biggest,
               );
               return Stack(
@@ -191,7 +211,7 @@ class FlipHudOverlay extends StatelessWidget {
                       ),
                       builder: (context, opacity, child) =>
                           Opacity(opacity: opacity, child: child),
-                      child: _slidingStrip(context, axis),
+                      child: _slidingStrip(context, axis, standing),
                     ),
                   ),
                 ],
@@ -214,7 +234,11 @@ class FlipHudOverlay extends StatelessWidget {
   /// The KEY carries the mode, so switching between block and frame
   /// columns starts a fresh animation at its own target instead of
   /// sliding through a distance measured in the other mode's units.
-  Widget _slidingStrip(BuildContext context, FlipHudAxis axis) {
+  Widget _slidingStrip(
+    BuildContext context,
+    FlipHudAxis axis,
+    bool standing,
+  ) {
     final snapshot = controller.snapshot;
     final frameStep = controller.frameStep;
     final centre = FlipHudMetrics.scrollCentreFor(
@@ -223,7 +247,7 @@ class FlipHudOverlay extends StatelessWidget {
       frameStep: frameStep,
     );
     return TweenAnimationBuilder<double>(
-      key: ValueKey<String>('flip-hud-${axis.name}-$frameStep'),
+      key: ValueKey<String>('flip-hud-${axis.name}-$frameStep-$standing'),
       // begin is read only on this key's first build, where it equals end
       // and nothing moves; later builds animate from wherever it is.
       tween: Tween<double>(begin: centre, end: centre),
@@ -239,6 +263,7 @@ class FlipHudOverlay extends StatelessWidget {
           frameStep: frameStep,
           scrollCentre: scrollCentre,
           colorScheme: Theme.of(context).colorScheme,
+          standing: standing,
         ),
       ),
     );
@@ -252,12 +277,21 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     required this.frameStep,
     required this.colorScheme,
     this.scrollCentre,
+    this.standing = false,
   });
 
   final FlipHudSnapshot snapshot;
   final FlipHudAxis axis;
   final bool frameStep;
   final ColorScheme colorScheme;
+
+  /// The X-sheet's window (F-28): the timeline's layout turned a quarter
+  /// clockwise, which is exactly what the sheet is — the rail stands on top
+  /// as column headers, the frames run down, and the row stack reads right
+  /// to left. Every SHAPE is painted in the timeline's own layout under
+  /// that one turn; every WORD is set upright again, the way the sheet sets
+  /// its own.
+  final bool standing;
 
   /// The animating position of the current column's centre, in strip
   /// content pixels. Null pins it to wherever the snapshot says, which is
@@ -290,6 +324,42 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     if (snapshot.isEmpty) {
       return;
     }
+    if (!standing) {
+      _paintLaidOut(canvas, size);
+      return;
+    }
+    // A quarter turn clockwise: the timeline's layout drawn into the
+    // swapped box, so its left edge (the rail) lands on top and its top
+    // row on the right.
+    canvas.save();
+    canvas.translate(size.width, 0);
+    canvas.rotate(math.pi / 2);
+    _paintLaidOut(canvas, size.flipped);
+    canvas.restore();
+  }
+
+  /// Runs [paint] with the canvas set upright again about [rect]'s centre
+  /// on a [standing] window, handing it the box as the READER sees it —
+  /// [rect] with its sides swapped. A laid-out window passes [rect] through.
+  void _upright(Canvas canvas, Rect rect, void Function(Rect box) paint) {
+    if (!standing) {
+      paint(rect);
+      return;
+    }
+    canvas.save();
+    canvas.translate(rect.center.dx, rect.center.dy);
+    canvas.rotate(-math.pi / 2);
+    paint(
+      Rect.fromCenter(
+        center: Offset.zero,
+        width: rect.height,
+        height: rect.width,
+      ),
+    );
+    canvas.restore();
+  }
+
+  void _paintLaidOut(Canvas canvas, Size size) {
     final railRect = Rect.fromLTWH(0, 0, FlipHudMetrics.railWidth, size.height);
     final stripRect = Rect.fromLTWH(
       FlipHudMetrics.railWidth,
@@ -511,6 +581,25 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     canvas.restore();
   }
 
+  TextStyle _railNameStyle(FlipHudRow row, Color ink) => TextStyle(
+    fontSize: row.isLane ? 10.5 : 11.5,
+    fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
+    color: row.isLane ? ink.withValues(alpha: 0.82) : ink,
+  );
+
+  TextPainter _kindIconPainter(FlipHudRow row, Color ink) {
+    final icon = layerKindIcon(row.kind);
+    return timelineGlyphPainter(
+      String.fromCharCode(icon.codePoint),
+      TextStyle(
+        fontSize: 13,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: ink,
+      ),
+    );
+  }
+
   void _paintRailRow(
     Canvas canvas,
     Rect rect,
@@ -518,13 +607,13 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     required bool active,
   }) {
     final ink = active ? _railInkActive : _railInk;
+    if (standing) {
+      _upright(canvas, rect, (box) => _paintRailHeader(canvas, box, row, ink));
+      return;
+    }
     final namePainter = timelineGlyphPainter(
       row.name,
-      TextStyle(
-        fontSize: row.isLane ? 10.5 : 11.5,
-        fontWeight: row.isLane ? FontWeight.w400 : FontWeight.w600,
-        color: row.isLane ? ink.withValues(alpha: 0.82) : ink,
-      ),
+      _railNameStyle(row, ink),
       maxWidth: rect.width - (row.isLane ? 12 : 26),
     );
     const gap = 5.0;
@@ -537,16 +626,50 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     if (!row.showsKindIcon) {
       return;
     }
-    final icon = layerKindIcon(row.kind);
-    timelineGlyphPainter(
-      String.fromCharCode(icon.codePoint),
-      TextStyle(
-        fontSize: 13,
-        fontFamily: icon.fontFamily,
-        package: icon.fontPackage,
-        color: ink,
-      ),
+    _kindIconPainter(
+      row,
+      ink,
     ).paint(canvas, Offset(nameLeft - gap - 13, rect.center.dy - 6.5));
+  }
+
+  /// A rail row stood up as a column HEADER: the name reads down the column
+  /// in upright letters, the way the sheet writes its own column names, and
+  /// sits against the strip below it — trailing off upward into the fade
+  /// the way the laid-out name trails off leftward. The kind icon rides
+  /// above the name, where it rode left of it.
+  void _paintRailHeader(Canvas canvas, Rect box, FlipHudRow row, Color ink) {
+    const gap = 5.0;
+    const stripPad = 9.0;
+    const iconExtent = 13.0;
+    final style = _railNameStyle(row, ink);
+    final fontSize = style.fontSize!;
+    final iconRoom = row.showsKindIcon ? iconExtent + gap : 0.0;
+    final top = box.top + iconRoom;
+    final bottom = box.bottom - stripPad;
+    final painted = paintVerticalText(
+      canvas,
+      row.name,
+      style: style,
+      centerX: box.center.dx,
+      top: top,
+      mainExtent: bottom - top,
+      naturalCellExtent: fontSize * 1.15,
+      cellPadding: fontSize * 0.15,
+      maxCellWidth: box.width - 4,
+      mainAlignment: 1,
+      latinForm: VerticalLatinForm.upright,
+      overflow: VerticalTextOverflow.ellipsis,
+    );
+    if (!row.showsKindIcon) {
+      return;
+    }
+    _kindIconPainter(row, ink).paint(
+      canvas,
+      Offset(
+        box.center.dx - iconExtent / 2,
+        bottom - painted - gap - iconExtent,
+      ),
+    );
   }
 
   void _paintSlot(
@@ -572,7 +695,6 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
           rect,
           'X',
           color: colorScheme.onSurface.withValues(alpha: 0.55),
-          maxExtent: rect.width,
         );
       }
       return;
@@ -603,7 +725,6 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       celNumberOrMark(run.label),
       color: timelineDrawingInkColor,
       bold: true,
-      maxExtent: rect.width,
     );
   }
 
@@ -629,34 +750,37 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// [text] centred in [rect], fitted to the cell as the reader sees it —
+  /// upright on a [standing] window, the way the sheet sets a cel number.
   void _paintGlyph(
     Canvas canvas,
     Rect rect,
     String text, {
     required Color color,
     bool bold = false,
-    required double maxExtent,
   }) {
-    final painter = timelineGlyphPainter(
-      text,
-      TextStyle(
-        fontSize: timelineFittedGlyphFontSize(
-          bold ? 14 : 12,
-          maxExtent,
-          crossExtent: rect.height,
+    _upright(canvas, rect, (box) {
+      final painter = timelineGlyphPainter(
+        text,
+        TextStyle(
+          fontSize: timelineFittedGlyphFontSize(
+            bold ? 14 : 12,
+            box.width,
+            crossExtent: box.height,
+          ),
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          color: color,
         ),
-        fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-        color: color,
-      ),
-      maxWidth: math.max(8, maxExtent - 4),
-    );
-    painter.paint(
-      canvas,
-      Offset(
-        rect.center.dx - painter.width / 2,
-        rect.center.dy - painter.height / 2,
-      ),
-    );
+        maxWidth: math.max(8, box.width - 4),
+      );
+      painter.paint(
+        canvas,
+        Offset(
+          box.center.dx - painter.width / 2,
+          box.center.dy - painter.height / 2,
+        ),
+      );
+    });
   }
 
   /// ONE overlay owns every plain per-cell line, the way the timeline's
@@ -723,6 +847,12 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
   }
 
   @override
-  Object get props =>
-      (ByIdentity(snapshot), axis, frameStep, scrollCentre, colorScheme);
+  Object get props => (
+    ByIdentity(snapshot),
+    axis,
+    frameStep,
+    scrollCentre,
+    colorScheme,
+    standing,
+  );
 }

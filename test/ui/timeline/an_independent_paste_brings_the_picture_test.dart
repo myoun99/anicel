@@ -104,6 +104,86 @@ void main() {
     );
   });
 
+  /// 🚨F-161 (유저 2026-09-17): 「복사는 항상 언제든 들고있게. 컷2의
+  /// 레이어에서 붙여넣기 가능」. Cut 2's store has no picture under cut 1's
+  /// key, so the picture has to travel on the board itself.
+  test('🚨the picture comes along into ANOTHER cut', () {
+    final f = twoRows();
+    f.session.selectLayer(f.from);
+    f.session.selectFrameIndex(0);
+    f.session.copyFrameAtCurrentFrame();
+
+    final cut1 = f.session.activeCutId;
+    f.session.cutVerbs.createCut();
+    expect(f.session.activeCutId, isNot(cut1), reason: 'premise: in cut 2');
+    final target = f.session.activeLayerId!;
+    f.session.selectFrameIndex(0);
+    f.session.pasteIndependentFrameAtCurrentFrame();
+
+    expect(
+      hasPicture(f.session, target),
+      isTrue,
+      reason: '「컷2의 레이어에서 붙여넣기」 — the drawing, not an empty cel',
+    );
+  });
+
+  test('the board holds the picture as it was COPIED — drawn over '
+      'afterwards, the paste is still the copy', () {
+    final f = twoRows();
+    f.session.selectLayer(f.from);
+    f.session.selectFrameIndex(0);
+    f.session.copyFrameAtCurrentFrame();
+
+    final cut = f.session.activeCutOrNull!;
+    final source = f.session.layers.firstWhere((l) => l.id == f.from);
+    final key = f.session.brushFrameKeyForCut(
+      cut,
+      f.from,
+      source.frames.single.id,
+    );
+    final store = f.session.renderCaches.brushFrameStore;
+    final asCopied = store.bakedSurfaceOrNull(key)!;
+    store.storeBakedSurface(
+      key,
+      ink(cut.canvasSize).putTiles([
+        (
+          coord: TileCoord(x: 0, y: 0),
+          tile: BitmapTile(size: 256, pixels: Uint8List(256 * 256 * 4)),
+        ),
+        (
+          coord: TileCoord(x: 1, y: 0),
+          tile: BitmapTile(
+            size: 256,
+            pixels: Uint8List(256 * 256 * 4)..fillRange(0, 16, 255),
+          ),
+        ),
+      ]),
+    );
+    expect(
+      identical(store.bakedSurfaceOrNull(key), asCopied),
+      isFalse,
+      reason: 'premise: the source was drawn over after the copy',
+    );
+
+    f.session.selectLayer(f.to);
+    f.session.selectFrameIndex(0);
+    f.session.pasteIndependentFrameAtCurrentFrame();
+
+    final target = f.session.layers.firstWhere((l) => l.id == f.to);
+    expect(
+      identical(
+        f.session.brushSurfaceForLayerFrame(
+          target,
+          exposedAtZero(f.session, f.to)!,
+        ),
+        asCopied,
+      ),
+      isTrue,
+      reason: 'a clipboard holds what was copied, not what the source '
+          'became — 「보통 프로그램이 그러니까」',
+    );
+  });
+
   test('⛔and it is INDEPENDENT — a new cel, unnamed', () {
     final f = twoRows();
     f.session.selectLayer(f.from);

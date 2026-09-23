@@ -227,8 +227,14 @@ void main() {
     final session = newSession();
     addTearDown(session.dispose);
     session.layerStack.addLayer();
-    final first = session.layers.first.id;
-    final second = session.layers.last.id;
+    // F-145: only a row that can ghost takes the toggle — the stack's last
+    // row is the camera, which refuses it.
+    final ghosting = [
+      for (final row in session.layers)
+        if (row.kind.takesOnionSkin) row.id,
+    ];
+    final first = ghosting.first;
+    final second = ghosting.last;
     expect(first, isNot(second), reason: 'fixture: two distinct rows');
 
     session.onionSkin.toggleLayerOnionSkin(first);

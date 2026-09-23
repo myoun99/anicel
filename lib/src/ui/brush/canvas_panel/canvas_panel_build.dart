@@ -112,7 +112,7 @@ class _PanelBuild {
         : fallbackSize.width;
     final boundedHeight = constraints.hasBoundedHeight
         ? constraints.maxHeight
-        : fallbackSize.height + _CanvasViewportBottomBar.height;
+        : fallbackSize.height + _CanvasViewportBottomBar.heightIn(context);
 
     return SizedBox(
       width: boundedWidth,

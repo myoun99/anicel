@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
@@ -84,23 +85,28 @@ void main() {
       'reads the row\'s own mode, commits a pick, speaks CSP Japanese in '
       'ja, and the toolbar no longer carries one', (tester) async {
     final committed = <(LayerId, LayerBlendMode)>[];
-    Widget rowHost(Layer layer, AppLanguage language) => MaterialApp(
-      home: Material(
-        child: TimelineLayerControlsRow(
-          layer: layer,
-          active: false,
-          metrics: TimelineGridMetrics.defaults,
-          onSelectLayer: (_) {},
-          onToggleLayerVisibility: (_) {},
-          onLayerOpacityChanged: (_, _) {},
-          onToggleLayerTimesheet: (_) {},
-          onLayerMarkSelected: (_, _) {},
-          blendLanguage: language,
-          onLayerBlendModeSelected: (id, mode) =>
-              committed.add((id, mode)),
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    // The chip asks the PROGRAM language itself (F-170) — nothing hands it
+    // one — so the host sets the app's.
+    Widget rowHost(Layer layer, AppLanguage language) {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      return MaterialApp(
+        home: Material(
+          child: TimelineLayerControlsRow(
+            layer: layer,
+            active: false,
+            metrics: TimelineGridMetrics.defaults,
+            onSelectLayer: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            onLayerBlendModeSelected: (id, mode) =>
+                committed.add((id, mode)),
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     final drawing = Layer(
       id: const LayerId('a'),

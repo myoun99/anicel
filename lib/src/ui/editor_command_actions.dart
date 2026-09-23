@@ -55,12 +55,7 @@ void createActiveInstance(EditorSessionManager session) {
       // Read-only inside a cut: the transition row is track-owned and is
       // authored on the global axis, never through the active cut.
       break;
-    // A text cel is born BLANK like a drawing cel (UI-R25 #2: creation
-    // never opens a dialog) — double-tap types into it afterwards.
-    case LayerKind.animation ||
-        LayerKind.storyboard ||
-        LayerKind.image ||
-        LayerKind.text:
+    case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       session.createDrawingAtCurrentFrame();
   }
 }

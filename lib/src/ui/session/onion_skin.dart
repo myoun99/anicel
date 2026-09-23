@@ -69,6 +69,11 @@ class OnionSkin {
       layerIds.value.contains(layerId);
 
   void toggleLayerOnionSkin(LayerId layerId) {
+    // F-145: the verb refuses a row that cannot ghost, so no door — a button,
+    // a key, a sweep — has to remember to ([LayerKind.takesOnionSkin]).
+    if (_project.layerById(layerId)?.kind.takesOnionSkin != true) {
+      return;
+    }
     // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). ⛔I
     // began to explain that undoing this "only moves session state, not
     // the project", and 유저 stopped me: 「프로젝트 파일이 바뀌란건
@@ -96,7 +101,7 @@ class OnionSkin {
         // displayed, so the sweep over "every displayed layer" must not
         // count it — otherwise the bulk button reads OFF because of rows
         // nobody can see.
-        if (stack.rowVisible(layer) && layer.kind.acceptsBrushInput) layer,
+        if (stack.rowVisible(layer) && layer.kind.takesOnionSkin) layer,
     ];
   }
 
@@ -158,6 +163,11 @@ class OnionSkin {
     toggleLayerOnionSkin(layer.id);
   }
 
+  /// Whether the ACTIVE row can ghost — what the rail's onion button asks
+  /// before it lights (F-145).
+  bool get canToggleOnionSkin =>
+      _selection.activeLayer?.kind.takesOnionSkin ?? false;
+
   /// Whose effect chain a ghost of [layer] wears: an ATTACH row wears its
   /// BASE's (W5), everyone else their own.
   ///
@@ -187,7 +197,7 @@ class OnionSkin {
         // on screen with nothing under them.
         if (enabledIds.contains(layer.id) &&
             cut.layers.rowVisible(layer) &&
-            layer.kind.acceptsBrushInput)
+            layer.kind.takesOnionSkin)
           for (final plan in planOnionSkin(
             layer: layer,
             frameIndex: _controllers.timelineController.currentFrameIndex,

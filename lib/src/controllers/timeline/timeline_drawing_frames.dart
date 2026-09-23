@@ -46,7 +46,24 @@ class _TimelineDrawingFrames {
     if (block == null || block.entry.ghost) {
       return true;
     }
-    return frameIndex > block.startIndex;
+    if (frameIndex > block.startIndex) {
+      return true;
+    }
+    // 🚨★★AT A HEAD, ADD PUSHES (F-151, 유저 2026-09-16): 「프레임 블록의
+    // 헤드에 서있을때 프레임 추가버튼은 해당 블록 뒤로 1칸 밀어내고(붙어있는
+    // 거만 밀어냄. 로직 공용화되있는거? 법 통일해서 사용) 그 자리에 생성.
+    // 그러니 추가버튼 사용가능하도록. 레이어별 판단은 알아서 하되 판단한거
+    // 이쪽에 보고만. 예를들어 스토리보드레이어 첫 블록 헤드는 여전히
+    // 못만들게 한다던가」.
+    //
+    // ⚠️THE ONE ROW THAT REFUSES, AND WHY — the judgement 유저 left to me,
+    // reported on the card. A row that covers its cut EDGE TO EDGE (the
+    // storyboard; the image row, which cannot take a second cel anyway)
+    // has no room to push into: every block in it is glued to the next,
+    // so a push at ANY head — not only the first 유저 named — would shove
+    // the last panel past the cut's end. The reason is the predicate, so
+    // a new gapless kind refuses without being named here.
+    return !layer.kind.coversWithoutGaps;
   }
 
   void createDrawingFrameForLayer({
@@ -90,7 +107,7 @@ class _TimelineDrawingFrames {
       );
     }
 
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+    var nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
     final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
@@ -104,10 +121,32 @@ class _TimelineDrawingFrames {
     // block right after this edit.
     nextTimeline.removeWhere((_, exposure) => exposure.ghost);
     final int clampedLength;
-    // INSIDE a block: the press divides it, and the new drawing takes over
-    // the rest of the hold — the frames do not move, the division does.
-    // (The user's rule 2026-07-27 — REAL blocks only.)
-    if (covering != null && !covering.entry.ghost) {
+    // AT A HEAD (F-151): the block, and whatever is GLUED behind it, moves
+    // back by the new drawing's length and the drawing takes the cells it
+    // left. ⛔Not a push of its own: it is the neighbour law the comma edge
+    // and the retime already share ([_BlockLayout.relayAfter] — 「a block
+    // glued to its predecessor's OLD end follows the NEW end, any other
+    // keeps its start unless the new end pushes it」), 유저's 「붙어있는거만
+    // 밀어냄 … 법 통일해서 사용」 by construction.
+    if (covering != null &&
+        !covering.entry.ghost &&
+        frameIndex == covering.startIndex) {
+      final layout = _BlockLayout.of(nextTimeline);
+      final pushed = layout.blocks.indexWhere(
+        (block) => block.startIndex == covering.startIndex,
+      );
+      layout.starts[pushed] += length;
+      layout.relayAfter(pushed);
+      nextTimeline = layout.toTimeline();
+      clampedLength = length;
+      nextTimeline[frameIndex] = TimelineExposure.drawing(
+        frameId,
+        length: clampedLength,
+      );
+    } else if (covering != null && !covering.entry.ghost) {
+      // INSIDE a block: the press divides it, and the new drawing takes
+      // over the rest of the hold — the frames do not move, the division
+      // does. (The user's rule 2026-07-27 — REAL blocks only.)
       final splitOffset = frameIndex - covering.startIndex;
       clampedLength = covering.endIndexExclusive - frameIndex;
       nextTimeline[covering.startIndex] = covering.entry.copyWith(

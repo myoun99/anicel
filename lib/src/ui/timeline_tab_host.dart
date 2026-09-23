@@ -57,6 +57,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.timelineRailExtent,
     this.xsheetRailExtent,
+    this.timelineFrameAxisOffset,
+    this.xsheetFrameAxisOffset,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
@@ -103,6 +105,11 @@ class TimelineTabHost extends StatefulWidget {
   /// tab switch AND a restart).
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
+
+  /// Where each grid's frame axis stands (workspace-owned so it survives a
+  /// fold — F-143; session-only, see the workspace's field).
+  final ValueNotifier<double>? timelineFrameAxisOffset;
+  final ValueNotifier<double>? xsheetFrameAxisOffset;
 
   /// AE-style property-lane twirl-down state (host-owned so it survives
   /// tab switches).
@@ -289,7 +296,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // ever about the timeline. See [layer_name_commands.dart].
 
   // ⛔THE INSTANCE EDITOR left this host (2026-08-11). Every flow it held —
-  // the kind dispatch, the camera keys, the SE entry, the text cel, the
+  // the kind dispatch, the camera keys, the SE entry, the
   // instruction event and its vocabulary editor, the frame rename and the
   // lane-key rename — is [instance_editor_commands.dart] now, because the
   // storyboard's bar carries the same `Edit Instance` entry and had to grey
@@ -875,6 +882,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,
             xsheetRailExtent: widget.xsheetRailExtent,
+            timelineFrameAxisOffset: widget.timelineFrameAxisOffset,
+            xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             laneOpenOf: widget.expandedLaneLayerIds.contains,
@@ -894,7 +903,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             masterOpacityValue: _session.lastMasterOpacity,
             // R27 #6: the blend mode reads and commits from the LABEL now.
             onLayerBlendModeSelected: _session.layerSwitches.setLayerBlendMode,
-            blendLanguage: _session.languageSettings.value.programLanguage,
             // R27 #9: the camera row's opacity IS the camera-view dim
             // notifier — handing it to the slider keeps a drag off the host.
             layerOpacityOverrideOf: _cameraDimOverrideFor,

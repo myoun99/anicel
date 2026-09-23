@@ -61,7 +61,6 @@ class LayerMark {
     LayerKind.image => const LayerMark(process: LayerProcess.art),
     LayerKind.animation => const LayerMark(process: LayerProcess.layout),
     LayerKind.folder ||
-    LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.transition ||

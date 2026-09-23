@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/ui_scale_binding.dart';
 
 import '../helpers/home_page_probes.dart';
@@ -77,7 +78,27 @@ void main() {
     tester,
   ) async {
     AnicelBinding.applyFocusHighlightPolicy(FocusManager.instance);
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    // 🚨THE HARNESS IS ANDROID unless told otherwise, and the ROUTE the app
+    // sits under is chosen by platform: Flutter gives android the predictive
+    // back / fade-forwards transition and windows the zoom one. Their
+    // leftovers differ — a completed `FadeTransition` keeps a full-window
+    // `OpacityLayer` for ever (`RenderAnimatedOpacityMixin` is a repaint
+    // boundary at ANY alpha above 0, 255 included) — so a layer census taken
+    // on the default harness is a census of Android's chrome, not of what
+    // the user is running. `F130_PLATFORM=windows` reads the user's.
+    final platform = Platform.environment['F130_PLATFORM'];
+    if (platform != null && platform.isNotEmpty) {
+      debugDefaultTargetPlatformOverride = TargetPlatform.values.firstWhere(
+        (p) => p.name == platform,
+      );
+    }
+    // 🚨THE APP'S OWN THEME, because the theme is what decides the route's
+    // transition — and a completed transition's leftovers are half of what
+    // this file counts. A bare `MaterialApp` here measured Flutter's
+    // defaults and called them the app's.
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
     await tester.pumpAndSettle();
 
     // The default project has no cel at the playhead — author one.
@@ -283,6 +304,10 @@ void main() {
     // teardown fails the harness's invariants).
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
+    // ⚠️IN THE BODY, not `addTearDown`: the harness checks the foundation
+    // debug variables between the body and the tear-downs, so a platform
+    // override released there fails the test it already measured.
+    debugDefaultTargetPlatformOverride = null;
   }, timeout: const Timeout(Duration(minutes: 20)));
 }
 
@@ -302,6 +327,17 @@ class _FrameReading {
   /// first stack frame in this app's own code under `markNeedsBuild`.
   final Map<String, int> buildCausesBy = <String, int>{};
   int layersReadded = 0;
+
+  /// WHICH layers were re-added, by layer type and the render object that
+  /// created it. A count alone cannot be acted on: 「85 re-added」 is the
+  /// same reading whether it is the cursor's own chain or every panel in
+  /// the app, and those want opposite fixes.
+  final Map<String, int> layersReaddedBy = <String, int>{};
+
+  /// Layer OBJECTS that were not in the tree one frame ago — a subtree
+  /// that was rebuilt rather than moved.
+  int layersFresh = 0;
+  final Map<String, int> layersFreshBy = <String, int>{};
 
   /// Picture layers whose `ui.Picture` is a new object after the frame: a
   /// re-record. Counts a repaint boundary repainting ITSELF, which the
@@ -538,14 +574,53 @@ class _Probe {
       reading.relayoutBy[type] = (reading.relayoutBy[type] ?? 0) + 1;
     }
     final layersAfter = _engineLayers();
+    // 🚨★★★**A LAYER WITH NO ENGINE LAYER CANNOT ANSWER THIS QUESTION**
+    // (2026-09-22). `PictureLayer.addToScene` calls `builder.addPicture`,
+    // which returns nothing, so a picture layer's `engineLayer` is null for
+    // ever. The first version of this counter read a null as "its engine
+    // layer changed", so EVERY picture in the tree counted as re-added on
+    // EVERY frame: 85/frame for an idle hover, of which 72 were pictures
+    // that had not moved and whose `ui.Picture` objects were identical —
+    // the re-record column right beside it read 0 and said so.
+    //
+    // ⛔That number went on the F-130 card as a cost to cut (「층 84~114개
+    // 재추가」). It was the instrument. What is below is the question the
+    // column was written to ask: a CONTAINER layer that came back with a
+    // new engine layer was re-submitted to the scene instead of retained.
     var readded = 0;
+    var fresh = 0;
+    void name(Map<String, int> into, Layer layer) {
+      final creator = layer.debugCreator;
+      final owner = switch (creator) {
+        null => '',
+        final RenderObject object => ' <${object.runtimeType}>',
+        _ => ' <${creator.toString().split('\n').first}>',
+      };
+      final key = '${layer.runtimeType}$owner';
+      into[key] = (into[key] ?? 0) + 1;
+    }
+
     for (final entry in layersAfter.engine.entries) {
-      final before = layersBefore.engine[entry.key];
-      if (before == null || !identical(before, entry.value)) {
+      final layer = entry.key;
+      final after = entry.value;
+      if (!layersBefore.engine.containsKey(layer)) {
+        // A Layer OBJECT that was not in the tree a frame ago. Also real
+        // work, and a different defect from a re-submitted one.
+        fresh += 1;
+        name(reading.layersFreshBy, layer);
+        continue;
+      }
+      final before = layersBefore.engine[layer];
+      if (before == null && after == null) {
+        continue;
+      }
+      if (!identical(before, after)) {
         readded += 1;
+        name(reading.layersReaddedBy, layer);
       }
     }
     reading.layersReadded = readded;
+    reading.layersFresh = fresh;
     var rerecorded = 0;
     for (final entry in layersAfter.pictures.entries) {
       final before = layersBefore.pictures[entry.key];
@@ -897,9 +972,15 @@ class _Probe {
     final rebuilt = <String, int>{};
     final relayout = <String, int>{};
     final causes = <String, int>{};
+    final readdedBy = <String, int>{};
+    final freshBy = <String, int>{};
     for (final r in readings) {
       r.paintedBy.forEach((k, v) => painted[k] = (painted[k] ?? 0) + v);
       r.rebuiltBy.forEach((k, v) => rebuilt[k] = (rebuilt[k] ?? 0) + v);
+      r.layersReaddedBy.forEach(
+        (k, v) => readdedBy[k] = (readdedBy[k] ?? 0) + v,
+      );
+      r.layersFreshBy.forEach((k, v) => freshBy[k] = (freshBy[k] ?? 0) + v);
     }
     for (final r in traced) {
       r.relayoutBy.forEach((k, v) => relayout[k] = (relayout[k] ?? 0) + v);
@@ -947,6 +1028,9 @@ class _Probe {
       '{${_top(painted, 6)}} '
       '| relayout $relayoutPerFrame '
       '| layers re-added ${meanOf((r) => r.layersReadded)}/frame '
+      '{${_top(readdedBy, 8)}} '
+      '| layers new ${meanOf((r) => r.layersFresh)}/frame '
+      '{${_top(freshBy, 6)}} '
       '| pictures re-recorded ${meanOf((r) => r.picturesRerecorded)}/frame',
     );
   }

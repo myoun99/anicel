@@ -6,6 +6,7 @@
 // so the next copy has nothing to drift from.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -64,7 +65,7 @@ void main() {
   });
 
   group('a drawing start', () {
-    test('shows the frame name, or the paper ○ when it has none', () {
+    test('shows the frame name, or the in-between mark when it has none', () {
       expect(
         _marker(
           LayerKind.animation,
@@ -75,7 +76,7 @@ void main() {
       );
       expect(
         _marker(LayerKind.animation, TimelineCellExposureState.drawingStart),
-        '○',
+        unnamedDrawingMark,
       );
       expect(
         _marker(
@@ -83,7 +84,7 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '',
         ),
-        '○',
+        unnamedDrawingMark,
       );
       expect(
         _marker(
@@ -91,8 +92,8 @@ void main() {
           TimelineCellExposureState.drawingStart,
           frameName: '  ',
         ),
-        '○',
-        reason: 'a blank name is no name — the sheet prints ○ for it too',
+        unnamedDrawingMark,
+        reason: 'a blank name is no name — the sheet prints the mark for it too',
       );
     });
 

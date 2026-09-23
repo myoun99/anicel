@@ -76,9 +76,8 @@ Future<void> rasterizeReferenceRows(
 }
 
 /// The layer menu's RASTERIZE (§6-f): the one verb for every
-/// derived-content row. A text row and a still reference are the session's
-/// own — nothing to decode — and a movie reference goes through the wait
-/// window above.
+/// derived-content row. A still reference is the session's own — nothing
+/// to decode — and a movie reference goes through the wait window above.
 Future<void> rasterizeActiveRow(
   BuildContext context,
   EditorSessionManager session,

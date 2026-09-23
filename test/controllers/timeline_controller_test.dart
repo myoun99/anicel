@@ -165,7 +165,10 @@ void main() {
       expect(timeline[1]!.frameId, const FrameId('new'));
     });
 
-    test('refuses a block START: nothing there to divide', () {
+    test('at a block START it pushes: the block moves back a cell and the '
+        'new drawing takes its head (F-151)', () {
+      // ↩️This read 「refuses a block START: nothing there to divide」 — true
+      // of a divide. 유저 2026-09-16 made the head a push instead.
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(0);
 
@@ -174,15 +177,21 @@ void main() {
           layer: fixture.layer,
           frameIndex: 0,
         ),
-        isFalse,
+        isTrue,
       );
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: _layerId,
+        frameId: const FrameId('new'),
+      );
+
+      final timeline = fixture.layer.timeline;
       expect(
-        () => fixture.controller.createDrawingFrameForLayer(
-          layerId: _layerId,
-          frameId: const FrameId('new'),
-        ),
-        throwsStateError,
+        {for (final e in timeline.entries) e.key: e.value.length},
+        {0: 1, 1: 3, 6: 2},
+        reason: 'a moved back one; b, past the gap, did not move',
       );
+      expect(timeline[0]!.frameId, const FrameId('new'));
+      expect(timeline[1]!.frameId, const FrameId('a'));
     });
   });
 

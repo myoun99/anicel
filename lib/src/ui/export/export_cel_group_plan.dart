@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart' show compareAsciiLowerCaseNatural;
+
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -296,11 +298,11 @@ Iterable<ExportCelGroupTask> _bundleTasks(
   _CelBundle bundle,
   _CutRun cut,
 ) sync* {
-  for (final axisFrame in bundle.axis.frames) {
+  for (final axisFrame in _inCelOrder(bundle.axis.frames)) {
     // An unnamed drawing is the in-between mark, not a cel: no file. The
-    // sheet prints ○ for the very same frame ([Frame.celNumber] decides
-    // for both); numbering it by position here invented a cel the sheet
-    // never listed (유저 2026-09-09).
+    // sheet prints the mark for the very same frame ([Frame.celNumber]
+    // decides for both); numbering it by position here invented a cel the
+    // sheet never listed (유저 2026-09-09).
     final celName = axisFrame.celNumber;
     if (celName == null) {
       continue;
@@ -331,6 +333,30 @@ Iterable<ExportCelGroupTask> _bundleTasks(
       skipped: cut.skipped.contains(bundle.axis.id),
     );
   }
+}
+
+/// [frames] in the order their cels are listed and written: by cel number,
+/// the way a file browser orders names — digits by value, letters without
+/// case.
+///
+/// 🚨F-177 (유저 2026-09-22): 「셀 출력시 미리보기의 셀 정렬, 지금 C1,2,3이
+/// 있다면 C2,3,1 이런식으로 되있거나 A1,2,2a,3 이렇게 됬으면하는게
+/// A1,2,3,4,5,6,7,8,9,2a 이렇게 됨. 즉 정렬을 윈도우 기준? 으로 해줬으면함」.
+/// The bank's order is the order the drawings were MADE in — 2a, drawn last,
+/// came after 9.
+///
+/// ⚠️Stable where two names are equal: the namer hands out `A1` and `A1_2`
+/// in the order it meets them, and the bank's order still decides that.
+List<Frame> _inCelOrder(List<Frame> frames) {
+  final indexed = [for (var i = 0; i < frames.length; i += 1) (frames[i], i)]
+    ..sort((a, b) {
+      final byName = compareAsciiLowerCaseNatural(
+        a.$1.celNumber ?? '',
+        b.$1.celNumber ?? '',
+      );
+      return byName != 0 ? byName : a.$2.compareTo(b.$2);
+    });
+  return [for (final (frame, _) in indexed) frame];
 }
 
 /// Whether this cel has anything to draw: 「그림이 존재하는 영역만 출력」.

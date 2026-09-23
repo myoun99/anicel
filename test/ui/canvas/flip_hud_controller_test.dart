@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -342,12 +344,19 @@ void main() {
   });
 
   group('driven by a real flip gesture', () {
-    Future<FlipHudController> pumpLayer(WidgetTester tester) async {
+    /// The canvas gesture layer with the window over it. [xSheet] is the
+    /// timeline turned to the sheet, which is what the shell tells the HUD
+    /// (`syncFlipAxisWithTimeline`).
+    Future<FlipHudController> pumpLayer(
+      WidgetTester tester, {
+      bool xSheet = false,
+    }) async {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
         touchDragOneFinger: CanvasTouchDragAction.flip,
       );
       final controller =
           FlipHudController(hapticTick: () {}, hapticsEnabled: () => false)
+            ..framesRunVertically = xSheet
             ..bind(
             _testOwner,
               (_) => const FlipHudSnapshot(
@@ -472,6 +481,102 @@ void main() {
       await tester.pump(FlipHudController.holdAfterRelease);
       await tester.pump(FlipHudController.fadeOut);
     });
+
+    /// 🚨F-28 (유저 2026-09-17): 「플립ui도 x시트에 맞춰서 회전해서 미세조정은
+    /// 알아서 맞추도록. x시트랑 동일하면됨」. On the sheet a DOWNWARD flip
+    /// walks the frames (the axis half of F-28, already law) — and the
+    /// window it shows stands up with the sheet: a column of frames running
+    /// down, beside the hand; a sideways flip walks the columns and shows
+    /// them side by side, above it. Read off the window itself, both
+    /// drags, against the timeline's own for contrast.
+    for (final xSheet in [false, true]) {
+      for (final (drag, what) in [
+        (
+          const Offset(CanvasViewportGestureLayer.flipStepExtent + 12, 2),
+          'sideways',
+        ),
+        (
+          const Offset(2, CanvasViewportGestureLayer.flipStepExtent + 12),
+          'downward',
+        ),
+      ]) {
+        testWidgets('${xSheet ? 'x-sheet' : 'timeline'}: a $what flip shows '
+            'the window the way its sheet runs', (tester) async {
+          final controller = await pumpLayer(tester, xSheet: xSheet);
+          const anchor = Offset(300, 400);
+          final finger = await tester.startGesture(
+            anchor,
+            kind: PointerDeviceKind.touch,
+          );
+          await finger.moveBy(drag);
+          await tester.pump();
+
+          final sideways = what == 'sideways';
+          final axis = controller.axis!;
+          expect(
+            axis,
+            sideways != xSheet ? FlipHudAxis.frame : FlipHudAxis.row,
+            reason: 'fixture: the axis half of F-28',
+          );
+          final window = tester.getRect(
+            find.byKey(const ValueKey<String>('flip-hud')),
+          );
+          final painter = tester
+              .widget<CustomPaint>(
+                find.descendant(
+                  of: find.byKey(const ValueKey<String>('flip-hud')),
+                  matching: find.byType(CustomPaint),
+                ),
+              )
+              .painter! as FlipHudPainter;
+          expect(painter.standing, xSheet, reason: 'the sheet stands it up');
+          // ⚠️The flag alone proves nothing: what stands is the PAINTING —
+          // the layout turned a quarter, and its words set upright again.
+          final paintBox = tester.renderObject(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('flip-hud')),
+              matching: find.byType(CustomPaint),
+            ),
+          );
+          expect(
+            paintBox,
+            xSheet
+                ? (paints
+                    ..rotate(angle: math.pi / 2)
+                    ..rotate(angle: -math.pi / 2))
+                : isNot(paints..rotate()),
+          );
+          expect(
+            window.size,
+            FlipHudMetrics.sizeFor(axis, standing: xSheet),
+          );
+          expect(
+            window.size,
+            xSheet
+                ? FlipHudMetrics.sizeFor(axis).flipped
+                : FlipHudMetrics.sizeFor(axis),
+            reason: 'the sheet\'s window is the timeline\'s turned a quarter',
+          );
+          if (sideways) {
+            expect(
+              window.bottom,
+              lessThanOrEqualTo(anchor.dy),
+              reason: 'a sideways flip rides ABOVE the hand',
+            );
+          } else {
+            expect(
+              window.left >= anchor.dx || window.right <= anchor.dx,
+              isTrue,
+              reason: 'a downward flip rides BESIDE the hand',
+            );
+          }
+
+          await finger.up();
+          await tester.pump(FlipHudController.holdAfterRelease);
+          await tester.pump(FlipHudController.fadeOut);
+        });
+      }
+    }
 
     testWidgets('the +1 finger switches the window to frame columns', (
       tester,
