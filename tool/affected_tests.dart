@@ -21,6 +21,7 @@
 //   dart run tool/affected_tests.dart --list     # print them, run nothing
 //   dart run tool/affected_tests.dart --all      # the escape hatch
 //   dart run tool/affected_tests.dart --base HEAD~3
+//   dart run tool/affected_tests.dart --concurrency 4   # a machine in use
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -173,6 +174,12 @@ Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
   final base = _flagValue(args, '--base') ?? 'origin/master';
+  final asked = _flagValue(args, '--concurrency');
+  final concurrency = asked == null ? null : int.tryParse(asked);
+  if (asked != null && (concurrency == null || concurrency < 1)) {
+    stderr.writeln('--concurrency takes a whole number of suites, 1 or more.');
+    exit(2);
+  }
 
   final root = _repoRoot();
   if (root == null) {
@@ -183,7 +190,13 @@ Future<void> main(List<String> args) async {
 
   if (runAll) {
     _report('--all: running the whole suite.');
-    exit(await _runTests(const [], listOnly: listOnly));
+    exit(
+      await _runTests(
+        const [],
+        listOnly: listOnly,
+        concurrency: concurrency,
+      ),
+    );
   }
 
   final changed = _changedFiles(base);
@@ -196,7 +209,13 @@ Future<void> main(List<String> args) async {
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
-    exit(await _runTests(const [], listOnly: listOnly));
+    exit(
+      await _runTests(
+        const [],
+        listOnly: listOnly,
+        concurrency: concurrency,
+      ),
+    );
   }
 
   final imports = buildImportGraph();
@@ -217,7 +236,9 @@ Future<void> main(List<String> args) async {
 
   _report('${present.length} of ${tests.length} test files reach the '
       '${changed.length} changed file(s).');
-  exit(await _runTests(present, listOnly: listOnly));
+  exit(
+    await _runTests(present, listOnly: listOnly, concurrency: concurrency),
+  );
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -315,7 +336,28 @@ List<List<String>> _batches(List<String> files) {
   return out;
 }
 
-Future<int> _runTests(List<String> files, {required bool listOnly}) async {
+/// What one batch hands `flutter test`: [files], and at most [concurrency]
+/// suites at once when one is given.
+///
+/// --no-pub because resolving again buys nothing between two runs of the
+/// same checkout, and on a loaded machine every process launch is felt.
+///
+/// 🗣️[concurrency] because the machine is someone's (유저 2026-09-24:
+/// 「부하 좀 강도? 낮출수없나. pc가 너무느린데」): left out, `flutter test`
+/// runs as many suites as there are cores, and a run of a thousand files
+/// takes the whole machine for half an hour.
+List<String> flutterTestArguments(List<String> files, {int? concurrency}) => [
+  'test',
+  '--no-pub',
+  if (concurrency != null) '--concurrency=$concurrency',
+  ...files,
+];
+
+Future<int> _runTests(
+  List<String> files, {
+  required bool listOnly,
+  int? concurrency,
+}) async {
   // The collector-waiting pins go last and by themselves, a whole suite
   // included — see [runPlan].
   final plan = runPlan(
@@ -361,7 +403,7 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   final neverRan = <int>[];
   for (var i = 0; i < batches.length; i++) {
     if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-    final result = await _flutterTest(batches[i]);
+    final result = await _flutterTest(batches[i], concurrency: concurrency);
     skipped += result.skipped;
     if (result.exitCode != 0) {
       failed.add(i + 1);
@@ -515,12 +557,13 @@ final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
 /// finishes is a tool nobody trusts is still alive. Copied rather than
 /// inherited so the same bytes can answer one question on the way past —
 /// did any test actually run?
-Future<_BatchResult> _flutterTest(List<String> files) async {
-  // --no-pub because resolving again buys nothing between two runs of the
-  // same checkout, and on a loaded machine every process launch is felt.
+Future<_BatchResult> _flutterTest(
+  List<String> files, {
+  required int? concurrency,
+}) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
-    <String>['test', '--no-pub', ...files],
+    flutterTestArguments(files, concurrency: concurrency),
     runInShell: true,
   );
   var ranTests = false;
