@@ -47,6 +47,10 @@ dependencies:
   # through flutter/widgets — the dependency direction CI enforces bans the
   # widget framework below the UI layer (lib/src/services/layer_pose_matrix).
   vector_math: ^2.2.0
+  # The file-browser order a cel list is read in (F-177: digits by value,
+  # letters without case). Already in the lock through Flutter itself; named
+  # here because lib now imports it.
+  collection: ^1.19.1
   # The native core as an FFI plugin (2A): each platform's own toolchain
   # compiles packages/qa_native/src and ships the result with the app.
   qa_native:

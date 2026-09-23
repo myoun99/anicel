@@ -617,4 +617,55 @@ void main() {
     expect(written, hasLength(2));
     expect(written.toSet(), hasLength(written.length), reason: '$written');
   });
+
+  /// 🚨F-177 (유저 2026-09-22): 「A1,2,2a,3 이렇게 됬으면하는게
+  /// A1,2,3,4,5,6,7,8,9,2a 이렇게 됨. 즉 정렬을 윈도우 기준? 으로
+  /// 해줬으면함」 — the cels are listed, previewed and written in the order a
+  /// file browser lists their names, not the order they were drawn in.
+  group('the cels come in file-browser order', () {
+    List<String> celNames(ExportCelGroupPlan built) => [
+      for (final task in built.cels) task.celName,
+    ];
+
+    test('an insertion drawn last sits after its number — 1, 2, 2a, 3', () {
+      final a = base('a', 'A', [
+        for (var n = 1; n <= 9; n += 1) frame('f$n'),
+        frame('f2a', name: '2a'),
+      ]);
+
+      expect(celNames(plan([a])), [
+        '1', '2', '2a', '3', '4', '5', '6', '7', '8', '9', //
+      ]);
+    });
+
+    test('numbers by value, whatever order they were drawn in — C2, 3, 1 '
+        'reads 1, 2, 3, and 10 comes after 9', () {
+      final c = base('c', 'C', [
+        frame('f2'),
+        frame('f3'),
+        frame('f1'),
+        frame('f10'),
+        frame('f9'),
+      ]);
+
+      expect(celNames(plan([c])), ['1', '2', '3', '9', '10']);
+    });
+
+    test('⚠️two drawings with ONE name keep the order they were made in — '
+        'the namer\'s _2 does not move', () {
+      final a = base('a', 'A', [
+        frame('x', name: '1'),
+        frame('f2'),
+        frame('y', name: '1'),
+      ]);
+
+      expect(
+        [
+          for (final task in plan([a]).cels)
+            (task.baseFrame.id.value, task.fileName),
+        ],
+        [('x', 'A1.png'), ('y', 'A1_2.png'), ('f2', 'A2.png')],
+      );
+    });
+  });
 }
