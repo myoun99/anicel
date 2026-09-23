@@ -12,8 +12,16 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineDrawingHeldColor, timelineEmptyCelPaperColor;
+    show
+        timelineBlockCornerRadiusAt,
+        timelineDrawingHeldColor,
+        timelineEmptyCelPaperColor;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
+    show blockEdgeGripCornerRadius, timelineBlockEdgeGripPlacement;
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart'
+    show timelineFrameSpanRect;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
@@ -221,6 +229,55 @@ void main() {
         reason: '「세로선 지움(가로선 남김)」 — the seam is under the row now, '
             'so paper over the last pixel would hide the one line kept',
       );
+    });
+
+    // The corner is measured on the PAPER too, and the edge triangle reads
+    // it back off its own box — so the two agree on every row height. On a
+    // full-height row the cap (6) hides the difference; a squeezed row
+    // (the folded one) is where a corner measured on the row would part
+    // from its paper.
+    test('the paper\'s corner is measured on the paper, and the triangle '
+        'reads back the same corner', () {
+      const row = 10.0;
+      final squeezed = TimelineRowCellsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: 24,
+          frameEndIndexExclusive: 40,
+        ),
+        crossAxisExtent: row,
+        exposureStateForLayer: stateFor,
+        colorScheme: scheme,
+        baseTextStyle: const TextStyle(fontSize: 11),
+        paperGround: host,
+      );
+      final paper = timelineRowPaperExtent(row);
+      final corner = timelineBlockCornerRadiusAt(
+        cellExtent: 24,
+        crossExtent: paper,
+      );
+      expect(
+        corner,
+        isNot(timelineBlockCornerRadiusAt(cellExtent: 24, crossExtent: row)),
+        reason: 'fixture premise: the squeeze reaches below the cap',
+      );
+      expect(squeezed.resolvedCellStyleFor(10).radius!.topLeft, corner);
+      final box = timelineFrameSpanRect(
+        timelineBlockEdgeGripPlacement(
+          edge: TimelineBlockEdge.start,
+          startIndex: 10,
+          endIndexExclusive: 14,
+          crossAxisExtent: paper,
+        ),
+        const TimelineFrameGeometry(
+          frameCellExtent: 24,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 40,
+        ),
+        crossAxisExtent: row,
+        axis: Axis.horizontal,
+      );
+      expect(blockEdgeGripCornerRadius(box, axis: Axis.horizontal), corner.x);
     });
 
     /// 🚨F-3 (유저 2026-08-24): 「프레임 그리드가 아예 안 그려지는 레이어가
