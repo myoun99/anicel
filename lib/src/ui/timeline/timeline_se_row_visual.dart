@@ -15,6 +15,7 @@ import '../media/media_asset_drop_target.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
+import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_span_layout.dart';
@@ -214,11 +215,10 @@ List<Widget> timelineRowAudioOverlays({
   return overlays;
 }
 
-/// Red corner markers for takes that CLIPPED (REC1-D): the carrying
-/// block's trailing-top corner, tooltip-explained. Callers mount these
-/// only while the clipping notice is enabled — the quiet default stays
-/// quiet (user decision: an animator who does not care must not see red
-/// corners all day).
+/// Red warning lines for takes that CLIPPED (REC1-D), tooltip-explained.
+/// Callers mount these only while the clipping notice is enabled — the
+/// quiet default stays quiet (user decision: an animator who does not care
+/// must not see red marks all day).
 List<Widget> timelineRowClipMarkerOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -244,7 +244,7 @@ List<Widget> timelineRowClipMarkerOverlays({
       continue;
     }
     overlays.add(
-      timelineBlockCornerWarning(
+      timelineBlockWarningBar(
         blockStart: span.startFrame,
         blockEndExclusive: blockEnd,
         crossAxisExtent: crossAxisExtent,
@@ -260,12 +260,20 @@ List<Widget> timelineRowClipMarkerOverlays({
   return overlays;
 }
 
-/// ONE corner-warning unit — the red triangle + hover tooltip the SE
-/// clipped-take marker introduced (REC1-D), on the block's trailing-top
-/// corner. Shared (extracted, never copied — the unification absolute
-/// rule) with the D26 crossing-fade marker: a block warning is one thing,
-/// whoever warns.
-Widget timelineBlockCornerWarning({
+/// How thick a block's warning line is, across the row.
+const double timelineBlockWarningBarThickness = 2;
+
+/// ONE block-warning unit — the red mark + hover tooltip the SE clipped-take
+/// marker introduced (REC1-D). Shared (extracted, never copied — the
+/// unification absolute rule) with the D26 crossing-fade marker: a block
+/// warning is one thing, whoever warns.
+///
+/// 🚨I-43 (유저 답 2026-09-23, 「(나) 윗변 줄」): a red line along the block's
+/// NEAR long edge, end to end — the timeline's top, the X-sheet's left.
+/// ↩️It was an 11px red triangle in the block's top-right corner, which is
+/// where the end edge's own triangle sits now (and, on the X-sheet, the start
+/// edge's): two marks in one corner.
+Widget timelineBlockWarningBar({
   required int blockStart,
   required int blockEndExclusive,
   required double crossAxisExtent,
@@ -274,51 +282,87 @@ Widget timelineBlockCornerWarning({
   required Color color,
   required Key markerKey,
 }) {
-  const markerSize = 11.0;
   return TimelineFrameSpan(
-    // The block's top-right corner — beside, never over, the bottom-right
-    // duration label (R26 #7). Transposed, it rides the block's top edge
-    // on the column's trailing side.
-    placement: axis == Axis.horizontal
-        ? TimelineFrameSpanPlacement(
-            startIndex: blockEndExclusive,
-            anchorAtTrailingEdge: true,
-            mainExtent: markerSize,
-            crossExtent: markerSize,
-          )
-        : TimelineFrameSpanPlacement(
-            startIndex: blockStart,
-            mainExtent: markerSize,
-            crossInset: crossAxisExtent - markerSize,
-            crossExtent: markerSize,
-          ),
+    placement: TimelineFrameSpanPlacement(
+      startIndex: blockStart,
+      endIndexExclusive: blockEndExclusive,
+      crossExtent: timelineBlockWarningBarThickness,
+    ),
     child: KeyedSubtree(
       key: markerKey,
       child: Tooltip(
         message: tooltip,
-        child: CustomPaint(painter: _ClipCornerPainter(color)),
+        child: CustomPaint(
+          painter: _WarningBarPainter(
+            color: color,
+            axis: axis,
+            frameCount: blockEndExclusive - blockStart,
+            crossAxisExtent: crossAxisExtent,
+          ),
+        ),
       ),
     ),
   );
 }
 
-class _ClipCornerPainter extends CustomPainter with RepaintOnProps {
-  const _ClipCornerPainter(this.color);
+class _WarningBarPainter extends CustomPainter with RepaintOnProps {
+  const _WarningBarPainter({
+    required this.color,
+    required this.axis,
+    required this.frameCount,
+    required this.crossAxisExtent,
+  });
 
   final Color color;
+  final Axis axis;
+
+  /// The block's length in frames: the line spans exactly the block, so its
+  /// own extent over this is the live cell — what the block's corner reads.
+  final int frameCount;
+  final double crossAxisExtent;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(path, Paint()..color = color);
+    final horizontal = axis == Axis.horizontal;
+    final along = extentAlong(axis, size);
+    final across = extentAcross(axis, size);
+    // The PAPER's corner (I-44): the block stops short of the row seam, and
+    // its corner is measured on what it covers.
+    final corner = frameCount <= 0
+        ? Radius.zero
+        : timelineBlockCornerRadiusAt(
+            cellExtent: along / frameCount,
+            crossExtent: timelineRowPaperExtent(crossAxisExtent),
+          );
+    // The line follows the paper's own rounding at both ends: the block's
+    // corners, a full corner deep across, clip it.
+    final depth = math.max(corner.x, across);
+    final paper = horizontal
+        ? RRect.fromLTRBAndCorners(
+            0,
+            0,
+            size.width,
+            depth,
+            topLeft: corner,
+            topRight: corner,
+          )
+        : RRect.fromLTRBAndCorners(
+            0,
+            0,
+            depth,
+            size.height,
+            topLeft: corner,
+            bottomLeft: corner,
+          );
+    canvas
+      ..save()
+      ..clipRRect(paper)
+      ..drawRect(Offset.zero & size, Paint()..color = color)
+      ..restore();
   }
 
   @override
-  Object get props => (color,);
+  Object get props => (color, axis, frameCount, crossAxisExtent);
 }
 
 /// Media-browser drop targets over an SE row's blocks: dropping an asset
@@ -431,11 +475,18 @@ const double seNameBoxExtent = 16;
 
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
 /// mockup v3): a compact INVERTED name chip flush against the block's
-/// start boundary (ink fill, paper-light writing), the dialogue fitted
-/// over the rest of the span and a short red underline closing the
-/// block's end — no duration bar. Shared by the timeline rows, the
-/// X-sheet columns and the storyboard's synced SE track; paper comes from
+/// start boundary (ink fill, paper-light writing) and the dialogue fitted
+/// over the rest of the span — no duration bar. Shared by the timeline rows,
+/// the X-sheet columns and the storyboard's synced SE track; paper comes from
 /// the cells underneath (or from [SePaperSpan] where there are none).
+///
+/// 🚨I-43 (유저 2026-09-23): 「se는 왜 제안에서 엣지가 빨간색 남아있지? 그부분만
+/// 혹시모르니 잘 통일해주고」. v3 also closed the block's end with a short red
+/// line, perpendicular to the flow and hugging the end edge — exactly where
+/// every block's edge used to stand, so beside the new corner triangles it
+/// read as an SE block keeping a red EDGE. ⇒ The block views close an SE
+/// block the way they close every block. The timesheet keeps its red bars:
+/// that is the paper's notation, drawn by the sheet, not by this widget.
 class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
@@ -461,7 +512,7 @@ class SeSpanVisual extends StatelessWidget {
         // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
         // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
         // the way the dialogue glyphs beside it narrow rather than vanish
-        // ([dialogueGlyphCondensation]). ⛔The half-span ceiling is not a new
+        // (`wordCondensation`). ⛔The half-span ceiling is not a new
         // number: the old threshold `>= seNameBoxExtent * 2` already said the
         // box may never take more than half the span, and that stands. The
         // two meet at 32 — `32 / 2 == seNameBoxExtent` — so the chip narrows
@@ -472,40 +523,17 @@ class SeSpanVisual extends StatelessWidget {
         final nameExtent = mainExtent >= seNameBoxExtent * 2
             ? seNameBoxExtent
             : mainExtent / 2;
-        return Stack(
+        return Flex(
+          direction: axis,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Flex(
-              direction: axis,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (seName.isNotEmpty)
-                  _SeNameBox(axis: axis, name: seName, extent: nameExtent),
-                Expanded(
-                  child: DialogueFitText(
-                    text: dialogue,
-                    axis: axis,
-                    color: timelineDrawingInkColor,
-                  ),
-                ),
-              ],
-            ),
-            // The block's end closes with a short red underline (Toei
-            // notation) — perpendicular to the flow, hugging the end edge.
-            Positioned(
-              right: axis == Axis.horizontal ? 1 : 0,
-              bottom: axis == Axis.horizontal ? 0 : 1,
-              top: axis == Axis.horizontal ? 0 : null,
-              left: axis == Axis.horizontal ? null : 0,
-              width: axis == Axis.horizontal ? 2 : null,
-              height: axis == Axis.horizontal ? null : 2,
-              child: IgnorePointer(
-                child: Center(
-                  child: FractionallySizedBox(
-                    widthFactor: axis == Axis.horizontal ? null : 0.6,
-                    heightFactor: axis == Axis.horizontal ? 0.6 : null,
-                    child: const ColoredBox(color: AppColors.danger),
-                  ),
-                ),
+            if (seName.isNotEmpty)
+              _SeNameBox(axis: axis, name: seName, extent: nameExtent),
+            Expanded(
+              child: DialogueFitText(
+                text: dialogue,
+                axis: axis,
+                color: timelineDrawingInkColor,
               ),
             ),
           ],
@@ -567,18 +595,24 @@ class _SeNameBox extends StatelessWidget {
       // Own node even where an ancestor would merge labels (the dialog
       // preview) — tests and screen readers address the box directly.
       container: true,
-      child: Container(
+      child: ColoredBox(
         // R6-②: soft accent tint (the full-strength accent read too loud);
         // dark ink writing carries the contrast — matches the sheet.
         color: AppColors.accent.withValues(alpha: 0.3),
-        alignment: Alignment.center,
-        // scaleDown: a LONG name shrinks to the box instead of overflowing
-        // the row (the striped-error report — R4 improvement 2).
-        child: ClipRect(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: ExcludeSemantics(child: writing),
+        // A LONG name stays inside the chip instead of overflowing the row
+        // (the striped-error report — R4 improvement 2) — by the block-word
+        // law now (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its
+        // type and narrows, each axis on its own, into the chip. ↩️It shrank
+        // WHOLE into the chip (`FittedBox.scaleDown`), height with width.
+        child: TimelineBlockWord(
+          place: (
+            axis: axis,
+            cells: 1,
+            cellIndex: 0,
+            growth: TimelineBlockWordGrowth.towardBlockEnd,
+            acrossAlignment: 0,
           ),
+          child: ExcludeSemantics(child: writing),
         ),
       ),
     );
@@ -587,25 +621,24 @@ class _SeNameBox extends StatelessWidget {
 }
 
 /// The paper frame block for hosts without paper cells underneath (the
-/// storyboard's SE track): near-white fill, hairline outline, rounded ends
-/// and the frame grid's own lines across it — visually the drawing rows'
-/// block, painted as one span.
+/// storyboard's SE track): near-white fill, hairline outline, rounded ends —
+/// visually the drawing rows' block, painted as one span.
+///
+/// 🚨I-44: no line crosses it. It drew the frame grid's own lines across
+/// itself (F-92 made them the timeline's law); 「블록에 존재하는 그리드선만
+/// 싹 삭제」 took them off every block, and the grid sheet under the row is
+/// the only thing that rules frames now. Its paper stops short of the row
+/// seam that sheet draws ([timelineRowPaperExtent]), as a drawing row's does.
 class SePaperSpan extends StatelessWidget {
   const SePaperSpan({
     super.key,
     required this.axis,
     required this.frameCellExtent,
-    required this.startFrame,
     this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
   final double frameCellExtent;
-
-  /// The frame the span starts on, on its host's frame axis. The grid thins
-  /// and weights a line by the FRAME its boundary starts, so a span that did
-  /// not know where it stands would draw a grid of its own.
-  final int startFrame;
 
   /// The block's own colour — its layer's mark (⑲). Defaulted, so a host
   /// with no layer in hand still gets the paper.
@@ -613,16 +646,11 @@ class SePaperSpan extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final law = TimelineGridLaw.maybeOf(context);
     return CustomPaint(
       painter: _SePaperPainter(
         axis: axis,
         frameCellExtent: frameCellExtent,
-        startFrame: startFrame,
         paper: paper,
-        ground: law?.ground,
-        framesPerSecond: law?.framesPerSecond ?? 0,
-        colorScheme: Theme.of(context).colorScheme,
       ),
       child: const SizedBox.expand(),
     );
@@ -633,71 +661,30 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   _SePaperPainter({
     required this.axis,
     required this.frameCellExtent,
-    required this.startFrame,
     required this.paper,
-    required this.ground,
-    required this.framesPerSecond,
-    required this.colorScheme,
   });
 
   final Axis axis;
   final double frameCellExtent;
-  final int startFrame;
   final Color paper;
-  final Color? ground;
-  final int framesPerSecond;
-  final ColorScheme colorScheme;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final cross = timelineRowPaperExtent(extentAcross(axis, size));
+    final box = axis == Axis.horizontal
+        ? Rect.fromLTWH(0, 0, size.width, cross)
+        : Rect.fromLTWH(0, 0, cross, size.height);
+    // THE block corner (F-79's one function) — this span is "visually the
+    // drawing rows' block", and it rounded by a 4px of its own since the
+    // first SE paper (07-09), so it never matched the blocks it mirrors.
     final rrect = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(4),
+      box,
+      timelineBlockCornerRadiusAt(
+        cellExtent: frameCellExtent,
+        crossExtent: cross,
+      ),
     );
     canvas.drawRRect(rrect, Paint()..color = paper);
-
-    canvas.save();
-    canvas.clipRRect(rrect);
-    final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    if (frameCellExtent > 0) {
-      // 🚨F-92 (유저 2026-09-12): 「스토리보드패널의 프레임셀 그리드,
-      // 타임라인패널이랑 다름 … 줌 축소해도 1f마다 블록에 세로선이있음.
-      // 타임라인이랑 다른 법 절대로 두지말고 관련 로직 싹 다 통일」. This drew
-      // a line at EVERY frame in a faint ink of its own. Which boundaries show
-      // at this zoom, where they sit and in what ink over this paper are the
-      // timeline cells' answers now: the one grid law
-      // ([timelineFrameBoundaryLineInk]) and the ground rule the cells
-      // painter resolves it on.
-      final seen = timelineGridGroundOver(under: ground, painted: paper);
-      final frames = (mainExtent / frameCellExtent).round();
-      for (var offset = 1; offset < frames; offset += 1) {
-        final ink = timelineFrameBoundaryLineInk(
-          frameIndex: startFrame + offset,
-          frameCellExtent: frameCellExtent,
-          framesPerSecond: framesPerSecond,
-          colorScheme: colorScheme,
-        );
-        if (ink == null) {
-          continue;
-        }
-        final along = timelineFrameBoundaryLinePosition(
-          offset,
-          frameCellExtent,
-        );
-        canvas.drawLine(
-          offsetAlong(axis, along: along, across: 0),
-          offsetAlong(axis, along: along, across: crossExtent),
-          Paint()
-            ..color = seen == null
-                ? ink.color
-                : timelineGridLineInkOnGround(ink, seen)
-            ..strokeWidth = ink.strokeWidth,
-        );
-      }
-    }
-    canvas.restore();
-
     canvas.drawRRect(
       rrect,
       Paint()
@@ -711,12 +698,8 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     axis,
     frameCellExtent,
-    startFrame,
     // A mark change repaints the block (⑲) — without this the row would
     // keep the colour it was first painted with.
     paper,
-    ground,
-    framesPerSecond,
-    colorScheme,
   );
 }

@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/temp_dir.dart';
 
 /// What the media pool's conform column reads, and the two laws under it:
 /// the CACHE file answers first, and the map the panel draws is MEMOISED,
@@ -38,11 +39,7 @@ void main() {
       }
     }
     planted.clear();
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
+    deleteTempQuietly(directory);
   });
 
   /// A conform of [bytes] bytes where the cache would put one, under the

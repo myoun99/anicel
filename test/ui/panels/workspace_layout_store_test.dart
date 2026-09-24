@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 Map<String, DockGroup?> _defaults() => {
   'tool-left': DockGroup(tabs: ['tools']),
@@ -16,7 +17,7 @@ void main() {
   group('WorkspaceLayoutStore', () {
     test('round-trips a layout payload through the file', () async {
       final directory = await Directory.systemTemp.createTemp('layout_store');
-      addTearDown(() => directory.delete(recursive: true));
+      deleteAfterSessionEnds(directory);
       final store = WorkspaceLayoutStore(
         filePath: '${directory.path}/workspace_layout.json',
       );
@@ -44,7 +45,7 @@ void main() {
 
     test('a corrupt file loads as null', () async {
       final directory = await Directory.systemTemp.createTemp('layout_store');
-      addTearDown(() => directory.delete(recursive: true));
+      deleteAfterSessionEnds(directory);
       final path = '${directory.path}/workspace_layout.json';
       await File(path).writeAsString('not json at all');
 

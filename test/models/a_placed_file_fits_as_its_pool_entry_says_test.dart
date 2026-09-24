@@ -10,7 +10,7 @@ import 'package:anicel/src/models/media_asset.dart';
 void main() {
   test('the pool entry\'s own fit, and contain for a path no entry names', () {
     final project = createDefaultProject().copyWith(
-      mediaAssets: const [
+      mediaAssets: [
         MediaAsset(
           path: 'C:/art/take.mp4',
           name: 'take',

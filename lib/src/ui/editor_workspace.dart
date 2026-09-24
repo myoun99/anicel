@@ -31,6 +31,7 @@ import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
+import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
@@ -44,6 +45,7 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/confirm_verb.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
@@ -108,6 +110,8 @@ import 'timeline/timeline_grid_metrics.dart' show TimelineGridMetrics;
 import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
+import 'timeline/timeline_tile_raster_source.dart'
+    show timelineSubstrateGeneration;
 import 'timeline/timeline_frame_cursor_layer.dart' show TimelineCursorLayer;
 import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
@@ -186,6 +190,8 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.lastStroke,
+    this.confirm,
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
@@ -224,6 +230,15 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The last drawing action (shell-owned — it outlives a project),
+  /// forwarded to the canvas that records and lays it down.
+  final LastStrokeSlot? lastStroke;
+
+  /// 확정 (shell-owned, Enter's verb): the rail's ↵ and the move tool's 적용
+  /// are its other doors. Null keeps both on their old verbs' absence
+  /// (focused widget tests).
+  final ConfirmVerb? confirm;
 
   /// The shell-owned ↑/↓ layer-nav channel (UI-R20 #14): this state binds
   /// the handler because it owns the timeline view state (row filter,
@@ -859,45 +874,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     const <String>{},
   );
 
-  /// SE/camera timeline sections hidden from the grids (view state —
-  /// survives tab switches, session-only; toggled from the timeline
-  /// toolbar, the retired fold/collapse UI's replacement).
-  final ValueNotifier<Set<TimelineSection>> _hiddenTimelineSections =
-      ValueNotifier(const <TimelineSection>{});
-
-  /// Bases whose ATTACH GROUP is twirled shut (UI-R20 #9; view state —
-  /// survives tab switches, session-only). Default expanded: a fresh
-  /// attach layer must be visible the moment it's made.
-  final ValueNotifier<Set<LayerId>> _collapsedAttachBaseIds = ValueNotifier(
-    const <LayerId>{},
-  );
+  // The hidden sections, the row filter and the folded attach groups are the
+  // SESSION's (`RailView`, F-169): the standing law reads them.
 
   void _toggleTimelineSection(TimelineSection section) {
-    _hiddenTimelineSections.value = toggledSet(
-      _hiddenTimelineSections.value,
-      section,
-    );
+    final hiddenSections = widget.session.railView.hiddenSections;
+    hiddenSections.value = toggledSet(hiddenSections.value, section);
+    // F-169: hiding the section you stand in hands the standing on.
+    widget.session.standing.keepStandingShown();
   }
 
-  /// The rail's row FILTER (R2 view state): hides layer rows failing its
-  /// predicate; survives tab switches, session-only, never persisted.
-  final ValueNotifier<TimelineRowFilter> _timelineRowFilter = ValueNotifier(
-    TimelineRowFilter.none,
-  );
-
   void _setTimelineRowFilter(TimelineRowFilter filter) {
-    _timelineRowFilter.value = filter;
+    widget.session.railView.rowFilter.value = filter;
     // UI-R6 #3: a non-passing active layer moves to the nearest passing
     // layer above it (instead of lingering through the exemption).
-    if (filter.isActive) {
-      widget.session.standing.moveSelectionToFilteredLayer(
-        (layer) => filter.allowsLayerRow(
-          layer,
-          standing: false,
-          fxEnabled: widget.session.effectsAndFx.isLayerFxEnabled(layer.id),
-        ),
-      );
-    }
+    widget.session.standing.keepStandingShown(filterSparesStanding: false);
   }
 
   /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
@@ -1152,9 +1143,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
       activeLayerId: session.activeLayerId,
       currentRow: session.currentRow,
       direction: direction,
-      hiddenSections: _hiddenTimelineSections.value,
-      rowFilter: _timelineRowFilter.value,
-      collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+      hiddenSections: session.railView.hiddenSections.value,
+      rowFilter: session.railView.rowFilter.value,
+      collapsedAttachBaseIds: session.railView.collapsedAttachBaseIds.value,
       // R10 #19: property rows are stops now, so the walk needs the same
       // lane list the grids draw.
       expandedLayerIds: _expandedLaneLayerIds.value,
@@ -1401,9 +1392,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace>
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
     _expandedLaneGroupKeys.dispose();
-    _hiddenTimelineSections.dispose();
-    _collapsedAttachBaseIds.dispose();
-    _timelineRowFilter.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {

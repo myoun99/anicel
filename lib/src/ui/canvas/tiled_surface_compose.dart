@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../../models/playback_quality.dart';
 import '../../core/dev_profile.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -34,6 +36,35 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
   final canvas = surface.canvasSize.canvasRect;
   final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
   return tiles == null ? canvas : canvas.expandToInclude(tiles);
+}
+
+/// The part of [surfaceContentWorldRect] that holds the stored tiles —
+/// where every pixel of the composed image that is not transparent sits.
+///
+/// On the halving grid of the whole image: the tiles' rect pushed out to
+/// multiples of 2^[PlaybackQuality.deepestLevel] counted from the content's
+/// origin, and cut back to the content. So at every level of the display's
+/// pyramid its edges fall on whole texels of the whole content's level, and
+/// the part of that level it covers can be cut out as it is.
+ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
+  final content = surfaceContentWorldRect(surface);
+  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  if (tiles == null) {
+    return content;
+  }
+  final grid = (1 << PlaybackQuality.deepestLevel).toDouble();
+  double outward(double value, double origin, {required bool up}) {
+    final blocks = (value - origin) / grid;
+    return origin +
+        (up ? blocks.ceilToDouble() : blocks.floorToDouble()) * grid;
+  }
+
+  return ui.Rect.fromLTRB(
+    outward(tiles.left, content.left, up: false),
+    outward(tiles.top, content.top, up: false),
+    math.min(content.right, outward(tiles.right, content.left, up: true)),
+    math.min(content.bottom, outward(tiles.bottom, content.top, up: true)),
+  );
 }
 
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by
@@ -70,14 +101,12 @@ Future<ui.Image?> composeTiledSurfaceImage(
   surface,
   reuse: reuse,
   shouldAbort: shouldAbort,
-  width: surface.canvasSize.width,
-  height: surface.canvasSize.height,
+  over: surface.canvasSize.canvasRect,
 );
 
 /// THE tile compose, async: draw every tile 1:1 at its integer offset and
-/// raster the result at [width]x[height], with [origin] subtracted first
-/// (the positioned variants raster over the pasteboard rect instead of the
-/// canvas).
+/// raster the canvas-space rect [over] (the canvas, the content grown by
+/// the pasteboard, or the part of it that holds the ink).
 ///
 /// Four functions in this file used to carry this loop — canvas-size and
 /// positioned, each async and sync — and they differed only in the origin,
@@ -87,13 +116,11 @@ Future<ui.Image?> _composeAsync(
   BitmapSurface surface, {
   required BitmapTileImageCache? reuse,
   required bool Function()? shouldAbort,
-  required int width,
-  required int height,
-  ui.Offset origin = ui.Offset.zero,
+  required ui.Rect over,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
-  canvas.translate(-origin.dx, -origin.dy);
+  canvas.translate(-over.left, -over.top);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final transient = <ui.Image>[];
   var recorderClosed = false;
@@ -124,7 +151,10 @@ Future<ui.Image?> _composeAsync(
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      return await picture.toImage(width, height);
+      return await picture.toImage(
+        over.width.round(),
+        over.height.round(),
+      );
     } finally {
       picture.dispose();
     }
@@ -170,13 +200,11 @@ Future<ui.Image?> _composeAsync(
   required BitmapTileImageCache reuse,
   required bool makePictures,
   required bool snapshot,
-  required int width,
-  required int height,
-  ui.Offset origin = ui.Offset.zero,
+  required ui.Rect over,
 }) {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
-  canvas.translate(-origin.dx, -origin.dy);
+  canvas.translate(-over.left, -over.top);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
 
   for (final entry in surface.tiles.entries) {
@@ -192,7 +220,12 @@ Future<ui.Image?> _composeAsync(
       paint,
     );
   }
-  return rasterPictureAndSnapshot(recorder, width, height, snapshot: snapshot);
+  return rasterPictureAndSnapshot(
+    recorder,
+    over.width.round(),
+    over.height.round(),
+    snapshot: snapshot,
+  );
 }
 
 /// [surface]'s picture NOW, canvas-sized: every tile's own picture, made
@@ -212,8 +245,7 @@ ui.Image composeTiledSurfaceImageNow(
       reuse: reuse,
       makePictures: true,
       snapshot: false,
-      width: surface.canvasSize.width,
-      height: surface.canvasSize.height,
+      over: surface.canvasSize.canvasRect,
     )!.deferred,
   );
 }
@@ -224,19 +256,23 @@ ui.Image composeTiledSurfaceImageNow(
 /// true position. Same tile pipeline, same premultiply, same 1:1 integer
 /// offsets — only the raster origin/extent differ (and only when
 /// pasteboard tiles exist).
+///
+/// [over] rasters part of the content instead: a rect on whole canvas
+/// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
+/// texel for texel where it lands in the whole image, so what comes back is
+/// that image's pixels over [over] — without the rest being drawn first.
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+  ui.Rect? over,
 }) async {
-  final worldRect = surfaceContentWorldRect(surface);
+  final worldRect = _composedOver(surface, over);
   final image = await _composeAsync(
     surface,
     reuse: reuse,
     shouldAbort: shouldAbort,
-    width: worldRect.width.round(),
-    height: worldRect.height.round(),
-    origin: worldRect.topLeft,
+    over: worldRect,
   );
   return image == null
       ? null
@@ -245,24 +281,23 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
 
 /// The synchronous positioned compose — the layer stack's, for the frame a
 /// row changes route or content ([_composeSync] says what [makePictures]
-/// and [snapshot] mean). Null only when [makePictures] is false and a tile
-/// has no picture.
+/// and [snapshot] mean; [over] is the async twin's). Null only when
+/// [makePictures] is false and a tile has no picture.
 ({PositionedSurfaceImage deferred, Future<ui.Image>? real})?
 composePositionedSurfaceImageSync(
   BitmapSurface surface, {
   required BitmapTileImageCache reuse,
   required bool makePictures,
   required bool snapshot,
+  ui.Rect? over,
 }) {
-  final worldRect = surfaceContentWorldRect(surface);
+  final worldRect = _composedOver(surface, over);
   final composed = _composeSync(
     surface,
     reuse: reuse,
     makePictures: makePictures,
     snapshot: snapshot,
-    width: worldRect.width.round(),
-    height: worldRect.height.round(),
-    origin: worldRect.topLeft,
+    over: worldRect,
   );
   if (composed == null) {
     return null;
@@ -274,6 +309,18 @@ composePositionedSurfaceImageSync(
     ),
     real: composed.real,
   );
+}
+
+/// The rect a positioned compose rasters: [over], or the whole content.
+ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
+  if (over == null) {
+    return surfaceContentWorldRect(surface);
+  }
+  assert(() {
+    final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+    return tiles == null || over.expandToInclude(tiles) == over;
+  }(), 'a part of the content composed on its own must hold every tile');
+  return over;
 }
 
 Future<ui.Image> _decodeTile(BitmapTile tile) async {

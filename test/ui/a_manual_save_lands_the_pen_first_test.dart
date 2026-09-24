@@ -11,6 +11,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★**PRESS SAVE WITH THE PEN DOWN AND THAT LINE IS IN THAT FILE.**
 ///
@@ -33,7 +34,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-pen-save-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   /// A session with one drawing, and the key of the cel it made.
   (EditorSessionManager, BrushFrameKey) sessionWithADrawing() {

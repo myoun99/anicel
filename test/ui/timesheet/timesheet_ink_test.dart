@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -318,7 +318,7 @@ void main() {
                   layout: layout,
                   pagedLayout: layout,
                   cutId: _cutId,
-                  brushToolState: BrushToolState.defaults,
+                  brushToolState: ValueNotifier(BrushToolState.defaults),
                   historyManager: historyManager,
                   viewport: CanvasViewport(),
                   strokeActive: strokeActive,

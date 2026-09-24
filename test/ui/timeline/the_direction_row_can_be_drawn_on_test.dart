@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 
 /// **R27 #16 — the direction row is a row you can draw on.**
@@ -134,43 +136,62 @@ void main() {
     TimelineCellExposureState noCels(Layer layer, int frameIndex) =>
         TimelineCellExposureState.uncovered;
 
-    test('a span with no cel behind it still draws its block', () {
+    // ↩️Two pins stood here for the UNION the band used to draw — 「a span
+    // with no cel behind it still draws its block」 and 「the row's OWN cels
+    // win where it has them」 — each over a stand-in for the row's cels.
+    // Since R27 a span IS a block on a cel of its own, so neither state can
+    // be built any more: the two below read the row's real cels instead.
+    test('a span draws as the block it is, read off the row itself', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
       final layer = direction(
         spans: {2: const InstructionEvent(instructionId: 'fi', length: 3)},
       );
+      TimelineCellExposureState own(Layer row, int frameIndex) =>
+          session.exposureVerbs.exposureStateForLayer(row, frameIndex);
       expect(
-        bandExposureState(layer, 2, ownCels: noCels),
+        bandExposureState(layer, 2, ownCels: own),
         TimelineCellExposureState.drawingStart,
       );
       expect(
-        bandExposureState(layer, 3, ownCels: noCels),
+        bandExposureState(layer, 3, ownCels: own),
         TimelineCellExposureState.held,
       );
       expect(
-        bandExposureState(layer, 9, ownCels: noCels),
+        bandExposureState(layer, 9, ownCels: own),
         TimelineCellExposureState.uncovered,
-        reason: 'and nowhere else — the span is what defines the block',
+        reason: 'and nowhere else — the block is what the span is',
       );
     });
 
-    test("🚨the row's OWN cels win where it has them", () {
-      final layer = direction(
-        spans: {0: const InstructionEvent(instructionId: 'fi', length: 8)},
+    test('🚨a drawing started mid-span divides it: two blocks, two spans', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
       );
-      TimelineCellExposureState celAt4(Layer _, int frameIndex) =>
-          frameIndex == 4
-          ? TimelineCellExposureState.drawingStart
-          : TimelineCellExposureState.uncovered;
+      addTearDown(session.dispose);
+      Layer row() => session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.instruction,
+      );
+      session.selectLayer(row().id);
+      session.instructionVerbs.upsertInstructionEventAt(
+        row().id,
+        0,
+        const InstructionEvent(instructionId: 'pan', length: 8),
+        createLengthFrames: 8,
+      );
+
+      session.selectFrameIndex(4);
+      session.createDrawingAtCurrentFrame();
+
+      expect(row().timeline.keys, [0, 4]);
       expect(
-        bandExposureState(layer, 4, ownCels: celAt4),
-        TimelineCellExposureState.drawingStart,
-        reason: 'a drawing that starts mid-span really does start a block',
+        row().instructions.keys,
+        [0, 4],
+        reason: 'a block on this row IS a span — the new one takes the ＋ one',
       );
-      expect(
-        bandExposureState(layer, 5, ownCels: celAt4),
-        TimelineCellExposureState.held,
-        reason: 'and the span carries the rest, as it always did',
-      );
+      expect(row().instructions[0]?.instructionId, 'pan');
     });
 
     test('⛔a row that carries no instructions is untouched', () {

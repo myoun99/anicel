@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// UI-R10 #7: TWO language settings — program (app chrome) and notation
 /// (what prints on submissions). Defaults: program=en, notation=ja.
@@ -28,23 +29,7 @@ void main() {
 
   test('the store round-trips both settings', () async {
     final directory = await Directory.systemTemp.createTemp('qa-lang');
-    // 🚨CLEANUP IS NOT A RESULT (2026-09-16). Windows keeps a handle on
-    // the file a moment after the last write — the store's own, an
-    // indexer, a scanner — and a tearDown that deleted outright turned
-    // that grip into a red test: a case in this file failed a whole
-    // affected batch with `PathAccessException … errno 32` while other
-    // lanes were gating the same machine, saying nothing about the
-    // product. The delete is still attempted; only its failure is
-    // swallowed, because the temp directory is the OS's to reap.
-    // ⚠️165 more sites wear the old shape — the sweep and its ratchet
-    // are the `temp-dir-teardown-is-not-a-test` card.
-    addTearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
+    deleteAfterSessionEnds(directory);
     final store = AppLanguageSettingsStore(
       filePath: '${directory.path}/language_settings.json',
     );
@@ -59,42 +44,15 @@ void main() {
     expect(await store.load(), settings);
   });
 
-  test('the session persists changes through the injected store and '
-      'restores them on construction', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-lang');
-    // Same as above: the cleanup may not fail the test.
-    addTearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
-    final path = '${directory.path}/language_settings.json';
-
-    final first = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      languageSettingsStore: AppLanguageSettingsStore(filePath: path),
-    );
-    first.setLanguageSettings(
-      const AppLanguageSettings(
-        programLanguage: AppLanguage.ja,
-        notationLanguage: AppLanguage.en,
-      ),
-    );
-    // The save is fire-and-forget; give it a beat.
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    first.dispose();
-
-    final second = EditorSessionManager(
-      initialProject: createDefaultProject(),
-      languageSettingsStore: AppLanguageSettingsStore(filePath: path),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    expect(second.languageSettings.value.programLanguage, AppLanguage.ja);
-    expect(second.languageSettings.value.notationLanguage, AppLanguage.en);
-    second.dispose();
-  });
+  // 🪦The SESSION round-trip lived here — persist through the injected
+  // store, restore on construction — and it raced its own save: it gave the
+  // fire-and-forget write a fixed 50 ms and failed under a bulk run
+  // (2026-09-24; it passed alone). It also never reset the app-wide value
+  // the first session had set, so it passed with the restore switched off —
+  // measured: that mutant stayed green here and went red in the sibling.
+  // `editor_app_settings_test` takes the same round-trip for every family,
+  // language included, waiting on the files and resetting in between.
+  // ⛔Do not bring a second copy back.
 
   test('the sheet header labels follow the notation language', () {
     expect(

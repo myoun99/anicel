@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -34,6 +35,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 
 const _cameraLayerId = LayerId('lane-cam-layer');
@@ -487,10 +489,10 @@ void main() {
                     name: 'S1',
                     kind: LayerKind.se,
                     frames: const [],
-                    audioClips: const [
+                    audioClips: [
                       AudioClip(
                         filePath: 'hit.wav',
-                        frameId: FrameId('se-frame'),
+                        frameId: const FrameId('se-frame'),
                       ),
                     ],
                   ),
@@ -579,13 +581,12 @@ void main() {
       // point own their own drag recognizers, so the gesture never reaches
       // the Scrollable. `scrollUntilVisible` used to sit here and looked
       // green only because the last lane happened to be built already.
-      final verticalScroll = tester
-          .widget<SingleChildScrollView>(
-            find.byKey(
-              const ValueKey<String>('timeline-vertical-scroll-viewport'),
-            ),
-          )
-          .controller!;
+      final verticalScroll = scrollableOf(
+        tester,
+        find.byKey(
+          const ValueKey<String>('timeline-vertical-scroll-viewport'),
+        ),
+      ).controller!;
       expect(
         find.byKey(
           const ValueKey<String>(
@@ -1326,6 +1327,48 @@ void main() {
         '170%',
       );
       expect(_laneKey('scale', 0), findsOneWidget);
+    });
+
+    testWidgets('🚨…and a FINGER scrubs it too, while one finger scrolls the '
+        'timeline — the value is a control, and a press on a control is the '
+        'control\'s on every device (F-163 재발, 유저 09-23: 「버튼은 무조건 '
+        '강한클레임」)', (tester) async {
+      // ⚠️The PRODUCT input default. The corpus runs touch-as-pen, where
+      // timeline edits took a finger before this fix as well.
+      AppInput.settings.value = const AppInputSettings();
+      addTearDown(
+        () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+      );
+      await _pump(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 8: _pose(80)})),
+      );
+      await expand(tester);
+
+      await tester.drag(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+        ),
+        const Offset(40, 0),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'timeline-lane-value-lane-cam-layer-scale',
+                  ),
+                ),
+                matching: find.byType(Text),
+              ),
+            )
+            .data,
+        '170%',
+      );
     });
 
     testWidgets('prev/next navigator jumps the playhead between keys', (

@@ -4,6 +4,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/the_file_itself.dart';
+
 /// The import window's preview zone — nothing named it (2026-09-05).
 ///
 /// What is reachable without a decoder is the zone's own two decisions,
@@ -34,6 +36,7 @@ void main() {
               rangeEditable: rangeEditable,
               onRangeChanged: (_, _) {},
               soundPeaks: (_) async => null,
+              holdBytes: theFileItself,
               frameRate: ProjectFrameRate.fps24,
             ),
           ),

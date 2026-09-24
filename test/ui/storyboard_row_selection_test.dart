@@ -230,10 +230,32 @@ void main() {
       final session = sessionFor(projectWithTwoCuts());
       final secondLayerId = addSecondDrawingLayer(session);
       session.selectLayer(secondLayerId);
-      // Leave, then UNDO the add from the other cut: the memory now holds
-      // an id cut A no longer has — the case no cleanup pass guards.
+      // Leave, then take the row out of cut A while standing elsewhere: the
+      // memory now holds an id cut A no longer has — the case no cleanup
+      // pass guards. ↩️It was an UNDO from the other cut; an undo walks to
+      // its edit's cut first now (I-41), so the state is made directly.
       session.selectCut(const CutId('cut-b'));
-      session.undo();
+      session.repository.updateProject(
+        (project) => project.copyWith(
+          tracks: [
+            for (final track in project.tracks)
+              track.copyWith(
+                cuts: [
+                  for (final cut in track.cuts)
+                    if (cut.id == const CutId('cut-a'))
+                      cut.copyWith(
+                        layers: [
+                          for (final layer in cut.layers)
+                            if (layer.id != secondLayerId) layer,
+                        ],
+                      )
+                    else
+                      cut,
+                ],
+              ),
+          ],
+        ),
+      );
 
       session.selectCut(const CutId('cut-a'));
 

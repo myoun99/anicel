@@ -341,7 +341,7 @@ class TvppImportDoor {
     // whole TVPaint project holds every cel it builds.
     MemoryBlackBox.begin('tvpp-import');
 
-    _playbackRig.playback.stop();
+    _playbackRig.letGoOfTheProject();
     // The .tvpp becomes the WHOLE project, so its shooting frame does
     // too — fitting a 960×430 layout camera into our 16:9 default framed
     // wider than TVPaint did (288, hands-on).

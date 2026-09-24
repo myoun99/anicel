@@ -2,12 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/app_input_settings.dart' show AppInput;
-
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
 import 'axis_turn.dart';
-import '../widgets/axis_gesture_detector.dart';
+import '../widgets/owning_axis_grip.dart';
 
 /// The timeline end-line drag's session hooks (UI-R18 #14): the red
 /// cut-end boundary line grows a grip that end-trims the ACTIVE cut —
@@ -193,18 +191,19 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
-      child: AxisGestureDetector(
+      // 🚨THE THIRD GRIP OF ONE LAW (F-163 재발, 유저 2026-09-23: 「버튼은
+      // 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). ↩️A plain
+      // one-axis drag, so a pull across it walked over to the scroller, and
+      // it took no finger while touch scrolls the timeline (UI-R22F) — the
+      // comma grips' two faults exactly, fixed the way they were.
+      child: OwningAxisGrip(
         axis: widget.axis,
-        behavior: HitTestBehavior.opaque,
-        // Drag-only grip: touch follows the timeline input policy
-        // (UI-R22F — when touch scrolls the timeline, a finger pan
-        // starting on the end grip must scroll too, not trim).
-        supportedDevices: AppInput.timelineEditPanDevices,
-        dragStartBehavior: DragStartBehavior.down,
-        onDragStart: (_) => _start(),
-        onDragUpdate: (details) => _update(details.primaryDelta!),
-        onDragEnd: (_) => _end(),
-        onDragCancel: _cancel,
+        configure: (recognizer) => recognizer
+          ..dragStartBehavior = DragStartBehavior.down
+          ..onStart = ((_) => _start())
+          ..onUpdate = ((details) => _update(details.primaryDelta!))
+          ..onEnd = ((_) => _end())
+          ..onCancel = _cancel,
       ),
     );
 

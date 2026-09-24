@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**WHAT THE START TOOK IS GIVEN BACK ON ALL THREE ARMS — LANDING,
 /// OVERTAKING, REFUSAL — AND THE PLACE THAT GIVES IT BACK IS STRUCTURAL.**
@@ -56,8 +55,7 @@ void main() {
 
   test('🚨★★★래스터를 만든 것은 finally 에서 돌려준다 — 착지 팔에서만 놓는 자리 0', () {
     final found = <String>[];
-    for (final entry in Directory('lib/src').listSync(recursive: true)) {
-      if (entry is! File || !entry.path.endsWith('.dart')) continue;
+    for (final entry in dartFilesUnder('lib/src')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src'));
       final lines = entry.readAsLinesSync();

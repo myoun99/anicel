@@ -7,6 +7,7 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_wav_export.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**WHAT COMPRESSION TOOK AWAY, HANDED BACK ON DEMAND.**
 ///
@@ -24,13 +25,7 @@ void main() {
     directory = Directory.systemTemp.createTempSync('anicel-wav-export-');
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   bool engineHere() {
     final compressor = QaCelCompressor.instance;

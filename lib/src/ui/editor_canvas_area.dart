@@ -15,6 +15,7 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
+import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
@@ -26,6 +27,9 @@ import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
+import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import 'sliced_value_listenable_builder.dart';
+import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/bitmap_surface_painter.dart';
@@ -42,6 +46,7 @@ import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'debug/input_inspector.dart';
+import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
@@ -79,6 +84,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.navigationRegionKey,
     this.canvasSelectionCommands,
     this.cutPieceSlot,
+    this.lastStroke,
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
@@ -122,6 +128,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// Where a finished cut lands — owned by the workspace so the piece
   /// outlives every project the canvas shows.
   final CutPieceSlot? cutPieceSlot;
+
+  /// The last drawing action, which this canvas records and 확정 lays down
+  /// again — shell-owned for the same reason as [cutPieceSlot].
+  final LastStrokeSlot? lastStroke;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -423,13 +433,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             // TERRITORY edge: a drag that started inside the cut crosses
             // the boundary mid-gesture, and the parking alone is per-move
             // quiet — the out↔in flips arrive through
-            // [EditorSessionManager.scrubOutOfTerritory]. Two rebuilds per
+            // `session.frameScrub.outOfTerritory`. Two rebuilds per
             // gesture, at most two more per territory transition; the
             // crossed frames come through the retarget scope, not here.
             return ListenableBuilder(
               listenable: Listenable.merge([
-                session.frameScrubActive,
-                session.scrubOutOfTerritory,
+                session.frameScrub.active,
+                session.frameScrub.outOfTerritory,
               ]),
               builder: (context, _) {
                 return _FrameRetargetScope(
@@ -635,10 +645,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  bool _pressNeedsCel(BrushToolState toolState, EditorSessionManager session) {
-    if (!canvasToolMarksCel(toolState.tool)) {
+  bool _pressNeedsCel(CanvasTool tool, EditorSessionManager session) {
+    if (!canvasToolMarksCel(tool)) {
       return false;
     }
+    return _strokeNeedsCel(session);
+  }
+
+  /// A STROKE with no cel under it: make the block if the toggle and the row
+  /// allow it, otherwise say why at the cursor.
+  ///
+  /// The press asks this once its tool turned out to mark. 확정's 재입력
+  /// asks it directly — it IS a stroke, whichever tool is up, so the door
+  /// it takes on an empty cell is the stroke's (confirm-button).
+  bool _strokeNeedsCel(EditorSessionManager session) {
     if (session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }
@@ -884,7 +904,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     EditorSessionManager session,
     CanvasViewport viewport,
     CanvasSize canvasSize,
-    BrushToolState toolState,
+    CanvasTool tool,
     BuildContext context,
   ) {
     return Positioned.fill(
@@ -897,9 +917,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             guides: _liveGuides ?? session.cutVerbs.activeCutGuides,
             viewport: viewport,
             canvasSize: canvasSize,
-            emphasized: toolState.tool == CanvasTool.guide,
+            emphasized: tool == CanvasTool.guide,
             vanishingPointLabel: AppText.strings.guideVanishingPoint,
             color: Theme.of(context).colorScheme.primary,
+            face: appFaceOf(DefaultTextStyle.of(context).style),
             selectedGuideId: session.selectedGuideId,
           ),
         ),

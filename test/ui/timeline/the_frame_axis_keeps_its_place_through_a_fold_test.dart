@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/scrollable_of.dart';
 
 /// 🚨★★★**THE FRAME AXIS KEEPS ITS PLACE THROUGH A FOLD.**
 ///
@@ -63,7 +64,7 @@ void main() {
   );
 
   ScrollController controllerOf(WidgetTester tester) =>
-      tester.widget<SingleChildScrollView>(frameScroller).controller!;
+      scrollableOf(tester, frameScroller).controller!;
 
   Future<void> toggleFold(WidgetTester tester) async {
     await tester.tap(
@@ -153,7 +154,7 @@ void main() {
       const ValueKey<String>('xsheet-frame-vertical-viewport'),
     );
     ScrollController sheetController() =>
-        tester.widget<SingleChildScrollView>(sheetScroller).controller!;
+        scrollableOf(tester, sheetScroller).controller!;
     final controller = sheetController();
     controller.jumpTo(controller.position.maxScrollExtent * 0.6);
     await tester.pumpAndSettle();
@@ -184,7 +185,7 @@ void main() {
   );
 
   ScrollController storyboardController(WidgetTester tester) =>
-      tester.widget<SingleChildScrollView>(storyboardScroller).controller!;
+      scrollableOf(tester, storyboardScroller).controller!;
 
   Future<double> openStoryboardScrolledRight(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));

@@ -13,6 +13,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
 
 import 'timeline_cell_probe.dart';
 
@@ -277,6 +279,37 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_camLayer(repository).instructions, isEmpty);
+  });
+
+  // I-44: an instruction span's paper is a block's paper — it stops a seam
+  // short of the row, and the edge triangles stand on it.
+  testWidgets('I-44: the span\'s grips stand on the PAPER, a seam short of '
+      'the row', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+
+    final row = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-row-cells-inst-cam')),
+    );
+    final paper = timelineRowPaperExtent(row.height);
+    final start = tester.getRect(
+      find.byKey(
+        const ValueKey<String>('timeline-block-edge-grip-start-inst-cam-0'),
+      ),
+    );
+    expect(start.bottom, row.top + paper);
+    expect(start.height, paper / 2);
+    expect(
+      tester
+          .getRect(
+            find.byKey(
+              const ValueKey<String>('timeline-block-edge-grip-end-inst-cam-0'),
+            ),
+          )
+          .top,
+      row.top,
+    );
   });
 
   testWidgets('end grip resizes an instruction span with one undo', (

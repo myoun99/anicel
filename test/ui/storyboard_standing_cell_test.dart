@@ -18,6 +18,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart'
+    show StoryboardCutBlocksPainter;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt;
+import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+    show TimelineSelectionRing;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
@@ -151,6 +157,18 @@ void main() {
     );
     expect(outline.top, moreOrLessEquals(vRow.top));
     expect(outline.height, moreOrLessEquals(vRow.height));
+    // The CUT is the block here, so the outline wears the cut plate's own
+    // corner — read from the painter that draws the plate.
+    expect(
+      tester
+          .widget<TimelineSelectionRing>(
+            find.byKey(const ValueKey<String>('storyboard-standing-block')),
+          )
+          .borderRadius,
+      const BorderRadius.all(
+        Radius.circular(StoryboardCutBlocksPainter.plateCornerRadius),
+      ),
+    );
 
     // Step into the SECOND cut: the outline moves with the block, exactly
     // as the S row's does.
@@ -263,6 +281,22 @@ void main() {
     );
     expect(outline.top, moreOrLessEquals(rowRect.top));
     expect(outline.height, moreOrLessEquals(rowRect.height));
+    // …and it wears the SOUND's corner — the block law at this zoom, not a
+    // hand-typed 6 (유저 09-23: 「모서리랑 블록이랑 모서리가 통일」).
+    expect(cell, lessThan(12), reason: 'a zoom where the law bites');
+    expect(
+      tester
+          .widget<TimelineSelectionRing>(
+            find.byKey(const ValueKey<String>('storyboard-standing-block')),
+          )
+          .borderRadius,
+      BorderRadius.all(
+        timelineBlockCornerRadiusAt(
+          cellExtent: cell,
+          crossExtent: rowRect.height,
+        ),
+      ),
+    );
     // The ring keeps its node — the row still says where you stand — but
     // paints nothing inside a block it would only double.
     expect(

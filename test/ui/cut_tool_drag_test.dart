@@ -89,13 +89,13 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(
+              brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
                 tool: next,
                 selectShape: outline,
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
-              ),
+              )),
               selectionCommands: commands,
               cutPieceSlot: slot,
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to

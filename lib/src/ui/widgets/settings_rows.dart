@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import 'boolean_dot.dart';
 
 /// THE settings row pair — a label, a control, and the explanation as a
 /// TOOLTIP.
@@ -16,9 +17,21 @@ import '../input/control_press_claim.dart';
 /// window. Sixteen tiles used to spell the tile out by hand, and every one of
 /// them had somewhere to put a caption.
 ///
-/// [tileKey] goes on the TILE, not on the wrapper: the keys these rows carry
-/// are what tests tap and read state off (`tester.widget<SwitchListTile>`),
-/// and a key that lands on a `Tooltip` breaks that read while still finding.
+/// [tileKey] goes on the TILE, not on the wrapper: a key that lands on the
+/// `Tooltip` would still FIND the row and no longer reach it, so a tap on it
+/// would hit the tooltip.
+///
+/// ⚠️The row holds no value of its own — it is a plain `ListTile` around a
+/// [BooleanDot]. Read the value where it lives:
+///
+/// ```dart
+/// tester.widget<BooleanDot>(
+///   find.descendant(
+///     of: find.byKey(tileKey),
+///     matching: find.byType(BooleanDot),
+///   ),
+/// ).value
+/// ```
 class SettingsSwitchRow extends StatelessWidget {
   const SettingsSwitchRow({
     super.key,
@@ -27,6 +40,7 @@ class SettingsSwitchRow extends StatelessWidget {
     this.help,
     required this.value,
     required this.onChanged,
+    this.inPickOneGroup = false,
   });
 
   final Key? tileKey;
@@ -39,6 +53,9 @@ class SettingsSwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
 
+  /// See [BooleanDot.inPickOneGroup].
+  final bool inPickOneGroup;
+
   /// 🚨★★★The row CLAIMS ITS PRESS, like every other control in the app —
   /// the Preferences window scrolls, and a mouse is hardcoded to a ONE PIXEL
   /// drag threshold, so a click that wobbled here used to be handed to the
@@ -47,17 +64,26 @@ class SettingsSwitchRow extends StatelessWidget {
   /// wrapper outside one is not the thing the pointer lands on.
   @override
   Widget build(BuildContext context) {
+    final enabled = onChanged != null;
     return settingsHelpTooltip(
       help,
       ControlPressClaim(
-        onPressed: onChanged == null ? null : () => onChanged!(!value),
-        child: SwitchListTile(
+        onPressed: enabled ? () => onChanged!(!value) : null,
+        // 🚨THE SHARED BOOLEAN (guide-sym ⑥⑧: 「앞으로 이런 불리언값 바꾸는
+        // 버튼은 이걸 공통적으로 사용」): the ring, dotted when on. The row
+        // draws it and keeps the press — the whole row is the control, as
+        // it always was, and a button of its own in here would fire twice.
+        child: ListTile(
           key: tileKey,
           contentPadding: EdgeInsets.zero,
           dense: true,
+          enabled: enabled,
           title: Text(label),
-          value: value,
-          onChanged: silentChange(onChanged),
+          trailing: BooleanDot(
+            value: value,
+            inPickOneGroup: inPickOneGroup,
+            enabled: enabled,
+          ),
         ),
       ),
     );

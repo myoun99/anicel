@@ -279,11 +279,9 @@ class _ShapeFillSettings extends StatelessWidget {
           selectionCommands: selectionCommands,
         ),
         const SizedBox(height: 8),
-        SwitchListTile(
-          key: const ValueKey<String>('fill-shape-anti-alias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brAntiAlias),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-shape-anti-alias-switch'),
+          label: AppText.strings.brAntiAlias,
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
@@ -405,7 +403,10 @@ class _CutStampSettings extends StatelessWidget {
           tool: 'cut-stamp',
           children: [
             Text(
-              'Holding ${piece.image.width}×${piece.image.height} px',
+              AppText.strings.toolCutHoldingTemplate
+                  .replaceAll('{width}', '${piece.image.width}')
+                  .replaceAll('{height}', '${piece.image.height}'),
+              key: const ValueKey<String>('cut-stamp-holding'),
               style: theme.textTheme.labelMedium,
             ),
             // 🪦A copy of this preview stood here in its own 88-tall box —
@@ -425,19 +426,15 @@ class _CutStampSettings extends StatelessWidget {
             // Flip is a flag applied at stamp time, never baked into the
             // held bytes: baking would destroy the original, and flipping
             // is a byte re-order that keeps the 1:1 contract intact.
-            SwitchListTile(
-              key: const ValueKey<String>('cut-flip-horizontal-switch'),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppText.strings.toolCutFlipHorizontal),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('cut-flip-horizontal-switch'),
+              label: AppText.strings.toolCutFlipHorizontal,
               value: piece.flipHorizontal,
               onChanged: (value) => holder.updatePose(flipHorizontal: value),
             ),
-            SwitchListTile(
-              key: const ValueKey<String>('cut-flip-vertical-switch'),
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text(AppText.strings.toolCutFlipVertical),
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('cut-flip-vertical-switch'),
+              label: AppText.strings.toolCutFlipVertical,
               value: piece.flipVertical,
               onChanged: (value) => holder.updatePose(flipVertical: value),
             ),
@@ -564,11 +561,9 @@ class _SelectionSettings extends StatelessWidget {
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
           ),
-          SwitchListTile(
-            key: const ValueKey<String>('selection-anti-alias-switch'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(AppText.strings.brAntiAliasEdge),
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('selection-anti-alias-switch'),
+            label: AppText.strings.brAntiAliasEdge,
             value: maskOptions.antiAlias,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(antiAlias: value)),
@@ -982,9 +977,12 @@ class _MoveSettingsState extends State<_MoveSettings> {
                   : null,
               child: Text(AppText.strings.commonReset),
             ),
+            // 적용 is 확정's transform half (confirm-button) — grey when it has
+            // nothing to do, like the rail's ↵ and the box's ✓, because all
+            // three ask the one verb.
             FilledButton(
               key: const ValueKey<String>('move-apply-button'),
-              onPressed: canEdit
+              onPressed: widget.selectionCommands?.canApplyTransform ?? false
                   ? () => widget.selectionCommands?.applyTransform()
                   : null,
               child: Text(AppText.strings.commonApply),
@@ -1001,11 +999,9 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // 유저 08-13 asked for the two letters and the polarity that goes
         // with them — AA on is the smoothing default, AA off is the
         // two-value copy.
-        SwitchListTile(
-          key: const ValueKey<String>('move-antialias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: const Text('AA'),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('move-antialias-switch'),
+          label: 'AA',
           value: options.resampleMode == ResampleMode.blend,
           onChanged: onOptions == null
               ? null
@@ -1132,11 +1128,9 @@ class _FillSettings extends StatelessWidget {
           onChanged: (value) =>
               onChanged(options.copyWith(gapClosePx: value.round())),
         ),
-        SwitchListTile(
-          key: const ValueKey<String>('fill-anti-alias-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brAntiAlias),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('fill-anti-alias-switch'),
+          label: AppText.strings.brAntiAlias,
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),

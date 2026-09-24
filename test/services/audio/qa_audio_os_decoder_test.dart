@@ -11,6 +11,7 @@ import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The OS decoder (AAC/m4a), driven for real against the platform codec
 /// stack: Media Foundation here on Windows, AudioToolbox when this suite
@@ -178,7 +179,7 @@ void main() {
   ) {
     const prefix = 4096;
     final directory = Directory.systemTemp.createTempSync('qa_range');
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}$name';
     final sink = File(path).openSync(mode: FileMode.write);
     sink.writeFromSync(

@@ -10,6 +10,7 @@ import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/export/export_audio_mix.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The export mix renderer: the same mixer that carries playback writes
 /// the WAV, and the WAV says so — exact length, exact levels, output-stage
@@ -21,7 +22,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-export-mix-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   const rate = ProjectFrameRate.integer(10);
 

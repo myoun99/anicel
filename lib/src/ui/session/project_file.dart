@@ -8,14 +8,21 @@
 // facts DOWN into it and nothing has to reach sideways for them.
 // [ProjectFileDoor] is the writer; this is the record.
 
+import 'dart:async';
 import 'dart:io';
 
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ConformCacheLayout;
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/project_media_sources.dart'
-    show ProjectConforms, projectConformSources;
+    show
+        MediaBytesAt,
+        ProjectConforms,
+        projectConformSources,
+        readableAnicelLayout,
+        storedMediaBytesFor;
 import '../../services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import '../../services/persistence/anicel_project_archive.dart'
@@ -68,12 +75,13 @@ class ProjectFile {
   /// archive layout already handed over. The browser draws a row per asset
   /// and must not parse a ZIP to do it, which is why the archive half is
   /// remembered at save/open rather than asked for here.
+  ///
+  /// ⚠️In the order every reader looks ([storedMediaBytesFor]) — the project
+  /// file first — so the size shown is the size of the bytes that are READ.
+  /// 🪦The staged copy answered first here alone.
   int? mediaStoredBytesFor(String poolPath) {
-    final staged = _staging.find(poolPath);
-    if (staged != null) {
-      return staged.storedLength;
-    }
-    return _archivedMediaBytes()[poolPath];
+    final key = normalizedMediaPath(poolPath);
+    return _archivedMediaBytes()[key] ?? _staging.find(key)?.storedLength;
   }
 
   /// Stored lengths for the media inside the project file, parsed ONCE per
@@ -104,8 +112,12 @@ class ProjectFile {
     }
     var media = const <String, int>{};
     var conform = const <String, int>{};
-    try {
-      final layout = parseAnicelZipLayoutFile(path);
+    // The layout a reader sees ([readableAnicelLayout]) — a torn tail's last
+    // committed directory included, as the bytes that are read are. None to
+    // read answers nothing rather than a wrong number; the row falls back to
+    // what it always showed.
+    final layout = readableAnicelLayout(path);
+    if (layout != null) {
       media = {
         for (final entry in _mediaEntryNames.entries)
           if (layout.entryNamed(entry.value) case final found?)
@@ -123,9 +135,6 @@ class ProjectFile {
             if (layout.entryNamed(name) case final found?)
               asset.path: found.length,
       };
-    } on Object {
-      // A torn or momentarily unreadable archive answers nothing rather
-      // than a wrong number; the row falls back to what it always showed.
     }
     _mediaStoredBytes = media;
     _conformArchivedBytes = conform;
@@ -238,8 +247,10 @@ class ProjectFile {
   ///
   /// ⚠️Cheap on purpose: a map lookup and a stat. The pool draws a row per
   /// asset and must not open the archive to do it.
-  bool projectHoldsMediaBytes(String poolPath) =>
-      _mediaEntryNames.containsKey(poolPath) || _staging.find(poolPath) != null;
+  bool projectHoldsMediaBytes(String poolPath) {
+    final key = normalizedMediaPath(poolPath);
+    return _mediaEntryNames.containsKey(key) || _staging.find(key) != null;
+  }
 
   /// Where [poolPath]'s bytes actually are RIGHT NOW — the read side of
   /// carrying. The save always knew how to stream an embedded asset
@@ -252,41 +263,114 @@ class ProjectFile {
   /// and a compaction moves every byte. The archive range carries the
   /// entry's CRC, and the conform pipeline treats a mismatch as transient
   /// — a read that raced a compaction retries against fresh offsets
-  /// rather than decoding whatever moved into the window.
-  MediaByteSource mediaByteSourceFor(String poolPath) {
-    final entryName = _mediaEntryNames[poolPath];
-    final archivePath = _projectFilePath;
-    if (entryName != null && archivePath != null) {
-      try {
-        final entry = parseAnicelZipLayoutFile(
-          archivePath,
-        ).entryNamed(entryName);
-        if (entry != null) {
-          final range = MediaArchiveBytes.ofEntry(
-            archivePath: archivePath,
-            entry: entry,
-          );
-          // 🚨A framed entry is decoded HERE and nowhere downstream. Every
-          // consumer asked for「the bytes of this asset」and must keep
-          // getting them — the block index is this layer's business, and
-          // the reader still serves a window rather than the whole file.
-          return mediaSourceDecodingFrames(range);
+  /// rather than decoding whatever moved into the window. A reader that
+  /// keeps reading takes [holdMediaBytes] instead.
+  MediaByteSource mediaByteSourceFor(String poolPath) =>
+      _whereTheBytesAre(poolPath).source;
+
+  /// Where [poolPath]'s bytes are ([storedMediaBytesFor] — the one order
+  /// the save looks in too: the archive, then the staged copy, then the
+  /// file it came from) — and how to keep the answer where it is while a
+  /// reader reads it ([holdMediaBytes]), which returns the letting go. Null
+  /// for the original: nothing in the app moves it.
+  ///
+  /// ⚠️[poolPath] is taken in the POOL's spelling ([normalizedMediaPath]):
+  /// a window hands on what the OS gave it — `C:\…` on Windows — and every
+  /// key here (entry names, staged copies, holds) is the pool's. 🪦Asked
+  /// with the OS spelling, a carried file missed its entry and read its
+  /// original, and a staged copy was held under a key the save's
+  /// retirement never asked about (audit 2026-09-24).
+  ({MediaByteSource source, void Function() Function()? hold})
+  _whereTheBytesAre(String poolPath) {
+    final key = normalizedMediaPath(poolPath);
+    final entryName = _mediaEntryNames[key];
+    final (:stored, :at) = storedMediaBytesFor(
+      key,
+      // Parsed only for an asset the project carries — the pool asks per
+      // row, and an outside reference has nothing in there to find.
+      layout: entryName == null ? null : readableAnicelLayout(_projectFilePath),
+      archivePath: _projectFilePath,
+      entryName: entryName,
+      staging: _staging,
+    );
+    return (
+      // 🚨A framed entry is decoded HERE and nowhere downstream. Every
+      // consumer asked for「the bytes of this asset」and must keep getting
+      // them — the block index is this layer's business, and the reader
+      // still serves a window rather than the whole file.
+      source: mediaSourceDecodingFrames(stored),
+      hold: switch (at) {
+        MediaBytesAt.archive => () => _holdEntry(entryName!),
+        MediaBytesAt.staged => () => _staging.hold(key),
+        MediaBytesAt.original => null,
+      },
+    );
+  }
+
+  /// Entries a reader holds by OFFSET right now ([holdMediaBytes]), and
+  /// how many hold each.
+  final Map<String, int> _heldEntries = {};
+
+  /// The archive entries [holdMediaBytes] has handed out and not had back —
+  /// what a save that packs the file in place must leave where it is.
+  Set<String> get heldArchiveEntries => {..._heldEntries.keys};
+
+  /// [poolPath]'s bytes — the answer [mediaByteSourceFor] gives — HELD until
+  /// `release`: while held, no save moves or removes them.
+  ///
+  /// 🚨★★★**FOR A READER THAT KEEPS READING** — a document the viewer holds
+  /// open: a movie the OS decoder reads by offset frame after frame, a PDF
+  /// read a page at a time. [mediaByteSourceFor] is resolved per call and
+  /// held by no one; a document is held by definition. Two steps of a save
+  /// would pull bytes from under it, and each answer is kept from its own:
+  ///  * an archive entry from the IN-PLACE push-down (since 2026-09-23 live
+  ///    bytes slide down, and the next round writes over where they were —
+  ///    where a save used to write a new file beside the old one, which an
+  ///    open reader went on reading untouched) — [heldArchiveEntries];
+  ///  * a staged copy from the retirement that follows its absorption —
+  ///    [MediaStagingStore.hold].
+  /// The original is the user's file, and nothing here moves it.
+  ///
+  /// ⚠️Waits out a save already running: it may be moving these very bytes,
+  /// and a range read off the directory it is about to supersede would be
+  /// the stale offset this exists to prevent.
+  ///
+  /// `release` is idempotent — call it once the reader has CLOSED, not
+  /// when it decides to.
+  Future<HeldMediaBytes> holdMediaBytes(String poolPath) async {
+    // The wait and the hold in ONE step — see [saveSettled]: a save that
+    // woke on the same completion must not begin between them, or it moves
+    // what this is about to hold without having counted it.
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+    final (:source, :hold) = _whereTheBytesAre(poolPath);
+    final letGo = hold?.call();
+    var released = false;
+    return (
+      source: source,
+      release: () {
+        if (released) {
+          return;
         }
-      } on Object {
-        // A torn or momentarily unreadable archive: the file fallback
-        // below still answers for assets whose original survives, and the
-        // conform store's transient handling covers the rest.
+        released = true;
+        letGo?.call();
+      },
+    );
+  }
+
+  /// Keeps archive entry [name] where it is until the answer is called —
+  /// what [heldArchiveEntries] reports to a save that packs in place.
+  void Function() _holdEntry(String name) {
+    _heldEntries.update(name, (count) => count + 1, ifAbsent: () => 1);
+    return () {
+      final left = _heldEntries[name]! - 1;
+      if (left == 0) {
+        _heldEntries.remove(name);
+      } else {
+        _heldEntries[name] = left;
       }
-    }
-    // ⚠️Not in the archive yet — but 품기 may have staged it, and after an
-    // import that is the only place its bytes are.
-    final staged = _staging.find(poolPath);
-    if (staged != null) {
-      // Through [mediaAppFileSource] rather than assembling the pair here:
-      // framed-or-not is written into the name, and one place reads it.
-      return mediaAppFileSource(staged.path);
-    }
-    return MediaFileBytes(poolPath);
+    };
   }
 
   /// Resolved per call rather than cached: the cache root is a live
@@ -431,12 +515,55 @@ class ProjectFile {
   /// instead of racing it. Read through [autosaveShouldStandDown].
   bool _saveInFlight = false;
 
-  /// Raised for the WHOLE save, retirement included — see
-  /// [ProjectFileDoor.saveProjectToFile], which is the only caller and
-  /// says why the window has to be that wide.
-  void beginSave() => _saveInFlight = true;
+  /// Completes when the save in flight ends — what [saveSettled] waits on.
+  Completer<void> _saveEnded = Completer<void>()..complete();
 
-  void endSave() => _saveInFlight = false;
+  /// Waits out a save in flight, and the next if one starts in between.
+  ///
+  /// ⚠️Only for a caller that does nothing a save could race once it is
+  /// through. One that goes on to write, or to hold what a save moves,
+  /// waits inside the same step it acts in ([beginSaveWhenSettled],
+  /// [holdMediaBytes]): two callers woken by the same save both find it
+  /// over, and an `await` between the wait and the act lets the other one
+  /// act first.
+  Future<void> saveSettled() async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+  }
+
+  /// Raised for the WHOLE save, retirement included — see
+  /// [ProjectFileDoor.saveProjectToFile], which says why the window has to
+  /// be that wide. A writer raises it through [beginSaveWhenSettled].
+  void beginSave() {
+    _saveInFlight = true;
+    _saveEnded = Completer<void>();
+  }
+
+  /// Waits out a save in flight and raises the flag for this one — IN ONE
+  /// STEP, so two writers never run at once.
+  ///
+  /// 🚨★★★**THE CLOCK STOOD DOWN FOR A PERSON, AND A PERSON DID NOT STAND
+  /// DOWN FOR THE CLOCK.** The tick skips while a save runs
+  /// ([autosaveShouldStandDown]); a press of Save during a tick's save went
+  /// straight in and started a SECOND writer appending to the same file —
+  /// the torn tail the flag exists to prevent — and swapped the completer
+  /// every waiter was waiting on. A save that carries a big movie runs for
+  /// tens of seconds, which is plenty of time to press it (audit
+  /// 2026-09-24, card `carried-bytes-audit-0924` ⑤).
+  Future<void> beginSaveWhenSettled() async {
+    while (_saveInFlight) {
+      await _saveEnded.future;
+    }
+    beginSave();
+  }
+
+  void endSave() {
+    _saveInFlight = false;
+    if (!_saveEnded.isCompleted) {
+      _saveEnded.complete();
+    }
+  }
 
   /// Bumped each time a save COMPLETES — the cache key for anything read
   /// out of the archive on disk ([_archivedBytes]).
@@ -498,6 +625,7 @@ class ProjectFile {
     _mediaEntryNames = entryNames;
     _projectFilePath = filePath;
     _editsInFile = cleanAsOf;
+    _forgetFailedCopy();
     _completedSaveGeneration += 1;
     invalidateConformStoredBytes();
     // A save is the session saying it is worth keeping after all; whatever
@@ -528,6 +656,7 @@ class ProjectFile {
     // to the last one must not silence this one's autosave.
     _discardedUnsavedWork = false;
     _editsInFile = unsaved ? _noFileHoldsIt : _edits;
+    _forgetFailedCopy();
   }
 
   /// This session is bound to NO file — what an imported project is until
@@ -535,5 +664,40 @@ class ProjectFile {
   void unbind() {
     _projectFilePath = null;
     _discardedUnsavedWork = false;
+    _forgetFailedCopy();
+  }
+
+  /// This binding's FAILED COPY (실패본): the file in this run's room its
+  /// saves have gone to since its project file refused one — or null.
+  ///
+  /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file, after Q2):
+  /// 「실패하면 앱컨테이너에 같은파일로 계속 증분저장?」 — ONE file, which
+  /// every later save the file will not take goes on appending to.
+  ///
+  /// ⚠️A fact about the BINDING, so the three moments a binding changes
+  /// (a save the file took, an open, an unbind) let go of it here, in one
+  /// place — the copy itself stays in the room, and on the list a backup
+  /// reads, until the run ends.
+  String? get failedCopy => _failedCopy;
+  String? _failedCopy;
+
+  /// The edit count [failedCopy] was written at.
+  int? _failedCopyEdits;
+
+  /// Whether [failedCopy] holds every edit there is — nothing new for the
+  /// clock to put in it.
+  bool get failedCopyIsCurrent =>
+      _failedCopy != null && _failedCopyEdits == _edits;
+
+  /// The work as of [asOf] edits went into [copy] rather than the project
+  /// file.
+  void keptInFailedCopy(String copy, {required int asOf}) {
+    _failedCopy = copy;
+    _failedCopyEdits = asOf;
+  }
+
+  void _forgetFailedCopy() {
+    _failedCopy = null;
+    _failedCopyEdits = null;
   }
 }

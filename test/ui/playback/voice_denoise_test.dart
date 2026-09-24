@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_voice_recording.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The RNNoise round, Dart half: the toggle's settings plumbing, the
 /// 48 kHz capture request, the armed-time snapshot, and the suppression
@@ -24,7 +25,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-denoise-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager session({int projectSampleRate = 48000}) =>
       EditorSessionManager(

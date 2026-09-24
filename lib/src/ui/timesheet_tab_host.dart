@@ -674,27 +674,25 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               brushToolState != null &&
                               widget.inkEnabled)
                             Positioned.fill(
-                              // The tool-state boundary (R18 UI-3): only this
-                              // small overlay follows the brush/eraser — the
-                              // sheet document above never rebuilds for it.
-                              child: ValueListenableBuilder<BrushToolState>(
-                                valueListenable: brushToolState,
-                                builder: (context, toolState, _) =>
-                                    TimesheetInkLayer(
-                                      key: const ValueKey<String>(
-                                        'timesheet-ink-layer',
-                                      ),
-                                      controller: inkController,
-                                      layout: layout,
-                                      pagedLayout: pagedLayout,
-                                      cutId: _documentCut!.id,
-                                      brushToolState: toolState,
-                                      historyManager: session.historyManager,
-                                      viewport: viewport,
-                                      strokeActive: _inkStrokeActive,
-                                      cacheInvalidationSink:
-                                          _cacheInvalidationSink,
-                                    ),
+                              // The tool-state boundary (R18 UI-3): the brush
+                              // reaches only this small overlay — the sheet
+                              // document above never rebuilds for it — and
+                              // since H40 ② (2026-09-24) not even the overlay
+                              // does: its windows read the brush when a
+                              // stroke starts.
+                              child: TimesheetInkLayer(
+                                key: const ValueKey<String>(
+                                  'timesheet-ink-layer',
+                                ),
+                                controller: inkController,
+                                layout: layout,
+                                pagedLayout: pagedLayout,
+                                cutId: _documentCut!.id,
+                                brushToolState: brushToolState,
+                                historyManager: session.historyManager,
+                                viewport: viewport,
+                                strokeActive: _inkStrokeActive,
+                                cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),
                         ],

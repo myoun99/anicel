@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -40,13 +41,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-drop-spot');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);
@@ -125,7 +120,7 @@ void main() {
       'dragged in from another row — pages land from the dropped cell, the '
       'block they met goes after them', (tester) async {
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+    PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
       pageSizes: const [ui.Size(8, 8), ui.Size(8, 8), ui.Size(8, 8)],
     );
     final s = session();
@@ -163,7 +158,7 @@ void main() {
   testWidgets('a single page is one cell on a row too — never a hold over '
       'the cut', (tester) async {
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async =>
+    PdfRenderService.debugOpenerOverride = (_) async =>
         FakePdfDocument(pageSizes: const [ui.Size(8, 8)]);
     final s = session();
     final row = seedBlock(s, drawingRow(s), 0, 1);
@@ -237,7 +232,7 @@ void main() {
       'only those', (tester) async {
     final pdf = FakePdfDocument(pageSizes: List.filled(4, const ui.Size(8, 8)));
     addTearDown(PdfRenderService.debugResetForTests);
-    PdfRenderService.debugOpenerOverride = (path) async => pdf;
+    PdfRenderService.debugOpenerOverride = (_) async => pdf;
     final s = session();
     final row = seedBlock(s, drawingRow(s), 0, 1);
 
@@ -282,7 +277,7 @@ void main() {
     );
     s.repository.insertLayer(cutId: cut.id, layer: image);
     final reference = drawing.copyWith(
-      mediaReference: const MediaReference(assetPath: 'take.png'),
+      mediaReference: MediaReference(assetPath: 'take.png'),
     );
 
     expect(s.acceptsPlacedFrames(drawing.id), isTrue);

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
 import 'package:anicel/src/services/persistence/media_blob_codec.dart'
     show mediaFramedEntrySuffix;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The one named answer to "where are this asset's bytes", introduced while
 /// every answer is still a file, so that the archive variant lands later as
@@ -16,13 +17,7 @@ void main() {
   late Directory temp;
 
   setUp(() => temp = Directory.systemTemp.createTempSync('qa_bytes_'));
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   test('a file source hands back exactly what is on disk', () {
     final file = File('${temp.path}/a.bin')

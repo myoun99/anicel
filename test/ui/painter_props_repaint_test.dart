@@ -30,13 +30,21 @@ CameraFramePainter _camera({double dim = 0.5, bool handles = false}) =>
       showHandles: handles,
     );
 
-TimelineBeatLinesPainter _beats({double cell = 8, int fps = 24}) =>
-    TimelineBeatLinesPainter(
-      frameCellExtent: cell,
-      framesPerSecond: fps,
-      colorScheme: const ColorScheme.light(),
-      ground: const Color(0xFF202020),
-    );
+TimelineGridSheetPainter _sheet({
+  double cell = 8,
+  int fps = 24,
+  Color activeRow = const Color(0xFF303030),
+}) => TimelineGridSheetPainter(
+  frameCellExtent: cell,
+  framesPerSecond: fps,
+  colorScheme: const ColorScheme.light(),
+  ground: const Color(0xFF202020),
+  // A FRESH list every call, as every grid build hands one over.
+  rows: TimelineGridRows([
+    (extent: 28, ground: const Color(0xFF202020)),
+    (extent: 28, ground: activeRow),
+  ]),
+);
 
 SelectionAntsPainter _ants(List<CanvasSelectionShape> shapes) =>
     SelectionAntsPainter(
@@ -57,11 +65,19 @@ void main() {
       expect(_camera(handles: true).shouldRepaint(old), isTrue);
     });
 
-    test('TimelineBeatLinesPainter', () {
-      final old = _beats();
-      expect(_beats().shouldRepaint(old), isFalse);
-      expect(_beats(cell: 9).shouldRepaint(old), isTrue);
-      expect(_beats(fps: 30).shouldRepaint(old), isTrue);
+    test('TimelineGridSheetPainter', () {
+      final old = _sheet();
+      expect(_sheet().shouldRepaint(old), isFalse);
+      expect(_sheet(cell: 9).shouldRepaint(old), isTrue);
+      expect(_sheet(fps: 30).shouldRepaint(old), isTrue);
+      // I-44: the rows are a VALUE — the grid rebuilds its area for reasons
+      // that move no ground (a row window sliding), and a list compared by
+      // identity would re-record the content-long sheet every time. A
+      // ground that did move repaints.
+      expect(
+        _sheet(activeRow: const Color(0xFF404040)).shouldRepaint(old),
+        isTrue,
+      );
     });
   });
 
@@ -78,6 +94,7 @@ void main() {
             crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
             metrics: TimelineGridMetrics.defaults,
             colorScheme: const ColorScheme.light(),
+            face: const TextStyle(),
             numberType: TimelineFrameRulerPainter.numberType,
           ),
         );

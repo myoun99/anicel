@@ -18,6 +18,7 @@ import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
 import 'property_lane_model.dart' show PropertyLaneRow;
 import 'timeline_lane_rows.dart' show timelineUnionKeyMarkerSpans;
@@ -41,7 +42,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     required this.layer,
-    required this.active,
     required this.playbackFrameCount,
     required this.geometry,
     required this.crossAxisExtent,
@@ -73,7 +73,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.substrateGeneration = '',
-    this.chromeless = false,
     this.unionLane,
   });
 
@@ -90,17 +89,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// generation can never skew from the rows on screen.
   final String substrateGeneration;
 
-  /// GROUND OFF — see [TimelineRowCellsPainter.chromeless] for the confirmed
-  /// look and for why the flag lives on the row instead of in its caller.
-  ///
-  /// The twin is [TimelineLayerControlsRow.chromeless]: the collapsed row
-  /// mounts BOTH halves of the real thing, and each half takes its ground off
-  /// the same way. That is the whole of ⑩'s root C — an overlay that owns no
-  /// drawing code cannot drift from what the panel shows.
-  final bool chromeless;
-
   final Layer layer;
-  final bool active;
   final int playbackFrameCount;
 
   /// The LIVE frame-axis geometry — the part a ZOOM STEP moves (R28 #4).
@@ -195,7 +184,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final void Function(LayerId layerId, int frameIndex, String path)?
   onHoverMediaAssetOnLayer;
 
-  /// The file left this row without being let go.
+  /// The file is off this row: it left, or it was let go.
   final VoidCallback? onLeaveMediaAssetOnLayer;
 
   /// The cells this row would GAIN if the file now being dragged were let
@@ -327,7 +316,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
       gripIdScope: layer.id.value,
       layer: layer,
       baseLayer: baseLayer,
-      crossAxisExtent: crossAxisExtent,
+      // I-44: the chrome stands on the block's PAPER — the row short of its
+      // seam — so the edge triangles sit in the paper's own corners.
+      crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
       axis: axis,
       includeRunEdges: wantsRunEdges,
     );
@@ -378,7 +369,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
           startIndex: span.startIndex,
           endIndexExclusive: span.endIndexExclusive,
         ),
-        child: const CustomPaint(painter: TimelineSilhouettePainter()),
+        child: CustomPaint(
+          painter: TimelineSilhouettePainter(
+            frames: span.endIndexExclusive - span.startIndex,
+            axis: axis,
+          ),
+        ),
       ),
     ]);
   }
@@ -528,6 +524,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       resolveFrameCellExtent: () => geometry.value.frameCellExtent,
       commaDrag: drag,
       axis: axis,
+      crossAxisExtent: crossAxisExtent,
     );
   }
 
@@ -542,17 +539,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
     context: context,
     keyPrefix: keyPrefix,
     layer: layer,
-    active: active,
     geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
     substrateGeneration: substrateGeneration,
-    chromeless: chromeless,
-    // D32/D38: the interior seam law's beat strengths.
-    framesPerSecond: projectFrameRate.countingBase,
-    foregroundPainter: _runLabelsPainter(),
+    foregroundPainter: _runLabelsPainter(context),
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -584,7 +577,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// 글자는 행 단위 오버레이가 그린다), **블록 길이와는 상관이 없다.** 한 술어가
   /// 두 질문에 답하고 있었다. ⇒ 이제 조건은 「블록을 가졌나」 하나다. 그게
   /// `LayerKind.holdsDrawings` 이고 se 는 거기서 true 다.
-  CustomPainter? _runLabelsPainter() {
+  CustomPainter? _runLabelsPainter(BuildContext context) {
     if (!layer.kind.holdsDrawings) return null;
     return TimelineRowRunLabelsPainter(
       layer: layer,
@@ -592,6 +585,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
       crossAxisExtent: crossAxisExtent,
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
+      // The block's own print, face and all: a painter that set its type
+      // from scratch drew the koma in the OS's font beside a name in the
+      // app's (「앱은 한 글꼴」, 08-28).
+      baseTextStyle: DefaultTextStyle.of(context).style,
       axis: axis,
     );
   }
@@ -786,7 +783,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
   /// with what a release does.
   final void Function(LayerId layerId, int frameIndex, String path)? onHoverAt;
 
-  /// It left without being let go.
+  /// It left, or it was let go.
   final VoidCallback? onLeave;
 
   /// The frame this target's span starts at — the row's first visible frame

@@ -15,6 +15,7 @@ import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**THE SPILL MUST NOT LEAVE FILES BEHIND.** The cold tier exists so
 /// an over-budget undo entry MOVES instead of dying; a room that grows for
@@ -106,7 +107,7 @@ void main() {
     // the bytes have already been written to the neighbour by then.
     final path = '${room.path}/refused-write.undo';
     Directory(path).createSync(recursive: true);
-    addTearDown(() => Directory(path).deleteSync(recursive: true));
+    deleteAfterSessionEnds(Directory(path));
 
     expect(ScratchFile.write(path, Uint8List(64)), isNull);
 

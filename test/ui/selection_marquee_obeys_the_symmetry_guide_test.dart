@@ -59,9 +59,9 @@ void main() {
             canvasSize: canvasSize,
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.select,
-            ),
+            )),
             selectionCommands: commands,
             guides: guides,
             // One screen pixel is one canvas pixel, so the drag numbers

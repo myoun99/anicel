@@ -46,7 +46,6 @@ void main() {
         height: 200,
         child: TimelineFrameRowsScrollBody(
           rows: [TimelineDisplayRow.layer(cameraLayer, layerIndex: 0)],
-          activeLayerId: null,
           playbackFrameCount: 24,
           frameStartIndex: 0,
           frameEndIndexExclusive: 24,

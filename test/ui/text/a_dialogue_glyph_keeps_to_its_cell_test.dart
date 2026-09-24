@@ -92,6 +92,34 @@ Future<List<Rect>> _paintedGlyphs(
   return canvas.boxes;
 }
 
+/// A narrowed glyph lies INSIDE its cell and fills it to within one step of
+/// the shared rule's quantisation — `wordCondensation` narrows DOWN to the
+/// nearest 1/64, so the baked tile and the classic pass narrow alike (B,
+/// 2026-09-24), and a glyph of [natural] extent can fall short of its cell
+/// by at most [natural] / 64.
+void _expectFillsCell(
+  ({double start, double end}) painted,
+  ({double start, double end}) cell, {
+  required double natural,
+  required String reason,
+}) {
+  expect(
+    painted.start,
+    greaterThanOrEqualTo(cell.start - 1e-6),
+    reason: '$reason: starts inside its cell',
+  );
+  expect(
+    painted.end,
+    lessThanOrEqualTo(cell.end + 1e-6),
+    reason: '$reason: ends inside its cell',
+  );
+  expect(
+    painted.end - painted.start,
+    greaterThanOrEqualTo(cell.end - cell.start - natural / 64 - 1e-6),
+    reason: '$reason: fills its cell',
+  );
+}
+
 void main() {
   // Eight glyphs, each of them standing in a column.
   const dialogue = 'せりふのテキスト';
@@ -120,15 +148,11 @@ void main() {
         greaterThan(3),
         reason: 'fixture: glyph $i is wider than its cell',
       );
-      expect(
-        boxes[i].left,
-        moreOrLessEquals(3.0 * i, epsilon: 1e-6),
-        reason: 'glyph $i starts where its cell does',
-      );
-      expect(
-        boxes[i].right,
-        moreOrLessEquals(3.0 * (i + 1), epsilon: 1e-6),
-        reason: 'glyph $i ends where its cell does',
+      _expectFillsCell(
+        (start: boxes[i].left, end: boxes[i].right),
+        (start: 3.0 * i, end: 3.0 * (i + 1)),
+        natural: natural[i].width,
+        reason: 'glyph $i',
       );
       expect(
         boxes[i].height,
@@ -199,15 +223,11 @@ void main() {
         greaterThan(3),
         reason: 'fixture: glyph $i is taller than its cell',
       );
-      expect(
-        boxes[i].top,
-        moreOrLessEquals(3.0 * i, epsilon: 1e-6),
-        reason: 'glyph $i starts where its cell does',
-      );
-      expect(
-        boxes[i].bottom,
-        moreOrLessEquals(3.0 * (i + 1), epsilon: 1e-6),
-        reason: 'glyph $i ends where its cell does',
+      _expectFillsCell(
+        (start: boxes[i].top, end: boxes[i].bottom),
+        (start: 3.0 * i, end: 3.0 * (i + 1)),
+        natural: natural[i].height,
+        reason: 'glyph $i',
       );
       expect(
         boxes[i].width,
@@ -242,15 +262,11 @@ void main() {
       greaterThan(3),
       reason: 'fixture: the bar is longer than its cell',
     );
-    expect(
-      boxes[1].top,
-      moreOrLessEquals(3, epsilon: 1e-6),
-      reason: 'the bar starts where its cell does',
-    );
-    expect(
-      boxes[1].bottom,
-      moreOrLessEquals(6, epsilon: 1e-6),
-      reason: 'the bar ends where its cell does',
+    _expectFillsCell(
+      (start: boxes[1].top, end: boxes[1].bottom),
+      (start: 3, end: 6),
+      natural: natural[1].height,
+      reason: 'the bar',
     );
     expect(
       boxes[1].width,

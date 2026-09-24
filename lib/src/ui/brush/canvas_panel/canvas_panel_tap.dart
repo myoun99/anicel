@@ -176,7 +176,7 @@ class _CanvasPanelTap {
     // A pick writes no pixels, so
     // there is no stray-edit hazard
     // to guard against here.
-    if (_state.widget.brushToolState.tool != CanvasTool.eyedropper &&
+    if (_state._brush.tool != CanvasTool.eyedropper &&
         event.buttons != kPrimaryButton) {
       return;
     }
@@ -220,7 +220,7 @@ class _CanvasPanelTap {
     if (!_state.widget.toolInputEnabled) {
       return null;
     }
-    switch (_state.widget.brushToolState.tool) {
+    switch (_state._brush.tool) {
       case CanvasTool.brush:
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
@@ -253,7 +253,7 @@ class _CanvasPanelTap {
             buildCutStampDab(
               piece: piece,
               center: point,
-              opacity: _state.widget.brushToolState.cutStampOpacity,
+              opacity: _state._brush.cutStampOpacity,
             ),
           ]);
           // A press is also the start of a possible drag, and the drag
@@ -352,7 +352,7 @@ class _CanvasPanelTap {
   }
 
   void dragStampTo(CanvasPoint point) {
-    if (!canvasToolStamps(_state.widget.brushToolState.tool)) {
+    if (!canvasToolStamps(_state._brush.tool)) {
       return;
     }
     final piece = _state.widget.cutPieceSlot?.piece;
@@ -369,7 +369,7 @@ class _CanvasPanelTap {
         buildCutStampDab(
           piece: piece,
           center: center,
-          opacity: _state.widget.brushToolState.cutStampOpacity,
+          opacity: _state._brush.cutStampOpacity,
         ),
       ]);
     }

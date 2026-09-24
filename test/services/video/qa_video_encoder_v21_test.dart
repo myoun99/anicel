@@ -6,6 +6,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// ABI v21: the container/codec surface. Real-binary-or-skip, like every
 /// native suite; the assertions stay machine-honest (an HEVC MFT may or
@@ -65,7 +66,7 @@ void main() {
     expect(encoder.probe(container: 0, codec: 4), isFalse);
 
     final temp = Directory.systemTemp.createTempSync('qa-v21');
-    addTearDown(() => temp.deleteSync(recursive: true));
+    deleteAfterSessionEnds(temp);
     final opened = encoder.open(
       path: '${temp.path}${Platform.pathSeparator}refused.mov',
       width: 64,
@@ -86,13 +87,7 @@ void main() {
     }
     final probed = encoder.probe(container: 0, codec: 1);
     final temp = Directory.systemTemp.createTempSync('qa-v21-hevc');
-    addTearDown(() {
-      try {
-        temp.deleteSync(recursive: true);
-      } on Object {
-        // A straggling encoder handle on Windows can hold the file a beat.
-      }
-    });
+    deleteAfterSessionEnds(temp);
     final path = '${temp.path}${Platform.pathSeparator}probe.mp4';
     // Hardware HEVC MFTs refuse TINY frames (the H.264 sibling refuses
     // 32×32 — the known gotcha) — probe agreement is pinned at a

@@ -37,20 +37,24 @@ class CutUnderPlayhead {
     required SelectionAccess selection,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueListenable<bool> scrubbing,
     required PlaybackRig playbackRig,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _scrubbing = scrubbing,
        _playbackRig = playbackRig;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+
+  /// [FrameScrub.active] — the one thing this read from `SessionInternals`,
+  /// so it takes that and nothing else.
+  final ValueListenable<bool> _scrubbing;
+
   final PlaybackRig _playbackRig;
 
   final ValueNotifier<CutId?> _cutId = ValueNotifier<CutId?>(null);
@@ -110,7 +114,7 @@ class CutUnderPlayhead {
   /// parking means there is no cut here (a gap, or the V-row eye's hidden
   /// picture).
   int? get liveParkedFrame =>
-      _internals.frameScrubActive.value ? _selection.gapGlobalFrame : null;
+      _scrubbing.value ? _selection.gapGlobalFrame : null;
 
   /// The cut the active track shows at [globalFrame]; null over a gap.
   CutUnderPlayheadPosition? atTrackFrame(int globalFrame) {

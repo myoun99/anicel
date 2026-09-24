@@ -6,7 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import '../../helpers/app_icon_button_probe.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// What the guide LIBRARY list decides — the panel was 7% executed before
 /// this file (the audit's coverage pass, 2026-09-08), so every law below
@@ -172,8 +172,8 @@ void main() {
         .icon!;
 
     testWidgets('🚨ON wears a DOT INSIDE the ring and OFF the bare ring — '
-        '유저 2026-09-10: 「적용/미적용 동그란 버튼에 적용 시 안에 동그라미'
-        '(환경설정▸입력▸태블릿서비스 버튼처럼)」, and that button is a radio', (
+        '유저 2026-08-31: 「적용시 안에 동그라미 추가. 구체적으론 '
+        '환경설정-입력-태블릭서비스의 버튼처럼」, and that button is a radio', (
       tester,
     ) async {
       await pumpList(
@@ -197,26 +197,50 @@ void main() {
       expect(glyphOf(tester, 'p2'), Icons.radio_button_unchecked);
     });
 
+    Color? inkOf(WidgetTester tester, String id) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>('guide-acting-$id')),
+            matching: find.byType(Icon),
+          ),
+        )
+        .color;
+
+    final bothFamilies = CutGuides(
+      guides: [
+        symmetry('s1'),
+        symmetry('s2'),
+        perspective('p1'),
+        perspective('p2', snapEnabled: false),
+      ],
+      activeSymmetryId: const GuideId('s1'),
+    );
+
     testWidgets('🚨the COLOUR still carries the state too — the dot says it '
         'louder, it does not replace the app\'s selection language', (
       tester,
     ) async {
-      await pumpList(
-        tester,
-        CutGuides(
-          guides: [symmetry('s1'), symmetry('s2')],
-          activeSymmetryId: const GuideId('s1'),
-        ),
+      await pumpList(tester, bothFamilies);
+
+      expect(inkOf(tester, 's1'), AppColors.accent);
+      expect(inkOf(tester, 'p1'), AppColors.accent);
+    });
+
+    testWidgets('🚨OFF dims only in the family where one turns the other off '
+        '— 유저: 「하나만 선택하는 그룹의 버튼이면 비활성화될때 색도 '
+        '비활성화색으로 어둡게. 아니면 비활성화되도 색 변하지않고 흰색 그대로」', (
+      tester,
+    ) async {
+      await pumpList(tester, bothFamilies);
+
+      // ONE `activeSymmetryId`: an idle symmetry is idle because another
+      // acts, so it steps back.
+      expect(
+        inkOf(tester, 's2'),
+        AppColors.text.withValues(alpha: AppColors.offAlpha),
       );
-
-      bool accentedOf(String id) => tester
-          .appIconButton(
-            find.byKey(ValueKey<String>('guide-acting-$id')),
-          )
-          .isSelected;
-
-      expect(accentedOf('s1'), isTrue);
-      expect(accentedOf('s2'), isFalse);
+      // Snap is per guide, so an idle perspective is just off — white.
+      expect(inkOf(tester, 'p2'), AppColors.text);
     });
   });
 

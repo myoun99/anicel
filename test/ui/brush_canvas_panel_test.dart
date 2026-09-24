@@ -150,7 +150,7 @@ void main() {
           .widget<InteractiveBrushEditCanvasView>(
             find.byType(InteractiveBrushEditCanvasView),
           )
-          .inputSettings,
+          .inputSettings(),
       BrushEditCanvasInputSettings(size: 10),
     );
     expect(
@@ -1325,11 +1325,11 @@ void main() {
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
             floorCover: EdgeInsets.zero,
-            brushToolState: BrushToolState.clamped(
+            brushToolState: ValueNotifier(BrushToolState.clamped(
               color: settings.color,
               size: settings.size,
               opacity: settings.opacity,
-            ),
+            )),
           ),
         ),
       ),
@@ -1338,7 +1338,37 @@ void main() {
     final canvas = tester.widget<InteractiveBrushEditCanvasView>(
       find.byType(InteractiveBrushEditCanvasView),
     );
-    expect(canvas.inputSettings, settings);
+    expect(canvas.inputSettings(), settings);
+  });
+
+  testWidgets('the canvas reads the brush in hand, not the one it was built '
+      'with (H40 ②)', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final brush = ValueNotifier(BrushToolState.clamped(size: 8));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: BrushCanvasFixture.createCoordinator(
+              frameKeys: frameKeys,
+            ),
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            floorCover: EdgeInsets.zero,
+            brushToolState: brush,
+          ),
+        ),
+      ),
+    );
+    final canvas = tester.widget<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+
+    // No pump: a size or a colour rebuilds nothing now, so the view the
+    // panel built last has to read the brush as it is.
+    final next = BrushToolState.clamped(size: 30, color: 0xFFFF0000);
+    brush.value = next;
+    expect(canvas.inputSettings(), next.toInputSettings());
   });
 
   testWidgets('commits sampled source dabs into the brush frame store', (
@@ -1361,7 +1391,7 @@ void main() {
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
             floorCover: EdgeInsets.zero,
-            brushToolState: BrushToolState.clamped(size: 8),
+            brushToolState: ValueNotifier(BrushToolState.clamped(size: 8)),
           ),
         ),
       ),
@@ -1406,7 +1436,7 @@ void main() {
             // A canvas standing on its own IS the floor, and that is where the
             // view controls live (법: 뷰 컨트롤은 바닥에만).
             floorCover: EdgeInsets.zero,
-            brushToolState: BrushToolState.clamped(size: 8),
+            brushToolState: ValueNotifier(BrushToolState.clamped(size: 8)),
             canvasSize: BrushCanvasFixture.canvasSize,
           ),
         ),
@@ -2014,7 +2044,9 @@ void main() {
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
               floorCover: EdgeInsets.zero,
-              brushToolState: BrushToolState.clamped(size: 40, tool: tool),
+              brushToolState: ValueNotifier(
+                BrushToolState.clamped(size: 40, tool: tool),
+              ),
             ),
           ),
         ),
@@ -2121,7 +2153,7 @@ void main() {
               // A canvas standing on its own IS the floor, and that is where the
               // view controls live (법: 뷰 컨트롤은 바닥에만).
               floorCover: EdgeInsets.zero,
-              brushToolState: BrushToolState.clamped(size: 1),
+              brushToolState: ValueNotifier(BrushToolState.clamped(size: 1)),
             ),
           ),
         ),

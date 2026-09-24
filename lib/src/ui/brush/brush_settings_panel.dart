@@ -8,6 +8,7 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
+import '../widgets/boolean_dot.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
@@ -81,6 +82,12 @@ class BrushSettingsPanel extends StatefulWidget {
 /// at CALL time, and the rows keep closing over those names as they always
 /// did. ⛔A row that holds the state ITSELF as a field cannot be kept at all
 /// (tip rotation, the dual blend): it would write that snapshot back.
+///
+/// ⛔Not a repaint boundary per row (tried 2026-09-24, H40): on the real
+/// Windows app at the user's screen size it bought nothing — a pick's worst
+/// frame 29.1 ms against 21.3 without, opening the panel 68 against 38.5 —
+/// and the boundary itself moved one pixel of a segmented control's outline
+/// by 1/255. A kept row is skipped at build; the column paints as one.
 class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
   BrushToolState get state => widget.state;
   ValueChanged<BrushToolState> get onChanged => widget.onChanged;
@@ -682,10 +689,14 @@ class _PanelSwitch extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
-          Switch(
-            key: ValueKey<String>(keyValue),
+          // The app's one boolean (guide-sym ⑥⑧) — and the reason this
+          // panel can bake: Material's switch always wrapped itself in an
+          // `Opacity`, a repaint boundary the panel's bake could not cross
+          // (board `a-panel-with-a-switch-can-never-bake`).
+          BooleanDotButton(
+            keyValue: keyValue,
+            tooltip: label,
             value: value,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             onChanged: onChanged,
           ),
         ],

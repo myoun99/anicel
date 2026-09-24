@@ -209,7 +209,7 @@ class _CanvasPanelShellBars {
       onBackdropNone: _state.widget.onBackdropNone,
       // Read when a picker opens, so the memoized bar does not have to be
       // rebuilt every time the brush colour moves.
-      currentColorOf: () => _state.widget.brushToolState.color,
+      currentColorOf: () => _state._brush.color,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _state._viewportState._syncViewportParent,
       onZoomSet: _setZoomFromLabel,

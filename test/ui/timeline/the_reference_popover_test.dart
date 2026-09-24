@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory tempDir;
@@ -36,13 +37,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-reference-pop');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   /// A session with one linked reference row per file, by file name.
   Future<(EditorSessionManager, Map<String, LayerId>)> sessionWith(
@@ -385,7 +380,7 @@ void main() {
 
   test('the pool state is where the file\'s bytes live — carried or linked',
       () {
-    const linked = MediaAsset(
+    final linked = MediaAsset(
       path: 'bg.png',
       name: 'bg.png',
       kind: MediaAssetKind.image,

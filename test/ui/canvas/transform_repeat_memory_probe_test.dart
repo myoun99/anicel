@@ -154,9 +154,9 @@ void main() {
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: history,
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.select,
-            ),
+            )),
             selectionCommands: commands,
             viewport: seedFromRender(tester, CanvasViewport(zoom: renderZoom)),
             transformOptions: transformOptions,
@@ -311,7 +311,7 @@ void main() {
       );
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');
-      commands.commitTransform();
+      commands.applyTransform();
       await tester.pump();
       await settle(tester);
       expect(commands.transformActive, isFalse, reason: 'Enter closed it');

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**A TEST MUST NOT SCHEDULE ITS DATA ON A WALL CLOCK.**
 ///
@@ -53,10 +54,7 @@ void main() {
   /// obfuscated way so they do not match) hides the rule from whoever reads
   /// it next.
   Iterable<File> testFiles() sync* {
-    for (final entity in Directory('test').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('test')) {
       if (entity.path.endsWith('tests_do_not_race_the_code_test.dart')) {
         continue;
       }

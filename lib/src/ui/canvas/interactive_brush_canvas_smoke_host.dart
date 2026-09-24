@@ -105,7 +105,7 @@ class _InteractiveBrushCanvasSmokeHostState
       sessionState: _sessionState,
       layerId: widget.layerId,
       frameId: widget.frameId,
-      inputSettings: widget.inputSettings,
+      inputSettings: () => widget.inputSettings,
       showTransparentBackground: widget.showTransparentBackground,
       onSourceStrokeCommitted: widget.onSourceStrokeCommitted ?? (_) {},
     );

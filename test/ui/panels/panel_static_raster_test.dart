@@ -95,16 +95,15 @@ const _knownToPaintThrough = <String, String>{
   'panel:media-viewer-sub':
       'the same widget as panel:media-viewer, in the rail instead of the '
       'floor: an InteractiveViewer, nothing static to bake',
-  'body:Brush Settings':
-      '⛔NOT A YIELD, and not ours: **Material\'s `Switch` always contains '
-      'an `Opacity`** — `Opacity(opacity: onChanged == null ? '
-      'disabledOpacity : 1)`, switch.dart — and `RenderOpacity` is a repaint '
-      'boundary at ANY alpha above zero, 255 included. So a panel with a '
-      'switch in it can never bake, and pays its full raster price on every '
-      'frame the app produces. 🔬Named 2026-09-22 by this sweep (the '
-      'boundary path carries the widget chain now): the mixing toggle. '
-      'Leaving Material\'s switch behind is a UI decision — board '
-      '`a-panel-with-a-switch-can-never-bake`.',
+  // 🪦`body:Brush Settings` stood here from 2026-09-22 to 09-23, and it was
+  // NOT a yield: Material's `Switch` always contains an `Opacity` —
+  // `Opacity(opacity: onChanged == null ? disabledOpacity : 1)`,
+  // switch.dart — and `RenderOpacity` is a repaint boundary at ANY alpha
+  // above zero, 255 included, so the panel with the mixing toggle in it
+  // could never bake (board `a-panel-with-a-switch-can-never-bake`). It
+  // left with the switch: the app's one boolean (guide-sym ⑥⑧) dims by
+  // COLOUR. ⛔Not coming back — `one_boolean_control_test` refuses a
+  // Material switch anywhere in `lib`.
   // 🪦A second entry for this same label stood here for an hour on
   // 2026-09-22: a disabled `FieldSlider` dimmed itself with `Opacity(0.4)`,
   // which blocked the same panel for the same reason. 유저 확정 the same

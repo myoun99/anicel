@@ -274,10 +274,10 @@ void main() {
           ],
           seLayers: [
             _seLayer('se-trim', file: 'a.wav', start: 0, length: 10).copyWith(
-              audioClips: const [
+              audioClips: [
                 AudioClip(
                   filePath: 'a.wav',
-                  frameId: FrameId('se-trim-frame'),
+                  frameId: const FrameId('se-trim-frame'),
                   offsetFrames: 4,
                 ),
               ],
@@ -478,10 +478,10 @@ void main() {
           ],
           seLayers: [
             _seLayer('se-ramp', file: 'a.wav', start: 0, length: 10).copyWith(
-              audioClips: const [
+              audioClips: [
                 AudioClip(
                   filePath: 'a.wav',
-                  frameId: FrameId('se-ramp-frame'),
+                  frameId: const FrameId('se-ramp-frame'),
                   gain: 2.0,
                   fadeInFrames: 4,
                   fadeOutFrames: 5,
@@ -556,15 +556,15 @@ void main() {
           ],
           seLayers: [
             _seLayer('se-shape', file: 'a.wav', start: 0, length: 10).copyWith(
-              audioClips: const [
+              audioClips: [
                 AudioClip(
                   filePath: 'a.wav',
-                  frameId: FrameId('se-shape-frame'),
+                  frameId: const FrameId('se-shape-frame'),
                   fadeInFrames: 4,
                   fadeCurve: AudioFadeCurve.equalPower,
                   volumeKeys: [
-                    AudioVolumeKey(frame: 0, gain: 0.5),
-                    AudioVolumeKey(frame: 10, gain: 0.5),
+                    const AudioVolumeKey(frame: 0, gain: 0.5),
+                    const AudioVolumeKey(frame: 10, gain: 0.5),
                   ],
                 ),
               ],

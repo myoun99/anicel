@@ -10,6 +10,7 @@ import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The OS video encoder, driven for real (AUDIO-PRO R7). On this runner's
 /// OS the export goes through the system codec stack and produces an
@@ -36,7 +37,7 @@ void main() {
     QaVideoEncoder.instance?.abort();
     QaVideoEncoder.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
-    await directory.delete(recursive: true);
+    deleteTempQuietly(directory);
   });
 
   /// A frame whose color moves with [frame] so the encode has real motion.

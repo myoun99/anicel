@@ -54,24 +54,31 @@ class _WorkspaceRail {
     _state._layoutPersistence.scheduleLayoutSave();
   }
 
-  /// The head of the tool rail: undo, redo and the onion toggle — what a
-  /// hand reaches for BETWEEN strokes, which is the rail's whole job.
+  /// The head of the tool rail: undo, redo, the onion toggle, 선택 해제 and
+  /// 확정 — what a hand reaches for BETWEEN strokes, which is the rail's
+  /// whole job.
   ///
   /// Undo and redo keep the keys they wore in the top strip
   /// (`undo-button` / `redo-button`); they are old keys and a good number
   /// of tests hold them, so the move costs those tests nothing.
   ///
   /// Wording is borrowed from the action registry by id rather than tabled
-  /// again — these three are registry actions, and their names are already
-  /// translated for the shortcut dialog.
+  /// again — every one of them is a registry action, and their names are
+  /// already translated for the shortcut dialog.
   Widget _railHistoryControls() {
     final session = _state.widget.session;
     final selection = _state.widget.canvasSelectionCommands;
+    final confirm = _state.widget.confirm;
     return ListenableBuilder(
       listenable: Listenable.merge([
         session,
         session.historyManager,
         session.onionSkin.layerIds,
+        // 확정 answers from the tool, the selection, the transform mode and
+        // the held stroke ([ConfirmVerb.changes]) — and, through 적용, from
+        // the cel under the playhead, which the session and the history
+        // below already bring.
+        ?confirm?.changes,
         // ㉜: the deselect button's enablement is the SELECTION's news, and
         // it arrives on that object's own channel — the selection layer
         // mutates inside builds and gesture handlers, so its notify is
@@ -168,6 +175,21 @@ class _WorkspaceRail {
                     : null,
               ),
             ],
+            // 🗣️확정 (유저 2026-09-24, confirm-button-Q1): 「버튼 하나 · 아이콘
+            // 고정 · 할 게 없으면 회색」, and the glyph is Enter's ↵ — ⛔NOT a
+            // check mark. It is Enter's door, so it wears Enter's name and
+            // Enter's keys from the registry like its neighbours.
+            if (confirm != null) ...[
+              const SizedBox(height: 4),
+              RailButton(
+                keyValue: 'rail-confirm-button',
+                tooltip: editorActionLabel(EditorActionIds.confirm),
+                shortcuts: const [EditorActionIds.confirm],
+                icon: Icons.keyboard_return,
+                selected: false,
+                onPressed: confirm.canConfirm ? confirm.confirm : null,
+              ),
+            ],
           ],
         );
       },
@@ -193,7 +215,8 @@ class _WorkspaceRail {
   }
 
   void _toggleAttachGroup(LayerId baseId) {
-    final next = Set<LayerId>.of(_state._collapsedAttachBaseIds.value);
+    final folded = _state.widget.session.railView.collapsedAttachBaseIds;
+    final next = Set<LayerId>.of(folded.value);
     if (!next.remove(baseId)) {
       next.add(baseId);
       // FOLDING while one of the group's attach rows is active (UI-R24
@@ -204,9 +227,12 @@ class _WorkspaceRail {
       // ↩️Through the session's fold law since F-81, which asks what the
       // group holds — the organizer folder and a nested one too — instead
       // of 「is the active row an attach row of this base」.
+      //
+      // ↩️F-169: that rule is gone (nothing stands inside a shut group), so
+      // this hand-off is what keeps the fold from shutting over you.
       _state.widget.session.handOffCurrentRowOnAttachFold(baseId);
     }
-    _state._collapsedAttachBaseIds.value = next;
+    folded.value = next;
   }
 
   /// Putting a panel somewhere OPENS that somewhere.

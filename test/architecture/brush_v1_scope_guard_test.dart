@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 void main() {
   group('Brush V1 scope guard', () {
@@ -10,7 +11,7 @@ void main() {
         isNot(contains('BrushCanvasSmokeScreen')),
       );
 
-      for (final file in _productionDartFiles()) {
+      for (final file in dartFilesUnder('lib')) {
         final path = file.path.replaceAll('\\', '/');
         if (path == 'lib/src/ui/canvas/brush_canvas_smoke_screen.dart') {
           continue;
@@ -68,17 +69,6 @@ void main() {
 String _readIfExists(String path) {
   final file = File(path);
   return file.existsSync() ? file.readAsStringSync() : '';
-}
-
-Iterable<File> _productionDartFiles() {
-  final lib = Directory('lib');
-  if (!lib.existsSync()) {
-    return const <File>[];
-  }
-  return lib
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((file) => file.path.endsWith('.dart'));
 }
 
 bool _isBrushSmokeImplementation(String path) {

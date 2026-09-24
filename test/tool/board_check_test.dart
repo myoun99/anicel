@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_check.dart';
 import '../../tool/board_model.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★THE GATE, DRIVEN AS A FUNCTION.
 ///
@@ -21,7 +22,7 @@ void main() {
   late Directory dir;
 
   setUp(() => dir = Directory.systemTemp.createTempSync('board-check'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   /// ⚠️Stamped from the REAL clock, minutes ago — never a fixed date. A fixed
   /// one has to clear the gate's history cutoff, which pushed these fixtures

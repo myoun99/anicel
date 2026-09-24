@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
@@ -36,7 +37,8 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   /// The windows to mount — already gated.
   final List<SheetInkWindow> windows;
 
-  final BrushToolState brushToolState;
+  /// Forwarded to [SheetInkLayer.brushToolState] — heard, not handed over.
+  final ValueListenable<BrushToolState> brushToolState;
   final HistoryManager historyManager;
 
   /// The live panel viewport — the same transform the painter applies.

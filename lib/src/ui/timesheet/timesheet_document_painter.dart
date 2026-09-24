@@ -9,6 +9,7 @@ import '../../models/cut_id.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
@@ -433,11 +434,10 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   }) : accent = AppColors.accent,
        super(repaint: dragPreview);
 
-  /// Device pixels per LOGICAL pixel — monitor ratio × UI scale.
-  ///
-  /// Only [_textZoomThreshold] uses it, and only because that threshold is
-  /// a legibility question and therefore a device-pixel one. Defaulting to
-  /// 1.0 keeps every focused test and the PSD export path unchanged.
+  /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
+  /// viewport transform lands the paper on the device grid with it.
+  /// Defaulting to 1.0 keeps every focused test and the PSD export path
+  /// unchanged.
   final double effectiveRatio;
 
   /// The accent at the moment this painter was BUILT.
@@ -555,23 +555,15 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   static const Color _gridMedium = Color(0xFFA9A296);
   static const Color _gridBold = Color(0xFF6E6759);
 
-  /// Below this many DEVICE pixels per document pixel the per-cell texts
-  /// stop painting (paper overview).
-  ///
-  /// 🚨Compared against `zoom × effectiveRatio`, NOT against the render
-  /// zoom alone. The timesheet is a document view, so R11 excludes it from
-  /// the UI scale by DIVIDING its render zoom when the scale goes up —
-  /// which meant a raw comparison moved the cutoff with the chrome:
-  /// raising the interface to 150% held the sheet at exactly the same
-  /// physical size and made every cell text vanish, with the readout still
-  /// saying 45%. On a 2× tablet at 150% the cutoff sat at a readout of
-  /// 105%, i.e. textless at every zoom anyone works at.
-  ///
-  /// ⚠️This also moves the cutoff on high-DPR displays (render 0.175 on a
-  /// 2× screen). That is the physically correct reading — the question is
-  /// whether the glyphs are legible, which is a device-pixel question —
-  /// and it is what the canvas layer stack already does.
-  static const double _textZoomThreshold = 0.35;
+  // ↩️THE WRITING NEVER DROPS OUT (tiny-glyphs-shrink-not-vanish). Below
+  // 35% device zoom every header, memo and cell text used to stop painting
+  // — a cutoff the sheet's first commit put in 「for overview panning」
+  // (f3dd6f6f, 2026-07-07) with no user behind it, against the user's own
+  // rule for the sheet's glyphs: 「엄청 작아지는 한이 있어도 절대 안
+  // 사라지도록」 (timeline_cell_style.dart). Measured before it went
+  // (2026-09-23, 144 frames × 5 rows, debug): 1.5 → 5.2 ms a paint at an
+  // overview zoom — well inside a frame. The type now shrinks with the
+  // paper at every zoom, as the timeline's does.
 
   /// Turns the culling off, so a test can prove it changes no pixel.
   ///
@@ -610,15 +602,12 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
                   size.width / resolvedViewport.zoom,
                   size.height / resolvedViewport.zoom,
                 ));
-    // DEVICE pixels per document pixel — see [_textZoomThreshold].
-    final drawTexts =
-        (resolvedViewport?.zoom ?? 1.0) * effectiveRatio >= _textZoomThreshold;
 
     if (layout.continuous) {
       _bands.paintPaper(canvas, 0);
-      _bands.paintHeaderBand(canvas, 0, drawTexts: drawTexts);
+      _bands.paintHeaderBand(canvas, 0);
       if (_drawContent) {
-        _bands.paintMemoBand(canvas, 0, drawTexts: drawTexts);
+        _bands.paintMemoBand(canvas, 0);
       }
       _cells.paintHalf(
         canvas,
@@ -626,7 +615,6 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
         half: 0,
         startFrame: 0,
         rowCount: document.rowCount,
-        drawTexts: drawTexts,
       );
     } else {
       // Page view prints only the page on screen (R26 #41); the stacked
@@ -640,9 +628,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
           continue;
         }
         _bands.paintPaper(canvas, page.index);
-        _bands.paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
+        _bands.paintHeaderBand(canvas, page.index);
         if (_drawContent) {
-          _bands.paintMemoBand(canvas, page.index, drawTexts: drawTexts);
+          _bands.paintMemoBand(canvas, page.index);
         }
         for (final strip in layout.halfStrips) {
           _cells.paintHalf(
@@ -653,18 +641,13 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
                 page.startFrame +
                 (strip.half == 0 ? 0 : document.halfFrameCount),
             rowCount: strip.rowCount,
-            drawTexts: drawTexts,
           );
         }
       }
     }
     if (_drawContent) {
       _bands.paintCutEndLine(canvas);
-      // A text glyph: it honors the same zoom threshold every per-cell
-      // text does (the paper-overview zoom hides the writing).
-      if (drawTexts) {
-        _se.paintSeCrossingMarks(canvas);
-      }
+      _se.paintSeCrossingMarks(canvas);
     }
 
     canvas.restore();

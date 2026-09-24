@@ -5,11 +5,19 @@ import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show celNumberOrMark;
 import '../canvas/flip_hud_model.dart';
+import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
+import 'timeline_cell_style.dart'
+    show
+        TimelineBlockWordGrowth,
+        timelineBlockWordLayout,
+        timelineBlockWordStyle;
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_grid_stack.dart';
+import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -69,10 +77,17 @@ class CollapsedRowOverlay extends StatefulWidget {
     this.railChild,
     this.frameRowBuilder,
     this.frameAxisOffset,
+    this.drawnFrameCount,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
   final Widget? railChild;
+
+  /// How many frames the cut is DRAWN for — the open grid's own number
+  /// ([TimelineFrameGridStack.drawnFrameCount]): the out-of-cut wash starts
+  /// there, past the のりしろ, not at the snapshot's cut end. Null = no
+  /// のりしろ, and the wash starts at the cut end.
+  final int? drawnFrameCount;
 
   /// Where the open grid's FRAME axis stands, in pixels at [pixelsPerFrame]
   /// — the host's own value, the one the grid keeps (F-143). The frame half
@@ -270,8 +285,8 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
   /// from frame 0 whatever the grid had been showing — `frameStartIndex: 0`
   /// was written here as a constant.
   ///
-  /// ⛔ONE ORIGIN FOR EVERYTHING IN IT. The row, the beat lines with their
-  /// cut-end shading, and the fallback strip are all laid out from the same
+  /// ⛔ONE ORIGIN FOR EVERYTHING IN IT. The row, the grid sheet under it
+  /// and the fallback strip are all laid out from the same
   /// first frame, and the one sub-cell remainder slides them together — the
   /// open grid's scroll view moves its content as one piece, and so does
   /// this. A painter handed the offset on its own is the one that drifts
@@ -306,8 +321,8 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
           snapshot: snapshot,
           row: row,
           pixelsPerFrame: cell,
-          framesPerSecond: widget.framesPerSecond,
           colorScheme: colorScheme,
+          baseTextStyle: DefaultTextStyle.of(context).style,
           frameStartIndex: first,
         ),
       );
@@ -321,47 +336,100 @@ class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
             ? first
             : first + (width / cell).ceil(),
       );
-      // 🚨THE GRID LINES, and they were never removed — this painter was
-      // simply not mounted here. Every plain per-cell border is
-      // `Colors.transparent` on purpose (`timeline_cell_style`: 「the GRID
-      // OVERLAY owns every plain per-cell line now」), so a row without this
-      // overlay has no lines at all, and chromeless mode was wrongly blamed
-      // for erasing them.
-      //
-      // 🎁The cut-end shading rides in the same painter, so mounting it
-      // brings both back at once — and the shading is information rather
-      // than chrome (유저 확정 08-10), which is why it belongs on a folded
-      // row too.
-      content = Stack(
-        fit: StackFit.expand,
-        children: [
-          build(context, _geometry),
-          IgnorePointer(
-            child: CustomPaint(
-              key: const ValueKey<String>('collapsed-beat-lines'),
-              painter: TimelineBeatLinesPainter(
-                frameCellExtent: cell,
-                framesPerSecond: widget.framesPerSecond,
-                colorScheme: colorScheme,
-                // ⛔NULL: the folded row lies over the ARTWORK at 70%, so
-                // there is no single ground to multiply against — these
-                // lines stay source-over.
-                ground: null,
-                crossCellExtent: widget.height,
-                frameStartIndex: first,
-              ),
-            ),
-          ),
-        ],
-      );
+      content = build(context, _geometry);
     }
+    // 🚨THE GRID, UNDER WHATEVER STANDS HERE — the timeline's own sheet, the
+    // one the panel draws. A row does not rule its own frames (every plain
+    // per-cell border is `Colors.transparent` on purpose — 「the GRID OVERLAY
+    // owns every plain per-cell line now」), so a row without it has none,
+    // and chromeless mode was once wrongly blamed for erasing them.
+    //
+    // ↩️It used to be laid OVER the row here, while the open panel had put
+    // it under since D32 — and the row drew its own lines as well, so this
+    // strip carried two grids. I-44 (「합친다 — 그리드 한 장」): one sheet,
+    // under the row, as in the panel. The fallback strip draws on it too; it
+    // used to walk the same boundaries with a loop of its own.
+    //
+    // ⛔NO GROUND in its law: the row lies over the ARTWORK (유저 확정
+    // 2026-08-10: 「프레임셀쪽은 바탕색은 싹 없애고 그리드선 띄우고 … 반투명」),
+    // so the lines stay the law's raw ink, no row is painted a colour, no
+    // seam is ruled — and an unworked block's paper, with nothing to be
+    // pre-blended onto, stays translucent (the cost the user took with I-44:
+    // here alone the lines show faintly through it).
+    final sheet = TimelineGridSheet(
+      key: const ValueKey<String>('collapsed-grid-sheet'),
+      frameCellExtent: cell,
+      frameStartIndex: first,
+    );
     return OverflowBox(
       alignment: Alignment.centerLeft,
       minWidth: width,
       maxWidth: width,
-      child: Transform.translate(offset: Offset(-shift, 0), child: content),
+      child: Transform.translate(
+        offset: Offset(-shift, 0),
+        child: TimelineGridLaw(
+          ground: null,
+          framesPerSecond: widget.framesPerSecond,
+          child: switch (snapshot.playbackFrameCount) {
+            // A snapshot with no cut end — the storyboard's track — has
+            // nowhere the film stops, and the open storyboard shades none.
+            null => Stack(
+              fit: StackFit.expand,
+              children: [IgnorePointer(child: sheet), content],
+            ),
+            final playback => _whereTheFilmStops(
+              sheet: sheet,
+              content: content,
+              cell: cell,
+              stops: (
+                cut: playback - first,
+                drawn: switch (widget.drawnFrameCount) {
+                  final drawn? => drawn - first,
+                  null => null,
+                },
+              ),
+            ),
+          },
+        ),
+      ),
     );
   }
+
+  /// WHERE THE FILM STOPS, stated over whatever stands here by the open
+  /// grid's own stack ([TimelineFrameGridStack]): the grid sheet under the
+  /// row, and over it the out-of-cut wash from the DRAWN end (유저
+  /// 2026-08-11), the のりしろ mark and the cut-end line — so this is the open
+  /// row seen through glass here too, and `one_cut_end_stack_test` keeps it
+  /// the ONE stack that says so.
+  ///
+  /// 🚨The 08-10 design keeps ONE ground, and it is this wash: 「the only
+  /// ground that survives is the out-of-cut shading, because that one IS the
+  /// information」. ⛔It used to be the fallback strip's alone, painted from
+  /// the cut end in a colour of its own beside a cut line of its own — and
+  /// the folded row that mounts the REAL row (every folded timeline row since
+  /// ⑩ 뿌리 C) painted neither, so the one ground the design kept was on the
+  /// one path nobody saw.
+  ///
+  /// [stops] — the cut end and the drawn end — are counted from the first
+  /// frame laid out here, which is this stack's origin: it lays every
+  /// overlay at a frame count times the cell from its own left edge.
+  Widget _whereTheFilmStops({
+    required Widget sheet,
+    required Widget content,
+    required double cell,
+    required ({int cut, int? drawn}) stops,
+  }) => TimelineFrameGridStack(
+    gridSheet: sheet,
+    rowsBody: SizedBox.expand(child: content),
+    // The cursor is the row's own layer — the real row mounts
+    // [TimelineCursorLayer], the strip paints its own — so the stack's
+    // playhead slot stands empty.
+    playheadExtent: 0,
+    playhead: const SizedBox.shrink(),
+    frameCellExtent: cell,
+    playbackFrameCount: stops.cut,
+    drawnFrameCount: stops.drawn,
+  );
 
   /// ⑩ 🚫NO HALO (유저 확정 2026-08-12): 「버튼 쪽 그림자(할로) 삭제.
   /// **흰캔버스에서 안보이든말든 신경쓰지말고 그냥 없애.** 간편 오버레이에서
@@ -427,19 +495,21 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     required this.snapshot,
     required this.row,
     required this.pixelsPerFrame,
-    required this.framesPerSecond,
     required this.colorScheme,
+    required this.baseTextStyle,
     this.frameStartIndex = 0,
   });
 
   final FlipHudSnapshot snapshot;
   final FlipHudRow row;
   final double pixelsPerFrame;
-  final int framesPerSecond;
   final ColorScheme colorScheme;
 
-  /// The frame at this painter's left edge — the beat lines' convention
-  /// ([TimelineBeatLinesPainter.frameStartIndex]), so the strip and the
+  /// The ambient text style — the app's face for the strip's words.
+  final TextStyle baseTextStyle;
+
+  /// The frame at this painter's left edge — the grid sheet's convention
+  /// ([TimelineGridSheetPainter.frameStartIndex]), so the strip and the
   /// row it stands in for share one origin (F-143).
   final int frameStartIndex;
 
@@ -464,43 +534,14 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     double x(int frame) => frame * pixelsPerFrame;
     final right = x(first) + size.width;
 
-    // 1. THE GRID — the timeline's own line system, and nothing else under
-    // it. One cadence per frame, 6f stronger, the second boundary
-    // strongest; `timelineFrameBoundaryLineInk` thins it out at small zooms
-    // rather than fading it, so this reads the same as the panel does.
-    // Position from the LAW's snap (D8) — this pass used to draw at the
-    // raw boundary, half a pixel off every other drawer.
-    for (var frame = math.max(1, first); frame < visibleFrames; frame += 1) {
-      final ink = timelineFrameBoundaryLineInk(
-        frameIndex: frame,
-        frameCellExtent: pixelsPerFrame,
-        framesPerSecond: framesPerSecond,
-        colorScheme: colorScheme,
-      );
-      if (ink == null) {
-        continue;
-      }
-      final position = timelineFrameBoundaryLinePosition(frame, pixelsPerFrame);
-      canvas.drawLine(
-        Offset(position, 0),
-        Offset(position, size.height),
-        Paint()
-          ..color = ink.color
-          ..strokeWidth = ink.strokeWidth,
-      );
-    }
+    // The grid is not this painter's: the timeline's own sheet lies under
+    // it ([TimelineGridSheet], I-44) — this strip used to walk the same
+    // boundaries with a loop of its own. Nor is where the film stops: the
+    // wash and the cut-end line are the open grid's stack, laid over this
+    // strip and the real row alike ([_CollapsedRowOverlayState
+    // ._whereTheFilmStops]).
 
-    // 2. THE OUT-OF-CUT WASH — the one fill that stays. It is not chrome:
-    // it says the frames past it are outside what plays.
-    final playback = snapshot.playbackFrameCount;
-    if (playback != null && x(playback) < right) {
-      canvas.drawRect(
-        Rect.fromLTRB(x(playback), 0, right, size.height),
-        Paint()..color = const Color(0x66101214),
-      );
-    }
-
-    // 3. THE BLOCKS — a translucent body so they read as paper, an outline
+    // THE BLOCKS — a translucent body so they read as paper, an outline
     // so they read as blocks, and their name. Uncovered stretches print the
     // sheet's `x` in their FIRST cell and nothing after.
     final current = snapshot.frameIndex;
@@ -573,64 +614,58 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           canvas,
           Rect.fromLTRB(x(frame), 0, x(frame + 1), size.height),
           'x',
-          center: true,
           color: const Color(0xB8E9E7E2),
         );
       }
     }
 
-    // 4. THE CUT END — 2px of the app's one length-colour, and the playhead
-    // over everything.
-    if (playback != null && x(playback) <= right) {
-      canvas.drawRect(
-        Rect.fromLTWH(x(playback) - 1, 0, 2, size.height),
-        Paint()..color = AppColors.danger,
-      );
-    }
+    // THE PLAYHEAD over everything this strip draws.
     canvas.drawRect(
       Rect.fromLTWH(x(current), 0, 2, size.height),
       Paint()..color = colorScheme.primary,
     );
   }
 
+  /// A word of the strip, by the law every block word keeps: its type at
+  /// every zoom, laid by F-96 from the first cell of its [room] and
+  /// narrowed only past the room (B, 유저 2026-09-24: 「뭐든」).
+  ///
+  /// ↩️It was set in a monospace face of its own and VANISHED once its room
+  /// was under 10px — against 「절대 안 사라지도록」 (R26 #38), which holds
+  /// for every word a block writes.
   void _label(
     Canvas canvas,
-    Rect rect,
+    Rect room,
     String text, {
-    bool center = false,
     Color color = const Color(0xF2FFFFFF),
   }) {
-    if (rect.width < 10) {
-      return;
-    }
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 9.5,
-          color: color,
-          // ⑩: flat here too — see [_halo]. The frame half had its own copy
-          // of the shadow, which is exactly how a look that was supposed to
-          // be gone survives a deletion.
-          shadows: _CollapsedRowOverlayState._halo,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '',
-    )..layout(maxWidth: rect.width - 4);
-    if (painter.width > rect.width - 3) {
-      return;
-    }
-    painter.paint(
-      canvas,
-      Offset(
-        center ? rect.center.dx - painter.width / 2 : rect.left + 3,
-        rect.center.dy - painter.height / 2,
+    final glyph = timelineGlyphPainter(
+      text,
+      timelineBlockWordStyle(
+        baseTextStyle,
+        ink: color,
+        fontSize: _labelFontSize,
+        bold: false,
+      ).copyWith(
+        // ⑩: flat here too — see [_halo]. The frame half had its own copy
+        // of the shadow, which is exactly how a look that was supposed to
+        // be gone survives a deletion.
+        shadows: _CollapsedRowOverlayState._halo,
       ),
     );
+    final layout = timelineBlockWordLayout(glyph.size, (
+      axis: Axis.horizontal,
+      room: room,
+      cellStart: room.left,
+      cellExtent: math.min(pixelsPerFrame, room.width),
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0,
+    ));
+    paintFittedText(canvas, glyph, layout.origin, layout.fit);
   }
+
+  /// The strip's type — its own size, the one law every block word keeps.
+  static const double _labelFontSize = 9.5;
 
   @override
   Object get props =>
@@ -638,8 +673,8 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
         snapshot,
         ByIdentity(row),
         pixelsPerFrame,
-        framesPerSecond,
         colorScheme,
+        baseTextStyle,
         frameStartIndex,
       );
 }

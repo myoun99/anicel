@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// A saved language that comes back only when the test says so.
 class _LateKoreanStore extends AppLanguageSettingsStore {
@@ -49,7 +50,7 @@ void main() {
     final directory = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('late_language'),
     ))!;
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = _LateKoreanStore();
 
     await tester.pumpWidget(

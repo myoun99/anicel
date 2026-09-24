@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../repaint_props.dart';
 import '../theme/app_theme.dart' show AppColors;
+import 'axis_turn.dart';
+import 'timeline_cell_style.dart' show timelineBlockCornerRadiusAt;
 
 /// 「아직 없는 것」 — the outline a drop would fill (미디어 배치 라운드 2d-2,
 /// the mockup the user approved on 2026-09-11: 점선 강조색 블록).
@@ -12,14 +14,21 @@ import '../theme/app_theme.dart' show AppColors;
 /// frame→pixel arithmetic is written once, where it already was.
 ///
 /// ⚠️Dashed on purpose, and the dash is the whole message: a solid accent
-/// rect is what a SELECTION wears (`timelineRangeSelectionBandDecoration`),
+/// rect is what a SELECTION wears (`timelineRangeSelectionBandDecorationAt`),
 /// and a drag that has not landed must not look like something that has.
 class TimelineSilhouettePainter extends CustomPainter with RepaintOnProps {
-  const TimelineSilhouettePainter({this.radius = 3});
+  const TimelineSilhouettePainter({required this.frames, required this.axis});
 
-  /// The block cap the cells wear, so the outline sits ON the block shape
-  /// rather than beside it.
-  final double radius;
+  /// How many frames the box spans, and which way they run: the outline reads
+  /// the block corner LAW off its own box ([timelineBlockCornerRadiusAt] — a
+  /// cell is the box's along extent over [frames]), so it sits ON the block
+  /// shape rather than beside it at every zoom, and a zoom step that resizes
+  /// the box re-rounds it.
+  ///
+  /// ⛔It carried its own 3 — the "block cap the cells wear", written down
+  /// once while the cells wore 6, so it never was.
+  final int frames;
+  final Axis axis;
 
   /// The dash, in logical pixels. Short enough to read as a dash on a
   /// one-cell block (22px in the mockup) — a longer one draws a single
@@ -45,21 +54,25 @@ class TimelineSilhouettePainter extends CustomPainter with RepaintOnProps {
   /// because it is LIVE (UI-R22 #5) — the painter reads it rather than
   /// taking it, so nothing else would notice it changing.
   @override
-  Object get props => (radius, AppColors.accent);
+  Object get props => (frames, axis, AppColors.accent);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.isEmpty) {
+    if (size.isEmpty || frames <= 0) {
       return;
     }
     final accent = AppColors.accent;
     final box = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      timelineBlockCornerRadiusAt(
+        cellExtent: extentAlong(axis, size) / frames,
+        crossExtent: extentAcross(axis, size),
+      ),
       // Inset by the stroke's half-width: a stroke centred on the box edge
       // loses its outer half to the clip, so the dashes read thinner on the
-      // outside than the inside.
-      Rect.fromLTWH(0.5, 0.5, size.width - 1, size.height - 1),
-      Radius.circular(radius),
-    );
+      // outside than the inside. Deflating the ROUNDED box keeps the dashes
+      // concentric with the block's own corner.
+    ).deflate(0.5);
     canvas.drawRRect(
       box,
       Paint()..color = accent.withValues(alpha: 0.16),

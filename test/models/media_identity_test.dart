@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anicel/src/models/media_identity.dart';
 import 'package:anicel/src/services/import/media_identity_reader.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/temp_dir.dart';
 
 /// Identity answers "is this the same file?" — the question relink asks
 /// after a file has moved. It is deliberately NOT the mtime+size stamp
@@ -93,13 +94,7 @@ void main() {
     late Directory temp;
 
     setUp(() => temp = Directory.systemTemp.createTempSync('qa_identity_'));
-    tearDown(() {
-      try {
-        temp.deleteSync(recursive: true);
-      } on Object {
-        // A locked file on Windows must not fail the suite.
-      }
-    });
+    tearDown(() => deleteTempQuietly(temp));
 
     test('records the length and NOT a CRC', () {
       // Reading every referenced file end to end at import time is the cost

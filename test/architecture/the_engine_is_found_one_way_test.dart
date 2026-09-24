@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE WAY TO FIND THE ENGINE, and it is the one that fails on CI.
 ///
@@ -18,10 +17,8 @@ void main() {
     final hardcoded = RegExp(r'native_standalone[\/]+Release[\/]+qa_engine');
     const resolver = 'helpers/native_engine_path.dart';
     final offenders = <String>[
-      for (final file in Directory('test').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            !file.path.replaceAll(r'\', '/').endsWith(resolver) &&
+      for (final file in dartFilesUnder('test'))
+        if (!file.path.replaceAll(r'\', '/').endsWith(resolver) &&
             hardcoded.hasMatch(file.readAsStringSync()))
           file.path,
     ];

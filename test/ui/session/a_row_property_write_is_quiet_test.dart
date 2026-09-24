@@ -69,9 +69,11 @@ void main() {
     var notified = 0;
     s.addListener(() => notified += 1);
 
-    s.instructionVerbs.updateLayerInstructions(
+    s.instructionVerbs.upsertInstructionEventAt(
       layer.id,
-      {0: const InstructionEvent(instructionId: 'pan', length: 2)},
+      0,
+      const InstructionEvent(instructionId: 'pan', length: 2),
+      createLengthFrames: 2,
     );
 
     expect(

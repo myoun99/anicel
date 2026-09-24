@@ -1,3 +1,4 @@
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/media_identity.dart';
 
 /// Content fingerprints for the project's media, held OUTSIDE the project.
@@ -26,7 +27,7 @@ class MediaFingerprints {
   bool get isEmpty => _byPath.isEmpty;
 
   MediaIdentity? operator [](String poolPath) =>
-      _byPath[normalizeFingerprintPath(poolPath)];
+      _byPath[normalizedMediaPath(poolPath)];
 
   /// What is known about [poolPath], preferring a recorded fingerprint over
   /// [recorded] — the length an import imprinted.
@@ -50,7 +51,7 @@ class MediaFingerprints {
   /// storing anything at all — promotion happens on a read path, and a
   /// picture the user flips back to should cost nothing the second time.
   MediaFingerprints remembering(String poolPath, MediaIdentity identity) {
-    final key = normalizeFingerprintPath(poolPath);
+    final key = normalizedMediaPath(poolPath);
     if (_byPath[key] == identity) {
       return this;
     }
@@ -77,12 +78,12 @@ class MediaFingerprints {
     // in a traveled folder at the next save.
     final normalizedMoves = {
       for (final move in moves.entries)
-        normalizeFingerprintPath(move.key): move.value,
+        normalizedMediaPath(move.key): move.value,
     };
     final next = <String, MediaIdentity>{};
     for (final entry in _byPath.entries) {
       final to = normalizedMoves[entry.key];
-      next[to == null ? entry.key : normalizeFingerprintPath(to)] = entry.value;
+      next[to == null ? entry.key : normalizedMediaPath(to)] = entry.value;
     }
     return MediaFingerprints(next);
   }
@@ -134,12 +135,8 @@ class MediaFingerprints {
       if (identity?.crc32 == null) {
         continue;
       }
-      parsed[normalizeFingerprintPath(key)] = identity!;
+      parsed[normalizedMediaPath(key)] = identity!;
     }
     return MediaFingerprints(parsed);
   }
 }
-
-/// One spelling, the way the media pool itself is keyed — `C:\a\b.wav` and
-/// `C:/a/b.wav` are one file and must not be two rows.
-String normalizeFingerprintPath(String path) => path.replaceAll('\\', '/');

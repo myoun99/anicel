@@ -114,6 +114,13 @@ void main() {
       reason: 'the name starts at its own cell instead of spilling back '
           'over the cells before its block',
     );
+    // B (유저 2026-09-24): 「이름은 블록안에서만」 — and it ends inside it.
+    expect(
+      spy.boxes[1].right,
+      lessThanOrEqualTo(painter.cellRectFor(6).left + 0.5),
+      reason: 'the name stops at its block\'s end instead of running on '
+          'over the cells after it',
+    );
   });
 
   test('a name that starts before the painted window still shows the part '
@@ -207,10 +214,116 @@ void main() {
     );
   });
 
+  /// B (유저 2026-09-24): a name longer than its BLOCK narrows into it — and
+  /// the baked tile must narrow it too, not bake it wide and let the glyph's
+  /// own box cut it off (what the classic pass and the tile would then show
+  /// is a whole name and half a name).
+  test('a name longer than its block is BAKED narrowed, every letter of it', (
+  ) async {
+    final dllPath = nativeEngineLibraryPathOrNull();
+    if (dllPath == null) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+    final store = TimelineGridTileStore.instance..clear();
+    addTearDown(() {
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+      QaNativeEngine.debugForceDartFallback = false;
+      store.clear();
+    });
+    // Four letters with gaps between them, in a TWO-cell block: 7 em-wide
+    // glyphs (the test face) at 11px against 48px of block.
+    const gapped = 'A A A A';
+    final short = Layer(
+      id: const LayerId('layer-short'),
+      name: 'S',
+      frames: [Frame(id: const FrameId('s1'), duration: 1, strokes: const [])],
+      timeline: {0: const TimelineExposure.drawing(FrameId('s1'), length: 2)},
+    );
+    final painter = TimelineRowCellsPainter(
+      layer: short,
+      geometry: testFrameGeometry(
+        frameCellExtent: cell,
+        frameEndIndexExclusive: 40,
+      ),
+      crossAxisExtent: crossExtent,
+      exposureStateForLayer: stateFor,
+      frameNameForLayer: (_, frameIndex) => frameIndex == 0 ? gapped : null,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      tileStore: store,
+      substrateGeneration: 'g-short',
+    );
+    final model = painter.cellModelAt(0);
+    final natural = timelineGlyphPainter(
+      model.glyph,
+      painter.glyphStyleFor(model),
+    ).size;
+    expect(natural.width, greaterThan(2 * cell), reason: 'fixture');
+    var landings = 0;
+    void count() => landings += 1;
+    store.revision.addListener(count);
+    addTearDown(() => store.revision.removeListener(count));
+    ui.Image? tile() => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 1.0,
+    );
+    expect(tile(), isNull, reason: 'fixture: the store starts cold');
+    while (landings == 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final image = tile();
+    expect(image, isNotNull, reason: 'fixture: the tile landed');
+    final bytes = (await image!.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!;
+    int sumAt(int x, int y) {
+      final i = (y * image.width + x) * 4;
+      return bytes.getUint8(i) + bytes.getUint8(i + 1) + bytes.getUint8(i + 2);
+    }
+
+    // Along the word's middle line, across the block (x 0-47): the ink runs.
+    final layout = painter.cellWordLayoutFor(0, natural);
+    final y = (layout.origin.dy + natural.height * layout.fit.y / 2).round();
+    final paper = sumAt(24, 25);
+    final runs = <int>[];
+    var run = 0;
+    for (var x = 1; x < 2 * cell - 1; x += 1) {
+      if ((sumAt(x, y) - paper).abs() > 60) {
+        run += 1;
+      } else if (run > 0) {
+        runs.add(run);
+        run = 0;
+      }
+    }
+    if (run > 0) {
+      runs.add(run);
+    }
+    expect(
+      runs,
+      hasLength(4),
+      reason: 'all four letters are in the tile, inside the block — a name '
+          'baked wide shows the first two or three and is cut off',
+    );
+    expect(
+      runs.first,
+      lessThan(11 * 0.8),
+      reason: 'narrowed as the classic pass narrows it (fit '
+          '${layout.fit.x}), not at its full 11px',
+    );
+  });
+
   test('a length wider than its last cell ends at that cell and grows back '
       'into the block', () {
     const smallCell = 12.0;
     final painter = TimelineRowRunLabelsPainter(
+      baseTextStyle: const TextStyle(fontSize: 14),
       layer: layer,
       geometry: testFrameGeometry(
         frameCellExtent: smallCell,
@@ -243,7 +356,7 @@ void main() {
       isNot(contains('lastCellCentre - glyph.width / 2')),
       reason: 'the comma no longer centres on its last cell by hand',
     );
-    expect(source, contains('timelineBlockWordStart('));
+    expect(source, contains('timelineBlockWordLayout('));
     expect(
       source,
       contains('growth: TimelineBlockWordGrowth.towardBlockStart'),
@@ -252,12 +365,41 @@ void main() {
   });
 }
 
+/// Records the box each paragraph is PAINTED in, following the transforms —
+/// a word narrowed into its block (B) is drawn at the origin of a scaled
+/// canvas, so its offset alone says nothing about where it lands.
 class _Spy implements Canvas {
-  final texts = <Offset>[];
+  final boxes = <Rect>[];
+  final _saved = <Matrix4>[];
+  var _transform = Matrix4.identity();
+
+  List<Offset> get texts => [for (final box in boxes) box.topLeft];
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
-      texts.add(offset);
+  void save() => _saved.add(_transform.clone());
+
+  @override
+  void restore() => _transform = _saved.removeLast();
+
+  @override
+  void translate(double dx, double dy) =>
+      _transform = _transform.multiplied(Matrix4.translationValues(dx, dy, 0));
+
+  @override
+  void scale(double sx, [double? sy]) => _transform = _transform.multiplied(
+    Matrix4.diagonal3Values(sx, sy ?? sx, 1),
+  );
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) => boxes.add(
+    MatrixUtils.transformRect(
+      _transform,
+      offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
+    ),
+  );
+
+  @override
+  int getSaveCount() => _saved.length + 1;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

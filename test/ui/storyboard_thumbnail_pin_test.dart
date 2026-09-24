@@ -15,6 +15,7 @@ import 'package:anicel/src/models/storyboard_coverage.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
+import '../helpers/boolean_dot_probe.dart';
 
 /// Conte-sheet picture choice: the storyboard block thumbnail can pin to
 /// any cut-local frame (null = first frame), toggled from the cut toolbar.
@@ -179,6 +180,11 @@ void main() {
         find.descendant(of: item, matching: find.byIcon(Icons.image)),
         findsNothing,
       );
+      expect(
+        tester.booleanDotIn(item).value,
+        isFalse,
+        reason: 'a TOGGLE while unpinned too — the ring is there, empty',
+      );
 
       await tester.tap(item);
       await tester.pumpAndSettle();
@@ -188,6 +194,7 @@ void main() {
         findsOneWidget,
         reason: 'pinned at the playhead frame: filled icon',
       );
+      expect(tester.booleanDotIn(item).value, isTrue);
 
       await tester.tap(item);
       await tester.pumpAndSettle();
@@ -197,6 +204,7 @@ void main() {
         findsOneWidget,
         reason: 'pressing on the pinned frame releases the pin',
       );
+      expect(tester.booleanDotIn(item).value, isFalse);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
     });

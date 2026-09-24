@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The wait a cloud pick needs, and the copy it must NOT make.
 ///
@@ -30,9 +31,7 @@ void main() {
     FolderPicker.debugDownloadRequester = null;
     FolderPicker.debugCoordinatedInPlaceReader = null;
     FolderPicker.debugOperatingSystem = null;
-    if (temp.existsSync()) {
-      temp.deleteSync(recursive: true);
-    }
+    deleteTempQuietly(temp);
   });
 
   /// 🚨★★★THE PROVIDER IS ASKED BEFORE A READABLE FILE IS BELIEVED. A

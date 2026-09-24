@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
+import '../helpers/frame_census.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -18,6 +20,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
@@ -87,7 +90,12 @@ Project _project() => Project(
   ],
 );
 
-Future<EditorSessionManager> _pumpConte(WidgetTester tester) async {
+Future<EditorSessionManager> _pumpConte(
+  WidgetTester tester, {
+  ConteInkController? inkController,
+  ValueListenable<BrushToolState>? brushToolState,
+  bool inkEnabled = false,
+}) async {
   final session = EditorSessionManager(initialProject: _project());
   addTearDown(session.dispose);
   await tester.binding.setSurfaceSize(const Size(900, 900));
@@ -103,6 +111,9 @@ Future<EditorSessionManager> _pumpConte(WidgetTester tester) async {
           // opens at the IDENTITY (one document px per DEVICE px), which
           // is 1/3 on the 3x test view.
           viewport: seedFromRender(tester, CanvasViewport()),
+          inkController: inkController,
+          brushToolState: brushToolState,
+          inkEnabled: inkEnabled,
         ),
       ),
     ),
@@ -192,6 +203,37 @@ void main() {
     );
   });
 
+  // H40 ② (2026-09-24): the ink layer was rebuilt on every brush change —
+  // each frame of a settings slider drag. Its windows read the brush when a
+  // stroke starts now, so a change reaches none of them.
+  testWidgets('a brush change rebuilds no ink window, and the windows read '
+      'the brush in hand', (tester) async {
+    final ink = ConteInkController();
+    addTearDown(ink.dispose);
+    final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+    addTearDown(brush.dispose);
+    await _pumpConte(
+      tester,
+      inkController: ink,
+      brushToolState: brush,
+      inkEnabled: true,
+    );
+    expect(find.byType(ConteInkLayer), findsOneWidget);
+
+    final next = brush.value.copyWith(size: 40, color: 0xFF336699);
+    final census = await frameCensus(tester, () => brush.value = next);
+
+    expect(census.rebuilt, isNot(contains(ConteInkLayer)));
+    expect(census.rebuilt, isNot(contains(InteractiveBrushEditCanvasView)));
+    final windows = tester.widgetList<InteractiveBrushEditCanvasView>(
+      find.byType(InteractiveBrushEditCanvasView),
+    );
+    expect(windows, isNotEmpty);
+    for (final window in windows) {
+      expect(window.inputSettings(), next.toInputSettings());
+    }
+  });
+
   testWidgets('R5: a stroke STARTING on a cell\'s row band lands on that '
       'CELL\'s ink surface (block-FrameId key); the margins land on the '
       'page plane — one undo clears each, through the app history', (
@@ -225,7 +267,7 @@ void main() {
               child: ConteInkLayer(
                 controller: controller,
                 page: page,
-                brushToolState: BrushToolState.defaults,
+                brushToolState: ValueNotifier(BrushToolState.defaults),
                 historyManager: historyManager,
                 // ⛔NOT `seedFromRender`. The device-unit rule is
                 // `BrushCanvasPanel`'s boundary and the hosts that forward

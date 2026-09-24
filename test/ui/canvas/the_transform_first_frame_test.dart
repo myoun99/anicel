@@ -74,9 +74,9 @@ void main() {
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              brushToolState: BrushToolState.defaults.copyWith(
+              brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
                 tool: CanvasTool.move,
-              ),
+              )),
               selectionCommands: commands,
               activeStrokeOverlayModel: overlay,
               viewportUnderlayBuilder:

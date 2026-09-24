@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -131,7 +133,10 @@ class SheetInkLayer extends StatelessWidget {
   /// The live panel viewport — the same transform the sheet painter takes.
   final CanvasViewport viewport;
 
-  final BrushToolState brushToolState;
+  /// The brush in hand — heard, not handed over (H40 ②, 2026-09-24): the
+  /// windows read it when a stroke starts, so a brush change rebuilds no
+  /// window. The hosts used to rebuild this whole layer on every one.
+  final ValueListenable<BrushToolState> brushToolState;
 
   /// Raised while any window has a stroke in progress, so the panel's
   /// gesture layer holds navigation exactly as it does for canvas strokes.
@@ -144,7 +149,8 @@ class SheetInkLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inputSettings = brushToolState.toInputSettings();
+    BrushEditCanvasInputSettings inputSettings() =>
+        brushToolState.value.toInputSettings();
     return Stack(
       children: [
         for (final window in windows)

@@ -15,6 +15,8 @@ import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
 import 'timeline/session_lane_callbacks.dart';
+import 'timeline/timeline_tile_raster_source.dart'
+    show timelineSubstrateGeneration;
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
@@ -514,9 +516,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build
             // argument cannot.
-            substrateGeneration:
-                '${_session.repository.requireProject().id.value}'
-                ':${_session.activeCutId?.value ?? '-'}',
+            substrateGeneration: timelineSubstrateGeneration(
+              projectId: _session.repository.requireProject().id.value,
+              cutId: _session.activeCutId?.value,
+            ),
             // ⑨: the rows the row verbs act on, banded on both surfaces.
             //
             // 🚨T1: ADDRESSES, not layer ids. T5 made every row kind
@@ -836,6 +839,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 timelineRowAddressOfDragSubject(subject),
               ),
               onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
+              // I-39: what a picked-up row carries, named at the pointer.
+              rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
             ),
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame

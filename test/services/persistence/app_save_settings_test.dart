@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// SAVE-1: the save/recovery policy — defaults, persistence, and where a
 /// recovery snapshot is looked for now that its location is no longer a
@@ -144,7 +145,7 @@ void main() {
 
   test('store roundtrip; missing/corrupt files yield null', () async {
     final directory = await Directory.systemTemp.createTemp('save-settings');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = AppSaveSettingsStore(
       filePath: '${directory.path}/save_settings.json',
     );

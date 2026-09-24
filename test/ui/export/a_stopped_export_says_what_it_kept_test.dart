@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨A STOPPED EXPORT SAYS HOW MUCH IT KEPT, IN THE RIGHT PLURAL.
 ///
@@ -34,7 +35,7 @@ void main() {
     temp = await Directory.systemTemp.createTemp('anicel-export-cancel');
   });
 
-  tearDown(() => temp.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(temp));
 
   Frame frame(String id) =>
       Frame(id: FrameId(id), duration: 1, strokes: const []);

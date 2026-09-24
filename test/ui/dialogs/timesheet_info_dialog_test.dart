@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_info_dialog.dart';
+import '../../helpers/boolean_dot_probe.dart';
 
 Future<void> _openDialog(
   WidgetTester tester,
@@ -121,6 +122,37 @@ void main() {
           'a row left blank writes nothing — the map holds the roles that '
           'were filled, not one entry per row',
     );
+  });
+
+  testWidgets('a header box is a boolean ROW: it reads the box, a press '
+      'flips it, and the save carries it', (tester) async {
+    // The boxes were FilterChips until the app's one boolean replaced them
+    // (guide-sym ⑥⑧: 「진짜 불리언값 모든곳에 적용」) — and no test pressed a
+    // single one.
+    TimesheetInfo? result;
+    await _openDialog(
+      tester,
+      const TimesheetInfo(hiddenFields: {TimesheetHeaderField.cut}),
+      (r) => result = r,
+    );
+    final scene = find.byKey(
+      const ValueKey<String>('timesheet-info-visible-scene'),
+    );
+    final cut = find.byKey(
+      const ValueKey<String>('timesheet-info-visible-cut'),
+    );
+    await tester.ensureVisible(scene);
+    await tester.pumpAndSettle();
+    expect(tester.booleanDotIn(scene).value, isTrue, reason: 'shown');
+    expect(tester.booleanDotIn(cut).value, isFalse, reason: 'hidden');
+
+    await _tapSetting(tester, 'timesheet-info-visible-scene');
+    await _tapSetting(tester, 'timesheet-info-visible-cut');
+    expect(tester.booleanDotIn(scene).value, isFalse);
+    expect(tester.booleanDotIn(cut).value, isTrue);
+
+    await _tapSetting(tester, 'timesheet-info-save-button');
+    expect(result!.hiddenFields, {TimesheetHeaderField.scene});
   });
 
   testWidgets('the notation settings commit through the dialog: exposure '

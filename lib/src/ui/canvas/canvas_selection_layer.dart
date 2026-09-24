@@ -34,6 +34,7 @@ import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
 import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
+import 'transform_box.dart';
 import 'selection_float_overlay.dart';
 import 'bitmap_surface_painter.dart';
 import 'tile_pyramid.dart';
@@ -621,18 +622,6 @@ enum SessionInterruption {
   land,
 }
 
-/// The whole of an open box's edit, as one step back.
-///
-/// ⛔**ALL THREE OR NONE.** The affine and the two warps are what an
-/// operation can change, and a step that carried only the affine would
-/// give 퍼스/메쉬 a step that restores nothing — a law that works in one
-/// mode and quietly does not in the others.
-typedef _TransformStep = ({
-  SelectionAffine affine,
-  List<CanvasPoint>? cornerOffsets,
-  List<CanvasPoint>? meshOffsets,
-});
-
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin
     implements _OpenWarp {
@@ -995,13 +984,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return CanvasPoint(x: raw.x.roundToDouble(), y: raw.y.roundToDouble());
   }
 
-  // Ctrl+T free-transform session (P9b): the composite affine and the base
-  // box it manipulates (the shape's AABB at session start; its center is
-  // the affine pivot). The per-drag solving context is NOT here — it lives
-  // on [TransformDrag] and dies with the gesture.
-  SelectionAffine? _transform;
-  double _baseBoxWidth = 0;
-  double _baseBoxHeight = 0;
+  // Ctrl+T free-transform session (P9b): the open box, or none — see
+  // [TransformBox]. The per-drag solving context is NOT here — it lives on
+  // [TransformDrag] and dies with the gesture.
+  TransformBox? _box;
+
+  /// The open box's affine; null when no box is up.
+  SelectionAffine? get _transform => _box?.affine;
 
   /// Screen-space hit slack around a handle (≥ touch-friendly).
   static const double _handleHitRadius = 16;
@@ -1192,6 +1181,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _preview.schedule();
       _syncAnts();
     }
+    // 🧪The MODE picks which transform 적용 would replay, so it is news to
+    // everything that shows whether 적용 can act. They hear the mode
+    // themselves — and may ask before this layer has it, which is the
+    // frame a button answered from the old mode and was never asked again
+    // (confirm-button's ↵, measured).
+    if (oldWidget.transformOptions.mode != widget.transformOptions.mode) {
+      widget.selectionCommands?.notifySessionChanged();
+    }
     // The preview is clipped to what is on screen, so MOVING the screen
     // changes what it has to compute. Nothing else would notice: the
     // resample is scheduled by pointer moves and mode switches, and a pan
@@ -1273,15 +1270,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       closePolygon: _closeOpenPolygon,
       transformActive: () => _transform != null,
       beginTransform: _beginTransform,
-      // Enter: an open Ctrl+T commits; otherwise a pending move confirms
-      // (R16-①'s keyboard confirm).
-      commitTransform: () {
-        if (_transform != null) {
-          _commitTransform();
-        } else {
-          _confirmMoveSession();
-        }
-      },
       cancelTransform: _cancelTransform,
       applyRegion: applyCommittedRegion,
       movePending: () => _movePending,
@@ -1295,14 +1283,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // next Ctrl+T against its own guard. Measured: transformActive true,
       // movePending false, a ghost float painter still mounted, and Escape
       // the only way out.
-      confirmPendingMove: () {
-        if (_transform != null) {
-          _commitTransform();
-        }
-        if (_movePending) {
-          _confirmMoveSession();
-        }
-      },
+      confirmPendingMove: _confirmSession,
       revertPendingMove: _revertMoveSession,
       transformValues: _transformValuesNow,
       setTransformValues: _setTransformValues,
@@ -1313,6 +1294,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       flipTransform: _flipTransform,
       resetTransform: _resetTransform,
       applyTransform: _applyTransform,
+      canApplyTransform: () => _applyAction() != null,
     );
   }
 
@@ -1333,15 +1315,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!_canEditTransform()) {
       return;
     }
-    if (_transform == null) {
+    if (_box == null) {
       _beginTransform();
     }
-    final affine = _transform;
-    if (affine == null) {
+    final box = _box;
+    if (box == null) {
       return;
     }
     setState(() {
-      _transform = edit(affine);
+      box.affine = edit(box.affine);
     });
     _preview.schedule();
     _syncAnts();
@@ -1357,36 +1339,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// warp. Resetting only the numbers would leave a box that reads 100%,
   /// 0° and still looks bent.
   void _resetTransform() {
-    final affine = _transform;
-    if (affine == null) {
+    final box = _box;
+    if (box == null) {
       return;
     }
     setState(() {
-      _transform = SelectionAffine(pivot: affine.pivot);
-      _cornerOffsets = _cornerOffsets == null ? null : _zeroOffsets(4);
-      _meshOffsets = _meshOffsets == null
-          ? null
-          : _zeroOffsets((_meshOffsetColumns + 1) * (_meshOffsetRows + 1));
-      _stashedCornerOffsets = null;
-      _stashedMeshOffsets = null;
+      box.affine = SelectionAffine(pivot: box.affine.pivot);
+      box.warp.reset();
     });
     _preview.schedule();
     _syncAnts();
   }
 
-  /// 적용 / the system 확정 button, which are one verb with two doors.
+  /// 적용 — the transform tool's half of 확정, and every door to it: the
+  /// tool settings button, the box's ✓ and Enter (`ConfirmVerb`).
   ///
-  /// Transformed → commit. Untransformed → REPLAY the last committed
-  /// transform's values into the box and stop there, so the recalled
-  /// values can be seen and adjusted; a second press is what applies them
-  /// (유저 확정 08-13: "재현만. 두번째눌러야 적용").
-  void _applyTransform() {
+  /// 🗣️유저 2026-09-24 (confirm-button-Q2): 「변형도구=변형중이지 않으면
+  /// 마지막 변형 재실행, 변형중이면 확정」. 변형 중 is [_sessionHasChanges]
+  /// — the user's own word for it (08-27: 「변형중일땐. 그니까 변경사항이
+  /// 있으면」). ↩️It asked [_boxIsTransformed] alone, so a session that held
+  /// its change outside an open box replayed a transform over it.
+  ///
+  /// Otherwise it REPLAYS the last committed transform's values into the
+  /// box and stops there, so the recalled values can be seen and adjusted;
+  /// a second press is what applies them (유저 확정 08-13: "재현만.
+  /// 두번째눌러야 적용").
+  void _applyTransform() => _applyAction()?.call();
+
+  /// What 적용 would do now, or null when it has nothing to do — the ONE
+  /// answer both the press and the buttons' enablement read.
+  VoidCallback? _applyAction() {
     if (!_canEditTransform()) {
-      return;
+      return null;
     }
-    if (_transform != null && _boxIsTransformed) {
-      _commitTransform();
-      return;
+    if (_sessionHasChanges) {
+      return _confirmSession;
     }
     // 🚨THE ARMED MODE'S OWN MEMORY (유저 2026-08-29: 「툴마다 기억하는게
     // 다름」). One shared slot could only answer for whichever mode
@@ -1394,8 +1381,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // warp — or did nothing at all, when that warp's affine was identity.
     final recall = widget.selectionCommands?.recallFor(_mode);
     if (recall == null || recall.isIdentity) {
-      return;
+      return null;
     }
+    return () => _replayTransform(recall);
+  }
+
+  /// Lands the session: the open box first, then the move it rides.
+  ///
+  /// ⛔**BOTH `if`s.** `_commitTransform` on an identity affine only closes
+  /// the box and leaves the session pending, so the single branch Enter used
+  /// to take made one confirm into two. With both, a warped box commits
+  /// warped (the second `if` finds nothing pending) and an untouched box
+  /// closes and confirms at once.
+  ///
+  /// ↩️The box's ✓, wired straight to `_confirmMoveSession`, landed the
+  /// UNWARPED lift: the artwork committed at its pre-transform position and
+  /// size, the warped preview kept painting on top until something closed
+  /// the box, and the wrong landing went into history.
+  void _confirmSession() {
+    if (_transform != null) {
+      _commitTransform();
+    }
+    if (_movePending) {
+      _confirmMoveSession();
+    }
+  }
+
+  void _replayTransform(TransformRecall recall) {
     // The replay is an EDIT of the box like any other, so it enters and
     // leaves through _editTransform (open a box when none is up; resample
     // and re-run the ants on the way out). The closure runs inside its
@@ -1404,15 +1416,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // Only the part the armed mode can hold. A recall carrying a mesh
       // recorded on another grid has nowhere to put its interior points,
       // so it lands as the affine alone rather than as a guess.
-      if (_cornerOffsets != null && recall.hasPerspective) {
-        _cornerOffsets = List.of(recall.cornerOffsets);
+      final warp = _box!.warp;
+      if (warp.corners != null && recall.hasPerspective) {
+        warp.corners = List.of(recall.cornerOffsets);
       }
-      if (_meshOffsets != null &&
-          recall.hasMeshFor(
-            columns: _meshOffsetColumns,
-            rows: _meshOffsetRows,
-          )) {
-        _meshOffsets = List.of(recall.meshOffsets);
+      if (warp.mesh != null &&
+          recall.hasMeshFor(columns: warp.meshColumns, rows: warp.meshRows)) {
+        warp.mesh = List.of(recall.meshOffsets);
       }
       return affine.copyWith(
         sx: recall.scale,
@@ -1425,15 +1435,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// Whether the open box would change any pixel.
-  bool get _boxIsTransformed {
-    final affine = _transform;
-    if (affine == null) {
-      return false;
-    }
-    return !affine.isIdentity ||
-        !_offsetsAreZero(_cornerOffsets) ||
-        !_offsetsAreZero(_meshOffsets);
-  }
+  bool get _boxIsTransformed => _box?.isTransformed ?? false;
 
   /// Whether the session is holding changes that have not landed — the ONE
   /// question the ants, the transform box and the confirm button all draw
@@ -1450,11 +1452,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool get _sessionHasChanges => _moveSessionDirty || _boxIsTransformed;
 
   /// Records what a commit just applied, for the next 재현.
-  void _recordTransformRecall(SelectionAffine affine) {
+  void _recordTransformRecall(TransformBox box) {
     final channel = widget.selectionCommands;
     if (channel == null) {
       return;
     }
+    final affine = box.affine;
+    final warp = box.warp;
     // ⛔Filed under the mode that MADE it, not into one shared slot. A 퍼스
     // commit must not become what 일반 replays: the two modes hold different
     // things (a quad versus an affine), and 유저 asked for them separately.
@@ -1466,12 +1470,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // artwork, and 유저 확정 08-13 is "어떤 크기의 소재든 같은 값을
       // 변형주도록" — the same 120%, not the same number of pixels.
       scale: affine.sx,
-      cornerOffsets: _cornerOffsets == null
-          ? const []
-          : List.of(_cornerOffsets!),
-      meshOffsets: _meshOffsets == null ? const [] : List.of(_meshOffsets!),
-      meshColumns: _meshOffsetColumns,
-      meshRows: _meshOffsetRows,
+      cornerOffsets: warp.corners == null ? const [] : List.of(warp.corners!),
+      meshOffsets: warp.mesh == null ? const [] : List.of(warp.mesh!),
+      meshColumns: warp.meshColumns,
+      meshRows: warp.meshRows,
     );
   }
 
@@ -1565,45 +1567,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _endSession(_SessionEnd.confirm);
       return;
     }
-    if (_transform != null) {
-      _commitTransform();
-    }
-    if (_movePending) {
-      _confirmMoveSession();
-    }
+    _confirmSession();
   }
 
-  /// Remembers where the box stands, just before an operation moves it.
-  ///
-  /// ⚠️Called at the START of an operation rather than its end, so the
-  /// stack always holds 「what undo goes back to」 and never has to guess
-  /// when a gesture finished. With no box open there is nothing to step
+  /// Remembers where the box stands, just before an operation moves it
+  /// ([TransformBox.pushStep]). With no box open there is nothing to step
   /// back to and nothing is pushed.
-  void _pushTransformStep() {
-    final affine = _transform;
-    if (affine == null) {
-      return;
-    }
-    _transformSteps.add((
-      affine: affine,
-      cornerOffsets: _cornerOffsets == null ? null : List.of(_cornerOffsets!),
-      meshOffsets: _meshOffsets == null ? null : List.of(_meshOffsets!),
-    ));
-  }
+  void _pushTransformStep() => _box?.pushStep();
 
   /// Takes one operation back. False when there is nothing left to take —
   /// and then undo means what it always means, exactly as it does once a
   /// polygon trace runs out ([CanvasSelectionCommands.undoPolygonPoint]).
   bool _undoTransformStep() {
-    if (_transform == null || _transformSteps.isEmpty) {
+    final box = _box;
+    if (box == null || box.steps.isEmpty) {
       return false;
     }
-    final step = _transformSteps.removeLast();
-    setState(() {
-      _transform = step.affine;
-      _cornerOffsets = step.cornerOffsets;
-      _meshOffsets = step.meshOffsets;
-    });
+    setState(box.popStep);
     _publishTransformValues();
     _preview.schedule();
     _syncAnts();
@@ -1774,77 +1754,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   // --- Freedom above the affine: perspective and mesh ------------------
   //
-  // The box is ALWAYS an affine plus a list of per-point displacements in
-  // the box's own (pre-affine) frame:
-  //
-  //     final point i = affine.apply(base point i + offset i)
-  //
-  // 일반 keeps every offset at zero, 퍼스 lets the four corners move, 메쉬
-  // lets every grid point move. Two consequences are the whole reason for
-  // the shape:
-  //
-  // - the numeric channels, the rotate knob and the edge handles all write
-  //   the AFFINE, so they keep working with a warp open and carry it along
-  //   instead of fighting it. (Before this, opening a mesh threw away a
-  //   scale the box already had, because the grid was seeded from the
-  //   untransformed base rect.)
-  // - switching 일반 → 퍼스 → 메쉬 only adds freedom, so it costs nothing
-  //   and changes no pixel. Narrowing stashes what it drops, so switching
-  //   back restores the warp rather than losing it.
-  //
-  // Non-zero offsets are what puts the resample on the quad or mesh path;
-  // all-zero offsets fall through to the affine one, so an untouched
-  // perspective box produces the same bytes an 일반 box would. Two
-  // computations that ought to agree is the weaker promise.
-
-  /// Base-local displacements for the four corners (TL/TR/BR/BL), or null
-  /// outside 퍼스 mode.
-  List<CanvasPoint>? _cornerOffsets;
-
-  /// Base-local displacements for the mesh grid, row-major, or null
-  /// outside 메쉬 mode. [_meshOffsetColumns]/[_meshOffsetRows] record the
-  /// grid they were built for — changing the grid size rebuilds them.
-  List<CanvasPoint>? _meshOffsets;
-  int _meshOffsetColumns = 0;
-  int _meshOffsetRows = 0;
-
-  /// 🚨★★★**ONE OPERATION INSIDE AN OPEN BOX = ONE STEP BACK.**
-  ///
-  /// 🗣️유저 2026-09-20: 「클튜 보니 좋은점이 있는데, **변형도구 사용시
-  /// 변형에 대한 조작마다 언두로 기록**된단거야. 즉 변형도구 사용중에
-  /// **앵커포인트 이동하거나, 확대하거나. 이런 동작마다 언두 기록**되고
-  /// **확정하면 변형 하나로서의 언두만 작동**. 지금처럼 변형전으로
-  /// 돌아가는거지」.
-  ///
-  /// ⛔**VALUES, NEVER PIXELS.** A step is what an operation changed — the
-  /// affine and the warp — and undoing one re-solves the preview from
-  /// them. Keeping rasters here would put a copy of the picture on the
-  /// stack per drag, which is the memory the whole session model exists to
-  /// avoid.
-  ///
-  /// ⚠️It holds the value BEFORE each operation, so the stack is empty
-  /// exactly when the box stands as it opened. Emptied with the session,
-  /// because a confirmed transform is ONE document entry and a cancelled
-  /// one never happened.
-  final List<_TransformStep> _transformSteps = [];
-
-  /// What a narrowing mode switch put aside, so widening again restores
-  /// the warp instead of starting flat. Cleared with the session.
-  List<CanvasPoint>? _stashedCornerOffsets;
-  List<CanvasPoint>? _stashedMeshOffsets;
-  int _stashedMeshColumns = 0;
-  int _stashedMeshRows = 0;
+  // The box's warp and its law live on [BoxWarp]; what stays here is where
+  // the points sit on the canvas and on screen.
 
   TransformMode get _mode => widget.transformOptions.mode;
   int get _meshColumns => widget.transformOptions.meshColumns;
   int get _meshRows => widget.transformOptions.meshRows;
-
-  static bool _offsetsAreZero(List<CanvasPoint>? offsets) =>
-      offsets == null ||
-      !offsets.any((offset) => offset.x != 0 || offset.y != 0);
-
-  static List<CanvasPoint> _zeroOffsets(int count) =>
-      List<CanvasPoint>.generate(count, (_) => CanvasPoint(x: 0, y: 0));
 
   /// The pending stamp's canvas rect corners (TL/TR/BR/BL) — the quad's
   /// BASE. Initializing corners as affine(base) makes an untouched quad
@@ -1922,30 +1837,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The four quad corners as drawn — present whenever 퍼스 is armed over
   /// an open box, warped or not.
-  List<CanvasPoint>? get _placedCorners =>
-      _mode != TransformMode.perspective || _cornerOffsets == null
-      ? null
-      : _placedPoints(_stampRectCorners(), _cornerOffsets);
+  List<CanvasPoint>? get _placedCorners {
+    final corners = _box?.warp.corners;
+    return _mode != TransformMode.perspective || corners == null
+        ? null
+        : _placedPoints(_stampRectCorners(), corners);
+  }
 
   /// The mesh control points as drawn.
-  List<CanvasPoint>? get _placedMeshPoints =>
-      _mode != TransformMode.mesh || _meshOffsets == null
-      ? null
-      : _placedPoints(
-          _meshBasePoints(columns: _meshOffsetColumns, rows: _meshOffsetRows),
-          _meshOffsets,
-        );
+  List<CanvasPoint>? get _placedMeshPoints {
+    final warp = _box?.warp;
+    final mesh = warp?.mesh;
+    return _mode != TransformMode.mesh || warp == null || mesh == null
+        ? null
+        : _placedPoints(
+            _meshBasePoints(columns: warp.meshColumns, rows: warp.meshRows),
+            mesh,
+          );
+  }
 
   /// The quad the RESAMPLE runs through, or null when the offsets are all
-  /// zero and the affine path is exactly equivalent — see the section note
-  /// on why an untouched perspective box must not take the quad path.
+  /// zero and the affine path is exactly equivalent — see [BoxWarp] on why
+  /// an untouched perspective box must not take the quad path.
   List<CanvasPoint>? get _warpCorners =>
-      _offsetsAreZero(_cornerOffsets) ? null : _placedCorners;
+      BoxWarp.offsetsAreZero(_box?.warp.corners) ? null : _placedCorners;
 
   /// The mesh the RESAMPLE runs through; null on all-zero offsets, same
   /// reasoning as [_warpCorners].
   List<CanvasPoint>? get _meshPoints =>
-      _offsetsAreZero(_meshOffsets) ? null : _placedMeshPoints;
+      BoxWarp.offsetsAreZero(_box?.warp.mesh) ? null : _placedMeshPoints;
 
   int? _hitTestPlacedPoint(Offset local, List<CanvasPoint>? points) {
     if (points == null) {
@@ -1960,102 +1880,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// Brings the offset lists in line with [_mode] over an OPEN box.
-  ///
-  /// Widening restores whatever the last narrowing stashed (so a mode
-  /// round-trip is not a way to lose a warp), and carries the corners
-  /// across the 퍼스 ↔ 메쉬 boundary so the outline survives the switch.
-  ///
-  /// ⚠️ 퍼스 → 메쉬 keeps the OUTLINE, not the pixels: the quad maps
-  /// through a homography and the mesh through a triangulation, so the
-  /// interior lands slightly differently. The corners are what the eye is
-  /// holding onto, so they are what is preserved.
-  ///
-  /// Callers wrap in setState.
-  void _syncOffsetsToMode() {
-    if (_transform == null) {
-      return;
-    }
-    switch (_mode) {
-      case TransformMode.normal:
-        _stashOffsets();
-        _cornerOffsets = null;
-        _meshOffsets = null;
-      case TransformMode.perspective:
-        if (_cornerOffsets != null) {
-          return;
-        }
-        final fromMesh = _meshCornerOffsets();
-        _stashOffsets();
-        _meshOffsets = null;
-        _cornerOffsets =
-            fromMesh ??
-            (_stashedCornerOffsets == null
-                ? _zeroOffsets(4)
-                : List.of(_stashedCornerOffsets!));
-      case TransformMode.mesh:
-        final columns = _meshColumns;
-        final rows = _meshRows;
-        if (_meshOffsets != null &&
-            _meshOffsetColumns == columns &&
-            _meshOffsetRows == rows) {
-          return;
-        }
-        final corners = _cornerOffsets ?? _stashedCornerOffsets;
-        _stashOffsets();
-        _cornerOffsets = null;
-        _meshOffsets =
-            _stashedMeshOffsets != null &&
-                _stashedMeshColumns == columns &&
-                _stashedMeshRows == rows
-            ? List.of(_stashedMeshOffsets!)
-            : _meshOffsetsFromCorners(corners, columns: columns, rows: rows);
-        _meshOffsetColumns = columns;
-        _meshOffsetRows = rows;
-    }
-  }
-
-  void _stashOffsets() {
-    if (_cornerOffsets != null && !_offsetsAreZero(_cornerOffsets)) {
-      _stashedCornerOffsets = List.of(_cornerOffsets!);
-    }
-    if (_meshOffsets != null && !_offsetsAreZero(_meshOffsets)) {
-      _stashedMeshOffsets = List.of(_meshOffsets!);
-      _stashedMeshColumns = _meshOffsetColumns;
-      _stashedMeshRows = _meshOffsetRows;
-    }
-  }
-
-  /// The mesh grid's four corner displacements, in TL/TR/BR/BL order.
-  List<CanvasPoint>? _meshCornerOffsets() {
-    final offsets = _meshOffsets;
-    if (offsets == null) {
-      return null;
-    }
-    final columns = _meshOffsetColumns;
-    final rows = _meshOffsetRows;
-    CanvasPoint at(int column, int row) =>
-        offsets[row * (columns + 1) + column];
-    return [at(0, 0), at(columns, 0), at(columns, rows), at(0, rows)];
-  }
-
-  /// A fresh grid whose CORNERS carry [corners] and whose interior is flat
-  /// — bilinear would only pretend the homography came along.
-  List<CanvasPoint> _meshOffsetsFromCorners(
-    List<CanvasPoint>? corners, {
-    required int columns,
-    required int rows,
-  }) {
-    final flat = _zeroOffsets((columns + 1) * (rows + 1));
-    if (corners == null || corners.length != 4) {
-      return flat;
-    }
-    flat[0] = corners[0];
-    flat[columns] = corners[1];
-    flat[rows * (columns + 1) + columns] = corners[2];
-    flat[rows * (columns + 1)] = corners[3];
-    return flat;
-  }
+  /// Brings the open box's warp in line with [_mode] and the armed grid
+  /// ([BoxWarp.syncToMode]). Callers wrap in setState.
+  void _syncOffsetsToMode() => _box?.warp.syncToMode(
+    _mode,
+    columns: _meshColumns,
+    rows: _meshRows,
+  );
 
   // ---------------------------------------------------------------
   // The transform preview (P3a).
@@ -2157,7 +1988,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return selectionWarpOutputRect(mesh);
     }
     final quad = _placedCorners;
-    if (quad != null && !_offsetsAreZero(_cornerOffsets)) {
+    if (quad != null && !BoxWarp.offsetsAreZero(_box?.warp.corners)) {
       return selectionWarpOutputRect(quad);
     }
     final affine = _transform;
@@ -2227,7 +2058,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final affine = _transform;
     final shape = StringBuffer();
     if (mesh != null) {
-      shape.write('m$_meshOffsetColumns,$_meshOffsetRows');
+      final warp = _box!.warp;
+      shape.write('m${warp.meshColumns},${warp.meshRows}');
       for (final point in mesh) {
         shape.write(':${point.x},${point.y}');
       }
@@ -2278,8 +2110,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (mesh != null) {
       return transformStampDabMesh(
         pending,
-        columns: _meshOffsetColumns,
-        rows: _meshOffsetRows,
+        columns: _box!.warp.meshColumns,
+        rows: _box!.warp.meshRows,
         points: mesh,
         mode: widget._resampleMode,
         visible: window,
@@ -2337,8 +2169,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// changing the grid size rebuilds the points, and until it does the two
   /// disagree by exactly enough to index out of the list.
   List<CanvasPoint> _meshBoundary(List<CanvasPoint> points) {
-    final columns = _meshOffsetColumns;
-    final rows = _meshOffsetRows;
+    final columns = _box!.warp.meshColumns;
+    final rows = _box!.warp.meshRows;
     CanvasPoint at(int column, int row) => points[row * (columns + 1) + column];
     return [
       for (var column = 0; column <= columns; column += 1) at(column, 0),
@@ -2368,22 +2200,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // moving anything is that the box is gone, which
     // [_updateTransformDragGeometry] asks for itself — this used to say the
     // same thing by nulling five per-drag fields at a distance.
-    _transform = null;
-    _transformOpenedLift = false;
+    //
     // ⛔The steps die with the box. A confirmed transform is ONE document
     // entry (유저: 「확정하면 변형 하나로서의 언두만 작동」) and a cancelled
     // one never happened, so there is nothing left for them to describe.
-    _transformSteps.clear();
-    _baseBoxWidth = 0;
-    _baseBoxHeight = 0;
-    _cornerOffsets = null;
-    _meshOffsets = null;
-    _meshOffsetColumns = 0;
-    _meshOffsetRows = 0;
-    _stashedCornerOffsets = null;
-    _stashedMeshOffsets = null;
-    _stashedMeshColumns = 0;
-    _stashedMeshRows = 0;
+    // ↩️So does everything else the box held: they were thirteen fields
+    // cleared here by name, and are one object dropped ([TransformBox]).
+    _box = null;
     _preview.discard();
     if (confirming) {
       // The landing is warped and the float is not, so the float has
@@ -2395,12 +2218,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // in the base surface (they left with the lift's erase).
     _floatSurface = _movePending ? _buildFloatSurface() : null;
   }
-
-  /// True when THIS Ctrl+T session opened the lift (Escape then reverts
-  /// the whole session — pixels return byte-exactly, as if Ctrl+T never
-  /// happened). False when Ctrl+T rode an already-pending move (Escape
-  /// only closes the box; the pending float stays).
-  bool _transformOpenedLift = false;
 
   /// Ctrl+T: opens the free-transform box on the live selection (R19
   /// pixel model: the session lifts the shape's raster and the box
@@ -2450,21 +2267,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ⚠️A warp's per-point offsets are left alone: they are edit values too
   /// and they live in the box's own frame, so they travel with it. Only
   /// the mode decides how many there are, and a walk does not change it.
+  /// With no box open, the aim is what opens one.
   void _aimTransformAt(
     CanvasSelectionRegion region, {
     SelectionAffine? keeping,
   }) {
-    final box = _regionBounds(region);
-    _baseBoxWidth = box.width;
-    _baseBoxHeight = box.height;
-    _transform = SelectionAffine(
-      pivot: box.center,
+    final bounds = _regionBounds(region);
+    final affine = SelectionAffine(
+      pivot: bounds.center,
       sx: keeping?.sx ?? 1,
       sy: keeping?.sy ?? 1,
       rotationDegrees: keeping?.rotationDegrees ?? 0,
       tx: keeping?.tx ?? 0,
       ty: keeping?.ty ?? 0,
     );
+    final box = _box;
+    if (box == null) {
+      _box = TransformBox(
+        affine: affine,
+        baseWidth: bounds.width,
+        baseHeight: bounds.height,
+      );
+      return;
+    }
+    box
+      ..affine = affine
+      ..baseWidth = bounds.width
+      ..baseHeight = bounds.height;
   }
 
   void _beginTransform() {
@@ -2493,8 +2322,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     setState(() {
-      _transformOpenedLift = !hadPendingLift;
       _aimTransformAt(targetRegion);
+      _box!.openedLift = !hadPendingLift;
       _syncOffsetsToMode();
       _floatSurface = _buildFloatSurface();
     });
@@ -2505,12 +2334,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// translations stay byte-exact) and CONFIRMS the session as ONE undo
   /// entry; identity closes the box with the session still pending.
   void _commitTransform() {
-    final affine = _transform;
+    final box = _box;
     final region = _region;
     final pending = _pendingLiftStamp;
-    if (affine == null || region == null) {
+    if (box == null || region == null) {
       return;
     }
+    final affine = box.affine;
     // R20-D3: an open mesh resamples through the triangulated warp.
     // `_preview.warped()` returns the buffer the PREVIEW is already showing
     // when nothing has changed since, so Enter lands the same bytes the
@@ -2523,7 +2353,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
-      _recordTransformRecall(affine);
+      _recordTransformRecall(box);
       final boundary = _meshBoundary(meshPoints);
       setState(() {
         _session?.stamp = warped;
@@ -2549,7 +2379,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _syncAnts();
         return;
       }
-      _recordTransformRecall(affine);
+      _recordTransformRecall(box);
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       setState(() {
@@ -2566,7 +2396,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (!affine.isIdentity && pending != null) {
-      _recordTransformRecall(affine);
+      _recordTransformRecall(box);
       setState(() {
         _session?.stamp = _preview.warped() ?? pending;
         _moveRegion(region.mapped(affine.apply));
@@ -2594,9 +2424,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // lived outside the affine: clearing the box now undoes the move with
     // everything else, so there is nothing left for the extra term to
     // protect. ⛔A session this box did NOT open still only loses the box
-    // (`_transformOpenedLift`), which is the case that term was mixed up
+    // (`TransformBox.openedLift`), which is the case that term was mixed up
     // with.
-    if (_transformOpenedLift && _movePending) {
+    if ((_box?.openedLift ?? false) && _movePending) {
       setState(_clearTransform);
       _revertMoveSession();
       return;
@@ -2911,12 +2741,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (pressed == null) {
       return;
     }
-    final transform = pressed.transform;
+    final box = pressed.box;
     final insideImplicitBox = pressed.insideImplicitBox;
-    if (transform != null) {
+    if (box != null) {
       // The open box is modal: only the box's handles/inside react;
       // clicks elsewhere are inert until Enter/Escape closes the session.
-      _beginTransformDrag(transform, event, canvasPoint);
+      _beginTransformDrag(box, event, canvasPoint);
       return;
     }
     if (widget.tool == CanvasSelectionTool.move) {
@@ -2975,26 +2805,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// DRAWING even though no session is open yet, which is a grab, whatever
   /// the selection's own outline says (유저: "변형툴 내부 사각형 안이라면
   /// 언제든 작동하도록").
-  ({SelectionAffine? transform, bool insideImplicitBox})? _pressOnImplicitBox(
+  ({TransformBox? box, bool insideImplicitBox})? _pressOnImplicitBox(
     PointerDownEvent event,
   ) {
-    final transform = _transform;
-    if (transform != null ||
+    final open = _box;
+    if (open != null ||
         !widget.alwaysShowTransformBox ||
         widget.tool != CanvasSelectionTool.move ||
         widget.onLiftRequested == null) {
-      return (transform: transform, insideImplicitBox: false);
+      return (box: open, insideImplicitBox: false);
     }
     // R26 #13: with NO selection the always-on box frames the WHOLE
     // picture — grabbing one of its handles opens the session on the
     // implicit whole-canvas shape.
     final implicitRegion =
         _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
-    final box = _regionBounds(implicitRegion);
-    _baseBoxWidth = box.width;
-    _baseBoxHeight = box.height;
-    final implicit = SelectionAffine(pivot: box.center);
-    final handle = _hitTestTransformHandle(event.localPosition, implicit);
+    final bounds = _regionBounds(implicitRegion);
+    // The box already on screen, asked before it is open: a handle press
+    // makes it the open one, anything else leaves it unopened.
+    final candidate = TransformBox(
+      affine: SelectionAffine(pivot: bounds.center),
+      baseWidth: bounds.width,
+      baseHeight: bounds.height,
+    );
+    final handle = _hitTestTransformHandle(event.localPosition, candidate);
     if (handle == null || handle == TransformHandle.inside) {
       // Inside/miss: fall through to the ordinary move-drag flow — but
       // remember WHICH (TP4). "Inside" is the box the user can see, and
@@ -3002,10 +2836,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // 사각형(박스)을 잡아야 해당 기능, while the flow below asked the
       // REGION instead. A lasso's box has corners the outline does not
       // fill, and pressing there did nothing at all.
-      _baseBoxWidth = 0;
-      _baseBoxHeight = 0;
       return (
-        transform: null,
+        box: null,
         insideImplicitBox: handle == TransformHandle.inside,
       );
     }
@@ -3020,19 +2852,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final hadPendingLift = _pendingLiftStamp != null;
     if (!_ensureLifted(implicitRegion)) {
-      _baseBoxWidth = 0;
-      _baseBoxHeight = 0;
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return null;
     }
     setState(() {
-      _transformOpenedLift = !hadPendingLift;
-      _transform = implicit;
+      _box = candidate..openedLift = !hadPendingLift;
       _syncOffsetsToMode();
       _floatSurface = _buildFloatSurface();
     });
-    return (transform: implicit, insideImplicitBox: false);
+    return (box: candidate, insideImplicitBox: false);
   }
 
   /// The MOVE tool drags the selected content; outside a REAL region it
@@ -3100,12 +2929,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // ⚠️Opening it here rather than refusing: with the Move tool the box
       // is already on screen (R17-U), so this is the moment the numbers
       // behind it start existing, not a new thing appearing.
-      if (_transform == null) {
+      if (_box == null) {
         _aimTransformAt(liftShape);
+        _box!.openedLift = !hadPendingLift;
         _syncOffsetsToMode();
-        _transformOpenedLift = !hadPendingLift;
       }
-      final affine = _transform!;
+      final affine = _box!.affine;
       // ⚠️AFTER the box exists: an inside grab that opened it steps back
       // to the box as it opened, which is what the user sees.
       _pushTransformStep();
@@ -3119,8 +2948,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return true;
   }
 
-  void _beginTransformDrag(SelectionAffine transform, PointerDownEvent event, CanvasPoint canvasPoint) {
-    final openTransform = transform;
+  void _beginTransformDrag(TransformBox box, PointerDownEvent event, CanvasPoint canvasPoint) {
+    final openTransform = box.affine;
     // 메쉬: the control points ARE the handles. Nothing else on the box
     // has a grid meaning, so a press is either a point or inside.
     final meshPlaced = _placedMeshPoints;
@@ -3137,7 +2966,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           pointer: event.pointer,
           startPointer: canvasPoint,
           points: pointIndex == null ? null : [pointIndex],
-          startOffsets: List.of(_meshOffsets ?? const []),
+          startOffsets: List.of(box.warp.mesh ?? const []),
         ),
       );
       return;
@@ -3164,24 +2993,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             pointer: event.pointer,
             startPointer: canvasPoint,
             points: [cornerIndex],
-            startOffsets: List.of(_cornerOffsets ?? const []),
+            startOffsets: List.of(box.warp.corners ?? const []),
           ),
         );
         return;
       }
       // A warped quad's inside is the quad, not the affine box the edge
       // handles frame — a press in the gap between them is a miss.
-      if (!_offsetsAreZero(_cornerOffsets) &&
+      if (!BoxWarp.offsetsAreZero(box.warp.corners) &&
           !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
-          _hitTestTransformHandle(event.localPosition, openTransform) ==
+          _hitTestTransformHandle(event.localPosition, box) ==
               TransformHandle.inside) {
         return;
       }
     }
-    final handle = _hitTestTransformHandle(
-      event.localPosition,
-      openTransform,
-    );
+    final handle = _hitTestTransformHandle(event.localPosition, box);
     if (handle == null) {
       return;
     }
@@ -3208,7 +3034,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           pointer: event.pointer,
           startPointer: canvasPoint,
           points: edgePair,
-          startOffsets: List.of(_cornerOffsets ?? const []),
+          startOffsets: List.of(box.warp.corners ?? const []),
         ),
       );
       return;
@@ -3264,10 +3090,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // ⛔Typed values are not rounded: 「확대축소는 소수점 이동해도
           // 되는데」 splits by ENTRANCE, not by a mode.
           final moved = _moveCanvasDelta;
-          _transform = _transform?.copyWith(
-            tx: drag.txAtStart + moved.x,
-            ty: drag.tyAtStart + moved.y,
-          );
+          final box = _box;
+          if (box != null) {
+            box.affine = box.affine.copyWith(
+              tx: drag.txAtStart + moved.x,
+              ty: drag.tyAtStart + moved.y,
+            );
+          }
           if (moved.x != 0 || moved.y != 0) {
             _session?.moved = true;
           }
@@ -3295,8 +3124,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _updateTransformDragGeometry(TransformDrag drag, CanvasPoint pointer) {
-    final affine = _transform;
-    if (affine == null) {
+    final box = _box;
+    if (box == null) {
       // The box closed under the drag (Escape mid-gesture). The contact is
       // still down and its release still lowers the drag flags, but there
       // is nothing left to move — see [_clearTransform], which used to say
@@ -3305,9 +3134,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     switch (drag) {
       case WarpPointDrag():
-        _dragWarpPoints(drag, affine, pointer);
+        _dragWarpPoints(drag, box, pointer);
       case BoxHandleDrag():
-        _dragBoxHandle(drag, pointer);
+        _dragBoxHandle(drag, box, pointer);
     }
     // ⚠️AFTER the branch: the re-base inside it reads the previous value.
     drag.lastPointer = pointer;
@@ -3320,7 +3149,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// hand did rather than along the box's own axes.
   void _dragWarpPoints(
     WarpPointDrag drag,
-    SelectionAffine affine,
+    TransformBox box,
     CanvasPoint pointer,
   ) {
     final dragPoints = drag.points;
@@ -3328,6 +3157,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     final startOffsets = drag.startOffsets;
+    final affine = box.affine;
     final from = affine.applyInverse(drag.startPointer);
     final to = affine.applyInverse(pointer);
     final dx = to.x - from.x;
@@ -3348,20 +3178,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ];
     setState(() {
       if (_mode == TransformMode.mesh) {
-        _meshOffsets = moved;
+        box.warp.mesh = moved;
       } else {
-        _cornerOffsets = moved;
+        box.warp.corners = moved;
       }
     });
     _syncAnts();
   }
 
-  void _dragBoxHandle(BoxHandleDrag drag, CanvasPoint pointer) {
+  void _dragBoxHandle(
+    BoxHandleDrag drag,
+    TransformBox box,
+    CanvasPoint pointer,
+  ) {
     final start = drag.start;
     switch (drag.handle) {
       case TransformHandle.inside:
         setState(() {
-          _transform = start.copyWith(
+          box.affine = start.copyWith(
             tx: start.tx + pointer.x - drag.startPointer.x,
             ty: start.ty + pointer.y - drag.startPointer.y,
           );
@@ -3377,7 +3211,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // 그건 유저가 그렇게 하고싶지않으면 **생각해서 할일**이야」 — and
         // the anchor is an edit value like any other.
         setState(() {
-          _transform = start.copyWith(
+          box.affine = start.copyWith(
             anchorX: start.anchorX + pointer.x - drag.startPointer.x,
             anchorY: start.anchorY + pointer.y - drag.startPointer.y,
           );
@@ -3386,7 +3220,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // Wrapped-delta accumulation (the camera lever rule): continuous
         // across the ±180° seam. Canvas-space angles, so the P8 view
         // rotation/flip never skews the feel.
-        final current = _transform ?? start;
+        final current = box.affine;
         final angle = _pointerAngleAbout(pointer, current);
         var delta = angle - drag.lastAngle;
         while (delta > 180) {
@@ -3397,7 +3231,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
         drag.lastAngle = angle;
         setState(() {
-          _transform = current.copyWith(
+          box.affine = current.copyWith(
             rotationDegrees: current.rotationDegrees + delta,
           );
         });
@@ -3427,32 +3261,36 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         if (held != drag.modifierHeld) {
           drag
             ..modifierHeld = held
-            ..start = _transform ?? drag.start
+            ..start = box.affine
             ..startPointer = drag.lastPointer;
         }
         final from = drag.start;
+        final grabbed = handleLocal(
+          drag.handle,
+          box.baseWidth,
+          box.baseHeight,
+        )!;
         setState(
-          () => _transform = _solveScaleDrag(
+          () => box.affine = _solveScaleDrag(
             from,
-            drag.handle,
-            _pressDisplaced(from, drag.handle, drag.startPointer, pointer),
+            grabbed,
+            _pressDisplaced(from, grabbed, drag.startPointer, pointer),
           ),
         );
     }
     _publishTransformValues();
   }
 
-  /// Where the grabbed [handle] would be if it moved exactly as far as the
-  /// pointer has since the press — the point [_solveScaleDrag] is handed, so
-  /// a press that landed off the handle moves it by the hand's travel and not
-  /// onto the hand (F-127).
+  /// Where the [grabbed] handle (its base-local position) would be if it
+  /// moved exactly as far as the pointer has since the press — the point
+  /// [_solveScaleDrag] is handed, so a press that landed off the handle
+  /// moves it by the hand's travel and not onto the hand (F-127).
   CanvasPoint _pressDisplaced(
     SelectionAffine start,
-    TransformHandle handle,
+    CanvasPoint grabbed,
     CanvasPoint startPointer,
     CanvasPoint pointer,
   ) {
-    final grabbed = handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
     final atPress = start.apply(
       CanvasPoint(x: start.pivot.x + grabbed.x, y: start.pivot.y + grabbed.y),
     );
@@ -3484,10 +3322,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// would otherwise look here for a path that has moved.
   SelectionAffine _solveScaleDrag(
     SelectionAffine start,
-    TransformHandle handle,
+    CanvasPoint grabbed,
     CanvasPoint pointer,
   ) {
-    final grabbed = handleLocal(handle, _baseBoxWidth, _baseBoxHeight)!;
     // 🚨★★★**CENTRE BY DEFAULT, OPPOSITE CORNER ON THE MODIFIER.**
     //
     // 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
@@ -3960,8 +3797,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// The transformed box as a canvas-space polygon (inside = translate).
-  CanvasSelectionShape _transformedBoxShape(SelectionAffine affine) =>
-      _boxShapeFor(affine, _baseBoxWidth, _baseBoxHeight);
+  CanvasSelectionShape _transformedBoxShape(TransformBox box) =>
+      _boxShapeFor(box.affine, box.baseWidth, box.baseHeight);
 
   CanvasSelectionShape _boxShapeFor(
     SelectionAffine affine,
@@ -4029,10 +3866,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
   }
 
-  TransformHandle? _hitTestTransformHandle(
-    Offset local,
-    SelectionAffine affine,
-  ) {
+  TransformHandle? _hitTestTransformHandle(Offset local, TransformBox box) {
+    final affine = box.affine;
     // ⚠️THE CROSS IS ON TOP, SO IT IS GRABBED FIRST. It is painted over
     // everything else, and 「what you see is what you grab」 is the only
     // rule that survives the user dragging it onto a scale handle — which
@@ -4042,13 +3877,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return TransformHandle.anchor;
     }
     for (final handle in _scaleHandles) {
-      final position = _scaleHandleViewport(handle, affine, _baseBoxWidth, _baseBoxHeight);
+      final position = _scaleHandleViewport(handle, affine, box.baseWidth, box.baseHeight);
       if ((local - position).distance <= _handleHitRadius) {
         return handle;
       }
     }
     final canvasPoint = _toCanvas(local);
-    if (_transformedBoxShape(affine).containsPoint(canvasPoint)) {
+    if (_transformedBoxShape(box).containsPoint(canvasPoint)) {
       return TransformHandle.inside;
     }
     // 🚨★★★**OUTSIDE THE BOX IS THE ROTATION.** 유저 2026-09-22: 「우선
@@ -4169,8 +4004,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // chrome even before any session opens (identity affine around the
     // shape bounds; grabbing a handle opens the session at that moment).
     var chromeAffine = transform;
-    var chromeWidth = _baseBoxWidth;
-    var chromeHeight = _baseBoxHeight;
+    var chromeWidth = _box?.baseWidth ?? 0;
+    var chromeHeight = _box?.baseHeight ?? 0;
     if (chromeAffine == null &&
         widget.alwaysShowTransformBox &&
         widget.tool == CanvasSelectionTool.move &&
@@ -4334,18 +4169,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     onPressed: _cancelTransform,
   );
 
-  /// ⛔**BOTH `if`s, not Enter's single branch.** `_commitTransform` on an
-  /// identity affine only closes the box and leaves the session pending,
-  /// so Enter's form would make one tap of a button labelled 「confirm」
-  /// into two. With both, a warped box commits warped (the inner confirm
-  /// fires and the outer no-ops on a null pending stamp) and an untouched
-  /// box closes and confirms in one tap.
+  /// The box's ✓ is 적용 — [_applyTransform], the verb Enter and the tool
+  /// settings button reach too (confirm-button: 「입구 하나」). ↩️It carried
+  /// a branch of its own, and that is how Enter and this button came to
+  /// answer the same box two ways.
   ///
-  /// ↩️Wired straight to `_confirmMoveSession` it landed the UNWARPED
-  /// lift: the artwork committed at its pre-transform position and size,
-  /// the warped preview kept painting on top until something closed the
-  /// box, and the wrong landing went into history. Enter has branched on
-  /// this since R16-①; the button never did.
   /// ⚠️[isSelected] is the ON state, and 「this session has changes」 is
   /// exactly that — the same fact the ants and the box already show in the
   /// session's red. The BUTTON says it the app's own way instead of
@@ -4355,14 +4183,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     tooltip: AppText.strings.commonApply,
     icon: const Icon(Icons.check),
     isSelected: _sessionHasChanges,
-    onPressed: () {
-      if (_transform != null) {
-        _commitTransform();
-      }
-      if (_movePending) {
-        _confirmMoveSession();
-      }
-    },
+    onPressed: _applyAction() == null ? null : _applyTransform,
   );
 
   Positioned _antsLayer(CanvasSelectionRegion? displayShape, CanvasSelectionRegion? region, SelectionTransformChrome? chrome) {
@@ -4385,6 +4206,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // the user said, and a confirm closes the box, which is what
             // makes it go. The session already carries the shape it began
             // with — nothing new is remembered for this.
+            // ⚠️Since 확정 became one verb (confirm-button) no door leaves a
+            // session without its box — Enter on an untouched box used to —
+            // so this states the law rather than guarding a case a user can
+            // reach.
             startShape: _transform == null ? null : _moveSessionStartShape,
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
             // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.

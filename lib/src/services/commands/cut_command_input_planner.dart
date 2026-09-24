@@ -180,6 +180,7 @@ class CreateLinkedCutCommandInputPlan {
     required this.newCutId,
     required this.layerIdMap,
     required this.newGroupIdBySource,
+    required this.coveringFrameIdBySource,
   });
 
   final CutId newCutId;
@@ -189,6 +190,10 @@ class CreateLinkedCutCommandInputPlan {
   /// through this one).
   final Map<LayerId, LayerId> layerIdMap;
   final Map<LayerId, String> newGroupIdBySource;
+
+  /// The fresh panel each row that cannot stand empty is born with in the
+  /// new cut (F-99), keyed by its source row.
+  final Map<LayerId, FrameId> coveringFrameIdBySource;
 }
 
 /// A fresh layer id and a fresh link-group id for each of [sources],
@@ -227,7 +232,8 @@ _mintLinkIds(
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
 /// row of [sourceCut] (every kind that links — drawing rows, their folders,
 /// the conte row and the camera row), and registry group ids. FrameIds are
-/// NOT mapped — identity is the link.
+/// NOT mapped — identity is the link — except the fresh panel a row that
+/// cannot stand empty is born with (F-99).
 CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   required Project project,
   required Cut sourceCut,
@@ -245,13 +251,27 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
     newCutId: newCutId,
     layerIdMap: minted.layerIdMap,
     newGroupIdBySource: minted.newGroupIdBySource,
+    coveringFrameIdBySource: {
+      for (final layer in sourceCut.layers)
+        if (minted.layerIdMap.containsKey(layer.id) &&
+            _bornWithAFreshPanel(layer))
+          layer.id: ids.mintFrameId(),
+    },
   );
 }
+
+/// Whether [layer]'s copy in another cut is born covering that cut with a
+/// panel of its own (F-99): a COVERING row is — the conte row. The image row
+/// covers too, but its ONE cel is the picture it shares, and the write
+/// normalization re-covers the row from it (D22).
+bool _bornWithAFreshPanel(Layer layer) =>
+    layer.kind.coversWithoutGaps && !layer.kind.holdsSingleCel;
 
 class ConvertToLinkedCutCommandInputPlan {
   const ConvertToLinkedCutCommandInputPlan({
     required this.unionLayerIdMap,
     required this.newGroupIdBySource,
+    required this.coveringFrameIdBySource,
   });
 
   /// (owning cut, source layer) → new copy id in the OTHER cut.
@@ -259,6 +279,10 @@ class ConvertToLinkedCutCommandInputPlan {
 
   /// Planned registry group id per newly-linked source layer.
   final Map<LayerId, String> newGroupIdBySource;
+
+  /// The fresh panel each union copy of a row that cannot stand empty is
+  /// born with (F-99), keyed like [unionLayerIdMap].
+  final Map<(CutId, LayerId), FrameId> coveringFrameIdBySource;
 }
 
 /// Plans a 겸용 변경 (L2b): copy ids for the one-side-only layers that
@@ -281,6 +305,7 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
 
   final unionLayerIdMap = <(CutId, LayerId), LayerId>{};
   final newGroupIdBySource = <LayerId, String>{};
+  final coveringFrameIdBySource = <(CutId, LayerId), FrameId>{};
 
   String nextGroupId() {
     final id = _firstAvailableId(prefix: 'link', usedIds: usedGroupIds);
@@ -294,21 +319,30 @@ ConvertToLinkedCutCommandInputPlan planConvertToLinkedCutCommandInput({
     return id;
   }
 
+  void planUnion(Cut owner, LayerId layerId) {
+    unionLayerIdMap[(owner.id, layerId)] = nextLayerId();
+    newGroupIdBySource[layerId] = nextGroupId();
+    if (_bornWithAFreshPanel(
+      owner.layers.firstWhere((layer) => layer.id == layerId),
+    )) {
+      coveringFrameIdBySource[(owner.id, layerId)] = ids.mintFrameId();
+    }
+  }
+
   for (final pair in plan.layerPairs) {
     newGroupIdBySource[pair.originLayerId] = nextGroupId();
   }
   for (final originLayerId in plan.originOnlyLayerIds) {
-    unionLayerIdMap[(originCut.id, originLayerId)] = nextLayerId();
-    newGroupIdBySource[originLayerId] = nextGroupId();
+    planUnion(originCut, originLayerId);
   }
   for (final targetLayerId in plan.targetOnlyLayerIds) {
-    unionLayerIdMap[(targetCut.id, targetLayerId)] = nextLayerId();
-    newGroupIdBySource[targetLayerId] = nextGroupId();
+    planUnion(targetCut, targetLayerId);
   }
 
   return ConvertToLinkedCutCommandInputPlan(
     unionLayerIdMap: unionLayerIdMap,
     newGroupIdBySource: newGroupIdBySource,
+    coveringFrameIdBySource: coveringFrameIdBySource,
   );
 }
 
@@ -549,17 +583,18 @@ class _ProjectIdSnapshot {
   final Set<String> layerIds;
   final Set<String> frameIds;
 
+  /// A frame id nothing in the project holds yet.
+  FrameId mintFrameId() {
+    final id = FrameId(_firstAvailableId(prefix: 'frame', usedIds: frameIds));
+    frameIds.add(id.value);
+    return id;
+  }
+
   /// The fresh frame id [source] copies to, minted on first sight and
   /// remembered in [map] after that — one cel exposed twice must come out
   /// as one cel, not two that look alike. Both planners mint this way.
   FrameId mintFrameIdFor(FrameId source, Map<FrameId, FrameId> map) =>
-      map.putIfAbsent(source, () {
-        final id = FrameId(
-          _firstAvailableId(prefix: 'frame', usedIds: frameIds),
-        );
-        frameIds.add(id.value);
-        return id;
-      });
+      map.putIfAbsent(source, mintFrameId);
 
   void includeCut(Cut cut) {
     cutIds.add(cut.id.value);

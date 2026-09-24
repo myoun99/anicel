@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'editor_action_registry.dart';
+import 'focused_text_field.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_settings_store.dart';
 import 'touch_shortcuts.dart';
@@ -319,8 +320,8 @@ class EditorShortcutManager extends ShortcutManager {
   /// system's, in each platform's own modifier — and stands down here. The
   /// premise is made true rather than assumed.
   bool _fieldKeeps(KeyEvent event) {
-    final focusContext = FocusManager.instance.primaryFocus?.context;
-    if (focusContext == null || !_isInEditableText(focusContext)) {
+    final focusContext = focusedTextField();
+    if (focusContext == null) {
       return false;
     }
     final keyboard = HardwareKeyboard.instance;
@@ -339,27 +340,5 @@ class EditorShortcutManager extends ShortcutManager {
       return !bound;
     });
     return bound;
-  }
-
-  /// 🚨F-22 (유저 2026-08-24: 「멤버에서 클릭해서 숫자 수동편집시 **1부터
-  /// 5까지의 숫자입력이 안먹히는거같음**」) — and 1…5 are the five bare-key
-  /// shortcuts. The guard above was written for exactly this and never
-  /// fired once.
-  ///
-  /// ⛔`primaryFocus.context.widget is EditableText` is not the test it
-  /// reads as. `EditableText` builds a `Focus` around itself and hands that
-  /// node out, so the primary focus context's own widget is that `Focus` —
-  /// measured, and the comparison had been false for every text field in
-  /// the app since it was written. Typing a digit into any field ran the
-  /// shortcut instead, and 'b' in a rename dialog did switch tools.
-  ///
-  /// ★So ask the tree, not the node: the field is an ANCESTOR of the
-  /// element holding focus, which is a fact about how `EditableText` is
-  /// built rather than about which widget happens to own the node.
-  static bool _isInEditableText(BuildContext focusContext) {
-    if (focusContext.widget is EditableText) {
-      return true;
-    }
-    return focusContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 }

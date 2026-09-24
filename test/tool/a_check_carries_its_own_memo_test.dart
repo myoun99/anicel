@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨A MEMO ON A HANDS-ON CHECK IS TWO FACTS, and only one of them clears the
 /// check (유저 2026-08-31: 「실기확인 항목마다 메모란도 존재해야하지않을까?
@@ -20,7 +21,7 @@ import '../../tool/board_model.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-tick'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   BoardCard cardFrom(List<String> lines) {
     final file = File('${dir.path}/board.jsonl')

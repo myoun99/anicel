@@ -19,11 +19,14 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_overlay.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_painter.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+
+import '../helpers/frame_census.dart';
 
 /// The envelope PANEL: the sheet inside the canvas shell, with the ink a
 /// hand writes on it.
@@ -207,12 +210,14 @@ void main() {
     Future<(EditorSessionManager, CutEnvelopeInkController)> pumpEnvelope(
       WidgetTester tester, {
       bool inkEnabled = false,
+      ValueNotifier<BrushToolState>? brush,
     }) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       final ink = CutEnvelopeInkController();
       addTearDown(ink.dispose);
-      final tool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+      final tool =
+          brush ?? ValueNotifier<BrushToolState>(BrushToolState.defaults);
       addTearDown(tool.dispose);
       await tester.binding.setSurfaceSize(const Size(900, 700));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -261,6 +266,29 @@ void main() {
         lessThan(CutEnvelopePresets.analog.inkBoxes.length),
         reason: 'the gate is the whole reason per-window input is affordable',
       );
+    });
+
+    // H40 ② (2026-09-24): the overlay was rebuilt on every brush change —
+    // each frame of a settings slider drag. Its windows read the brush when
+    // a stroke starts now, so a change reaches none of them.
+    testWidgets('a brush change rebuilds no ink window, and the windows read '
+        'the brush in hand', (tester) async {
+      final brush = ValueNotifier<BrushToolState>(BrushToolState.defaults);
+      await pumpEnvelope(tester, inkEnabled: true, brush: brush);
+      expect(find.byType(CutEnvelopeInkOverlay), findsOneWidget);
+
+      final next = brush.value.copyWith(size: 40, color: 0xFF336699);
+      final census = await frameCensus(tester, () => brush.value = next);
+
+      expect(census.rebuilt, isNot(contains(CutEnvelopeInkOverlay)));
+      expect(census.rebuilt, isNot(contains(InteractiveBrushEditCanvasView)));
+      final windows = tester.widgetList<InteractiveBrushEditCanvasView>(
+        find.byType(InteractiveBrushEditCanvasView),
+      );
+      expect(windows, isNotEmpty);
+      for (final window in windows) {
+        expect(window.inputSettings(), next.toInputSettings());
+      }
     });
 
     testWidgets('the status strip offers both bundled forms and switching '

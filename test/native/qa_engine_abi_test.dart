@@ -8,6 +8,11 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 
 import '../helpers/native_engine_path.dart';
 
+/// Where the Dart loaders live. ⚠️Spelled as ONE literal so the test
+/// selection reads it (`libPrefixesReadAsText`): spelled in pieces, the
+/// bare lib segment read as the whole tree and every lib change ran it.
+const _nativeSource = 'lib/src/native';
+
 /// Guards for the ONE ABI number and the ONE loader.
 ///
 /// The C exports a single `qa_engine_abi_version()`, so every extra copy
@@ -56,7 +61,7 @@ void main() {
   });
 
   group('loader roster', () {
-    final nativeDir = Directory(at(['lib', 'src', 'native']));
+    final nativeDir = Directory(at(_nativeSource.split('/')));
     final loaders = nativeDir
         .listSync()
         .whereType<File>()
@@ -117,7 +122,7 @@ void main() {
       // only the two files that pass STRUCTS need this. If a third one
       // starts sharing QaAudioClipStruct, add it here and to the check.
       for (final name in ['qa_audio_native.dart', 'qa_audio_device.dart']) {
-        final source = readSource(['lib', 'src', 'native', name]);
+        final source = readSource([..._nativeSource.split('/'), name]);
         expect(
           source.contains('qaAudioStructLayoutsMatch'),
           isTrue,

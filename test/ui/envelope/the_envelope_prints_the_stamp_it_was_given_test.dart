@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/envelope/envelope_image_cache.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★A CHOSEN 도장 HAS TO REACH THE PAINT PASS.
 ///
@@ -28,11 +29,7 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('envelope-stamp');
   });
-  tearDown(() async {
-    if (dir.existsSync()) {
-      await dir.delete(recursive: true);
-    }
-  });
+  tearDown(() => deleteTempQuietly(dir));
 
   /// A real PNG, encoded through the same pipeline the app decodes with — a
   /// hand-written byte blob would test the fixture, not the cache.

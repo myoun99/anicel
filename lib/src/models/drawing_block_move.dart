@@ -300,18 +300,21 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
 }) {
   if (pushRight) {
     final destStart = math.max(0, requestedStart);
-    final pushes = <_Push>[];
-    var frontier = destStart + movedLength;
-    for (final block in others) {
-      if (block.endIndexExclusive <= destStart) {
-        continue;
-      }
-      final newStart = math.max(block.startIndex, frontier);
-      frontier = newStart + block.length;
-      if (newStart != block.startIndex) {
-        pushes.add((block: block, newStart: newStart));
-      }
-    }
+    // The push every insertion on either axis makes
+    // ([startsClearingFrontier]).
+    final reached = [
+      for (final block in others)
+        if (block.endIndexExclusive > destStart) block,
+    ];
+    final starts = startsClearingFrontier([
+      for (final block in reached)
+        (start: block.startIndex, length: block.length),
+    ], frontier: destStart + movedLength);
+    final pushes = <_Push>[
+      for (final (position, block) in reached.indexed)
+        if (starts[position] != block.startIndex)
+          (block: block, newStart: starts[position]),
+    ];
     return (destStart: destStart, pushes: pushes);
   }
 

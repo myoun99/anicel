@@ -42,6 +42,10 @@ class FakeVideoBackend implements VideoDecodeBackend {
   /// Every frame that was actually asked for, in order.
   final List<int> asked = <int>[];
 
+  /// Every movie opened, and where: a path of its own, or a stretch of one.
+  final List<({String path, ({int offset, int length})? range})> openedAt =
+      [];
+
   /// What this backend answers to 「can this build read a movie」.
   ///
   /// ⚠️Settable so a test can say NO while the machine running it has a
@@ -57,16 +61,19 @@ class FakeVideoBackend implements VideoDecodeBackend {
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
     ({int offset, int length})? range,
-  }) async => (
-    token: 1,
-    info: QaVideoInfo(
-      width: width,
-      height: height,
-      frameCount: frameCount,
-      fpsNumerator: fpsNumerator,
-      fpsDenominator: fpsDenominator,
-    ),
-  );
+  }) async {
+    openedAt.add((path: path, range: range));
+    return (
+      token: 1,
+      info: QaVideoInfo(
+        width: width,
+        height: height,
+        frameCount: frameCount,
+        fpsNumerator: fpsNumerator,
+        fpsDenominator: fpsDenominator,
+      ),
+    );
+  }
 
   @override
   Future<Uint8List?> frame(int token, int index) async {

@@ -1,4 +1,5 @@
-﻿import 'dart:ui' as ui;
+﻿import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 void main() {
@@ -182,6 +184,12 @@ void main() {
         sourceEffects: const [],
       );
       expect(identical(first, rebuilt), isFalse);
+      expect(
+        identical(first!.content, rebuilt!.content),
+        isFalse,
+        reason: 'a new picture is new CONTENT — what a holder reads to know '
+            'the display it composed with the old one is stale',
+      );
       cache.dispose();
     });
   });
@@ -375,6 +383,12 @@ void main() {
       expect(await bytesOf(kept.image), nowBytes, reason: 'the same picture');
       expect(kept.worldRect, now.worldRect);
       expect(
+        identical(kept.content, now.content),
+        isTrue,
+        reason: 'the same CONTENT: the handle is all that changed, and a '
+            'holder that composed with the deferred image keeps what it drew',
+      );
+      expect(
         identical(
           cache.validImageOrNull(
             key('frame-a'),
@@ -476,6 +490,249 @@ void main() {
         isTrue,
       );
       cache.dispose();
+    });
+  });
+
+  group('the ink alone', () {
+    // 64×48 in tiles of 16, one dab in the tile at (32, 16): the ink is that
+    // tile, the content the canvas.
+    const inkCanvas = CanvasSize(width: 64, height: 48);
+    const content = ui.Rect.fromLTWH(0, 0, 64, 48);
+
+    BrushFrameStore storeWithInk() {
+      final store = BrushFrameStore();
+      BrushFrameEditingCoordinator(
+        initialFrameKey: key('ink'),
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: inkCanvas,
+          tileSize: 16,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(sourceDabs: [dab(x: 40, y: 22)]);
+      return store;
+    }
+
+    testWidgets('a row that draws exactly from its ink is stored as its ink — '
+        'at every level, the same rect', (tester) async {
+      await tester.runAsync(() async {
+        final cache = LayerFrameImageCache(frameStore: storeWithInk());
+        addTearDown(cache.dispose);
+        for (final (quality, worldRect) in const [
+          (PlaybackQuality.full, ui.Rect.fromLTWH(32, 16, 16, 16)),
+          (PlaybackQuality.half, ui.Rect.fromLTWH(32, 16, 16, 16)),
+          (PlaybackQuality.quarter, ui.Rect.fromLTWH(32, 16, 16, 16)),
+        ]) {
+          final image = (await cache.prepare(
+            key: key('ink'),
+            canvasSize: inkCanvas,
+            quality: quality,
+            sourceEffects: const [],
+            inkSuffices: true,
+          ))!;
+          expect(image.isInk, isTrue, reason: '$quality');
+          expect(image.worldRect, worldRect, reason: '$quality');
+          expect(image.extent, content, reason: '$quality');
+          expect(
+            image.image.width,
+            worldRect.width / (1 << quality.level),
+            reason: '$quality: one texel per level pixel',
+          );
+        }
+      });
+    });
+
+    testWidgets('a route that needs the whole image never gets the ink, and '
+        'the whole image serves one that would take either', (tester) async {
+      await tester.runAsync(() async {
+        final cache = LayerFrameImageCache(frameStore: storeWithInk());
+        addTearDown(cache.dispose);
+        Future<LayerFrameImage> asked({required bool inkSuffices}) async =>
+            (await cache.prepare(
+              key: key('ink'),
+              canvasSize: inkCanvas,
+              quality: PlaybackQuality.full,
+              sourceEffects: const [],
+              inkSuffices: inkSuffices,
+            ))!;
+        expect((await asked(inkSuffices: true)).isInk, isTrue);
+        final whole = await asked(inkSuffices: false);
+        expect(whole.isInk, isFalse);
+        expect(whole.worldRect, content);
+        expect(whole.image.width, 64);
+        expect(identical(await asked(inkSuffices: true), whole), isTrue);
+      });
+    });
+
+    testWidgets('the sync road stores the ink too, and the snapshot that '
+        'settles keeps both rects', (tester) async {
+      await tester.runAsync(() async {
+        final store = storeWithInk();
+        final cache = LayerFrameImageCache(frameStore: store);
+        addTearDown(cache.dispose);
+        final now = cache.prepareSyncOrNull(
+          key: key('ink'),
+          canvasSize: inkCanvas,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          makePictures: true,
+          inkSuffices: true,
+        )!;
+        expect(now.isInk, isTrue);
+        expect(now.worldRect, const ui.Rect.fromLTWH(32, 16, 16, 16));
+        final settled = (await cache.prepare(
+          key: key('ink'),
+          canvasSize: inkCanvas,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          inkSuffices: true,
+        ))!;
+        expect(identical(settled.image, now.image), isFalse,
+            reason: 'fixture: the snapshot took the deferred image\'s place');
+        expect(settled.worldRect, now.worldRect);
+        expect(settled.extent, now.extent);
+        expect(identical(settled.content, now.content), isTrue);
+      });
+    });
+
+    // 🔬Every raster of a picture is a multisampled render with a whole mip
+    // chain — ~6ms for a working-size cel on the Windows app — so the full
+    // level composes the ink from its tiles rather than a whole image to cut.
+    testWidgets('the full level composes the ink straight from its tiles; '
+        'the levels below cut it out of their halved whole — both roads', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final async = LayerFrameImageCache(frameStore: storeWithInk());
+        final sync = LayerFrameImageCache(frameStore: storeWithInk());
+        addTearDown(async.dispose);
+        addTearDown(sync.dispose);
+        Future<LayerFrameImage?> composed(PlaybackQuality quality) =>
+            async.prepare(
+              key: key('ink'),
+              canvasSize: inkCanvas,
+              quality: quality,
+              sourceEffects: const [],
+              inkSuffices: true,
+            );
+        LayerFrameImage? composedNow(PlaybackQuality quality) =>
+            sync.prepareSyncOrNull(
+              key: key('ink'),
+              canvasSize: inkCanvas,
+              quality: quality,
+              sourceEffects: const [],
+              makePictures: true,
+              inkSuffices: true,
+            );
+        for (final (road, prepared) in [
+          ('async', composed),
+          ('sync', (PlaybackQuality quality) async => composedNow(quality)),
+        ]) {
+          debugInksCutOut = 0;
+          expect((await prepared(PlaybackQuality.full))!.isInk, isTrue);
+          expect(
+            debugInksCutOut,
+            0,
+            reason: '$road: one raster of the ink, no whole image to cut',
+          );
+          expect((await prepared(PlaybackQuality.half))!.isInk, isTrue);
+          expect(
+            debugInksCutOut,
+            1,
+            reason: '$road: below the full level the ink is cut out of the '
+                'halved whole',
+          );
+        }
+      });
+    });
+
+    testWidgets('the ink composed from its tiles is the whole image\'s '
+        'pixels there — both roads', (tester) async {
+      await tester.runAsync(() async {
+        // Soft ink across four tiles, clear of the canvas's edges.
+        final store = BrushFrameStore();
+        BrushFrameEditingCoordinator(
+          initialFrameKey: key('wide'),
+          frameStore: store,
+          sessionStore: BrushFrameEditSessionStore(
+            canvasSize: inkCanvas,
+            tileSize: 16,
+          ),
+          historyPolicy: const BrushHistoryPolicy(),
+        ).commitSourceStroke(
+          sourceDabs: [
+            for (final (i, (x, y)) in const <(double, double)>[
+              (22, 21),
+              (33, 27),
+              (41, 19),
+            ].indexed)
+              BrushDab(
+                center: CanvasPoint(x: x, y: y),
+                color: 0xFF2060C0,
+                size: 9,
+                opacity: 0.8,
+                flow: 1,
+                hardness: 0.3,
+                tipShape: BrushTipShape.round,
+                pressure: 1,
+                sequence: i,
+              ),
+          ],
+        );
+        final whole = LayerFrameImageCache(frameStore: store)
+          ..debugStoresWholeContent = true;
+        final async = LayerFrameImageCache(frameStore: store);
+        final sync = LayerFrameImageCache(frameStore: store);
+        addTearDown(whole.dispose);
+        addTearDown(async.dispose);
+        addTearDown(sync.dispose);
+        Future<LayerFrameImage> prepared(LayerFrameImageCache cache) async =>
+            (await cache.prepare(
+              key: key('wide'),
+              canvasSize: inkCanvas,
+              quality: PlaybackQuality.full,
+              sourceEffects: const [],
+              inkSuffices: true,
+            ))!;
+        final all = await prepared(whole);
+        final ink = await prepared(async);
+        final inkNow = sync.prepareSyncOrNull(
+          key: key('wide'),
+          canvasSize: inkCanvas,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+          makePictures: true,
+          inkSuffices: true,
+        )!;
+        expect(all.isInk, isFalse, reason: 'anchor: the whole image');
+        expect(ink.isInk, isTrue);
+        expect(inkNow.worldRect, ink.worldRect);
+
+        Future<Uint8List> bytesOf(ui.Image image) async => (await image
+                .toByteData(format: ui.ImageByteFormat.rawRgba))!
+            .buffer
+            .asUint8List();
+        final allBytes = await bytesOf(all.image);
+        final texels = ink.worldRect.shift(-all.worldRect.topLeft);
+        final there = BytesBuilder();
+        for (var y = texels.top.round(); y < texels.bottom.round(); y += 1) {
+          final row = y * all.image.width;
+          there.add(
+            allBytes.sublist(
+              (row + texels.left.round()) * 4,
+              (row + texels.right.round()) * 4,
+            ),
+          );
+        }
+        final expected = there.toBytes();
+        expect(
+          expected.any((byte) => byte != 0),
+          isTrue,
+          reason: 'fixture: there is ink there',
+        );
+        expect(await bytesOf(ink.image), expected, reason: 'async road');
+        expect(await bytesOf(inkNow.image), expected, reason: 'sync road');
+      });
     });
   });
 }

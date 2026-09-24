@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 void main() {
   test('defaults feed the shortcuts map; every registry action resolves', () {
@@ -117,7 +118,7 @@ void main() {
   test('overrides persist through the store and restore on launch; '
       'unknown actions and malformed entries are dropped', () async {
     final directory = await Directory.systemTemp.createTemp('shortcuts-test');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final path = '${directory.path}/overrides.json';
 
     final store = ShortcutSettingsStore(filePath: path);

@@ -1,43 +1,47 @@
+import 'dart:collection';
+import 'dart:math' as math;
+
 import '../../models/camera_instruction.dart';
+import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_coverage.dart';
+import '../../models/timeline_exposure.dart';
 import '../../models/timesheet_document.dart' show timesheetMemoInstructionLine;
-import '../../models/timeline_frame_range.dart';
-import '../../services/command.dart';
-import '../../services/commands/update_layer_instructions_command.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'active_cut_controllers.dart';
-import 'active_cut_edits.dart';
 import 'session_roles.dart';
 import 'cut_verbs.dart';
 import 'camera.dart';
 
-/// The INSTRUCTIONS — the events a layer carries on its instruction lane,
-/// the span at a frame, and creating, upserting and removing them — as
-/// their own object.
+/// The INSTRUCTIONS — the spans a direction row carries, the span at a
+/// frame, and creating, upserting and removing them — as their own object.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: no field of its own and eight
 /// session members touched. It names the roles it needs in its constructor.
+///
+/// ★A direction row's span IS its block (R27, [LayerKind.spansRideBlocks]),
+/// so these verbs write blocks: creating one lays a block on a cel of its
+/// own, editing one changes what its block says, and removing one is the
+/// block delete — the delete button's own code.
 class Instructions {
   Instructions({
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
+    required FrameIds frameIds,
     required ActiveCutControllers controllers,
     required CutVerbs cutVerbs,
     required Camera camera,
-    required ActiveCutEdits activeCut,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
+       _frameIds = frameIds,
        _controllers = controllers,
        _cutVerbs = cutVerbs,
-       _camera = camera,
-       _activeCut = activeCut;
+       _camera = camera;
 
   final CutVerbs _cutVerbs;
   final Camera _camera;
@@ -45,25 +49,8 @@ class Instructions {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
+  final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final ActiveCutEdits _activeCut;
-
-  /// Replaces [layerId]'s instruction span map (instruction rows only).
-  /// One undo step; no-op when unchanged. Never touches rendering caches —
-  /// instruction spans are timeline annotations, not composite inputs.
-  void updateLayerInstructions(
-    LayerId layerId,
-    Map<int, InstructionEvent> instructions, {
-    String description = 'Edit instructions',
-  }) => _activeCut.onActiveCutQuietly(
-    (cutId) => _project.cutCommandCoordinator.updateLayerInstructions(
-      cutId: cutId,
-      layerId: layerId,
-      instructions: instructions,
-      description: description,
-    ),
-  );
 
   /// The instruction span covering [frameIndex] on [layerId], as
   /// (startIndex, event); null on empty cells / non-instruction rows.
@@ -105,8 +92,10 @@ class Instructions {
   }
 
   /// Creates or edits the instruction event at [frameIndex] in ONE undo
-  /// step: a covered cell replaces its span's event (start/length stay), an
-  /// empty cell starts a new span holding to the next one / the cut's end.
+  /// step: a covered cell replaces what its block says (start and length
+  /// stay, and so does the drawing), an empty cell lays a new block on a
+  /// cel of its own, holding for the dialog's length — clamped into the
+  /// cut and at the next block.
   void upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
@@ -118,36 +107,56 @@ class Instructions {
       return;
     }
 
-    // New events take the dialog's length (clamped into the cut; the add
-    // helper clamps at the next span too); null fills to the cut end.
     // A resolvable instruction layer implies an active cut.
     final available = (_project.requireActiveCut.duration - frameIndex).clamp(
       1,
       1 << 20,
     );
-    final covering = instructionSpanCovering(layer.instructions, frameIndex);
-    final next = covering != null
-        ? instructionMapWithEventReplaced(
-            layer.instructions,
-            spanStartIndex: covering.key,
-            event: event,
-          )
-        : instructionMapWithEventAdded(
-            layer.instructions,
-            startIndex: frameIndex,
-            event: event.copyWith(
-              length: (createLengthFrames ?? available).clamp(1, available),
+    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    final edits = covering != null && !covering.entry.ghost;
+    final Layer Function(Layer row) spans;
+    if (edits) {
+      spans = (row) => row.copyWith(
+        timeline: {
+          ...row.timeline,
+          covering.startIndex: covering.entry.copyWith(
+            instruction: () => event.writing,
+          ),
+        },
+      );
+    } else {
+      final cel = _frameIds.mintFrameId(layerId);
+      final wanted = (createLengthFrames ?? available).clamp(1, available);
+      spans = (row) {
+        // A ghost is a hold's projection, not a block: it neither stops the
+        // new one nor survives beside it (the edit re-derives it).
+        final authored = SplayTreeMap.of(row.timeline)
+          ..removeWhere((_, entry) => entry.ghost);
+        final next = nextDrawingBlockAfter(authored, frameIndex)?.startIndex;
+        return row.copyWith(
+          frames: [
+            ...row.frames,
+            Frame(id: cel, duration: 1, strokes: const []),
+          ],
+          timeline: {
+            ...authored,
+            frameIndex: TimelineExposure.drawing(
+              cel,
+              length: next == null
+                  ? wanted
+                  : math.min(wanted, next - frameIndex),
+              instruction: event.writing,
             ),
-          );
-    if (next == null) {
-      return;
+          },
+        );
+      };
     }
     // The sheet's memo shorthand ('A→B PAN memo') writes itself ONCE at
     // creation and stays user-editable note text from then on (R5-⑥ — the
     // derived always-printed line could not be edited). Edits and removals
     // never rewrite the note; the user owns it. Event + note = ONE undo.
     String? appendedNote;
-    if (covering == null) {
+    if (!edits) {
       final line = timesheetMemoInstructionLine(
         event,
         _camera.cameraInstructionSet.defById(event.instructionId),
@@ -157,88 +166,31 @@ class Instructions {
         appendedNote = note.isEmpty ? line : '$note\n$line';
       }
     }
-    _project.cutCommandCoordinator.updateLayerInstructions(
+    _project.cutCommandCoordinator.updateDirectionSpans(
       cutId: _project.requireActiveCut.id,
       layerId: layerId,
-      instructions: next,
-      description: covering == null ? 'Add instruction' : 'Edit instruction',
+      spans: spans,
+      description: edits ? 'Edit instruction' : 'Add instruction',
       note: appendedNote,
     );
     _changes.notifyChanged();
   }
 
-  /// Removes the instruction span covering [frameIndex]; one undo step.
+  /// Removes the instruction span covering [frameIndex] — the block it is,
+  /// with its drawing, by the delete button's own code; one undo step.
   void removeInstructionEventAt(LayerId layerId, int frameIndex) {
     final layer = _project.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
       return;
     }
-    final covering = instructionSpanCovering(layer.instructions, frameIndex);
-    if (covering == null) {
+    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    if (covering == null || covering.entry.ghost) {
       return;
     }
-    final next = instructionMapWithEventRemoved(
-      layer.instructions,
-      spanStartIndex: covering.key,
+    _controllers.timelineController.deleteBlocksForLayer(
+      layerId: layerId,
+      blockStartIndexes: [covering.startIndex],
     );
-    if (next == null) {
-      return;
-    }
-    updateLayerInstructions(layerId, next, description: 'Delete instruction');
-  }
-
-  Command? instructionEventsCommandForRange(
-    Layer layer,
-    TimelineFrameRangeSelection selection,
-  ) {
-    final cutId = _timeline.editingSession.activeCutId;
-    final defaultDef = _camera.cameraInstructionSet.defs.isEmpty
-        ? null
-        : _camera.cameraInstructionSet.defs.first;
-    if (defaultDef == null || cutId == null) {
-      return null;
-    }
-    bool covered(int index) {
-      for (final entry in layer.instructions.entries) {
-        if (index >= entry.key && index < entry.key + entry.value.length) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    final next = Map<int, InstructionEvent>.of(layer.instructions);
-    var changed = false;
-    int? gapStart;
-    for (
-      var index = selection.startIndex;
-      index <= selection.endIndexExclusive;
-      index += 1
-    ) {
-      final inGap =
-          index < selection.endIndexExclusive && index >= 0 && !covered(index);
-      if (inGap) {
-        gapStart ??= index;
-        continue;
-      }
-      if (gapStart != null) {
-        next[gapStart] = InstructionEvent(
-          instructionId: defaultDef.id,
-          length: index - gapStart,
-        );
-        changed = true;
-        gapStart = null;
-      }
-    }
-    if (!changed) {
-      return null;
-    }
-    return UpdateLayerInstructionsCommand(
-      repository: _project.repository,
-      cutId: cutId,
-      layerId: layer.id,
-      instructions: next,
-      description: 'Create events',
-    );
+    _changes.notifyChanged();
   }
 }

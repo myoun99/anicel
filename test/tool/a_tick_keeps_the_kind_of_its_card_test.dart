@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/board_check.dart';
 import '../../tool/board_model.dart';
 import '../../tool/board_server.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★A TICK KEEPS THE KIND OF THE CARD IT TICKS (2026-09-15).
 ///
@@ -19,7 +20,7 @@ import '../../tool/board_server.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-tick-kind'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   File boardOf(List<String> lines) => File('${dir.path}/board.jsonl')
     ..writeAsStringSync(lines.map((l) => '$l\n').join());

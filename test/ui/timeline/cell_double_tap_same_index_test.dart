@@ -43,7 +43,6 @@ void main() {
                 context: context,
                 keyPrefix: 'timeline',
                 layer: layer,
-                active: true,
                 geometry: testFrameGeometry(
                   frameCellExtent: cellExtent,
                   frameEndIndexExclusive: 6,

@@ -121,6 +121,30 @@ void main() {
     expect(fresh[corner + 3], 255, reason: 'the wide record reaches x=15');
   });
 
+  // The other fact the key cannot say: which route recorded. The buffer's
+  // recordings draw their texel copies unfiltered and the walk's resample on
+  // screen (`drawPosedLayerImage`), and the buffer gives way to the walk
+  // mid-key when a live draw grows it past its cap.
+  test('a recording made for the buffer is not replayed on the walk', () {
+    final bake = StaticCompositeBake();
+    addTearDown(bake.dispose);
+    bake.keepFor('key');
+    void paint({required bool intoTheBuffer}) {
+      final recorder = ui.PictureRecorder();
+      bake.ensureIntoTheBuffer(intoTheBuffer);
+      bake.draw(Canvas(recorder), 'd0:after', (_) {});
+      recorder.endRecording().dispose();
+    }
+
+    paint(intoTheBuffer: true);
+    paint(intoTheBuffer: true);
+    expect(bake.recordCount, 1, reason: 'anchor: the same route replays');
+    paint(intoTheBuffer: false);
+    expect(bake.recordCount, 2, reason: 'the walk records its own');
+    paint(intoTheBuffer: true);
+    expect(bake.recordCount, 3, reason: 'and the buffer its own again');
+  });
+
   testWidgets('the painter declares its extent — a resized paint equals a '
       'fresh paint at the new size', (tester) async {
     // A 16-wide canvas with INK ON THE RIGHT: the narrow paint's backdrop

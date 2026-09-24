@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★유저 규칙: **선택 표시는 색상만.**
 ///
@@ -27,10 +26,7 @@ void main() {
       r':[^,]*\b(selected|isSelected|isActive)\b *\?',
     );
 
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {

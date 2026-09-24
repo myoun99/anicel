@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
@@ -101,6 +102,30 @@ void main() {
       'cut-register-tip-button',
     ]) {
       expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
+    }
+  });
+
+  // stamp-holding-line-is-hardcoded-english: the one line of this section
+  // that did not follow the program language — it is the section's title
+  // (`title: null`: the stamp names what it holds), so it cannot just go.
+  testWidgets('what it holds is said in the program language', (tester) async {
+    final slot = CutPieceSlot()..hold(_piece());
+    for (final (language, words) in const [
+      (AppLanguage.en, 'Holding 40×24 px'),
+      (AppLanguage.ja, '40×24 px を持っています'),
+      (AppLanguage.ko, '40×24 px 를 들고 있습니다'),
+      (AppLanguage.fr, 'En main : 40×24 px'),
+      (AppLanguage.zhHans, '持有 40×24 px'),
+    ]) {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey<String>('cut-stamp-holding')))
+            .data,
+        words,
+        reason: language.name,
+      );
     }
   });
 

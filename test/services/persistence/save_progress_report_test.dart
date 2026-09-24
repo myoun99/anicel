@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🔑 The percentage has to be REAL.
 ///
@@ -32,13 +33,7 @@ void main() {
     projectPath = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -46,6 +41,18 @@ void main() {
     // scheduler timers must not outlive the test that made them.
     addTearDown(s.dispose);
     return s;
+  }
+
+  /// Bytes that do not compress. A carried file is held FRAMED when it
+  /// compresses, and what a save then streams is that blob, not the file —
+  /// these measure a file's own bytes streaming, so they carry ones that
+  /// stay as they are.
+  List<int> incompressible(int length) {
+    var state = 0x2545F491;
+    return [
+      for (var i = 0; i < length; i += 1)
+        ((state = (state * 1103515245 + 12345) & 0x7FFFFFFF) >> 16) & 0xFF,
+    ];
   }
 
   test('a FULL save reports its way to 1.0', () async {
@@ -79,9 +86,9 @@ void main() {
     drawOnCurrentFrame(s);
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     // The proof that an APPEND ran, rather than a full rewrite that happened
-    // to end up bigger. An append truncates at the old central directory and
-    // writes from there, so everything before that offset survives byte for
-    // byte; a rewrite builds a fresh file in a temp and renames it over.
+    // to end up bigger. An append writes after the committed directory, so
+    // everything before that offset survives byte for byte; a rewrite
+    // builds a fresh file in a temp and renames it over.
     // Growth alone cannot tell those apart — a rewrite of a project that
     // gained a cut grows too, which is how this test spent its first draft
     // measuring the wrong path.
@@ -127,8 +134,8 @@ void main() {
 
       File('${directory.path}/대사.wav')
         ..createSync()
-        ..writeAsBytesSync(List<int>.filled(1200 * 1024, 9));
-      s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+        ..writeAsBytesSync(incompressible(1200 * 1024));
+      await s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
       s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
 
@@ -195,8 +202,8 @@ void main() {
         final path = '${directory.path}/$tag.wav';
         File(path)
           ..createSync()
-          ..writeAsBytesSync(List<int>.filled(bytes, 5));
-        s.mediaPool.importMediaFiles([path], copyIntoProject: true);
+          ..writeAsBytesSync(incompressible(bytes));
+        await s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
           asked: SaveAsked.byAPerson,
@@ -240,8 +247,8 @@ void main() {
           final path = '${directory.path}/$tag-$i.wav';
           File(path)
             ..createSync()
-            ..writeAsBytesSync(List<int>.filled(900 * 1024, 7));
-          s.mediaPool.importMediaFiles([path], copyIntoProject: true);
+            ..writeAsBytesSync(incompressible(900 * 1024));
+          await s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         }
         final reports = <double>[];
         await s.projectDoor.saveProjectToFile(
@@ -286,7 +293,7 @@ void main() {
     final s = session();
     drawOnCurrentFrame(s);
     File('${directory.path}/빈소리.wav').createSync();
-    s.mediaPool.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
+    await s.mediaPool.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
 
     final reports = <double>[];
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
@@ -303,12 +310,10 @@ void main() {
     // length comparison between them measures that instead of this).
     final source = File('${directory.path}/대사.wav')
       ..createSync()
-      ..writeAsBytesSync([
-        for (var i = 0; i < 900 * 1024; i += 1) (i * 31 + 7) % 251,
-      ]);
+      ..writeAsBytesSync(incompressible(900 * 1024));
     final s = session();
     drawOnCurrentFrame(s);
-    s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+    await s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: (_) {});
 
     final archive = ZipDecoder().decodeBytes(

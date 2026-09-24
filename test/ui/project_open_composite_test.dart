@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../helpers/temp_dir.dart';
 
 /// R19 P3a regression pins: a bake-only OPEN carries no paint commands —
 /// the cel's picture is its baked raster — so every composite consumer
@@ -40,7 +41,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-open-composite');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   /// A session with one committed stroke, saved and reopened — the state
   /// every consumer below must see CONTENT in.

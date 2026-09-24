@@ -5,10 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/save_failure.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/temp_dir.dart';
 
 /// 실측 (08-26, iPhone + Google Drive): a File Provider can refuse plain
 /// in-place writes outright. The save's fallback writes the whole archive
@@ -26,11 +28,7 @@ void main() {
     FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugCoordinatedReplacer = null;
     FolderPicker.debugCoordinatedToucher = null;
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
+    deleteTempQuietly(folder);
     // The fallback deliberately leaves its staging file for the run's room
     // to take at exit; a test must not leave it for the NEXT test.
     final staged = Directory(SessionScratch.stagedFolder());
@@ -181,7 +179,8 @@ void main() {
     expect(replaces, 1, reason: 'the fallback is per-refusal, not a mode');
   });
 
-  test('a replace that ALSO fails rethrows loudly and changes nothing', () async {
+  test('a replace that ALSO fails is told loudly and changes nothing at the '
+      'destination — the work is in the failed copy', () async {
     FolderPicker.debugOperatingSystem = 'ios';
     FolderPicker.debugCoordinatedReplacer = ({
       required String sourcePath,
@@ -195,7 +194,11 @@ void main() {
 
     await expectLater(
       s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
-      throwsA(isA<FileSystemException>()),
+      throwsA(
+        isA<SaveFailure>()
+            .having((f) => f.cause, 'cause', SaveFailureCause.replaceRefused)
+            .having((f) => f.failedCopy, 'failed copy', isNotNull),
+      ),
     );
     expect(
       s.projectFile.hasUnsavedChanges,
@@ -227,7 +230,9 @@ void main() {
 
     await expectLater(
       s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson),
-      throwsA(isA<FileSystemException>()),
+      throwsA(
+        isA<SaveFailure>().having((f) => f.failedCopy, 'failed copy', isNotNull),
+      ),
     );
   });
 }

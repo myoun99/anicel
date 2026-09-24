@@ -75,6 +75,21 @@ class SessionScratch {
     return '${thisRunsFolder()}/Volatile';
   }
 
+  /// Where the FAILED COPIES (실패본) live — the work of a save its project
+  /// file refused (`FailedSaveCopies`). Builds and locks the room for the
+  /// same reason [stagedFolder] does; the folder itself is made by the
+  /// first write into it.
+  ///
+  /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file Q1·Q2): what a
+  /// refused save wrote waits in the app's room, NOT beside the user's
+  /// file, and for THIS RUN ONLY — 「이번 실행 동안만 — 앱을 닫으면
+  /// 사라진다」. The lifetime is this room's, cut short for a copy by the
+  /// first save its own project file takes.
+  static String unsavedFolder() {
+    ensureThisRunsFolder();
+    return '${thisRunsFolder()}/Unsaved';
+  }
+
   static String thisRunsFolder() => '${rootFolder()}/$_runId';
 
   /// This run's room NAME: the pid, and the moment this run first asked.

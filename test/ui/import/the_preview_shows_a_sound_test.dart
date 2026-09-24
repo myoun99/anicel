@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/media/audio_viewer_document.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/the_file_itself.dart';
+
 /// 🚨A SOUND IN THE IMPORT WINDOW IS ITS WAVEFORM, AND IT CAN BE TRIMMED
 /// (유저 2026-09-11, 미디어 배치 라운드: 「놓으면 배치 창이 열리고, 거기서
 /// 가져올 구간을 줄이면 블록도 그만큼 줄어든다」). A sound used to fall to the
@@ -44,6 +46,7 @@ void main() {
               rangeEditable: rangeEditable,
               onRangeChanged: (_, _) {},
               soundPeaks: (_) async => twoSeconds,
+              holdBytes: theFileItself,
               frameRate: frameRate,
             ),
           ),
@@ -141,6 +144,7 @@ void main() {
             rangeEditable: true,
             onRangeChanged: (_, _) {},
             soundPeaks: (_) => answer.future,
+            holdBytes: theFileItself,
             frameRate: ProjectFrameRate.fps24,
           ),
         ),

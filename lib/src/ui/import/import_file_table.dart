@@ -8,7 +8,7 @@ import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
 import '../widgets/app_scrollbar.dart';
-import '../widgets/compact_switch.dart';
+import '../widgets/boolean_dot.dart';
 import '../input/control_press_claim.dart';
 
 /// The import window's file list: one row per file, one COLUMN per question.
@@ -26,7 +26,8 @@ enum ImportColumnStyle {
   /// A chip that opens the column's answers.
   choice,
 
-  /// An on/off switch: the column's answers are `false` and `true`.
+  /// An on/off boolean — the ring, dotted when on: the column's answers are
+  /// `false` and `true`.
   toggle,
 }
 
@@ -193,8 +194,8 @@ class _ImportTableMetrics {
           math.max(
                 text.size(column.label).width,
                 column.style == ImportColumnStyle.toggle
-                    ? switchWidth +
-                          switchGap +
+                    ? dotSize +
+                          dotGap +
                           text.widest(column.values.map(column.labelOf))
                     : text.widest(column.values.map(column.labelOf)) +
                           2 * chipPadH +
@@ -205,7 +206,7 @@ class _ImportTableMetrics {
       // The row is the chip plus its own padding, so the chip is never
       // cut: the row used to be a fixed 22px and its bordered chips lost
       // their bottom edge.
-      rowHeight: math.max(chipHeight, switchHeight) + 2 * rowPadV,
+      rowHeight: math.max(chipHeight, dotSize) + 2 * rowPadV,
     );
   }
 
@@ -214,9 +215,10 @@ class _ImportTableMetrics {
   static const double chipBorder = 1;
   static const double rowPadV = 3;
   static const double gap = 10;
-  static const double switchWidth = 34;
-  static const double switchHeight = 20;
-  static const double switchGap = 4;
+  /// The boolean ring a toggle cell draws, square — the height the switch
+  /// it replaced had, so the row keeps its height.
+  static const double dotSize = 20;
+  static const double dotGap = 4;
 
   final double modifiedWidth;
   final double sizeWidth;
@@ -594,15 +596,15 @@ class _OptionCell extends StatelessWidget {
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CompactSwitch(
+                    // The claim above fires the toggle; the ring is only
+                    // its look (enabled, or dead when locked) — the app's
+                    // one boolean, guide-sym ⑥⑧.
+                    BooleanDot(
                       value: value == true,
-                      // The claim above fires the toggle; the switch keeps
-                      // only its looks (enabled, or disabled when locked).
-                      onChanged: locked || !enabled ? null : (_) {},
-                      width: _ImportTableMetrics.switchWidth,
-                      height: _ImportTableMetrics.switchHeight,
+                      enabled: !locked && enabled,
+                      size: _ImportTableMetrics.dotSize,
                     ),
-                    const SizedBox(width: _ImportTableMetrics.switchGap),
+                    const SizedBox(width: _ImportTableMetrics.dotGap),
                     Text(column.labelOf(value), style: wordStyle),
                   ],
                 )

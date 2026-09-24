@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import 'frame_id.dart';
+import 'media_asset.dart' show normalizedMediaPath;
 
 /// The shape a fade ramp takes (AUDIO-PRO R1).
 ///
@@ -57,8 +58,8 @@ class AudioVolumeKey {
 /// v1 stores the ABSOLUTE path (the first file reference a project
 /// carries); relative-to-project paths arrive with project bundling.
 class AudioClip {
-  const AudioClip({
-    required this.filePath,
+  AudioClip({
+    required String filePath,
     required this.frameId,
     this.offsetFrames = 0,
     this.gain = 1.0,
@@ -67,11 +68,13 @@ class AudioClip {
     this.fadeCurve = AudioFadeCurve.linear,
     this.volumeKeys = const [],
     this.clipped = false,
-  }) : assert(offsetFrames >= 0, 'offsetFrames must be non-negative'),
+  }) : filePath = normalizedMediaPath(filePath),
+       assert(offsetFrames >= 0, 'offsetFrames must be non-negative'),
        assert(gain >= 0, 'gain must be non-negative'),
        assert(fadeInFrames >= 0, 'fadeInFrames must be non-negative'),
        assert(fadeOutFrames >= 0, 'fadeOutFrames must be non-negative');
 
+  /// In the pool's one spelling ([normalizedMediaPath]).
   final String filePath;
 
   /// The SE frame (instance) this sound belongs to.

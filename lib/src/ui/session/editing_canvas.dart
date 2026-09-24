@@ -1,5 +1,6 @@
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
@@ -185,15 +186,30 @@ class EditingCanvas {
   }
 
   BrushEditorSelection? get activeBrushEditorSelection {
-    final activeLayer = _selection.activeLayer;
-    final selectedFrame = _selection.selectedFrame;
-    if (activeLayer == null || selectedFrame == null) {
-      return null;
-    }
     // Ghost repeat instances resolve to their ANCHOR cel deliberately
     // (UI-R19b, user decision): drawing with the playhead on a ghost
     // edits the source cel — the light-table workflow. Delete alone
     // stays refused on ghosts.
+    final selectedFrame = _selection.selectedFrame;
+    return selectedFrame == null
+        ? null
+        : brushEditorSelectionFor(selectedFrame.id);
+  }
+
+  /// The active layer's brush target at [frameId] — every gate a stroke
+  /// target answers (the row takes brush input, it is shown, there is a
+  /// cut), asked in ONE place whether the cel exists yet or not.
+  ///
+  /// 🚨F-171: [activeBrushEditorSelection] asks it for the cel under the
+  /// playhead; the canvas asks it for the cel a press there WOULD make
+  /// (`AutoFrameForStroke.frameIdForNextCel`), so the editing stack can
+  /// stand before the first cel exists — and a hidden or data row gets no
+  /// stack to stand, for the same reasons it gets no stroke.
+  BrushEditorSelection? brushEditorSelectionFor(FrameId frameId) {
+    final activeLayer = _selection.activeLayer;
+    if (activeLayer == null) {
+      return null;
+    }
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only). A media-REFERENCE layer (§6-z23) shows
@@ -224,7 +240,7 @@ class EditingCanvas {
       trackId: _selection.selectedTrackId,
       cutId: cutId,
       layerId: activeLayer.id,
-      frameId: selectedFrame.id,
+      frameId: frameId,
     );
   }
 

@@ -139,9 +139,11 @@ void main() {
   });
 
   group('the two manifests', () {
+    /// The manifest for [mediaPaths], [inArchive] naming the entry each one
+    /// held inside is stored under.
     Map<String, dynamic> jsonFor(
       List<String> mediaPaths, {
-      Set<String> inArchive = const {},
+      Map<String, String> inArchive = const {},
       String? saveDirectory,
     }) {
       final project = projectWithMediaPaths(mediaPaths);
@@ -150,7 +152,7 @@ void main() {
               buildAnicelProjectJsonBytes(
                 project: project,
                 saveDirectory: saveDirectory,
-                mediaInArchive: inArchive,
+                mediaEntryNames: inArchive,
               ),
             ),
           )
@@ -158,19 +160,33 @@ void main() {
     }
 
     test('media inside is recorded by ENTRY, not by path', () {
+      const bgm = '/work/scene.assets/Media/bgm.wav';
       final decoded = jsonFor(
-        ['/work/scene.assets/Media/bgm.wav'],
-        inArchive: {'/work/scene.assets/Media/bgm.wav'},
+        [bgm],
+        inArchive: {bgm: anicelMediaEntryName(bgm)},
         saveDirectory: '/work',
       );
-      expect(decoded['mediaEntries'], {
-        '/work/scene.assets/Media/bgm.wav': anicelMediaEntryName(
-          '/work/scene.assets/Media/bgm.wav',
-        ),
-      });
+      expect(decoded['mediaEntries'], {bgm: anicelMediaEntryName(bgm)});
       // And ONLY by entry: a path recorded as well would let a stale file
       // at the old location win over the copy the project carries.
       expect(decoded.containsKey('mediaPaths'), isFalse);
+    });
+
+    test('🚨a FRAMED entry is recorded under the name the archive holds — '
+        'its suffix and all', () {
+      // 2026-08-31 → 09-24 the manifest wrote the unframed name here, and a
+      // reopened project looked for media the file did not have.
+      const bgm = '/work/bgm.wav';
+      final framed = anicelMediaEntryName(bgm, framed: true);
+      expect(framed, endsWith(mediaFramedEntrySuffix), reason: 'fixture');
+
+      final decoded = jsonFor(
+        [bgm],
+        inArchive: {bgm: framed},
+        saveDirectory: '/work',
+      );
+
+      expect(decoded['mediaEntries'], {bgm: framed});
     });
 
     test('media outside keeps the relative path it always had', () {
@@ -188,7 +204,7 @@ void main() {
       // reference-only by kind, and a user may keep anything else linked.
       final decoded = jsonFor(
         ['/work/in.wav', '/work/out.mp4'],
-        inArchive: {'/work/in.wav'},
+        inArchive: {'/work/in.wav': anicelMediaEntryName('/work/in.wav')},
         saveDirectory: '/work',
       );
       expect((decoded['mediaEntries'] as Map).keys, ['/work/in.wav']);

@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// WHAT A DRAG PUBLISHES FOR A TRACK-SE ROW — DECIDED IN ONE PLACE.
 ///
@@ -33,10 +32,7 @@ void main() {
     };
     final sites = <String>[];
 
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       if (allowed.contains(path)) {
         continue;

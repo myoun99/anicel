@@ -9,6 +9,7 @@ import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨★★★**THE WHOLE ROUND IS ONE QUESTION: WHOSE THREAD DECODES?**
 ///
@@ -162,7 +163,7 @@ void main() {
     }
     final backend = IsolateVideoDecodeBackend();
     final directory = Directory.systemTemp.createTempSync('qa_bad');
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final path = '${directory.path}${Platform.pathSeparator}not.mp4';
     File(path).writeAsBytesSync(List.filled(4096, 0x41));
 

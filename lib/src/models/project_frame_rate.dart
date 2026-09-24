@@ -122,6 +122,25 @@ class ProjectFrameRate {
     return _ceilDiv(frame * sampleRate * denominator, numerator);
   }
 
+  /// This rate as a SOURCE's own clock counts it, when the project plays
+  /// its sounds at [speed] — the conform's pull (EXPORT-AUDIO ④), which
+  /// plays 1.001 seconds of a 23.976 take in each second of a 24 project to
+  /// keep it in step. A project frame lasts [speed] times as long in the
+  /// source, so this is `rate / speed`, reduced: the source sample where
+  /// project frame n begins is its [frameToSample] — rounded up, for the
+  /// reason the mixer's is — and a movie written at it maps frame n to
+  /// frame n.
+  ProjectFrameRate inSourceTime(({int numerator, int denominator}) speed) {
+    final frames = numerator * speed.denominator;
+    final seconds = denominator * speed.numerator;
+    final common = frames.gcd(seconds);
+    return ProjectFrameRate(
+      numerator: frames ~/ common,
+      denominator: seconds ~/ common,
+      countingBase: countingBase,
+    );
+  }
+
   /// The frame containing device sample [sample]. The inverse the audio
   /// clock reads back once the device, not a timer, drives playback.
   int sampleToFrame(int sample, int sampleRate) =>

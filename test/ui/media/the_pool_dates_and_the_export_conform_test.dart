@@ -7,6 +7,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The three answers the media pool gives that nothing else could
 /// observe: the DATE column (filled by the same sweep that answers "is it
@@ -59,13 +60,7 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_pool_dates_');
   });
-  tearDown(() {
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(folder));
 
   String plant(String name, int bytes) {
     final path = '${folder.path.replaceAll('\\', '/')}/$name';
@@ -206,12 +201,12 @@ void main() {
     );
     addTearDown(session.dispose);
 
-    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
 
     expect(store.invalidated, [wav]);
     expect(store.warmed, [wav]);
 
-    session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
+    await session.mediaPool.importMediaFiles([wav], copyIntoProject: false);
 
     expect(
       store.invalidated,

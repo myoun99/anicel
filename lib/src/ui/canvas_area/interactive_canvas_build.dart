@@ -180,29 +180,44 @@ class _InteractiveCanvasBuild {
       key: _state.widget.navigationRegionKey,
       child: KeyedSubtree(
         key: const ValueKey<String>('main-canvas-brush-host-container'),
-        // The tool-state boundary (R18 UI-2): tool switches and setting
-        // tweaks rebuild ONLY the host config — every session-derived
-        // value above (layer stacks, poses, onion requests) is captured
-        // and reused, and the host's element keeps all its state.
+        // The tool-state boundary (R18 UI-2): a tool switch rebuilds ONLY
+        // the host config — and since H40 ② a setting tweak not even that
+        // (below) — every session-derived value above (layer stacks, poses,
+        // onion requests) is captured and reused, and the host's element
+        // keeps all its state.
         //
         // The STANDING ROW rides the same boundary, SUBSCRIBED rather than
         // read at build time: it is published without a session notify (the
         // claim fires on pointer-down, inside gestures whose contract is
         // silence until release), so a canvas that read it above would go
         // on taking strokes after the user stepped onto a property lane.
-        // One merged listenable instead of a second nested builder — both
-        // only ever change the host's CONFIG.
-        child: ListenableBuilder(
-          listenable: Listenable.merge([
-            _state.widget.brushToolState,
-            session.currentRowListenable,
-            // D12: the playing cut's identity — fires once per cut
-            // crossing (never per tick), and only the host CONFIG
-            // changes, like everything else on this boundary.
-            _state._playbackFitCut,
-          ]),
-          builder: (context, _) =>
-              _host(context, session, isCameraLayerActive: isCameraLayerActive),
+        //
+        // 🚨H40 ② (2026-09-24): the BRUSH rides it SLICED — the tool and its
+        // shape ([BrushCanvasPanel.structureOf]) are the whole of what this
+        // config is built from. A size, a flow, a colour used to rebuild the
+        // host and the panel under it, relaying out the panel's shell for
+        // numbers it does not show; the panel hears those for itself now,
+        // and the verbs here read the brush when they run.
+        child: SlicedValueListenableBuilder<
+          BrushToolState,
+          (CanvasTool, CanvasShapeKind?)
+        >(
+          valueListenable: _state.widget.brushToolState,
+          slice: BrushCanvasPanel.structureOf,
+          builder: (context, _) => ListenableBuilder(
+            listenable: Listenable.merge([
+              session.currentRowListenable,
+              // D12: the playing cut's identity — fires once per cut
+              // crossing (never per tick), and only the host CONFIG
+              // changes, like everything else on this boundary.
+              _state._playbackFitCut,
+            ]),
+            builder: (context, _) => _host(
+              context,
+              session,
+              isCameraLayerActive: isCameraLayerActive,
+            ),
+          ),
         ),
       ),
     );
@@ -221,7 +236,7 @@ class _InteractiveCanvasBuild {
     // A `final` local: the null check inside it promotes `activeLayer`
     // for the gates below, which a field never could.
     final canPoseActiveLayer = _canPoseActiveLayer && activeLayer != null;
-    final toolState = _state.widget.brushToolState.value;
+    final tool = _state.widget.brushToolState.value.tool;
     // D12 × R6q2 (유저 확정 08-18): playback fit is the CAMERA
     // VIEW's — toggle ON frames the camera's output frame at the
     // origin (the painter's frameRect) for as long as it plays;
@@ -269,7 +284,7 @@ class _InteractiveCanvasBuild {
         ).contains(CanvasManipulator.anchorPoint);
     final frame = _HostFrame(
       session: session,
-      toolState: toolState,
+      tool: tool,
       activeLayer: activeLayer,
       showPositionGizmo: showPositionGizmo,
       transformBoxBounds: transformBoxBounds,
@@ -301,6 +316,21 @@ class _InteractiveCanvasBuild {
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,
+      // 🚨F-171: where the editing stack stands before the first cel — the
+      // cel a press would make, through the SAME gates a stroke target
+      // answers. The camera's backdrop and a gap make no cel.
+      standingFrameKeyOf: _inGap || isCameraLayerActive
+          ? null
+          : () {
+              final layerId = session.activeLayerId;
+              return layerId == null
+                  ? null
+                  : session.editingCanvas
+                        .brushEditorSelectionFor(
+                          session.autoFrame.frameIdForNextCel(layerId),
+                        )
+                        ?.toBrushFrameKey();
+            },
       canvasSize: _canvasSize,
       // The cut's guides reach the stroke pipeline through here;
       // the panel maps them into the active layer's artwork space
@@ -325,12 +355,13 @@ class _InteractiveCanvasBuild {
           : _state._playbackViewport,
       // 유저 R2 #14: the pill takes the corner AWAY from the tool
       // strip — the strip is where the hand already is.
-      brushToolState: toolState,
+      brushToolState: _state.widget.brushToolState,
       fitFocusRect: _fitFocusRect,
       unframedFit: playbackFraming,
       viewCommands: _state.widget.canvasViewCommands,
       selectionCommands: _state.widget.canvasSelectionCommands,
       cutPieceSlot: _state.widget.cutPieceSlot,
+      lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.
       onStrokeInputActiveChanged: session.setBrushInputActive,
@@ -359,8 +390,9 @@ class _InteractiveCanvasBuild {
       // otherwise say WHY at the cursor, which only the shell can
       // answer because the refusal is a SECTION question.
       onPressNeedsCel: () {
-        return _state._pressNeedsCel(toolState, session);
+        return _state._pressNeedsCel(tool, session);
       },
+      onStrokeNeedsCel: () => _state._strokeNeedsCel(session),
       takeStrokePrefixCommand: session.autoFrame.takeAutoFrameForStroke,
       onAutoFrameSettled: session.autoFrame.flushAutoFrameForStroke,
       // P5 eyedropper. Picks NEVER switch tools (R11-②): the
@@ -443,7 +475,7 @@ class _InteractiveCanvasBuild {
         color: color,
         // TP1: the FILL has its own opacity now — the strip's bar
         // writes the fill's field, not the brush's.
-        opacity: toolState.activeOpacity,
+        opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
         paperColor: session.projectSettings.projectBackground.paintedArgb,
         // The same guide the brush obeys, handed down by the view
@@ -465,7 +497,7 @@ class _InteractiveCanvasBuild {
       shapeFillDabFor: (shape, color) => buildShapeFillDab(
         shape: shape,
         color: color,
-        opacity: toolState.activeOpacity,
+        opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
       ),
       // Layers below/above the active one composite around the
@@ -595,12 +627,12 @@ class _InteractiveCanvasBuild {
             frame.session,
             viewport,
             _canvasSize,
-            frame.toolState,
+            frame.tool,
             context,
           ),
         // The handle layer mounts ONLY for the guide tool,
         // so it never stands between the brush and the cel.
-        if (frame.toolState.tool == CanvasTool.guide)
+        if (frame.tool == CanvasTool.guide)
           _state._guideEditLayer(frame.session, viewport),
         if (_seNameTags.isNotEmpty)
           _state._seNameTagOverlay(viewport, _canvasSize, _seNameTags, context),
@@ -642,7 +674,7 @@ class _InteractiveCanvasBuild {
 class _HostFrame {
   const _HostFrame({
     required this.session,
-    required this.toolState,
+    required this.tool,
     required this.activeLayer,
     required this.showPositionGizmo,
     required this.transformBoxBounds,
@@ -651,7 +683,11 @@ class _HostFrame {
   });
 
   final EditorSessionManager session;
-  final BrushToolState toolState;
+
+  /// The TOOL and not the brush: this build reruns for the tool and its
+  /// shape alone ([BrushCanvasPanel.structureOf], H40 ②), so a size or a
+  /// colour held here would be the one from the last tool switch.
+  final CanvasTool tool;
 
   /// Non-null whenever [showPositionGizmo] or [showAnchorGizmo] is true:
   /// both gates include the null check.

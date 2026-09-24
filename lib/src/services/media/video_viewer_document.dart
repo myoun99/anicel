@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import '../straight_rgba_image.dart';
 import '../../native/qa_video_decoder.dart';
+import 'media_byte_source.dart';
+import 'movie_bytes.dart';
 import 'video_decode_worker.dart';
 import 'viewer_document.dart';
 
@@ -29,8 +31,9 @@ import 'viewer_document.dart';
 /// a worker isolate ([videoDecodeBackend]) rather than on the thread that
 /// draws.
 final class VideoViewerDocument implements ViewerDocument {
-  /// Opens [path]. Returns null when this build has **no reader at all**,
-  /// and THROWS when there is a reader that could not read this file.
+  /// Opens the movie [source] holds. Returns null when this build has **no
+  /// reader at all**, and THROWS when there is a reader that could not read
+  /// this file.
   ///
   /// 🚨★★★**ONE `null` USED TO ANSWER TWO QUESTIONS.**
   ///
@@ -49,19 +52,24 @@ final class VideoViewerDocument implements ViewerDocument {
   /// a widget test cannot conjure a native decoder — and the truth table is
   /// exactly what went wrong.
   ///
-  /// [range] opens a movie that lives INSIDE [path] — a carried video, whose
-  /// bytes are a stretch of the `.anicel` and which therefore has no path of
-  /// its own. ⛔Never a temp copy: 유저 2026-08-27 「사본 남으면 진짜
-  /// 용서안할게」.
+  /// [source] is where the movie's bytes are: a file of its own, opened by
+  /// its path — or a stretch of one, a carried video inside the `.anicel`,
+  /// opened on that range. ⛔Never a temp copy: 유저 2026-08-27 「사본 남으면
+  /// 진짜 용서안할게」.
   ///
   /// ⚠️A range that this platform cannot open is 「unreadable」, not 「no
   /// reader」 — Windows and Apple refuse a range by name while decoding
   /// paths perfectly well, and telling the user their build has no decoder
-  /// would be the exact lie this function was just fixed for.
-  static Future<VideoViewerDocument?> open(
-    String path, {
-    ({int offset, int length})? range,
-  }) async {
+  /// would be the exact lie this function was just fixed for. So is a movie
+  /// kept FRAMED (compressed in blocks): no decoder reads it in place.
+  static Future<VideoViewerDocument?> open(MediaByteSource source) async {
+    final at = movieOpening(source);
+    if (at == null) {
+      throw const ViewerDocumentException(
+        'that movie is kept compressed in the project, and a movie is only '
+        'read in place',
+      );
+    }
     // 🚨Through the decode BACKEND, never `QaVideoDecoder` directly: the
     // frames arrive off the UI isolate, so the viewer's own timer, chrome
     // and scrollbars are not stopped for a third of every frame while it
@@ -80,7 +88,9 @@ final class VideoViewerDocument implements ViewerDocument {
     // could be injected and then never consulted, because the gate in front
     // of it said no on any machine without the native library.
     final hasReader = backend.supported;
-    final opened = hasReader ? await backend.open(path, range: range) : null;
+    final opened = hasReader
+        ? await backend.open(at.path, range: at.range)
+        : null;
     switch (viewerOpenOutcome(hasReader: hasReader, opened: opened != null)) {
       case ViewerOpenOutcome.noReaderInThisBuild:
         return null;

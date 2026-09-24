@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/project_lookup.dart' show cutPositionOf;
 import '../models/app_language.dart';
@@ -46,6 +47,7 @@ import '../models/layer.dart';
 import '../models/pixel_verb_subject.dart';
 import '../services/brush_frame_editing_coordinator.dart';
 import '../models/layer_id.dart';
+import '../models/standing_place.dart';
 import '../models/layer_kind.dart';
 import '../models/media_asset.dart'
     show MediaAssetKind, mediaAssetKindForPath, normalizedMediaPath;
@@ -90,6 +92,7 @@ import '../services/memory_allowance.dart';
 import '../services/brush_tip_stamp_cache.dart';
 import '../services/brush_live_stroke_rasterizer.dart';
 import '../services/history_manager.dart';
+import '../services/history_places.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
@@ -140,6 +143,7 @@ import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
+import 'session/rail_view.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
@@ -156,6 +160,7 @@ import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
 import 'session/standing.dart';
 import 'session/cut_move_drag.dart';
+import 'session/trimmed_pieces.dart';
 import 'session/layer_switch_verbs.dart';
 import 'session/editing_canvas.dart';
 import 'package:flutter/painting.dart' show ImageCache;
@@ -209,7 +214,7 @@ class EditorSessionManager extends ChangeNotifier
        repository = ProjectRepository(initialProject: initialProject) {
     appSettings.attachOnionSkin(onionSkin.settings);
     appSettings.restore();
-    historyManager = HistoryManager();
+    historyManager = HistoryManager()..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -228,7 +233,7 @@ class EditorSessionManager extends ChangeNotifier
       cutUnderPlayhead.sync,
     );
     _gapGlobalFrameNotifier.addListener(cutUnderPlayhead.sync);
-    frameScrubActive.addListener(cutUnderPlayhead.sync);
+    frameScrub.active.addListener(cutUnderPlayhead.sync);
     addListener(cutUnderPlayhead.resync);
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
@@ -449,6 +454,7 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     renderCaches: renderCaches,
     frameRate: () => projectSettings.projectFrameRate,
+    holdBytes: projectFile.holdMediaBytes,
   );
 
   late final PlaybackRig playbackRig = PlaybackRig(
@@ -485,6 +491,9 @@ class EditorSessionManager extends ChangeNotifier
     selectFrameIndex(
       activeCutControllers.clampedFrameIndex(lastPosition.localFrameIndex),
     );
+    // F-169: the follow seats a cut's row without the standing law — it has
+    // to stay quiet mid-playback (R12-B) — so the stop is where it answers.
+    standing.keepStandingShown();
     // The mid-playback cut follow is QUIET (R12-B) — this is the one
     // session notify that catches every activeCut consumer up with where
     // playback landed.
@@ -659,10 +668,24 @@ class EditorSessionManager extends ChangeNotifier
   bool get canUndo => historyManager.canUndo;
   bool get canRedo => historyManager.canRedo;
 
-  // Where the user stands (Round 6): cut, row and layer.
-  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig);
+  /// What the rail leaves off the screen (sections, the row filter, folded
+  /// attach groups) — held here because the standing law reads it (F-169).
+  late final RailView railView = RailView();
 
-  void selectCut(CutId cutId) => standing.selectCut(cutId);
+  // Where the user stands (Round 6): cut, row and layer.
+  late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, internals: this, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId));
+
+  // I-41: every door that MOVES where the user stands — the cut, the row,
+  // the frame, the gap — first settles the last edit where it left them
+  // ([HistoryPlaces.settle]): the move is theirs, not the edit's. A door
+  // that only passes through these (`selectRow`, `selectGlobalFrame`)
+  // leaves it to them. The hand-offs inside an action go through
+  // [standing] and the controllers, not through these.
+  void selectCut(CutId cutId) {
+    historyManager.places.settle();
+    standing.selectCut(cutId);
+  }
+
   @override
   TimelineRowAddress get currentRow => standing.currentRow;
   @override
@@ -671,14 +694,22 @@ class EditorSessionManager extends ChangeNotifier
     int? frameIndex,
     int? globalFrameIndex,
     bool takesLayerActive = true,
-  }) => standing.standOnRow(
-    row,
-    frameIndex: frameIndex,
-    globalFrameIndex: globalFrameIndex,
-    takesLayerActive: takesLayerActive,
-  );
+  }) {
+    historyManager.places.settle();
+    standing.standOnRow(
+      row,
+      frameIndex: frameIndex,
+      globalFrameIndex: globalFrameIndex,
+      takesLayerActive: takesLayerActive,
+    );
+  }
+
   @override
-  void selectLayer(LayerId layerId) => standing.selectLayer(layerId);
+  void selectLayer(LayerId layerId) {
+    historyManager.places.settle();
+    standing.selectLayer(layerId);
+  }
+
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
   void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
       standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
@@ -1090,6 +1121,8 @@ class EditorSessionManager extends ChangeNotifier
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
     int? preferredFrameIndex,
+    bool reveal = false,
+    bool filterSparesStanding = true,
   }) {
     clearFrameRangeSelection();
     activeCutControllers.rebuild(
@@ -1101,6 +1134,11 @@ class EditorSessionManager extends ChangeNotifier
       preferredFrameIndex:
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
+    );
+    // F-169: wherever the command left you, it is a row on screen.
+    standing.keepStandingShown(
+      reveal: reveal,
+      filterSparesStanding: filterSparesStanding,
     );
     // Layer add/delete/undo may have moved the active row: keep the solo
     // mode following it (or exit if the command switched cuts).
@@ -1203,7 +1241,7 @@ class EditorSessionManager extends ChangeNotifier
       cutUnderPlayhead.sync,
     ),
     () => _gapGlobalFrameNotifier.removeListener(cutUnderPlayhead.sync),
-    () => frameScrubActive.removeListener(cutUnderPlayhead.sync),
+    () => frameScrub.active.removeListener(cutUnderPlayhead.sync),
     () => removeListener(cutUnderPlayhead.resync),
     cutUnderPlayhead.dispose,
     // The guard in [_hydrateShownMovieCels] is the belt and this the braces
@@ -1218,8 +1256,7 @@ class EditorSessionManager extends ChangeNotifier
     appSettings.dispose,
     soloedSeLayerIds.dispose,
     editingFrameCursor.dispose,
-    frameScrubActive.dispose,
-    scrubOutOfTerritory.dispose,
+    frameScrub.dispose,
     frameSeekCommitted.dispose,
     _gapGlobalFrameNotifier.dispose,
     frameRangeSelection.dispose,
@@ -1230,6 +1267,7 @@ class EditorSessionManager extends ChangeNotifier
     opacityDragPreview.dispose,
     onionSkin.dispose,
     trackFrameRangeSelection.dispose,
+    railView.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     historyManager.dispose,
@@ -1403,7 +1441,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     timeline: this,
     controllers: activeCutControllers,
-    internals: this,
+    scrubbing: frameScrub.active,
     playbackRig: playbackRig,
   );
 
@@ -1652,7 +1690,7 @@ class EditorSessionManager extends ChangeNotifier
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = effectsAndFx.fxSwitchLayerById(layerId);
+    final layer = commitLayerById(layerId);
     if (layer == null || layer.transformEnabled == enabled) {
       return;
     }
@@ -1801,25 +1839,85 @@ class EditorSessionManager extends ChangeNotifier
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
     );
+    // F-169, the standing law's two questions. A row the step brought BACK
+    // is where you stood when it went (② 「언두시에 접혀있는 레이어로 이동하면
+    // 펼치고 해당 레이어에 서게」); any other new row is a HAND-OFF — the row
+    // you stood on is gone and the walk picked this one, which the filter's
+    // exemption must not put on the screen (①).
+    final broughtBack =
+        preferredLayerId != null &&
+        beforeLayers.every((layer) => layer.id != preferredLayerId);
     refreshAfterCutCommand(
       preferredActiveLayerId: preferredLayerId,
       preferredFrameIndex: previousFrameIndex,
+      reveal: broughtBack,
+      filterSparesStanding:
+          broughtBack || preferredLayerId == previousActiveLayerId,
     );
     notifyListeners();
+  }
+
+  /// Where the user stands — the cut, the row and the frame; null in the
+  /// gap between cuts. What the history writes beside every entry (I-41).
+  StandingPlace? get standingPlace {
+    final cut = activeCutId;
+    return cut == null
+        ? null
+        : (cut: cut, layer: activeLayerId, frame: currentFrameIndex);
   }
 
   /// ⚠️Through [historyPictures], never straight to the history: a step
   /// whose pictures are not ready yet waits for them instead of showing a
   /// blank frame.
-  void undo() => historyPictures.step(
-    undo: true,
-    apply: () => _stepHistory(historyManager.undo),
-  );
+  ///
+  /// 🚨★★★I-41 (유저 2026-09-24): 「지금 위치가 그곳과 다르면 첫 언두는
+  /// 그곳으로 이동만, 다음 언두가 편집을 되돌린다 … 리두는 대칭」. Standing
+  /// elsewhere than the edit was made, the undo only WALKS there
+  /// ([Standing.standOn]) and leaves the way back for redo.
+  void undo() {
+    _settleAndAdopt();
+    final here = standingPlace;
+    final there = historyManager.undoPlace;
+    if (here != null &&
+        there != null &&
+        standing.isElsewhere(there, from: here)) {
+      historyManager.leaveWalkBack(WalkBack(() => standing.standOn(here)));
+      standing.standOn(there);
+      return;
+    }
+    historyPictures.step(
+      undo: true,
+      apply: () => _stepHistory(historyManager.undo),
+    );
+  }
 
-  void redo() => historyPictures.step(
-    undo: false,
-    apply: () => _stepHistory(historyManager.redo),
-  );
+  /// The mirror of [undo]: a redo whose edit was made elsewhere walks there
+  /// first, and the walk an undo left behind takes the user back.
+  void redo() {
+    _settleAndAdopt();
+    final here = standingPlace;
+    final there = historyManager.redoPlace;
+    if (here != null &&
+        there != null &&
+        standing.isElsewhere(there, from: here)) {
+      standing.standOn(there);
+      return;
+    }
+    historyPictures.step(
+      undo: false,
+      apply: () => _stepHistory(historyManager.redo),
+    );
+  }
+
+  /// ⚠️BEFORE the walk is decided, not inside the step. The last edit has
+  /// settled where it left the user — a press is a new action — and work
+  /// still in hand (a pending move) lands as an entry made HERE, which is
+  /// what the press is for: asked first, the walk would carry the user away
+  /// from it.
+  void _settleAndAdopt() {
+    historyManager.places.settle();
+    historyManager.onBeforeUndoRedo?.call();
+  }
 
   // --- Layer state / commands --------------------------------------------
 
@@ -1836,7 +1934,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/folders_and_attachments.dart): the folder and
   // attach VERBS — grouping, dissolving, mounting, the 어태치 해제 and the
   // fold twirl — with the state each one reads.
-  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold);
+  late final FoldersAndAttachments folders = FoldersAndAttachments(project: this, selection: this, changes: this, controllers: activeCutControllers, layerIds: layerIds, activeCut: _activeCutEdits, handOffOnFold: standing.handOffOnFold, keepStandingShown: standing.keepStandingShown);
 
   // The layer switches (Round 6): eye, mute, audio, blend mode, target kind.
   late final LayerSwitchVerbs layerSwitches = LayerSwitchVerbs(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, storyboardCursor: storyboardCursor, internals: this);
@@ -2035,11 +2133,10 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    timeline: this,
+    frameIds: this,
     controllers: activeCutControllers,
     cutVerbs: cutVerbs,
     camera: camera,
-    activeCut: _activeCutEdits,
   );
 
   // ---------------------------------------------------------------------
@@ -2098,6 +2195,14 @@ class EditorSessionManager extends ChangeNotifier
     acceptsPlacedFrames: acceptsPlacedFrames,
   );
 
+  /// A trimmed file carried in as only its span ([TrimmedPieces]).
+  late final TrimmedPieces trimmedPieces = TrimmedPieces(
+    staging: mediaStagingStore,
+    project: this,
+    frameRate: () => projectSettings.projectFrameRate,
+    soundPeaks: audioConformStore.ensurePeaksFor,
+  );
+
   late final ProjectImportDoors importDoors = ProjectImportDoors(
     project: this,
     changes: this,
@@ -2106,8 +2211,11 @@ class EditorSessionManager extends ChangeNotifier
     landing: importLanding,
     fingerprints: mediaFingerprints,
     pool: mediaPool,
+    staging: mediaStagingStore,
     conforms: audioConformStore,
     frameRate: () => projectSettings.projectFrameRate,
+    holdBytes: projectFile.holdMediaBytes,
+    projectHolds: projectFile.projectHoldsMediaBytes,
   );
 
   late final CutFolderImportDoor cutFolderDoor = CutFolderImportDoor(
@@ -2119,6 +2227,8 @@ class EditorSessionManager extends ChangeNotifier
     timeline: this,
     landing: importLanding,
     staging: mediaStagingStore,
+    holdBytes: projectFile.holdMediaBytes,
+    projectHolds: projectFile.projectHoldsMediaBytes,
   );
 
   // The TVPaint door (session/tvpp_import_door.dart). A .tvpp opens AS A
@@ -2922,6 +3032,7 @@ class EditorSessionManager extends ChangeNotifier
     if (editingInteractionBusy) {
       return;
     }
+    historyManager.places.settle();
     // A direct cut-local seek leaves any gap parking (R16-⑥); the global
     // seek re-parks AFTER this call when it lands in a gap.
     gapGlobalFrame = null;
@@ -3171,6 +3282,7 @@ class EditorSessionManager extends ChangeNotifier
     if (trackFrameAxis().isEmpty) {
       return;
     }
+    historyManager.places.settle();
     gapGlobalFrame = globalFrame;
     _deselectActiveCutForGap();
     frameSeekCommitted.value += 1;
@@ -3291,7 +3403,16 @@ class EditorSessionManager extends ChangeNotifier
     mediaPool: mediaPool,
     liveStrokeLanding: liveStrokeLanding,
     solo: visibilitySolo,
+    failedCopies: failedSaveCopies,
+    keepStandingShown: standing.keepStandingShown,
   );
+
+  /// Every FAILED COPY (실패본) this run holds — the work saves could not
+  /// put in their project files, kept until the run ends (유저 2026-09-23,
+  /// whole-write-temp-beside-the-file). Here rather than on the project
+  /// file because it outlives any one binding: a person who opened another
+  /// project can still back up the last one's.
+  late final FailedSaveCopies failedSaveCopies = FailedSaveCopies();
 
   // ── the project-wide audio settings: their own object ────────────────
   //
@@ -3345,37 +3466,6 @@ class EditorSessionManager extends ChangeNotifier
     editingFrameCursor,
     gapParkingListenable,
   ]);
-
-  /// True while a ruler scrub is in flight.
-  ///
-  /// 🚨★★★ #26 (2026-08-15): THIS NO LONGER SWAPS THE DISPLAY. It used to —
-  /// the canvas became the composite-cache preview until the release commit
-  /// — and the user's law retired that: 「그냥 액티브레이어급으로 그냥 원본
-  /// 보여주게하고싶어 … 그냥 항상 full」. A scrub shows the editing canvas,
-  /// which follows the cursor through the canvas area's retarget scope.
-  ///
-  /// ⛔What it still decides is the GAP ANSWER: a parked global reads as a
-  /// gap only while the gesture is live (the `gapGlobalFrame` read below),
-  /// so the flag stays and the canvas rebuilds at enter and leave.
-  @override
-  final ValueNotifier<bool> frameScrubActive = ValueNotifier<bool>(false);
-
-  /// D6: whether the LIVE global scrub currently stands OUT of the active
-  /// cut's territory — the EDGE the canvas content mount listens to.
-  ///
-  /// A drag that STARTED inside the cut used to cross the boundary
-  /// invisibly: the out-of-territory branch parks quietly per move,
-  /// [frameScrubActive] was already true (its flip is the only rebuild
-  /// trigger the content mount had), and the cursor never fires out of
-  /// territory — so `inGap` was never recomputed and the canvas kept the
-  /// previous cut's picture until release. This is the retired `playheadHasCel`
-  /// mechanism applied to that missing edge: one comparison per move,
-  /// fires only when the ANSWER flips (out↔in), so the per-move parking
-  /// stays as quiet as UI-R7 #9 demands. Set only while the gesture is
-  /// live — a plain tap over another cut parks on pointer-down but never
-  /// scrubs, so this stays false and nothing flashes (the no-flash rule).
-  @override
-  final ValueNotifier<bool> scrubOutOfTerritory = ValueNotifier<bool>(false);
 
   // 🚨★★★ 유저 #6 (2026-08-14): 「룰러로 이동할때, **블록이 있으면 사용가능**
   // 타임라인버튼 활성화되는식으로 버튼 상태 바꼈으면 좋겠는데 안바뀜.

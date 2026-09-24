@@ -30,10 +30,17 @@ class BrushTipPreview extends StatelessWidget {
     // layers per row, per frame, to isolate a painter that redraws only
     // when its preset does.
     //
-    // What isolates this now is the panel-level bake — see
-    // [StaticRaster], installed on the tab funnel. A boundary INSIDE a
-    // bake would be worse than useless: the bake has to paint through
-    // whenever it finds one, or the boundary would freeze.
+    // What isolates it is the library CELL's own boundary (H40,
+    // 2026-09-24). The panel-level bake this note used to name never did:
+    // the library's body holds its grid's scroll viewport, so it painted
+    // through from the start.
+    //
+    // ⛔Nor a bake of its own, though the grid is up to 256 rects replayed
+    // every frame under Impeller. Measured on the real Windows app the same
+    // day: a bake of it is NOT byte-identical to painting it — ≤2/255 over
+    // the grid, and ≤19/255 on the edge where the bake's box clips the
+    // half-pixel overhang of its last row and column. Baking the whole cell
+    // instead still moved 264 pixels (≤9/255). Results first.
     return CustomPaint(
       painter: _BrushTipPreviewPainter(settings: settings, color: color),
       size: Size.infinite,

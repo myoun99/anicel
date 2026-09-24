@@ -71,7 +71,6 @@ void main() {
               for (var i = 0; i < layers.length; i += 1)
                 TimelineDisplayRow.layer(layers[i], layerIndex: i),
             ],
-            activeLayerId: layers.first.id,
             playbackFrameCount: 12,
             frameStartIndex: 0,
             frameEndIndexExclusive: 12,

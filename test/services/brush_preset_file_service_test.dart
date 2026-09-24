@@ -13,6 +13,7 @@ import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
+import '../helpers/temp_dir.dart';
 
 /// What the tip library answers for the generated tips — production always
 /// has those loaded, so a test that saves a built-in preset needs them too.
@@ -34,11 +35,7 @@ void main() {
     );
   });
 
-  tearDown(() async {
-    if (await tempDirectory.exists()) {
-      await tempDirectory.delete(recursive: true);
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDirectory));
 
   String pathIn(String fileName) => '${tempDirectory.path}/$fileName';
 

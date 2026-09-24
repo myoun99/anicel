@@ -8,6 +8,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../helpers/psd_fixture.dart';
+import '../helpers/temp_dir.dart';
 
 /// EXPAND, end to end: a real `.psd` on disk becomes a folder of layers
 /// whose cels live in the brush-frame store like drawn ones, and ONE undo
@@ -22,13 +23,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-psd-expand');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   /// A two-layer document with a group around the upper one.
   Future<String> writePsd({String name = 'BG_a12.psd'}) async {

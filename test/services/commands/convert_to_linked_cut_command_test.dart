@@ -75,6 +75,7 @@ void main() {
       targetCutId: targetCutId,
       unionLayerIdMap: input.unionLayerIdMap,
       newGroupIdBySource: input.newGroupIdBySource,
+      coveringFrameIdBySource: input.coveringFrameIdBySource,
     );
   }
 

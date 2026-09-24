@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -9,15 +8,11 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/stroke.dart';
-import 'package:anicel/src/models/stroke_id.dart';
-import 'package:anicel/src/models/stroke_point.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/add_cut_command.dart';
 import 'package:anicel/src/services/commands/add_frame_command.dart';
 import 'package:anicel/src/services/commands/add_layer_command.dart';
-import 'package:anicel/src/services/commands/add_stroke_command.dart';
 import 'package:anicel/src/services/commands/add_track_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -170,75 +165,6 @@ void main() {
       );
     });
 
-    test('AddStrokeCommand executes, undoes, and redoes', () {
-      final frame = _frame(id: 'frame-1');
-      final layer = _layer(id: 'layer-1', name: 'Line', frames: [frame]);
-      final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
-      final track = _track(id: 'track-1', name: 'Video', cuts: [cut]);
-      final originalProject = _project(tracks: [track]);
-      final repository = ProjectRepository(initialProject: originalProject);
-      final historyManager = HistoryManager();
-      final stroke = _stroke(id: 'stroke-1');
-
-      historyManager.execute(
-        AddStrokeCommand(
-          repository: repository,
-          frameId: const FrameId('frame-1'),
-          stroke: stroke,
-        ),
-      );
-
-      expect(
-        repository
-            .requireProject()
-            .tracks
-            .single
-            .cuts
-            .single
-            .layers
-            .single
-            .frames
-            .single
-            .strokes,
-        [stroke],
-      );
-
-      historyManager.undo();
-
-      expect(repository.requireProject(), originalProject);
-      expect(
-        repository
-            .requireProject()
-            .tracks
-            .single
-            .cuts
-            .single
-            .layers
-            .single
-            .frames
-            .single
-            .strokes,
-        isEmpty,
-      );
-
-      historyManager.redo();
-
-      expect(
-        repository
-            .requireProject()
-            .tracks
-            .single
-            .cuts
-            .single
-            .layers
-            .single
-            .frames
-            .single
-            .strokes,
-        [stroke],
-      );
-    });
-
     test('undo before execute throws', () {
       final repository = ProjectRepository(initialProject: _project());
       final command = AddTrackCommand(
@@ -301,14 +227,6 @@ Layer _layer({
   return Layer(id: LayerId(id), name: name, frames: frames);
 }
 
-Frame _frame({required String id, List<Stroke> strokes = const []}) {
-  return Frame(id: FrameId(id), duration: 1, strokes: strokes);
-}
-
-Stroke _stroke({required String id}) {
-  return Stroke(
-    id: StrokeId(id),
-    points: const [StrokePoint(x: 1, y: 2), StrokePoint(x: 3, y: 4)],
-    brushSettings: BrushSettings(),
-  );
+Frame _frame({required String id}) {
+  return Frame(id: FrameId(id), duration: 1, strokes: const []);
 }

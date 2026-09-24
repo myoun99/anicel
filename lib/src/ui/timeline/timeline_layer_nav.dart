@@ -17,7 +17,7 @@ import 'timeline_section_policy.dart';
 /// rotated).
 ///
 /// [direction] -1 = the row visually ABOVE (screen-up = earlier in
-/// horizontal display order, the moveSelectionToFilteredLayer rule).
+/// horizontal display order, the standing law's `above` — UI-R6 #3).
 /// Steps clamp at the ends. When the active layer itself isn't displayed
 /// (its whole section is folded), the step enters the visible rows from
 /// the matching end: ↓ lands on the top displayed row, ↑ on the bottom.

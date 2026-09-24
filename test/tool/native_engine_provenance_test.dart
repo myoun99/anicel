@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/native_engine_provenance.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨AN ENGINE BUILD SAYS WHICH C IT CAME FROM, and the name is the C's
 /// content — ⛔not a file time, ⛔not the ABI number. The incidents that
@@ -50,7 +51,7 @@ void main() {
       ..createSync(recursive: true)
       ..writeAsStringSync('// dart\n');
   });
-  tearDown(() => sandbox.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(sandbox));
 
   test('⛔fixture premise: a checkout holding C gets a name', () {
     expect(nameOf(trunk), matches(RegExp(r'^[0-9a-f]{16}$')));

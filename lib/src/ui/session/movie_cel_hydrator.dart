@@ -12,6 +12,8 @@ import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
 import '../../services/import/raster_cel_import.dart'
     show rasterizeImageToSurface;
+import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
+import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/straight_rgba_image.dart';
 import 'render_caches.dart';
@@ -19,8 +21,14 @@ import 'session_roles.dart';
 
 /// One movie open for reading. The token is the READER's — it minted it and
 /// only it can read or close by it (「a handle says which movie is whose」),
-/// so the reader is kept beside it rather than asked for again.
-typedef _OpenMovie = ({VideoDecodeBackend reader, int token, QaVideoInfo info});
+/// so the reader is kept beside it rather than asked for again; `close` puts
+/// the movie back and only then the bytes it was reading ([openHeldMovie]).
+typedef _OpenMovie = ({
+  VideoDecodeBackend reader,
+  int token,
+  QaVideoInfo info,
+  Future<void> Function() close,
+});
 
 /// One picture of a movie, as a canvas shows it: the file, the movie frame,
 /// and the canvas it was fitted to.
@@ -46,17 +54,27 @@ class MovieCelHydrator {
     required ChangeSink changes,
     required RenderCaches renderCaches,
     required ProjectFrameRate Function() frameRate,
+    required HoldMediaBytes holdBytes,
   }) : _project = project,
        _internals = internals,
        _changes = changes,
        _renderCaches = renderCaches,
-       _frameRate = frameRate;
+       _frameRate = frameRate,
+       _holdBytes = holdBytes;
 
   final ProjectAccess _project;
   final SessionInternals _internals;
   final ChangeSink _changes;
   final RenderCaches _renderCaches;
   final ProjectFrameRate Function() _frameRate;
+
+  /// Where a movie row's bytes are — the project's own copy first
+  /// (`ProjectFile.holdMediaBytes`). 🪦This opened the ROW'S PATH, the
+  /// file the movie was imported from: a carried movie went blank on the
+  /// canvas the moment that file was deleted — or on another machine — and
+  /// played the edited file once it was changed (card
+  /// `carried-bytes-every-reader`).
+  final HoldMediaBytes _holdBytes;
 
   /// Each movie's open document, by path — opened once; a movie that would
   /// not open is remembered as such instead of retried at every frame.
@@ -214,26 +232,51 @@ class MovieCelHydrator {
     return movie;
   }
 
-  static Future<_OpenMovie?> _open(String path) async {
+  Future<_OpenMovie?> _open(String path) async {
     final reader = videoDecodeBackend;
-    final opened = await reader.open(path);
-    return opened == null
+    final movie = await openHeldMovie(reader, _holdBytes, path);
+    return movie == null
         ? null
-        : (reader: reader, token: opened.token, info: opened.info);
+        : (
+            reader: reader,
+            token: movie.token,
+            info: movie.info,
+            close: movie.close,
+          );
   }
 
 
   /// Closes every movie this opened, each by the reader that opened it.
-  Future<void> dispose() async {
+  Future<void> dispose() {
     _disposed = true;
+    return _closeEveryMovie();
+  }
+
+  /// Lets go of every movie this opened and forgets what each turned out
+  /// to be — for a session whose whole project is about to be REPLACED
+  /// (`PlaybackRig.letGoOfTheProject`).
+  ///
+  /// 🚨Movies are kept by PATH, and a path answers the project's own copy
+  /// ([_holdBytes]): kept across a load, a row of the next project with the
+  /// same path decoded the LAST project's bytes and facts, and that
+  /// project's file stayed open until the app quit (audit 2026-09-24).
+  Future<void> reset() => _closeEveryMovie();
+
+  Future<void> _closeEveryMovie() async {
     final opened = [..._opened.values];
     _opened.clear();
     _facts.clear();
     _decoded.clear();
     for (final document in opened) {
-      final movie = await document;
-      if (movie != null) {
-        await movie.reader.close(movie.token);
+      // ⚠️Each on its own: one movie that failed to open, or will not
+      // close, must not keep the rest open — and the bytes they hold.
+      try {
+        final movie = await document;
+        if (movie != null) {
+          await movie.close();
+        }
+      } on Object {
+        // Nothing further to put back for that one.
       }
     }
   }

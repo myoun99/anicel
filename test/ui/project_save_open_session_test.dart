@@ -12,6 +12,7 @@ import 'package:anicel/src/services/persistence/folder_grant.dart'
     show MaterializeCancelled;
 import 'package:anicel/src/ui/session/project_file_door.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/temp_dir.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
 /// lifecycle (both undo stacks clear on load), the dirty flag and the
@@ -28,7 +29,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-session-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   test('a Cancel pressed during the read is honoured before anything lands '
       '— the session keeps what it had', () async {

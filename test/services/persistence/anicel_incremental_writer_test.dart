@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import '../../helpers/temp_dir.dart';
 
 /// R22-C incremental appender: appended entries shadow same-named ones,
 /// the standard reader sees only the latest state, and cel data offsets
@@ -27,7 +28,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-incr');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
+import '../../helpers/scrollable_of.dart';
+
 /// **F-8 — the layer area answers a finger the way the frame area does.**
 ///
 /// 유저 2026-08-24: 「레이어영역도 프레임영역이랑 똑같이 선택범위 작동-드래그로
@@ -73,11 +75,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  ScrollController railScroll(WidgetTester tester) => tester
-      .widget<SingleChildScrollView>(
-        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
-      )
-      .controller!;
+  ScrollController railScroll(WidgetTester tester) => scrollableOf(
+    tester,
+    find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+  ).controller!;
 
   Finder railRow(String id) =>
       find.byKey(ValueKey<String>('timeline-layer-row-$id'));

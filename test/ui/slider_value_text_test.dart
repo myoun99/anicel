@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/dart_sources.dart';
 
 /// F-9 — **a slider shows the value it actually has.**
 ///
@@ -54,11 +53,7 @@ void main() {
     // to catch is the EXCEPTION hook rounding inside itself.
     final rounding = RegExp(r'\.round\(\)|\.toStringAsFixed\(0\)');
 
-    for (final entry
-        in Directory('lib/src/ui')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       if (key == 'lib/src/ui/widgets/field_slider.dart') {
@@ -113,11 +108,7 @@ void main() {
     final offenders = <String>[];
     final handRolled = RegExp(r'\$\{\(?[\w.]+ \* 100\)?\.round\(\)\}%');
 
-    for (final entry
-        in Directory('lib/src/ui')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = entry.readAsLinesSync();
@@ -156,11 +147,7 @@ void main() {
     final offenders = <String>[];
     final rawSlider = RegExp(r'(?<![A-Za-z_])Slider\s*\(');
 
-    for (final entry
-        in Directory('lib/src/ui')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = entry.readAsLinesSync();

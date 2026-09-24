@@ -18,6 +18,7 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
@@ -351,14 +352,18 @@ void main() {
       );
     }
 
+    /// Paints the live row once. With [recordInto] the paint goes to that
+    /// canvas instead, so a test can read the calls it made.
     Future<void> paintActive(
       WidgetTester tester, {
       required List<ResolvedLayerEffect> effects,
       double opacity = 0.5,
+      LayerBlendMode blendMode = LayerBlendMode.normal,
       double zoom = 1,
       bool disableBuffer = false,
       SelectionFloatOverlay? floatOverlay,
       ValueListenable<CutStampPreview?>? stampPreview,
+      TestRecordingCanvas? recordInto,
     }) async {
       debugLiveLayerRodeTheDraws = null;
       await tester.pumpWidget(
@@ -370,7 +375,13 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
-                    CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: opacity, effects: effects)),
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasActiveLayerRow(
+                        opacity: opacity,
+                        blendMode: blendMode,
+                        effects: effects,
+                      ),
+                    ),
                   ],
                   imageCache: LayerFrameImageCache(
                     frameStore: BrushFrameStore(),
@@ -402,6 +413,10 @@ void main() {
           .toList();
       expect(painted, isNotEmpty);
       const size = Size(200, 150);
+      if (recordInto != null) {
+        painted.first.painter!.paint(recordInto, size);
+        return;
+      }
       final recorder = ui.PictureRecorder();
       painted.first.painter!.paint(Canvas(recorder, Offset.zero & size), size);
       recorder.endRecording().dispose();
@@ -686,6 +701,81 @@ void main() {
       );
     });
 
+    testWidgets('🚨F-172: a buffered row whose blend is not srcOver blends as '
+        'an IMAGE — no saveLayer carries the blend', (tester) async {
+      // 유저 2026-09-20: 「곱하기 … 스탬프 사용시 해당 레이어가 뭔가 색이
+      // 진해짐」. On Impeller a saveLayer restored through an advanced blend
+      // composited the rows ABOVE a second time (the paint pass has the
+      // measurement). This VM rasters with Skia and never showed it, so the
+      // pin is the ROUTE, not the pixels.
+      final preview = ValueNotifier<CutStampPreview?>(
+        CutStampPreview(
+          piece: CutPiece(
+            image: BrushStampImage(
+              id: 'ghost',
+              width: 4,
+              height: 4,
+              rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
+            ),
+            originLeft: 0,
+            originTop: 0,
+          ),
+          image: await tester.runAsync(_decodedSquare),
+          canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
+          opacity: 1,
+          blendMode: BrushBlendMode.color,
+        ),
+      );
+      addTearDown(preview.dispose);
+
+      Future<List<Invocation>> callsFor(LayerBlendMode blend) async {
+        final canvas = _ClippedRecordingCanvas(
+          const Rect.fromLTWH(0, 0, 200, 150),
+        );
+        await paintActive(
+          tester,
+          effects: const [],
+          blendMode: blend,
+          disableBuffer: true,
+          stampPreview: preview,
+          recordInto: canvas,
+        );
+        expect(
+          debugLiveLayerRodeTheDraws,
+          isFalse,
+          reason: '⛔premise: the ghost buffers the row',
+        );
+        return [for (final call in canvas.invocations) call.invocation];
+      }
+
+      Iterable<Paint> paintsOf(List<Invocation> calls, Symbol member, int at) =>
+          calls
+              .where((call) => call.memberName == member)
+              .map((call) => call.positionalArguments[at] as Paint);
+
+      for (final blend in [LayerBlendMode.multiply, LayerBlendMode.screen]) {
+        final calls = await callsFor(blend);
+        expect(
+          paintsOf(calls, #saveLayer, 1).map((paint) => paint.blendMode),
+          everyElement(BlendMode.srcOver),
+          reason: '${blend.name} rode a saveLayer',
+        );
+        expect(
+          paintsOf(calls, #drawImageRect, 3).map((paint) => paint.blendMode),
+          contains(blend.paintBlendMode),
+          reason: 'the ${blend.name} blend rides the image instead',
+        );
+      }
+
+      // ⛔And a srcOver row keeps the cheaper saveLayer: the image route's
+      // price is paid only where it buys something.
+      expect(
+        paintsOf(await callsFor(LayerBlendMode.normal), #saveLayer, 1),
+        isNotEmpty,
+        reason: 'a normal row still buffers through a saveLayer',
+      );
+    });
+
     testWidgets('a colour-only filter does NOT need it', (tester) async {
       // ⛔The other side of the same question: a matrix is per-pixel, so
       // "has effects" would have been the wrong test.
@@ -736,4 +826,18 @@ Future<ui.Image> _decodedSquare() {
     completer.complete,
   );
   return completer.future;
+}
+
+/// A recording canvas that can say where it clips — the painters cull to it,
+/// and the plain one answers null.
+class _ClippedRecordingCanvas extends TestRecordingCanvas {
+  _ClippedRecordingCanvas(this.bounds);
+
+  final Rect bounds;
+
+  @override
+  Rect getLocalClipBounds() => bounds;
+
+  @override
+  Rect getDestinationClipBounds() => bounds;
 }

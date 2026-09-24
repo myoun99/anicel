@@ -19,6 +19,7 @@ import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE SETTINGS-CHANGE SWEEP, AND THE THING IT MUST NOT SWEEP.**
 ///
@@ -48,7 +49,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-conform-rm');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

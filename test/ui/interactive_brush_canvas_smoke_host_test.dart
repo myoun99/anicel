@@ -67,7 +67,7 @@ void main() {
       expect(identical(view.sessionState, sessionState), isTrue);
       expect(view.layerId, layerId);
       expect(view.frameId, frameId);
-      expect(view.inputSettings, inputSettings);
+      expect(view.inputSettings(), inputSettings);
       expect(sink.totalCalls, 0);
       expect(view.showTransparentBackground, isFalse);
     });

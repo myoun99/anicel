@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,8 +13,14 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
+    show
+        TimelineRowEditChromePainter,
+        TimelineRowRunAddTarget,
+        TimelineRowRunTagTarget;
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
+import '../../helpers/app_faces.dart';
 import 'timeline_frame_geometry_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 
@@ -54,41 +62,44 @@ void main() {
     required List<int> seeks,
     List<(LayerId, int, TimelineBlockEdge)>? gripBegins,
     List<(LayerId, int, bool)>? addBegins,
+    TextStyle face = const TextStyle(),
   }) => MaterialApp(
     home: Scaffold(
       body: Material(
-        child: TimelineFrameCellsRow(
-          layer: twoRunLayer(),
-          active: true,
-          playbackFrameCount: 24,
-          // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
-          // and run 0's end cluster at [96,120].
-          geometry: testFrameGeometry(
-            frameCellExtent: 48,
-            frameEndIndexExclusive: 8,
-          ),
-          crossAxisExtent: 52,
-          exposureStateForLayer: stateFor,
-          onSelectLayer: (_) {},
-          onSelectFrame: seeks.add,
-          commaDrag: TimelineCommaDragCallbacks(
-            onBegin: (layerId, start, edge) {
-              gripBegins?.add((layerId, start, edge));
-              return true;
-            },
-            onUpdate: (_) {},
-            onEnd: () {},
-            onCancel: () {},
-          ),
-          runEdit: TimelineRunEditCallbacks(
-            onAddBegin: (layerId, start, {required atEnd}) {
-              addBegins?.add((layerId, start, atEnd));
-              return true;
-            },
-            onAddUpdate: (_) {},
-            onAddEnd: () {},
-            onAddCancel: () {},
-            onEdgeModeSelected: (_, _, _, _, {scopeToSelection = false}) {},
+        child: DefaultTextStyle.merge(
+          style: face,
+          child: TimelineFrameCellsRow(
+            layer: twoRunLayer(),
+            playbackFrameCount: 24,
+            // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
+            // and run 0's end cluster at [96,120].
+            geometry: testFrameGeometry(
+              frameCellExtent: 48,
+              frameEndIndexExclusive: 8,
+            ),
+            crossAxisExtent: 52,
+            exposureStateForLayer: stateFor,
+            onSelectLayer: (_) {},
+            onSelectFrame: seeks.add,
+            commaDrag: TimelineCommaDragCallbacks(
+              onBegin: (layerId, start, edge) {
+                gripBegins?.add((layerId, start, edge));
+                return true;
+              },
+              onUpdate: (_) {},
+              onEnd: () {},
+              onCancel: () {},
+            ),
+            runEdit: TimelineRunEditCallbacks(
+              onAddBegin: (layerId, start, {required atEnd}) {
+                addBegins?.add((layerId, start, atEnd));
+                return true;
+              },
+              onAddUpdate: (_) {},
+              onAddEnd: () {},
+              onAddCancel: () {},
+              onEdgeModeSelected: (_, _, _, _, {scopeToSelection = false}) {},
+            ),
           ),
         ),
       ),
@@ -218,4 +229,85 @@ void main() {
     expect(hovered(), isNull);
     expect(cursor(), MouseCursor.defer);
   });
+
+  testWidgets('the run glyphs are set in the app\'s face, taken from the '
+      'ambient style (「앱은 한 글꼴」, 08-28)', (tester) async {
+    await loadTheAppFaces();
+    const face = TextStyle(fontFamily: 'BIZ UDPGothic');
+    await tester.pumpWidget(harness(seeks: [], face: face));
+    final painter = timelineRowChromePainter(tester, 'layer-a')!;
+
+    // What each [+] and tag is written as, in the order they are painted.
+    final glyph = timelineRunClusterGlyphSize(48);
+    final written = [
+      for (final target in painter.targets)
+        if (target is TimelineRowRunAddTarget)
+          ('+', glyph + 2)
+        else if (target is TimelineRowRunTagTarget)
+          (target.letter, glyph),
+    ];
+    List<double> widthsIn(TextStyle style) => [
+      for (final (text, size) in written)
+        (TextPainter(
+          text: TextSpan(
+            text: text,
+            style: style.copyWith(
+              fontSize: size,
+              height: 1,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout()).maxIntrinsicWidth,
+    ];
+    expect(written, hasLength(6), reason: 'the premise: three clusters');
+    expect(
+      widthsIn(face),
+      isNot(widthsIn(const TextStyle())),
+      reason: 'the premise: the two faces set the glyphs at different widths',
+    );
+
+    final painted = _PaintedWidths();
+    painter.paint(painted, const Size(8 * 48, 52));
+    expect(painted.widths, hasLength(written.length));
+    final expected = widthsIn(face);
+    for (var i = 0; i < written.length; i += 1) {
+      expect(
+        painted.widths[i],
+        closeTo(expected[i], 0.5),
+        reason: '`${written[i].$1}` — set from scratch it named no face and '
+            'wrote in the OS\'s',
+      );
+    }
+  });
+
+  testWidgets('a changed face repaints the run glyphs — the face turns with '
+      'the language', (tester) async {
+    Future<TimelineRowEditChromePainter> writtenIn(String family) async {
+      await tester.pumpWidget(
+        harness(seeks: [], face: TextStyle(fontFamily: family)),
+      );
+      return timelineRowChromePainter(tester, 'layer-a')!;
+    }
+
+    final first = await writtenIn('First');
+    expect(
+      (await writtenIn('First')).shouldRepaint(first),
+      isFalse,
+      reason: 'the premise: a rebuild with the same inputs does not repaint',
+    );
+    expect((await writtenIn('Second')).shouldRepaint(first), isTrue);
+  });
+}
+
+/// The natural width of every paragraph painted, in painting order.
+class _PaintedWidths implements Canvas {
+  final widths = <double>[];
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
+      widths.add(paragraph.maxIntrinsicWidth);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

@@ -185,9 +185,12 @@ class Project {
   /// writing it is not a document edit.
   final MediaViewerBookmarks mediaViewerBookmarks;
 
+  /// The pool's entry for [path], in whichever spelling it is asked
+  /// ([normalizedMediaPath]).
   MediaAsset? mediaAssetByPath(String path) {
+    final key = normalizedMediaPath(path);
     for (final asset in mediaAssets) {
-      if (asset.path == path) {
+      if (asset.path == key) {
         return asset;
       }
     }

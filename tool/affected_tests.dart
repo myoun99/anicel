@@ -21,6 +21,7 @@
 //   dart run tool/affected_tests.dart --list     # print them, run nothing
 //   dart run tool/affected_tests.dart --all      # the escape hatch
 //   dart run tool/affected_tests.dart --base HEAD~3
+//   dart run tool/affected_tests.dart --concurrency 4   # a machine in use
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -52,9 +53,12 @@ const _runEverything = <String>[
   'test/flutter_test_config.dart',
 ];
 
+/// The tag [gcTagMarker] writes, as `--exclude-tags` names it.
+const gcTag = 'gc';
+
 /// The marker a file writes to say 「my assertion waits for the garbage
 /// collector」 — see [partitionByGcTag].
-const gcTagMarker = "@Tags(['gc'])";
+const gcTagMarker = "@Tags(['$gcTag'])";
 
 /// Splits the run into the [crowd] and the ones that go [alone].
 ///
@@ -78,7 +82,9 @@ const gcTagMarker = "@Tags(['gc'])";
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
-/// come back 「no tests match」 and read as a failure to start.
+/// come back 「no tests match」 and read as a failure to start. (The whole
+/// suite is the one run that does exclude it, and [runPlan] says why that
+/// one cannot come back empty.)
 ({List<String> crowd, List<String> alone}) partitionByGcTag(
   List<String> files,
   String Function(String path) read,
@@ -91,10 +97,89 @@ const gcTagMarker = "@Tags(['gc'])";
   return (crowd: crowd, alone: alone);
 }
 
+/// The `flutter test` argument lists one run is made of: the [crowd], in as
+/// many commands as the command line allows, then the pins that wait for
+/// the collector, [alone] and last.
+///
+/// [selected] empty means THE WHOLE SUITE, and [suite] is then every test
+/// file there is. Its crowd stays ONE command that names no files — a whole
+/// suite of paths is far past what [batches] splits against — and leaves
+/// the tag out instead, which cannot come back 「no tests match」 with
+/// thousands of others in it.
+///
+/// 🚨**THE WHOLE SUITE USED TO SKIP THE SPLIT.** An empty selection names
+/// no files to partition, so it stayed one command with every file in it,
+/// the pins included — and every run a blanket file forces (the test
+/// config, `windows/`, the pubspec) and `--all` ran them in the crowd
+/// [partitionByGcTag] exists to keep them out of. The parked-transform pin
+/// went red that way in a whole-suite gate (2026-09-23, 「16 tiles, 16
+/// still alive」, green in its own batch) — that file's third time.
+({List<List<String>> crowd, List<String> alone}) runPlan({
+  required List<String> selected,
+  required List<String> suite,
+  required String Function(String path) read,
+  required List<List<String>> Function(List<String> files) batches,
+}) {
+  if (selected.isEmpty) {
+    final alone = partitionByGcTag(suite, read).alone;
+    final crowd = alone.isEmpty
+        ? const <String>[]
+        : const ['--exclude-tags', gcTag];
+    return (crowd: [crowd], alone: alone);
+  }
+  final split = partitionByGcTag(selected, read);
+  // ⛔An empty command IS the whole suite, so a selection of nothing but
+  // pins has no crowd at all — [batches] off Windows hands an empty list
+  // back as one empty batch.
+  return (
+    crowd: split.crowd.isEmpty ? const <List<String>>[] : batches(split.crowd),
+    alone: split.alone,
+  );
+}
+
+/// What a change to [changed] — every changed file, Dart or not — can have
+/// broken, out of [tests].
+Set<String> selectTests({
+  required Set<String> changed,
+  required List<String> tests,
+  required Map<String, Set<String>> imports,
+  required String Function(String path) read,
+}) => {
+  // A changed test runs because it changed, whatever it imports.
+  ...changed.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+  // Everything that can reach a changed file, however far away.
+  for (final test in tests)
+    if (closureOf(test, imports).any(changed.contains)) test,
+  // And every test that reads, as text, where a changed file lives — the one
+  // dependency no edge carries.
+  ...scansReaching(changed, tests, read),
+};
+
+/// The [tests] that read, as text, a path holding one of the [changed]
+/// files — the source scans and file reads no import edge reaches. See
+/// [pathsReadAsText] for the rounds they were missing from.
+List<String> scansReaching(
+  Set<String> changed,
+  Iterable<String> tests,
+  String Function(String path) read,
+) => [
+  for (final test in tests)
+    if (pathsReadAsText(read(test)).any(
+      (prefix) => changed.any((file) => file.startsWith(prefix)),
+    ))
+      test,
+];
+
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
   final base = _flagValue(args, '--base') ?? 'origin/master';
+  final asked = _flagValue(args, '--concurrency');
+  final concurrency = asked == null ? null : int.tryParse(asked);
+  if (asked != null && (concurrency == null || concurrency < 1)) {
+    stderr.writeln('--concurrency takes a whole number of suites, 1 or more.');
+    exit(2);
+  }
 
   final root = _repoRoot();
   if (root == null) {
@@ -105,7 +190,13 @@ Future<void> main(List<String> args) async {
 
   if (runAll) {
     _report('--all: running the whole suite.');
-    exit(await _runTests(const [], listOnly: listOnly));
+    exit(
+      await _runTests(
+        const [],
+        listOnly: listOnly,
+        concurrency: concurrency,
+      ),
+    );
   }
 
   final changed = _changedFiles(base);
@@ -118,42 +209,36 @@ Future<void> main(List<String> args) async {
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
-    exit(await _runTests(const [], listOnly: listOnly));
+    exit(
+      await _runTests(
+        const [],
+        listOnly: listOnly,
+        concurrency: concurrency,
+      ),
+    );
   }
 
   final imports = buildImportGraph();
-  // The graph covers everything under test/ — helpers, fixtures and
-  // flutter_test_config.dart included, because tests reach their changed
-  // dependencies through those. Only files flutter test will actually run
-  // as a suite may be handed back, though: passing it the config would ask
-  // it to run a file that defines no tests.
-  final tests = imports.keys
-      .where((f) => f.startsWith('test/') && f.endsWith('_test.dart'))
-      .toList()
-    ..sort();
+  final tests = _suitesIn(imports);
 
-  final changedDart = changed.where((f) => f.endsWith('.dart')).toSet();
-  final selected = <String>{};
-
-  // A changed test runs because it changed, whatever it imports.
-  selected.addAll(
-    changedDart.where((f) => f.startsWith('test/') && f.endsWith('_test.dart')),
+  final selected = selectTests(
+    changed: changed,
+    tests: tests,
+    imports: imports,
+    read: (path) => File(path).readAsStringSync(),
   );
-
-  // Everything that can reach a changed file, however far away.
-  for (final test in tests) {
-    if (closureOf(test, imports).any(changedDart.contains)) selected.add(test);
-  }
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
-    _report('no test reaches the ${changedDart.length} changed Dart file(s).');
+    _report('no test reaches the ${changed.length} changed file(s).');
     exit(0);
   }
 
   _report('${present.length} of ${tests.length} test files reach the '
-      '${changedDart.length} changed Dart file(s).');
-  exit(await _runTests(present, listOnly: listOnly));
+      '${changed.length} changed file(s).');
+  exit(
+    await _runTests(present, listOnly: listOnly, concurrency: concurrency),
+  );
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -197,6 +282,23 @@ bool _forcesFullRun(String path) => _runEverything.any(
       (prefix) => prefix.endsWith('/') ? path.startsWith(prefix) : path == prefix,
     );
 
+/// The files `flutter test` runs as suites, out of [graph].
+///
+/// The graph covers everything under test/ — helpers, fixtures and
+/// flutter_test_config.dart included, because tests reach their changed
+/// dependencies through those. Only files flutter test will actually run
+/// as a suite may be handed back, though: passing it the config would ask
+/// it to run a file that defines no tests.
+List<String> _suitesIn(Map<String, Set<String>> graph) => graph.keys
+    .where((f) => f.startsWith('test/') && f.endsWith('_test.dart'))
+    .toList()
+  ..sort();
+
+/// Every suite there is — what a whole-suite run has to find its collector
+/// pins among ([runPlan]).
+List<String> _suiteFiles() =>
+    _suitesIn(buildImportGraph(roots: const ['test']));
+
 
 /// How many characters of arguments one invocation may carry.
 ///
@@ -234,12 +336,43 @@ List<List<String>> _batches(List<String> files) {
   return out;
 }
 
-Future<int> _runTests(List<String> files, {required bool listOnly}) async {
+/// What one batch hands `flutter test`: [files], and at most [concurrency]
+/// suites at once when one is given.
+///
+/// --no-pub because resolving again buys nothing between two runs of the
+/// same checkout, and on a loaded machine every process launch is felt.
+///
+/// 🗣️[concurrency] because the machine is someone's (유저 2026-09-24:
+/// 「부하 좀 강도? 낮출수없나. pc가 너무느린데」): left out, `flutter test`
+/// runs as many suites as there are cores, and a run of a thousand files
+/// takes the whole machine for half an hour.
+List<String> flutterTestArguments(List<String> files, {int? concurrency}) => [
+  'test',
+  '--no-pub',
+  if (concurrency != null) '--concurrency=$concurrency',
+  ...files,
+];
+
+Future<int> _runTests(
+  List<String> files, {
+  required bool listOnly,
+  int? concurrency,
+}) async {
+  // The collector-waiting pins go last and by themselves, a whole suite
+  // included — see [runPlan].
+  final plan = runPlan(
+    selected: files,
+    suite: files.isEmpty ? _suiteFiles() : const [],
+    read: (path) => File(path).readAsStringSync(),
+    batches: _batches,
+  );
+  final batches = [...plan.crowd, if (plan.alone.isNotEmpty) plan.alone];
   if (listOnly) {
-    if (files.isEmpty) {
-      stdout.writeln('(the whole suite)');
-    } else {
-      files.forEach(stdout.writeln);
+    for (final batch in batches) {
+      final wholeSuite = batch.isEmpty || batch.first.startsWith('--');
+      stdout.writeln(
+        wholeSuite ? '(the whole suite) ${batch.join(' ')}' : batch.join('\n'),
+      );
     }
     return 0;
   }
@@ -253,29 +386,15 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  // The collector-waiting pins go last and by themselves — see
-  // [partitionByGcTag]. ⚠️An empty selection means 「the whole suite」 and
-  // stays one empty batch: the crowd's own command carries every file
-  // there is, this one included.
-  final split = files.isEmpty
-      ? (crowd: files, alone: <String>[])
-      : partitionByGcTag(files, (path) => File(path).readAsStringSync());
-  final crowdBatches = split.crowd.isEmpty && split.alone.isEmpty
-      ? [<String>[]]
-      : _batches(split.crowd);
-  final batches = [
-    ...crowdBatches,
-    if (split.alone.isNotEmpty) split.alone,
-  ];
-  if (split.alone.isNotEmpty) {
-    _report('${split.alone.length} pin(s) wait for the garbage collector '
+  if (plan.alone.isNotEmpty) {
+    _report('${plan.alone.length} pin(s) wait for the garbage collector '
         '($gcTagMarker) and run in a batch of their own — in company they '
         'report a holder that has already let go.');
   }
-  if (crowdBatches.length > 1) {
-    _report('${split.crowd.length} files exceed the command-line budget: '
-        'running them in ${crowdBatches.length} batches. Each batch pays '
-        'the resident compiler\'s cold start again.');
+  if (plan.crowd.length > 1) {
+    _report('${plan.crowd.expand((batch) => batch).length} files exceed the '
+        'command-line budget: running them in ${plan.crowd.length} batches. '
+        'Each batch pays the resident compiler\'s cold start again.');
   }
 
   var worst = 0;
@@ -284,7 +403,7 @@ Future<int> _runTests(List<String> files, {required bool listOnly}) async {
   final neverRan = <int>[];
   for (var i = 0; i < batches.length; i++) {
     if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-    final result = await _flutterTest(batches[i]);
+    final result = await _flutterTest(batches[i], concurrency: concurrency);
     skipped += result.skipped;
     if (result.exitCode != 0) {
       failed.add(i + 1);
@@ -410,11 +529,18 @@ class _BatchResult {
 /// to prevent, pointing the other way: a gate that cries wolf is a gate
 /// the next reader learns to wave through.
 ///
-/// The counter only ever appears as `+<passed> ~<skipped>:` — flutter's
-/// own progress line — so that is what this asks for.
+/// The counter is flutter's own progress line, `+<passed> ~<skipped>:`,
+/// and once a test has failed `+<passed> ~<skipped> -<failed>:` — so that
+/// is what this asks for.
+///
+/// 🚨THE SECOND SHAPE WAS MISSING until 2026-09-23. A run that failed once
+/// stopped matching at that failure, and the count froze there: a
+/// whole-suite gate that skipped 22 reported 「12 test(s) SKIPPED」 — every
+/// skip after its one red went unsaid, which is this function's whole
+/// failure mode once more.
 int? lastSkipCount(String text) {
   int? found;
-  for (final m in RegExp(r'\+\d+ ~(\d+):').allMatches(text)) {
+  for (final m in RegExp(r'\+\d+ ~(\d+)(?: -\d+)?:').allMatches(text)) {
     found = int.parse(m.group(1)!);
   }
   return found;
@@ -431,12 +557,13 @@ final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
 /// finishes is a tool nobody trusts is still alive. Copied rather than
 /// inherited so the same bytes can answer one question on the way past —
 /// did any test actually run?
-Future<_BatchResult> _flutterTest(List<String> files) async {
-  // --no-pub because resolving again buys nothing between two runs of the
-  // same checkout, and on a loaded machine every process launch is felt.
+Future<_BatchResult> _flutterTest(
+  List<String> files, {
+  required int? concurrency,
+}) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
-    <String>['test', '--no-pub', ...files],
+    flutterTestArguments(files, concurrency: concurrency),
     runInShell: true,
   );
   var ranTests = false;

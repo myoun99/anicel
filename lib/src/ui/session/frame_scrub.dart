@@ -1,16 +1,26 @@
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart';
+
 import 'playback_rig.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The FRAME SCRUB — dragging the playhead: the preview it shows while the
 /// finger is down, the territory it touched, and the commit or abandon when
-/// it lifts — as its own object.
+/// it lifts — as its own object, and the two flags that say so.
 ///
 /// 🚨A collaborator carved out of `EditorSessionManager` (the audit's SRP cut,
 /// 2026-09-02). Measured before cutting: one field of its own and thirteen
-/// session members touched (the scrub flags stay on the session — the UI
-/// reads them). It names the roles it needs in its constructor.
+/// session members touched. It names the roles it needs in its constructor.
+///
+/// ↩️The scrub flags ([active], [outOfTerritory]) used to stay on the
+/// session, on the reading that "the UI reads them" (that cut). Reading
+/// them does not need the session to own them: this object is the one that
+/// raises and drops them, so it holds them, and the UI reads
+/// `session.frameScrub` — ARCH-session-state's second family (2026-09-23),
+/// the same move the onion skin made first, and the `SessionInternals`
+/// ledger counts down by the two getters it no longer carries.
 class FrameScrub {
   FrameScrub({
     required ProjectAccess project,
@@ -35,6 +45,42 @@ class FrameScrub {
   final ActiveCutControllers _controllers;
   final SessionInternals _internals;
   final PlaybackRig _playbackRig;
+
+  /// True while a ruler scrub is in flight.
+  ///
+  /// 🚨★★★ #26 (2026-08-15): THIS NO LONGER SWAPS THE DISPLAY. It used to —
+  /// the canvas became the composite-cache preview until the release commit
+  /// — and the user's law retired that: 「그냥 액티브레이어급으로 그냥 원본
+  /// 보여주게하고싶어 … 그냥 항상 full」. A scrub shows the editing canvas,
+  /// which follows the cursor through the canvas area's retarget scope.
+  ///
+  /// ⛔What it still decides is the GAP ANSWER: a parked global reads as a
+  /// gap only while the gesture is live ([CutUnderPlayhead.liveParkedFrame]
+  /// asks this), so the flag stays and the canvas rebuilds at enter and
+  /// leave.
+  final ValueNotifier<bool> active = ValueNotifier<bool>(false);
+
+  /// D6: whether the LIVE global scrub currently stands OUT of the active
+  /// cut's territory — the EDGE the canvas content mount listens to.
+  ///
+  /// A drag that STARTED inside the cut used to cross the boundary
+  /// invisibly: the out-of-territory branch parks quietly per move,
+  /// [active] was already true (its flip is the only rebuild trigger the
+  /// content mount had), and the cursor never fires out of territory — so
+  /// `inGap` was never recomputed and the canvas kept the previous cut's
+  /// picture until release. This is the retired `playheadHasCel` mechanism
+  /// applied to that missing edge: one comparison per move, fires only when
+  /// the ANSWER flips (out↔in), so the per-move parking stays as quiet as
+  /// UI-R7 #9 demands. Set only while the gesture is live — a plain tap over
+  /// another cut parks on pointer-down but never scrubs, so this stays false
+  /// and nothing flashes (the no-flash rule).
+  final ValueNotifier<bool> outOfTerritory = ValueNotifier<bool>(false);
+
+  /// Releases the two flags; the session's teardown calls it.
+  void dispose() {
+    active.dispose();
+    outOfTerritory.dispose();
+  }
 
   /// Global scrub: rides the cursor path inside the active cut's
   /// territory; EVERY out-of-territory move — a gap OR another cut's
@@ -77,16 +123,15 @@ class FrameScrub {
       // froze on the previous cut). A pointer-down alone still engages
       // nothing: the no-flash rule is about the DOWN, not about moves.
       if ((parked != null && parked != globalFrame || _scrubTouchedTerritory) &&
-          !_internals.frameScrubActive.value) {
-        _internals.frameScrubActive.value = true;
+          !active.value) {
+        active.value = true;
       }
       _selection.gapGlobalFrame = globalFrame;
       // D6: the territory-exit EDGE — only while the gesture is live
       // (a tap's pointer-down park keeps this false, the no-flash rule),
       // and only on the flip, so per-move parking stays notify-quiet.
-      if (_internals.frameScrubActive.value &&
-          !_internals.scrubOutOfTerritory.value) {
-        _internals.scrubOutOfTerritory.value = true;
+      if (active.value && !outOfTerritory.value) {
+        outOfTerritory.value = true;
       }
       return;
     }
@@ -104,8 +149,8 @@ class FrameScrub {
       // interactive canvas even when the cursor lands on its own frame
       // (the retarget scope swallows an unchanged index, so without
       // this the mounted track stack kept showing the backdrop floor).
-      if (_internals.scrubOutOfTerritory.value) {
-        _internals.scrubOutOfTerritory.value = false;
+      if (outOfTerritory.value) {
+        outOfTerritory.value = false;
       }
     }
     scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
@@ -134,8 +179,8 @@ class FrameScrub {
       _internals.editingFrameCursor.value = frameIndex;
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       _playbackRig.audioScrubber.onScrubFrame(frameIndex);
-      if (!_internals.frameScrubActive.value) {
-        _internals.frameScrubActive.value = true;
+      if (!active.value) {
+        active.value = true;
         // One warm per gesture. A scrub is a seek and every other seek
         // warms; per-move warms would only thrash the scheduler's ordering.
         _changes.warmActiveCut();
@@ -159,24 +204,24 @@ class FrameScrub {
   /// exit edge and resurrect the D6 stale picture, one drag per leak —
   /// adversarial review).
   void abandonFrameScrubPreview() {
-    if (_internals.frameScrubActive.value) {
-      _internals.frameScrubActive.value = false;
+    if (active.value) {
+      active.value = false;
     }
-    if (_internals.scrubOutOfTerritory.value) {
-      _internals.scrubOutOfTerritory.value = false;
+    if (outOfTerritory.value) {
+      outOfTerritory.value = false;
     }
     _scrubTouchedTerritory = false;
   }
 
   void commitFrameScrub() {
     _playbackRig.audioScrubber.onScrubEnd();
-    if (_internals.frameScrubActive.value) {
-      _internals.frameScrubActive.value = false;
+    if (active.value) {
+      active.value = false;
     }
     // D6: the gesture is over — the out-of-territory display state ends
     // with it (the landing seek below re-derives the real gap answer).
-    if (_internals.scrubOutOfTerritory.value) {
-      _internals.scrubOutOfTerritory.value = false;
+    if (outOfTerritory.value) {
+      outOfTerritory.value = false;
     }
     _scrubTouchedTerritory = false;
     final parked = _selection.gapGlobalFrame;

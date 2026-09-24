@@ -7,6 +7,7 @@ import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory temp;
@@ -15,13 +16,7 @@ void main() {
     temp = Directory.systemTemp.createTempSync('qa-export-settings');
   });
 
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows can hold the handle a beat; leak the temp dir over failing.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   String pathIn(String name) => '${temp.path.replaceAll('\\', '/')}/$name.json';
 

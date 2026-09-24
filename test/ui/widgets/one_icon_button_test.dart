@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★「앱에 버튼은 한 종류」 — and this is what makes it true.
 ///
@@ -56,10 +57,7 @@ void main() {
 
   test('a hand-rolled IconButton argues for itself in the ledger', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.endsWith('widgets/app_icon_button.dart')) {
@@ -120,10 +118,7 @@ void main() {
     // ⛔SCANNED, because each of them looked local and reasonable in its own
     // file — which is how three of them happened.
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       final lines = file.readAsLinesSync();

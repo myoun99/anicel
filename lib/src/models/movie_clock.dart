@@ -76,6 +76,14 @@ class MovieClock {
       movieRate.denominator <= 0;
 }
 
+/// A project's half of every [MovieClock] — its [rate], and the [speed] it
+/// plays its sounds at — for work that meets the movie's own rate only
+/// once it has opened it, as a trimmed movie's piece does in its worker.
+typedef ProjectClock = ({
+  ProjectFrameRate rate,
+  ({int numerator, int denominator}) speed,
+});
+
 /// The clock [movie] runs on in a project at [projectRate] whose sounds
 /// carry [audioSpeed].
 ///

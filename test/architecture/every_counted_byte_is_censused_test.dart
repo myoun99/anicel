@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**A HOLDER THAT KNOWS ITS OWN SIZE MUST BE IN THE CENSUS.**
 ///
@@ -27,10 +28,7 @@ void main() {
         .readAsStringSync();
     final missing = <String>[];
 
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       // ⛔`lib/dev/` is the brush lab — a harness, not the app.
@@ -79,10 +77,7 @@ void main() {
     // permanent: the getter is renamed or deleted, the line stays, and it
     // quietly excuses the NEXT thing that takes the name.
     final live = <String>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       for (final match in _counter.allMatches(entity.readAsStringSync())) {
@@ -105,10 +100,7 @@ void main() {
   test('every field that keeps images is counted, or says why not', () {
     final missing = <String>[];
     final live = <String>{};
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (relative.startsWith('lib/dev/')) {
@@ -207,6 +199,10 @@ const _notCensused = <String, String>{
       'via:cutPieceBytes — the slot lives in the workspace State the '
       'session does not own, so the workspace pushes it onto RenderCaches, '
       'the way the storyboard thumbnails are',
+  'lib/src/services/last_stroke_slot.dart → strokeBytes':
+      'via:lastStrokeBytes — the slot lives in the shell State the session '
+      'does not own, so the shell pushes it onto RenderCaches, the way the '
+      'cut piece is',
   'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
       'via:canvasBufferBytes — the view that owns the bake reports it '
       'together with its display buffer: both are the view holding a '
@@ -241,6 +237,11 @@ const _imageHolders = <String, String>{
       'counted:liveImageBytes',
   'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
       'counted:heldBytes',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
+      'clones a settle replaced, kept only until the build the settle asks '
+      'for; each is of a picture the display buffer\'s kept image drew and '
+      'still pins until its next compose, so nothing is held through them '
+      'that the buffer does not hold anyway',
   'lib/src/ui/envelope/envelope_image_cache.dart → _images':
       'a handful of decoded logos and stamps, one per role, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '

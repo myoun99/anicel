@@ -502,6 +502,10 @@ void main() {
     for (final id in attachIds) {
       expect(restored.contains(id), isTrue);
     }
+    // I-41: the add was made on the row it seated — the base is where the
+    // undo left us, so the next press walks there first.
+    s.undo();
+    expect(cutLayers(s).length, restored.length, reason: 'a walk, not a step');
     s.undo(); // the added regular layer
     expect(cutLayers(s).map((layer) => layer.id).toList(), layersBefore);
   });

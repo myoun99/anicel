@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/brush_frame_key.dart';
+import '../models/standing_place.dart';
+import 'history_places.dart';
 import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
@@ -99,6 +101,32 @@ class HistoryManager extends ChangeNotifier {
   final List<Command> _undoStack = <Command>[];
   final List<Command> _redoStack = <Command>[];
 
+  /// 🚨★★★I-41 — where each entry was made ([HistoryPlaces]): the first
+  /// undo walks there, the next one takes the edit back.
+  final HistoryPlaces places = HistoryPlaces();
+
+  /// Where the next undo's edit was made, or null when nothing says.
+  StandingPlace? get undoPlace =>
+      _undoStack.isEmpty ? null : places.of(_undoStack.last);
+
+  /// Where the next redo's edit was made, or null when nothing says.
+  ///
+  /// ⚠️A walk back never says: it is not an edit, so nothing ever stamps
+  /// it — which is what keeps a redo from walking to a walk.
+  StandingPlace? get redoPlace =>
+      _redoStack.isEmpty ? null : places.of(_redoStack.last);
+
+  /// Leaves the way back on the redo side — the undo that walked to an edit
+  /// calls this, so the redo that answers it walks back (「리두대칭」).
+  ///
+  /// ⚠️It clears nothing: a walk is not an edit, and the redo stack under
+  /// it is still the user's to take.
+  void leaveWalkBack(WalkBack step) {
+    _redoStack.add(step);
+    _revision += 1;
+    notifyListeners();
+  }
+
   bool get canUndo => _undoStack.isNotEmpty;
 
   bool get canRedo => _redoStack.isNotEmpty;
@@ -187,6 +215,7 @@ class HistoryManager extends ChangeNotifier {
   }
 
   void _push(Command command) {
+    places.stamp(command);
     _undoStack.add(command);
     if (_undoStack.length > maxEntries) {
       // The oldest commands fall off the deep end, PS-style — and take
@@ -543,7 +572,12 @@ class HistoryManager extends ChangeNotifier {
     }
     final command = from.removeLast();
     apply(command);
-    to.add(command);
+    // A walk back is spent by the redo that takes it — it is not an edit,
+    // so there is nothing for an undo to take back.
+    if (command is! WalkBack) {
+      to.add(command);
+      places.stamp(command);
+    }
     _revision += 1;
     // The bytes did not move anywhere, but the budget may have been
     // lowered by pressure since the last push — and nothing else runs

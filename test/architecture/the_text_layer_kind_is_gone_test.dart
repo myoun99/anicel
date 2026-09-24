@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// F-154 (유저 2026-09-16): 「텍스트 레이어 타입 삭제. **잔재 싹 삭제**.
 /// 텍스트툴은 도입할 예정이고 일반 레이어에 텍스트 넣게할것임. 그거는 나중에
@@ -69,13 +70,7 @@ void main() {
 
   test('🚨the scan sees a remnant when there is one', () {
     final planted = Directory.systemTemp.createTempSync('anicel-remnant');
-    addTearDown(() {
-      try {
-        planted.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
+    deleteAfterSessionEnds(planted);
     File('${planted.path}/a_row.dart').writeAsStringSync(
       'void f(LayerKind k) {\n'
       '  if (k == LayerKind.text) {}\n'

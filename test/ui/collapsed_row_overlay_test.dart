@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show TimelineGridLaw, TimelineOutsideCutWashPainter;
+import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -79,20 +86,26 @@ void main() {
   /// 그리드선 띄우고 그 부분도 전체적으로 반투명하게 하기로 하지 않았나?」 —
   /// and it had been confirmed in 2026-08-10. Only the rail half knew how to
   /// take a ground off, so the fix for one half undid the look of the other.
-  testWidgets('BOTH halves are chromeless — the row is laid on the artwork, '
-      'not on a panel', (tester) async {
+  ///
+  /// ⇒ I-44: the cells half has no ground to take off any more — no row
+  /// paints one; the grid sheet under the rows does, and the folded row's
+  /// law gives it none to paint. So the cells half is asked what it stands
+  /// on, and the rail half, which still has a ground of its own, keeps its
+  /// flag.
+  testWidgets('BOTH halves stand on the artwork, not on a panel', (
+    tester,
+  ) async {
     await pumpApp(tester);
     await collapseBottom(tester);
 
+    final cells = tester.element(inOverlay(find.byType(TimelineFrameCellsRow)));
+    final law = cells.findAncestorWidgetOfExactType<TimelineGridLaw>();
+    expect(law, isNotNull, reason: 'the folded row states its own ground');
     expect(
-      tester
-          .widget<TimelineFrameCellsRow>(
-            inOverlay(find.byType(TimelineFrameCellsRow)),
-          )
-          .chromeless,
-      isTrue,
-      reason: 'the cells half had no way to say this, which is why the ground '
-          'came back when it started mounting the real row',
+      law!.ground,
+      isNull,
+      reason: 'a folded row lies ON the artwork — there is nothing to paint '
+          'its rows on, and nothing to pre-blend its paper onto',
     );
     expect(
       tester
@@ -107,18 +120,21 @@ void main() {
   /// ⑨ — 「간편오버레이, **프레임셀쪽, 블록 뒤에 전체적으로 해당영역에 깔린
   /// 바탕색은 없애라니까?**」 (재지시).
   ///
-  /// 🚨The flag above was true the whole time and the ground was still
-  /// there, because `chromeless` reached the PAINTER and stopped: the row's
-  /// paper underlay is not painted per cell, it is two `ColoredBox`es laid
+  /// 🚨The flag was true the whole time and the ground was still there,
+  /// because `chromeless` reached the PAINTER and stopped: the row's paper
+  /// underlay was not painted per cell, it was two `ColoredBox`es laid
   /// row-wide under the whole strip (UI-R21 #2 moved them there so that
-  /// switching the active layer re-rasterises nothing).
+  /// switching the active layer re-rasterises nothing). I-44 took the pair
+  /// off every row — the grid sheet paints the rows' grounds now — so this
+  /// pins that nothing brought one back.
   ///
-  /// So asking the widget whether it is chromeless is not enough — the test
-  /// has to ask whether the ground is THERE. The two colours are named
-  /// rather than sampled: a pixel test would pass on any theme whose
-  /// surface happens to be near the artwork's colour.
-  testWidgets('and chromeless means the row-wide GROUND is gone too, not '
-      'just the empty cells', (tester) async {
+  /// Asking a flag is not enough — the test has to ask whether the ground is
+  /// THERE. The two colours are named rather than sampled: a pixel test
+  /// would pass on any theme whose surface happens to be near the artwork's
+  /// colour.
+  testWidgets('and no row-wide GROUND is painted, not just the empty cells', (
+    tester,
+  ) async {
     await pumpApp(tester);
     await collapseBottom(tester);
 
@@ -250,4 +266,189 @@ void main() {
     expect(find.byType(CollapsedRowOverlay), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+
+  /// The 08-10 design keeps ONE ground, the out-of-cut wash — and the
+  /// folded row that mounts the real row (every folded timeline row since
+  /// ⑩ 뿌리 C) had none: only the fallback strip painted it, from the cut end
+  /// in a colour of its own.
+  testWidgets('the REAL folded row says where the film stops through the '
+      'open grid\'s own stack, from the drawn end', (tester) async {
+    final session = await pumpApp(tester);
+    await collapseBottom(tester);
+
+    final overlay = tester.widget<CollapsedRowOverlay>(
+      find.byType(CollapsedRowOverlay),
+    );
+    expect(
+      overlay.drawnFrameCount,
+      session.activeCutSpan.activeCutDrawnFrameCount,
+      reason: 'handed the open grid\'s own number — this project crosses no '
+          'transition, so the offsets below alone could not tell the drawn '
+          'end from the cut end',
+    );
+    final stackFinder = inOverlay(find.byType(TimelineFrameGridStack));
+    expect(stackFinder, findsOneWidget);
+    expect(
+      find.descendant(
+        of: stackFinder,
+        matching: find.byType(TimelineFrameCellsRow),
+      ),
+      findsOneWidget,
+      reason: 'the row is the stack\'s body, so what the stack states is '
+          'stated over it',
+    );
+
+    final cell = overlay.pixelsPerFrame;
+    final first = (overlay.frameAxisOffset?.value ?? 0) ~/ cell;
+    final stack = tester.widget<TimelineFrameGridStack>(stackFinder);
+    expect(stack.frameCellExtent, cell);
+    expect(
+      stack.playbackFrameCount,
+      session.activeCutSpan.activeCutPlaybackFrameCount - first,
+      reason: 'counted from the first frame laid out, the stack\'s origin',
+    );
+    expect(
+      stack.drawnFrameCount,
+      session.activeCutSpan.activeCutDrawnFrameCount - first,
+    );
+    expect(
+      washOf(tester, stackFinder).outsideStart,
+      (session.activeCutSpan.activeCutDrawnFrameCount - first) * cell,
+      reason: 'the open grid\'s wash starts at the DRAWN end (유저 '
+          '2026-08-11), and the folded row is the open row seen through glass',
+    );
+  });
+
+  group('where the film stops, on the overlay itself', () {
+    FlipHudSnapshot snapshot({int? playbackFrameCount}) => FlipHudSnapshot(
+      rows: const [
+        FlipHudRow(
+          name: 'A',
+          kind: LayerKind.animation,
+          runs: [FlipHudRun(startIndex: 0, length: 4, label: '1')],
+        ),
+      ],
+      rowIndex: 0,
+      frameIndex: 0,
+      frameCount: 40,
+      playbackFrameCount: playbackFrameCount,
+    );
+
+    Future<void> pumpOverlay(
+      WidgetTester tester, {
+      required FlipHudSnapshot snapshot,
+      bool realRow = false,
+    }) async {
+      final axis = ValueNotifier<double>(55);
+      addTearDown(axis.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 800,
+              child: CollapsedRowOverlay(
+                snapshot: snapshot,
+                rail: null,
+                naturalRailWidth: 100,
+                pixelsPerFrame: 10,
+                framesPerSecond: 24,
+                frameAxisOffset: axis,
+                drawnFrameCount: 13,
+                frameRowBuilder: realRow
+                    ? (context, geometry) => const SizedBox.expand(
+                        key: ValueKey<String>('stand-in-row'),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    for (final realRow in [true, false]) {
+      testWidgets('${realRow ? 'a mounted row' : 'the fallback strip'}: the '
+          'wash from the drawn end, the のりしろ and the cut-end line, in '
+          'the scrolled axis\'s frame', (tester) async {
+        await pumpOverlay(
+          tester,
+          snapshot: snapshot(playbackFrameCount: 10),
+          realRow: realRow,
+        );
+
+        // The axis stands at 55px: frame 5 is the first laid out, so the
+        // counts the stack draws from are measured from there.
+        final stackFinder = find.byType(TimelineFrameGridStack);
+        final stack = tester.widget<TimelineFrameGridStack>(stackFinder);
+        expect(stack.playbackFrameCount, 10 - 5);
+        expect(stack.drawnFrameCount, 13 - 5);
+        expect(stack.frameCellExtent, 10);
+        expect(washOf(tester, stackFinder).outsideStart, 130 - 50);
+        final noriShiro = tester.widget<TimelineBodyNoriShiroBoundary>(
+          find.byType(TimelineBodyNoriShiroBoundary),
+        );
+        expect(noriShiro.left, 130 - 50);
+        expect(noriShiro.cutEnd, 100 - 50);
+        expect(
+          tester
+              .widget<TimelineBodyCutEndBoundary>(
+                find.byType(TimelineBodyCutEndBoundary),
+              )
+              .left,
+          100 - 50,
+        );
+        expect(
+          find.descendant(
+            of: stackFinder,
+            matching: realRow
+                ? find.byKey(const ValueKey<String>('stand-in-row'))
+                : find.byKey(const ValueKey<String>('collapsed-strip')),
+          ),
+          findsOneWidget,
+          reason: 'whichever stands here is the stack\'s body',
+        );
+        if (!realRow) {
+          expect(
+            tester
+                .getSize(find.byKey(const ValueKey<String>('collapsed-strip')))
+                .height,
+            CollapsedRowOverlay.defaultHeight,
+            reason: 'a painter with no child takes the room it is GIVEN — '
+                'the stack lays its body loose, so the body has to ask for '
+                'the whole row or the strip draws into nothing',
+          );
+        }
+      });
+    }
+
+    testWidgets('a snapshot with no cut end — the storyboard\'s track — has '
+        'nowhere the film stops', (tester) async {
+      await pumpOverlay(tester, snapshot: snapshot(), realRow: true);
+
+      expect(find.byType(TimelineFrameGridStack), findsNothing);
+      expect(find.byType(TimelineBodyCutEndBoundary), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('collapsed-grid-sheet')),
+        findsOneWidget,
+        reason: 'the grid still lies under the row',
+      );
+    });
+  });
 }
+
+/// The out-of-cut wash the [stack] paints — its own painter, found by type.
+TimelineOutsideCutWashPainter washOf(WidgetTester tester, Finder stack) =>
+    tester
+            .widget<CustomPaint>(
+              find.descendant(
+                of: stack,
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is CustomPaint &&
+                      widget.painter is TimelineOutsideCutWashPainter,
+                ),
+              ),
+            )
+            .painter!
+        as TimelineOutsideCutWashPainter;

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../helpers/temp_dir.dart';
 
 /// THE WORKSPACE'S TIP AND BRUSH-FILE DIALOGS — MEASURED.
 ///
@@ -80,7 +81,7 @@ void main() {
 
   tearDown(() async {
     FileSelectorPlatform.instance = realFileDialogs;
-    await directory.delete(recursive: true);
+    deleteTempQuietly(directory);
   });
 
   testWidgets('renaming a tip asks for the name in a window and renames '

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory tempDir;
@@ -27,13 +28,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-reference-rail');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   /// Imports one linked picture into [s]'s active cut; its row's id.
   Future<LayerId> importReference(

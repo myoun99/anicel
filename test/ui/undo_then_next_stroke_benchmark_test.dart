@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/ui_scale_binding.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// 🚨**H30 — 「그리다가 언두하고 빠르게 다음 스트로크 그리면 렉이 심하거든?
 /// 0.1초정도 끊긴다해야하나?」** (유저 실기 2026-09-10).
@@ -128,7 +129,7 @@ void main() {
       final directory = (await tester.runAsync(
         () => Directory.systemTemp.createTemp('h40-presets'),
       ))!;
-      addTearDown(() => directory.deleteSync(recursive: true));
+      deleteAfterSessionEnds(directory);
       await tester.pumpWidget(
         MaterialApp(
           home: HomePage(

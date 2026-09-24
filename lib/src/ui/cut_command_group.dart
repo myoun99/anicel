@@ -164,7 +164,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         icon: session.cutVerbs.isActiveCutThumbnailPinnedHere
             ? Icons.image
             : Icons.image_outlined,
-        checked: session.cutVerbs.isActiveCutThumbnailPinnedHere ? true : null,
+        checked: session.cutVerbs.isActiveCutThumbnailPinnedHere,
         onSelected: session.cutVerbs.toggleActiveCutThumbnailFrame,
       ),
       const PanelFlyoutDivider(),

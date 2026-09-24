@@ -79,18 +79,18 @@ void main() {
               4: const TimelineExposure.drawing(FrameId('blank'), length: 2),
               6: const TimelineExposure.drawing(FrameId('hit'), length: 2),
             },
-            audioClips: const [
-              AudioClip(filePath: movie, frameId: FrameId('step')),
+            audioClips: [
+              AudioClip(filePath: movie, frameId: const FrameId('step')),
               // The same frame linking the file twice is ONE use.
               AudioClip(
                 filePath: movie,
-                frameId: FrameId('step'),
+                frameId: const FrameId('step'),
                 offsetFrames: 2,
               ),
-              AudioClip(filePath: movie, frameId: FrameId('blank')),
-              AudioClip(filePath: clap, frameId: FrameId('hit')),
+              AudioClip(filePath: movie, frameId: const FrameId('blank')),
+              AudioClip(filePath: clap, frameId: const FrameId('hit')),
               // REC1-A: a link to a frame the row no longer holds.
-              AudioClip(filePath: movie, frameId: FrameId('gone')),
+              AudioClip(filePath: movie, frameId: const FrameId('gone')),
             ],
           ),
         ],

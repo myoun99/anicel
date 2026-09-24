@@ -235,10 +235,14 @@ void main() {
   });
 
   test('the CONTE row links too — one per cut, the same pictures, and a '
-      'fresh timeline the 겸용 cut exposes anew', () {
+      'fresh panel covering the 겸용 cut', () {
     session.layerStack.addLayerOfKind(LayerKind.storyboard);
     final source = session.requireActiveCut.id;
-    final sourceConte = rowsOf(source, LayerKind.storyboard).single;
+    final panelsBefore = {
+      for (final exposure
+          in rowsOf(source, LayerKind.storyboard).single.timeline.values)
+        exposure.frameId,
+    };
 
     final pair = makeLinkedPair();
 
@@ -247,14 +251,22 @@ void main() {
     expect(session.layerVerbs.isLayerLinked(conte.single.id), isTrue);
     expect(
       [for (final frame in conte.single.frames) frame.id],
-      [for (final frame in sourceConte.frames) frame.id],
+      [
+        for (final frame in rowsOf(source, LayerKind.storyboard).single.frames)
+          frame.id,
+      ],
       reason: 'the pictures are one',
     );
-    expect(
-      conte.single.timeline,
-      isEmpty,
-      reason: 'the 겸용 cut exposes the shared bank on its own',
-    );
+    // ↩️F-99 (유저 2026-09-12): 「겸용컷 생성시 컷1에 콘티레이어가 있을때
+    // 컷2에도 컷레이어 존재는 하는데 프레임 블록이 비어있음. 콘티레이어
+    // 생성시 기본적으로 프레임 생성되는데 그 법 그대로 재사용/통일」. This
+    // pinned the row EMPTY — "the 겸용 cut exposes the shared bank on its
+    // own" — and a conte row has no empty cell in its world: it is born
+    // covering its cut with a fresh panel, which joins the shared bank.
+    final covering = conte.single.timeline;
+    expect(covering.keys, [0]);
+    expect(covering[0]!.length, cutById(pair.linked).duration);
+    expect(panelsBefore, isNot(contains(covering[0]!.frameId)));
   });
 
   test('a conte row added to a 겸용 cut appears in the sibling that has none '

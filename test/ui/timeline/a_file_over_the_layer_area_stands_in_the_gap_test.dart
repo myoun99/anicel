@@ -111,7 +111,7 @@ void main() {
           id: const ProjectId('gap-project'),
           name: 'Gap',
           createdAt: DateTime.utc(2026, 9, 12),
-          mediaAssets: const [
+          mediaAssets: [
             MediaAsset(
               path: picture,
               // Not the file's own name: the silhouette must read the POOL.

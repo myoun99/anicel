@@ -72,6 +72,7 @@ void main() {
   TimelineRowRunLabelsPainter labelsPainter({
     LayerMark mark = LayerMark.none,
   }) => TimelineRowRunLabelsPainter(
+    baseTextStyle: const TextStyle(fontSize: 14),
     layer: blockLayer(mark: mark),
     geometry: testFrameGeometry(
       frameCellExtent: cellWidth,

@@ -18,6 +18,7 @@ import '../../models/layer_effect.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
+import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
@@ -52,6 +53,7 @@ import '../debug/input_inspector.dart' show InputInspector;
 import '../../models/brush_blend_mode.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
+import '../../services/last_stroke_slot.dart';
 import '../../services/cut_piece_stamp.dart';
 import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
@@ -150,10 +152,12 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
     this.guides,
-    this.brushToolState = BrushToolState.defaults,
+    this.brushToolState,
     this.historyManager,
     this.takeStrokePrefixCommand,
     this.onPressNeedsCel,
+    this.onStrokeNeedsCel,
+    this.onAutoFrameSettled,
     this.viewport,
     this.viewportController,
     this.onViewportChanged,
@@ -199,6 +203,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
+    this.lastStroke,
     this.onCutContent,
     this.oneFingerAction,
     this.runsTheSelectedTool = true,
@@ -292,7 +297,27 @@ class BrushCanvasPanel extends StatefulWidget {
   /// it pass nothing.
   final CutGuides? guides;
 
-  final BrushToolState brushToolState;
+  /// The brush in hand as the workspace holds it — HEARD, not handed over
+  /// (H40 ②, 2026-09-24).
+  ///
+  /// A value here rebuilt this panel on every brush change — each preset
+  /// pick, each frame of a settings slider drag, each colour notch — and a
+  /// rebuild relays out the shell's `LayoutBuilder`s, so the pill, both
+  /// panbars and the edges repainted for numbers they do not show. The
+  /// panel now rebuilds for what changes its own tree (the tool and its
+  /// shape), the brush cursor listens for its own footprint, and every verb
+  /// reads the brush at the moment it acts.
+  ///
+  /// Null holds no tool of the workspace's: the panel runs
+  /// [BrushToolState.defaults].
+  final ValueListenable<BrushToolState>? brushToolState;
+
+  /// What of the brush a canvas builds its TREE from: the tool (which
+  /// cursors are mounted, which verb a press runs, whether the guide handles
+  /// are up) and the selection tools' shape. The ONE answer — this panel
+  /// and the host above it rebuild on it and on nothing else of the brush.
+  static (CanvasTool, CanvasShapeKind?) structureOf(BrushToolState brush) =>
+      (brush.tool, brush.activeShapeKind);
   final HistoryManager? historyManager;
 
   /// A command this stroke must be UNDONE WITH — the block an I-10
@@ -314,6 +339,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// [InteractiveBrushEditCanvasView.onPressNeedsCel], which is where it
   /// goes. The shell answers 「make one, or say why not」.
   final bool Function()? onPressNeedsCel;
+
+  /// The same answer for a stroke whatever tool is up — the door 확정's
+  /// 재입력 takes on an empty cell (`MainCanvasBrushHost.onStrokeNeedsCel`).
+  final bool Function()? onStrokeNeedsCel;
+
+  /// Settles a block [onStrokeNeedsCel] made that no stroke claimed —
+  /// the host's pointer-up does it for a press (I-10).
+  final VoidCallback? onAutoFrameSettled;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
   /// input, re-applied whenever the caller changes it.
@@ -668,6 +701,12 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (the cut variants are then inert rather than crashing).
   final CutPieceSlot? cutPieceSlot;
 
+  /// The last drawing action: every stroke this canvas lands is held here,
+  /// and 확정 lays it down again through the same funnel. Null in hosts
+  /// that are not the cut's canvas — 재입력 lays on 「지금 레이어·지금
+  /// 프레임」, which only that canvas has.
+  final LastStrokeSlot? lastStroke;
+
   /// A finished cut outline, for a host whose content is not a cel
   /// ([contentOverride]): the host lifts the piece from what it SHOWS. Null
   /// = the cut reads the active cel into [cutPieceSlot].
@@ -953,6 +992,48 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// and a collaborator is not a subclass.
   void _rebuild(VoidCallback fn) => setState(fn);
 
+  /// The brush in hand NOW — see [BrushCanvasPanel.brushToolState].
+  BrushToolState get _brush =>
+      widget.brushToolState?.value ?? BrushToolState.defaults;
+
+  /// The brush as a stroke, a fill or a pressure curve reads it when it
+  /// runs — the view's getter, a tear-off of this State.
+  BrushEditCanvasInputSettings _inputSettingsNow() => _brush.toInputSettings();
+
+  /// The structure the last build was made for — see
+  /// [BrushCanvasPanel.structureOf].
+  ///
+  /// ⚠️Taken in [initState], not by a lazy initializer: the first read is
+  /// the first CHANGE, and a lazy one would take the new brush as the old.
+  late (CanvasTool, CanvasShapeKind?) _builtFor;
+
+  /// A brush change reaches the tree only when the tool or its shape moved.
+  void _handleBrushChanged() {
+    if (_followStructure() && mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Whether the tool or its shape moved since the last build — and if so,
+  /// cancels the polygon being traced.
+  ///
+  /// 유저 확정: an open polygon trace survives a frame change and a CUT
+  /// change, but putting the TOOL or the SHAPE down cancels it.
+  ///
+  /// Watched here rather than in the selection layer, which is where the
+  /// trace is drawn: that layer does not mount for the painting tools, so
+  /// on "polygon half-drawn, user picks the brush" it is being disposed
+  /// rather than updated and a check inside it never runs.
+  bool _followStructure() {
+    final structure = BrushCanvasPanel.structureOf(_brush);
+    if (structure == _builtFor) {
+      return false;
+    }
+    _builtFor = structure;
+    widget.selectionCommands?.abandonPolygon();
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -964,8 +1045,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _viewportState._listenedViewport = _viewportState.viewportNotifier
       ..addListener(_viewportState.handleViewportMovedByOwner);
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
+    _builtFor = BrushCanvasPanel.structureOf(_brush);
+    widget.brushToolState?.addListener(_handleBrushChanged);
     _selectionSeat.bindSelectionHistoryRecorder();
     _bindCutPasteHandler();
+    _installedReinputHandler = _reinputLastStroke;
+    widget.lastStroke?.reinputHandler = _installedReinputHandler;
     _bindCelPixelRevision();
     _syncIdleAnts();
   }
@@ -1025,6 +1110,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void Function()? _installedCutPasteHandler;
+
+  /// Held in a field for [_installedCutPasteHandler]'s reason.
+  void Function()? _installedReinputHandler;
 
   CanvasZoomScale get _zoomScale => CanvasZoomScale.of(context);
 
@@ -1094,6 +1182,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     CanvasPanHold.held.removeListener(_onPanHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
+    widget.brushToolState?.removeListener(_handleBrushChanged);
     widget.selectionCommands?.regionHistoryRecorder = null;
     // Leave no verb pointing at a dead State: the buttons must go dead
     // with the canvas rather than throw when pressed after it is gone.
@@ -1102,6 +1191,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       _installedCutPasteHandler,
     )) {
       widget.cutPieceSlot?.pasteAtOriginHandler = null;
+    }
+    if (identical(
+      widget.lastStroke?.reinputHandler,
+      _installedReinputHandler,
+    )) {
+      widget.lastStroke?.reinputHandler = null;
     }
     _idleAnts.dispose();
     _selectionFloat.dispose();
@@ -1267,7 +1362,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         _toolCursor.fillCursorActive ||
         // The stamp's piece preview reads the same census — one writer,
         // every cursor a reader.
-        canvasToolStamps(widget.brushToolState.tool)) {
+        canvasToolStamps(_brush.tool)) {
       // The frame this schedules is the one the whole raster program is
       // about: the pen moves over the canvas and, before the bakes, every
       // open panel was re-rastered for it. Naming it here is what lets
@@ -1322,18 +1417,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.selectionCommands,
       _selectionSeat.handleSelectionChannelChanged,
     );
-    // 유저 확정: an open polygon trace survives a frame change and a CUT
-    // change, but putting the TOOL or the SHAPE down cancels it.
-    //
-    // Watched here rather than in the selection layer, which is where the
-    // trace is drawn: that layer does not mount for the painting tools, so
-    // on "polygon half-drawn, user picks the brush" it is being disposed
-    // rather than updated and a check inside it never runs.
-    if (oldWidget.brushToolState.tool != widget.brushToolState.tool ||
-        oldWidget.brushToolState.activeShapeKind !=
-            widget.brushToolState.activeShapeKind) {
-      widget.selectionCommands?.abandonPolygon();
-    }
+    // A host can hand over another brush to hear (the viewer's cut tool per
+    // shape); the build this update leads to is the rebuild.
+    rebindListener(
+      oldWidget.brushToolState,
+      widget.brushToolState,
+      _handleBrushChanged,
+    );
+    _followStructure();
     _selectionSeat.bindSelectionHistoryRecorder();
     _syncIdleAnts();
     _followAutoFrame(oldWidget.autoFrame);
@@ -1460,9 +1551,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               transformOptions,
               _,
             ) => CanvasSelectionLayer(
-              tool: switch (widget
-                  .brushToolState
-                  .tool) {
+              tool: switch (_brush.tool) {
                 CanvasTool.move =>
                   CanvasSelectionTool
                       .move,
@@ -1485,17 +1574,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               // to enumerate the
               // other.
               shapeKind:
-                  widget
-                      .brushToolState
-                      .activeShapeKind ??
+                  _brush.activeShapeKind ??
                   CanvasShapeKind
                       .rect,
               // R17-U: Move = 이동+변형 통합 툴
               // — 핸들 상시.
               alwaysShowTransformBox:
-                  widget
-                      .brushToolState
-                      .tool ==
+                  _brush.tool ==
                   CanvasTool.move,
               onShapeCommitted:
                   _selectionSeat.recordSelectionChange,
@@ -1748,7 +1833,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       sessionState: coordinator.activeSessionState,
       layerId: activeKey.layerId,
       frameId: activeKey.frameId,
-      inputSettings: widget.brushToolState.toInputSettings(),
+      inputSettings: _inputSettingsNow,
       viewport: _viewportState._viewport,
       // A held mapped button's live pick (PEN-7a) — the eyedropper's own
       // pick, because the tool IS the eyedropper while it is held.
@@ -1770,7 +1855,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (the result tiles on the tap frame, landed like a pen-up) instead
       // of the panel tap layer.
-      fillDabAt: widget.brushToolState.tool == CanvasTool.fill
+      fillDabAt: _brush.tool == CanvasTool.fill
           ? widget.fillDabAt
           : null,
       // R26 #18: the live stroke shows clipped to the selection, exactly
@@ -1911,11 +1996,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     final point = _viewportState.canvasPointOf(event);
-    if (canvasToolStamps(widget.brushToolState.tool)) {
+    if (canvasToolStamps(_brush.tool)) {
       _tap.dragStampTo(point);
       return;
     }
-    if (widget.brushToolState.tool == CanvasTool.eyedropper) {
+    if (_brush.tool == CanvasTool.eyedropper) {
       _tap.toolTapHandler()?.call(point);
     }
   }
@@ -1931,11 +2016,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (build == null || widget._editableCoordinator == null) {
       return;
     }
-    final dab = build(shape, widget.brushToolState.color);
+    final dab = build(shape, _brush.color);
     if (dab == null) {
       return;
     }
-    final blend = widget.brushToolState.activeBlendMode;
+    final blend = _brush.activeBlendMode;
     _commitSourceStroke(
       BrushStrokeCommitData(
         // ERASE rides a flag on the DAB, not the blend mode: the
@@ -1972,7 +2057,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     _commitStampDabs([
-      buildCutPasteDab(piece, opacity: widget.brushToolState.cutStampOpacity),
+      buildCutPasteDab(piece, opacity: _brush.cutStampOpacity),
     ]);
   }
 
@@ -1984,7 +2069,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// This is the THIRD place that trap has been hit (bucket, shape fill,
   /// here), which is why all three stamp routes go through one method.
   void _commitStampDabs(List<BrushDab> dabs) {
-    final blend = widget.brushToolState.activeBlendMode;
+    final blend = _brush.activeBlendMode;
     _commitSourceStroke(
       BrushStrokeCommitData(
         sourceDabs: blend == BrushBlendMode.erase
@@ -1999,6 +2084,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _contentBoundsCached;
 
+  /// 확정's normal-state half: the last drawing action, laid down again at
+  /// the same place on the cel you stand on — one step, one undo
+  /// (confirm-button, 유저 2026-09-24).
+  ///
+  /// ⛔It goes through [_commitSourceStroke] like any stroke, so the live
+  /// selection clips it and the history takes it the way it takes a stroke.
+  void _reinputLastStroke() {
+    final stroke = widget.lastStroke?.stroke;
+    if (stroke == null) {
+      return;
+    }
+    if (widget._editableCoordinator != null) {
+      _commitSourceStroke(stroke);
+      return;
+    }
+    // No cel to lay it on: the door a stroke on an empty cell takes — the
+    // auto frame makes one, or the shell says why not.
+    if (!(widget.onStrokeNeedsCel?.call() ?? false)) {
+      return;
+    }
+    // ⚠️A frame apart, for the reason the press that makes its cel waits
+    // (`_BrushEditCelPress`): the block exists now, and the rebuild that
+    // stands this canvas on it comes after. The block and the stroke still
+    // land as ONE undo — the stroke takes the block as its prefix — and a
+    // block no stroke claimed keeps its own (I-10).
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        if (mounted && widget._editableCoordinator != null) {
+          _commitSourceStroke(stroke);
+        }
+        widget.onAutoFrameSettled?.call();
+      })
+      ..ensureVisualUpdate();
+  }
+
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
@@ -2011,6 +2131,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       setState(() {});
       return;
     }
+    // What landed, clipped as it landed — the pixels 확정 lays down again.
+    // ⛔Here and nowhere else: every drawing verb passes this line, so no
+    // verb can be the one that forgets to record itself.
+    widget.lastStroke?.hold(strokeData);
     setState(() {
       final historyManager = widget.historyManager;
       if (historyManager == null) {

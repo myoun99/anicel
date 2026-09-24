@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// The media viewer panel (R4, §6-h): images and PDF pages inside the
 /// canvas shell, page stepping, and the honest refusals. The PDF renderer
@@ -192,7 +193,7 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
 
     slot.request.value = const MediaViewerRequest(
@@ -280,8 +281,8 @@ void main() {
         ui.Size(595, 842),
       ],
     );
-    PdfRenderService.debugOpenerOverride = (path) async =>
-        path.endsWith('sub.pdf') ? subPdf : mainPdf;
+    PdfRenderService.debugOpenerOverride = (source) async =>
+        source.wholeFilePath!.endsWith('sub.pdf') ? subPdf : mainPdf;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -402,13 +403,7 @@ void main() {
     final tempDir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('anicel-viewer'),
     ))!;
-    addTearDown(() async {
-      try {
-        await tempDir.delete(recursive: true);
-      } on Object {
-        // Windows keeps handles briefly.
-      }
-    });
+    deleteAfterSessionEnds(tempDir);
     await pumpViewer(tester);
 
     final path = await tester.runAsync(
@@ -456,7 +451,7 @@ void main() {
       ],
       framesPerSecond: 10,
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/clip.mp4',
@@ -500,7 +495,7 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await pumpViewer(tester);
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',

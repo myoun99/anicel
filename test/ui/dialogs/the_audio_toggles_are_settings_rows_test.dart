@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
@@ -158,9 +159,7 @@ void main() {
           );
         }
         expect(
-          tester
-              .widget<SwitchListTile>(find.byKey(ValueKey<String>(row.key)))
-              .value,
+          tester.booleanDotIn(find.byKey(ValueKey<String>(row.key))).value,
           after[row.key],
           reason: '…and ${row.key} shows what it just wrote',
         );

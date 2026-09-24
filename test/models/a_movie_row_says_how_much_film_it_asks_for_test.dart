@@ -41,8 +41,8 @@ void main() {
   };
 
   group('한 위치가 영상의 어디인가', () {
-    const cut = MediaReference(assetPath: '/takes/pan.mov', frameOffset: 7);
-    const whole = MediaReference(assetPath: '/takes/pan.mov');
+    final cut = MediaReference(assetPath: '/takes/pan.mov', frameOffset: 7);
+    final whole = MediaReference(assetPath: '/takes/pan.mov');
 
     test('머리를 자른 만큼 안쪽에서 시작한다', () {
       expect(movieElapsedAt(cut, 0), 7);

@@ -578,7 +578,7 @@ class _LayerStackPaintPass {
             case CompositeLeaf(payload: final _PaintActiveSurface active):
               _paintActiveSurfaceNode(canvas, node, active, rasterScale);
             case CompositeLeaf(payload: final _PaintImage image):
-              _paintImageNode(canvas, image);
+              _paintImageNode(canvas, image, rasterScale);
           }
         },
       );
@@ -747,9 +747,10 @@ class _LayerStackPaintPass {
     // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
     // colour key BELOW a painted effect has to key what that
     // effect made, and a shader cannot sample a `saveLayer`.
-    // ⛔Only that case rasterises. A plainly buffered layer keeps
-    // the cheaper `saveLayer`: 🧪measured, the image route costs
-    // 3.2x on the path a stroke redraws every step.
+    // ⛔Only that case and an advanced blend (below) rasterise. A
+    // plainly buffered layer keeps the cheaper `saveLayer`:
+    // 🧪measured, the image route costs 3.2x on the path a stroke
+    // redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
@@ -780,7 +781,26 @@ class _LayerStackPaintPass {
       into.restore();
     }
 
-    if (activePlan.preSteps.isNotEmpty) {
+    // 🚨★★★F-172 (유저 2026-09-20: 「다른 레이어에 곱하기 레이어가
+    // 있을때, 잘라내기의 스탬프 사용시 해당 레이어가 뭔가 색이 진해짐 …
+    // 스탬프의 사각형 실루엣만큼 흰 색이 생기고」): AN ADVANCED BLEND
+    // NEVER RIDES A `saveLayer`. On Impeller, a layer restored through
+    // multiply, screen and the rest composited the rows ABOVE this one a
+    // second time, everywhere outside what the layer itself drew —
+    // measured on the Windows app (2026-09-24): with B at 24% above, every
+    // pixel came out as the right picture with B laid over it once more.
+    // The test VM rasters with Skia and never showed it.
+    // 🧪Splitting the layer — the blend outside at full alpha, the
+    // opacity inside — still doubled: it is the blend on a `saveLayer`,
+    // not the opacity riding with it. Blending an IMAGE with the same
+    // paint, which every other row and every group already does, did
+    // not. The price is this route's, paid only while a buffered row
+    // wears a blend that is not srcOver (a stamp ghost, a lifted float):
+    // a brush or eraser stroke on the same row showed nothing either way
+    // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    final blendsAsImage =
+        needsBuffer && activePaint.blendMode != BlendMode.srcOver;
+    if (activePlan.preSteps.isNotEmpty || blendsAsImage) {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
@@ -809,32 +829,42 @@ class _LayerStackPaintPass {
     }
   }
 
-  /// A cel or a cached row image; the pose is applied by the wrap around
-  /// the walk, so the draw itself is unposed.
-  void _paintImageNode(Canvas canvas, _PaintImage node) {
+  /// A cel or a cached row image, drawn into a canvas at [rasterScale]; the
+  /// pose is applied by the wrap around the walk, so the draw itself is
+  /// unposed.
+  void _paintImageNode(Canvas canvas, _PaintImage node, double rasterScale) {
     final _PaintImage(
       :image,
       :worldRect,
+      :extent,
+      :laidBack,
+      :pose,
       :opacity,
       :blendMode,
       :tint,
       :effects,
     ) = node;
-    // Dest = the image's WORLD rect: the canvas rect for plain
-    // cels, grown for pasteboard content so off-canvas artwork of
-    // non-active layers shows at its position. The pose is already
-    // applied by the wrap above, which this node shares with the
-    // live surface — hence pose: null here rather than a second
-    // save/restore around the same matrix.
+    // Dest = the image's WORLD rect: where its pixels belong — the ink
+    // alone, or the whole content, off-canvas artwork of non-active layers
+    // included ([extent]). The pose is already applied by the wrap above,
+    // which this node shares with the live surface — hence pose: null here
+    // rather than a second save/restore around the same matrix.
     drawPosedLayerImage(
       canvas,
       image: image,
       worldRect: worldRect,
+      extent: extent,
       canvasSize: _painter.canvasSize,
       pose: null,
       opacity: opacity,
       blendMode: blendMode,
       effects: effects,
+      // The canvas is an aligned raster at [rasterScale] only while the
+      // display buffer is composed — the buffer itself, a sub-tree raster in
+      // it, the backdrop raster on its grid — and a pose wrapped round this
+      // draw (invisible from in here) transforms it. The walk draws onto the
+      // screen: never a texel copy.
+      texelScale: _composingTheBuffer && pose == null ? rasterScale : null,
       // 🚨THE ZOOM DECIDES, HERE TOO (T21 / D14). This used to be a
       // flat `low` — 「the same sampling every non-active layer has
       // always taken on this route」 — and that is exactly half of
@@ -856,6 +886,9 @@ class _LayerStackPaintPass {
       // artwork un-tinted). The paint alpha still fades the whole
       // ghost.
       tint: tint,
+      // The held image's own: a slot recorded again — every frame a zoom
+      // moves the buffer — lays a crop's whole back once, not per record.
+      laidBack: laidBack,
     );
   }
 
@@ -872,10 +905,15 @@ class _LayerStackPaintPass {
     double rasterScale,
   ) {
     final at = list.indexWhere(_LayerStackPainter._enclosesActiveSurface);
+    // Inside the buffer a slot's texel copies are copies at [rasterScale]
+    // only — and a sub-tree raster's scale is its own (a capped one is
+    // smaller) — so the scale is part of what the slot IS. The walk copies
+    // nothing, and names its slots as it always did.
+    final slot = _composingTheBuffer ? 'd$depth@$rasterScale' : 'd$depth';
     if (at < 0) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:all',
+        '$slot:all',
         (into) => _paintNodes(into, list, rasterScale),
       );
       return;
@@ -883,7 +921,7 @@ class _LayerStackPaintPass {
     if (at > 0) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:before',
+        '$slot:before',
         (into) => _paintNodes(into, list.sublist(0, at), rasterScale),
       );
     }
@@ -893,7 +931,7 @@ class _LayerStackPaintPass {
     if (at < list.length - 1) {
       _painter.bake!.draw(
         canvas,
-        'd$depth:after',
+        '$slot:after',
         (into) => _paintNodes(into, list.sublist(at + 1), rasterScale),
       );
     }
@@ -1011,11 +1049,20 @@ class _LayerStackPaintPass {
     }
   }
 
+  /// Whether the content being painted is the display buffer's — a raster
+  /// aligned to canvas space, where a level image lands texel for texel —
+  /// rather than the walk's screen ([_paintImageNode]).
+  bool _composingTheBuffer = false;
+
   void _paintContent(
     Canvas into, {
     required bool intoTheBuffer,
     required double rasterScale,
   }) {
+    _composingTheBuffer = intoTheBuffer;
+    // A recording made for the buffer draws its texel copies unfiltered and
+    // the walk's resamples them on screen, so neither may replay the other.
+    _painter.bake?.ensureIntoTheBuffer(intoTheBuffer);
     // ⛔No bake handed down (a host that does not own one, or a tree with
     // no live surface at all) keeps the original walk. The bake is an
     // optimisation, never a second way to be correct.
@@ -1183,7 +1230,14 @@ class _LayerStackPaintPass {
       cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
       derived = scroll.deferred;
     } else {
-      _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+      labProbe(
+        'displayBuffer.recordWhole',
+        () => _paintContent(
+          into,
+          intoTheBuffer: true,
+          rasterScale: 1 / _levelStep,
+        ),
+      );
       derived = false;
     }
     return _keepMiss(
@@ -1215,11 +1269,14 @@ class _LayerStackPaintPass {
     required bool carried,
     required LiveSurfaceTokens? tokens,
   }) {
-    final made = rasterPictureAndSnapshot(
-      recorder,
-      (rect.width / _levelStep).round(),
-      (rect.height / _levelStep).round(),
-      snapshot: cache != null && key != null && cache.wantsPromotion,
+    final made = labProbe(
+      'displayBuffer.raster',
+      () => rasterPictureAndSnapshot(
+        recorder,
+        (rect.width / _levelStep).round(),
+        (rect.height / _levelStep).round(),
+        snapshot: cache != null && key != null && cache.wantsPromotion,
+      ),
     );
     final image = made.deferred;
     if (cache == null || key == null) {

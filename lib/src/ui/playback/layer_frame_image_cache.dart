@@ -1,3 +1,7 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../models/rgba_image_bytes.dart';
 import 'dart:ui' as ui;
 
@@ -12,18 +16,49 @@ import '../../services/cel_source_effect_pass.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
+import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
+import '../canvas/raster_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../../core/pin_counts.dart';
 
-/// One cached layer-frame render: the image plus the CANVAS-SPACE rect it
-/// covers ([worldRect] == the canvas rect unless the cel has pasteboard
-/// tiles, which grow the extent so the editing stack can show them).
+/// One cached layer-frame render: the image, the CANVAS-SPACE rect its
+/// pixels cover, and the rect the whole content image covers.
+///
+/// [extent] is the content: the canvas rect, grown by any pasteboard tiles so
+/// the editing stack can show them. [worldRect] is the same rect — or, for a
+/// row whose route draws its ink alone exactly (`inkCropDrawsTheSame`), just
+/// the part that holds the ink, every pixel of [extent] outside it being
+/// transparent. `drawPosedLayerImage` takes both, and lays the whole image
+/// back whenever a draw needs it.
 class LayerFrameImage {
-  const LayerFrameImage({required this.image, required this.worldRect});
+  LayerFrameImage({
+    required this.image,
+    required this.worldRect,
+    required this.extent,
+    Object? content,
+  }) : content = content ?? Object();
 
   final ui.Image image;
   final ui.Rect worldRect;
+  final ui.Rect extent;
+
+  /// Whether this is the ink alone rather than the whole content image.
+  bool get isInk => worldRect != extent;
+
+  /// What these PIXELS are — a new token for every compose, and the SAME
+  /// token on the plain snapshot that later takes a deferred image's place
+  /// ([LayerFrameImageCache._settleWhenTheSnapshotLands]: 「same pixels,
+  /// same validity」).
+  ///
+  /// 🚨★★★That sentence used to live only in a comment, so a holder could
+  /// not tell a settle from a recompose — and treated it as one. 🔬Measured
+  /// 2026-09-23 (the F-130 `solo` arm, 24 drawn rows): the row a LAYER
+  /// SELECT drops out of the active slot is composed in the build, settles
+  /// one frame later, and the editing stack took the swap as a new picture
+  /// — the whole display buffer rastered a SECOND time, for pixels it
+  /// already had (229ms of 520 in the test VM's software raster).
+  final Object content;
 }
 
 class _LayerFrameImageEntry {
@@ -85,6 +120,12 @@ class LayerFrameImageCache {
       {};
   int _useCounter = 0;
 
+  /// Test hatch: keep every image whole, as the cache did before it stored a
+  /// row's ink alone — what the byte-for-byte pins render the ink against
+  /// (`a_cropped_cel_draws_the_same_bytes_test`).
+  @visibleForTesting
+  bool debugStoresWholeContent = false;
+
   /// The cached image when it still matches the frame's current source
   /// revision, [canvasSize] and [sourceEffects]; `null` on miss or staleness.
   ///
@@ -94,6 +135,9 @@ class LayerFrameImageCache {
   /// default would let a new caller inherit "no keys" silently and serve
   /// unkeyed pixels next to keyed ones, which is precisely the split this
   /// argument exists to close. Pass `const []` where the row has no chain.
+  ///
+  /// Whole or the ink alone — [LayerFrameImage.isInk] says which; the two
+  /// prepares hand out only what the asking route can draw.
   LayerFrameImage? validImageOrNull(
     BrushFrameKey key,
     PlaybackQuality quality, {
@@ -119,18 +163,29 @@ class LayerFrameImageCache {
   /// R13-4), when the build was abandoned mid-way: aborts cache nothing and
   /// the abort checks bracket the two big slices (the display-cache replay
   /// and each tile decode via [composePositionedSurfaceImage]).
+  ///
+  /// [inkSuffices] is whether the route draws this row exactly from its ink
+  /// alone (`inkCropDrawsTheSame`): an image is stored as its ink only then,
+  /// and one stored so is handed out only then. False is the safe answer,
+  /// not the lazy one — the whole image draws right on every route, and all
+  /// the default costs a caller that forgets is the memory the ink would
+  /// have saved.
   Future<LayerFrameImage?> prepare({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
+    bool inkSuffices = false,
   }) async {
-    final cached = validImageOrNull(
-      key,
-      quality,
-      canvasSize: canvasSize,
-      sourceEffects: sourceEffects,
+    final cached = _drawable(
+      validImageOrNull(
+        key,
+        quality,
+        canvasSize: canvasSize,
+        sourceEffects: sourceEffects,
+      ),
+      inkSuffices: inkSuffices,
     );
     if (cached != null) {
       // A deferred image is the picture of the frame that needed it, not
@@ -141,11 +196,14 @@ class LayerFrameImageCache {
         return cached;
       }
       await settling;
-      final settled = validImageOrNull(
-        key,
-        quality,
-        canvasSize: canvasSize,
-        sourceEffects: sourceEffects,
+      final settled = _drawable(
+        validImageOrNull(
+          key,
+          quality,
+          canvasSize: canvasSize,
+          sourceEffects: sourceEffects,
+        ),
+        inkSuffices: inkSuffices,
       );
       if (settled != null) {
         return settled;
@@ -194,38 +252,68 @@ class LayerFrameImageCache {
       sourceEffects,
     );
 
+    final source = (
+      revision: revision,
+      canvasSize: canvasSize,
+      sourceEffects: sourceEffects,
+    );
+    final plan = _levelPlan(
+      preview,
+      quality,
+      storesInk: inkSuffices && !debugStoresWholeContent,
+    );
+    final (:whole, :texels) = plan;
+    final inkAtFull = _inkAtFull(plan, quality.level);
     // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
-    // any pasteboard tiles): the editing canvas keeps the on-screen
-    // frame's tiles decoded in the shared cache, so the post-stroke
-    // rebuild draws existing tile images instead of assembling + uploading
-    // the whole canvas — cost follows the CHANGED tiles, not the canvas.
-    var positioned = await composePositionedSurfaceImage(
+    // any pasteboard tiles) — or the ink alone at the full level
+    // ([_inkAtFull]): the editing canvas keeps the on-screen frame's tiles
+    // decoded in the shared cache, so the post-stroke rebuild draws existing
+    // tile images instead of assembling + uploading the whole canvas — cost
+    // follows the CHANGED tiles, not the canvas.
+    final positioned = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
       shouldAbort: shouldAbort,
+      over: inkAtFull,
     );
     if (positioned == null) {
       return null;
     }
-    if (quality != PlaybackQuality.full) {
-      // A level of the display's pyramid: halved [PlaybackQuality.level]
-      // times, each an exact 2×2 box ([halvingPicture]) — never one
-      // reduction straight to the size, which aliases past 2× and, as
-      // `medium`, mipmaps on one engine and not the other.
-      var image = positioned.image;
-      for (var i = 0; i < quality.level; i += 1) {
-        final halved = await _halved(image);
-        image.dispose();
-        image = halved;
-      }
-      positioned = _atLevel(positioned.worldRect, image, quality.level);
+    if (inkAtFull != null) {
+      return _bank((key, quality), (
+        image: positioned.image,
+        worldRect: inkAtFull,
+        extent: whole,
+      ), source);
     }
-
-    return _bank((key, quality), positioned, (
-      revision: revision,
-      canvasSize: canvasSize,
-      sourceEffects: sourceEffects,
-    ));
+    // A level of the display's pyramid: halved [PlaybackQuality.level]
+    // times, each an exact 2×2 box ([halvingPicture]) — never one reduction
+    // straight to the size, which aliases past 2× and, as `medium`, mipmaps
+    // on one engine and not the other.
+    var image = positioned.image;
+    for (var i = 0; i < quality.level; i += 1) {
+      final halved = await _halved(image);
+      image.dispose();
+      image = halved;
+    }
+    assert(_isLevelOf(image, whole, quality.level));
+    if (texels == null) {
+      return _bank((key, quality), (
+        image: image,
+        worldRect: whole,
+        extent: whole,
+      ), source);
+    }
+    // Cut out of the level of the WHOLE image, never halved on its own: the
+    // halving is the engine's, and a smaller image is halved differently on
+    // Impeller Vulkan (`halving-rounds-differently-per-engine`).
+    final ink = await _cutOut(image, texels);
+    image.dispose();
+    return _bank((key, quality), (
+      image: ink,
+      worldRect: _worldRectOfTexels(whole, texels, quality.level),
+      extent: whole,
+    ), source);
   }
 
   /// Banks a freshly composed image as the entry for [at], replacing
@@ -237,7 +325,7 @@ class LayerFrameImageCache {
   /// entry as stale and recomposes on every frame.
   LayerFrameImage _bank(
     (BrushFrameKey, PlaybackQuality) at,
-    PositionedSurfaceImage positioned,
+    ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored,
     ({
       int revision,
       CanvasSize canvasSize,
@@ -247,8 +335,9 @@ class LayerFrameImageCache {
   ) {
     _dropEntry(at);
     final result = LayerFrameImage(
-      image: positioned.image,
-      worldRect: positioned.worldRect,
+      image: stored.image,
+      worldRect: stored.worldRect,
+      extent: stored.extent,
     );
     _entries[at] = _LayerFrameImageEntry(
       positioned: result,
@@ -296,12 +385,16 @@ class LayerFrameImageCache {
     required PlaybackQuality quality,
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
+    bool inkSuffices = false,
   }) {
-    final cached = validImageOrNull(
-      key,
-      quality,
-      canvasSize: canvasSize,
-      sourceEffects: sourceEffects,
+    final cached = _drawable(
+      validImageOrNull(
+        key,
+        quality,
+        canvasSize: canvasSize,
+        sourceEffects: sourceEffects,
+      ),
+      inkSuffices: inkSuffices,
     );
     if (cached != null) {
       return cached;
@@ -339,6 +432,7 @@ class LayerFrameImageCache {
       preview,
       quality,
       makePictures: makePictures,
+      storesInk: inkSuffices && !debugStoresWholeContent,
     );
     if (composed == null) {
       return null;
@@ -354,62 +448,74 @@ class LayerFrameImageCache {
   }
 
   /// [preview] composed inside the call at [quality] — the cel over its
-  /// content extent, then halved [PlaybackQuality.level] times — beside the
-  /// plain snapshot of the picture that is KEPT: the cel itself at full
-  /// quality, the last halving below it. Null only on the free road
+  /// content extent, halved [PlaybackQuality.level] times, and, when
+  /// [storesInk], its ink cut out of that, or at the full level composed
+  /// alone ([_inkAtFull]) — beside the plain snapshot of the picture that is
+  /// KEPT: the last of those steps. Null only on the free road
   /// ([makePictures] false and a tile without its picture).
-  ({PositionedSurfaceImage now, Future<ui.Image> kept})? _composedNow(
+  ({
+    ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
+    Future<ui.Image> kept,
+  })?
+  _composedNow(
     BitmapSurface preview,
     PlaybackQuality quality, {
     required bool makePictures,
+    required bool storesInk,
   }) {
+    final plan = _levelPlan(preview, quality, storesInk: storesInk);
+    final (:whole, :texels) = plan;
+    final inkAtFull = _inkAtFull(plan, quality.level);
     final composed = composePositionedSurfaceImageSync(
       preview,
       reuse: BitmapTileImageCache.instance,
       makePictures: makePictures,
-      snapshot: quality == PlaybackQuality.full,
+      // At the full level the compose is the last step.
+      snapshot: quality.level == 0,
+      over: inkAtFull,
     );
     if (composed == null) {
       return null;
     }
+    if (inkAtFull != null) {
+      return (
+        now: (
+          image: composed.deferred.image,
+          worldRect: inkAtFull,
+          extent: whole,
+        ),
+        kept: composed.real!,
+      );
+    }
     var image = composed.deferred.image;
     var kept = composed.real;
     for (var i = 0; i < quality.level; i += 1) {
-      final halved = _halvedNow(image, snapshot: i == quality.level - 1);
+      final halved = _halvedNow(
+        image,
+        snapshot: texels == null && i == quality.level - 1,
+      );
       // The halving keeps what it drew; only the handle is ours to drop.
       image.dispose();
       image = halved.deferred;
       kept = halved.real;
     }
+    assert(_isLevelOf(image, whole, quality.level));
+    if (texels == null) {
+      return (
+        now: (image: image, worldRect: whole, extent: whole),
+        kept: kept!,
+      );
+    }
+    final ink = _cutOutNow(image, texels);
+    // The cut keeps what it drew; only the handle is ours to drop.
+    image.dispose();
     return (
-      now: _atLevel(composed.deferred.worldRect, image, quality.level),
-      kept: kept!,
-    );
-  }
-
-  /// [image] — a cel composed over [fullWorldRect], halved [level] times —
-  /// with the CANVAS-SPACE rect it covers.
-  ///
-  /// The worldRect stays canvas-space — consumers map src→worldRect, so the
-  /// raster resolution is free to differ — but it is the level's extent:
-  /// twice the image per level, one texel past an odd edge ([halvedSize]),
-  /// so a level maps onto the canvas at exactly 1/2^k.
-  static PositionedSurfaceImage _atLevel(
-    ui.Rect fullWorldRect,
-    ui.Image image,
-    int level,
-  ) {
-    final extent = 1 << level;
-    return PositionedSurfaceImage(
-      image: image,
-      worldRect: level == 0
-          ? fullWorldRect
-          : ui.Rect.fromLTWH(
-              fullWorldRect.left,
-              fullWorldRect.top,
-              (image.width * extent).toDouble(),
-              (image.height * extent).toDouble(),
-            ),
+      now: (
+        image: ink.deferred,
+        worldRect: _worldRectOfTexels(whole, texels, quality.level),
+        extent: whole,
+      ),
+      kept: ink.real!,
     );
   }
 
@@ -433,6 +539,10 @@ class LayerFrameImageCache {
           positioned: LayerFrameImage(
             image: snapshot,
             worldRect: entry.positioned.worldRect,
+            extent: entry.positioned.extent,
+            // The same pixels, so the same content — a holder swaps its
+            // handle and keeps everything it drew with the old one.
+            content: entry.positioned.content,
           ),
           sourceRevision: entry.sourceRevision,
           canvasSize: entry.canvasSize,
@@ -444,25 +554,6 @@ class LayerFrameImageCache {
       // A snapshot the engine refused: the deferred image stays the entry.
       onError: (Object _) => entry.settling = null,
     );
-  }
-
-  /// [source] halved inside the call — the next level down, deferred on
-  /// the GPU — plus, when [snapshot], the plain snapshot of the same
-  /// halving. The asynchronous twin is [_halved].
-  static ({ui.Image deferred, Future<ui.Image>? real}) _halvedNow(
-    ui.Image source, {
-    required bool snapshot,
-  }) {
-    final size = halvedSize(source.width, source.height);
-    final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
-    try {
-      return (
-        deferred: picture.toImageSync(size.width, size.height),
-        real: snapshot ? picture.toImage(size.width, size.height) : null,
-      );
-    } finally {
-      picture.dispose();
-    }
   }
 
   /// Eagerly drops every quality of one layer frame (sink-event eviction).
@@ -561,15 +652,172 @@ class LayerFrameImageCache {
       DeferredImageDisposer.instance.retire(entry.image);
     }
   }
+}
 
-  /// [source] halved — the next level down, rasterised off the frame.
-  Future<ui.Image> _halved(ui.Image source) async {
-    final size = halvedSize(source.width, source.height);
-    final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
-    try {
-      return await picture.toImage(size.width, size.height);
-    } finally {
-      picture.dispose();
-    }
+// --- The steps a stored image is made of ------------------------------
+//
+// Plain functions of their inputs: halving a level, finding and cutting out
+// the ink. Each has a synchronous twin for the sync road.
+
+/// [image] when the asking route can draw it — always for a whole image, and
+/// for the ink alone only when [inkSuffices].
+LayerFrameImage? _drawable(
+  LayerFrameImage? image, {
+  required bool inkSuffices,
+}) => image != null && image.isInk && !inkSuffices ? null : image;
+
+/// What a level-[quality] image of [preview] is, known before a pixel is
+/// drawn — so both roads decide what to compose, and which step's snapshot
+/// to keep, before composing: [whole] is the canvas-space rect the whole
+/// content covers at that level — the content grown past an odd edge by the
+/// halvings ([halvedSize]), so a level maps onto the canvas at exactly
+/// 1/2^k — and, when [storesInk], [texels] the part of it holding the ink
+/// ([_inkTexels]; null when that is all of it).
+({ui.Rect whole, ui.Rect? texels}) _levelPlan(
+  BitmapSurface preview,
+  PlaybackQuality quality, {
+  required bool storesInk,
+}) {
+  final content = surfaceContentWorldRect(preview);
+  var width = content.width.round();
+  var height = content.height.round();
+  for (var i = 0; i < quality.level; i += 1) {
+    (:width, :height) = halvedSize(width, height);
+  }
+  final step = (1 << quality.level).toDouble();
+  final whole = ui.Rect.fromLTWH(
+    content.left,
+    content.top,
+    width * step,
+    height * step,
+  );
+  return (
+    whole: whole,
+    texels: storesInk
+        ? _inkTexels(
+            surfaceInkWorldRect(preview),
+            whole: whole,
+            level: quality.level,
+          )
+        : null,
+  );
+}
+
+/// Whether [image] is the level-[level] image [whole] says it is.
+bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
+    image.width << level == whole.width.round() &&
+    image.height << level == whole.height.round();
+
+/// The rect the ink alone is composed over, straight from its tiles — at the
+/// full level, where each tile lands texel for texel and those are the whole
+/// image's pixels there. Below it the ink is cut out of the halved whole:
+/// the halving is the engine's, and a smaller image is halved differently
+/// on Impeller Vulkan.
+///
+/// 🔬WHY NOT COMPOSE THE WHOLE AND CUT (2026-09-24, 유저 「성능적인 면은 아주
+/// 중요하니까 철저하게 하자」): every raster of a picture is a multisampled
+/// render with a whole mip chain (the engine's `DisplayListToTexture`,
+/// `generate_mips`), ~6ms for a 2540×1654 image on the Windows app. The
+/// whole-then-cut road paid that for the whole image and again for the cut;
+/// this pays it once, for the ink.
+ui.Rect? _inkAtFull(({ui.Rect whole, ui.Rect? texels}) plan, int level) =>
+    switch (plan) {
+      (whole: final whole, texels: final texels?) when level == 0 =>
+        _worldRectOfTexels(whole, texels, 0),
+      _ => null,
+    };
+
+/// The texels of a level-[level] image of a cel's whole content — the image
+/// over [whole] — that hold its [ink] ([surfaceInkWorldRect]); null when
+/// that is all of them.
+///
+/// Nothing is lost past them at any level: a 2×2 block outside the ink holds
+/// nothing and halves to nothing on every engine. Impeller Vulkan samples a
+/// little off the middle of each block at a working size
+/// (`halving-rounds-differently-per-engine`), which moves the weights of
+/// that block's four texels and never which four — a trace of the next
+/// block would take half a texel of drift. 🔬A cut with ink stopping at tile
+/// edges lays back to the whole level's bytes on Vulkan at 1172×828
+/// (`a_cropped_cel_draws_the_same_bytes_test`).
+ui.Rect? _inkTexels(ui.Rect ink, {required ui.Rect whole, required int level}) {
+  final step = (1 << level).toDouble();
+  final width = (whole.width / step).round();
+  final height = (whole.height / step).round();
+  final texels = ui.Rect.fromLTRB(
+    ((ink.left - whole.left) / step).floorToDouble(),
+    ((ink.top - whole.top) / step).floorToDouble(),
+    math.min(width, ((ink.right - whole.left) / step).ceil()).toDouble(),
+    math.min(height, ((ink.bottom - whole.top) / step).ceil()).toDouble(),
+  );
+  return texels == ui.Rect.fromLTWH(0, 0, width * 1.0, height * 1.0)
+      ? null
+      : texels;
+}
+
+/// Where [texels] of a level-[level] image over [whole] sit in canvas
+/// space.
+ui.Rect _worldRectOfTexels(ui.Rect whole, ui.Rect texels, int level) {
+  final step = (1 << level).toDouble();
+  return ui.Rect.fromLTWH(
+    whole.left + texels.left * step,
+    whole.top + texels.top * step,
+    texels.width * step,
+    texels.height * step,
+  );
+}
+
+/// [texels] of [whole] cut out, rasterised off the frame. The
+/// synchronous twin is [_cutOutNow].
+Future<ui.Image> _cutOut(ui.Image whole, ui.Rect texels) async {
+  final picture = recordInkCutOut(whole, texels).endRecording();
+  try {
+    return await picture.toImage(
+      texels.width.round(),
+      texels.height.round(),
+    );
+  } finally {
+    picture.dispose();
+  }
+}
+
+/// [texels] of [whole] cut out inside the call — deferred on the GPU —
+/// plus the plain snapshot of the same cut.
+({ui.Image deferred, Future<ui.Image>? real}) _cutOutNow(
+  ui.Image whole,
+  ui.Rect texels,
+) => rasterPictureAndSnapshot(
+  recordInkCutOut(whole, texels),
+  texels.width.round(),
+  texels.height.round(),
+  snapshot: true,
+);
+
+/// [source] halved inside the call — the next level down, deferred on
+/// the GPU — plus, when [snapshot], the plain snapshot of the same
+/// halving. The asynchronous twin is [_halved].
+({ui.Image deferred, Future<ui.Image>? real}) _halvedNow(
+  ui.Image source, {
+  required bool snapshot,
+}) {
+  final size = halvedSize(source.width, source.height);
+  final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+  try {
+    return (
+      deferred: picture.toImageSync(size.width, size.height),
+      real: snapshot ? picture.toImage(size.width, size.height) : null,
+    );
+  } finally {
+    picture.dispose();
+  }
+}
+
+/// [source] halved — the next level down, rasterised off the frame.
+Future<ui.Image> _halved(ui.Image source) async {
+  final size = halvedSize(source.width, source.height);
+  final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+  try {
+    return await picture.toImage(size.width, size.height);
+  } finally {
+    picture.dispose();
   }
 }

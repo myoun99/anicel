@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/framed_media_fixture.dart';
+import '../../helpers/project_scratch_folder.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
@@ -122,6 +124,62 @@ void main() {
       Uint8List.sublistView(window, 0, 100),
       Uint8List.sublistView(source, source.length - 100),
     );
+  });
+
+  test('🚨many small windows in one block decode that block ONCE — PDFium '
+      'reads a few hundred bytes at a time', () {
+    if (!engineHere()) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    final source = sourceOf(mediaBlockBytes * 3 + 1000);
+    final stored = _CountingBytes(framedEntryBytes(source)!);
+    final framed = _framed(stored);
+    final index = framed.header;
+    stored.reset();
+
+    final window = Uint8List(300);
+    const first = mediaBlockBytes + 10;
+    for (var at = first; at < first + 6000; at += 400) {
+      expect(framed.readIntoSync(window, at, window.length), window.length);
+      expect(window, Uint8List.sublistView(source, at, at + window.length));
+    }
+
+    expect(
+      stored.bytesRead,
+      index.blockLengths[1],
+      reason: 'fifteen windows, one block read and decoded — not fifteen',
+    );
+  });
+
+  test('a window reader decodes what the source decodes, through its own '
+      'reader of the stored bytes', () {
+    if (!engineHere()) {
+      markTestSkipped('no engine on this run');
+      return;
+    }
+    final source = sourceOf(mediaBlockBytes * 2 + 77);
+    final dir = Directory.systemTemp.createTempSync('anicel-framed-reader');
+    deleteAfterSessionEnds(dir);
+    final stored = File('${dir.path}/entry.z')
+      ..writeAsBytesSync(framedEntryBytes(source)!);
+    final framed = MediaFramedBytes(MediaFileBytes(stored.path));
+    final reader = framed.openWindowReader();
+    try {
+      final window = Uint8List(1000);
+      for (final at in [0, mediaBlockBytes - 500, mediaBlockBytes * 2]) {
+        final got = reader.readIntoSync(window, at, window.length);
+        final expected = Uint8List.sublistView(
+          source,
+          at,
+          (at + window.length).clamp(0, source.length),
+        );
+        expect(got, expected.length);
+        expect(Uint8List.sublistView(window, 0, got), expected);
+      }
+    } finally {
+      reader.close();
+    }
   });
 
   test('the index is read once, not per window', () {

@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**EVERY WAY AN ASSET BECOMES CARRIED MUST HOLD ITS BYTES.**
 ///
@@ -32,11 +31,34 @@ void main() {
   /// to explain itself in [_allowed].
   final entrances = <String>[];
 
+  test('the premise: it sees a carry decided by a VALUE, not only `true`', () {
+    expect(
+      _declaresCarried(
+        'final a = importedMediaAsset(\n  carried: copyIntoProject,\n);',
+      ),
+      isTrue,
+    );
+    expect(
+      _declaresCarried(
+        'final a = MediaAsset(\n'
+        '  carried: settings.mode == ImportFileMode.keepInside,\n'
+        ');',
+      ),
+      isTrue,
+    );
+    expect(
+      _declaresCarried('final a = MediaAsset(\n  carried: false,\n);'),
+      isFalse,
+    );
+    expect(
+      _declaresCarried('final lift = DragLift(carried: carried);'),
+      isFalse,
+      reason: 'a drag\'s layers, in a file that builds no asset',
+    );
+  });
+
   test('every place an asset becomes carried also stages its bytes', () {
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final relative = path.substring(path.indexOf('lib/'));
       if (_allowedFiles.contains(relative)) {
@@ -68,20 +90,39 @@ void main() {
 }
 
 /// Whether [source] decides an asset carries, rather than merely passing a
-/// flag along.
+/// flag along: `carried: true` anywhere, `copyWith(carried:`, or — in a
+/// file that builds a [MediaAsset] — `carried:` given any VALUE but
+/// `false`.
+///
+/// 🪦Until 2026-09-23 it saw only the literal `true`, while the doc above
+/// already promised 「or a variable that decides it」 — and every door a
+/// placement goes through decides carrying from the window's answer
+/// (`carried: copyIntoProject`). Five entrances recorded assets carried
+/// without holding a byte, from the day staging landed, and this scan
+/// passed them all.
+///
+/// ⚠️The value half needs the file to build an asset because `carried:`
+/// also names a drag's lifted layers and a paint pass's scroll flag, and a
+/// collection after it is the save's own set of carried paths.
 bool _declaresCarried(String source) {
+  final buildsAssets = source.contains('MediaAsset(');
   for (final line in source.split('\n')) {
     final trimmed = line.trimLeft();
     if (trimmed.startsWith('//') || trimmed.startsWith('///')) {
       continue;
     }
     if (trimmed.contains('carried: true') ||
-        trimmed.contains('copyWith(carried:')) {
+        trimmed.contains('copyWith(carried:') ||
+        (buildsAssets && _decidesCarried.hasMatch(trimmed))) {
       return true;
     }
   }
   return false;
 }
+
+/// `carried:` followed by a value that decides it — a name or an
+/// expression, never `false`, never a collection.
+final _decidesCarried = RegExp(r'\bcarried:\s*(?!false\b)[A-Za-z_]');
 
 /// Files that name `carried` without being an entrance, with the reason.
 const Set<String> _allowedFiles = {

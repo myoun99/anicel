@@ -121,13 +121,13 @@ void main() {
         'pool is not added twice', () {
       final repository = ProjectRepository(
         initialProject: projectWith(
-          assets: const [MediaAsset(path: '/a.wav', name: 'a')],
+          assets: [MediaAsset(path: '/a.wav', name: 'a')],
         ),
       );
       final command = ImportMediaCommand(
         repository: repository,
         editingSession: EditingSessionState(activeCutId: const CutId('c')),
-        assetAdditions: const [
+        assetAdditions: [
           MediaAsset(path: '/a.wav', name: 'a again'),
           MediaAsset(path: '/b.wav', name: 'b'),
         ],

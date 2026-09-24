@@ -183,7 +183,7 @@ void main() {
                   ),
                   layerId: const LayerId('l'),
                   frameId: const FrameId('f'),
-                  inputSettings: BrushEditCanvasInputSettings(
+                  inputSettings: () => BrushEditCanvasInputSettings(
                     color: 0xFFFF0000,
                   ),
                   viewport: viewport,

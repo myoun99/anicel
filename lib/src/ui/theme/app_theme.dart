@@ -156,6 +156,17 @@ abstract final class AppColors {
   /// colour (116 sites) and it was the least legible one.
   static const Color textDim = Color(0xFF9DA2A6);
 
+  /// 「OFF」 — the alpha a switched-off icon or plate wears: the onion, the
+  /// fx glyph, the hidden row's label plate, and a boolean button whose
+  /// group has another member on.
+  ///
+  /// ⚠️It was the literal 0.45, written at each of its wearers with a
+  /// comment at one of them explaining that the others had to match by
+  /// hand — and then the rail's `layerRailOffAlpha`. The shared boolean
+  /// button wears it too, and a widget in `ui/widgets` has no business
+  /// importing the rail: the 0.45 was never the rail's own.
+  static const double offAlpha = 0.45;
+
   /// A shortcut key printed after a row's own name — 「저장 Ctrl+S」, a tool
   /// library tile's 「W」 (`ShortcutKeysText`).
   ///

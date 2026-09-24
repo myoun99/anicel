@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// Corruption behind a SURVIVING EOCD must fall out as the FormatException
 /// the callers catch — their `on FormatException` IS the recovery.
@@ -20,7 +21,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-corrupt');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   (String, AnicelZipLayout) builtArchive() {
     final path = '${directory.path}/f.anicel';

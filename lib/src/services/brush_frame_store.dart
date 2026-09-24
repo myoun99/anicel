@@ -16,6 +16,7 @@ import 'memory_pressure_budget.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
 import 'persistence/open_project_file.dart';
+import 'persistence/anicel_incremental_writer.dart' show AnicelRelocation;
 import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
 import 'persistence/scratch_file.dart';
@@ -844,6 +845,43 @@ class BrushFrameStore {
     }
   }
 
+  /// Every ref into a file [inFile] accepts whose bytes were at a DATA
+  /// offset in [moved] now reads them where they went — whatever key holds
+  /// it (a rekeyed cel still points at its old name's bytes).
+  ///
+  /// 🚨★★★THE SAVE WAITS FOR THIS BEFORE IT WRITES OVER THE OLD BYTES. The
+  /// in-place push-down (유저 2026-09-23, deleting-save-compacts-Q1) moves
+  /// entries these refs read from, in another isolate, while the session
+  /// keeps drawing and reading cold cels. A ref still aimed at the old
+  /// offset once the next round had landed there would decode someone
+  /// else's bytes as this picture — and the next save would write that back
+  /// as the cel. `compactAnicelInPlace` announces each round's moves and
+  /// does not continue until this has run.
+  ///
+  /// ⚠️Refs only. Clean or dirty is unchanged: the bytes are the same bytes.
+  void relocateFileRefs(
+    bool Function(String path) inFile,
+    Map<int, AnicelRelocation> moved,
+  ) {
+    for (final entry in _fileCels.entries.toList()) {
+      final ref = entry.value;
+      if (!inFile(ref.filePath)) {
+        continue;
+      }
+      final to = moved[ref.dataOffset];
+      if (to == null) {
+        continue;
+      }
+      _fileCels[entry.key] = AnicelCelFileRef(
+        filePath: ref.filePath,
+        dataOffset: to.dataOffset,
+        length: to.length,
+        canvasSize: ref.canvasSize,
+        tileSize: ref.tileSize,
+      );
+    }
+  }
+
   /// Lets go of the cels a save could not carry forward — each was only a
   /// ref into a file that is gone, descriptor and all
   /// (`AnicelFileService.save` returns them).
@@ -1372,9 +1410,10 @@ class BrushFrameStore {
 /// answering both is the shape this codebase treats as an invention. The
 /// second question already has an owner: `_dirtySinceSave`.
 ///
-/// Offsets stay valid across incremental appends (appends never move
-/// existing entry data); a compaction rewrites the file and re-issues
-/// refs. A scratch ref is always at offset 0 — one cel, one file.
+/// An append never moves existing entry data, but the in-place compaction
+/// does — and moves the refs with it first ([BrushFrameStore.
+/// relocateFileRefs]); a whole write re-issues refs. A scratch ref is
+/// always at offset 0 — one cel, one file.
 class AnicelCelFileRef {
   const AnicelCelFileRef({
     required this.filePath,

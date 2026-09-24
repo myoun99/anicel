@@ -38,11 +38,11 @@ class _BrushEditStroke {
     // mapped-erase press with a separable brush blend would have taken
     // the commit's blend branch and PAINTED instead of erasing.
     final strokeSettings = mappedErase
-        ? _state.widget.inputSettings.copyWith(
+        ? _state.widget.inputSettings().copyWith(
             erase: true,
             blendMode: BrushBlendMode.erase,
           )
-        : _state.widget.inputSettings;
+        : _state.widget.inputSettings();
     _state._activeStrokeInputSettings = strokeSettings;
     _state._pressure.noteSample(event);
     _state.widget.onActiveStrokeChanged?.call(true);
@@ -283,7 +283,7 @@ class _BrushEditStroke {
     final rasterizer = _state._liveRasterizer;
     final base = _state._overlay._overlayModel.preBlendBase;
     final blendMode =
-        (_state._activeStrokeInputSettings ?? _state.widget.inputSettings)
+        (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
             .blendMode;
     final erase = _state._overlay._overlayModel.erase;
     _state._liveRasterizer = null;
@@ -332,6 +332,12 @@ class _BrushEditStroke {
         // F-12: promoted tiles already carry the ceiling (it is folded into
         // the mask the pre-blend runs), and the commit's promotion path
         // installs them untouched.
+        // ⚠️The payload carries it ALL THE SAME: every route that does not
+        // install these tiles re-derives the stroke from its dabs — the
+        // commit when the surface moved under it, and 확정 laying the stroke
+        // down on another cel (confirm-button) — and a stroke re-derived
+        // without its ceiling lands at full strength.
+        strokeOpacity: rasterizer.strokeOpacity,
       ),
     );
   }
@@ -382,7 +388,7 @@ class _BrushEditStroke {
   /// same place without threading a random source through it.
   double get activeStrokeSpacing {
     final settings =
-        _state._activeStrokeInputSettings ?? _state.widget.inputSettings;
+        _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
     final jitter = settings.spacingJitter;
     if (jitter <= 0.0) {
       return settings.spacing;

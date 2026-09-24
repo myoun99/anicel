@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart';
 import '../timeline/timeline_grid_metrics.dart' show timelineLayerRowHeight;
@@ -149,7 +149,7 @@ class ExportCelLayerRow extends StatelessWidget {
       child: Opacity(
         // ⚠️0.45 is the rail's own 「off」 alpha (F-56) — a row that is not in
         // reads as off in the language every other off state already uses.
-        opacity: included || indeterminate ? 1 : layerRailOffAlpha,
+        opacity: included || indeterminate ? 1 : AppColors.offAlpha,
         child: row,
       ),
     );

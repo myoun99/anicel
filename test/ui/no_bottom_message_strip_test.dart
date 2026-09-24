@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// F-10 — **no bottom-of-window message strip.**
 ///
@@ -20,10 +19,7 @@ void main() {
   test('nothing in lib/src reaches for a SnackBar', () {
     final offenders = <String>[];
 
-    for (final entry in Directory('lib/src')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src'));
       final lines = entry.readAsLinesSync();

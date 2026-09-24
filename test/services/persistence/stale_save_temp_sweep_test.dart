@@ -15,6 +15,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
+import '../../helpers/temp_dir.dart';
 
 /// A full save sweeps ITS OWN stale temps from the project's folder — and
 /// nothing else's files.
@@ -33,7 +34,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-sweep');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   test('a successful full save collects this project\'s strays and leaves '
       'everything else alone', () async {

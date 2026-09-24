@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/services/commands/create_linked_cut_command.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/editing/editing_session_state.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
@@ -42,6 +43,7 @@ void main() {
     newName: 'Linked',
     layerIdMap: {sourceLayer.id: linkedLayerId},
     newGroupIdBySource: {sourceLayer.id: 'group-under-test'},
+    coveringFrameIdBySource: const {},
   );
 
   test('execute lands the linked cut after its source and moves onto it', () {
@@ -52,7 +54,11 @@ void main() {
     expect(newIndex, sourceIndex + 1);
     final linked = cuts[newIndex];
     expect(linked.name, 'Linked');
-    expect(linked.duration, source.duration);
+    expect(
+      linked.duration,
+      defaultCutDuration,
+      reason: '↩️F-97: as long as a new cut, not as its source',
+    );
     expect(linked.layers.any((layer) => layer.id == linkedLayerId), isTrue);
     expect(editingSession.activeCutId, newCutId);
 

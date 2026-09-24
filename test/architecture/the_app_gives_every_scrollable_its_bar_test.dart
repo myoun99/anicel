@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★NOBODY BUILDS A SCROLLBAR BY HAND.
 ///
@@ -41,8 +42,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('nothing in lib/ builds a framework scrollbar', () {
     final offenders = <String>[];
-    for (final entity in Directory('lib').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+    for (final entity in dartFilesUnder('lib')) {
       final path = entity.path.replaceAll(r'\', '/');
       final lines = entity.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {

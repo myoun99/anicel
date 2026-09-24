@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★P8: PAINTERS TAKE THE ONE TRANSFORM, AND THE HOST SNAPS ONCE.
 ///
@@ -103,14 +104,9 @@ void main() {
       'lib/src/ui/media',
     ];
     for (final dir in dirs) {
-      final root = Directory(dir);
-      if (!root.existsSync()) {
-        continue;
-      }
-      for (final entity in root.listSync(recursive: true)) {
-        if (entity is! File || !entity.path.endsWith('.dart')) {
-          continue;
-        }
+      // ⛔No `existsSync` skip any more: a folder that was renamed must turn
+      // this red, not quietly scan nothing — the shared walk fails on it.
+      for (final entity in dartFilesUnder(dir)) {
         final path = entity.path.replaceAll(r'\', '/');
         final rel = path.substring(path.indexOf('lib/'));
         final lines = entity.readAsLinesSync();
@@ -170,10 +166,7 @@ void main() {
     // scroll-offset translate written anywhere else is wrong whatever
     // surrounds it.
     final offenders = <String>[];
-    for (final entity in Directory('lib/src').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final entity in dartFilesUnder('lib/src')) {
       final path = entity.path.replaceAll(r'\', '/');
       final rel = path.substring(path.indexOf('lib/'));
       // The file that DOES the following and the correcting is where a

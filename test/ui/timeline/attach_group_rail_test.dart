@@ -216,8 +216,8 @@ layers: layers,
     expect(toggled, [const LayerId('base')]);
   });
 
-  testWidgets('a folded group renders no attach rows — except the active '
-      'attach row, which stays visible (UI-R20 #9)', (tester) async {
+  testWidgets('a folded group renders no attach rows — the active one '
+      'included (UI-R20 #9, ↩️F-169)', (tester) async {
     await tester.pumpWidget(
       grid(
         layers: baseWithGroup,
@@ -238,8 +238,10 @@ layers: layers,
       findsOneWidget,
     );
 
-    // The ACTIVE attach row survives its group's fold (the row-filter
-    // exemption rule).
+    // ↩️The ACTIVE attach row used to survive its group's fold (the
+    // row-filter exemption rule). F-169 (유저 2026-09-24) took the exemption
+    // out — it is what showed a handed-off row inside a shut group — and
+    // nothing stands inside a fold any more (you_stand_only_on_a_shown_row).
     await tester.pumpWidget(
       grid(
         layers: baseWithGroup,
@@ -250,7 +252,7 @@ layers: layers,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-row-up1')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-row-down1')),

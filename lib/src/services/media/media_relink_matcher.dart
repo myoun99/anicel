@@ -22,6 +22,7 @@
 library;
 
 import '../../core/path_names.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/media_identity.dart';
 
 /// What a relink pass decided.
@@ -63,7 +64,7 @@ MediaRelinkPlan planMediaRelink({
 }) {
   final byName = <String, List<String>>{};
   for (final raw in candidatePaths) {
-    final candidate = _normalize(raw);
+    final candidate = normalizedMediaPath(raw);
     final name = fileNameOfPath(candidate);
     if (name.isEmpty) {
       continue;
@@ -79,7 +80,7 @@ MediaRelinkPlan planMediaRelink({
   final claimed = <String, List<String>>{};
 
   for (final raw in missingPaths) {
-    final missing = _normalize(raw);
+    final missing = normalizedMediaPath(raw);
     final candidates = byName[fileNameOfPath(missing).toLowerCase()] ?? const [];
     // The extension has to survive: a `.png` and a `.psd` of the same name
     // are different files, and swapping one for the other would decode to
@@ -219,8 +220,6 @@ String? _chooseByContent(
   // exactly one candidate that could be the file at all.
   return possible.length == 1 ? possible.single : null;
 }
-
-String _normalize(String path) => path.replaceAll('\\', '/');
 
 /// Lowercased, including the dot; empty when there is none. Compared rather
 /// than parsed, so `.tar.gz`-style names simply compare their last part on

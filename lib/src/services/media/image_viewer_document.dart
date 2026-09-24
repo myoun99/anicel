@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'media_byte_source.dart';
 import 'viewer_document.dart';
 
 /// A still or animated image, as a [ViewerDocument]: one page per frame,
@@ -27,10 +28,18 @@ import 'viewer_document.dart';
 final class ImageViewerDocument implements ViewerDocument {
   ImageViewerDocument._(this._descriptor, this._frameCount, this._frameGap);
 
-  /// Opens [path] without ever holding the file in the Dart heap: the
-  /// buffer goes straight to the descriptor and is released here.
-  static Future<ImageViewerDocument> open(String path) async {
-    final buffer = await ui.ImmutableBuffer.fromFilePath(path);
+  /// Opens the image [source] holds. A whole file never enters the Dart
+  /// heap: the buffer goes straight to the descriptor and is released here.
+  /// Bytes that are not one — a carried image inside the project file, or
+  /// its framed copy — are read once and handed over the same way.
+  ///
+  /// Everything is read before this returns, so whoever holds [source]
+  /// can let go as soon as it does.
+  static Future<ImageViewerDocument> open(MediaByteSource source) async {
+    final file = source.wholeFilePath;
+    final buffer = file != null
+        ? await ui.ImmutableBuffer.fromFilePath(file)
+        : await ui.ImmutableBuffer.fromUint8List(await source.read());
     final ui.ImageDescriptor descriptor;
     try {
       descriptor = await ui.ImageDescriptor.encoded(buffer);

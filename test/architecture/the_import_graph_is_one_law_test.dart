@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/import_graph.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★ONE ANSWER TO 「WHAT DOES THIS FILE DEPEND ON」.
 ///
@@ -170,7 +171,7 @@ void main() {
   group('walking a tree', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('import_graph_fx'));
-    tearDown(() => dir.deleteSync(recursive: true));
+    tearDown(() => deleteTempQuietly(dir));
 
     test('only the named roots are walked', () {
       Directory('${dir.path}/lib').createSync();

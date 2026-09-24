@@ -57,10 +57,9 @@
 ## 머지 게이트
 
 - `flutter analyze` — **인자 없이.** `analyze lib` 은 게이트가 아니다(`test/` 를 안 본다).
-- `dart run tool/affected_tests.dart` — 로컬 기본값.
-  🚨**소스를 훑는 계약 테스트는 이게 못 잡는다** ⇒ UI를 추가했으면 `app_strings_keys_test`·
-  `app_shapes_coverage_test`, 절단·통일했으면 `test/architecture` 전부를 **직접** 돌린다
-  (래칫 둘이 이걸로 세 커밋 동안 깨져 있었다, 09-04).
+- `dart run tool/affected_tests.dart` — 로컬 기본값. 소스를 훑는 테스트도 고른다(09-23·24) —
+  `lib`·`test`·`tool` 경로를 **문자열 리터럴로** 적은 스캔·파일 읽기는 그 아래가 바뀌면 돈다(`tool/import_graph.dart`).
+  ⛔**경로를 변수 뒤에서 조립하는 스캔은 못 본다** — 새 스캔은 리터럴로 쓴다.
 - **적대검증·뮤테이션은 선택이 아니다.** 「테스트가 통과한다」는 증거가 아니다 —
   **제품 코드를 껐을 때 빨개지는지**가 증거다.
   뮤테이션은 「돌렸다」가 아니라 **「바뀐 줄을 `git diff` 로 봤다」**로 센다.

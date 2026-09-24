@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// PICK-4: the Recent projects rows in the Project popover.
 ///
@@ -31,11 +32,7 @@ void main() {
     FolderPicker.debugFolderPicker = null;
     FolderPicker.debugFilePicker = null;
     FolderPicker.debugBookmarkResolver = null;
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(folder);
   });
 
   /// Seeds through the STORE rather than the notifier, because

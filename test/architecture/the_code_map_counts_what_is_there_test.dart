@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/code_map.dart';
 
+import '../helpers/temp_dir.dart';
+
 /// 🚨★★★THE INSTRUMENT THE AUDIT STANDS ON.
 ///
 /// `tool/code_map.dart` produces the numbers every later step ranks by — what
@@ -35,7 +37,7 @@ void main() {
     dir = Directory.systemTemp.createTempSync('code_map_fixture');
   });
 
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   /// A file exercising every declaration shape the map claims to count.
   const alpha = '''

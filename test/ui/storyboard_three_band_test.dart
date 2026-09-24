@@ -101,13 +101,42 @@ Future<void> _pump(
 /// paragraphs at one offset was the retired outline's fingerprint
 /// (stroke pass + fill pass), so "one at the spot, never two" is both the
 /// anchor contract and the outline-gone proof.
+/// Where each paragraph LANDS, following the transforms: a label narrowed
+/// into its band (B, 2026-09-24) is drawn at the origin of a scaled canvas.
 class _ParagraphOffsetSpy implements Canvas {
   final List<Offset> offsets = [];
+  final List<Rect> rects = [];
+  final _saved = <Matrix4>[];
+  var _transform = Matrix4.identity();
+
+  @override
+  void save() => _saved.add(_transform.clone());
+
+  @override
+  void restore() => _transform = _saved.removeLast();
+
+  @override
+  void translate(double dx, double dy) =>
+      _transform = _transform.multiplied(Matrix4.translationValues(dx, dy, 0));
+
+  @override
+  void scale(double sx, [double? sy]) => _transform = _transform.multiplied(
+    Matrix4.diagonal3Values(sx, sy ?? sx, 1),
+  );
 
   @override
   void drawParagraph(ui.Paragraph paragraph, Offset offset) {
-    offsets.add(offset);
+    offsets.add(MatrixUtils.transformPoint(_transform, offset));
+    rects.add(
+      MatrixUtils.transformRect(
+        _transform,
+        offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
+      ),
+    );
   }
+
+  @override
+  int getSaveCount() => _saved.length + 1;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -355,5 +384,36 @@ void main() {
           .toList();
       expect(titleHits.length, 1, reason: 'the fill pass and nothing under it');
     });
+  });
+
+  testWidgets('B (유저 2026-09-24): a title longer than its band keeps its '
+      'type and narrows into the band — never cut to an ellipsis', (
+    tester,
+  ) async {
+    await _pump(tester, pixelsPerFrame: 2);
+    final block = requireCutBlock(tester, 'cut-1');
+    expect(block.bandsFolded, isFalse, reason: 'fixture');
+    final spy = _ParagraphOffsetSpy();
+    cutBlocksPainter(tester).paint(
+      spy,
+      tester.getSize(
+        find.byKey(const ValueKey<String>('storyboard-cut-blocks-band-track')),
+      ),
+    );
+    final band = block.topBand;
+    final title = spy.rects
+        .where(
+          (rect) =>
+              (rect.left - (band.left + 4)).abs() < 0.01 &&
+              rect.center.dy < block.strip.top,
+        )
+        .toList();
+    expect(title, hasLength(1), reason: 'the title is painted');
+    expect(
+      title.single.right,
+      lessThanOrEqualTo(band.right - 4 + 0.01),
+      reason: 'narrowed into its band — ↩️an ellipsis cut its end, and its '
+          'paragraph still measured the whole name',
+    );
   });
 }

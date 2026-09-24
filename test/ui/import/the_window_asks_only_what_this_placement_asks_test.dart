@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨THE COLUMN LAW of the import/placement window (유저 2026-09-11, 미디어
 /// 배치 라운드 5·6): a column stands only when some row of THIS window has
@@ -24,13 +25,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-columns');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<String> writePng(String name) =>
       writeSolidPng(tempDir, name, rgba: 0xAAAAAAAA);
@@ -140,7 +135,7 @@ void main() {
       '품기/참조인 그 열 자체를 삭제」)', (tester) async {
     final png = await tester.runAsync(() => writePng('bg.png'));
     final s = session();
-    s.mediaPool.importMediaFiles([png!], copyIntoProject: true);
+    await s.mediaPool.importMediaFiles([png!], copyIntoProject: true);
     await open(tester, s, [png], placeOnly: true);
 
     expect(column('file'), findsNothing);
@@ -188,7 +183,7 @@ void main() {
     final pooled = await tester.runAsync(() => writePng('pooled.png'));
     final fresh = await tester.runAsync(() => writePng('fresh.png'));
     final s = session();
-    s.mediaPool.importMediaFiles([pooled!], copyIntoProject: false);
+    await s.mediaPool.importMediaFiles([pooled!], copyIntoProject: false);
     await open(tester, s, [pooled, fresh!]);
 
     expect(column('file'), findsOneWidget, reason: 'the new file needs it');

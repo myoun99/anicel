@@ -31,6 +31,7 @@ import 'package:archive/archive.dart';
 import '../../core/path_names.dart';
 import '../../models/audio_clip.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../media/media_fingerprints.dart';
 import 'anicel_payload_codec.dart';
@@ -320,7 +321,7 @@ String _anicelPoolEntryName(
   required bool framed,
   String infix = '',
 }) {
-  final normalized = poolPath.replaceAll('\\', '/');
+  final normalized = normalizedMediaPath(poolPath);
   var hash = 0x811c9dc5;
   for (final unit in normalized.codeUnits) {
     hash ^= unit;
@@ -432,14 +433,14 @@ class AnicelSessionFields {
 ({String name, Uint8List bytes}) buildAnicelProjectEntry({
   required Project project,
   String? saveDirectory,
-  Set<String> mediaInArchive = const {},
+  Map<String, String> mediaEntryNames = const {},
   AnicelSessionFields sessionFields = AnicelSessionFields.none,
 }) {
   final compressed = compressAnicelPayload(
     buildAnicelProjectJsonBytes(
       project: project,
       saveDirectory: saveDirectory,
-      mediaInArchive: mediaInArchive,
+      mediaEntryNames: mediaEntryNames,
       sessionFields: sessionFields,
     ),
   );
@@ -477,7 +478,16 @@ Uint8List decodeAnicelProjectEntryBytes(String name, Uint8List bytes) {
 Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
-  Set<String> mediaInArchive = const {},
+
+  /// The entry each medium inside the archive is stored under — the names
+  /// the archive HOLDS, handed in.
+  ///
+  /// 🚨Not derived here. A framed entry's name carries its suffix, and this
+  /// used to derive every name from the path alone: from framing's arrival
+  /// (2026-08-31) to 2026-09-24 the manifest named the unframed entry while
+  /// the archive held the framed one, so a reopened project looked for media
+  /// the file did not have — and refused to save once the original was gone.
+  Map<String, String> mediaEntryNames = const {},
 
   /// What the session keeps beside the project — kept out of `project` on
   /// purpose, see [AnicelSessionFields].
@@ -492,8 +502,9 @@ Uint8List buildAnicelProjectJsonBytes({
     // what stays outside is a path that may or may not still resolve.
     // Inside wins where both could describe the same asset — the copy the
     // project carries is the one it is sure of.
-    if (mediaInArchive.contains(path)) {
-      mediaEntries[path] = anicelMediaEntryName(path);
+    final inside = mediaEntryNames[path];
+    if (inside != null) {
+      mediaEntries[path] = inside;
       continue;
     }
     if (saveDirectory != null) {
@@ -605,8 +616,8 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
-    mediaRelativePaths: anicelStringMapField(decoded['mediaPaths']),
-    mediaEntryNames: anicelStringMapField(decoded['mediaEntries']),
+    mediaRelativePaths: _keyedByPoolPath(decoded['mediaPaths']),
+    mediaEntryNames: _keyedByPoolPath(decoded['mediaEntries']),
     session: AnicelOpenedSessionFields(
       grants: anicelGrantsField(decoded['grants']),
       mediaFingerprints: MediaFingerprints.fromJson(decoded['mediaCrcs']),
@@ -614,6 +625,18 @@ AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
     ),
   );
 }
+
+/// A document map keyed by pool path, its keys in the pool's spelling.
+///
+/// The project beside it was just spelled by its own constructors
+/// ([normalizedMediaPath]); a file written while a door still let another
+/// spelling in would otherwise name, under `C:\…\cut/A1.png`, an asset the
+/// pool now calls `C:/…/cut/A1.png` — and an entry the project carries
+/// would read as one it does not.
+Map<String, String> _keyedByPoolPath(Object? json) => {
+  for (final entry in anicelStringMapField(json).entries)
+    normalizedMediaPath(entry.key): entry.value,
+};
 
 /// A document field read as a `{string: string}` map — anything that is
 /// not a string pair is not one, and is left out rather than throwing.

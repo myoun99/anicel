@@ -382,22 +382,19 @@ Color timelineRunGlyphColor(
   return colorScheme.onSurfaceVariant.withValues(alpha: 0.65);
 }
 
-/// Draws one cluster glyph centred in its half.
+/// Draws one cluster glyph centred in its half, bold on one line of [type]
+/// — the size, the ink and the app's face are the caller's. Set from
+/// scratch here, the glyphs named no face and wrote in the OS's font
+/// (「앱은 한 글꼴」, 08-28).
 void paintTimelineRunGlyph(
   Canvas canvas, {
   required String text,
   required Rect slot,
-  required double fontSize,
-  required Color color,
+  required TextStyle type,
 }) {
   final glyph = timelineGlyphPainter(
     text,
-    TextStyle(
-      fontSize: fontSize,
-      height: 1,
-      fontWeight: FontWeight.w700,
-      color: color,
-    ),
+    type.copyWith(height: 1, fontWeight: FontWeight.w700),
   );
   glyph.paint(
     canvas,
@@ -423,13 +420,17 @@ void paintTimelineRunGlyph(
 /// because a repeat pattern should say what it is rather than merely that
 /// it is not a selection. It now differs from a selection in ink and in
 /// edge, where it used to differ in hue and nothing.
+///
+/// [corner] is the blocks' own (`timelineBlockCornerRadiusAt`) — the span
+/// outlines a run of them, so it rounds as they do at every zoom.
 void paintTimelineRunPatternSpan(
   Canvas canvas,
   Rect rect, {
+  required Radius corner,
   Color ground = timelineDrawingHeldColor,
 }) {
   final ink = timelineTextOnColor(ground);
-  final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+  final rrect = RRect.fromRectAndRadius(rect, corner);
   canvas.drawRRect(rrect, Paint()..color = ink.withValues(alpha: 0.06));
   final stroke = Paint()
     ..color = ink.withValues(alpha: 0.85)

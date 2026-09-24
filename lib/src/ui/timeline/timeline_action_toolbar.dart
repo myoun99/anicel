@@ -487,7 +487,7 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.tlStoryboardLayer,
         icon: Icons.auto_stories_outlined,
         enabled: serves && session.layerSwitches.canToggleTargetLayerKind,
-        checked: active?.kind == LayerKind.storyboard ? true : null,
+        checked: active?.kind == LayerKind.storyboard,
         onSelected: session.layerSwitches.toggleTargetLayerKind,
       ),
       // R5 #5: the SE and CAMERA section switches left. The legend's own

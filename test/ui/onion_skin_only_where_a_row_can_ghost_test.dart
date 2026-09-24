@@ -48,10 +48,12 @@ void main() {
         reason: '${row.kind.name}: the `O` key and the rail button press '
             'this verb',
       );
+      // ↩️A lit press banked one undo step until F-162 (유저 2026-09-24) took
+      // the onion out of the history; no press banks one now, lit or not.
       expect(
         session.historyManager.undoCount,
-        undos + (ghosts ? 1 : 0),
-        reason: '${row.kind.name}: a refused press leaves no undo step',
+        undos,
+        reason: '${row.kind.name}: the onion is not an undo step',
       );
     }
   });

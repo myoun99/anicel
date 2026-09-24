@@ -24,7 +24,10 @@ import '../../models/track_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/drag_chip.dart';
+import '../widgets/drag_chip_overlay.dart';
 import 'layer_drop_policy.dart';
+import 'layer_label_controls.dart' show layerKindIcon;
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
@@ -250,6 +253,7 @@ class TimelineRowDragHooks {
     this.onPlacementHover,
     this.onPlacementLeave,
     this.acceptsPlacement,
+    this.rowsActedOnBy,
   });
 
   final ValueListenable<LayerRowDragState?> drag;
@@ -341,6 +345,13 @@ class TimelineRowDragHooks {
   /// the drag's chip wears (「불가능 = 칩의 금지 표시」). Null is yes.
   final bool Function(List<Layer> displayLayers, int slot, String path)?
   acceptsPlacement;
+
+  /// I-39: the LAYER rows a press on [pressed] picks up — the whole row
+  /// selection when the pressed row is in it, that row alone when it is not.
+  /// The session's own rule (`RowSelection.rowsActedOnBy`), the one the
+  /// move runs, asked here so the chips at the pointer name exactly what
+  /// travels. Null: the pressed row carries itself alone.
+  final Set<LayerId> Function(LayerId pressed)? rowsActedOnBy;
 }
 
 /// The caret's thickness and colour, shared by every rail that draws one.
@@ -372,6 +383,7 @@ class LayerRowDragTarget extends StatelessWidget {
     this.grabOffsetWithinRun = 0,
     this.onGripTaken,
     this.onGripReleased,
+    this.grip,
   }) : canReorder = true;
 
   /// 🚨★★★A row that CANNOT BE REORDERED can still be SELECTED.
@@ -397,6 +409,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.hooks,
     required this.onSelectCrossed,
     required this.child,
+    this.grip,
   }) : canReorder = false,
        grabOffsetWithinRun = 0,
        onGripTaken = null,
@@ -480,6 +493,14 @@ class LayerRowDragTarget extends StatelessWidget {
   /// The other half of [onGripTaken].
   final VoidCallback? onGripReleased;
 
+  /// I-39: what this row carries once it is picked up, as the chips at the
+  /// pointer name it ([DragChip]) — asked at the PRESS, because the row
+  /// selection can change after the row was built. A picked-up row is one
+  /// that moves, or one held inside the selection that cannot move (F-16-Q1:
+  /// it lifts and shows it all the same). Null: nothing is named, and no
+  /// chip hangs — a select drag carries nothing.
+  final List<DragChipItem> Function()? grip;
+
   final Widget child;
 
   @override
@@ -501,6 +522,7 @@ class LayerRowDragTarget extends StatelessWidget {
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
       onGripReleased: onGripReleased,
+      grip: grip,
       child: child,
     );
   }
@@ -520,6 +542,7 @@ class _LayerRowDragBody extends StatefulWidget {
     this.onSelectCrossed,
     this.onGripTaken,
     this.onGripReleased,
+    this.grip,
     required this.child,
   });
 
@@ -536,6 +559,9 @@ class _LayerRowDragBody extends StatefulWidget {
   final void Function(int rowDelta)? onSelectCrossed;
   final VoidCallback? onGripTaken;
   final VoidCallback? onGripReleased;
+
+  /// See [LayerRowDragTarget.grip].
+  final List<DragChipItem> Function()? grip;
   final bool isLastRow;
   final Widget child;
 
@@ -545,6 +571,27 @@ class _LayerRowDragBody extends StatefulWidget {
 
 class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   double _travelled = 0;
+
+  /// I-39: the chips at the pointer while this row is picked up — null the
+  /// rest of the time, and always while a drag SELECTS (nothing travels).
+  DragChipOverlay? _chips;
+
+  void _pickUp(Offset globalPosition) {
+    final items = widget.grip?.call();
+    if (items == null || items.isEmpty) {
+      return;
+    }
+    _chips = DragChipOverlay.show(
+      context,
+      items: items,
+      globalPosition: globalPosition,
+    );
+  }
+
+  void _putDown() {
+    _chips?.remove();
+    _chips = null;
+  }
 
   /// Where inside this row the press landed, as a fraction of its extent.
   ///
@@ -607,6 +654,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // select-only shape still cannot be handed a destination.
     if (!widget.canReorder && inSelection == true) {
       setState(() => _lifting = true);
+      _pickUp(globalPosition);
       return;
     }
     _selecting = !widget.canReorder || inSelection == false;
@@ -617,6 +665,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     _moving = true;
     widget.hooks.onBegin(widget.subject);
     widget.onCrossed(0, null, 0);
+    _pickUp(globalPosition);
   }
 
   /// ⑨: true while this drag is growing the row SELECTION rather than
@@ -644,6 +693,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
       return;
     }
     widget.onGripReleased?.call();
+    _putDown();
     if (_lifting) {
       setState(() => _lifting = false);
       return;
@@ -666,6 +716,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
 
   @override
   void dispose() {
+    _putDown();
     // A mid-drag unmount lands the operation AFTER the frame rather than
     // leaking an open session verb (R12-③ — the same backstop the range
     // gesture, the comma grip and the edit chrome already carry; this was
@@ -749,6 +800,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     if (_onControl) {
       return;
     }
+    _chips?.moveTo(details.globalPosition);
     final delta = details.delta;
     _travelled += widget.axis == Axis.horizontal ? delta.dy : delta.dx;
     _travelled += _autoPanEdge(details.globalPosition);
@@ -1048,6 +1100,7 @@ Widget? unmovableRowSelectTarget({
   required Axis axis,
   required TimelineRowDragHooks? hooks,
   required void Function(int rowDelta) onSelectCrossed,
+  List<DragChipItem> Function()? grip,
   required Widget child,
 }) {
   if (kind.reordersInCut) {
@@ -1062,9 +1115,34 @@ Widget? unmovableRowSelectTarget({
     axis: axis,
     hooks: hooks,
     onSelectCrossed: onSelectCrossed,
+    grip: grip,
     child: child,
   );
 }
+
+/// I-39: the chips a picked-up LAYER row hangs at the pointer — one for
+/// every row [pressed] carries ([TimelineRowDragHooks.rowsActedOnBy]), each
+/// named as the rail names it (its kind's glyph, its name), in the order
+/// [rows] draws them. The rail and the sheet ask this, and so does the
+/// storyboard's S rows: one answer to 「what is in my hand」 for every rail.
+List<DragChipItem> layerRowDragChips({
+  required List<TimelineDisplayRow> rows,
+  required LayerId pressed,
+  required TimelineRowDragHooks? hooks,
+}) {
+  final carried = hooks?.rowsActedOnBy?.call(pressed) ?? {pressed};
+  return [
+    for (final (:layer, rowIndex: _) in layerRowsOf(rows))
+      if (carried.contains(layer.id))
+        (icon: layerKindIcon(layer.kind), label: layer.name),
+  ];
+}
+
+/// I-39: the chip a picked-up fx HEADER hangs at the pointer — an effect
+/// travels alone along its own chain, under the glyph the add-effect menu
+/// names effects with and the name its header shows.
+DragChipItem effectRowDragChip(PropertyLaneRow header) =>
+    (icon: Icons.auto_fix_high_outlined, label: header.label);
 
 /// A layer row's drag wrapper: the movable row's [LayerRowDragTarget], the
 /// unmovable row's select-only target ([unmovableRowSelectTarget]), or the
@@ -1120,6 +1198,11 @@ Widget layerRowDragWrapper({
   final address = row.address;
   final onGripTaken = pin == null ? null : () => pin.take(address);
   final onGripReleased = pin == null ? null : () => pin.release(address);
+  List<DragChipItem> grip() => layerRowDragChips(
+    rows: dragRows(),
+    pressed: row.layer.id,
+    hooks: hooks,
+  );
   final lane = row.lane;
   if (lane != null) {
     return hooks == null
@@ -1145,6 +1228,7 @@ Widget layerRowDragWrapper({
     axis: axis,
     hooks: hooks,
     onSelectCrossed: (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
+    grip: grip,
     child: child,
   );
   if (unmovable != null) {
@@ -1162,6 +1246,7 @@ Widget layerRowDragWrapper({
     hooks: hooks,
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
+    grip: grip,
     isLastRow: caret.isLastRow,
     onCrossed: hooks == null
         ? (_, _, _) {}
@@ -1305,6 +1390,7 @@ Widget _laneRowDragTarget(
     hooks: hooks,
     onGripTaken: wiring.onGripTaken,
     onGripReleased: wiring.onGripReleased,
+    grip: () => [effectRowDragChip(subject.lane)],
     isLastRow: slot == headers.length - 1,
     // An fx chain has no "inside a row" to drop into — an effect holds
     // nothing — so the on-row band is ignored here and the caret stays

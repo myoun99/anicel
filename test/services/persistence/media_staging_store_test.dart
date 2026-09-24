@@ -7,6 +7,8 @@ import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
+import '../../helpers/os_file_modes.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**품기 HOLDS THE BYTES FROM THE MOMENT IT IS PRESSED.**
 ///
@@ -27,11 +29,7 @@ void main() {
     store = MediaStagingStore(directoryPath: '${root.path}/Staged');
   });
 
-  tearDown(() {
-    if (root.existsSync()) {
-      root.deleteSync(recursive: true);
-    }
-  });
+  tearDown(() => deleteTempQuietly(root));
 
   /// A source file with compressible content.
   String sourceFile(String name, {int length = 200 * 1024}) {
@@ -171,6 +169,123 @@ void main() {
     test('retiring something never staged is not an error', () async {
       store.retire('${root.path}/never-imported.wav');
       expect(store.list(), isEmpty);
+    });
+
+    test('🚨a copy a reader holds open outlives the save that absorbs it, '
+        'and goes when the last reader lets go', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+      final first = store.hold(path);
+      final second = store.hold(path);
+
+      store.retire(path);
+      expect(
+        store.list(),
+        hasLength(1),
+        reason: 'Windows refuses to delete a file a reader holds open',
+      );
+      first();
+      expect(store.list(), hasLength(1), reason: 'one reader is left');
+      second();
+
+      expect(store.find(path), isNull);
+      expect(store.list(), isEmpty, reason: 'no file left behind');
+    });
+
+    test('⛔a copy whose retirement waits on its reader is NOT the staged '
+        'copy — a save absorbed it', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+      final letGo = store.hold(path);
+
+      store.retire(path);
+
+      expect(store.find(path), isNull, reason: 'only its reader is finishing');
+      expect(store.list(), hasLength(1), reason: 'on disk, for that reader');
+      letGo();
+      expect(store.list(), isEmpty);
+    });
+
+    test('🚨carried AGAIN while the old copy waits: the new copy is the one '
+        'kept when the old reader lets go', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+      final letGo = store.hold(path);
+      store.retire(path);
+      final edited = Uint8List.fromList(
+        List<int>.generate(64 * 1024, (i) => (i * 7) & 0xFF),
+      );
+      File(path).writeAsBytesSync(edited);
+
+      await store.stage(path);
+      letGo();
+
+      final kept = store.find(path);
+      expect(kept, isNotNull, reason: 'letting go takes its OWN copy only');
+      expect(mediaAppFileSource(kept!.path).readSync(), edited);
+    });
+
+    test('🚨a take written again under the name whose old copy waits: the '
+        'new take is the one kept when the old reader lets go', () async {
+      // A take has no original — the staged file is the only copy, so
+      // losing it here is losing the performance.
+      final path = '${root.path}/S1_T01.wav'.replaceAll(r'\', '/');
+      final first = Uint8List.fromList(
+        List<int>.generate(64 * 1024, (i) => (i * 3) & 0xFF),
+      );
+      final second = Uint8List.fromList(
+        List<int>.generate(64 * 1024, (i) => (i * 7 + 1) & 0xFF),
+      );
+      await store.stageCarriedBytesInMemory(path, first);
+      final letGo = store.hold(path);
+      store.retire(path);
+
+      await store.stageCarriedBytesInMemory(path, second);
+      letGo();
+
+      final kept = store.find(path);
+      expect(kept, isNotNull, reason: 'letting go takes its OWN copy only');
+      expect(mediaAppFileSource(kept!.path).readSync(), second);
+    });
+
+    test('a copy held under the OS spelling of its path is the copy the save '
+        'retires', () async {
+      final path = sourceFile('take.wav');
+      await store.stage(path);
+      final letGo = store.hold(path.replaceAll('/', r'\'));
+
+      store.retire(path);
+
+      expect(store.list(), hasLength(1), reason: 'held — one key, not two');
+      letGo();
+      expect(store.list(), isEmpty);
+    });
+
+    test('a copy the OS will not let go of stays for the run\'s room — and '
+        'letting go does not throw into the reader\'s close', () async {
+      final path = sourceFile('conte.pdf');
+      final staged = (await store.stage(path))!;
+      final letGo = store.hold(path);
+      store.retire(path);
+      if (!setUndeletable(staged.path, on: true)) {
+        markTestSkipped('this user can delete anything (root)');
+        return;
+      }
+      addTearDown(() => setUndeletable(staged.path, on: false));
+
+      expect(letGo, returnsNormally);
+      expect(File(staged.path).existsSync(), isTrue);
+    });
+
+    test('a hold let go of with no retirement pending takes nothing', () async {
+      final path = sourceFile('conte.pdf');
+      await store.stage(path);
+
+      store.hold(path)();
+
+      expect(store.find(path), isNotNull, reason: 'the save has not come');
+      store.retire(path);
+      expect(store.find(path), isNull, reason: 'held by no one, it goes');
     });
 
     // 🪦**THE SWEEP TESTS MOVED WITH THE SWEEP, AND THEN TWO OF THEM WERE

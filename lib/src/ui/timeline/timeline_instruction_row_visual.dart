@@ -10,8 +10,10 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
+import 'timeline_block_word.dart';
 import 'timeline_frame_span_layout.dart';
-import 'timeline_se_row_visual.dart' show timelineBlockCornerWarning;
+import 'timeline_se_row_visual.dart' show timelineBlockWarningBar;
 import '../repaint_props.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
@@ -56,8 +58,8 @@ TimelineCellExposureState instructionCellExposureState(
       : TimelineCellExposureState.uncovered;
 }
 
-/// What an instruction row's BAND shows: its own cels where it has them,
-/// its instruction spans everywhere else.
+/// What a row's BAND shows: the span adapter on a row that is spans and
+/// nothing else (the transition), its own cels everywhere else.
 ///
 /// 🚨R27 #16 LEFT THE BAND EMPTY (유저 2026-08-27: 「지금 스샷보면 **블록의
 /// 배경색 흰색이 사라졌는데?**」). Giving the direction row cels flipped
@@ -66,10 +68,11 @@ TimelineCellExposureState instructionCellExposureState(
 /// Nothing was drawn at all. The row did not gain a feature; it lost its
 /// blocks.
 ///
-/// ★A UNION, not a choice, because both are true of that row now: the
-/// spans are why it exists and the cels are what R27 #16 gave it. Its own
-/// cels win where it has them (a drawing that starts mid-span really does
-/// start a block there); the spans fill the rest, exactly as before.
+/// ↩️That fix was a UNION — the direction row's own cels where it had
+/// them, its spans filling the rest — because its spans lived beside its
+/// cels. Since R27 its spans ARE its blocks (`LayerKind.spansRideBlocks`),
+/// so its own cels are the whole answer, and the union's second half had
+/// nothing left to fill.
 ///
 /// ⛔ONE FUNCTION, because there are TWO readers — the cells row and the
 /// cursor layer's range measure — and a row that DRAWS a block it will not
@@ -78,18 +81,9 @@ TimelineCellExposureState bandExposureState(
   Layer layer,
   int frameIndex, {
   required TimelineCellExposureState Function(Layer, int) ownCels,
-}) {
-  if (!layer.kind.carriesInstructions) {
-    return ownCels(layer, frameIndex);
-  }
-  if (layer.kind.bandIsInstructionsOnly) {
-    return instructionCellExposureState(layer, frameIndex);
-  }
-  final own = ownCels(layer, frameIndex);
-  return own == TimelineCellExposureState.uncovered
-      ? instructionCellExposureState(layer, frameIndex)
-      : own;
-}
+}) => layer.kind.bandIsInstructionsOnly
+    ? instructionCellExposureState(layer, frameIndex)
+    : ownCels(layer, frameIndex);
 
 /// The instruction spans of [layer] that reach the half-open window
 /// [frameStartIndex]..[frameEndIndexExclusive], in map order.
@@ -124,7 +118,7 @@ _instructionSpansIn(
 /// [crossingWarningTooltip] is the D26 marker's resolver — the
 /// seClipMarkerTooltip threading convention: null (or a null answer for a
 /// span's start key) mounts nothing, a string mounts the shared red
-/// corner warning on that span's block with that hover text. The block
+/// warning line on that span's block with that hover text. The block
 /// itself keeps drawing either way — a warning must have something to sit
 /// on, and the refusal is the EFFECT's, never the display's.
 List<Widget> timelineRowInstructionOverlays({
@@ -180,7 +174,7 @@ List<Widget> timelineRowInstructionOverlays({
         continue;
       }
       overlays.add(
-        timelineBlockCornerWarning(
+        timelineBlockWarningBar(
           blockStart: start,
           blockEndExclusive: endExclusive,
           crossAxisExtent: crossAxisExtent,
@@ -200,6 +194,9 @@ List<Widget> timelineRowInstructionOverlays({
 /// Edge grips over instruction spans: reuses the exposure grip widget and
 /// callback shape — the session dispatches instruction rows to the span
 /// editor internally, so both row types share one drag pipeline.
+///
+/// [crossAxisExtent] is the ROW's: the grips stand on the row's paper, which
+/// stops a seam short of it (I-44, [timelineRowPaperExtent]).
 List<Widget> timelineRowInstructionEdgeGrips({
   required Layer layer,
   required int frameStartIndex,
@@ -207,6 +204,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
   required double Function() resolveFrameCellExtent,
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
+  required double crossAxisExtent,
 }) {
   final grips = <Widget>[];
   var ordinal = 0;
@@ -223,6 +221,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               edge: edge,
               startIndex: start,
               endIndexExclusive: endExclusive,
+              crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
             ),
             child: TimelineBlockEdgeGrip(
               layerId: layer.id,
@@ -253,51 +252,23 @@ class _InstructionSpan extends StatelessWidget {
   final InstructionEvent event;
   final CameraInstructionDef? def;
 
-  /// One cell-sized slot at [cellIndex] holding [child] at [alignment]; the
-  /// child may overflow the cell (paper writing spills over neighbours
-  /// freely).
+  /// A word of this span as a BLOCK word ([TimelineBlockWord]): its block is
+  /// the span, split into `event.length` cells, and the word stays inside it.
   ///
-  /// The slot is a FRACTION of the span, never a cell width in pixels: the
-  /// span box is `event.length` cells wide by construction, so this widget
-  /// needs nothing from the zoom and never rebuilds for it.
-  Widget _cellSlot({
-    required int cellIndex,
-    required Widget child,
-    AlignmentGeometry alignment = Alignment.center,
-  }) {
-    final overflowing = OverflowBox(
-      alignment: alignment,
-      // The MINS must open up: the slot's tight ones otherwise force the
-      // writing to fill it — glyphs then paint from the start edge and the
-      // labels LOOK top/left-aligned instead of centered (R5-⑤ root cause,
-      // all three misalignment reports).
-      //
-      // The MAXES open along the frame axis only. Writing that runs past
-      // its own span is the paper convention; writing that runs into the
-      // next ROW or COLUMN is the 42px bleed. A null max keeps the
-      // parent's, which is exactly the row/column bound.
-      minWidth: 0,
-      minHeight: 0,
-      maxWidth: axis == Axis.horizontal ? double.infinity : null,
-      maxHeight: axis == Axis.horizontal ? null : double.infinity,
-      child: child,
-    );
-    final cells = event.length < 1 ? 1 : event.length;
-    // Align spreads the child's FREE space, not the parent's: with a child
-    // 1/cells wide, alignment a puts its left edge at (1 - 1/cells)(a+1)/2 of
-    // the span. Solving that for cell `i` gives a = 2i/(cells-1) - 1.
-    final fraction = cells <= 1 ? 0.0 : -1 + 2 * cellIndex / (cells - 1);
-    return Align(
-      alignment: axis == Axis.horizontal
-          ? Alignment(fraction, 0)
-          : Alignment(0, fraction),
-      child: FractionallySizedBox(
-        widthFactor: axis == Axis.horizontal ? 1 / cells : 1,
-        heightFactor: axis == Axis.horizontal ? 1 : 1 / cells,
-        child: overflowing,
-      ),
-    );
-  }
+  /// ↩️The writing used to run past the span onto the neighbours' cells
+  /// (「paper writing spills over neighbours freely」 — mine, 2026-07-09, the
+  /// paper-block slice) out of a slot that was a FRACTION of the span, so
+  /// that this widget needed nothing from the zoom. It still needs nothing:
+  /// the block word reads its own box. What changed is the law — 「이름은
+  /// 블록안에서만」 and 「컷블록의 텍스트든 se텍스트든 뭐든」 (유저
+  /// 2026-09-24): the writing keeps its type and narrows into the span.
+  Widget _word(Widget writing, TimelineBlockWordCells place) =>
+      Positioned.fill(
+        child: TimelineBlockWord(
+          place: place,
+          child: ExcludeSemantics(child: writing),
+        ),
+      );
 
   /// Instruction writing follows the surface: across the row on the
   /// timeline, DOWN the column on the sheet.
@@ -329,21 +300,24 @@ class _InstructionSpan extends StatelessWidget {
     // The mark and the writing are independent: free per-event text wins,
     // the vocabulary name is the fallback.
     final name = event.displayLabel(def);
+    final base = DefaultTextStyle.of(context).style;
     // The A/B instance names read exactly like frame names on drawing
-    // blocks: ink, bold, ambient size, centered in their cells.
-    const valueStyle = TextStyle(
-      color: timelineDrawingInkColor,
-      fontWeight: FontWeight.bold,
-      height: 1.1,
+    // blocks — the block word's own print: ink, bold, ambient size.
+    final valueStyle = timelineBlockWordStyle(
+      base,
+      ink: timelineDrawingInkColor,
+      fontSize: base.fontSize ?? 12,
+      bold: true,
     );
-    final nameStyle = TextStyle(
-      color: markColor,
+    final nameStyle = timelineBlockWordStyle(
+      base,
+      ink: markColor,
       fontSize: 11,
-      fontWeight: FontWeight.bold,
-      height: 1.1,
+      bold: true,
     );
     final valueA = event.valueA;
     final valueB = event.valueB;
+    final cells = event.length < 1 ? 1 : event.length;
 
     return Semantics(
       label: [
@@ -368,16 +342,24 @@ class _InstructionSpan extends StatelessWidget {
               ),
             ),
           ),
+          // The A/B values sit in the span's first and last cells, as a
+          // block's name and its length do (F-96).
           if (valueA != null && valueA.isNotEmpty)
-            _cellSlot(
+            _word(_writing(valueA, valueStyle), (
+              axis: axis,
+              cells: cells,
               cellIndex: 0,
-              child: ExcludeSemantics(child: _writing(valueA, valueStyle)),
-            ),
+              growth: TimelineBlockWordGrowth.towardBlockEnd,
+              acrossAlignment: 0,
+            )),
           if (valueB != null && valueB.isNotEmpty)
-            _cellSlot(
-              cellIndex: event.length - 1,
-              child: ExcludeSemantics(child: _writing(valueB, valueStyle)),
-            ),
+            _word(_writing(valueB, valueStyle), (
+              axis: axis,
+              cells: cells,
+              cellIndex: cells - 1,
+              growth: TimelineBlockWordGrowth.towardBlockStart,
+              acrossAlignment: 0,
+            )),
           // The name sits on the SPAN's centre along the FRAME axis and
           // steps OFF the mark across it (user, 2026-08-08): up on the
           // timeline, right on the sheet.
@@ -390,27 +372,21 @@ class _InstructionSpan extends StatelessWidget {
           // two can say where the middle of the span is.
           if (name.isNotEmpty)
             Positioned.fill(
-              child: OverflowBox(
-                // Open mins too (see _cellSlot) — otherwise the name fills
-                // the span and its glyphs paint from the FIRST frame
-                // instead of sitting on the span's center. The cross axis
-                // stays bounded: that is the neighbour's edge.
-                minWidth: 0,
-                minHeight: 0,
-                maxWidth: axis == Axis.horizontal ? double.infinity : null,
-                maxHeight: axis == Axis.horizontal ? null : double.infinity,
-                alignment: axis == Axis.horizontal
-                    ? Alignment.topCenter
-                    : Alignment.centerRight,
-                child: ExcludeSemantics(
-                  // A hair off the wall, so the glyphs never sit on the
-                  // cell border they have just moved next to.
-                  child: Padding(
-                    padding: axis == Axis.horizontal
-                        ? const EdgeInsets.only(top: instructionLabelInset)
-                        : const EdgeInsets.only(right: instructionLabelInset),
-                    child: _writing(name, nameStyle),
+              // A hair off the wall, so the glyphs never sit on the cell
+              // border they have just moved next to.
+              child: Padding(
+                padding: axis == Axis.horizontal
+                    ? const EdgeInsets.only(top: instructionLabelInset)
+                    : const EdgeInsets.only(right: instructionLabelInset),
+                child: TimelineBlockWord(
+                  place: (
+                    axis: axis,
+                    cells: 1,
+                    cellIndex: 0,
+                    growth: TimelineBlockWordGrowth.towardBlockEnd,
+                    acrossAlignment: axis == Axis.horizontal ? -1 : 1,
                   ),
+                  child: ExcludeSemantics(child: _writing(name, nameStyle)),
                 ),
               ),
             ),

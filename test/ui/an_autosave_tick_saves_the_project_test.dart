@@ -7,6 +7,7 @@ import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/project_autosave_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE TICK SAVES THE PROJECT FILE.**
 ///
@@ -32,13 +33,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-tick-saves');
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   /// The service wired the way the shell wires it.
   ProjectAutosaveService autosaveFor(EditorSessionManager session) =>

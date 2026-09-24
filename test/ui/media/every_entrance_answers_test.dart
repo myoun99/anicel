@@ -23,7 +23,10 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+
+import '../../helpers/placed_sound_conform.dart';
 
 /// 🚨EVERY ENTRANCE ANSWERS FOR THE FILE STANDING OVER IT, and the chip wears
 /// the answer (유저 2026-09-11, 미디어 배치 라운드: 「불가능 = 칩의 금지
@@ -367,8 +370,9 @@ void main() {
   /// The same track with its SE row where the storyboard draws SE rows: on
   /// the TRACK. [project]'s S1 sits in the cut's own layers, which only the
   /// timeline shows.
-  EditorSessionManager trackSeProject() {
+  EditorSessionManager trackSeProject({AudioConformStore? conform}) {
     final session = EditorSessionManager(
+      audioConformStore: conform,
       initialProject: Project(
         id: const ProjectId('verdict-project'),
         name: 'Verdict Project',
@@ -477,5 +481,97 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(placed, [const AboveActiveLayerSpot()]);
+  });
+
+  /// 🚨F-155 (유저 2026-09-17): 「그림 존재하는데 블록이 회색임」 — the row
+  /// kept showing the drag's stand-in cels after the file was let go.
+  testWidgets('whatever an entrance draws while a file stands over it goes '
+      'when the file is let go, as when it leaves — a row\'s frames, an SE '
+      'row\'s empty cell and the layer area, on the timeline and the sheet', (
+    tester,
+  ) async {
+    const picture = r'C:\art\bg.png';
+    const sound = r'C:\snd\door.wav';
+    // A quarter second — six frames — so a sound over an SE gap has a
+    // length to draw.
+    final s = trackSeProject(conform: soundConformStore(seconds: 0.25));
+    await tester.runAsync(() => s.audioConformStore.ensurePeaksFor(sound));
+
+    Offset into(String key, Offset by) =>
+        tester.getTopLeft(find.byKey(ValueKey<String>(key))) + by;
+    // Each entrance the hover draws on, the file it draws for, and a point
+    // inside it: a row's frames and the layer area take a picture, an SE
+    // row's gap (the one before the block at 2..5 — the sheet runs the
+    // later one off the bottom of the window) a sound.
+    final entrances = <(String, TimelineOrientation, String, Offset Function())>[
+      (
+        'the timeline\'s row frames',
+        TimelineOrientation.horizontal,
+        picture,
+        () => into('timeline-layer-asset-drop-$drawingId', const Offset(72, 8)),
+      ),
+      (
+        'the sheet\'s row frames',
+        TimelineOrientation.vertical,
+        picture,
+        () => into('xsheet-layer-asset-drop-$drawingId', const Offset(8, 72)),
+      ),
+      (
+        'the timeline\'s SE gap',
+        TimelineOrientation.horizontal,
+        sound,
+        () => into('timeline-se-cell-drop-$seId-0', const Offset(24, 8)),
+      ),
+      (
+        'the sheet\'s SE gap',
+        TimelineOrientation.vertical,
+        sound,
+        () => into('xsheet-se-cell-drop-$seId-0', const Offset(8, 24)),
+      ),
+      (
+        'the timeline\'s layer area',
+        TimelineOrientation.horizontal,
+        picture,
+        () => into('timeline-rail-row-$drawingId-row', const Offset(24, 3)),
+      ),
+      (
+        'the sheet\'s layer area',
+        TimelineOrientation.vertical,
+        picture,
+        () => into('xsheet-layer-placement-entrance', const Offset(3, 8)),
+      ),
+    ];
+
+    for (final (name, orientation, path, at) in entrances) {
+      final verdict = await pumpTimeline(
+        tester,
+        s,
+        path,
+        orientation: orientation,
+      );
+      final gesture = await hover(tester, at());
+      expect(
+        s.dragPreview.value,
+        isNotNull,
+        reason: '$name: premise — the file standing there is drawn',
+      );
+
+      await gesture.up();
+      await tester.pump();
+
+      expect(
+        s.dragPreview.value,
+        isNull,
+        reason: '$name: let go, what it would make is no longer drawn',
+      );
+      expect(
+        s.layerRowDragVerbs.inFlight.value,
+        isNull,
+        reason: '$name: nor the caret that marked its gap',
+      );
+      expect(verdict.value, isNull, reason: '$name: nor the chip\'s answer');
+      await tester.pumpAndSettle();
+    }
+    s.playbackRig.prerenderScheduler.cancel();
   });
 }

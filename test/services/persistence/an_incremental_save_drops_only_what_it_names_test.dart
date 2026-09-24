@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**AN INCREMENTAL SAVE REMOVES WHAT IT CAN NAME, AND NOTHING
 /// ELSE.**
@@ -44,13 +45,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-drops-only');
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -136,22 +131,22 @@ void main() {
     }
   });
 
-  test('🚨 but a COMPACTION does NOT — it rebuilds from what the project '
-      'holds, and that is the trap for whoever adds the next kind', () async {
-    // ⛔This pins the behaviour, it does not bless it. The two roads out
-    // of a save are not the same shape: an APPEND rebuilds the central
-    // directory from「everything that was there, minus what I drop」, so a
-    // row it does not recognise rides along; a COMPACTION writes a new
-    // file from the project's cels, media, conforms and project.json, so a
-    // row nothing enumerates is simply never written.
+  test('🚨 a COMPACTION carries it too — it packs in place; only the WHOLE '
+      'write still rebuilds from what the project holds', () async {
+    // 🪦Until 2026-09-23 this pinned the opposite: a compaction WAS a whole
+    // rewrite, so a row nothing enumerates was simply never written — and
+    // this test said 「If this ever starts passing, somebody taught the
+    // rebuild to carry unknown rows across — which is a fine answer, and
+    // this test is then the place that says so out loud」. Saying so: the
+    // compaction now packs the file in place (유저, deleting-save-
+    // compacts-Q1), moving every entry the directory names — the stranger
+    // included.
     //
-    // 🚨Nothing loses anything today — this build is the only writer, and
-    // every entry it makes is one of those kinds. The next round puts a
-    // new kind of entry in the archive, and it would pass every existing
-    // test, survive appends, and vanish the first time the garbage ratio
-    // crossed the threshold — hours later, on somebody's real project.
-    // Whoever adds it: put it in the rebuild, or find this test failing
-    // and know why.
+    // 🚨The trap is still there on the road that is left. A whole write —
+    // first save, Save As, the heal after a crash — writes a new file from
+    // the project's cels, media, conforms and project.json. Whoever adds a
+    // new kind of entry: put it in the rebuild too, or find the second half
+    // of this test and know why.
     const service = AnicelFileService();
     final path = '${directory.path}/compacted.anicel';
     final project = createDefaultProject();
@@ -193,10 +188,35 @@ void main() {
           'this test is the append one again',
     );
 
+    final carried = parseAnicelZipLayoutFile(path).entryNamed(strangerName);
+    expect(
+      carried,
+      isNotNull,
+      reason: 'the push-down moves what the directory names, and it names '
+          'the stranger',
+    );
+    final raf = File(path).openSync();
+    try {
+      raf.setPositionSync(carried!.dataOffset);
+      expect(
+        raf.readSync(carried.length),
+        strangerBytes,
+        reason: 'moved, and still the same bytes',
+      );
+    } finally {
+      raf.closeSync();
+    }
+
+    await service.save(
+      project: project,
+      brushFrameStore: store,
+      filePath: path,
+      rewriteWhole: true,
+    );
     expect(
       parseAnicelZipLayoutFile(path).entryNamed(strangerName),
       isNull,
-      reason: 'a whole rewrite writes what the project holds. If this ever '
+      reason: 'a whole write writes what the project holds. If this ever '
           'starts passing, somebody taught the rebuild to carry unknown '
           'rows across — which is a fine answer, and this test is then the '
           'place that says so out loud.',

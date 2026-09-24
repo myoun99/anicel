@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_check.dart';
 import '../../tool/board_model.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★THE LAST PIECE OF `board-one-stream` — 「저장하는 것은 사건뿐,
 /// 나머지는 접어서 만든다」.
@@ -24,7 +25,7 @@ import '../../tool/board_model.dart';
 void main() {
   late Directory dir;
   setUp(() => dir = Directory.systemTemp.createTempSync('board-story'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   File records(List<String> lines) =>
       File('${dir.path}/board.jsonl')..writeAsStringSync(lines.join('\n'));

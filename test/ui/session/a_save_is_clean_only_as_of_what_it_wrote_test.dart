@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★F-128 — A SAVE IS CLEAN ONLY AS OF WHAT IT WROTE.
 ///
@@ -27,11 +28,7 @@ void main() {
   setUp(() => folder = Directory.systemTemp.createTempSync('qa_f128_'));
   tearDown(() {
     OpenProjectFile.instance.release();
-    try {
-      folder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(folder);
   });
 
   String pathOf(String name) => '${folder.path.replaceAll(r'\', '/')}/$name';

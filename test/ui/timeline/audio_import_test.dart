@@ -114,7 +114,7 @@ void main() {
     expect(session.audioClips.canImportAudioToActiveLayer, isTrue);
 
     session.audioClips.addAudioClipToActiveSeLayer(
-      r'C:\sound\voice.wav',
+      'C:/sound/voice.wav',
       copyIntoProject: false,
     );
     await tester.pumpAndSettle();
@@ -153,8 +153,8 @@ void main() {
 
   testWidgets('media pool flows: import-to-browse, link-to-block reuse, '
       'rename, relink, remove', (tester) async {
-    const foot = r'C:\snd\foot.wav';
-    const moved = r'C:\snd\moved\foot.wav';
+    const foot = 'C:/snd/foot.wav';
+    const moved = 'C:/snd/moved/foot.wav';
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('pool-project'),
@@ -274,7 +274,7 @@ void main() {
       'that block — the empty-cell entrance lies only over the gaps', (
     tester,
   ) async {
-    const foot = r'C:\snd\foot.wav';
+    const foot = 'C:/snd/foot.wav';
     const dragSourceKey = ValueKey<String>('test-media-drag-source');
     (LayerId, int, String)? placedInstead;
     final session = EditorSessionManager(
@@ -398,7 +398,7 @@ void main() {
   testWidgets('dragging a sound onto an EMPTY SE cell reports that row and '
       'cell to the place entrance — only the gaps carry that target, so a '
       'block keeps its own', (tester) async {
-    const foot = r'C:\snd\foot.wav';
+    const foot = 'C:/snd/foot.wav';
     const dragSourceKey = ValueKey<String>('test-media-drag-source');
     (LayerId, int, String)? placed;
     await tester.binding.setSurfaceSize(const Size(1600, 800));
@@ -518,7 +518,7 @@ void main() {
 
   testWidgets('REC1-A: deleting the carrier block prunes the audio link '
       'and frees the media asset', (tester) async {
-    const foot = r'C:\snd\foot.wav';
+    const foot = 'C:/snd/foot.wav';
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('prune-project'),
@@ -552,8 +552,8 @@ void main() {
                         length: 3,
                       ),
                     },
-                    audioClips: const [
-                      AudioClip(filePath: foot, frameId: FrameId('prune-f1')),
+                    audioClips: [
+                      AudioClip(filePath: foot, frameId: const FrameId('prune-f1')),
                     ],
                   ),
                 ],
@@ -592,7 +592,7 @@ void main() {
 
   testWidgets('REC1-A: a dangling audio link (frame already gone) does not '
       'hold the media pool hostage', (tester) async {
-    const foot = r'C:\snd\foot.wav';
+    const foot = 'C:/snd/foot.wav';
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('dangle-project'),
@@ -615,8 +615,8 @@ void main() {
                     kind: LayerKind.se,
                     frames: const [],
                     timeline: const {},
-                    audioClips: const [
-                      AudioClip(filePath: foot, frameId: FrameId('gone')),
+                    audioClips: [
+                      AudioClip(filePath: foot, frameId: const FrameId('gone')),
                     ],
                   ),
                 ],
@@ -646,7 +646,7 @@ void main() {
       session.selectFrameIndex(2);
       await tester.pumpAndSettle();
       session.audioClips.addAudioClipToActiveSeLayer(
-        r'C:\sound\door-slam.wav',
+        'C:/sound/door-slam.wav',
         copyIntoProject: false,
       );
       await tester.pumpAndSettle();

@@ -68,7 +68,7 @@ void main() {
     });
 
     Future<void> openRefusing(WidgetTester tester, Exception failure) async {
-      PdfRenderService.debugOpenerOverride = (path) async => throw failure;
+      PdfRenderService.debugOpenerOverride = (_) async => throw failure;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

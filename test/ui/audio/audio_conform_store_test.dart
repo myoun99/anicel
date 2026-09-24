@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import '../../helpers/temp_dir.dart';
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
@@ -213,7 +214,7 @@ void main() {
       directory = await Directory.systemTemp.createTemp('qa-store-stream');
     });
 
-    tearDown(() => directory.delete(recursive: true));
+    tearDown(() => deleteTempQuietly(directory));
 
     /// A conform WAV on disk plus the runner result describing it, LONGER
     /// than the streaming threshold (a tiny sample rate keeps the fixture

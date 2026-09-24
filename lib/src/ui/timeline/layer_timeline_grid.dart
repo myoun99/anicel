@@ -26,6 +26,7 @@ import 'timeline_drag_preview.dart';
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_grid_stack.dart';
+import 'timeline_grid_sheet.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_scroll_viewport.dart';
@@ -58,6 +59,7 @@ import 'timeline_visible_range.dart';
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart' show AppText;
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_scroll_viewport.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_swipe_columns.dart';
 
@@ -667,9 +669,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final pinnedBefore = window.pinnedBefore;
     final pinnedAfter = window.pinnedAfter;
     return TimelineFrameRowsScrollBody(
-      // F-25: the lane bands light
-      // with their rail halves.
-      currentRow: widget.hooks.currentRowHooks?.currentRow,
       rows: windowRows,
       leadingLayerSpacerHeight: leadingRowSpacerHeight,
       trailingLayerSpacerHeight: trailingRowSpacerHeight,
@@ -688,7 +687,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 _metrics.layerRowHeight
           : 0,
       dragPreview: widget.hooks.dragPreview,
-      activeLayerId: widget.hooks.activeLayerId,
       playbackFrameCount: widget.hooks.playbackFrameCount,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
@@ -729,19 +727,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
   }
 
-  /// The beat lines under the cells — the grid ground D43-2 states once.
-  Widget _buildBeatLines(ColorScheme colorScheme) {
-    return CustomPaint(
-      key: const ValueKey<String>('timeline-beat-lines'),
-      painter: TimelineBeatLinesPainter(
-        frameCellExtent: _metrics.frameCellWidth,
-        framesPerSecond: _countingFps,
-        colorScheme: colorScheme,
-        // D43: the panel's own Material colour — see
-        // TimelineBeatLinesPainter.ground.
-        ground: colorScheme.surfaceContainerHighest,
-        crossCellExtent: _metrics.layerRowHeight,
-      ),
+  /// The grid sheet under the cells (I-44): every row's ground, every
+  /// frame line and every row seam, once. [rows] is the list the rows body
+  /// draws from, so the two agree on which row is where.
+  Widget _buildGridSheet(List<TimelineDisplayRow> rows) {
+    return TimelineRowsGridSheet(
+      key: const ValueKey<String>('timeline-grid-sheet'),
+      rows: rows,
+      rowExtent: _metrics.layerRowHeight,
+      frameCellExtent: _metrics.frameCellWidth,
+      activeLayerId: widget.hooks.activeLayerId,
+      standing: widget.hooks.currentRowHooks?.currentRow,
     );
   }
 
@@ -783,12 +779,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// left over.
   ///
   /// The fourth slot of `TimelineLayerFrameBodyLayout`. It is composition:
-  /// it sizes the area, then hands the rows body, the beat lines and the
-  /// playhead to `TimelineFrameGridStack`. ⚠️Seven parameters, and every
+  /// it sizes the area, then hands the rows body, the grid sheet and the
+  /// playhead to `TimelineFrameGridStack`. ⚠️Six parameters, and every
   /// one is passed straight through to a slot below — this method owns
   /// no logic of its own, which is why it may carry that many.
   Widget _buildFrameGridArea(
-    ColorScheme colorScheme,
     List<TimelineDisplayRow> rows,
     _RowWindow window,
     TimelineFrameRangeHooks? rangeHooks,
@@ -846,11 +841,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                     totalFrameContentWidth,
                     viewportWidth,
                   ),
-                  // UI-R13 #7: the
-                  // beat lines span
-                  // EVERY row now, one
-                  // grid-wide overlay.
-                  beatLines: _buildBeatLines(colorScheme),
+                  // UI-R13 #7 → I-44:
+                  // one sheet under EVERY
+                  // row — grounds, lines
+                  // and seams.
+                  gridSheet: _buildGridSheet(rows),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the
@@ -1381,53 +1376,47 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 ).copyWith(
                                                   scrollbars: false,
                                                 ),
-                                            child: SingleChildScrollView(
-                                              key: const ValueKey<String>(
+                                            child: TimelineScrollViewport(
+                                              viewportKey: const ValueKey<String>(
                                                 'timeline-vertical-scroll-viewport',
                                               ),
                                               controller:
                                                   _verticalScrollController,
-                                              child: DeviceGridScrollBody(
-                                                controller:
-                                                    _verticalScrollController,
-                                                axisDirection:
-                                                    AxisDirection.down,
-                                                child: KeyedSubtree(
-                                                  key: const ValueKey<String>(
-                                                    'timeline-scrollable-body',
-                                                  ),
-                                                  child: TimelineLayerFrameBodyLayout(
-                                                    layerAxisScrollbarSlot:
-                                                        SizedBox(
-                                                          width: _metrics
-                                                              .verticalScrollbarWidth,
-                                                          height:
-                                                              verticalContentHeight,
-                                                        ),
-                                                    layerControlsRail:
-                                                        _railRows.buildLayerControlsRail(
-                                                          drawnRows,
-                                                          availableRailExtent,
-                                                          window,
-                                                          swipeColumns,
-                                                        ),
-                                                    railSplitterSlot:
-                                                        const SizedBox(
-                                                          width:
-                                                              LayerRailSplitter
-                                                                  .thickness,
-                                                        ),
-                                                    frameGridArea:
-                                                        _buildFrameGridArea(
-                                                          colorScheme,
-                                                          drawnRows,
-                                                          window,
-                                                          rangeHooks,
-                                                          rangeGesture,
-                                                          laneRange,
-                                                          verticalContentHeight,
-                                                        ),
-                                                  ),
+                                              axis: Axis.vertical,
+                                              child: KeyedSubtree(
+                                                key: const ValueKey<String>(
+                                                  'timeline-scrollable-body',
+                                                ),
+                                                child: TimelineLayerFrameBodyLayout(
+                                                  layerAxisScrollbarSlot:
+                                                      SizedBox(
+                                                        width: _metrics
+                                                            .verticalScrollbarWidth,
+                                                        height:
+                                                            verticalContentHeight,
+                                                      ),
+                                                  layerControlsRail:
+                                                      _railRows.buildLayerControlsRail(
+                                                        drawnRows,
+                                                        availableRailExtent,
+                                                        window,
+                                                        swipeColumns,
+                                                      ),
+                                                  railSplitterSlot:
+                                                      const SizedBox(
+                                                        width:
+                                                            LayerRailSplitter
+                                                                .thickness,
+                                                      ),
+                                                  frameGridArea:
+                                                      _buildFrameGridArea(
+                                                        drawnRows,
+                                                        window,
+                                                        rangeHooks,
+                                                        rangeGesture,
+                                                        laneRange,
+                                                        verticalContentHeight,
+                                                      ),
                                                 ),
                                               ),
                                             ),

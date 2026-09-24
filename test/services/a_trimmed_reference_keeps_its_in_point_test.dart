@@ -67,7 +67,7 @@ void main() {
     id: const ProjectId('p'),
     name: 'P',
     createdAt: DateTime.utc(2026, 9, 12),
-    mediaAssets: const [MediaAsset(path: oldPath, name: 'take3')],
+    mediaAssets: [MediaAsset(path: oldPath, name: 'take3')],
     tracks: [
       Track(
         id: const TrackId('t'),

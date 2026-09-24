@@ -18,6 +18,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import '../../helpers/temp_dir.dart';
 
 /// Media the project no longer carries LEAVES the central directory with
 /// the next incremental save.
@@ -36,7 +37,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-media-rm');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

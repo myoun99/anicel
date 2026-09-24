@@ -4,8 +4,10 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
-import '../../tool/affected_tests.dart' show gcTagMarker, partitionByGcTag;
+import '../../tool/affected_tests.dart'
+    show gcTag, gcTagMarker, partitionByGcTag, runPlan;
 
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
 ///
@@ -61,11 +63,76 @@ void main() {
     });
   });
 
+  group('the plan', () {
+    ({List<List<String>> crowd, List<String> alone}) plan(
+      List<String> selected,
+      Map<String, String> tree,
+    ) => runPlan(
+      selected: selected,
+      suite: tree.keys.toList(),
+      read: (path) => tree[path]!,
+      // One command per file, so a test can see what went where.
+      batches: (files) => [for (final file in files) [file]],
+    );
+
+    const tree = {
+      'a_test.dart': 'void main() {}',
+      'b_test.dart': '$gcTagMarker\nlibrary;\nvoid main() {}',
+    };
+
+    test('🚨the WHOLE suite sends its collector pins alone too', () {
+      // 2026-09-23: a config change sent the gate to the whole suite, which
+      // was one command with the pins in it — and the parked-transform pin
+      // went red in that crowd for the third time.
+      final result = plan(const [], tree);
+      expect(result.crowd, [
+        ['--exclude-tags', gcTag],
+      ]);
+      expect(result.alone, ['b_test.dart']);
+    });
+
+    test('a whole suite with no pin in it is one plain command', () {
+      final result = plan(const [], {'a_test.dart': ''});
+      expect(result.crowd, [<String>[]]);
+      expect(result.alone, isEmpty);
+    });
+
+    test('a selection splits the same way, by file', () {
+      final result = plan(const ['a_test.dart', 'b_test.dart'], tree);
+      expect(result.crowd, [
+        ['a_test.dart'],
+      ]);
+      expect(result.alone, ['b_test.dart']);
+    });
+
+    test('⛔a selection of nothing but pins runs no crowd — an empty command '
+        'is the whole suite', () {
+      final result = runPlan(
+        selected: const ['b_test.dart'],
+        suite: const [],
+        read: (path) => tree[path]!,
+        // What `_batches` does off Windows: the list, whole, as one batch.
+        batches: (files) => [files],
+      );
+      expect(result.crowd, isEmpty);
+      expect(result.alone, ['b_test.dart']);
+    });
+
+    test('the tag the crowd leaves out is one the suite declares', () {
+      expect(
+        File('dart_test.yaml').readAsStringSync(),
+        contains('\n  $gcTag:'),
+        reason: '--exclude-tags names a tag; one dart_test.yaml does not '
+            'declare would leave every pin in the crowd without a word',
+      );
+    });
+  });
+
   test('🚨THE LEDGER: these are the files that wait for the collector', () {
     final root = Directory.current.path;
     final tagged = <String>[];
-    for (final entity in Directory('$root/test').listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('_test.dart')) continue;
+    for (final entity in dartFilesUnder('$root/test')) {
+      if (!entity.path.endsWith('_test.dart')) continue;
       if (!entity.readAsStringSync().contains(gcTagMarker)) continue;
       tagged.add(
         entity.path.substring(root.length + 1).replaceAll(r'\', '/'),

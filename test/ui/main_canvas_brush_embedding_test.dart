@@ -80,7 +80,8 @@ void main() {
   });
 
   testWidgets(
-    'production brush host shows the blank canvas without active drawing frame',
+    'production brush host stands its editing view down without an active '
+    'drawing frame',
     (tester) async {
       await tester.pumpWidget(const AnicelApp());
       await tester.pumpAndSettle();
@@ -94,13 +95,24 @@ void main() {
       // selected frame. PANEL-SCOPED (R26 #31): the docked timesheet is a
       // BrushCanvasPanel too, and its ink planes are interactive views.
       expect(inMainCanvas(find.byType(BrushCanvasPanel)), findsOneWidget);
+      // ↩️F-171: the app as it opens used to show a BLANK CANVAS here, with
+      // no editing view at all — and so the first press, which makes the
+      // first cel, had nothing to draw it (「그 가장 처음 상태만 선이
+      // 안그어짐」). The editing view stands on the cel a press would make
+      // now, standing DOWN: mounted to hear the press, taking no stroke
+      // until a cel is under it.
       expect(
         find.byKey(
           const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
         ),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(mainCanvasView(), findsNothing);
+      expect(mainCanvasView(), findsOneWidget);
+      expect(
+        tester.widget<InteractiveBrushEditCanvasView>(mainCanvasView()).editable,
+        isFalse,
+        reason: 'no cel under the playhead: the view stands down',
+      );
       expect(
         find.byKey(const ValueKey<String>('brush-canvas-default-frame')),
         findsNothing,

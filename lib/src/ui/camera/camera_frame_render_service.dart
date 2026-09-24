@@ -311,24 +311,27 @@ class CameraFrameRenderService {
             // their bytes do not move. Only a surface with artwork outside
             // the canvas takes the general path, which is the case that was
             // broken.
-            final worldRect = layerImage.worldRect;
-            final atCanvasExtent =
-                worldRect.left == 0 &&
-                worldRect.top == 0 &&
-                worldRect.width == layer.surface.canvasSize.width &&
-                worldRect.height == layer.surface.canvasSize.height;
+            final canvasSize = layer.surface.canvasSize;
             drawPosedLayerImage(
               canvas,
               image: layerImage.image,
-              worldRect: worldRect,
-              canvasSize: layer.surface.canvasSize,
+              // Composed here over the whole content, never a cache's ink.
+              worldRect: layerImage.worldRect,
+              extent: layerImage.worldRect,
+              canvasSize: canvasSize,
               pose: layer.pose,
               anchorPoint: layer.anchorPoint,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: layer.effects,
+              // Drawn through the camera's projection: never a texel copy.
+              texelScale: null,
               filterQuality: filterQuality,
-              drawAtOrigin: atCanvasExtent,
+              drawAtOriginWhen: (worldRect, _) =>
+                  worldRect.left == 0 &&
+                  worldRect.top == 0 &&
+                  worldRect.width == canvasSize.width &&
+                  worldRect.height == canvasSize.height,
             );
         }
       }

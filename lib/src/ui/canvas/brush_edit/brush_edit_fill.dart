@@ -35,7 +35,7 @@ class _BrushEditFill {
     // instead would put the mirror where the pen is not under a pose.
     final dab = fillDabAt(
       seed,
-      _state.widget.inputSettings.color,
+      _state.widget.inputSettings().color,
       _state.widget.guides.actingSymmetry,
     );
     if (dab == null) {
@@ -60,7 +60,7 @@ class _BrushEditFill {
   /// ([_BrushEditStroke.landPromoted]): the pictures hand over, nothing
   /// is decoded twice, nothing settles.
   void _handleFillDab(BrushDab rawDab) {
-    final blend = _state.widget.inputSettings.blendMode;
+    final blend = _state.widget.inputSettings().blendMode;
     // ERASE is not carried by the blend mode at commit — it is a flag on
     // the DAB, read per dab by the materializer. A fill arrives as one
     // stamp dab built with no opinion about erasing, so handing the
@@ -116,7 +116,7 @@ class _BrushEditFill {
       pending.tiles,
       BrushStrokeCommitData(
         sourceDabs: [pending.dab],
-        blendMode: _state.widget.inputSettings.blendMode,
+        blendMode: _state.widget.inputSettings().blendMode,
         promotedBase: pending.base,
         promotedTiles: [
           for (final entry in pending.tiles)

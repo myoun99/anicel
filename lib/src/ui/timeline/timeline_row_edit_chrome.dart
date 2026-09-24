@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
-import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
+import '../widgets/axis_bar_gesture.dart'
+    show
+        OwningHorizontalDragGestureRecognizer,
+        OwningVerticalDragGestureRecognizer;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -15,11 +18,15 @@ import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../widgets/panel_flyout.dart';
-import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
+import 'timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_span_layout.dart' show timelineFrameSpanRect;
 import 'timeline_run_end_handles.dart';
+import '../effective_device_pixel_ratio.dart';
+import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
@@ -39,7 +46,8 @@ sealed class TimelineRowChromeTarget {
   final Rect rect;
 }
 
-/// A block's comma-drag grip.
+/// A block's comma-drag grip. Its [rect] is the triangle's own box — the
+/// box IS the grip (I-43), so the mark is drawn from it and nothing else.
 class TimelineRowGripTarget extends TimelineRowChromeTarget {
   const TimelineRowGripTarget({
     required super.id,
@@ -47,15 +55,11 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
     required this.edge,
     required this.blockStartIndex,
     required this.blockOrdinal,
-    required this.barRect,
   });
 
   final TimelineBlockEdge edge;
   final int blockStartIndex;
   final int blockOrdinal;
-
-  /// Row-local rect of the drawn bar (inside [rect]).
-  final Rect barRect;
 
   @override
   bool operator ==(Object other) =>
@@ -64,12 +68,11 @@ class TimelineRowGripTarget extends TimelineRowChromeTarget {
       other.rect == rect &&
       other.edge == edge &&
       other.blockStartIndex == blockStartIndex &&
-      other.blockOrdinal == blockOrdinal &&
-      other.barRect == barRect;
+      other.blockOrdinal == blockOrdinal;
 
   @override
   int get hashCode =>
-      Object.hash(id, rect, edge, blockStartIndex, blockOrdinal, barRect);
+      Object.hash(id, rect, edge, blockStartIndex, blockOrdinal);
 }
 
 /// A run edge's [+] half.
@@ -235,14 +238,6 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
     )) {
       continue;
     }
-    final blockStartOffset = geometry.edgeAt(block.startIndex);
-    final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
-    // The block's own width joins the measure, so a long one keeps a grip
-    // you can aim at however far out the axis is zoomed.
-    final hitExtent = blockEdgeGripHitExtent(
-      frameCellExtent,
-      blockExtent: blockEndOffset - blockStartOffset,
-    );
     for (final edge in TimelineBlockEdge.values) {
       if (edge == TimelineBlockEdge.start && !block.startGrip) {
         continue;
@@ -250,24 +245,25 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       if (edge == TimelineBlockEdge.end && !block.endGrip) {
         continue;
       }
-      final hitStart = edge == TimelineBlockEdge.start
-          ? blockStartOffset
-          : blockEndOffset - hitExtent;
-      final rect = mainRect(hitStart, hitExtent);
-      final bar = blockEdgeGripBarRect(
-        edge: edge,
-        hitExtent: hitExtent,
-        crossAxisExtent: crossAxisExtent,
-        axis: axis,
-      );
       targets.add(
         TimelineRowGripTarget(
           id: 'block-edge-grip-${edge.name}-$gripIdScope-${block.ordinal}',
-          rect: rect,
+          // The SAME placement the sparse rows lay their grip widgets out
+          // by, resolved the same way — one law, not a parity between two.
+          rect: timelineFrameSpanRect(
+            timelineBlockEdgeGripPlacement(
+              edge: edge,
+              startIndex: block.startIndex,
+              endIndexExclusive: block.endIndexExclusive,
+              crossAxisExtent: crossAxisExtent,
+            ),
+            geometry,
+            crossAxisExtent: crossAxisExtent,
+            axis: axis,
+          ),
           edge: edge,
           blockStartIndex: block.startIndex,
           blockOrdinal: block.ordinal,
-          barRect: bar.shift(rect.topLeft),
         ),
       );
     }
@@ -394,9 +390,11 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
     required this.resolver,
     required this.geometry,
     required this.colorScheme,
+    required this.face,
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
+    required this.devicePixelRatio,
     this.gripGround = timelineDrawingHeldColor,
   }) : super(repaint: geometry);
 
@@ -411,6 +409,9 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 
   final ColorScheme colorScheme;
 
+  /// The app's face the run glyphs are set in (`appFaceOf`).
+  final TextStyle face;
+
   /// The target the pointer rests on; null = nothing hovered.
   final String? hoveredId;
 
@@ -419,6 +420,10 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 
   /// The grip currently being comma-dragged.
   final String? draggingGripId;
+
+  /// For the grips' one-device-pixel bleed at the round end
+  /// ([blockEdgeGripPath]).
+  final double devicePixelRatio;
 
   /// The color of what the grips sit ON (feedback #11, re-picked by the
   /// ground law 2026-08-17) — the row's block paper on a timeline row; the
@@ -454,15 +459,28 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final model = this.model;
     for (final span in model.patternSpans) {
-      paintTimelineRunPatternSpan(canvas, span, ground: gripGround);
+      paintTimelineRunPatternSpan(
+        canvas,
+        span,
+        corner: timelineBlockCornerRadiusAt(
+          cellExtent: frameCellExtent,
+          crossExtent: resolver.crossAxisExtent,
+        ),
+        ground: gripGround,
+      );
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
     for (final target in model.targets) {
       switch (target) {
         case TimelineRowGripTarget():
-          paintBlockEdgeGripBar(
+          paintBlockEdgeGrip(
             canvas,
-            target.barRect,
+            blockEdgeGripPath(
+              target.rect,
+              edge: target.edge,
+              axis: resolver.axis,
+              arcBleed: 1 / devicePixelRatio,
+            ),
             target.id == draggingGripId
                 ? BlockEdgeGripInk.dragging
                 : target.id == hoveredId
@@ -475,11 +493,13 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             canvas,
             text: '+',
             slot: target.rect,
-            fontSize: glyphSize + 2,
-            color: timelineRunGlyphColor(
-              colorScheme,
-              hovered: target.id == hoveredId,
-              operating: target.id == operatingId,
+            type: face.copyWith(
+              fontSize: glyphSize + 2,
+              color: timelineRunGlyphColor(
+                colorScheme,
+                hovered: target.id == hoveredId,
+                operating: target.id == operatingId,
+              ),
             ),
           );
         case TimelineRowRunTagTarget():
@@ -487,11 +507,13 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
             canvas,
             text: target.letter,
             slot: target.rect,
-            fontSize: glyphSize,
-            color: timelineRunGlyphColor(
-              colorScheme,
-              hovered: target.id == hoveredId,
-              operating: target.id == operatingId,
+            type: face.copyWith(
+              fontSize: glyphSize,
+              color: timelineRunGlyphColor(
+                colorScheme,
+                hovered: target.id == hoveredId,
+                operating: target.id == operatingId,
+              ),
             ),
           );
       }
@@ -510,10 +532,12 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       ByList(resolved.targets),
       ByList(resolved.patternSpans),
       colorScheme,
+      face,
       hoveredId,
       operatingId,
       draggingGripId,
       gripGround,
+      devicePixelRatio,
     );
   }
 
@@ -543,7 +567,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
       ];
 }
 
-/// A dense row's edit chrome: ONE painter for every grip bar and run glyph,
+/// A dense row's edit chrome: ONE painter for every grip and run glyph,
 /// and ONE gesture layer that routes by hit target.
 ///
 /// The layer fills the row but only ACCEPTS pointers that land on a target
@@ -659,9 +683,21 @@ class _TimelineRowEditChromeLayerState
   /// lifts) — the release path #12 found missing.
   String? _pressedId;
 
+  /// 🚨★★★THE GRIP'S PRESS IS THE GRIP'S (F-163 재발, 유저 2026-09-23:
+  /// 「모서리 클릭해서 위아래 드래그하면 스크롤 작동해버리는거 … 버튼은
+  /// 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」).
+  ///
+  /// The recogniser half of `OwningAxisGrip`, because this layer routes its
+  /// presses by rect rather than mounting a widget per grip: it accepts on
+  /// the FIRST movement. ↩️A plain one-axis drag sat here after the widget
+  /// grips had been fixed — a pull ACROSS the frame axis moved 0 along it,
+  /// never reached a threshold, and the timeline's scroller walked over.
+  /// ⛔The claim half is not worn here and does not need to be: it answers
+  /// pans that ASK, and the only ones that could hear this press are this
+  /// layer's own, which the router gives one target per press.
   late final DragGestureRecognizer _gripDrag = widget.axis == Axis.horizontal
-      ? HorizontalDragGestureRecognizer(debugOwner: this)
-      : VerticalDragGestureRecognizer(debugOwner: this);
+      ? OwningHorizontalDragGestureRecognizer(debugOwner: this)
+      : OwningVerticalDragGestureRecognizer(debugOwner: this);
   late final TapGestureRecognizer _addTap = TapGestureRecognizer(
     debugOwner: this,
   );
@@ -1008,8 +1044,9 @@ class _TimelineRowEditChromeLayerState
         _gripDrag.addPointer(event);
       case TimelineRowRunAddTarget():
         // Tap = add ONE cel (UI-R17 #4); a drag keeps the count-preview
-        // flow. PEN-12 #6: TAPS take every device — a clean finger tap
-        // clicks [+] even while touch panning belongs to the scroll.
+        // flow. Both take every device — PEN-12 #6 gave the TAP every device
+        // and left the finger's PAN to the scroll, which is the half 09-23
+        // took back (「버튼은 무조건 강한클레임」, see build()).
         _addTap.addPointer(event);
         _addPan.addPointer(event);
       case TimelineRowRunTagTarget():
@@ -1036,6 +1073,27 @@ class _TimelineRowEditChromeLayerState
     }
   }
 
+  /// PEN-11: device gesture settings — manual recognizers do not inject
+  /// them (kTouchSlop 18 vs device ~8), so they are refreshed on every build
+  /// like GestureDetector does.
+  ///
+  /// ⛔NO DEVICE FILTER on anything here: every target is a CONTROL, and a
+  /// press on a control is the control's on every device (유저 08-29:
+  /// 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이 발생하는게 심각한
+  /// 버그야」 · 09-23: 「버튼은 무조건 강한클레임」). ↩️The grip and the [+]
+  /// pan took the timeline's edit-pan devices (UI-R22F), so while one finger
+  /// scrolls the timeline a finger on them was handed to the scroller — the
+  /// 「finger resting to scroll」 case the user has called an assumption. The
+  /// range gesture beneath keeps that policy: empty cells are the SURFACE,
+  /// not a control.
+  void _refreshGestureSettings(BuildContext context) {
+    final gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
+    _gripDrag.gestureSettings = gestureSettings;
+    _addTap.gestureSettings = gestureSettings;
+    _addPan.gestureSettings = gestureSettings;
+    _tagPan.gestureSettings = gestureSettings;
+  }
+
   MouseCursor get _cursor {
     final hovered = _hoveredId;
     if (hovered == null) {
@@ -1058,32 +1116,20 @@ class _TimelineRowEditChromeLayerState
 
   @override
   Widget build(BuildContext context) {
-    // PEN-11: device gesture settings — manual recognizers do not inject
-    // them (kTouchSlop 18 vs device ~8), and the device policy can change
-    // under a live tree, so both are refreshed on every build like
-    // GestureDetector does.
-    final gestureSettings = MediaQuery.maybeGestureSettingsOf(context);
-    final editDevices = AppInput.timelineEditPanDevices;
-    _gripDrag
-      ..gestureSettings = gestureSettings
-      ..supportedDevices = editDevices;
-    _addTap.gestureSettings = gestureSettings;
-    _addPan
-      ..gestureSettings = gestureSettings
-      ..supportedDevices = editDevices;
-    _tagPan.gestureSettings = gestureSettings;
-
+    _refreshGestureSettings(context);
     return CustomPaint(
       key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
         resolver: widget.resolver,
         geometry: widget.geometry,
         colorScheme: Theme.of(context).colorScheme,
+        face: appFaceOf(DefaultTextStyle.of(context).style),
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,
         // R9 #12: pressed reads as engaged from the pointer DOWN, not from
         // the moment the drag recognizer wins.
         draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         gripGround: widget.gripGround,
       ),
       child: _ChromeHitGate(

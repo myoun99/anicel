@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★A CORRUPT CENTRAL DIRECTORY IS A [FormatException], NEVER A
 /// [RangeError].
@@ -23,7 +24,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-central');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   /// A small, valid archive to damage.
   String archiveAt(String name, {int entries = 3, String? comment}) {

@@ -21,19 +21,19 @@ import '../../helpers/fake_pdf_document.dart';
 /// that the two never share a document, that a page survives the rail
 /// being folded away, and that the swap is symmetric.
 
-const _conte = MediaAsset(
+final _conte = MediaAsset(
   path: 'C:/work/conte.pdf',
   name: 'conte',
   kind: MediaAssetKind.pdf,
 );
-const _layout = MediaAsset(
+final _layout = MediaAsset(
   path: 'C:/work/layout.pdf',
   name: 'layout',
   kind: MediaAssetKind.pdf,
 );
 
 Project _projectWithAssets() =>
-    createDefaultProject().copyWith(mediaAssets: const [_conte, _layout]);
+    createDefaultProject().copyWith(mediaAssets: [_conte, _layout]);
 
 /// What a viewer with nothing in it reads.
 ///
@@ -109,9 +109,9 @@ void main() {
   setUp(() {
     // Two documents of different lengths: a readout can then never be
     // mistaken for the other viewer's.
-    PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+    PdfRenderService.debugOpenerOverride = (source) async => FakePdfDocument(
       pageSizes: List<Size>.filled(
-        path.endsWith('layout.pdf') ? 5 : 2,
+        source.wholeFilePath!.endsWith('layout.pdf') ? 5 : 2,
         const Size(595, 842),
       ),
     );

@@ -343,10 +343,10 @@ void main() {
         duration: 10,
         layers: [
           seLayer('se-a1', file: 'a.wav', start: 2, length: 8).copyWith(
-            audioClips: const [
+            audioClips: [
               AudioClip(
                 filePath: 'a.wav',
-                frameId: FrameId('se-a1-frame'),
+                frameId: const FrameId('se-a1-frame'),
                 offsetFrames: 5,
               ),
             ],
@@ -555,10 +555,10 @@ void main() {
         duration: 10,
         layers: [
           seLayer('se-a1', file: 'a.wav', start: 2, length: 8).copyWith(
-            audioClips: const [
+            audioClips: [
               AudioClip(
                 filePath: 'a.wav',
-                frameId: FrameId('se-a1-frame'),
+                frameId: const FrameId('se-a1-frame'),
                 gain: 1.5,
                 fadeInFrames: 4,
                 fadeOutFrames: 2,

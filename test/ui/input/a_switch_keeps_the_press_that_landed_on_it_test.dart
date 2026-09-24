@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
-import 'package:anicel/src/ui/widgets/compact_switch.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 /// 🚨★★★A PRESS THAT LANDS ON A SWITCH BELONGS TO THAT SWITCH.
@@ -78,16 +78,27 @@ void main() {
   );
 
   Offset centreOfSwitch(WidgetTester tester) =>
-      tester.getCenter(find.byType(Switch));
+      tester.getCenter(find.byType(BooleanDot));
 
-  /// The two shared switch widgets, live and disabled. A round that claimed
+  /// The two shared boolean shapes, live and disabled. A round that claimed
   /// only one of them would leave the other's callers bare.
+  ///
+  /// ↩️They were two Material SWITCHES (`CompactSwitch` and the settings
+  /// row's `SwitchListTile`) until the app's one boolean replaced them —
+  /// the ring, dotted when on (guide-sym ⑥⑧; board
+  /// `a-panel-with-a-switch-can-never-bake`). The law these cases hold did
+  /// not change with the look.
   final shapes =
       <({String name, Widget Function(ValueChanged<bool>) live, Widget dead})>[
         (
-          name: 'CompactSwitch',
-          live: _compactSwitch,
-          dead: const CompactSwitch(value: false, onChanged: null),
+          name: 'BooleanDotButton',
+          live: _booleanDotButton,
+          dead: const BooleanDotButton(
+            keyValue: 'probe',
+            tooltip: 'Ask',
+            value: false,
+            onChanged: null,
+          ),
         ),
         (
           name: 'SettingsSwitchRow',
@@ -135,12 +146,14 @@ void main() {
     testWidgets('${shape.name}: a STILL click fires once, not twice', (
       tester,
     ) async {
-      // ⛔THE CASE THAT MAKES `silentChange` NECESSARY. With any movement the
-      // claim takes the arena and the control's own tap is rejected, so a
-      // live inner callback costs nothing — both mutants that left it live
+      // ⛔THE CASE THAT CATCHES A DOUBLE FIRE. With any movement the claim
+      // takes the arena and a control's own tap is rejected, so a live
+      // inner callback costs nothing — both mutants that left one live
       // stayed green until this case existed. A click that does not move is
       // where Flutter's tap still gets through, and then a live control and
-      // its claim both fire: the value toggles and toggles back.
+      // its claim both fire: the value toggles and toggles back. (The row
+      // draws the ring as a GLYPH for exactly this reason — a button of its
+      // own inside the row's claim would be that second fire.)
       final changes = <bool>[];
       final list = ScrollController();
       addTearDown(list.dispose);
@@ -202,8 +215,12 @@ void main() {
   }
 }
 
-Widget _compactSwitch(ValueChanged<bool> onChanged) =>
-    CompactSwitch(value: false, onChanged: onChanged);
+Widget _booleanDotButton(ValueChanged<bool> onChanged) => BooleanDotButton(
+  keyValue: 'probe',
+  tooltip: 'Ask',
+  value: false,
+  onChanged: onChanged,
+);
 
 Widget _settingsSwitchRow(ValueChanged<bool> onChanged) =>
     SettingsSwitchRow(label: 'Ask', value: false, onChanged: onChanged);

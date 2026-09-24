@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
@@ -130,7 +131,8 @@ class TimesheetInkLayer extends StatelessWidget {
   final TimesheetDocumentLayout layout;
   final TimesheetDocumentLayout pagedLayout;
   final CutId cutId;
-  final BrushToolState brushToolState;
+  /// Forwarded to [SheetInkLayer.brushToolState] — heard, not handed over.
+  final ValueListenable<BrushToolState> brushToolState;
   final HistoryManager historyManager;
 
   /// The live panel viewport (the same transform the document painter

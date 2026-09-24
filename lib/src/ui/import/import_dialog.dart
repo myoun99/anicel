@@ -158,7 +158,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// The pool's entry for [path], or null for a file the pool has not seen.
   MediaAsset? _poolEntryFor(String path) => widget.session.repository
       .requireProject()
-      .mediaAssetByPath(normalizedMediaPath(path));
+      .mediaAssetByPath(path);
 
   void _setSettings(
     Iterable<String> paths,
@@ -501,8 +501,7 @@ class _ImportDialogState extends State<ImportDialog> {
         // The pool: every kind registers, movies included. Two batches
         // rather than one, because carrying is now a per-file answer and
         // the registration verb takes one flag for the batch it is given.
-        tally.imported += _registerBatches(widget.session, _files);
-        tally.done.addAll(_files);
+        await _registerFiles(tally);
       } else {
         // ⛔The `await` is NOT redundant: `return _placeFiles(tally)`
         // hands the future to the caller and this try never sees it
@@ -568,7 +567,7 @@ class _ImportDialogState extends State<ImportDialog> {
     final failedPages = <int>[];
     final bool ok;
     try {
-      ok = await _placeThrough(path, kind, tally, failedPages);
+      ok = await _placeCarryingOnlyTheSpan(path, kind, tally, failedPages);
     } on Object {
       tally.warnings.add(
         AppText.strings.imCorrupt(mediaFileName(path)),
@@ -591,6 +590,69 @@ class _ImportDialogState extends State<ImportDialog> {
     tally.warnings.add(_placementFailure(path, kind, _settingsFor(path)));
   }
 
+  /// Whether [path] comes in as its PIECE ([TrimmedPieces]) — trimmed, and
+  /// carried in — whether it is placed or only registered.
+  ///
+  /// 🗣️유저 2026-09-23: 「비디오든 이미지든 오디오든 관계없이 법 하나로」 —
+  /// ONE answer, here, for every kind and both of the window's modes.
+  ///
+  /// ⚠️Not a file the pool already holds, and not an exception of this
+  /// round's making — two standing answers meet here. The pool's answer
+  /// stands for a file it holds (유저 2026-09-11: 「풀에서 가져올때는 가 로
+  /// 하자」, [_settingsFor]), so its Keep is the pool's, not this window's;
+  /// and a file the pool carries is inside already, every byte of it — a
+  /// piece of it would be a second copy (유저 08-27: 「사본 남으면 진짜
+  /// 용서안할게」). Placing a stretch of it takes the pooled file as it is.
+  bool _comesInAsAPiece(String path, ImportFileSettings settings) =>
+      settings.isTrimmed &&
+      settings.mode == ImportFileMode.keepInside &&
+      _poolEntryFor(path) == null;
+
+  /// [path] through its door — or, when it comes in as its PIECE
+  /// ([_comesInAsAPiece]), the span cut into a file of its own and placed
+  /// whole, with [path] as where it came from, then held like every carried
+  /// file once it has landed. The doors behind it are the ones an untrimmed
+  /// file goes through.
+  Future<bool> _placeCarryingOnlyTheSpan(
+    String path,
+    MediaAssetKind? kind,
+    _ImportTally tally,
+    List<int> failedPages,
+  ) async {
+    final settings = _settingsFor(path);
+    if (kind == null || !_comesInAsAPiece(path, settings)) {
+      return _placeThrough(path, kind, tally, failedPages, settings);
+    }
+    final pieces = widget.session.trimmedPieces;
+    final piece = await pieces.cut(
+      path,
+      kind,
+      inFrame: settings.inFrame,
+      outFrame: settings.outFrame,
+    );
+    if (piece == null) {
+      return false;
+    }
+    var landed = false;
+    try {
+      landed = await _placeThrough(
+        piece.path,
+        kind,
+        tally,
+        failedPages,
+        settings.copyWith(inFrame: 0, outFrame: piece.frames - 1),
+        sourcePath: path,
+      );
+    } finally {
+      if (landed) {
+        pieces.secure(piece.path);
+      } else {
+        pieces.discard(piece.path);
+      }
+    }
+    return landed;
+  }
+
   /// Which door this file goes through: an expanded PSD, the PDF
   /// renderer, or the ordinary image path.
   Future<bool> _placeThrough(
@@ -598,8 +660,9 @@ class _ImportDialogState extends State<ImportDialog> {
     MediaAssetKind? kind,
     _ImportTally tally,
     List<int> failedPages,
-  ) {
-    final settings = _settingsFor(path);
+    ImportFileSettings settings, {
+    String? sourcePath,
+  }) {
     final carry = settings.mode == ImportFileMode.keepInside;
     final bake = settings.bake;
     if (kind == MediaAssetKind.audio) {
@@ -609,10 +672,11 @@ class _ImportDialogState extends State<ImportDialog> {
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     if (kind == MediaAssetKind.video) {
-      return _placeMovie(path, settings, failedPages);
+      return _placeMovie(path, settings, failedPages, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
@@ -637,6 +701,7 @@ class _ImportDialogState extends State<ImportDialog> {
         },
         onPageRenderFailed: failedPages.add,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     return widget.session.importDoors.importImageFile(
@@ -648,6 +713,7 @@ class _ImportDialogState extends State<ImportDialog> {
       inFrame: settings.inFrame,
       outFrame: settings.outFrame,
       spot: widget.spot,
+      sourcePath: sourcePath,
     );
   }
 
@@ -663,8 +729,9 @@ class _ImportDialogState extends State<ImportDialog> {
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
-    List<int> failedFrames,
-  ) {
+    List<int> failedFrames, {
+    String? sourcePath,
+  }) {
     final doors = widget.session.importDoors;
     final carry = settings.mode == ImportFileMode.keepInside;
     if (widget.spot is SeCellSpot) {
@@ -674,6 +741,7 @@ class _ImportDialogState extends State<ImportDialog> {
         inFrame: settings.inFrame,
         outFrame: settings.outFrame,
         spot: widget.spot,
+        sourcePath: sourcePath,
       );
     }
     Future<bool> place(void Function(int rendered, int total)? progress) =>
@@ -683,6 +751,7 @@ class _ImportDialogState extends State<ImportDialog> {
           onRenderProgress: progress,
           onFrameRenderFailed: failedFrames.add,
           spot: widget.spot,
+          sourcePath: sourcePath,
         );
     if (!settings.bake) {
       return place(null);
@@ -711,23 +780,68 @@ class _ImportDialogState extends State<ImportDialog> {
     return AppText.strings.imCouldNotImport(mediaFileName(path));
   }
 
-  /// Registers [paths] in as few undo steps as their answers allow: one
-  /// batch for the carried, one for the referenced.
-  int _registerBatches(EditorSessionManager session, List<String> paths) {
-    var count = 0;
-    for (final carry in const [true, false]) {
-      final batch = [
-        for (final path in paths)
-          if ((_settingsFor(path).mode == ImportFileMode.keepInside) == carry)
-            path,
-      ];
-      if (batch.isEmpty) {
-        continue;
+  /// Registers every picked file in as few undo steps as their answers
+  /// allow — one batch for the carried, one for the referenced — a file
+  /// that comes in as its PIECE ([_comesInAsAPiece]) as that piece, with the
+  /// file as where it was cut from.
+  ///
+  /// 🗣️The same step a placement takes (유저 2026-09-11 「자른것만 안으로
+  /// 들어가도록」). The pool's trim was designed with the placement's
+  /// (import-place round, 2026-08-14 — 「In/Out 잘라 넣기 = 실제로 잘라서
+  /// 품기」) and waited for a trimmer, which the placements got on
+  /// 2026-09-23.
+  Future<void> _registerFiles(_ImportTally tally) async {
+    final pool = widget.session.mediaPool;
+    final pieces = widget.session.trimmedPieces;
+    // What the pool is handed — a piece in place of the file it was cut
+    // from — and the picked file each one stands for.
+    final carried = <String, String>{};
+    final referenced = <String>[];
+    for (final path in _files) {
+      final settings = _settingsFor(path);
+      final kind = mediaAssetKindForPath(path);
+      if (kind != null && _comesInAsAPiece(path, settings)) {
+        final piece = await pieces.cut(
+          path,
+          kind,
+          inFrame: settings.inFrame,
+          outFrame: settings.outFrame,
+        );
+        if (piece == null) {
+          tally.warnings.add(_placementFailure(path, kind, settings));
+        } else {
+          carried[piece.path] = path;
+        }
+      } else if (settings.mode == ImportFileMode.keepInside) {
+        carried[path] = path;
+      } else {
+        referenced.add(path);
       }
-      session.mediaPool.importMediaFiles(batch, copyIntoProject: carry);
-      count += batch.length;
     }
-    return count;
+    final cutFrom = {
+      for (final MapEntry(key: handed, value: picked) in carried.entries)
+        if (handed != picked) handed: picked,
+    };
+    var held = false;
+    try {
+      await pool.importMediaFiles(
+        carried.keys.toList(),
+        copyIntoProject: true,
+        cutFrom: cutFrom,
+      );
+      held = true;
+    } finally {
+      for (final piece in cutFrom.keys) {
+        held ? pieces.secure(piece) : pieces.discard(piece);
+      }
+    }
+    tally
+      ..imported += carried.length
+      ..done.addAll(carried.values);
+    await pool.importMediaFiles(referenced, copyIntoProject: false);
+    tally
+      ..imported += referenced.length
+      ..done.addAll(referenced);
   }
 
   /// EXPAND, which reports its outcome as warnings-or-null rather than a
@@ -955,11 +1069,17 @@ class _ImportDialogState extends State<ImportDialog> {
                 path: previewPath,
                 inFrame: settings.inFrame,
                 outFrame: settings.outFrame,
-                // Trimming a REGISTRATION would have to write the trimmed
-                // bytes, and there is no trimmer yet — so the ends only
-                // appear where they already act: on what gets placed.
-                rangeEditable: _placing,
+                // The ends appear wherever they act: on what gets placed,
+                // and on what gets registered, which comes in as its piece
+                // ([_registerFiles]). 🪦Registrations went without them
+                // until a trimmer existed (2026-09-24). ⛔Not on a file the
+                // pool already holds when only registering: that adds
+                // nothing, so a span there would act on nothing.
+                rangeEditable:
+                    _placing ||
+                    (previewPath != null && _poolEntryFor(previewPath) == null),
                 soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+                holdBytes: widget.session.projectFile.holdMediaBytes,
                 frameRate: widget.session.projectSettings.projectFrameRate,
                 audioSpeed: _projectAudioSpeed,
                 onRangeChanged: (start, end) {
@@ -1439,7 +1559,7 @@ class _ImportDialogState extends State<ImportDialog> {
           ),
           const SizedBox(height: 10),
           ExportToggleRow(
-            key: const ValueKey<String>('import-subfolders-toggle'),
+            keyValue: 'import-subfolders-toggle',
             label: AppText.strings.imArchivedProcesses,
             value: _parseConfig.includeProcessSubfolders,
             onChanged: (value) => setState(() {
@@ -1450,7 +1570,7 @@ class _ImportDialogState extends State<ImportDialog> {
             }),
           ),
           ExportToggleRow(
-            key: const ValueKey<String>('import-multicut-toggle'),
+            keyValue: 'import-multicut-toggle',
             label: AppText.strings.imMultiCutFolders,
             value: _parseConfig.multiCutFolders,
             onChanged: (value) => setState(() {

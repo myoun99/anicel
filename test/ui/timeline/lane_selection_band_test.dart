@@ -125,7 +125,13 @@ void main() {
     expect(laneBand.color, cellBand.color);
     expect(laneBand.border, cellBand.border);
     expect(laneBand.borderRadius, cellBand.borderRadius);
-    expect(laneBand, timelineRangeSelectionBandDecoration);
+    expect(
+      laneBand,
+      timelineRangeSelectionBandDecorationAt(
+        cellExtent: metrics.frameCellWidth,
+        crossExtent: metrics.layerRowHeight,
+      ),
+    );
   });
 
   /// 🚨T6 (유저 2026-08-13): 「트랜스폼 헤더행, 여전히 프레임 셀 선택범위가

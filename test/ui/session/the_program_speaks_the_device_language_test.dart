@@ -5,6 +5,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨F-157 (유저 2026-09-17): 「앱 기본 언어 설정값, 디바이스? 의 언어 설정
 /// 기준으로. 즉 앱컨테이너 설정에 language_settings.json 파일이 없을때 가
@@ -46,13 +47,7 @@ void main() {
     setUp(() {
       directory = Directory.systemTemp.createTempSync('qa-device-language');
     });
-    tearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on FileSystemException {
-        // the OS still holds it; it reaps its own temp
-      }
-    });
+    tearDown(() => deleteTempQuietly(directory));
 
     AppLanguageSettingsStore store() => AppLanguageSettingsStore(
       filePath: '${directory.path}/language_settings.json',

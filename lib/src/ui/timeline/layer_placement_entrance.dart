@@ -65,7 +65,6 @@ class LayerPlacementEntrance extends StatelessWidget {
     onLeave: onLeave,
     onDrop: (data, globalPosition) {
       final gap = _gapAt(context, globalPosition);
-      onLeave?.call();
       onDrop(gap.layers, gap.slot, data.path);
     },
   );

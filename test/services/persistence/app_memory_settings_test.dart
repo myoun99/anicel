@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings_store.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 void main() {
   tearDown(() {
@@ -37,7 +38,7 @@ void main() {
 
   test('the store keeps a chosen allowance between runs', () async {
     final directory = await Directory.systemTemp.createTemp('anicel-memory');
-    addTearDown(() => directory.delete(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = AppMemorySettingsStore(
       filePath: '${directory.path}/memory_settings.json',
     );

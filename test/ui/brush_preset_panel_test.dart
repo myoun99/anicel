@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'
+    show debugOnProfilePaint, debugProfilePaintsEnabled;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_group.dart';
@@ -1661,6 +1663,60 @@ void main() {
       styleOf('Marker'),
       withStroke,
       reason: '「텍스트 ui가 다른데 다르지않도록 통일」 — 살아남은 법',
+    );
+  });
+
+  testWidgets('🚨H40: a pick paints the two cells whose selection flipped and '
+      'no other — every cell is its own boundary', (tester) async {
+    final presets = [_calligraphy(), _marker(), _sampled()];
+    await _pumpPanel(
+      tester,
+      presets: presets,
+      selectedPresetId: _marker().id,
+    );
+    await tester.pumpAndSettle();
+
+    RenderObject cellOf(BrushPreset preset) => tester.renderObject(
+      find.byKey(ValueKey<String>('brush-preset-entry-${preset.id.value}')),
+    );
+    final cells = {for (final preset in presets) preset.id: cellOf(preset)};
+    // Which cell a painted render object sits INSIDE — the cell's own box
+    // is the grid's, and is not counted.
+    BrushPresetId? cellHolding(RenderObject painted) {
+      for (var node = painted.parent; node != null; node = node.parent) {
+        for (final entry in cells.entries) {
+          if (identical(node, entry.value)) {
+            return entry.key;
+          }
+        }
+      }
+      return null;
+    }
+
+    final touched = <BrushPresetId>{};
+    debugProfilePaintsEnabled = true;
+    debugOnProfilePaint = (painted) {
+      final cell = cellHolding(painted);
+      if (cell != null) {
+        touched.add(cell);
+      }
+    };
+    try {
+      await _pumpPanel(
+        tester,
+        presets: presets,
+        selectedPresetId: _calligraphy().id,
+      );
+    } finally {
+      debugProfilePaintsEnabled = false;
+      debugOnProfilePaint = null;
+    }
+
+    expect(
+      touched,
+      {_calligraphy().id, _marker().id},
+      reason: 'the selection moved between those two; the sampled cell shows '
+          'what it showed and is not painted again',
     );
   });
 }

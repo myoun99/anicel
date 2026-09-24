@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The law the audit pulled out of copies that no test named: a settings
 /// file that cannot be read must not stop the app.
@@ -26,7 +27,7 @@ void main() {
       directory = await Directory.systemTemp.createTemp('anicel-settings');
     });
 
-    tearDown(() => directory.delete(recursive: true));
+    tearDown(() => deleteTempQuietly(directory));
 
     String pathFor(String name) => '${directory.path}/$name';
 

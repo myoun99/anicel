@@ -58,7 +58,7 @@ Future<void> _pumpPosedView(
                 sessionState: _sessionState(),
                 layerId: const LayerId('layer-a'),
                 frameId: const FrameId('frame-a'),
-                inputSettings: BrushEditCanvasInputSettings(),
+                inputSettings: BrushEditCanvasInputSettings.new,
                 onSourceStrokeCommitted: (strokeData) =>
                     onResult(strokeData.sourceDabs),
               ),

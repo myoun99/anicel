@@ -99,8 +99,8 @@ void main() {
                     strokes: const [],
                   ),
                 ],
-                audioClips: const [
-                  AudioClip(filePath: 'v.wav', frameId: FrameId('se-frame')),
+                audioClips: [
+                  AudioClip(filePath: 'v.wav', frameId: const FrameId('se-frame')),
                 ],
               ),
             ],

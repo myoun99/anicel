@@ -53,10 +53,6 @@ void main() {
       ),
       'soloedSeLayerIds': () => session.soloedSeLayerIds.addListener(() {}),
       'editingFrameCursor': () => session.editingFrameCursor.addListener(() {}),
-      'frameScrubActive': () => session.frameScrubActive.addListener(() {}),
-      'scrubOutOfTerritory': () => session.scrubOutOfTerritory.addListener(
-        () {},
-      ),
       'frameSeekCommitted': () => session.frameSeekCommitted.addListener(() {}),
       'frameRangeSelection': () => session.frameRangeSelection.addListener(
         () {},
@@ -114,6 +110,14 @@ void main() {
     expectReleased(
       'onionSkin.layerIds',
       () => session.onionSkin.layerIds.addListener(() {}),
+    );
+    expectReleased(
+      'frameScrub.active',
+      () => session.frameScrub.active.addListener(() {}),
+    );
+    expectReleased(
+      'frameScrub.outOfTerritory',
+      () => session.frameScrub.outOfTerritory.addListener(() {}),
     );
   });
 

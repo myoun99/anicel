@@ -217,76 +217,71 @@ void main() {
     );
   });
 
-  test('onion skin undoes, and undo does not disturb another row', () {
-    // 유저: 「아무튼 어니언 적용 미적용만 되면 되는건데」.
-    //
-    // ⛔THE SECOND HALF IS THE POINT. Onion lives in a Set, so the lazy
-    // undo is "put the whole set back" — which would also un-toggle a row
-    // the user touched afterwards. The command restores THIS id's
-    // membership and nothing else.
+  // ↩️F-162 (유저 2026-09-24): 「어니언/비지블솔로 등 내가 말한건 빼도록」. The
+  // onion was undoable from 08-29 (「아무튼 레이어에 있는 버튼 싹다」) — the row
+  // toggle and, after 유저 asked 「조작끝낸 모든 레이어가 안돌아간단거야
+  // 설마?」, the legend sweep too. Both leave the history now, as the
+  // visibility solo did (F-125): the onion shows the drawing, it is not an
+  // edit of it. The pins below were the two that said it undoes.
+  test('the onion toggle banks no undo step — Ctrl+Z takes the edit before '
+      'it and leaves the ghosts alone', () {
     final session = newSession();
     addTearDown(session.dispose);
-    session.layerStack.addLayer();
+    session.layerStack.addLayer(); // an edit that IS a step
+    final rows = session.layers.length;
     // F-145: only a row that can ghost takes the toggle — the stack's last
     // row is the camera, which refuses it.
-    final ghosting = [
-      for (final row in session.layers)
-        if (row.kind.takesOnionSkin) row.id,
-    ];
-    final first = ghosting.first;
-    final second = ghosting.last;
-    expect(first, isNot(second), reason: 'fixture: two distinct rows');
+    final ghosting = session.layers.firstWhere(
+      (row) => row.kind.takesOnionSkin,
+    );
+    final steps = session.historyManager.undoCount;
 
-    session.onionSkin.toggleLayerOnionSkin(first);
-    session.onionSkin.toggleLayerOnionSkin(second);
-    // Undo only the FIRST row's toggle.
-    session.historyManager.undo();
-    session.historyManager.undo();
-
-    expect(session.onionSkin.isLayerOnionSkinEnabled(first), isFalse);
-    session.historyManager.redo();
+    session.onionSkin.toggleLayerOnionSkin(ghosting.id);
     expect(
-      session.onionSkin.isLayerOnionSkinEnabled(first),
+      session.onionSkin.isLayerOnionSkinEnabled(ghosting.id),
       isTrue,
-      reason: 'redo restores what this command did, not the whole set',
+      reason: 'fixture premise: the toggle toggled',
     );
+    expect(session.historyManager.undoCount, steps);
+
+    session.historyManager.undo();
+
     expect(
-      session.onionSkin.isLayerOnionSkinEnabled(second),
-      isFalse,
-      reason: 'the other row stayed where the later undo left it',
+      session.layers.length,
+      rows - 1,
+      reason: 'the undo took the Add Layer, the step before the toggle',
     );
+    expect(session.onionSkin.isLayerOnionSkinEnabled(ghosting.id), isTrue);
   });
 
-  test('the legend onion sweep undoes in ONE press, every row', () {
-    // 🚨유저 2026-08-29 asked exactly this: 「조작끝낸 모든 레이어가
-    // 안돌아간단거야 설마?」 — and at that moment the bulk sweep did not
-    // undo at all. It wrote the set directly, so making the per-row toggle
-    // undoable had left the legend button behind.
+  test('…and neither does the legend sweep over every displayed row', () {
     final session = newSession();
     addTearDown(session.dispose);
     for (var i = 0; i < 3; i += 1) {
       session.layerStack.addLayer();
     }
+    final steps = session.historyManager.undoCount;
     final before = {
       for (final layer in session.layers)
         layer.id: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
     };
-    expect(before.length, greaterThan(1), reason: 'fixture: several rows');
 
     session.onionSkin.toggleOnionSkinForDisplayedLayers();
-    final changed = session.layers.where(
-      (l) => session.onionSkin.isLayerOnionSkinEnabled(l.id) != before[l.id],
+    final swept = {
+      for (final layer in session.layers)
+        layer.id: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
+    };
+    expect(swept, isNot(before), reason: 'fixture: the sweep changed rows');
+    expect(session.historyManager.undoCount, steps);
+
+    session.onionSkin.toggleOnionSkinForDisplayedLayers();
+    expect(
+      {
+        for (final layer in session.layers)
+          layer.id: session.onionSkin.isLayerOnionSkinEnabled(layer.id),
+      },
+      before,
+      reason: 'the second press is the way back — the button, not Ctrl+Z',
     );
-    expect(changed, isNotEmpty, reason: 'fixture: the sweep changed rows');
-
-    session.historyManager.undo();
-
-    for (final entry in before.entries) {
-      expect(
-        session.onionSkin.isLayerOnionSkinEnabled(entry.key),
-        entry.value,
-        reason: 'ONE undo put every swept row back',
-      );
-    }
   });
 }

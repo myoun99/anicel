@@ -8,7 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 void main() {
   const rowsBodyKey = ValueKey<String>('test-rows-body');
   const playheadKey = ValueKey<String>('test-playhead');
-  const beatLinesKey = ValueKey<String>('test-beat-lines');
+  const gridSheetKey = ValueKey<String>('test-grid-sheet');
   const cutEndBoundaryKey = ValueKey<String>('timeline-cut-end-boundary');
 
   group('TimelineFrameGridStack', () {
@@ -118,8 +118,8 @@ void main() {
       expect(stack.children[1].key, rowsBodyKey);
       final playheadPositioned = stack.children[2] as Positioned;
       // The playhead rides its OWN RepaintBoundary: a cursor move repaints
-      // just that layer instead of re-rasterizing the whole grid (the beat
-      // lines have one too, from the same hand).
+      // just that layer instead of re-rasterizing the whole grid (the grid
+      // sheet has one too, from the same hand).
       final playheadBoundary = playheadPositioned.child as RepaintBoundary;
       expect(playheadBoundary.child!.key, playheadKey);
       expect(stack.children[3], isA<Positioned>());
@@ -127,7 +127,7 @@ void main() {
       expect(stack.children[5], isA<TimelineBodyCutEndBoundary>());
     });
 
-    testWidgets('the beat lines get their repaint boundary from the stack', (
+    testWidgets('the grid sheet gets its repaint boundary from the stack', (
       tester,
     ) async {
       await _pumpFrameGridStack(tester);
@@ -137,7 +137,7 @@ void main() {
       final stack = tester.widget<Stack>(find.byType(Stack));
       final slot = (stack.children[0] as Positioned).child as IgnorePointer;
       final boundary = slot.child! as RepaintBoundary;
-      expect(boundary.child!.key, beatLinesKey);
+      expect(boundary.child!.key, gridSheetKey);
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {
@@ -170,8 +170,8 @@ Future<void> _pumpFrameGridStack(
               width: 480,
               height: 480,
             ),
-            beatLines: const SizedBox(
-              key: ValueKey<String>('test-beat-lines'),
+            gridSheet: const SizedBox(
+              key: ValueKey<String>('test-grid-sheet'),
               width: 480,
               height: 480,
             ),

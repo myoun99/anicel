@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
@@ -17,7 +18,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
-import '../widgets/axis_gesture_detector.dart';
+import '../widgets/owning_axis_grip.dart';
 import 'timeline_beat_lines.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
@@ -240,38 +241,22 @@ class SeAudioLaneFrameRow extends StatelessWidget {
   final Axis axis;
   final String keyPrefix;
 
+  /// ⛔NO GROUND, NO SEAM (I-44). This band washed at a raw 60% over the
+  /// grid and ruled itself off with a border of its own; the grid sheet
+  /// under the rows paints this lane's ground — the lane wash every fx row
+  /// stands on, lit with the standing row like its rail half (F-25, which
+  /// this lane had never been handed) — and its seam.
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final band = DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.washDown.withValues(alpha: 0.6),
-        border: _bandSeam(colorScheme),
-      ),
-      child: Stack(clipBehavior: Clip.hardEdge, children: _spans()),
+    return _withSpacers(
+      Stack(clipBehavior: Clip.hardEdge, children: _spans()),
     );
-    return _withSpacers(band);
   }
 
   double get _cellExtent => metrics.frameCellWidth;
   double get _crossExtent => metrics.layerRowHeight;
   double get _visibleExtent =>
       (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
-
-  /// The divider faces the NEXT lane: below in the timeline, to the right
-  /// in the X-sheet — and the ROW SEAM comes from the law, exactly as the
-  /// property lanes' band reads it (D43-2 d: 「fx행엔 그리드의 가로선 있는데
-  /// … 통일로 추가해주고」). This lane used to write its own — outlineVariant
-  /// at half width — the very drift that round named.
-  Border _bandSeam(ColorScheme colorScheme) {
-    final ink = timelineGridRowSeamInk(colorScheme);
-    final seam = BorderSide(color: ink.color, width: ink.strokeWidth);
-    final horizontal = axis == Axis.horizontal;
-    return Border(
-      bottom: horizontal ? seam : BorderSide.none,
-      right: horizontal ? BorderSide.none : seam,
-    );
-  }
 
   /// One clip span per audio span inside the visible window.
   List<Widget> _spans() => [
@@ -311,6 +296,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
         peaks: audioPeaksFor?.call(span.clip.filePath),
         frameRate: frameRate,
         frameCellExtent: _cellExtent,
+        crossExtent: _crossExtent,
         axis: axis,
         onSetOffset: onSetOffset == null
             ? null
@@ -364,6 +350,7 @@ class _SeAudioLaneSpan extends StatefulWidget {
     required this.peaks,
     required this.frameRate,
     required this.frameCellExtent,
+    required this.crossExtent,
     required this.axis,
     required this.onSetOffset,
     this.liveOffsetDrag,
@@ -374,6 +361,10 @@ class _SeAudioLaneSpan extends StatefulWidget {
   final AudioPeaks? peaks;
   final ProjectFrameRate frameRate;
   final double frameCellExtent;
+
+  /// The lane's own height across the frame axis — the block corner law's
+  /// other side.
+  final double crossExtent;
   final Axis axis;
   final ValueChanged<int>? onSetOffset;
   final _SpanLiveOffsetDrag? liveOffsetDrag;
@@ -528,26 +519,15 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     final fadeOut = _previewFadeOut;
     final editable = _editable;
     final showFadeMarks = widget.onSetFades != null && peaks != null;
-    return AxisGestureDetector(
+    return OwningAxisGrip(
       axis: widget.axis,
-      behavior: HitTestBehavior.opaque,
-      // .down: the drag measures from the pointer-down origin, so the
-      // recognizer's slop never eats into the slid amount.
-      dragStartBehavior: DragStartBehavior.down,
-      onDragStart: editable
-          ? (details) => _startDrag(details.localPosition)
-          : null,
-      onDragUpdate: editable
-          ? (details) => _updateDrag(details.primaryDelta!)
-          : null,
-      onDragEnd: editable ? (_) => _endDrag() : null,
-      onDragCancel: editable ? _cancelDrag : null,
+      configure: _configureDrag,
       child: MouseRegion(
         cursor: editable ? _resizeCursor : MouseCursor.defer,
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
-            _backdrop(),
+            _backdrop(TimelineGridLaw.maybeOf(context)?.ground),
             ?_waveform(peaks, offset, fadeIn: fadeIn, fadeOut: fadeOut),
             // Fade ramp ends: accent ticks the handle drags travel with.
             if (showFadeMarks && fadeIn > 0) _fadeMark(fadeIn, leading: true),
@@ -560,21 +540,84 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     );
   }
 
+  /// 🚨A DRAG FROM THE SOUND IS THE SOUND'S (F-163 재발, 유저 2026-09-23:
+  /// 「버튼은 무조건 강한클레임이라는거 감안해서 같은법 적용해줘」). Sliding
+  /// the sound is this span's verb, so it wears the grips' own pair
+  /// ([OwningAxisGrip]). ↩️A plain one-axis drag: a pull across the lane
+  /// moved 0 along it and the timeline's scroller walked over.
+  ///
+  /// A span that cannot be edited still HOLDS the press — the handlers stay
+  /// mounted and do nothing — because a dead control is not a scroll either
+  /// (`ControlPressClaim.onPressed`: 「a press on a dead button is still not
+  /// a scroll」). A recogniser with no handlers is never offered the pointer.
+  void _configureDrag(DragGestureRecognizer recognizer) {
+    recognizer
+      // .down: the drag measures from the pointer-down origin, so the
+      // recognizer's slop never eats into the slid amount.
+      ..dragStartBehavior = DragStartBehavior.down
+      ..onStart = ((details) {
+        if (_editable) {
+          _startDrag(details.localPosition);
+        }
+      })
+      ..onUpdate = ((details) {
+        if (_editable) {
+          _updateDrag(details.primaryDelta!);
+        }
+      })
+      ..onEnd = ((_) {
+        if (_editable) {
+          _endDrag();
+        }
+      })
+      ..onCancel = () {
+        if (_editable) {
+          _cancelDrag();
+        }
+      };
+  }
+
   MouseCursor get _resizeCursor => widget.axis == Axis.horizontal
       ? SystemMouseCursors.resizeLeftRight
       : SystemMouseCursors.resizeUpDown;
 
   /// The block's paper backdrop so the lane reads as the block's own
-  /// editing strip.
-  Widget _backdrop() => Positioned.fill(
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: timelineDrawingHeldColor.withValues(alpha: 0.6),
-        borderRadius: const BorderRadius.all(Radius.circular(4)),
-        border: Border.all(color: timelineDrawingStartBorderColor),
+  /// editing strip — and so it wears the block's own corner, the one law
+  /// ([timelineBlockCornerRadiusAt]); a hand-typed 4 had it rounder or
+  /// squarer than the block above it depending on the zoom.
+  ///
+  /// 🚨I-44: the block's paper BOX too — short of the lane's seam
+  /// ([timelineRowPaperExtent]), which the grid sheet draws under the lane —
+  /// and its 60% paper pre-blended onto the lane's resting ground, the way
+  /// an unworked block's is onto its row's, so the sheet's lines cannot show
+  /// through a block (「블록에 존재하는 그리드선만 싹 삭제」).
+  Widget _backdrop(Color? hostGround) {
+    final horizontal = widget.axis == Axis.horizontal;
+    final paper = timelineRowPaperExtent(widget.crossExtent);
+    return Positioned(
+      left: 0,
+      top: 0,
+      right: horizontal ? 0 : null,
+      bottom: horizontal ? null : 0,
+      width: horizontal ? null : paper,
+      height: horizontal ? paper : null,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: timelineGridGroundOver(
+            under: timelineLaneGround(hostGround),
+            painted: timelineDrawingHeldColor.withValues(alpha: 0.6),
+          ),
+          borderRadius: BorderRadius.all(
+            timelineBlockCornerRadiusAt(
+              cellExtent: widget.frameCellExtent,
+              crossExtent: paper,
+            ),
+          ),
+          border: Border.all(color: timelineDrawingStartBorderColor),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget? _waveform(
     AudioPeaks? peaks,

@@ -87,17 +87,27 @@ void main() {
     );
     final entries = s.historyManager.undoCount - entriesBefore;
 
-    for (var press = 1; press <= entries; press += 1) {
-      final before = s.historyManager.undoCount;
+    // I-41: a press standing elsewhere than its entry was made WALKS there
+    // first (the drawings are on five frames), so a press either walks —
+    // nothing taken back, the way back left for redo — or goes back one.
+    // Either way the redo side grows by exactly one.
+    // ⛔What it must never do is go back one and push another: that is the
+    // re-solo writing history, and undo standing still on the solo — and a
+    // push empties the redo side.
+    for (var press = 1; s.historyManager.undoCount > entriesBefore; press += 1) {
+      expect(press, lessThanOrEqualTo(2 * entries), reason: 'undo stood still');
+      final undos = s.historyManager.undoCount;
+      final redos = s.historyManager.redoCount;
       s.undo();
       expect(
-        s.historyManager.undoCount,
-        before - 1,
+        s.historyManager.redoCount,
+        redos + 1,
         reason:
             'press $press went back one entry and pushed another: the '
             're-solo after the step wrote history, and undo stood still on '
             'the solo from there on',
       );
+      expect(s.historyManager.undoCount, anyOf(undos, undos - 1));
     }
 
     expect(drawingsOn(s, row), drawingsBefore);

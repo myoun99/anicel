@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_envelope_render.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The Envelope export tab: the 컷봉투 as PNG — at the cut's own pixel size
 /// so it drops into a working file as a layer, or at print size; flat, or
@@ -45,11 +46,7 @@ void main() {
 
   tearDown(() {
     AppExport.settings.value = AppExportSettings();
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // Windows may hold a handle a beat; leaking a temp dir beats failing.
-    }
+    deleteTempQuietly(temp);
   });
 
   Cut cut(String id) => Cut(

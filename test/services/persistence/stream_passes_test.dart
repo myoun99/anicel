@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🔑 THE COUPLING: how many times each writer reads a streamed entry.
 ///
@@ -23,13 +24,7 @@ void main() {
     directory = Directory.systemTemp.createTempSync('qa-stream-passes-');
   });
 
-  tearDown(() {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // Windows handles.
-    }
-  });
+  tearDown(() => deleteTempQuietly(directory));
 
   /// A streamed entry that answers reads from [bytes] and counts how many
   /// times it is walked from the beginning.

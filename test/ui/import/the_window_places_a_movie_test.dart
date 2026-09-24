@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory tempDir;
@@ -31,11 +32,7 @@ void main() {
 
   tearDown(() async {
     debugVideoDecodeBackend = null;
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
+    deleteTempQuietly(tempDir);
   });
 
   Future<String> writeMovie(WidgetTester tester, String name) async =>

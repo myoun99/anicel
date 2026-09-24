@@ -26,7 +26,7 @@ class _BrushEditPressure {
 
   List<BrushDab> withPressureDynamics(List<BrushDab> dabs) {
     final settings =
-        _state._activeStrokeInputSettings ?? _state.widget.inputSettings;
+        _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
     if (!settings.hasPressureDynamics) {
       return dabs;
     }

@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/project_scratch_folder.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -61,7 +62,7 @@ void main() {
     final directory = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('presets'),
     ))!;
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final service = BrushPresetFileService(
       filePath: '${directory.path}/brush_presets.json',
     );

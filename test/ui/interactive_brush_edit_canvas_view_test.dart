@@ -47,7 +47,7 @@ void main() {
               sessionState: sessionState,
               layerId: layerId,
               frameId: frameId,
-              inputSettings: BrushEditCanvasInputSettings(),
+              inputSettings: BrushEditCanvasInputSettings.new,
               onSourceStrokeCommitted: (_) {},
               showTransparentBackground: false,
             ),
@@ -934,6 +934,42 @@ void main() {
         reason: 'the off-canvas leg is real drawing on the pasteboard',
       );
       expect(xs.last, 6);
+    });
+
+    testWidgets('a stroke reads the brush in hand at its first point, with '
+        'no rebuild in between (H40 ②)', (tester) async {
+      // The hosts no longer rebuild this view for a size, a flow or a
+      // colour: it is handed a getter and reads the brush when a stroke
+      // starts. What it read then holds until pointer up.
+      final sessionState = _sessionState(width: 200, height: 32);
+      final results = <List<BrushDab>>[];
+      var inHand = BrushEditCanvasInputSettings(color: 0xFFE53935, size: 20);
+      await tester.pumpWidget(
+        _app(
+          InteractiveBrushEditCanvasView(
+            sessionState: sessionState,
+            layerId: const LayerId('layer-a'),
+            frameId: const FrameId('frame-a'),
+            inputSettings: () => inHand,
+            onSourceStrokeCommitted: (strokeData) =>
+                results.add(strokeData.sourceDabs),
+          ),
+        ),
+      );
+
+      inHand = BrushEditCanvasInputSettings(color: 0xFF1E88E5, size: 6);
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(1, 1)),
+        pointer: 1,
+      );
+      inHand = BrushEditCanvasInputSettings(color: 0xFF43A047, size: 12);
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(101, 1)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single.map((dab) => dab.color).toSet(), {0xFF1E88E5});
+      expect(results.single.map((dab) => dab.size).toSet(), {6});
     });
 
     testWidgets('active stroke snapshots input settings until pointer up', (
@@ -2033,7 +2069,7 @@ InteractiveBrushEditCanvasView _view(
     sessionState: sessionState,
     layerId: const LayerId('layer-a'),
     frameId: const FrameId('frame-a'),
-    inputSettings: inputSettings,
+    inputSettings: () => inputSettings,
     viewport: viewport,
     onHoldPick: onHoldPick,
     onTemporaryToolHold: onTemporaryToolHold,

@@ -71,10 +71,10 @@ class CellInstances {
   /// selectable creates). Returns true when a selection owned the press.
   ///
   /// - Cell selection: every spanned row fills its EMPTY gaps inside the
-  ///   range — drawing/SE rows with a new cel per gap (exposure = gap,
-  ///   ONE undo across all rows), instruction rows with a default-
-  ///   vocabulary event per gap (one undo per row), the camera row with a
-  ///   pose key frozen on every unkeyed frame (one undo).
+  ///   range — drawing/SE/direction rows with a new cel per gap (exposure =
+  ///   gap, ONE undo across all rows; on a direction row each is a span of
+  ///   the vocabulary's first entry, R27), the camera row with a pose key
+  ///   frozen on every unkeyed frame (one undo).
   /// - Lane selection: the lane freezes a key on every unkeyed frame of
   ///   the range (one undo) — the navigator toggle's range form.
   bool createInstancesForSelection() {
@@ -113,7 +113,6 @@ class CellInstances {
     // Camera goes FIRST — its undo restores a whole-project snapshot, so it
     // must be the last command undone (CompositeCommand undoes in reverse).
     final cameraCommands = <Command>[];
-    final instructionCommands = <Command>[];
     for (final layerId in selection.spanLayerIds) {
       final layer = displayById[layerId];
       if (layer == null) {
@@ -126,16 +125,9 @@ class CellInstances {
         }
         continue;
       }
-      if (layer.kind == LayerKind.instruction) {
-        final command = _instructionVerbs.instructionEventsCommandForRange(
-          layer,
-          selection,
-        );
-        if (command != null) {
-          instructionCommands.add(command);
-        }
-        continue;
-      }
+      // A direction row fills its gaps the way every cel row does: its
+      // spans are its blocks (R27), and a bare one takes the ＋'s span at
+      // the write — so it had no branch of its own to keep.
       final layerFills = _authoredFillsFor(layer, selection);
       if (layerFills.isNotEmpty) {
         fills[layer.id] = layerFills;
@@ -143,7 +135,6 @@ class CellInstances {
     }
     final commands = <Command>[
       ...cameraCommands,
-      ...instructionCommands,
       if (fills.isNotEmpty)
         ..._controllers.timelineController.drawingFramesCommandsForLayers(
           fills,
@@ -158,7 +149,7 @@ class CellInstances {
                 commands: commands,
               ),
       );
-      if (cameraCommands.isNotEmpty || instructionCommands.isNotEmpty) {
+      if (cameraCommands.isNotEmpty) {
         _changes.refreshAfterCutCommand();
       }
     }

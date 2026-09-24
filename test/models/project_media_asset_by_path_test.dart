@@ -15,7 +15,7 @@ void main() {
     name: 'P',
     createdAt: DateTime.utc(2026, 9, 3),
     tracks: const [],
-    mediaAssets: const [
+    mediaAssets: [
       MediaAsset(path: 'a/one.wav', name: 'one'),
       MediaAsset(path: 'a/two.wav', name: 'two'),
     ],

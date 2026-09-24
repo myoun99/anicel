@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**「READY」 BEFORE THE PICKER, 「SAVED」 ONLY AFTER IT** (F-57).
 ///
@@ -52,11 +53,7 @@ void main() {
     FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugFileExporter = null;
     session.dispose();
-    try {
-      placedFolder.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(placedFolder);
   });
 
   /// The labels the progress windows can show. Read through the getters so

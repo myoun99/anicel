@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The capture chain wired through the session (REC1-D): baked gain in
 /// the landed WAV, the clip flag on the AudioClip, the clip light, the
@@ -31,7 +32,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-capture-chain');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   EditorSessionManager session() => EditorSessionManager(
     initialProject: createDefaultProject(),
@@ -162,9 +163,9 @@ void main() {
         0: TimelineExposure.drawing(FrameId('f1'), length: 4),
         6: TimelineExposure.drawing(FrameId('f2'), length: 4),
       },
-      audioClips: const [
-        AudioClip(filePath: 'a.wav', frameId: FrameId('f1'), clipped: true),
-        AudioClip(filePath: 'b.wav', frameId: FrameId('f2')),
+      audioClips: [
+        AudioClip(filePath: 'a.wav', frameId: const FrameId('f1'), clipped: true),
+        AudioClip(filePath: 'b.wav', frameId: const FrameId('f2')),
       ],
     );
     await tester.pumpWidget(

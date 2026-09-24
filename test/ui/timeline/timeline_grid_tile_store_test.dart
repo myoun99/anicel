@@ -64,6 +64,7 @@ void main() {
     Layer layer, {
     TimelineGridTileStore? store,
     TextStyle baseTextStyle = const TextStyle(fontSize: 11),
+    Color? paperGround,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -76,6 +77,7 @@ void main() {
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: baseTextStyle,
       tileStore: store,
+      paperGround: paperGround,
     );
   }
 
@@ -110,12 +112,13 @@ void main() {
     expect(store.revision.value, revisionBefore);
   });
 
-  // ⚠️CONTRACT CHANGED (D32/D38, 2026-08-18): the per-cell border stroke
-  // is gone from the substrate — the interior seams are the painter's
-  // heldSeamLineFor contract now, mirrored here as plain opaque rect
-  // fills (the multiply onto the paper was computed in Dart).
-  test('the emitter probes the painter: the covered span opens with the '
-      'block fill, and an EMPTY span still carries the law\'s lines', () {
+  // ⚠️CONTRACT CHANGED TWICE. D32/D38 (2026-08-18) took the per-cell border
+  // stroke out of the substrate and put the painter's seams in as plain
+  // rect fills; I-44 (2026-09-24, 「합친다 — 그리드 한 장」) took the seams
+  // out too — every line is the grid sheet's, under the row — so the
+  // stream is the paper and nothing else.
+  test('the emitter probes the painter: every papered cell is ONE fill at '
+      'its paper box, and an EMPTY span emits nothing', () {
     final painter = painterFor(blockLayer());
     final covered = timelineGridSubstrateOps(
       painter: painter,
@@ -138,12 +141,13 @@ void main() {
         reason: 'no border strokes in the substrate any more',
       );
     }
-    // 🚨AND EVERY CELL GETS ITS OWN RECT. Emitting the SPAN-START cell's
+    // 🚨AND EVERY CELL GETS ITS OWN BOX. Emitting the SPAN-START cell's
     // rect for all four frames left this test green (a mutation,
     // 2026-09-07): the assertions above read the op KIND and the first
     // cell's corners, so a tile that stacked four fills on cell 0 and left
     // three cells blank passed. The probe-the-painter rule is about the
-    // geometry, so the geometry is what gets named.
+    // geometry, so the geometry is what gets named — the PAPER box, short
+    // of the row seam the sheet draws under the row (I-44).
     final origin = painter.cellRectFor(0);
     final originMainCovered = painter.axis == Axis.horizontal
         ? origin.left
@@ -161,120 +165,55 @@ void main() {
       return false;
     }
 
+    var papered = 0;
     for (var frame = 0; frame < 4; frame += 1) {
-      final cell = painter.cellRectFor(frame);
+      final paper = painter.paperRectFor(frame);
       final local = painter.axis == Axis.horizontal
-          ? cell.shift(Offset(-originMainCovered, 0))
-          : cell.shift(Offset(0, -originMainCovered));
+          ? paper.shift(Offset(-originMainCovered, 0))
+          : paper.shift(Offset(0, -originMainCovered));
+      final hasPaper = painter.resolvedCellStyleFor(frame).background.a > 0;
+      if (hasPaper) {
+        papered += 1;
+      }
       expect(
         streamHasFillAt(covered, local),
-        painter.resolvedCellStyleFor(frame).background.a > 0,
+        hasPaper,
         reason:
             'frame $frame: a cell with paper owes the stream a fill at ITS '
-            'own rect, and one without owes none',
+            'own paper box, and one without owes none',
       );
     }
-
-    // The seam the emitter mirrored is the painter's own contract.
+    expect(papered, greaterThan(0), reason: 'fixture premise: a block');
     expect(
-      painter.heldSeamLineFor(1),
-      isNotNull,
-      reason: 'fixture premise: a seam exists at frame 1',
+      covered.length,
+      papered * 8,
+      reason: 'one fill per papered cell and NOTHING more — a line on the '
+          'paper would be an op of its own (「블록에 존재하는 그리드선만 싹 '
+          '삭제」)',
     );
 
-    // 🚨D43-2 재개 (유저 2026-08-22, 스크린샷) — 「**아직도 레이어행에만
-    // 그리드 없거든? fx쪽엔 있는데**」.
-    //
-    // ⛔THIS ASSERTION USED TO READ `expect(empty, isEmpty)`, AND THAT WAS
-    // THE BUG WRITTEN DOWN AS LAW. It cited UI-R21 #2 — 「빈 칸은 아무것도
-    // 안 칠한다」 — which is true of the PAPER and was never true of the
-    // grid line. D43-2 gave empty cells their line in the PAINTER and left
-    // this contract saying they emit nothing, so the tile path went on
-    // dropping it while the painter's own law file stayed green. The user
-    // saw exactly that split: layer rows blank, fx rows lined — fx rows lay
-    // down no opaque ground, so the overlay beneath them still shows.
-    //
-    // ⇒ an empty span emits the LINES and nothing else. Counted off the
-    // painter rather than written out, so a cadence change cannot turn this
-    // back into a formula that recites whatever the code happens to do.
+    // 🚨D43-2 재개 (유저 2026-08-22): 「아직도 레이어행에만 그리드 없거든?」.
+    // This assertion once read `isEmpty` and that WAS the bug: the painter
+    // drew the empty cells' lines and the emitter dropped them, so the
+    // tiled rows went blank. It reads `isEmpty` again for the opposite
+    // reason — no row draws a line at all now, the sheet under the rows
+    // does (I-44), so an empty cell has nothing left to bake.
     const emptyStart = 8;
     const emptyEndExclusive = 12;
-    final expectedLines = <({Rect rect, Color color})>[];
     for (var frame = emptyStart; frame < emptyEndExclusive; frame += 1) {
       expect(
         painter.resolvedCellStyleFor(frame).background.a,
         0,
         reason: 'fixture premise: frame $frame really is empty paper',
       );
-      final held = painter.heldSeamLineFor(frame);
-      if (held != null) {
-        expectedLines.add(held);
-      }
-      // 🚨D43-2 재개 d (유저 2026-08-23): 「fx행엔 그리드의 **가로선** 있는데
-      // 레이어쪽 프레임쪽엔 없거든? 그거 통일로 추가해주고」 — the CROSS-axis
-      // seam is emitted per cell too. Taken off the painter like its
-      // sibling, which is what keeps this from turning into a formula that
-      // recites whatever the emitter happens to do.
-      final row = painter.rowSeamLineFor(frame);
-      if (row != null) {
-        expectedLines.add(row);
-      }
     }
-    expect(expectedLines, isNotEmpty, reason: 'the law puts lines here');
     final empty = timelineGridSubstrateOps(
       painter: painter,
       spanStartIndex: emptyStart,
       spanEndIndexExclusive: emptyEndExclusive,
       devicePixelRatio: 1.0,
     );
-    expect(
-      empty.length,
-      expectedLines.length * 8,
-      reason:
-          'one fill per line the painter names, and nothing more — the '
-          'paper really is absent, so UI-R21 #2 still holds for the FILL. '
-          'It never governed the line.',
-    );
-    // 🚨COUNTING THE LINES WAS NOT ENOUGH. Emitting the ROW seam twice and
-    // the HELD seam never kept the count identical, and this test stayed
-    // green through it (a mutation, 2026-09-07) — which is the whole D43-2
-    // failure again: 「both axes, one law」 read as 「two lines, any two」.
-    // So each op is checked against the rect and ink the painter named,
-    // in order.
-    final horizontal = painter.axis == Axis.horizontal;
-    final originRect = painter.cellRectFor(emptyStart);
-    final originMain = horizontal ? originRect.left : originRect.top;
-    for (var i = 0; i < empty.length; i += 8) {
-      final expected = expectedLines[i ~/ 8];
-      final local = horizontal
-          ? expected.rect.shift(Offset(-originMain, 0))
-          : expected.rect.shift(Offset(0, -originMain));
-      expect(empty[i], TimelineGridTileOp.rrectFill);
-      expect(empty[i + 1], timelineGridQ8(local.left), reason: 'line $i left');
-      expect(empty[i + 2], timelineGridQ8(local.top), reason: 'line $i top');
-      expect(
-        empty[i + 3],
-        timelineGridQ8(local.width),
-        reason: 'line $i width',
-      );
-      expect(
-        empty[i + 4],
-        timelineGridQ8(local.height),
-        reason: 'line $i height',
-      );
-      expect(
-        empty[i + 6],
-        0,
-        reason: 'a grid line is a plain rect — no corner mask',
-      );
-      expect(
-        empty[i + 7],
-        timelineGridPackRgba(expected.color).toSigned(32),
-        reason:
-            'line $i ink (the stream is Int32, so the packed word '
-            'arrives signed)',
-      );
-    }
+    expect(empty, isEmpty);
   });
 
   test('T3: tiles carry the FOREGROUND ink too — the drawing cell\'s mark '
@@ -404,8 +343,8 @@ void main() {
     // A LOOK-only change (the base text style here) keeps showing the
     // STALE tile while the fresh raster lands (UI-R20 #6: no
     // classic-pass flicker) — same content, different look. The ACTIVE
-    // flag is no such lever anymore: it left the raster entirely
-    // (UI-R21 #2, the row underlay owns the wash), so activation is a
+    // flag is no such lever anymore: it left the raster entirely (UI-R21
+    // #2; the grid sheet paints the wash since I-44), so activation is a
     // guaranteed tile HIT by construction.
     final stylePainter = painterFor(
       layer,
@@ -507,6 +446,55 @@ void main() {
       ),
       isNull,
       reason: 'past the rescale band the classic paint takes over',
+    );
+  });
+
+  // I-44: what the unworked paper is pre-blended onto is baked into the
+  // tile, so a changed paper ground is a changed LOOK — it re-rasters,
+  // showing the stale tile while it does.
+  test('I-44: the paper\'s ground is part of the look — a new one '
+      're-rasters the tile', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance;
+    final layer = blockLayer();
+    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+
+    // Waited for by what lands, not by a landing count: a raster the last
+    // test left in flight can bump the revision first.
+    final plain = painterFor(layer, store: store);
+    expect(tile(plain), isNull, reason: 'cold');
+    var first = tile(plain);
+    while (first == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      first = tile(plain);
+    }
+
+    final grounded = painterFor(
+      layer,
+      store: store,
+      paperGround: const Color(0xFF202020),
+    );
+    expect(
+      tile(grounded),
+      same(first),
+      reason: 'stale-while-revalidate for a new paper ground too',
+    );
+    while (identical(tile(grounded), first)) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(
+      tile(grounded),
+      isNotNull,
+      reason: 'the paper\'s ground is part of the look the tile keys on — '
+          'a fresh raster landed for it',
     );
   });
 }

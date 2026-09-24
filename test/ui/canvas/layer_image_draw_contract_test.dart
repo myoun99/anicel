@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/dart_sources.dart';
 
 /// A4's other half — THE SAMPLING QUESTION CANNOT BE LEFT UNANSWERED.
 ///
@@ -23,10 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('no new raw image draw escapes the one place', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       // The one place: the shared draw whose filterQuality is required.
       if (path.endsWith('lib/src/ui/canvas/layer_image_draw.dart')) {
@@ -137,10 +135,7 @@ void main() {
     // teeth without banning a local helper whose body the census already
     // reads.
     final found = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
         final line = lines[i];

@@ -81,8 +81,8 @@ enum MediaFitMode {
 /// [frameCount], [pageCount]) is recorded at registration and never
 /// forces a policy (§6-x).
 class MediaAsset {
-  const MediaAsset({
-    required this.path,
+  MediaAsset({
+    required String path,
     required this.name,
     this.kind = MediaAssetKind.audio,
     this.offsetFrames = 0,
@@ -96,9 +96,10 @@ class MediaAsset {
     this.frameCount,
     this.pageCount,
     this.dialogue,
-  });
+  }) : path = normalizedMediaPath(path);
 
-  /// Absolute file path — the pool key clips reference.
+  /// Absolute file path — the pool key clips reference — in the one
+  /// spelling [normalizedMediaPath] gives it, whatever door it came by.
   final String path;
 
   /// Display name WITHOUT the extension — the path keeps that; seeds with
@@ -317,8 +318,17 @@ class MediaAsset {
 /// The media pool is keyed by path, so `C:\a\b.wav` and `C:/a/b.wav`
 /// reaching it as written are two assets for one file — two rows, a
 /// dedupe that does not, and a usage badge counting half the clips.
-/// Paths arrive spelled however the OS handed them over, so every site
-/// that records one passes it through here first.
+/// Paths arrive spelled however the OS handed them over.
+///
+/// 🚨★★★**THE MODELS SPELL IT, NOT THE DOORS.** Every key the pool is
+/// looked up by — [MediaAsset.path], `MediaReference.assetPath`,
+/// `AudioClip.filePath` — passes through here in its constructor. It used
+/// to be each door's job to pass a path through first, and a door that did
+/// not (the cut folder's `C:\…\cut/A1.png`) put a second spelling in the
+/// pool: the project's own copy, asked for in the pool's spelling, was not
+/// found, and the original was read instead (audit 2026-09-24,
+/// `carried-bytes-audit-0924` ②). A question asked with a path from
+/// outside — a picker, a drop — still spells it here first.
 String normalizedMediaPath(String path) => path.replaceAll('\\', '/');
 
 /// The asset kind [path]'s extension implies; null for unrecognized

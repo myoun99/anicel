@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/frame_census.dart';
 import 'brush_canvas_test_helpers.dart';
 
 /// 유저, R4 #3: 커서가 살짝 늦게 따라오는 수준이 아니라 진짜 렉이 있다. 60fps로
@@ -59,13 +61,18 @@ void main() {
   ///  * `chromePaints` ABOVE the panel, under the nearest boundary in that
   ///    direction — standing in for the shell, whose floor, panbars and
   ///    floating controls used to be re-recorded too.
-  Future<void> pumpPanel(
+  ///
+  /// Returns the brush the panel hears, so a test can change it in hand.
+  Future<ValueNotifier<BrushToolState>> pumpPanel(
     WidgetTester tester, {
     required CanvasTool tool,
     required List<int> canvasPaints,
     required List<int> chromePaints,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(tool: tool, size: 40),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -79,10 +86,7 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                 floorCover: EdgeInsets.zero,
-                brushToolState: BrushToolState.defaults.copyWith(
-                  tool: tool,
-                  size: 40,
-                ),
+                brushToolState: brush,
                 sampleColorAt: (_) => 0x336699,
                 onEyedropperPick: (_) {},
                 viewportUnderlayBuilder: (context, viewport, painter, _) =>
@@ -97,6 +101,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return brush;
   }
 
   for (final (tool, cursorKey) in const <(CanvasTool, String)>[
@@ -194,6 +199,99 @@ void main() {
     });
   }
 
+  // 🚨H40 ② (2026-09-24): the brush changes by the frame — a preset pick,
+  // every frame of a settings slider drag, each colour notch. The panel was
+  // handed it as a VALUE, so each change rebuilt the panel and relaid out
+  // its shell, and the pill, both panbars and the edges repainted for
+  // numbers they do not show. The panel HEARS the brush now: its tree
+  // follows the tool alone, and the one thing that shows a size — the tip
+  // cursor — answers a size by itself.
+  testWidgets('a brush change repaints the tip cursor and the way to it, '
+      'nothing beside', (
+    tester,
+  ) async {
+    final canvasPaints = <int>[0];
+    final chromePaints = <int>[0];
+    final brush = await pumpPanel(
+      tester,
+      tool: CanvasTool.brush,
+      canvasPaints: canvasPaints,
+      chromePaints: chromePaints,
+    );
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+    await tester.pump();
+    final cursor = find.byKey(const ValueKey<String>('brush-cursor-overlay'));
+    final extentBefore = tester.widget<ToolCursorSprite>(cursor).look.extent;
+
+    final canvasBefore = canvasPaints[0];
+    final chromeBefore = chromePaints[0];
+
+    // What the cursor does not show reaches nothing at all.
+    final unseen = await frameCensus(
+      tester,
+      () => brush.value = brush.value.copyWith(flow: 0.5, color: 0xFF336699),
+    );
+    expect(unseen.rebuilt, isEmpty);
+    expect(unseen.painted, isEmpty);
+
+    final (:rebuilt, :painted) = await frameCensus(
+      tester,
+      () => brush.value = brush.value.copyWith(size: 80),
+    );
+
+    // ALIVE — the cursor wears the new tip.
+    expect(
+      tester.widget<ToolCursorSprite>(cursor).look.extent.width,
+      greaterThan(extentBefore.width),
+    );
+    // THE CLAIM — the panel did not rebuild, and what repainted is the
+    // cursor and the path down to it, nothing beside it: the cursor's
+    // builder sits under the canvas's `LayoutBuilder`, whose own build
+    // scope relays it out for a dirty descendant — the few boxes between
+    // it and the cursor. Measured 2026-09-24: ten objects, the gesture
+    // layer's listeners, its clip and the deck.
+    expect(rebuilt, isNot(contains(BrushCanvasPanel)));
+    final sprite = tester.renderObject(cursor);
+    bool leadsToTheCursor(RenderObject object) {
+      for (RenderObject? at = sprite; at != null; at = at.parent) {
+        if (identical(at, object)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // A boundary beside the path is handed on with its layer as it was —
+    // the artwork's is — and is reported all the same; only what it paints
+    // inside would mean it painted again.
+    bool handedOn(RenderObject object) =>
+        object.isRepaintBoundary && !paintedInside(painted, object);
+
+    expect(painted, contains(sprite));
+    expect(
+      [
+        for (final object in painted)
+          if (!leadsToTheCursor(object) && !handedOn(object))
+            object.runtimeType,
+      ],
+      isEmpty,
+      reason: 'nothing beside the path to the cursor — the pill, the '
+          'panbars and the edges repainted when the panel rebuilt',
+    );
+    expect(canvasPaints[0], canvasBefore);
+    expect(chromePaints[0], chromeBefore);
+
+    // CONTROL — the census can see a panel rebuild: a TOOL change is one.
+    final toolChange = await frameCensus(
+      tester,
+      () => brush.value = brush.value.copyWith(tool: CanvasTool.eraser),
+    );
+    expect(toolChange.rebuilt, contains(BrushCanvasPanel));
+  });
+
   testWidgets('the fill bucket and its cursor-hiding region mount together', (
     tester,
   ) async {
@@ -215,9 +313,9 @@ void main() {
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             floorCover: EdgeInsets.zero,
-            brushToolState: BrushToolState.defaults.copyWith(
+            brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
-            ),
+            )),
           ),
         ),
       ),

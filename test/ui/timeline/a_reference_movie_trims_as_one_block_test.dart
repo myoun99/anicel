@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -37,11 +38,7 @@ void main() {
 
   tearDown(() async {
     debugVideoDecodeBackend = null;
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly; leftovers live in systemTemp.
-    }
+    deleteTempQuietly(tempDir);
   });
 
   Layer movieRow(EditorSessionManager s) =>

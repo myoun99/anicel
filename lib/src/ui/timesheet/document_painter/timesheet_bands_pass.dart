@@ -33,11 +33,7 @@ class _TimesheetBandsPass {
   /// Ep.no | Title | Scene | Cut.no | Duration | Name | Page, minus hidden
   /// boxes. Reference-sheet layout (R7-⑥): the small gray label centers at
   /// the box top, the bold value centers underneath.
-  void paintHeaderBand(
-    Canvas canvas,
-    int pageIndex, {
-    required bool drawTexts,
-  }) {
+  void paintHeaderBand(Canvas canvas, int pageIndex) {
     final band = _painter.layout.headerBandRect(pageIndex);
     if (_painter._drawForm) {
       final boxPaint = Paint()
@@ -48,9 +44,6 @@ class _TimesheetBandsPass {
       for (final box in _painter.layout.headerFieldBoxes(pageIndex)) {
         canvas.drawRect(box.rect, boxPaint);
       }
-    }
-    if (!drawTexts) {
-      return;
     }
     for (final box in _painter.layout.headerFieldBoxes(pageIndex)) {
       // The printed labels belong to the FORM; the user's values are
@@ -123,10 +116,7 @@ class _TimesheetBandsPass {
   /// space, exactly like the reference forms (R7-⑥ — the band outline and
   /// the top-right memo box frame are both retired). The cut's Direction
   /// memo (cut note) types into its top left, spanning the full width.
-  void paintMemoBand(Canvas canvas, int pageIndex, {required bool drawTexts}) {
-    if (!drawTexts) {
-      return;
-    }
+  void paintMemoBand(Canvas canvas, int pageIndex) {
     final band = _painter.layout.memoBandRect(pageIndex);
     if (_painter.document.memoText.isNotEmpty) {
       final painter = TextPainter(

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/framed_media_fixture.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**THE POINT IS THE WINDOW.** Compressing media whole would buy
 /// 38% on audio and take away `MediaArchiveBytes`'s ability to hand out a
@@ -269,7 +270,7 @@ void main() {
           reason: 'a stored entry IS the asset, byte for byte',
         );
       } finally {
-        directory.deleteSync(recursive: true);
+        deleteTempQuietly(directory);
       }
       expect(
         biggest,
@@ -295,13 +296,7 @@ void main() {
       directory = Directory.systemTemp.createTempSync('anicel-copy-');
     });
 
-    tearDown(() {
-      try {
-        directory.deleteSync(recursive: true);
-      } on Object {
-        // A leaked handle on Windows must not fail the suite.
-      }
-    });
+    tearDown(() => deleteTempQuietly(directory));
 
     String at(String name) => '${directory.path.replaceAll(r'\', '/')}/$name';
 

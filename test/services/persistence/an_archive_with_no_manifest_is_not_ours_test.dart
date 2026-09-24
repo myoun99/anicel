@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨AN ARCHIVE WITH NO MANIFEST IS NOT OURS EITHER.
 ///
@@ -38,7 +39,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-manifestless');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String project, String frame) => BrushFrameKey(
     projectId: ProjectId(project),

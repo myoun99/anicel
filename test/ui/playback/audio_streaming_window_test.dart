@@ -11,6 +11,7 @@ import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The shared windowed upload (AUDIO-PRO R6): what the transport AND the
 /// scrubber hand the device when a schedule mixes resident and streaming
@@ -41,7 +42,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-stream-window');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   // Deliberately tiny numbers: 100 Hz "project rate", 10 fps — one frame
   // is ten samples, and the 2 s / 30 s window geometry stays readable.

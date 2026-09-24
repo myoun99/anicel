@@ -7,6 +7,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
@@ -84,6 +86,21 @@ void main() {
       // left edge, end strip ends at its right edge (x = 96).
       expect(_gripRect(tester, 'start', 0).left, 0);
       expect(_gripRect(tester, 'end', 0).right, 96);
+    });
+
+    // I-44: the grid sheet draws the row seam UNDER the row now, so the
+    // block's paper stops a seam short of the row — and the triangles
+    // stand on that paper, in its own corners.
+    testWidgets('I-44: the grips stand on the PAPER — the row short of the '
+        'seam the grid sheet draws under it', (tester) async {
+      await tester.pumpWidget(_rowHarness(layer: _twoBlockLayer()));
+
+      final rowTop = tester.getTopLeft(find.byType(TimelineFrameCellsRow)).dy;
+      final paper = timelineRowPaperExtent(52);
+      final start = _gripRect(tester, 'start', 0);
+      expect(start.bottom, rowTop + paper);
+      expect(start.height, paper / 2);
+      expect(_gripRect(tester, 'end', 0).top, rowTop);
     });
 
     testWidgets('R9 #12: a dense row\'s grip reads engaged from the pointer '
@@ -376,7 +393,6 @@ Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
       body: Material(
         child: TimelineFrameCellsRow(
           layer: layer,
-          active: true,
           playbackFrameCount: 24,
           // Classic geometry: the drag distances below assume 48px cells.
           geometry: testFrameGeometry(

@@ -97,7 +97,7 @@ void main() {
         'the media pool': (
           build: (repository) => UpdateMediaAssetsCommand(
             repository: repository,
-            mediaAssets: const [MediaAsset(path: '/take.wav', name: 'take')],
+            mediaAssets: [MediaAsset(path: '/take.wav', name: 'take')],
           ),
           read: (project) => project.mediaAssets.length,
           written: 1,

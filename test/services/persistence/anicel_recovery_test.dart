@@ -16,12 +16,19 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import '../../helpers/temp_dir.dart';
 
-/// R24-D1 torn-tail recovery: an append crash destroys only the file's
-/// tail (central directory + EOCD), so the local-header walk must
-/// reconstruct the last complete state — shadowing intact, torn final
-/// entry dropped, corrupt final entry falling back to its shadowed
-/// predecessor — and a recovered open must heal on the next save.
+/// R24-D1 torn-tail recovery — rebuilt 2026-09-23, when the append stopped
+/// writing over the old directory: a save that dies leaves the last
+/// committed directory whole, so recovery opens that state, plus the
+/// entries the save had fully written when it died starting the directory
+/// that would have committed them. These fixtures tear a finished file
+/// where such a save would have died — inside its new directory (its
+/// entries survive, shadowing intact), inside its last entry (the shadowed
+/// predecessor wins, a NEW name vanishes), with its last entry corrupt (the
+/// predecessor wins) — and a recovered open must heal on the next save.
+/// Every byte of a real save is swept in
+/// `a_save_that_dies_opens_as_before_or_after_test`.
 void main() {
   late Directory directory;
 
@@ -29,7 +36,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('anicel-recovery');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   BrushFrameKey key(String frame) => BrushFrameKey(
     projectId: const ProjectId('p'),

@@ -10,6 +10,90 @@ import '../persistence/media_blob_codec.dart';
 import '../persistence/media_staging_store.dart';
 import 'media_byte_source.dart';
 
+/// Where a medium's bytes were found ([storedMediaBytesFor]).
+enum MediaBytesAt {
+  /// An entry of the project file.
+  archive,
+
+  /// The copy 품기 staged in the app container, not yet absorbed.
+  staged,
+
+  /// The file it was imported from.
+  original,
+}
+
+/// Where [poolPath]'s STORED bytes are right now — THE order every reader
+/// and the save look in: the entry called [entryName] in the project file's
+/// [layout], then the copy [staging] holds, then the file it came from.
+///
+/// 🚨★★★**ONE ORDER, WRITTEN ONCE.** The save's walk ([projectMediaSources])
+/// and the readers' question (`ProjectFile.holdMediaBytes`) each spelled
+/// this out, and they had drifted: only the save recovered a torn tail, so
+/// after a crash a reader fell back to an original the save knew better
+/// than to trust (audit 2026-09-24, `carried-bytes-audit-0924`).
+///
+/// STORED, not readable: a framed entry comes back framed — the save
+/// streams it forward as it is, and a reader decodes it
+/// ([mediaSourceDecodingFrames]).
+({MediaByteSource stored, MediaBytesAt at}) storedMediaBytesFor(
+  String poolPath, {
+  required AnicelZipLayout? layout,
+  required String? archivePath,
+  required String? entryName,
+  required MediaStagingStore? staging,
+}) {
+  if (entryName != null && layout != null && archivePath != null) {
+    final entry = layout.entryNamed(entryName);
+    if (entry != null) {
+      return (
+        stored: MediaArchiveBytes.ofEntry(
+          archivePath: archivePath,
+          entry: entry,
+        ),
+        at: MediaBytesAt.archive,
+      );
+    }
+  }
+  // Staged at 품기: the bytes the project already controls, already
+  // compressed when that was worth it.
+  final staged = staging?.find(poolPath);
+  if (staged != null) {
+    return (
+      stored: MediaAppFileBytes(path: staged.path, framed: staged.framed),
+      at: MediaBytesAt.staged,
+    );
+  }
+  return (stored: MediaFileBytes(poolPath), at: MediaBytesAt.original);
+}
+
+/// The layout of the project file at [projectFilePath] as a reader should
+/// see it — its tail's directory, or the last one that committed when a
+/// crash tore the tail — or null when there is nothing to read.
+///
+/// 🚨 A torn tail is NOT "nothing is inside". The crash contract says a
+/// crashed save leaves the last committed directory and everything it names
+/// intact — the media entries' bytes are still in the body — and the very
+/// next save is the HEAL that consumes this answer to decide what streams
+/// forward. Answering "nothing" here made that healing save rename a
+/// media-less archive over the file that still physically held the bytes:
+/// for an asset whose import original was gone (the whole reason carrying
+/// exists), that was silent, permanent loss. The recovery finds what the
+/// torn tail no longer names.
+AnicelZipLayout? readableAnicelLayout(String? projectFilePath) {
+  if (projectFilePath == null || !File(projectFilePath).existsSync()) {
+    return null;
+  }
+  try {
+    return parseAnicelZipLayoutFile(projectFilePath);
+  } on Object {
+    try {
+      return recoverAnicelZipLayoutFile(projectFilePath);
+    } on Object {
+      return null;
+    }
+  }
+}
+
 /// Where each piece of media the project should CARRY can be read from
 /// right now.
 ///
@@ -39,60 +123,23 @@ Map<String, MediaByteSource> projectMediaSources({
   if (wanted.isEmpty) {
     return const {};
   }
-
   // The archive's current layout, read once for the whole walk. Tail-only,
   // so this costs a central-directory read rather than a pass over the
   // project.
-  AnicelZipLayout? layout;
-  if (projectFilePath != null && File(projectFilePath).existsSync()) {
-    try {
-      layout = parseAnicelZipLayoutFile(projectFilePath);
-    } on Object {
-      // 🚨 A torn tail is NOT "nothing is inside". The crash contract says
-      // an append crash destroys only the file's tail — the media entries'
-      // bytes are still in the body — and the very next save is the HEAL
-      // that consumes this answer to decide what streams forward.
-      // Answering "nothing" here made that healing save rename a
-      // media-less archive over the file that still physically held the
-      // bytes: for an asset whose import original was gone (the whole
-      // reason carrying exists), that was silent, permanent loss. The
-      // local-header walk recovers what the tail no longer names.
-      try {
-        layout = recoverAnicelZipLayoutFile(projectFilePath);
-      } on Object {
-        layout = null;
-      }
-    }
-  }
-
+  final layout = readableAnicelLayout(projectFilePath);
   final sources = <String, MediaByteSource>{};
   for (final path in wanted) {
     final entryName = mediaEntryNames[path];
-    if (entryName != null && layout != null) {
-      final entry = layout.entryNamed(entryName);
-      if (entry != null) {
-        sources[path] = MediaArchiveBytes.ofEntry(
-          archivePath: projectFilePath!,
-          entry: entry,
-        );
-        continue;
-      }
-    }
-    // Not inside yet — the file it was imported from is the source, and
-    // this save is what brings it in.
-    // Staged at 품기: the bytes the project already controls, already compressed
-    // when that was worth it. They go in AS THEY ARE.
-    final staged = staging?.find(path);
-    if (staged != null) {
-      sources[path] = MediaAppFileBytes(
-        path: staged.path,
-        framed: staged.framed,
-      );
-      continue;
-    }
-    final file = MediaFileBytes(path);
-    if (file.existsSync()) {
-      sources[path] = file;
+    final (:stored, :at) = storedMediaBytesFor(
+      path,
+      layout: layout,
+      archivePath: projectFilePath,
+      entryName: entryName,
+      staging: staging,
+    );
+    // The staged copy goes in AS IT IS; the original only while it is there.
+    if (at != MediaBytesAt.original || stored.existsSync()) {
+      sources[path] = stored;
       continue;
     }
     // Recorded as INSIDE the project and found nowhere: refusing beats

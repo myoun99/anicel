@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/media/image_viewer_document.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The answer to 유저 2026-08-29「한장짜리면 결국 그대로 올라가는건
 /// 어쩔수없는거지?」 — no. A still image is a one-page document that
@@ -32,11 +34,11 @@ void main() {
   late Directory dir;
 
   setUp(() => dir = Directory.systemTemp.createTempSync('image-doc-test'));
-  tearDown(() => dir.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(dir));
 
   test('a still image is a ONE-page document that knows its own size', () async {
     final file = await _writePng(dir, 'a.png', width: 400, height: 300);
-    final doc = await ImageViewerDocument.open(file.path);
+    final doc = await ImageViewerDocument.open(MediaFileBytes(file.path));
     addTearDown(doc.dispose);
 
     expect(doc.pageCount, 1);
@@ -46,7 +48,7 @@ void main() {
   test('🚨it renders at the size ASKED FOR, not at the file\'s — the large '
       'image is never made', () async {
     final file = await _writePng(dir, 'big.png', width: 800, height: 600);
-    final doc = await ImageViewerDocument.open(file.path);
+    final doc = await ImageViewerDocument.open(MediaFileBytes(file.path));
     addTearDown(doc.dispose);
 
     final small = await doc.renderPage(0, width: 200, height: 150);
@@ -62,7 +64,7 @@ void main() {
   test('the same page can be asked again SHARPER — that is what keeps the '
       'encoded file open', () async {
     final file = await _writePng(dir, 'z.png', width: 640, height: 480);
-    final doc = await ImageViewerDocument.open(file.path);
+    final doc = await ImageViewerDocument.open(MediaFileBytes(file.path));
     addTearDown(doc.dispose);
 
     final coarse = await doc.renderPage(0, width: 80, height: 60);
@@ -78,7 +80,7 @@ void main() {
     final file = File('${dir.path}/not-an-image.png')
       ..writeAsBytesSync(Uint8List.fromList([1, 2, 3, 4]));
     await expectLater(
-      ImageViewerDocument.open(file.path),
+      ImageViewerDocument.open(MediaFileBytes(file.path)),
       throwsA(isA<Object>()),
     );
   });

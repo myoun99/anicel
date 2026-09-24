@@ -79,7 +79,7 @@ void main() {
     final runwayFrame = session.activeCutOrNull!.duration + 3;
 
     // ⛔The artwork goes on the frame the drag ENGAGES on, and that is not
-    // fussiness: the first move flips `frameScrubActive`, which rebuilds the
+    // fussiness: the first move flips `frameScrub.active`, which rebuilds the
     // canvas area on its own. Anchor anywhere else and a canvas frozen at
     // the engage frame shows blank paper too — the test passes while the
     // feature is gone. Measured: this exact test did.
@@ -100,7 +100,7 @@ void main() {
 
     session.frameScrub.scrubFrameIndex(runwayFrame);
     await tester.pump();
-    expect(session.frameScrubActive.value, isTrue, reason: 'mid-gesture');
+    expect(session.frameScrub.active.value, isTrue, reason: 'mid-gesture');
     final duringDrag = shown(tester);
     expect(
       duringDrag.surface,
@@ -148,7 +148,7 @@ void main() {
     await tester.pump();
     session.frameScrub.scrubFrameIndex(runwayFrame);
     await tester.pump();
-    expect(session.frameScrubActive.value, isTrue, reason: 'mid-gesture');
+    expect(session.frameScrub.active.value, isTrue, reason: 'mid-gesture');
     final duringDrag = shown(tester);
     expect(
       duringDrag.surface,

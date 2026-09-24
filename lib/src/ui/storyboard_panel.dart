@@ -67,7 +67,9 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragTarget,
         LayerRowSubject,
         TimelineRowDragHooks,
-        TrackRowSubject;
+        TrackRowSubject,
+        effectRowDragChip,
+        layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -75,7 +77,12 @@ import 'timeline/transform_lane_policy.dart'
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
-    show TimelineBeatLinesPainter, TimelineGridLaw, timelineGridRowSeamInk;
+    show
+        TimelineGridLaw,
+        TimelineGridRows,
+        TimelineGridSheet,
+        timelineLaneGround,
+        timelineRowPaperExtent;
 import 'timeline/timeline_cell_double_tap.dart'
     show timelineCellDoubleTapActivation, timelineCellDoubleTapRecord;
 import 'timeline/timeline_drag_preview.dart';
@@ -83,8 +90,9 @@ import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor,
+        timelineBlockCornerRadiusAt,
         timelineDrawingInkColor,
-        timelineRangeSelectionBandDecoration,
+        timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
         timelineStandingCellDecoration;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
@@ -144,6 +152,8 @@ import 'timeline/timeline_section_policy.dart'
     show TimelineSection, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
+import 'timeline/timeline_selected_exposure_outline.dart'
+    show TimelineSelectionRing;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -169,10 +179,16 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// fade-envelope row is the case that separates the two: it is the opacity
 /// lane's row and takes the standing ring, but it draws fade handles
 /// instead of key markers and no selection reaches it.
+///
+/// [lane] is whether the row is a LANE band at all — the Audio lane as much
+/// as a property lane — which is what the grid sheet paints the lane ground
+/// under (I-44). Neither address says it: the Audio lane keeps none, and an
+/// S slot with no layer keeps none either.
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
   bool bandRow,
+  bool lane,
   double height,
 });
 
@@ -1764,37 +1780,38 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                 axisDirection: AxisDirection.right,
                                 child: Stack(
                                   children: [
-                                    // Frame grid lines under the blocks:
-                                    // THE shared painter (D8/D38 —
-                                    // the storyboard's own copy had
-                                    // drifted: pre-split beat color,
-                                    // base+beat double ink at 6f, a
-                                    // line at x=0, no snap; deleted,
-                                    // never reconciled).
+                                    // THE grid sheet under the rows (D8/D38
+                                    // — the storyboard's own copy of the
+                                    // lines had drifted: pre-split beat
+                                    // color, base+beat double ink at 6f, a
+                                    // line at x=0, no snap; deleted, never
+                                    // reconciled). I-44: the lanes' ground
+                                    // and every row seam are the sheet's
+                                    // too, off the rail's own row table.
                                     Positioned.fill(
                                       child: IgnorePointer(
                                         child: RepaintBoundary(
-                                          child: CustomPaint(
-                                            key: const ValueKey<String>(
-                                              'storyboard-frame-lines',
-                                            ),
-                                            painter: TimelineBeatLinesPainter(
-                                              frameCellExtent: frame.scale
-                                                  .pixelsPerFrame,
-                                              framesPerSecond:
-                                                  _countingFps,
-                                              colorScheme:
-                                                  frame.colorScheme,
-                                              // D43: the storyboard panel sits
-                                              // on `surface`, not the timeline's
-                                              // container colour.
-                                              ground:
-                                                  frame.colorScheme.surface,
-                                              // Row seams are the
-                                              // storyboard rail's
-                                              // own hairlines.
-                                              crossCellExtent: 0,
-                                            ),
+                                          child: Builder(
+                                            builder: (context) {
+                                              final ground =
+                                                  TimelineGridLaw.maybeOf(
+                                                    context,
+                                                  )?.ground;
+                                              return TimelineGridSheet(
+                                                key: const ValueKey<String>(
+                                                  'storyboard-grid-sheet',
+                                                ),
+                                                frameCellExtent: frame
+                                                    .scale
+                                                    .pixelsPerFrame,
+                                                rows: ground == null
+                                                    ? TimelineGridRows.none
+                                                    : _railRows.gridRows(
+                                                        frame.project.tracks,
+                                                        ground,
+                                                      ),
+                                              );
+                                            },
                                           ),
                                         ),
                                       ),
@@ -3057,7 +3074,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     // The paper under each span, at its TRUE global extent: this row has no
     // cells of its own, so it paints its paper the way the storyboard's SE
     // rows do rather than through the cell exposure states. [SePaperSpan] is
-    // the shared paper block (a rounded block with per-frame dividers) —
+    // the shared paper block (a rounded block, no line across it — I-44) —
     // named for its first user, not SE-specific.
     for (final entry in layer.instructions.entries) {
       spans.add(
@@ -3073,7 +3090,6 @@ class _StoryboardTransitionRow extends StatelessWidget {
             child: SePaperSpan(
               axis: Axis.horizontal,
               frameCellExtent: timelineScale.pixelsPerFrame,
-              startFrame: entry.key,
               // ⑲: the block is its layer's colour label.
               paper: layerMarkColor(layer.mark),
             ),
@@ -3188,6 +3204,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
         commaDrag: commaDrag,
         axis: Axis.horizontal,
+        crossAxisExtent: _transitionRowHeight,
       );
       if (grips.isNotEmpty) {
         spans.add(
@@ -3574,6 +3591,8 @@ class _StoryboardSeRow extends StatelessWidget {
         edge: edge,
         startIndex: block.startIndex,
         endIndexExclusive: block.endIndexExclusive,
+        // I-44: on the SE paper, which stops a seam short of the row.
+        crossAxisExtent: timelineRowPaperExtent(_seRowHeight),
       ),
       child: TimelineBlockEdgeGrip(
         key: ValueKey<String>(
@@ -3724,7 +3743,6 @@ class _StoryboardSeRow extends StatelessWidget {
     child: SePaperSpan(
       axis: Axis.horizontal,
       frameCellExtent: timelineScale.pixelsPerFrame,
-      startFrame: block.startIndex,
       // ⑲: the block is its layer's colour label.
       paper: layerMarkColor(layer.mark),
     ),
@@ -3985,7 +4003,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
                   idValue: 'v-${track.id.value}',
-                  icon: Icons.movie_outlined,
+                  icon: _vRowGlyph,
                   semanticLabel: AppText.strings.sbVideoTrack,
                   onTap: onSelectTrack,
                 ),
@@ -4698,7 +4716,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                   child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
                     valueListenable: stripSelect.selection,
                     builder: (context, selection, _) {
-                      return _stripRangeOutline(selection);
+                      return _stripRangeOutline(
+                        selection,
+                        crossExtent: stripBand.height,
+                      );
                     },
                   ),
                 ),
@@ -4841,7 +4862,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// The strip's range-selection band: the selected panels of the cut
   /// whose storyboard layer the selection names, or nothing when no
   /// entry carries that layer.
-  Widget _stripRangeOutline(TimelineFrameRangeSelection? selection) {
+  Widget _stripRangeOutline(
+    TimelineFrameRangeSelection? selection, {
+    required double crossExtent,
+  }) {
     if (selection == null ||
         timelineScale.pixelsPerFrame <= 0) {
       return const SizedBox.shrink();
@@ -4876,8 +4900,10 @@ class _StoryboardTrackRow extends StatelessWidget {
             label: AppText.strings.tlSelectedPanelRange,
             container: true,
             child: DecoratedBox(
-              decoration:
-                  timelineRangeSelectionBandDecoration,
+              decoration: timelineRangeSelectionBandDecorationAt(
+                cellExtent: timelineScale.pixelsPerFrame,
+                crossExtent: crossExtent,
+              ),
             ),
           ),
         ),
@@ -4960,7 +4986,7 @@ class _RenderFrameHitGate extends RenderProxyBox {
 // _StoryboardFrameLinesPainter is GONE (D8/D38 2026-08-18): it was a
 // drifted copy of TimelineBeatLinesPainter — pre-beatLine-split second
 // color, base+beat double ink at 6f multiples, a line at x=0, no snap —
-// and the storyboard now mounts the shared painter above.
+// and the storyboard now mounts the shared grid sheet above (I-44).
 
 /// A never-changing drag channel, for the two end-line widgets when the host
 /// hands none. Cheaper than branching the builder, and it can never notify.

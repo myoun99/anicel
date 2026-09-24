@@ -8,6 +8,7 @@ import 'package:anicel/src/services/brush_tip_defaults.dart';
 import 'package:anicel/src/services/brush_tip_image_codec.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
+import '../helpers/temp_dir.dart';
 
 BrushTipMask _mask(String id, {int size = 8, int value = 200}) => BrushTipMask(
   id: id,
@@ -24,21 +25,7 @@ void main() {
     service = BrushTipLibraryService(directoryPath: tempDirectory.path);
   });
 
-  tearDown(() async {
-    for (var attempt = 0; ; attempt += 1) {
-      try {
-        if (await tempDirectory.exists()) {
-          await tempDirectory.delete(recursive: true);
-        }
-        return;
-      } on FileSystemException {
-        if (attempt >= 20) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDirectory));
 
   group('BrushTipLibraryService', () {
     test('a missing library is empty, not an error', () async {

@@ -538,7 +538,7 @@ void main() {
       await _pumpHome(
         tester,
         project: base.copyWith(
-          mediaAssets: const [MediaAsset(path: still, name: 'walk.png')],
+          mediaAssets: [MediaAsset(path: still, name: 'walk.png')],
           tracks: [
             track.copyWith(
               cuts: [
@@ -549,7 +549,7 @@ void main() {
                         // Hidden, so the canvas never goes looking for it.
                         layer.copyWith(
                           isVisible: false,
-                          mediaReference: const MediaReference(
+                          mediaReference: MediaReference(
                             assetPath: still,
                           ),
                         )

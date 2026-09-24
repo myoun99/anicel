@@ -63,7 +63,6 @@ void main() {
         body: Material(
           child: TimelineFrameCellsRow(
             layer: layer,
-            active: true,
             playbackFrameCount: 12,
             geometry: testFrameGeometry(
               frameCellExtent: cellWidth,
@@ -188,6 +187,7 @@ void main() {
     // The transposed painter is not pumped by any row harness, and R9 #5
     // reached it through the shared `axis` fork, so it needs its own word.
     final painter = TimelineRowRunLabelsPainter(
+      baseTextStyle: const TextStyle(fontSize: 14),
       layer: drawingLayer({
         0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
       }),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart' show Axis, Rect, ThemeData;
+import 'package:flutter/material.dart' show Axis, Rect, TextStyle, ThemeData;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -150,6 +150,7 @@ void main() {
             layerRowHeight: 164,
           ),
           colorScheme: ThemeData.light().colorScheme,
+          face: const TextStyle(),
           numberType: XSheetFrameRailPainter.numberType,
         );
 

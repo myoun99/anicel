@@ -12,6 +12,7 @@ import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/services/brush_hand_overlay.dart';
 import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import '../../helpers/temp_dir.dart';
 
 /// H25 — **each brush wears its own size.**
 ///
@@ -181,7 +182,7 @@ void main() {
     late Directory folder;
 
     setUp(() => folder = Directory.systemTemp.createTempSync('qa_hand_'));
-    tearDown(() => folder.deleteSync(recursive: true));
+    tearDown(() => deleteTempQuietly(folder));
 
     test('round-trips what the hand set — every kind of setting', () async {
       final store = BrushHandSettingsStore(

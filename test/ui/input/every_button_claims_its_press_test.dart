@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
@@ -63,11 +64,8 @@ void main() {
   /// (the layer-type button), `layer_rail_window`, `project_settings_pill` and
   /// `se_layer_mixer` are timeline chrome by any reading and were bare,
   /// because they were not among the eight names.
-  List<String> everyUiFile() => Directory('lib/src/ui')
-      .listSync(recursive: true)
-      .whereType<File>()
+  List<String> everyUiFile() => dartFilesUnder('lib/src/ui')
       .map((file) => file.path.replaceAll(r'\', '/'))
-      .where((path) => path.endsWith('.dart'))
       .toList();
 
   /// ⛔EACH ONE IS A DECISION, and the reason is the same question every
@@ -138,22 +136,25 @@ void main() {
   /// (brush and rendering), `export_dialog` and `import_dialog` (import,
   /// export and saving).
   const bareMaterialControls = <String, int>{
-    'lib/src/ui/brush/brush_settings_panel.dart': 2,
+    // ↓2026-09-23, the app's one boolean (guide-sym ⑥⑧): every
+    // `SwitchListTile`, radio and filter chip below became a claimed
+    // `SettingsSwitchRow` — brush settings 2 → 1, tool settings 15 → 9,
+    // input settings 5 → 3, and the timesheet dialog's 2 → gone.
+    'lib/src/ui/brush/brush_settings_panel.dart': 1,
     'lib/src/ui/brush/guide_panels.dart': 1,
     // 16 → 15 on 2026-09-22: the scale anchor's SegmentedButton went with
     // the setting itself (유저 gave the modifier a touch entrance instead,
     // so a persistent choice and a held key were two entrances to one
     // question). The ratchet only ever comes DOWN.
-    'lib/src/ui/brush/tool_settings_panel.dart': 15,
+    'lib/src/ui/brush/tool_settings_panel.dart': 9,
     'lib/src/ui/dialogs/audio_settings_section.dart': 3,
     'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
     'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
     'lib/src/ui/dialogs/convert_to_linked_cut_dialog.dart': 1,
-    'lib/src/ui/dialogs/input_settings_dialog.dart': 5,
+    'lib/src/ui/dialogs/input_settings_dialog.dart': 3,
     'lib/src/ui/dialogs/instruction_event_dialog.dart': 1,
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
     'lib/src/ui/dialogs/language_settings_dialog.dart': 1,
-    'lib/src/ui/dialogs/timesheet_info_dialog.dart': 2,
     'lib/src/ui/export/export_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,
@@ -361,13 +362,14 @@ void main() {
     // ↩️press-law-material-controls: the Material families act through
     // `onChanged`, `onSelected` and `onSelectionChanged`, so those are a
     // live callback under a claim too, and `(_) {}` is as silent as `() {}`.
-    // ↩️press-law-switches: a control whose action carries a VALUE says its
-    // silence with `silentChange(` — the same sentence as `silentPress(`,
-    // typed for `ValueChanged`. Both read as silent here.
+    // ↩️press-law-switches gave a VALUE control its own silence,
+    // `silentChange(`. It went with the Material switches it silenced (the
+    // app's one boolean replaced them, guide-sym ⑥⑧), and with it its
+    // spelling here.
     final live = RegExp(
       r'\bon(Tap|TapUp|DoubleTap|LongPress|Pressed|Changed|Selected|'
       'SelectionChanged):'
-      r'(?!\s*(silentPress\(|silentChange\(|null\b|\(\)\s*\{\s*\}|'
+      r'(?!\s*(silentPress\(|null\b|\(\)\s*\{\s*\}|'
       r'\(_\)\s*\{\s*\}))',
     );
     final riding = [
@@ -403,18 +405,15 @@ void main() {
         ),
       );
 
-  /// Presses [finder] and reports whether the pointer was claimed WHILE it
+  /// Presses [position] and reports whether the pointer was claimed WHILE it
   /// was down — the only moment that counts, because a pan recogniser asks
   /// at `addPointer`, which happens during the down dispatch.
-  Future<bool> claimedWhileDown(
+  Future<bool> claimedAt(
     WidgetTester tester,
-    Finder finder, {
+    Offset position, {
     required int pointer,
   }) async {
-    final gesture = await tester.startGesture(
-      tester.getCenter(finder),
-      pointer: pointer,
-    );
+    final gesture = await tester.startGesture(position, pointer: pointer);
     final claimed = controlOwnsTap(pointer);
     await gesture.up();
     await tester.pump();
@@ -427,6 +426,13 @@ void main() {
     );
     return claimed;
   }
+
+  /// [claimedAt] a widget's centre.
+  Future<bool> claimedWhileDown(
+    WidgetTester tester,
+    Finder finder, {
+    required int pointer,
+  }) => claimedAt(tester, tester.getCenter(finder), pointer: pointer);
 
   testWidgets('the bar\'s 1·2·3·4·N claim their press', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
@@ -557,10 +563,23 @@ void main() {
 
     final grid = find.byKey(const ValueKey<String>('timeline-frame-grid-area'));
     expect(grid, findsOneWidget);
+    // ⚠️A QUARTER IN, not the centre. At 24px a frame the default cut's 24
+    // frames end at the centre of this window, and the cut's END HANDLE is a
+    // control that holds its press (F-163 재발, 유저 2026-09-23: 「버튼은
+    // 무조건 강한클레임」) — measured: the centre sat inside its 12px strip.
+    // A quarter in is an empty cell of the cut, which is what this asks.
+    final area = tester.getRect(grid);
     expect(
-      await claimedWhileDown(tester, grid, pointer: 60),
+      await claimedAt(
+        tester,
+        Offset(area.left + area.width / 4, area.center.dy),
+        pointer: 60,
+      ),
       isFalse,
       reason: 'scrolling still happens — everywhere that is not a control',
     );
+    // A press on a cell arms the cell's own timers (its double tap, its
+    // settled tap); let them lapse before the tree goes.
+    await tester.pump(const Duration(seconds: 1));
   });
 }

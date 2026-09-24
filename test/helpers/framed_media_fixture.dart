@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import 'temp_dir.dart';
 
 /// The bytes a framed media entry HAS — produced by the writer that ships.
 ///
@@ -30,10 +31,6 @@ Uint8List? framedEntryBytes(
     );
     return written.framed ? File(written.path).readAsBytesSync() : null;
   } finally {
-    try {
-      directory.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(directory);
   }
 }

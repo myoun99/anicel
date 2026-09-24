@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
+import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**THE MIGRATION'S LIST AND THE CALL SITES CANNOT DRIFT.**
 ///
@@ -18,10 +17,8 @@ import 'package:anicel/src/services/persistence/app_support_path.dart';
 void main() {
   test('every settings entry a store asks for is in the migration list', () {
     final names = <String>{};
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File ||
-          !file.path.endsWith('.dart') ||
-          file.path.endsWith('app_support_path.dart')) {
+    for (final file in dartFilesUnder('lib')) {
+      if (file.path.endsWith('app_support_path.dart')) {
         continue;
       }
       final source = file.readAsStringSync();
@@ -53,10 +50,8 @@ void main() {
     // migration moves a file the app has stopped reading, into a folder
     // where nobody will ever look for it again.
     final names = <String>{};
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File ||
-          !file.path.endsWith('.dart') ||
-          file.path.endsWith('app_support_path.dart')) {
+    for (final file in dartFilesUnder('lib')) {
+      if (file.path.endsWith('app_support_path.dart')) {
         continue;
       }
       for (final match in RegExp(

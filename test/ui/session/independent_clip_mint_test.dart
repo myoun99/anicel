@@ -93,20 +93,20 @@ void main() {
 
   test('🚨a source instance\'s SOUND comes along as a sound of its copy — and '
       'only the sounds of the sources that were minted (F-115)', () {
-    const door = AudioClip(
+    final door = AudioClip(
       filePath: 'C:/sounds/door.wav',
-      frameId: FrameId('a'),
+      frameId: const FrameId('a'),
       offsetFrames: 3,
       gain: 0.5,
     );
-    const other = AudioClip(
+    final other = AudioClip(
       filePath: 'C:/sounds/other.wav',
-      frameId: FrameId('not-in-the-clip'),
+      frameId: const FrameId('not-in-the-clip'),
     );
     final result = mint(
       clipOf({0: 'a', 1: 'b'}, length: 2),
       [cel('a'), cel('b')],
-      sounds: const [door, other],
+      sounds: [door, other],
     );
 
     final newA = result.minted[const FrameId('a')];

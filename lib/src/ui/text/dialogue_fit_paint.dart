@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'dialogue_fit_layout.dart';
+import 'word_condensation.dart';
 import 'vertical_writing_text.dart';
 
 /// SE dialogue distributed evenly over the covered rows — the sheet's
@@ -14,7 +15,7 @@ import 'vertical_writing_text.dart';
 /// while the notation word two columns over rotated it.
 ///
 /// A glyph longer than its cell narrows down the column into it, by the
-/// row's own [dialogueGlyphCondensation] (F-93): the sheet and a vertical
+/// row's own [wordCondensation] (F-93): the sheet and a vertical
 /// timeline keep the rule the user gave for the zoomed-out row.
 ///
 /// [topCenter] is the top of the column on its centre line and [extent]
@@ -39,10 +40,8 @@ void paintDialogueFitColumn(
     glyphCount: glyphs.length,
     mainExtent: extent,
   );
-  double condense(double extentAlongColumn) => dialogueGlyphCondensation(
-    glyphExtent: extentAlongColumn,
-    cellExtent: cellExtent,
-  );
+  double condense(double extentAlongColumn) =>
+      wordCondensation(extent: extentAlongColumn, room: cellExtent);
   for (var i = 0; i < glyphs.length; i += 1) {
     final painter = TextPainter(
       text: TextSpan(text: glyphs[i], style: style),

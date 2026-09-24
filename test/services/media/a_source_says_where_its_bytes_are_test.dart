@@ -6,6 +6,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**「WHERE ARE YOUR BYTES」 IS ONE QUESTION WITH ONE ANSWERER.**
 ///
@@ -23,7 +24,7 @@ void main() {
   late Directory scratch;
 
   setUp(() => scratch = Directory.systemTemp.createTempSync('qa_range_src'));
-  tearDown(() => scratch.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(scratch));
 
   String write(String name, List<int> bytes) {
     final path = '${scratch.path}${Platform.pathSeparator}$name';

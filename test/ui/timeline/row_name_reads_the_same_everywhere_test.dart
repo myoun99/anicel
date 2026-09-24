@@ -172,20 +172,24 @@ void main() {
   /// 직각이니까 선택ui도 직각이도록**」 — one band, taking the shape of what
   /// it selects.
   test('the row band is square and the frame band stays round', () {
+    final frameBand = timelineRangeSelectionBandDecorationAt(
+      cellExtent: 24,
+      crossExtent: 28,
+    );
     expect(timelineRowSelectionBandDecoration.borderRadius, BorderRadius.zero);
     expect(
-      timelineRangeSelectionBandDecoration.borderRadius,
+      frameBand.borderRadius,
       isNot(BorderRadius.zero),
       reason: 'a frame block IS round, so the band over a run of them is',
     );
     expect(
       timelineRowSelectionBandDecoration.color,
-      timelineRangeSelectionBandDecoration.color,
+      frameBand.color,
       reason: 'only the corners differ — the ink is one value',
     );
     expect(
       timelineRowSelectionBandDecoration.border,
-      timelineRangeSelectionBandDecoration.border,
+      frameBand.border,
     );
   });
 }

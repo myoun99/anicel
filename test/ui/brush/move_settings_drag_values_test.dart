@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -33,6 +34,7 @@ void main() {
     ResampleMode resampleMode = ResampleMode.blend,
     ValueChanged<ResampleMode>? onResampleModeChanged,
     bool canEdit = true,
+    bool canApply = false,
     TransformMode mode = TransformMode.normal,
   }) async {
     // The panel now takes the whole knob set as one object; this suite
@@ -43,6 +45,7 @@ void main() {
       Object(),
       hasSelection: () => false,
       canEditTransform: () => canEdit,
+      canApplyTransform: () => canApply,
       deselect: () {},
       transformValues: () => null,
       setTransformValues:
@@ -279,7 +282,7 @@ void main() {
     );
     expect(switchKey, findsOneWidget);
     expect(
-      tester.widget<SwitchListTile>(switchKey).value,
+      tester.booleanDotIn(switchKey).value,
       isTrue,
       reason: 'Blend is the default, so AA starts ON',
     );
@@ -304,7 +307,7 @@ void main() {
       resampleMode: ResampleMode.pick,
       onResampleModeChanged: chosen.add,
     );
-    expect(tester.widget<SwitchListTile>(switchKey).value, isFalse);
+    expect(tester.booleanDotIn(switchKey).value, isFalse);
     await tester.tap(switchKey);
     await tester.pump();
     expect(chosen.last, ResampleMode.blend);
@@ -321,11 +324,11 @@ void main() {
     );
     expect(
       tester
-          .widget<SwitchListTile>(
+          .booleanDotIn(
             find.byKey(const ValueKey<String>('move-antialias-switch')),
           )
-          .onChanged,
-      isNull,
+          .enabled,
+      isFalse,
     );
     for (final key in const [
       'move-flip-horizontal-button',
@@ -348,6 +351,21 @@ void main() {
           .onPressed,
       isNull,
     );
+  });
+
+  testWidgets('적용 is grey when 적용 has nothing to do, though the tool can '
+      'edit — it asks the verb, as the rail\'s ↵ does', (tester) async {
+    // confirm-button (유저 2026-09-24): 「할 게 없으면 회색」. ↩️It asked
+    // whether the TOOL could edit, so it lit over a box with nothing to
+    // confirm and nothing to replay, and pressing it did nothing.
+    FilledButton apply() => tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('move-apply-button')),
+    );
+    await pumpMoveSettings(tester, applied: []);
+    expect(apply().onPressed, isNull);
+
+    await pumpMoveSettings(tester, applied: [], canApply: true);
+    expect(apply().onPressed, isNotNull);
   });
 
   testWidgets('the four buttons come in the order the user asked for, and '

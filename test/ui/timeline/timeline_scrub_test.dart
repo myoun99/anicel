@@ -182,7 +182,7 @@ layers: layers,
       expect(notifies, 0, reason: 'scrub moves ride the cursor path');
       expect(manager.currentFrameIndex, 9);
       expect(manager.editingFrameCursor.value, 9);
-      expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.frameScrub.active.value, isTrue);
       expect(manager.frameSeekCommitted.value, commitsBefore);
 
       manager.frameScrub.commitFrameScrub();
@@ -196,7 +196,7 @@ layers: layers,
         0,
         reason: 'a seek is never a session notify — nothing else rebuilds',
       );
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
       expect(manager.currentFrameIndex, 9);
     });
 
@@ -206,7 +206,7 @@ layers: layers,
 
       manager.frameScrub.scrubFrameIndex(manager.currentFrameIndex);
       expect(
-        manager.frameScrubActive.value,
+        manager.frameScrub.active.value,
         isFalse,
         reason: 'a plain tap is not a drag — the flag decides the GAP answer '
             'now (#26 retired the preview it used to swap in), and a tap '
@@ -214,7 +214,7 @@ layers: layers,
       );
 
       manager.frameScrub.commitFrameScrub();
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
     });
 
     test('selectFrameIndex keeps the editing cursor in sync and fires the '
@@ -299,7 +299,7 @@ layers: layers,
       );
       expect(notifies, 0, reason: 'seeks are never session notifies');
       expect(manager.currentFrameIndex, 5);
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
     });
 
     /// 🚨★★★ #26 — A SCRUB SHOWS THE EDITING CANVAS, AT THE CROSSED FRAME.
@@ -353,7 +353,7 @@ layers: layers,
       CanvasLayerStackView stack() => tester.widget(stackFinder.first);
 
       // ⛔The gesture must already BE a scrub before the interesting part:
-      // the very first move flips `frameScrubActive`, and that flag has its
+      // the very first move flips `frameScrub.active`, and that flag has its
       // own builder, so a canvas rebuild there proves nothing about the
       // cursor. Everything below happens with the flag already true.
       manager.frameScrub.scrubFrameIndex(4);
@@ -364,13 +364,13 @@ layers: layers,
         reason: 'the scrub shows the editing canvas — there is no stand-in '
             'to swap to any more',
       );
-      expect(manager.frameScrubActive.value, isTrue, reason: 'still a scrub');
+      expect(manager.frameScrub.active.value, isTrue, reason: 'still a scrub');
       final atFourth = stack();
 
       // The drag keeps going. Only the cursor fires from here.
       manager.frameScrub.scrubFrameIndex(7);
       await tester.pump();
-      expect(manager.frameScrubActive.value, isTrue, reason: 'still a scrub');
+      expect(manager.frameScrub.active.value, isTrue, reason: 'still a scrub');
       final atSeventh = stack();
       expect(
         identical(atSeventh, atFourth),
@@ -552,7 +552,7 @@ layers: layers,
         reason: 'storyboard scrub moves ride the cursor path',
       );
       expect(manager.currentFrameIndex, greaterThan(2));
-      expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.frameScrub.active.value, isTrue);
 
       final commitsBefore = manager.frameSeekCommitted.value;
       await gesture.up();
@@ -560,7 +560,7 @@ layers: layers,
 
       expect(manager.frameSeekCommitted.value, commitsBefore + 1);
       expect(notifies, 0, reason: 'seeks are never session notifies');
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
     });
   });
 
@@ -627,7 +627,7 @@ layers: layers,
       expect(manager.frameSeekCommitted.value, commitsBefore);
       expect(manager.activeCutId, const CutId('cut-a'));
       expect(manager.gapParkedGlobalFrame, 35);
-      expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.frameScrub.active.value, isTrue);
 
       manager.frameScrub.commitFrameScrub();
       expect(manager.activeCutId, const CutId('cut-b'));
@@ -639,7 +639,7 @@ layers: layers,
         commitsBefore + 1,
         reason: 'exactly one committed seek — no fromGap frame-0 detour',
       );
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
     });
 
     test('a drag that STARTS by crossing engages the scrub on its first '
@@ -649,10 +649,10 @@ layers: layers,
       addTearDown(manager.dispose);
 
       manager.frameScrub.scrubGlobalFrame(40); // pointer-down over cut-b: quiet
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
       expect(manager.gapParkedGlobalFrame, 40, reason: 'playhead follows');
       manager.frameScrub.scrubGlobalFrame(41); // an actual drag move engages
-      expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.frameScrub.active.value, isTrue);
       expect(manager.activeCutId, const CutId('cut-a'));
       manager.frameScrub.commitFrameScrub();
       expect(manager.activeCutId, const CutId('cut-b'));
@@ -665,10 +665,10 @@ layers: layers,
       manager.frameScrub.scrubGlobalFrame(26);
       manager.frameScrub.commitFrameScrub(); // parked in the gap, no active cut
       expect(manager.activeCutId, isNull);
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
 
       manager.frameScrub.scrubGlobalFrame(26); // the same parked frame again
-      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.frameScrub.active.value, isFalse);
       manager.frameScrub.commitFrameScrub();
       expect(manager.gapParkedGlobalFrame, 26);
     });

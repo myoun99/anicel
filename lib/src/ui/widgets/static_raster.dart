@@ -68,6 +68,19 @@ import '../panels/panel_visibility_scope.dart';
 /// Cheap by construction: the walk only runs on the frames where we were
 /// going to repaint the whole subtree anyway.
 ///
+/// It binds only where a capture happens at all ([capturePays]): under
+/// Impeller a surface is a zone and no more, and a boundary inside one
+/// costs nothing.
+///
+/// ⛔A capture on Impeller is not a copy either. Measured 2026-09-24 on the
+/// real Windows app at the user's screen size: the tool settings column
+/// baked came out 145 pixels (≤1/255) off the same column painted — 368
+/// across the window's bakes — a library cell 264 (≤9/255) and a tip
+/// preview ≤19/255. Translucent content composited from an offscreen does
+/// not round as it does painted in place. (That the panel-sized bakes
+/// agreed was read first at 1264×681, where the settings column sat below
+/// the window and the library's body never baked at all.)
+///
 /// ## 🚨 The second invariant: a baked subtree may not paint outside its
 /// own box
 ///
@@ -113,6 +126,52 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// Global off switch. Painting goes straight through when false, so a
   /// suspicious rendering can be A/B'd against the same build.
   static final ValueNotifier<bool> globallyEnabled = ValueNotifier<bool>(true);
+
+  /// Whether a capture belongs on the renderer this app runs on. Where it
+  /// does not, every surface is a zone and nothing more: its own repaint
+  /// boundary, clipped as a bake would be, painting through.
+  ///
+  /// Not under Impeller — measured 2026-09-24 on the real Windows app, a
+  /// profile build with the user's work file and layout open (GLES through
+  /// ANGLE there):
+  ///
+  /// - A capture is not a copy (see the class doc): the settings column
+  ///   baked is 145 pixels off the column painted. Results come first.
+  /// - A capture is dear. The engine's snapshot (`DisplayListToTexture`)
+  ///   allocates a fresh MSAA target outside its render-target cache and
+  ///   builds a whole mip chain every time: about 2.7 ms on the frame of a
+  ///   brush pick that re-baked the settings column, and zones cut into
+  ///   single rows took 38 captures in the frame that opened the panel.
+  ///
+  /// What painting instead costs, at the user's screen size with the
+  /// measured app at High priority: about 1 ms more on an idle frame
+  /// (6.5–7.1 against 5.6–5.8 ms with the bakes) and about 2.5 ms less on
+  /// a brush pick's worst frame (12.6–13.2 against 15.3). An idle frame is
+  /// the floor of every hover, stroke and slider frame, so this is a price
+  /// paid for the pixels, not a win.
+  ///
+  /// ⚠️"4.78 → 4.82 ms with every bake off, nothing" was read first — at
+  /// 1264×681, where the settings column sat below the window and was never
+  /// painted. It is not a number to quote.
+  ///
+  /// ⛔A ground under the content inside the bake is not the way round
+  /// either: the settings column baked over its own opaque surface still
+  /// came out 56 pixels (≤1/255) off, at the rounded corners of one
+  /// control.
+  ///
+  /// Skia keeps baking: that is where the bakes were measured (2026-08-09)
+  /// and nothing here was measured against it.
+  ///
+  /// `ImageFilter.isShaderFilterSupported` is the engine's own Impeller
+  /// switch (`_impellerEnabled` in `dart:ui`), and the only door `dart:ui`
+  /// opens onto it.
+  static bool get capturePays =>
+      debugCapturePaysOverride ?? !ui.ImageFilter.isShaderFilterSupported;
+
+  /// Lets a test take the Impeller branch on the Skia test renderer. Null
+  /// asks the engine.
+  @visibleForTesting
+  static bool? debugCapturePaysOverride;
 
   /// Every attached bake in the app.
   ///
@@ -265,6 +324,11 @@ enum StandDownReason {
 
   /// Switched off by the caller or by the global A/B switch.
   disabled,
+
+  /// A capture on this renderer is not a copy of the paint, and costs a
+  /// whole offscreen render — see [StaticRaster.capturePays]. Correct, and
+  /// nothing to fix.
+  renderer,
 
   /// The panel is parked behind another tab.
   offstage,
@@ -576,7 +640,16 @@ class RenderStaticRaster extends RenderProxyBox {
     // diagnostic that is right on some paths and stale on others is worse
     // than none — the enforcement test reads it to decide whether a panel
     // needs a reason on the allowlist.
-    _nestedBoundary = _childHasRepaintBoundary();
+    //
+    // ⚠️Only where a capture can happen at all: a CAPTURE freezes an inner
+    // boundary, painting through never does, and the walk visits the whole
+    // subtree on every paint of a surface that has none.
+    if (StaticRaster.capturePays) {
+      _nestedBoundary = _childHasRepaintBoundary();
+    } else {
+      _nestedBoundary = false;
+      _nestedBoundaryPath = null;
+    }
 
     // The grid audit's visibility filter, and it is exact rather than
     // heuristic: an `Offstage`, a hidden `IndexedStack` child, an
@@ -601,6 +674,12 @@ class RenderStaticRaster extends RenderProxyBox {
       _standDown = (_visible?.value ?? true)
           ? StandDownReason.disabled
           : StandDownReason.offstage;
+      _dropRaster();
+      _paintThrough(context, offset);
+      return;
+    }
+    if (!StaticRaster.capturePays) {
+      _standDown = StandDownReason.renderer;
       _dropRaster();
       _paintThrough(context, offset);
       return;

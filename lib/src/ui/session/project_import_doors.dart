@@ -30,9 +30,13 @@ import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
+import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
+import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../../services/persistence/media_staging_store.dart';
 import '../../services/straight_rgba_image.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
@@ -67,8 +71,11 @@ class ProjectImportDoors {
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
     required MediaPool pool,
+    required MediaStagingStore staging,
     required AudioConformStore conforms,
     required ProjectFrameRate Function() frameRate,
+    required HoldMediaBytes holdBytes,
+    required bool Function(String path) projectHolds,
   }) : _project = project,
        _changes = changes,
        _internals = internals,
@@ -76,8 +83,11 @@ class ProjectImportDoors {
        _landing = landing,
        _fingerprints = fingerprints,
        _pool = pool,
+       _staging = staging,
        _conforms = conforms,
-       _frameRate = frameRate;
+       _frameRate = frameRate,
+       _holdBytes = holdBytes,
+       _projectHolds = projectHolds;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -86,8 +96,52 @@ class ProjectImportDoors {
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
   final MediaPool _pool;
+  final MediaStagingStore _staging;
   final AudioConformStore _conforms;
   final ProjectFrameRate Function() _frameRate;
+
+  /// Where a medium's bytes are — the project's own copy first
+  /// (`ProjectFile.holdMediaBytes`). 🪦Every door here read the file at the
+  /// path it was handed, so placing a carried medium from the pool read its
+  /// ORIGINAL: gone, the placement failed; edited, the edit landed (card
+  /// `carried-bytes-every-reader`).
+  final HoldMediaBytes _holdBytes;
+
+  /// Whether the project already holds a medium's bytes
+  /// (`ProjectFile.projectHoldsMediaBytes`) — see [_holdCarried].
+  final bool Function(String path) _projectHolds;
+
+  /// 🚨★★★**A PLACEMENT THAT CARRIES HOLDS THE BYTES FIRST.** Every door
+  /// here decides an asset carried from the window's Keep, and the landing
+  /// is what records it in the pool — so the bytes of each carried one in
+  /// [assets] are staged HERE, before that record exists (유저 2026-08-30:
+  /// 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」; the law and its
+  /// order are [MediaStagingStore.stageCarriedBytes]'s).
+  ///
+  /// 🪦None of the five doors did, from the day staging landed until
+  /// 2026-09-23: that round staged the pool's own registration, the doors
+  /// decide carrying from a VARIABLE (`carried: copyIntoProject`), and the
+  /// scan that keeps the law looked for the literal `carried: true`. A
+  /// placed file kept inside was read from where it lay at the first save —
+  /// edited or deleted in between, the save carried that instead.
+  ///
+  /// A landing that fails after this leaves a staged copy no asset names:
+  /// the orphan the run's room takes when the run ends, the same as any.
+  ///
+  /// ⚠️An asset whose bytes the project already HOLDS — in the project file,
+  /// or staged — is left alone: those are the bytes the user asked to keep,
+  /// and the file on disk may have moved on since. The staging funnel is
+  /// idempotent for the same reason, but it knows only its own copies.
+  /// 🪦So placing a carried file from the pool copied its original AGAIN
+  /// once a save had absorbed the first copy — the edited original, when it
+  /// had been edited: never read (the project file answers first), but a
+  /// second copy on disk until the next save, and a stored size in the pool
+  /// that was not the project's.
+  Future<void> _holdCarried(Iterable<MediaAsset> assets) =>
+      _staging.stageCarriedBytes([
+        for (final asset in assets)
+          if (asset.carried && !_projectHolds(asset.path)) asset.path,
+      ]);
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps
@@ -106,6 +160,10 @@ class ProjectImportDoors {
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — a trimmed file's piece carries its
+    /// original here, as provenance only ([TrimmedPieces]).
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -115,7 +173,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await MediaFileBytes(path).read();
+      bytes = await readHeldMediaBytes(_holdBytes, path);
     } on Object {
       return false;
     }
@@ -151,8 +209,10 @@ class ProjectImportDoors {
           )
         : gate;
     final source = arrival.source;
-    // The file where the user keeps it, either way: carrying is a fact
-    // about the SAVE now, not about a copy made at import time.
+    // The file where the user keeps it — what the pool points at, kept
+    // inside or not. A carried one's bytes are held as well, before it
+    // lands ([_holdCarried]); carrying stopped being the save's business on
+    // 2026-08-30.
     final identity = readMediaIdentity(source);
 
     final cutId = arrival.cutId;
@@ -174,6 +234,7 @@ class ProjectImportDoors {
         mint: arrival.mint,
         identity: identity,
         carried: copyIntoProject,
+        sourcePath: sourcePath,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -199,12 +260,14 @@ class ProjectImportDoors {
         referencePath: source,
         identity: identity,
         carried: copyIntoProject,
+        sourcePath: sourcePath,
       );
       layer = plan.layer;
       bakes = plan.bakes;
       assets = plan.assets;
     }
 
+    await _holdCarried(assets);
     final landed = _landing.land(
       [layer],
       arrival: arrival,
@@ -279,7 +342,7 @@ class ProjectImportDoors {
     }
     final Uint8List bytes;
     try {
-      bytes = await MediaFileBytes(path).read();
+      bytes = await readHeldMediaBytes(_holdBytes, path);
     } on Object {
       return null;
     }
@@ -308,19 +371,21 @@ class ProjectImportDoors {
         ? gate.withCanvasSize(expansion.canvas)
         : gate;
 
+    final assets = [
+      importedMediaAsset(
+        path: arrival.source,
+        kind: MediaAssetKind.image,
+        fit: fit,
+        identity: readMediaIdentity(arrival.source),
+        carried: copyIntoProject,
+      ),
+    ];
+    await _holdCarried(assets);
     _landing.land(
       expansion.layers,
       arrival: arrival,
       duration: duration,
-      assets: [
-        importedMediaAsset(
-          path: arrival.source,
-          kind: MediaAssetKind.image,
-          fit: fit,
-          identity: readMediaIdentity(arrival.source),
-          carried: copyIntoProject,
-        ),
-      ],
+      assets: assets,
     );
     _fingerprints.rememberMediaFingerprint(arrival.source, bytes);
 
@@ -368,6 +433,9 @@ class ProjectImportDoors {
     void Function(int done, int total)? onRenderProgress,
     void Function(int pageIndex)? onPageRenderFailed,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -375,7 +443,12 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final document = await PdfRenderService.open(path);
+    final document = await openOnHeldBytes<ViewerDocument>(
+      _holdBytes,
+      path,
+      PdfRenderService.open,
+      HeldViewerDocument.new,
+    );
     if (document == null) {
       return false; // Renderer absent — the honest-absence state.
     }
@@ -427,6 +500,7 @@ class ProjectImportDoors {
           mint: arrival.mint,
           identity: identity,
           carried: copyIntoProject,
+          sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -449,6 +523,7 @@ class ProjectImportDoors {
           referencePath: source,
           identity: identity,
           carried: copyIntoProject,
+          sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
         );
@@ -457,6 +532,7 @@ class ProjectImportDoors {
         assets = plan.assets;
       }
 
+      await _holdCarried(assets);
       final landed = _landing.land(
         [layer],
         arrival: arrival,
@@ -532,6 +608,9 @@ class ProjectImportDoors {
     void Function(int rendered, int total)? onRenderProgress,
     void Function(int movieFrame)? onFrameRenderFailed,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -539,7 +618,11 @@ class ProjectImportDoors {
     if (gate == null) {
       return false;
     }
-    final opened = await videoDecodeBackend.open(gate.source);
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      _holdBytes,
+      gate.source,
+    );
     if (opened == null) {
       return false;
     }
@@ -553,13 +636,14 @@ class ProjectImportDoors {
       );
       final arrival = planned.arrival;
       final source = arrival.source;
-      final asset = _movieAsset(source, info, settings);
+      final asset = _movieAsset(source, info, settings, sourcePath);
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
           settings.sound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
+      await _holdCarried([asset]);
       if (!_landMovieWithSound(planned, asset, withSound: withMovieSound)) {
         return false;
       }
@@ -576,7 +660,7 @@ class ProjectImportDoors {
       );
       return true;
     } finally {
-      await videoDecodeBackend.close(opened.token);
+      await opened.close();
     }
   }
 
@@ -648,10 +732,12 @@ class ProjectImportDoors {
     String source,
     QaVideoInfo info,
     ImportFileSettings settings,
+    String? sourcePath,
   ) => importedMediaAsset(
     path: source,
     kind: MediaAssetKind.video,
     fit: settings.fit,
+    sourcePath: sourcePath,
     identity: readMediaIdentity(source),
     carried: settings.mode == ImportFileMode.keepInside,
     sourceFps: info.fps,
@@ -737,7 +823,11 @@ class ProjectImportDoors {
       // verb stands its row down until this verb has run.
       return false;
     }
-    final opened = await videoDecodeBackend.open(reference.assetPath);
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      _holdBytes,
+      reference.assetPath,
+    );
     if (opened == null) {
       return false;
     }
@@ -747,13 +837,13 @@ class ProjectImportDoors {
         layer: layer,
         reference: reference,
         block: blocks.single,
-        opened: opened,
+        opened: (token: opened.token, info: opened.info),
         onRenderProgress: onRenderProgress,
         onFrameRenderFailed: onFrameRenderFailed,
       );
       return true;
     } finally {
-      await videoDecodeBackend.close(opened.token);
+      await opened.close();
     }
   }
 
@@ -949,6 +1039,9 @@ class ProjectImportDoors {
     int inFrame = 0,
     int? outFrame,
     ImportLayerSpot? spot,
+
+    /// Where [path] was cut from — see [importImageFile]'s.
+    String? sourcePath,
   }) async {
     final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
@@ -964,22 +1057,25 @@ class ProjectImportDoors {
       inFrame: inFrame,
       outFrame: outFrame,
     );
+    final assets = [
+      importedMediaAsset(
+        path: source,
+        // A movie's sound comes from the MOVIE: one pool entry for the
+        // pair, so a relink finds both (「리링크는 풀 항목이 하나라 둘 다
+        // 한 번에 따라간다」).
+        kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
+        fit: MediaFitMode.contain,
+        sourcePath: sourcePath,
+        identity: readMediaIdentity(source),
+        carried: copyIntoProject,
+      ),
+    ];
+    await _holdCarried(assets);
     final landed = _landing.landSound(
       arrival: gate,
       offsetFrames: kept.first,
       lengthFrames: kept.count,
-      assets: [
-        importedMediaAsset(
-          path: source,
-          // A movie's sound comes from the MOVIE: one pool entry for the
-          // pair, so a relink finds both (「리링크는 풀 항목이 하나라 둘 다
-          // 한 번에 따라간다」).
-          kind: mediaAssetKindForPath(source) ?? MediaAssetKind.audio,
-          fit: MediaFitMode.contain,
-          identity: readMediaIdentity(source),
-          carried: copyIntoProject,
-        ),
-      ],
+      assets: assets,
     );
     if (landed) {
       _changes.notifyChanged();

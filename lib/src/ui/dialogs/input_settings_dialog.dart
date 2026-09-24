@@ -286,35 +286,33 @@ class InputSettingsSection extends StatelessWidget {
                 strings.inputTabletHeading,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
-              RadioGroup<TabletService>(
-                groupValue: settings.tabletService,
-                onChanged: (service) => session.setInputSettings(
-                  settings.copyWith(tabletService: service),
+              // 🚨THE PICK-ONE GROUP 유저 named twice (guide-sym ⑥⑧): as the
+              // model the app's boolean copies (「구체적으론
+              // 환경설정-입력-태블릭서비스의 버튼처럼」) and among the buttons
+              // it replaces (「아까말한 태블릿서비스나 … 그런 버튼들 싹 다」).
+              // A Material radio pair until then; now the same row as every
+              // other flag in this window, dim when off because the other
+              // one is on. A press SELECTS its service, so pressing the one
+              // that is on changes nothing — there is always one, as there
+              // was under the radio.
+              SettingsSwitchRow(
+                tileKey: const ValueKey<String>('settings-tablet-standard'),
+                label: strings.inputTabletStandard,
+                help: strings.inputTabletStandardHelp,
+                value: settings.tabletService == TabletService.standard,
+                inPickOneGroup: true,
+                onChanged: (_) => session.setInputSettings(
+                  settings.copyWith(tabletService: TabletService.standard),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    settingsHelpTooltip(
-                      strings.inputTabletStandardHelp,
-                      RadioListTile<TabletService>(
-                        key: const ValueKey<String>('settings-tablet-standard'),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(strings.inputTabletStandard),
-                        value: TabletService.standard,
-                      ),
-                    ),
-                    settingsHelpTooltip(
-                      strings.inputTabletWintabHelp,
-                      RadioListTile<TabletService>(
-                        key: const ValueKey<String>('settings-tablet-wintab'),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(strings.inputTabletWintab),
-                        value: TabletService.wintab,
-                      ),
-                    ),
-                  ],
+              ),
+              SettingsSwitchRow(
+                tileKey: const ValueKey<String>('settings-tablet-wintab'),
+                label: strings.inputTabletWintab,
+                help: strings.inputTabletWintabHelp,
+                value: settings.tabletService == TabletService.wintab,
+                inPickOneGroup: true,
+                onChanged: (_) => session.setInputSettings(
+                  settings.copyWith(tabletService: TabletService.wintab),
                 ),
               ),
               // Why the choice reverted on its own: the guard only fires

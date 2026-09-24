@@ -195,8 +195,8 @@ void main() {
         layers: [
           se(
             'a',
-            audioClips: const [
-              AudioClip(filePath: 'clip-1.wav', frameId: FrameId('fc1')),
+            audioClips: [
+              AudioClip(filePath: 'clip-1.wav', frameId: const FrameId('fc1')),
             ],
           ),
         ],
@@ -207,8 +207,8 @@ void main() {
         layers: [
           se(
             'b',
-            audioClips: const [
-              AudioClip(filePath: 'clip-2.wav', frameId: FrameId('fc2')),
+            audioClips: [
+              AudioClip(filePath: 'clip-2.wav', frameId: const FrameId('fc2')),
             ],
           ),
         ],

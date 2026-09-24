@@ -9,7 +9,6 @@ import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../storyboard_layer_policy.dart';
-import '../../timeline/instruction_span_editing.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../folders_and_attachments.dart';
 import '../range_selections.dart';
@@ -229,12 +228,13 @@ class ExposureEdgeDrag implements EditorDragSession {
        _bulk = bulk,
        _cutSync = cutSync;
 
-  /// Grabs the [grip]'s edge; null when there is no such block. Instruction
-  /// rows join the same pipeline — their spans live on Layer.instructions
-  /// and shift without ripple. Track-SE rows convert to the global axis
-  /// here; a spill-in block's start edge is rejected (its real start lives
-  /// in an earlier cut). A grip that already states a TRUE global start
-  /// needs no window conversion and no spill synthesis.
+  /// Grabs the [grip]'s edge; null when there is no such block. A direction
+  /// row's spans are its blocks (R27), so they retime here as blocks — the
+  /// span-only shift they had (no ripple) went with the span map. Track-SE
+  /// rows convert to the global axis here; a spill-in block's start edge is
+  /// rejected (its real start lives in an earlier cut). A grip that already
+  /// states a TRUE global start needs no window conversion and no spill
+  /// synthesis.
   static ExposureEdgeDrag? begin({
     required EdgeDragRoles roles,
     required ExposureBeginRoles beginRoles,
@@ -257,17 +257,17 @@ class ExposureEdgeDrag implements EditorDragSession {
     if (layer == null) {
       return null;
     }
-    final isInstructionSpan =
-        layer.kind == LayerKind.instruction &&
-        layer.instructions.containsKey(grip.blockStartIndex);
+    // ⛔[LayerKind.takesAuthoredCels], not `holdsDrawings`: a DIRECTION
+    // row's span is its block (R27), so its comma is the block's comma —
+    // the same retime every other row's block takes, drawing and all.
     final isDrawingBlock =
-        layer.kind.holdsDrawings &&
+        layer.kind.takesAuthoredCels &&
         // D22: the image row is edge-less (1 cell + fixed hold) — the grips
         // are gone from its chrome, and the session refuses too so the gate
         // and the dispatch stay one answer (T25).
         !layer.kind.holdsSingleCel &&
         (layer.timeline[grip.blockStartIndex]?.isDrawing ?? false);
-    if (!isInstructionSpan && !isDrawingBlock) {
+    if (!isDrawingBlock) {
       return null;
     }
 
@@ -600,15 +600,6 @@ class ExposureEdgeDrag implements EditorDragSession {
   }
 
   Layer _draggedLayer(int delta) {
-    if (_before.kind == LayerKind.instruction) {
-      final shifted = instructionMapWithEdgeShifted(
-        _before.instructions,
-        spanStartIndex: _blockStart,
-        startEdge: _edge == TimelineBlockEdge.start,
-        delta: delta,
-      );
-      return shifted == null ? _before : _before.copyWith(instructions: shifted);
-    }
     return _roles.controllers.timelineController.shiftedLayerForEdge(
           layer: _before,
           blockStartIndex: _blockStart,

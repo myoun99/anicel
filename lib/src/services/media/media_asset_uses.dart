@@ -1,6 +1,7 @@
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../../models/track_id.dart';
 import '../persistence/cel_places.dart' show DrawingCelPlace, rowOwnerName;
@@ -59,7 +60,7 @@ final class FrameMediaUse extends MediaAssetUse {
   final DrawingCelPlace place;
 }
 
-/// Every use [project] has of the file at [path], in the order the project
+/// Every use [project] has of the file at [asked], in the order the project
 /// holds its rows — lazily, so asking whether there is one stops at the
 /// first.
 ///
@@ -72,7 +73,8 @@ final class FrameMediaUse extends MediaAssetUse {
 /// placement planners, the layer paste and the cut duplicate all write a
 /// cut's rows), so there is no row of the track a person could be sent to,
 /// or that a removal could delete.
-Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String path) sync* {
+Iterable<MediaAssetUse> mediaAssetUsesOf(Project project, String asked) sync* {
+  final path = normalizedMediaPath(asked);
   for (final owned in projectLayersWithOwners(project)) {
     final layer = owned.layer;
     final cut = owned.cut;

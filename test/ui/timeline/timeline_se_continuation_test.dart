@@ -40,7 +40,6 @@ void main() {
         body: Material(
           child: TimelineFrameCellsRow(
             layer: layer,
-            active: true,
             // The cut is 6 frames long; the row shows a few runway frames.
             playbackFrameCount: 6,
             geometry: testFrameGeometry(

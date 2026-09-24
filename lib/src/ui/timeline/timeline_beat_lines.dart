@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -6,14 +7,27 @@ import 'timeline_cell_style.dart';
 import 'timeline_grid_metrics.dart' show timelineStrideHolding;
 import '../repaint_props.dart';
 
-/// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
-/// UI-R13 #7 → UI-R18 #2/#8/#10/#12 — the storyboard recipe unified):
+/// The frame grid, ONE SHEET per grid (UI-R10 #26 → UI-R13 #7 → UI-R18
+/// #2/#8/#10/#12 — the storyboard recipe unified → I-44):
+/// - the ROWS' GROUNDS: the host's own colour, the standing wash on the
+///   active layer's row and on a lit lane, the lane wash under fx rows;
 /// - BASE per-cell lines: flat faint ink, cadence-THINNED at small zooms
-///   (never alpha-faded away) — the grid is always there, over every row
+///   (never alpha-faded away) — the grid is always there, on every row
 ///   and lane;
-/// - ROW seams across the cross axis: full-strength hairlines every row,
-///   zoom-independent (the storyboard's row borders, generalized);
-/// - 6f/24f BEAT lines on top.
+/// - 6f/24f BEAT lines;
+/// - ROW seams across the cross axis, over all of it: full-strength
+///   hairlines at every row's trailing edge, zoom-independent (the
+///   storyboard's row borders, generalized).
+///
+/// 🚨I-44 (유저 2026-09-23 → 09-24): 「가로선이랑 세로선이 2개 중복해서있고 …
+/// 블록에도 세로선 3번째중복인데 이거 하나로 못합치나? 그리드오버레이위에
+/// 행바닥 뭐지?」 → 「합친다 — 그리드 한 장」. The lines used to come from FOUR
+/// places: this overlay (under the rows since D32, and under every row's
+/// opaque ground — so drawn on every paint and seen nowhere), each row
+/// redrawing the empty cells' lines and seams on its own ground (D43-2),
+/// each block drawing seams on its paper, and each fx band its own grid
+/// instance (F-7). The rows' grounds are THIS sheet's now, so the rows
+/// paint paper and nothing else, and every line is drawn here, once.
 ///
 /// The painter lives in the scroll CONTENT's coordinate space (its size
 /// is the full built content), so lines land on absolute frame
@@ -25,21 +39,24 @@ import '../repaint_props.dart';
 /// audit put it at about 3% of the ops a window would remove here, so
 /// the code is right to stay as it is — but for a reason it was not
 /// giving. A comment that says "cheap" without saying why is how a
-/// surface stops being looked at.
+/// surface stops being looked at. (I-44 multiplies it by the stretches of
+/// rows standing on a ground of their own — the active row and the fx
+/// lanes, a handful — and the rows' tile bakes lost every line in return.)
 /// D8/D32/D38 (2026-08-18): THE grid-line law, whole. This file already
 /// owned the INK (R26 #40's "one grid language"); the position and the
-/// over-block treatment joined it so no drawer can restate a value:
+/// ground treatment joined it so no drawer can restate a value:
 /// - ink: the three named strengths below, dispatched per boundary;
 /// - position: [timelineFrameBoundaryLinePosition] — every drawer lands
 ///   on boundary + [timelineGridLineSnap], the ruler's own pixel snap
 ///   (the overlay used to draw unsnapped, which was D8's "미묘하게 다름");
-/// - over blocks: [timelineGridLineInkOnGround] — the same line
-///   channel-multiplied onto the block's paper (D32: a bright opaque line
-///   glowing over blue paper was the report; multiply darkens the paper
-///   instead), computed in Dart so the tile bake needs no blend op;
-/// - cadence: one function answers inside and outside blocks alike (D38:
-///   a zoom that thins the empty-space 1f lines thins the block seams
-///   too — same question, same answer).
+/// - on a ground: [timelineGridLineInkOnGround] — the line
+///   channel-multiplied onto what it lies on (D32: a bright opaque line
+///   glowing over blue paper was the report; multiply darkens instead),
+///   computed in Dart so no advanced blend mode is ever asked of the
+///   engine;
+/// - cadence: one function answers for every drawer (D38: a zoom that
+///   thins the 1f lines thins them everywhere — same question, same
+///   answer).
 
 /// The frame AREA's own leading edge — the hairline that marks where the
 /// frames begin, mirroring the rail row's right border (D8, UI-R10 #20's
@@ -135,9 +152,37 @@ const double timelineGridBaseLineStroke = 1.0;
 /// band, and NOTHING at all on the frame cells rows, which paint an opaque
 /// ground straight over the overlay's (D32's z-order). Three spellings, one
 /// of them silence. Named here so a seam is one line however it is reached.
+///
+/// 🚨F-3 (유저 2026-08-25): 「가로선만 레이어영역 흰색계열로 통일. 세로나 그 외는
+/// 그대로」. ⛔THE SEAM IS NEVER MULTIPLIED ONTO ITS GROUND, while the frame
+/// boundary line always is. They look like one law and they are two: the
+/// boundary line belongs to the FRAME grid, which rules whatever it crosses
+/// and so must darken it; the seam is the LAYER area's row divider
+/// continued into the cells, and the rail draws it flat over whatever the
+/// row's ground happens to be. Stated by CONCEPT, not by screen direction:
+/// on the X-sheet it is the vertical line between two layer COLUMNS.
 ({Color color, double strokeWidth}) timelineGridRowSeamInk(
   ColorScheme colorScheme,
-) => (color: colorScheme.outlineVariant, strokeWidth: 1.0);
+) => (
+  color: colorScheme.outlineVariant,
+  strokeWidth: timelineGridRowSeamStroke,
+);
+
+/// The ROW SEAM's width — the last pixel of every row, across the cross
+/// axis, is the seam's.
+const double timelineGridRowSeamStroke = 1.0;
+
+/// How far across a row its BLOCK PAPER reaches: the whole row but its seam.
+///
+/// 🚨I-44: the seam is drawn by the grid sheet UNDER the rows now, so paper
+/// that covered the row's last pixel would hide the one line the user kept
+/// on blocks (「세로선 지움(가로선 남김)」). Every block-shaped thing that has
+/// to sit exactly on the paper — the paper itself on both raster paths, the
+/// edge triangles, the run pattern, the warning line, the SE audio strip —
+/// reads its box from here, and its corner from THIS extent, so a corner
+/// cannot come out of a different box than the paper's.
+double timelineRowPaperExtent(double rowExtent) =>
+    rowExtent - timelineGridRowSeamStroke;
 
 /// The position convention: a boundary line's center sits half a pixel
 /// past the boundary — the frame ruler's own snap, now the law's.
@@ -173,11 +218,12 @@ double timelineFrameBoundaryLinePosition(
   double frameCellExtent,
 ) => frameIndex * frameCellExtent + timelineGridLineSnap;
 
-/// The grid line's ink ON a painted ground (a block's paper): the law
-/// line channel-multiplied onto the ground, weighted by the line's own
-/// alpha — a faint base line darkens the paper faintly, an opaque beat
-/// line darkens it fully. Computed here, once, so the substrate tiles
-/// bake a plain opaque colour and need no blend mode in the native ops.
+/// The grid line's ink ON a painted ground (a row's ground): the law line
+/// channel-multiplied onto the ground, weighted by the line's own alpha —
+/// a faint base line darkens the ground faintly, an opaque beat line
+/// darkens it fully. Computed here, once, as a plain opaque colour, so no
+/// drawer ever asks the engine for a multiply blend (an advanced blend is
+/// what old tablets pay for, and Impeller answers it with an extra pass).
 Color timelineGridLineInkOnGround(
   ({Color color, double strokeWidth}) ink,
   Color ground,
@@ -207,11 +253,10 @@ Color timelineGridLineInkOnGround(
 /// second lines survived only by being dark enough to still read as darker,
 /// at about half the strength the law asks for.
 ///
-/// Every surface that paints over the grid overlay resolves through HERE.
-/// The run labels already had this rule in their own words (they take a
-/// `backdropColor` and resolve the translucent paper against it before
-/// choosing an ink) — which is exactly why the user could see that the two
-/// laws disagreed: same paper, one composited first and one did not.
+/// Every ground the grid is drawn on, and every translucent paper that has
+/// to hide it, resolves through HERE — the lane wash over the host
+/// ([timelineLaneGround]) and the unworked block's paper over its row
+/// (I-44: pre-blended so the sheet's lines cannot show through it).
 Color? timelineGridGroundOver({
   required Color? under,
   required Color? painted,
@@ -232,15 +277,17 @@ Color? timelineGridGroundOver({
   return Color.alphaBlend(painted, under);
 }
 
-/// 🚨THE GRID'S GROUND AND CADENCE, PUBLISHED ONCE PER HOST — so a surface
-/// that paints over the beat-line overlay cannot draw its own grid without
-/// knowing what it is drawing on.
+/// 🚨THE GRID'S GROUND AND CADENCE, PUBLISHED ONCE PER HOST — the grid sheet
+/// reads both, and a row reads the ground to know what its translucent
+/// paper stands on.
 ///
-/// The overlay sits UNDER the rows (D32): whatever a row paints occludes it,
-/// so every opaque or washed row owes the grid a redraw through the law. The
-/// hosts genuinely sit on different colours (the timeline and X-sheet on
-/// `surfaceContainerHighest`, the storyboard on `surface`, a folded row on
-/// the artwork = null), which is why this is inherited rather than guessed.
+/// The sheet sits UNDER the rows (D32) and paints their grounds itself
+/// (I-44), so a row owes the grid nothing any more — but a TRANSLUCENT
+/// paper would let the sheet's lines through, so it is pre-blended onto the
+/// ground it would have shown. The hosts genuinely sit on different colours
+/// (the timeline and X-sheet on `surfaceContainerHighest`, the storyboard on
+/// `surface`, a folded row on the artwork = null), which is why this is
+/// inherited rather than guessed.
 ///
 /// ⛔Do not read the ground off `colorScheme` at the point of use. That
 /// guess is right three times in four, which is the worst kind of wrong.
@@ -267,6 +314,28 @@ class TimelineGridLaw extends InheritedWidget {
       oldWidget.ground != ground ||
       oldWidget.framesPerSecond != framesPerSecond;
 }
+
+/// The ground a LANE row stands on while nobody stands on it — the lane
+/// wash composited onto the host's ground; the raw wash where the host has
+/// none to composite onto.
+///
+/// 🚨F-7 (유저 2026-08-24): 「스토리보드패널, fx열면 프레임영역의 선이 두꺼운데
+/// 선이 이중적용되고있는건가?」 — it was: the band washed at 60% over the
+/// buried grid and then drew the law on top, two lines at one boundary.
+/// ⇒ The wash is COMPOSITED, so a lane's ground is one opaque colour and the
+/// grid is drawn on it once, in the ink that colour asks for. That is the
+/// sheet's job now (I-44); this is the colour it paints, and the colour the
+/// SE audio strip's translucent paper is pre-blended onto.
+Color timelineLaneGround(Color? hostGround) {
+  final wash = AppColors.washDown.withValues(alpha: 0.6);
+  return timelineGridGroundOver(under: hostGround, painted: wash) ?? wash;
+}
+
+/// A row's ground while it is STOOD ON — the active layer's row, a lit fx
+/// lane: the one standing wash, composited over the row's [resting] ground
+/// (UI-R21 #2's wash, F-25's chain lit on both halves of the splitter).
+Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
+    Color.alphaBlend(timelineActiveRowWashColor(colorScheme), resting);
 
 /// The ink of the grid line at the boundary STARTING frame [frameIndex]
 /// — the one grid language shared by the cell grid overlay and the frame
@@ -343,14 +412,79 @@ class TimelineOutsideCutWashPainter extends CustomPainter with RepaintOnProps {
   Object get props => (outsideStart, colorScheme, axis);
 }
 
-class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
-  TimelineBeatLinesPainter({
+
+/// One row of a grid sheet, across the cross axis: how far it reaches and
+/// the ground it stands on. Every row is ruled off at its trailing edge.
+typedef TimelineGridRow = ({double extent, Color ground});
+
+/// The rows a grid sheet lays down, in order from its cross-axis origin.
+///
+/// A VALUE, so a sheet rebuilt over the same rows repaints nothing: the
+/// timeline rebuilds its grid area for reasons that have nothing to do with
+/// the grounds (a row window sliding), and a list compared by identity
+/// would re-record the whole content-long sheet each time.
+@immutable
+class TimelineGridRows {
+  const TimelineGridRows(this.rows);
+
+  /// No rows: the lines alone, over the host's ground and nothing else.
+  static const TimelineGridRows none = TimelineGridRows([]);
+
+  final List<TimelineGridRow> rows;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TimelineGridRows && listEquals(other.rows, rows);
+
+  @override
+  int get hashCode => Object.hashAll(rows);
+}
+
+/// THE grid sheet — every host's frame grid, drawn once, UNDER its rows.
+///
+/// It reads the host's law ([TimelineGridLaw]) for the ground and the
+/// counting fps, so neither is stated a second time at the mount.
+class TimelineGridSheet extends StatelessWidget {
+  const TimelineGridSheet({
+    super.key,
+    required this.frameCellExtent,
+    this.rows = TimelineGridRows.none,
+    this.axis = Axis.horizontal,
+    this.frameStartIndex = 0,
+  });
+
+  final double frameCellExtent;
+  final TimelineGridRows rows;
+  final Axis axis;
+
+  /// See [TimelineGridSheetPainter.frameStartIndex].
+  final int frameStartIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final law = TimelineGridLaw.maybeOf(context);
+    return CustomPaint(
+      painter: TimelineGridSheetPainter(
+        frameCellExtent: frameCellExtent,
+        framesPerSecond: law?.framesPerSecond ?? 0,
+        colorScheme: Theme.of(context).colorScheme,
+        ground: law?.ground,
+        axis: axis,
+        rows: rows,
+        frameStartIndex: frameStartIndex,
+      ),
+    );
+  }
+}
+
+class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
+  TimelineGridSheetPainter({
     required this.frameCellExtent,
     required this.framesPerSecond,
     required this.colorScheme,
     required this.ground,
     this.axis = Axis.horizontal,
-    this.crossCellExtent = 0,
+    this.rows = TimelineGridRows.none,
     this.frameStartIndex = 0,
   });
 
@@ -358,51 +492,45 @@ class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
   final int framesPerSecond;
   final ColorScheme colorScheme;
 
-  /// The surface this overlay is painted ON, so its lines take the SAME
-  /// treatment the block-interior seams take (유저, 2026-08-21: 「그리드
-  /// 오버레이랑 블록 내부 이음매같은게 색이나 생긴게 달라서 통일하고싶다」).
+  /// The HOST's ground — what lies under this sheet wherever no row paints
+  /// a ground of its own. A line takes the ink its ground asks for
+  /// (유저, 2026-08-21: 「그리드 오버레이랑 블록 내부 이음매같은게 색이나 생긴게
+  /// 달라서 통일하고싶다」).
   ///
-  /// 🚨The two differed by OPERATION, not by value. Over empty ground the
-  /// line was source-over — `lerp(ground, line, line.a)`, which in a dark
-  /// theme is LIGHTER than its ground — while over a block the tile
+  /// 🚨The two used to differ by OPERATION, not by value. Over empty ground
+  /// the line was source-over — `lerp(ground, line, line.a)`, which in a
+  /// dark theme is LIGHTER than its ground — while over a block the tile
   /// multiplied: `lerp(paper, line×paper, line.a)`, always DARKER. Same
   /// ink, same position, same cadence, two composites, so one grid changed
-  /// character wherever paper began. The ground here puts both through
+  /// character wherever paper began. Every line here goes through
   /// [timelineGridLineInkOnGround].
   ///
-  /// ⛔Passed IN rather than read off [colorScheme]: the hosts genuinely
-  /// sit on different surfaces — the timeline panel and the X-sheet on
-  /// `surfaceContainerHighest`, the storyboard on `surface`. Guessing one
-  /// here would have been right three times out of four, which is the
-  /// worst kind of wrong.
-  ///
-  /// ⚠️Null = "the ground is not a single known colour". The folded row's
-  /// overlay lies over the ARTWORK at 70%, so there is nothing to multiply
-  /// against and its lines stay source-over.
+  /// ⚠️Null = "the ground is not a single known colour". The folded row
+  /// lies over the ARTWORK at 70%, so there is nothing to multiply against
+  /// and its lines stay source-over.
   final Color? ground;
 
   /// The FRAME axis' direction: horizontal (timeline, storyboard) draws
   /// vertical lines; vertical (X-sheet) draws horizontal ones.
   final Axis axis;
 
-  /// The uniform row height (timeline) / column width (X-sheet) for the
-  /// cross-axis ROW seam lines; 0 skips them (hosts that draw their own).
-  final double crossCellExtent;
+  /// The rows this sheet lays down, from the cross-axis origin. A row whose
+  /// ground is not [ground] gets it painted here, and the frame lines over
+  /// it in that ground's ink; every row is ruled off at its trailing edge.
+  ///
+  /// ⛔THE ROWS PAINT NO GROUND OF THEIR OWN (I-44). They used to — the
+  /// surface underlay and the active wash of UI-R21 #2, the fx band's
+  /// composited wash — and every one of them buried this sheet and then
+  /// owed it a redraw (D43-2), which is how one grid came to be drawn in
+  /// four places. The standing wash rides here now: the sheet repaints on
+  /// a layer switch, and still no tile re-bakes (UI-R21 #2's reason holds).
+  final TimelineGridRows rows;
 
-  /// The ABSOLUTE frame at this canvas' origin — so a windowed surface (a
-  /// single lane band inside a virtualised row) draws the boundaries that
-  /// actually fall in its window rather than counting from its own left
-  /// edge. 0 is the whole-panel overlay and changes nothing.
+  /// The ABSOLUTE frame at this canvas' origin — so a windowed surface (the
+  /// folded row, which paints one screenful from the first visible frame)
+  /// draws the boundaries that actually fall in its window rather than
+  /// counting from its own left edge. 0 is the whole-panel sheet.
   final int frameStartIndex;
-
-  /// [ink] as it must land on this overlay's ground — the block-interior
-  /// treatment, applied to the empty-space lines too.
-  Color _inkOnGround(({Color color, double strokeWidth}) ink) {
-    final ground = this.ground;
-    return ground == null
-        ? ink.color
-        : timelineGridLineInkOnGround(ink, ground);
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -412,17 +540,67 @@ class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
     final mainExtent = extentAlong(axis, size);
     final crossExtent = extentAcross(axis, size);
 
-    void mainAxisLine(double position, Paint paint) => canvas.drawLine(
-      offsetAlong(axis, along: position, across: 0),
-      offsetAlong(axis, along: position, across: crossExtent),
-      paint,
+    Rect across(double from, double to) => Rect.fromPoints(
+      offsetAlong(axis, along: 0, across: from),
+      offsetAlong(axis, along: mainExtent, across: to),
     );
 
-    // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
-    // look; beat frames skip, the beat pass draws them stronger). The
-    // ink comes from the LAW's named functions and the position from its
-    // snap — the stride loops below are the law's own cadence hoisted,
-    // so no per-boundary allocation happens on this content-length walk.
+    // The host's ground first, the whole cross extent at once: most rows
+    // stand on it, so most of the sheet is one pass of lines.
+    _paintLines(
+      canvas,
+      mainExtent,
+      (from: 0, to: crossExtent, ground: ground),
+    );
+
+    // Then every stretch of rows standing on a ground of its own — the
+    // active layer's row, the fx lanes — laid over those lines, with the
+    // lines drawn again on it in the ink it asks for.
+    var start = 0.0;
+    for (var index = 0; index < rows.rows.length;) {
+      final stretchGround = rows.rows[index].ground;
+      var end = start;
+      while (index < rows.rows.length &&
+          rows.rows[index].ground == stretchGround) {
+        end += rows.rows[index].extent;
+        index += 1;
+      }
+      if (stretchGround != ground) {
+        canvas.drawRect(across(start, end), Paint()..color = stretchGround);
+        _paintLines(canvas, mainExtent, (
+          from: start,
+          to: end,
+          ground: stretchGround,
+        ));
+      }
+      start = end;
+    }
+
+    // ROW seams (UI-R18 #10/#12), over everything: full-strength,
+    // zoom-independent — the rail's own hairline language continued into
+    // the cells, at each row's LAST pixel, so the next row's first is
+    // untouched. F-3: FLAT, never through the ground law
+    // ([timelineGridRowSeamInk] says why).
+    final seam = timelineGridRowSeamInk(colorScheme);
+    final seamPaint = Paint()..color = seam.color;
+    var edge = 0.0;
+    for (final row in rows.rows) {
+      edge += row.extent;
+      canvas.drawRect(across(edge - seam.strokeWidth, edge), seamPaint);
+    }
+  }
+
+  /// The frame lines across one [stretch] of the cross axis — `from` to
+  /// `to` — in the ink its `ground` asks for.
+  void _paintLines(Canvas canvas, double mainExtent, _Stretch stretch) {
+    final (:from, :to, :ground) = stretch;
+    Color inkOn(({Color color, double strokeWidth}) ink) =>
+        ground == null ? ink.color : timelineGridLineInkOnGround(ink, ground);
+    void line(double position, Paint paint) => canvas.drawLine(
+      offsetAlong(axis, along: position, across: from),
+      offsetAlong(axis, along: position, across: to),
+      paint,
+    );
     // The first boundary of period [period] at or after the window start —
     // the hoisted form of "which absolute frames does this canvas show".
     int firstBoundary(int period) => frameStartIndex <= 0
@@ -432,67 +610,45 @@ class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
       frame - frameStartIndex,
       frameCellExtent,
     );
+    bool shown(int frame) =>
+        (frame - frameStartIndex) * frameCellExtent <= mainExtent;
 
+    // BASE grid: flat faint, cadence-thinned (UI-R18 #8 — the storyboard
+    // look; beat frames skip, the beat pass draws them stronger). The ink
+    // comes from the LAW's named functions and the position from its snap
+    // — the stride loops below are the law's own cadence hoisted, so no
+    // per-boundary allocation happens on this content-length walk.
     final baseInk = timelineGridBaseLineInk(colorScheme);
     final basePaint = Paint()
-      ..color = _inkOnGround(baseInk)
+      ..color = inkOn(baseInk)
       ..strokeWidth = baseInk.strokeWidth;
     final cadence = timelineGridLineEveryFrames(frameCellExtent);
-    for (
-      var frame = firstBoundary(cadence);
-      (frame - frameStartIndex) * frameCellExtent <= mainExtent;
-      frame += cadence
-    ) {
+    for (var frame = firstBoundary(cadence); shown(frame); frame += cadence) {
       if (frame % 6 == 0) {
         continue;
       }
-      mainAxisLine(positionOf(frame), basePaint);
-    }
-
-    // ROW seams (UI-R18 #10/#12): full-strength, zoom-independent — the
-    // rows' own hairline language extended into the cell area.
-    if (crossCellExtent > 0) {
-      final seamInk = timelineGridRowSeamInk(colorScheme);
-      // F-3: FLAT, never `_inkOnGround` — the seam is the layer area's row
-      // divider continued into the cells, not part of the frame grid. See
-      // [TimelineRowCellsPainter.rowSeamLineFor], which carries the whole
-      // reasoning; the two must agree or the divider changes colour halfway
-      // across a row.
-      final seamPaint = Paint()
-        ..color = seamInk.color
-        ..strokeWidth = seamInk.strokeWidth;
-      for (
-        var seam = crossCellExtent;
-        seam < crossExtent;
-        seam += crossCellExtent
-      ) {
-        canvas.drawLine(
-          offsetAlong(axis, along: 0, across: seam),
-          offsetAlong(axis, along: mainExtent, across: seam),
-          seamPaint,
-        );
-      }
+      line(positionOf(frame), basePaint);
     }
 
     final sixInk = timelineGridSixLineInk(colorScheme);
     final sixPaint = Paint()
-      ..color = _inkOnGround(sixInk)
+      ..color = inkOn(sixInk)
       ..strokeWidth = sixInk.strokeWidth;
     final secondInk = timelineGridSecondLineInk();
     final secondPaint = Paint()
-      ..color = _inkOnGround(secondInk)
+      ..color = inkOn(secondInk)
       ..strokeWidth = secondInk.strokeWidth;
     // 6f is the sheet convention regardless of fps.
     const beatPeriod = 6;
     for (
       var frame = firstBoundary(beatPeriod);
-      (frame - frameStartIndex) * frameCellExtent <= mainExtent;
+      shown(frame);
       frame += beatPeriod
     ) {
       final paint = framesPerSecond > 0 && frame % framesPerSecond == 0
           ? secondPaint
           : sixPaint;
-      mainAxisLine(positionOf(frame), paint);
+      line(positionOf(frame), paint);
     }
   }
 
@@ -504,6 +660,10 @@ class TimelineBeatLinesPainter extends CustomPainter with RepaintOnProps {
     ground,
     axis,
     frameStartIndex,
-    crossCellExtent,
+    rows,
   );
 }
+
+/// One stretch of a grid sheet's cross axis and the ground it stands on —
+/// what [TimelineGridSheetPainter] lines at a time.
+typedef _Stretch = ({double from, double to, Color? ground});

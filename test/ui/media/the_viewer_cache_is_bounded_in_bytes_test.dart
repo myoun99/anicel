@@ -83,7 +83,7 @@ void main() {
     final fake = FakePdfDocument(
       pageSizes: List<ui.Size>.filled(pages, const ui.Size(595, 842)),
     );
-    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

@@ -78,7 +78,7 @@ void main() {
   /// behind it — `planSequenceLayer` writes exactly this
   /// (`frameCount: sourceFiles.length`), so the silhouette is as long as
   /// the bake will be.
-  const sequence = MediaAsset(
+  final sequence = MediaAsset(
     path: sequencePath,
     name: 'walk',
     kind: MediaAssetKind.image,
@@ -90,7 +90,7 @@ void main() {
 
   test('a four-cell sequence over cell 3 names the four cells it would '
       'author', () {
-    final s = session(pool: const [sequence]);
+    final s = session(pool: [sequence]);
 
     s.showMediaPlacement(rowId, 3, sequencePath);
 
@@ -103,7 +103,7 @@ void main() {
 
   test('the block in the way is PUSHED while it hovers — the landing\'s own '
       'plan, not a preview of its own', () {
-    final s = session(pool: const [sequence]);
+    final s = session(pool: [sequence]);
 
     s.showMediaPlacement(rowId, 3, sequencePath);
 
@@ -128,7 +128,7 @@ void main() {
 
   test('a still is ONE cell — a file with no count is one picture', () {
     final s = session(
-      pool: const [
+      pool: [
         MediaAsset(
           path: stillPath,
           name: 'bg_street',
@@ -148,7 +148,7 @@ void main() {
   test(
     'nothing is drawn where nothing can land — the chip already says no',
     () {
-      final s = session(pool: const [sequence]);
+      final s = session(pool: [sequence]);
 
       s.showMediaPlacement(const LayerId('no-such-row'), 3, sequencePath);
 
@@ -157,7 +157,7 @@ void main() {
   );
 
   test('the file leaving takes its drawing with it', () {
-    final s = session(pool: const [sequence]);
+    final s = session(pool: [sequence]);
     s.showMediaPlacement(rowId, 3, sequencePath);
     expect(s.dragPreview.value, isNotNull, reason: 'the premise');
 
@@ -167,7 +167,7 @@ void main() {
   });
 
   test('a BLOCK drag\'s preview is not this drag\'s to clear', () {
-    final s = session(pool: const [sequence]);
+    final s = session(pool: [sequence]);
     final other = BlockMoveDragPreview(
       previewLayers: {rowId: s.layerById(rowId)!},
     );

@@ -140,7 +140,17 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final BrushEditSessionState sessionState;
   final LayerId layerId;
   final FrameId frameId;
-  final BrushEditCanvasInputSettings inputSettings;
+
+  /// The brush in hand, read AT THE MOMENT it is used — a stroke's first
+  /// point snapshots it for the whole stroke, a fill and a pressure curve
+  /// read it when they run.
+  ///
+  /// A getter and not a value (H40 ②, 2026-09-24): handed over as a value,
+  /// every brush change — a preset pick, each frame of a settings slider
+  /// drag, a colour notch — rebuilt this view and the whole panel around
+  /// it, and relaid out the panel's shell, so the chrome over the canvas
+  /// repainted for a number it does not show.
+  final ValueGetter<BrushEditCanvasInputSettings> inputSettings;
   final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
   final ValueChanged<bool>? onActiveStrokeChanged;
@@ -525,7 +535,7 @@ class _InteractiveBrushEditCanvasViewState
     CanvasPoint localPosition, {
     required int sequence,
   }) {
-    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings();
     final dualMask = settings.dualMask;
     return BrushDab(
       center: localPosition,
@@ -617,7 +627,7 @@ class _InteractiveBrushEditCanvasViewState
     // own variation now, so this is the only place the tool's opacity
     // enters the live pixels.
     _liveRasterizer!.strokeOpacity =
-        (_activeStrokeInputSettings ?? widget.inputSettings).opacity;
+        (_activeStrokeInputSettings ?? widget.inputSettings()).opacity;
   }
 
   /// A fill shown and not yet committed: its dab, the surface its result

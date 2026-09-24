@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/media/video_viewer_document.dart';
+import 'package:anicel/src/services/media/viewer_document.dart';
 
 import '../../helpers/fake_video_backend.dart';
 
@@ -19,6 +21,8 @@ import '../../helpers/fake_video_backend.dart';
 /// on a machine WITH one the fake was pointless. Card
 /// `video-viewer-arm-is-unmeasured`, closed by moving the question.
 void main() {
+  const clip = MediaFileBytes('C:/work/clip.mp4');
+
   tearDown(() => debugVideoDecodeBackend = null);
 
   test('a backend that says NO means no document, whatever the machine has '
@@ -26,7 +30,7 @@ void main() {
     debugVideoDecodeBackend = FakeVideoBackend(supported: false);
 
     expect(
-      await VideoViewerDocument.open('C:/work/clip.mp4'),
+      await VideoViewerDocument.open(clip),
       isNull,
       reason: '⚠️THIS MACHINE MAY HAVE A REAL ENGINE, and that is the point: '
           'if the document still asked the decoder, this would open and the '
@@ -37,9 +41,25 @@ void main() {
   test('and a backend that says YES opens one, with no engine involved', () async {
     debugVideoDecodeBackend = FakeVideoBackend(frameCount: 7);
 
-    final document = await VideoViewerDocument.open('C:/work/clip.mp4');
+    final document = await VideoViewerDocument.open(clip);
     expect(document, isNotNull);
     expect(document!.pageCount, 7);
     await document.dispose();
+  });
+
+  test('a movie kept FRAMED is one this reader cannot read — never 「no '
+      'reader」, and never handed to it', () async {
+    final backend = FakeVideoBackend();
+    debugVideoDecodeBackend = backend;
+    final framed = MediaFramedBytes.reading(
+      readStored: (buffer, position, size) => 0,
+      storedExists: () => true,
+    );
+
+    await expectLater(
+      VideoViewerDocument.open(framed),
+      throwsA(isA<ViewerDocumentException>()),
+    );
+    expect(backend.openedAt, isEmpty);
   });
 }

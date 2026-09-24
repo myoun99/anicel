@@ -10,7 +10,9 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
+import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
+import 'axis_turn.dart' show extentAlong;
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
@@ -18,12 +20,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';
 import 'timeline_instruction_row_visual.dart' show bandExposureState;
 import 'timeline_beat_lines.dart'
-    show
-        timelineFrameBoundaryLineInk,
-        timelineGridGroundOver,
-        timelineGridLineInkOnGround,
-        timelineGridLineSnap,
-        timelineGridRowSeamInk;
+    show TimelineGridLaw, timelineGridGroundOver, timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
 import 'timeline_frame_geometry.dart';
@@ -61,9 +58,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.devicePixelRatio = 1.0,
     this.celContent,
     this.coverageIdentity,
-    this.chromeless = false,
-    this.framesPerSecond = 24,
-    this.rowGround,
+    this.paperGround,
   }) : super(
          repaint: Listenable.merge([
            geometry,
@@ -72,12 +67,6 @@ class TimelineRowCellsPainter extends CustomPainter
            ?celContent?.revision,
          ]),
        );
-
-  /// The counting fps, for the seam law's beat strengths (D32/D38): a 6f
-  /// or second boundary crossing a block keeps its stronger line, so the
-  /// grid reads as ONE line running through paper and dark ground alike.
-  @override
-  final int framesPerSecond;
 
   /// What this row's COVERAGE follows, when that is not the layer itself.
   ///
@@ -176,46 +165,22 @@ class TimelineRowCellsPainter extends CustomPainter
   /// the next frame. Null (or no native engine) keeps the classic path.
   final TimelineGridTileStore? tileStore;
 
-  /// GROUND OFF — the row drawn over the artwork instead of over a panel.
+  /// What this row's paper stands on when nothing stands on the row — the
+  /// host's ground ([TimelineGridLaw.ground]); null over the artwork.
   ///
-  /// 유저 확정 (2026-08-10), restated 2026-08-13 when it went missing:
-  /// 「프레임셀쪽은 **바탕색은 싹 없애고** 그리드선 띄우고 그 부분도 전체적으로
-  /// **반투명**하게」. The collapsed row's design is in its negative space —
-  /// no panel fill, no rail fill, no active-row wash — and the one fill that
-  /// survives is the out-of-cut shading, because that one IS information.
+  /// 🚨I-44: the grid sheet UNDER the rows paints their grounds and every
+  /// line now, and the rows paint paper alone. An UNWORKED block's paper is
+  /// translucent (R26 #44's grey), so it would let the sheet's lines through
+  /// — exactly the lines 「블록에 존재하는 그리드선만 싹 삭제」 took off blocks.
+  /// So it is pre-blended onto this ground and painted opaque (the cost the
+  /// user took with 「합친다 — 그리드 한 장」: on the ACTIVE row the standing
+  /// wash no longer shows through an unworked block).
   ///
-  /// 🚨T16 — this exists because the collapsed overlay MOUNTS this row now
-  /// rather than re-drawing it (⑩'s root C). Mounting was right and it
-  /// brought the timeline's ground along with it, since only the RAIL row had
-  /// a way to take its ground off. So the flag goes where the twin already
-  /// is ([TimelineLayerControlsRow.chromeless]) instead of the overlay
-  /// growing a second painter again.
-  ///
-  /// ★It is a GROUND rule, not a look of its own: empty paper stops being
-  /// painted and a block keeps a translucent body, at the exact values the
-  /// strip painter used while it owned this drawing — so nothing about the
-  /// confirmed appearance is being re-decided here, only re-hosted.
-  final bool chromeless;
-
-  /// The ROW's own ground — what the widget lays down behind these cells
-  /// (the surface fill, plus the active wash when this row is the active
-  /// one). Null when the row paints no ground at all: a chromeless row
-  /// lies over the artwork, so its empty-cell lines stay source-over.
-  ///
-  /// 🚨D43-2 (유저 2026-08-21): 「행이 있는데 블록이 없는 곳에 그리드가
-  /// 없단거야. 근데 fx행은 존재한단거고」. The grid overlay sits UNDER the
-  /// rows and a row paints an OPAQUE full-width ground, so the overlay is
-  /// covered for the whole width of every row that draws one — while a
-  /// lane row, which draws none, shows it. That is the whole of the
-  /// report, and it means the empty cells' lines cannot come from the
-  /// overlay: they have to be drawn by the row, on the row's own ground.
-  ///
-  /// ⛔Not read off [colorScheme] here: the ground the row actually paints
-  /// is `surface` (plus a wash), while the PANEL behind it is
-  /// `surfaceContainerHighest`. Guessing would put the empty-cell lines on
-  /// the wrong paper — the same trap the overlay's `ground` avoids by
-  /// being passed in.
-  final Color? rowGround;
+  /// ⛔Not the row's STANDING ground: that would put the active layer into
+  /// the baked tiles, and switching layers would re-bake them — the thing
+  /// UI-R21 #2 took the wash out of the cells to stop.
+  @override
+  final Color? paperGround;
 
   // ⛔The two per-cell alphas are GONE (유저 확정 2026-08-14): 「반투명 =
   // 오버레이 루트 하나, 70%」. `0x66` on a block's body and `0x9E` on its
@@ -318,8 +283,7 @@ class TimelineRowCellsPainter extends CustomPainter
     );
     final frameName = frameNameForLayer?.call(layer, frameIndex);
     // Hold ghosts keep their dash at ANY zoom (it paints as a line, not
-    // text — UI-R12 #18): the continuing stroke is structure, so it never
-    // joins the narrow-cell text suppression below.
+    // text — UI-R12 #18): the continuing stroke is structure.
     final holdGhost =
         runEdgeGhostAt(layer, frameIndex)?.mode == TimelineRunEdgeMode.hold;
     String glyph;
@@ -391,212 +355,55 @@ class TimelineRowCellsPainter extends CustomPainter
     // R26 #44: a block whose cel has no picture yet grays its paper
     // slightly — the whole covered run, ACTION-section rows only (the
     // resolver stands down elsewhere). Ghosts stay plain (they carry no
-    // block chrome at all).
+    // block chrome at all). I-44: onto [paperGround], so the grid sheet
+    // under the row cannot show through it.
     final baseBackground =
         !model.ghost &&
             !_cameraSummaryRow &&
             model.exposureState.isCovered &&
             !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
-        ? timelineEmptyCelPaperColor(paper)
+        ? timelineGridGroundOver(
+            under: paperGround,
+            painted: timelineEmptyCelPaperColor(paper),
+          )!
         : styleColors.background;
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
     // full rect per covered cell it double-stroked every interior seam,
     // ignored the grid cadence, and wore a different weight than the
-    // empty-space line. The seams are [heldSeamLineFor] now — ONE line per
-    // interior boundary, the grid-line LAW's cadence/strength, multiplied
-    // onto this block's own paper. The rounded caps live in the fill.
+    // empty-space line. The rounded caps live in the fill.
+    // 🚨I-44: and the seams went after it — a block carries no line at all
+    // now (「블록에 존재하는 그리드선만 싹 삭제」); the grid sheet under the
+    // row is the only thing that draws one.
     // Nothing here asks where the cut ends any more: the out-of-cut wash is
     // one rect in its own overlay ([TimelineOutsideCutWashPainter]), which
     // is what lets it follow a live drag while these tiles stay baked.
     return (
       background: baseBackground,
       border: Colors.transparent,
-      radius: timelineCellBorderRadius(model.segment, axis),
+      radius: timelineCellBorderRadius(
+        model.segment,
+        axis,
+        cellExtent: frameCellExtent,
+        crossExtent: timelineRowPaperExtent(crossAxisExtent),
+      ),
     );
   }
 
-  /// D32/D38: the block-interior seam line at [frameIndex]'s LEADING
-  /// boundary, or null — the grid-line law consulted INSIDE blocks.
-  ///
-  /// Non-null only when the boundary is interior to a run (the cell
-  /// continues from the previous one) and the law's cadence shows a line
-  /// there at this zoom. The ink is the law line channel-multiplied onto
-  /// this cell's own painted ground ([timelineGridLineInkOnGround]), so a
-  /// 6f/second beat keeps its stronger line THROUGH the paper and the
-  /// zoom that thins the empty-space 1f lines thins these identically.
+  /// The cell's PAPER — its rect short of the row seam at the trailing
+  /// cross edge ([timelineRowPaperExtent]), which the grid sheet draws under
+  /// the row and the paper must leave showing.
   ///
   /// PUBLIC contract shared by paint() and the tile emitter (the
-  /// probe-the-painter rule): both draw exactly this rect in this colour,
-  /// so the baked and classic passes cannot drift.
+  /// probe-the-painter rule): both fill exactly this box.
   @override
-  ({Rect rect, Color color})? heldSeamLineFor(int frameIndex) {
-    final model = cellModelAt(frameIndex);
-    // 🚨D43-2 재개 b (유저 2026-08-22): 「**카메라레이어는 그리드 안보이고**」.
-    //
-    // ⛔THE CAMERA ROW USED TO BE EXCLUDED FROM THE LINE OUTRIGHT, and no
-    // reason for it survives reading. Its cells are key-summary markers,
-    // which changes what the row DRAWS — not where the frame boundaries
-    // are. The grid is the sheet's ruling and every row stands on the same
-    // frames, so a row opting out of it is a row claiming its columns sit
-    // somewhere else.
-    //
-    // 🚨F-3 (유저 2026-08-24): 「프레임 그리드가 아예 안 그려지는 레이어가
-    // 있다(확인된 것 = 이미지 레이어)」 — and it was THE SAME EXCLUSION, one
-    // field over. `if (model.ghost) return null` was here, and an IMAGE row
-    // is a single real cell at 0 followed by hold GHOSTS to the cut end
-    // (D22), so the exclusion swallowed the whole row. It was never only
-    // the image row either: every hold tail on every drawing row lost its
-    // ruling the same way — the image row is just the one that is 100%
-    // tail, which is why it is the one that got reported.
-    //
-    // ⇒ A ghost is a DERIVED cell, not a cell somewhere else. It changes
-    // what is drawn INSIDE the cell (dim dashes, no paper), which is the
-    // ground question below, and nothing about where the boundary is.
-    // INSIDE a block the line is the interior seam; OUTSIDE one it is the
-    // empty-space grid, which the row has to draw for itself (D43-2 — see
-    // [rowGround]). A block's LEADING boundary is its edge and belongs to
-    // neither: the run starts there.
-    final insideBlock =
-        !model.ghost &&
-        model.segment.isBlock &&
-        model.segment.continuesFromPrevious;
-    // A ghost joins the EMPTY arm: it paints no paper of its own, so the
-    // line lands on the row ground exactly as an uncovered cell does.
-    final onEmpty = model.ghost || !model.segment.isBlock;
-    if (!insideBlock && !onEmpty) {
-      return null;
-    }
-    final ink = timelineFrameBoundaryLineInk(
-      frameIndex: frameIndex,
-      frameCellExtent: frameCellExtent,
-      framesPerSecond: framesPerSecond,
-      colorScheme: colorScheme,
-    );
-    if (ink == null) {
-      return null;
-    }
-    final rect = cellRectFor(frameIndex);
-    // A block's ground is its own paper. An empty cell paints NOTHING
-    // (UI-R21 #2), so its ground is the ROW's — and where the row paints
-    // none either, the line stays the law's own ink, source-over, exactly
-    // as the overlay does over artwork.
-    //
-    // 🚨D43-2 재개 b (유저 2026-08-22): 「**왜 아직 블록이 회색일때 그리드선이
-    // 흰색인거지? 안보일까봐 같은이유라면 코마텍스트도 흰색으로 했을
-    // 상황일텐데**」.
-    //
-    // ⛔THE GROUND MUST BE RESOLVED BEFORE IT IS MULTIPLIED. An UNWORKED
-    // block is 43%-alpha paper over the row's underlay, and this handed the
-    // law that translucent colour as if it were opaque. The law ends in
-    // `lerp(ground, multiplied, ink.a)`, which interpolates the ALPHA too —
-    // so it climbed from 0.43 toward 1 while the rgb stayed paper-ish, and
-    // the line came out MORE OPAQUE than the paper around it. 🧪Measured on
-    // the real colours: ground L=0.461, line L=0.471 — lighter, which is
-    // the white line that was reported. The 6f and 24f lines survived by
-    // being dark enough to still read as darker, but at roughly half the
-    // strength the law asks for (0.258 where it should be 0.131).
-    //
-    // 🎯The rule is COMPOSITE THE GROUND FIRST, and it is this line's
-    // alone now. It used to point at the run labels for precedent — they
-    // resolved the translucent paper against the row's underlay before
-    // choosing an ink — but F-24 (2026-08-26) took the labels off the
-    // ground law entirely: a block's writing is the block's ink, whatever
-    // the block holds.
-    //
-    // ⚠️That does NOT reopen this. What the user objected to on 08-22 was
-    // a grid line coming out LIGHTER than the paper around it, which is a
-    // bug in the arithmetic below and not a question of which ink a mark
-    // takes. The line still has a real ground and still has to resolve it.
-    final ground = timelineGridGroundOver(
-      under: rowGround,
-      painted: insideBlock ? resolvedCellStyleFor(frameIndex).background : null,
-    );
-    final color = ground == null
-        ? ink.color
-        : timelineGridLineInkOnGround(ink, ground);
-    final width = ink.strokeWidth;
-    return (
-      rect: axis == Axis.horizontal
-          ? Rect.fromLTWH(
-              rect.left + timelineGridLineSnap - width / 2,
-              rect.top,
-              width,
-              rect.height,
-            )
-          : Rect.fromLTWH(
-              rect.left,
-              rect.top + timelineGridLineSnap - width / 2,
-              rect.width,
-              width,
-            ),
-      color: color,
-    );
-  }
-
-  /// The grid's CROSS-axis line under this cell — the seam between this row
-  /// and the next, in the segment this cell spans.
-  ///
-  /// 🚨D43-2 재개 d (유저 2026-08-23): 「**fx행엔 그리드의 가로선 있는데
-  /// 레이어쪽 프레임쪽엔 없거든?** 그거 통일로 추가해주고」
-  ///
-  /// ⛔SAME SHAPE AS THE VERTICAL LINES, one axis over. The overlay draws
-  /// row seams across the whole grid, and it sits UNDER the rows (D32), so a
-  /// row that lays down an opaque ground erases its own. The fx band kept
-  /// one because it had written a `BorderSide` of its own; the frame cells
-  /// row had written nothing, so it simply had no seam.
-  ///
-  /// Per CELL rather than one line per row, because the tile emitter bakes
-  /// per cell — the segments abut and read as one line, and the classic and
-  /// baked passes cannot drift.
-  ///
-  /// ⚠️Chromeless rows answer null: a row lying ON the artwork has no seam
-  /// to draw, exactly as it has no ground.
-  @override
-  ({Rect rect, Color color})? rowSeamLineFor(int frameIndex) {
-    if (chromeless) {
-      return null;
-    }
-    final ink = timelineGridRowSeamInk(colorScheme);
-    final rect = cellRectFor(frameIndex);
-    // 🚨F-3 (유저 2026-08-25): 「가로선만 레이어영역 흰색계열로 통일. 세로나
-    // 그 외는 그대로」.
-    //
-    // ⛔THE ROW SEAM IS NOT MULTIPLIED ONTO THE GROUND, and the vertical
-    // boundary line above still is. They look like one law and they are
-    // two: the boundary line belongs to the FRAME grid, which rules the
-    // paper it crosses and so must darken it. The seam is the LAYER area's
-    // row divider continued into the cells — the rail draws it flat over
-    // whatever the row's ground happens to be, and the fx band's own
-    // BorderSide has always drawn it flat too. Multiplying it here was the
-    // third spelling, and the one that made the same divider read darker
-    // on the frame side than on the rail side.
-    //
-    // ⚠️Stated by CONCEPT, not by screen direction: on the X-sheet the frame
-    // axis is vertical, so this seam is the vertical line between two layer
-    // COLUMNS. Same divider, same flat ink.
-    final color = ink.color;
-    final width = ink.strokeWidth;
-    // The TRAILING cross edge, snapped the law's way — the seam belongs to
-    // the boundary between this row and the next, so it sits at the end of
-    // this row's cross extent and the next row's leading edge is untouched.
-    return (
-      rect: axis == Axis.horizontal
-          ? Rect.fromLTWH(
-              rect.left,
-              rect.bottom - width / 2 - timelineGridLineSnap,
-              rect.width,
-              width,
-            )
-          : Rect.fromLTWH(
-              rect.right - width / 2 - timelineGridLineSnap,
-              rect.top,
-              width,
-              rect.height,
-            ),
-      color: color,
-    );
+  Rect paperRectFor(int frameIndex) {
+    final cell = cellRectFor(frameIndex);
+    final paper = timelineRowPaperExtent(crossAxisExtent);
+    return axis == Axis.horizontal
+        ? Rect.fromLTWH(cell.left, cell.top, cell.width, paper)
+        : Rect.fromLTWH(cell.left, cell.top, paper, cell.height);
   }
 
   @override
@@ -630,10 +437,10 @@ class TimelineRowCellsPainter extends CustomPainter
     }
     _paintForegrounds(canvas, window, tiledSpans);
 
-    // The 6f/24f beat lines moved to ONE grid-wide overlay
-    // (TimelineBeatLinesPainter, UI-R13 #7) so they span every row —
-    // SE, camera and lane rows included — not just the painterized
-    // drawing rows.
+    // No line is drawn here: the 6f/24f beats went to ONE grid-wide
+    // overlay (UI-R13 #7) so they span every row, and with I-44 every
+    // other line and the row's ground followed them into that one grid
+    // sheet ([TimelineGridSheetPainter]).
   }
 
   /// The substrate through the tile store: a fresh tile is one
@@ -763,73 +570,42 @@ class TimelineRowCellsPainter extends CustomPainter
 
   /// The cell's dense, mostly-static part: the paper-block fill and its
   /// border — what the substrate TILES rasterize (the emitter probes the
-  /// same style/geometry, so the two paths cannot drift).
+  /// same style and paper box, so the two paths cannot drift).
   void _paintCellSubstrate(Canvas canvas, int frameIndex) {
     final style = resolvedCellStyleFor(frameIndex);
     final background = style.background;
     final borderColor = style.border;
-
-    if (chromeless) {
-      // Empty paper simply is not there — that is what 「바탕색은 싹 없애고」
-      // means, and it is the difference between a row laid ON the artwork and
-      // a row with a panel behind it. A covered cell keeps a body, thinned,
-      // so a block still reads as paper.
-      final covered = cellModelAt(frameIndex).exposureState.isCovered;
-      if (!covered) {
-        return;
-      }
-      // The block keeps its OWN colours here. The row's translucency is one
-      // value on the overlay root now, so thinning a second time inside the
-      // cell would compound with it — and it was that second thinning, at two
-      // different strengths, that made the folded row a look of its own
-      // rather than the open row seen through glass.
+    // UI-R21 #2: an empty cell paints NOTHING — its ground, and every line
+    // on it, is the grid sheet's under the row (I-44).
+    if (background.a <= 0 && borderColor.a <= 0) {
+      return;
     }
-
-    final rect = cellRectFor(frameIndex);
-    // D32/D38: the interior seam — ONE law line at the leading boundary,
-    // multiplied onto this block's paper. Drawn after the fill below.
-    final seam = heldSeamLineFor(frameIndex);
+    final rect = paperRectFor(frameIndex);
     // Border.all paints INSIDE the box: stroke centered half a pixel in.
     final borderRect = rect.deflate(0.5);
     final radius = style.radius;
-    final fillPaint = Paint();
+    final fillPaint = Paint()..color = background;
     final borderPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+      ..strokeWidth = 1
+      ..color = borderColor;
     if (radius == null) {
-      canvas.drawRect(rect, fillPaint..color = background);
+      canvas.drawRect(rect, fillPaint);
       if (borderColor.a > 0) {
-        canvas.drawRect(borderRect, borderPaint..color = borderColor);
+        canvas.drawRect(borderRect, borderPaint);
       }
-    } else {
-      canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          rect,
-          topLeft: radius.topLeft,
-          topRight: radius.topRight,
-          bottomLeft: radius.bottomLeft,
-          bottomRight: radius.bottomRight,
-        ),
-        fillPaint..color = background,
-      );
-      canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          borderRect,
-          topLeft: radius.topLeft,
-          topRight: radius.topRight,
-          bottomLeft: radius.bottomLeft,
-          bottomRight: radius.bottomRight,
-        ),
-        borderPaint..color = borderColor,
-      );
+      return;
     }
-    if (seam != null) {
-      canvas.drawRect(seam.rect, fillPaint..color = seam.color);
-    }
-    // D43-2 재개 d: and the CROSS-axis seam, the same law one axis over.
-    final rowSeam = rowSeamLineFor(frameIndex);
-    if (rowSeam != null) {
-      canvas.drawRect(rowSeam.rect, fillPaint..color = rowSeam.color);
+    RRect rounded(Rect box) => RRect.fromRectAndCorners(
+      box,
+      topLeft: radius.topLeft,
+      topRight: radius.topRight,
+      bottomLeft: radius.bottomLeft,
+      bottomRight: radius.bottomRight,
+    );
+    canvas.drawRRect(rounded(rect), fillPaint);
+    if (borderColor.a > 0) {
+      canvas.drawRRect(rounded(borderRect), borderPaint);
     }
   }
 
@@ -872,14 +648,12 @@ class TimelineRowCellsPainter extends CustomPainter
     return timelineBlockWordStyle(
       baseTextStyle,
       ink: foregroundInkFor(model),
-      // R26 #38/#4: names and marks SHRINK with the cell instead of
-      // blanking out below ~14px — "절대 안 사라지도록". #15 adds the
-      // vertical half: a squeezed row shrinks them the same way.
-      fontSize: timelineFittedGlyphFontSize(
-        baseTextStyle.fontSize ?? 12,
-        frameCellExtent,
-        crossExtent: crossAxisExtent,
-      ),
+      // 🚨ONE SIZE AT EVERY ZOOM (유저 2026-09-24, B): the word narrows into
+      // its block instead ([cellWordLayoutFor]). ↩️R26 #38/#4 shrank names
+      // and marks with the cell rather than blanking them below ~14px, and
+      // #15 shrank them with a squeezed row — both are the narrowing now, on
+      // the axis that ran short.
+      fontSize: baseTextStyle.fontSize ?? 12,
       bold:
           !model.ghost &&
           !isEmptyX &&
@@ -887,33 +661,53 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
-  /// Where the word of the cell at [frameIndex] is laid, row-local: along
-  /// the frame axis by the block-word law — a name that outgrows its cell
-  /// starts at the cell and grows on into its block (F-96,
-  /// [timelineBlockWordStart]) — and centred across it. PUBLIC: the tile
-  /// emitter bakes its word exactly here.
+  /// Where the word of the cell at [frameIndex] is laid, row-local, and how
+  /// far it is narrowed — the block-word law ([timelineBlockWordLayout]):
+  /// centred on its cell while it fits, growing on into its block past that
+  /// (F-96), and narrowed only where it would leave the block or its paper
+  /// (B, 유저 2026-09-24: 「이름은 블록안에서만」). PUBLIC: the tile emitter
+  /// bakes its word exactly here.
   @override
-  Offset cellWordOriginFor(int frameIndex, Size word) {
+  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) {
     final cell = cellRectFor(frameIndex);
-    return axis == Axis.horizontal
-        ? Offset(
-            timelineBlockWordStart(
-              cellStart: cell.left,
-              cellExtent: cell.width,
-              wordExtent: word.width,
-              growth: TimelineBlockWordGrowth.towardBlockEnd,
-            ),
-            cell.center.dy - word.height / 2,
-          )
-        : Offset(
-            cell.center.dx - word.width / 2,
-            timelineBlockWordStart(
-              cellStart: cell.top,
-              cellExtent: cell.height,
-              wordExtent: word.height,
-              growth: TimelineBlockWordGrowth.towardBlockEnd,
-            ),
-          );
+    final horizontal = axis == Axis.horizontal;
+    final cellStart = horizontal ? cell.left : cell.top;
+    final roomEnd = _wordRoomEnd(frameIndex, extentAlong(axis, word));
+    final paper = timelineRowPaperExtent(crossAxisExtent);
+    return timelineBlockWordLayout(word, (
+      axis: axis,
+      room: horizontal
+          ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
+          : Rect.fromLTRB(0, cellStart, paper, roomEnd),
+      cellStart: cellStart,
+      cellExtent: frameCellExtent,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0,
+    ));
+  }
+
+  /// Where the room the word at [frameIndex] may grow into ENDS along the
+  /// frame axis: the end of its block, looked up only as far as a word of
+  /// [extent] could reach. A word on no block — an empty stretch's `x` —
+  /// has its own cell.
+  ///
+  /// The block is the EXPOSURE's ([_stateAt]), not the chrome's: a repeat
+  /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
+  /// and its name stays inside that run as a drawn block's does.
+  double _wordRoomEnd(int frameIndex, double extent) {
+    final cell = cellRectFor(frameIndex);
+    final start = axis == Axis.horizontal ? cell.left : cell.top;
+    var end = start + frameCellExtent;
+    var index = frameIndex;
+    while (end - start < extent &&
+        timelineExposureBlockSegmentAt(
+          frameIndex: index,
+          stateAt: _stateAt,
+        ).continuesToNext) {
+      index += 1;
+      end += frameCellExtent;
+    }
+    return end;
   }
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null when
@@ -977,15 +771,19 @@ class TimelineRowCellsPainter extends CustomPainter
       // pass must land on the same grid — otherwise the classic↔tile
       // swap on row activation reads as the text thinning/thickening.
       // F-96: centred while the word fits its cell, growing on into the
-      // block when it does not ([cellWordOriginFor]).
-      final raw = cellWordOriginFor(frameIndex, glyph.size);
+      // block when it does not, narrowed only past the block
+      // ([cellWordLayoutFor]).
+      final layout = cellWordLayoutFor(frameIndex, glyph.size);
+      final raw = layout.origin;
       final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
-      glyph.paint(
+      paintFittedText(
         canvas,
+        glyph,
         Offset(
           (raw.dx * dpr).roundToDouble() / dpr,
           (raw.dy * dpr).roundToDouble() / dpr,
         ),
+        layout.fit,
       );
     }
   }
@@ -1018,12 +816,9 @@ class TimelineRowCellsPainter extends CustomPainter
     celContentRevision,
     substrateGeneration,
     ByIdentity(tileStore),
-    // T16: the ground rule is a painted fact like any other. One row can
-    // switch (the collapsed overlay folds and unfolds under a live panel).
-    chromeless,
-    // D43-2: and so is the ground the row paints — the active wash moves
-    // it, and the empty cells' lines are multiplied onto it.
-    rowGround,
+    // I-44: what the unworked paper is pre-blended onto is a painted fact
+    // like any other (a theme change moves it).
+    paperGround,
     devicePixelRatio,
   );
 
@@ -1051,7 +846,6 @@ Widget timelineRowCellsPaintArea({
   required BuildContext context,
   required String keyPrefix,
   required Layer layer,
-  required bool active,
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required Axis axis,
@@ -1075,8 +869,6 @@ Widget timelineRowCellsPaintArea({
   double viewportMainExtent = 0,
   Object? coverageIdentity,
   String substrateGeneration = '',
-  bool chromeless = false,
-  int framesPerSecond = 24,
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
@@ -1091,31 +883,20 @@ Widget timelineRowCellsPaintArea({
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
-    chromeless: chromeless,
     // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
     // by itself when the native engine is unavailable (tests, web).
     //
-    // ⛔A CHROMELESS row does not tile. A tile is a baked picture of the
-    // substrate, and the whole point of this mode is that the substrate is
-    // mostly absent — one row over the artwork is not worth teaching the
-    // bake key a new dimension it would then have to be trusted with. This
-    // is one row on screen; the classic pass is the cheap answer here.
-    tileStore: chromeless ? null : TimelineGridTileStore.instance,
+    // ↩️T16 kept the folded row off the tiles: its mode dropped the empties,
+    // the ground and the seams, and one row over the artwork was not worth
+    // teaching the bake key that dimension. I-44 took all three off EVERY
+    // row, and what the paper stands on is [paperGround], which the key
+    // carries for every row — so the folded row bakes like the rest.
+    tileStore: TimelineGridTileStore.instance,
     substrateGeneration: substrateGeneration,
     devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-    framesPerSecond: framesPerSecond,
-    // D43-2: the ground the WIDGET lays down below, composited the same
-    // way it stacks — the surface fill with the active wash over it. The
-    // empty cells' grid lines land on this, because the overlay under the
-    // row cannot be seen through it.
-    rowGround: chromeless
-        ? null
-        : (active
-              ? Color.alphaBlend(
-                  timelineActiveRowWashColor(Theme.of(context).colorScheme),
-                  Theme.of(context).colorScheme.surface,
-                )
-              : Theme.of(context).colorScheme.surface),
+    // I-44: the HOST's ground, stated once by its law — what an unworked
+    // block's paper is pre-blended onto (null over the artwork).
+    paperGround: TimelineGridLaw.maybeOf(context)?.ground,
   );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
@@ -1196,46 +977,25 @@ Widget timelineRowCellsPaintArea({
         // sit in the one constant-size window and a zoom step re-lays-out
         // none of them.
         //
-        // The row's PAPER underlay (UI-R21 #2): the surface base and the
-        // active-row wash live HERE, row-wide — the cell substrate paints
-        // transparent empties and carries no active state, so switching the
-        // active layer re-rasters NOTHING (the wash is one ColoredBox on a
-        // row that was rebuilding anyway).
-        //
-        // 🚨…and BOTH are ground, so a chromeless row has neither (⑨,
-        // 「블록 뒤에 전체적으로 해당영역에 깔린 바탕색은 없애라니까?」 —
-        // 「니까」 because it was confirmed on 2026-08-10 as 「no panel fill,
-        // no rail fill, no active-row wash」 and only half of it landed).
-        //
-        // ★The flag reached the PAINTER and stopped there. That is why the
-        // fix for the cells did not show: the empties went transparent and
-        // this pair went on covering the artwork behind them, row-wide,
-        // which is exactly the shape the user described. Chromeless is a
-        // property of the ROW, not of its cells — every layer that draws
-        // ground has to read it.
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (!chromeless)
-              ColoredBox(color: Theme.of(context).colorScheme.surface),
-            if (!chromeless && active)
-              ColoredBox(
-                color: timelineActiveRowWashColor(
-                  Theme.of(context).colorScheme,
-                ),
-              ),
-            CustomPaint(
-              key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
-              painter: painter,
-              // The block duration labels ride HERE rather than as their
-              // own Positioned.fill CustomPaint: same geometry, same
-              // repaint trigger, two fewer render objects per row to lay
-              // out on a zoom step. A foreground painter that does not
-              // implement `hitTest` never absorbs a pointer, which is what
-              // the IgnorePointer around it used to guarantee.
-              foregroundPainter: foregroundPainter,
-            ),
-          ],
+        // ⛔NO GROUND HERE (I-44). The row's underlay used to live here —
+        // the surface base and the active-row wash as two `ColoredBox`es
+        // (UI-R21 #2), and a chromeless row had to be taught to drop both
+        // (⑨ 「블록 뒤에 전체적으로 해당영역에 깔린 바탕색은 없애라니까?」).
+        // They were opaque, so they buried the grid under the row and every
+        // row then owed the grid a redraw (D43-2). The grid sheet paints the
+        // rows' grounds now, under all of them, and the row is its paper.
+        child: SizedBox.expand(
+          child: CustomPaint(
+            key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
+            painter: painter,
+            // The block duration labels ride HERE rather than as their
+            // own Positioned.fill CustomPaint: same geometry, same
+            // repaint trigger, two fewer render objects per row to lay
+            // out on a zoom step. A foreground painter that does not
+            // implement `hitTest` never absorbs a pointer, which is what
+            // the IgnorePointer around it used to guarantee.
+            foregroundPainter: foregroundPainter,
+          ),
         ),
       ),
     ),

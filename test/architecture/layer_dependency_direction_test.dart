@@ -45,6 +45,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/import_graph.dart';
+import '../helpers/dart_sources.dart';
 
 /// The layers that must not know what the app looks like.
 ///
@@ -205,17 +206,11 @@ bool _isOutward(String target) {
       target.startsWith('package:anicel/src/ui/');
 }
 
+/// ⛔No `existsSync` skip: a layer folder that was renamed must turn this
+/// red, not quietly scan nothing — the shared walk fails on it.
 Iterable<File> _innerDartFiles() sync* {
   for (final layer in _innerLayers) {
-    final dir = Directory('lib/src/$layer');
-    if (!dir.existsSync()) {
-      continue;
-    }
-    for (final entity in dir.listSync(recursive: true)) {
-      if (entity is File && entity.path.endsWith('.dart')) {
-        yield entity;
-      }
-    }
+    yield* dartFilesUnder('lib/src/$layer');
   }
 }
 

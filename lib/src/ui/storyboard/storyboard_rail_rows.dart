@@ -647,7 +647,7 @@ class _StoryboardRailRows {
         _playheadFollowing(
           (_) => StoryboardTrackLabelRow(
             track: track,
-            trackLabel: 'V${index + 1}',
+            trackLabel: _vRowName(index),
             laneHeight: _state.widget.trackLaneHeight,
             laneExpanded: _state.widget.expandedTransformTracks.contains(
               track.id.value,
@@ -770,30 +770,6 @@ class _StoryboardRailRows {
     );
   }
 
-  /// Per-row hairline under every STRIP row (UI-R5 storyboard unification:
-  /// the timeline grid's row lines reach the frame area here too). Drawn
-  /// as a foreground so row heights stay untouched (rail lockstep).
-  ///
-  /// ⛔The ink is READ from [timelineGridRowSeamInk], not spelled again
-  /// here. It used to be a bare `BorderSide(outlineVariant)` — the same
-  /// colour and, by `BorderSide`'s default width, the same 1.0, so the two
-  /// rails matched on screen and a pixel test would have passed. That is
-  /// exactly the copy that goes wrong LATER: change the law and only the
-  /// timeline follows it. 유저 F-18: 「스토리보드패널 타임라인이랑 그리드
-  /// 다를거같은데 절대 다르지 않도록 통일」 — "절대" is about the next
-  /// change, not about today's pixels.
-  Widget _stripRowLine(Widget row) {
-    final seam = timelineGridRowSeamInk(Theme.of(_state.context).colorScheme);
-    return Container(
-      foregroundDecoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: seam.color, width: seam.strokeWidth),
-        ),
-      ),
-      child: row,
-    );
-  }
-
   /// One track's whole strip section: its rows in a column, with the
   /// track-axis range selection drawn OVER them as the timeline's one
   /// selection band (R27 #14 — cells, lanes and now this rail draw exactly
@@ -913,7 +889,8 @@ class _StoryboardRailRows {
   /// row-geometry change reached the lane band and left the frame band
   /// behind — and the two sit on the same rows.
   Widget _rangeBand(
-    Track track, {
+    Track track,
+    TimelineScale scale, {
     required bool Function(_StoryboardRailSlot slot) covers,
     required ({double left, double width}) span,
     required ({String key, String label}) label,
@@ -943,7 +920,10 @@ class _StoryboardRailRows {
             label: label.label,
             container: true,
             child: DecoratedBox(
-              decoration: timelineRangeSelectionBandDecoration,
+              decoration: timelineRangeSelectionBandDecorationAt(
+                cellExtent: scale.pixelsPerFrame,
+                crossExtent: bottom - top,
+              ),
             ),
           ),
         ),
@@ -987,6 +967,7 @@ class _StoryboardRailRows {
         }
         return _rangeBand(
           track,
+          scale,
           covers: planned.covers,
           span: planned.span,
           label: planned.label,
@@ -1201,6 +1182,28 @@ class _StoryboardRailRows {
     );
   }
 
+  /// The grid sheet's rows (I-44): every track group's rows in the order the
+  /// strip column stacks them, each at its rail height — a lane on the lane
+  /// ground, every other row on the panel's own.
+  ///
+  /// ⛔The SAME table the rail, the bands and the select-drag read
+  /// ([_trackGroupRowGeometry]), so the sheet cannot rule a row the strip
+  /// column does not have. The rows paint no ground and no seam of their
+  /// own any more — the lane band washed itself, and every strip row wore a
+  /// foreground border of its own (UI-R5: the timeline's row lines reaching
+  /// the frame area here too; a lane band, with its own border as well,
+  /// wore two). This is where both are, drawn by the timeline's own sheet —
+  /// 유저 F-18: 「스토리보드패널 타임라인이랑 그리드 다를거같은데 절대 다르지
+  /// 않도록 통일」, where "절대" is about the next change, not today's pixels.
+  TimelineGridRows gridRows(List<Track> tracks, Color hostGround) {
+    final laneGround = timelineLaneGround(hostGround);
+    return TimelineGridRows([
+      for (final track in tracks)
+        for (final slot in _trackGroupRowGeometry(track))
+          (extent: slot.height, ground: slot.lane ? laneGround : hostGround),
+    ]);
+  }
+
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
     final slots = <_StoryboardRailSlot>[];
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
@@ -1210,6 +1213,7 @@ class _StoryboardRailRows {
       row: LayerRowAddress(track.transitionLayer.id),
       laneRow: null,
       bandRow: false,
+      lane: false,
       height: _transitionRowHeight,
     ));
     for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
@@ -1218,6 +1222,7 @@ class _StoryboardRailRows {
         row: layer == null ? null : LayerRowAddress(layer.id),
         laneRow: null,
         bandRow: false,
+        lane: false,
         height: _seRowHeight,
       ));
       if (layer != null &&
@@ -1233,6 +1238,7 @@ class _StoryboardRailRows {
             row: null,
             laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
             bandRow: !audio,
+            lane: true,
             height: _laneHeight,
           ));
         }
@@ -1242,6 +1248,7 @@ class _StoryboardRailRows {
       row: TrackRowAddress(track.id),
       laneRow: null,
       bandRow: false,
+      lane: false,
       height: _state.widget.trackLaneHeight,
     ));
     // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape): its fx
@@ -1257,6 +1264,7 @@ class _StoryboardRailRows {
           row: null,
           laneRow: LaneRowAddress(carrierId, lane.laneId),
           bandRow: true,
+          lane: true,
           height: _laneHeight,
         ));
       }
@@ -1281,35 +1289,33 @@ class _StoryboardRailRows {
       // The transition row and the S rows are both track-global, so both
       // qualify — a cut trim cannot change either.
       ...trackGlobalRows,
-      _stripRowLine(
-        _StoryboardTrackRow(
+      _StoryboardTrackRow(
+        track: track,
+        layoutEntries: entries,
+        activeCutId: _state.widget.activeCutId,
+        onRowFramePress: _state.widget.onRowFramePress,
+        onDropMediaAsset: _state.widget.onDropMediaAsset,
+        acceptsMediaAsset: _state.widget.acceptsMediaAsset,
+        laneHeight: _state.widget.trackLaneHeight,
+        width: width,
+        stripEdges: _state.widget.stripEdges,
+        cutMove: _state.widget.cutMove,
+        cutSelect: _state.widget.cutSelect,
+        stripSelect: _state.widget.stripSelect,
+        thumbnailFor: _state.widget.thumbnailFor,
+        timelineScale: scale,
+        frameGeometry: _state._frameGeometry,
+        hoveredCutId: _state._hoveredCutId,
+        windowBucket: _state._horizontalWindowBucket,
+        viewportWidth: _state._stripViewportWidth,
+        railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
           track: track,
-          layoutEntries: entries,
-          activeCutId: _state.widget.activeCutId,
-          onRowFramePress: _state.widget.onRowFramePress,
-          onDropMediaAsset: _state.widget.onDropMediaAsset,
-          acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-          laneHeight: _state.widget.trackLaneHeight,
-          width: width,
-          stripEdges: _state.widget.stripEdges,
-          cutMove: _state.widget.cutMove,
-          cutSelect: _state.widget.cutSelect,
-          stripSelect: _state.widget.stripSelect,
-          thumbnailFor: _state.widget.thumbnailFor,
-          timelineScale: scale,
-          frameGeometry: _state._frameGeometry,
-          hoveredCutId: _state._hoveredCutId,
-          windowBucket: _state._horizontalWindowBucket,
-          viewportWidth: _state._stripViewportWidth,
-          railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-            track: track,
-            anchorRow: anchorRow,
-            crossOffset: crossOffset,
-          ),
-          showSeconds: _state.widget.showSeconds,
-          projectFrameRate: _state.widget.projectFrameRate,
-          onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+          anchorRow: anchorRow,
+          crossOffset: crossOffset,
         ),
+        showSeconds: _state.widget.showSeconds,
+        projectFrameRate: _state.widget.projectFrameRate,
+        onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
       ),
       if (_state.widget.expandedTransformTracks.contains(track.id.value))
         for (final strip in _trackTransformLaneStrips(
@@ -1319,7 +1325,7 @@ class _StoryboardRailRows {
           width,
           scale,
         ))
-          _stripRowLine(strip),
+          strip,
     ];
   }
 
@@ -1359,27 +1365,25 @@ class _StoryboardRailRows {
     );
     return [
       for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
-        _stripRowLine(
-          // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
-          // are built once per panel build (identical instances across
-          // cut-trim preview steps, R10-③), so without it an SE edge drag
-          // only showed on release. It resolves the GLOBAL preview form —
-          // this strip renders the track axis, not the active-cut clone.
-          switch (_state._seDisplayAt(track, slot)) {
-            null => seRow(slot, null),
-            final globalLayer => TimelineDragPreviewRowGate(
-              dragPreview: _state.widget.dragPreview,
-              layer: globalLayer,
-              useGlobalForm: true,
-              rowBuilder: (context, layer) => seRow(slot, layer),
-            ),
-          },
-        ),
+        // The gate keeps comma drags LIVE here (UI-R7 #7): these rows
+        // are built once per panel build (identical instances across
+        // cut-trim preview steps, R10-③), so without it an SE edge drag
+        // only showed on release. It resolves the GLOBAL preview form —
+        // this strip renders the track axis, not the active-cut clone.
+        switch (_state._seDisplayAt(track, slot)) {
+          null => seRow(slot, null),
+          final globalLayer => TimelineDragPreviewRowGate(
+            dragPreview: _state.widget.dragPreview,
+            layer: globalLayer,
+            useGlobalForm: true,
+            rowBuilder: (context, layer) => seRow(slot, layer),
+          ),
+        },
         if (_state.widget.expandedSeAudioRows.contains(
           StoryboardPanel.seRowKey(track, slot),
         ))
           for (final strip in _seLaneStrips(track, index, slot, width, scale))
-            _stripRowLine(strip),
+            strip,
       ],
     ];
   }
@@ -1502,12 +1506,10 @@ class _StoryboardRailRows {
       for (var index = 0; index < _state.widget.project.tracks.length; index++)
         [
           // Heads the group, matching the rail's row order.
-          _stripRowLine(
-            _state._rows.transitionStripRow(
-              _state.widget.project.tracks[index],
-              contentWidth,
-              scale,
-            ),
+          _state._rows.transitionStripRow(
+            _state.widget.project.tracks[index],
+            contentWidth,
+            scale,
           ),
           ..._seStripRowsForTrack(
             _state.widget.project.tracks[index],

@@ -90,7 +90,6 @@ class _TimesheetCellsPass {
     required int half,
     required int startFrame,
     required int rowCount,
-    required bool drawTexts,
   }) {
     final left = _painter.layout.halfLeft(pageIndex, half);
     final rowsTop = _painter.layout.halfRowsTop(pageIndex);
@@ -129,7 +128,7 @@ class _TimesheetCellsPass {
     );
 
     // Group titles + letter row (printed form).
-    _paintColumnTitles(canvas, sheet, drawTexts: drawTexts);
+    _paintColumnTitles(canvas, sheet);
     if (_painter._drawForm) {
       canvas.drawLine(
         Offset(left, columnsTop),
@@ -156,7 +155,6 @@ class _TimesheetCellsPass {
         rowsTop: rowsTop,
         startFrame: startFrame,
         rowCount: rowCount,
-        drawTexts: drawTexts,
       );
       return;
     }
@@ -194,7 +192,7 @@ class _TimesheetCellsPass {
     // half — page-local on paper, global in the continuous strip. On each
     // second's LAST frame row (24, 48, …) the second index prints BOLD in
     // place of the frame number — the paper convention (A-1 form).
-    _paintRowNumbers(canvas, sheet, drawTexts: drawTexts);
+    _paintRowNumbers(canvas, sheet);
 
     if (_painter._drawContent) {
       _paintHalfCells(
@@ -203,49 +201,42 @@ class _TimesheetCellsPass {
         rowsTop: rowsTop,
         startFrame: startFrame,
         rowCount: rowCount,
-        drawTexts: drawTexts,
       );
     }
   }
 
   /// The second numbers: one per [fps] rows, right-aligned in the margin,
   /// bold; the other rows print their frame number small.
-  void _paintRowNumbers(
-    Canvas canvas,
-    _HalfFrame sheet, {
-    required bool drawTexts,
-  }) {
-    if (drawTexts) {
-      for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
-        final frame = sheet.startFrame + row;
-        final printed = _painter.layout.continuous
-            ? frame + 1
-            : frame % _painter.document.pageFrameCount + 1;
-        final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
-        if (printed % _painter.document.fps == 0) {
-          _painter._text(
-            canvas,
-            '${printed ~/ _painter.document.fps}',
-            Offset(sheet.numbersRight, rowTop + 3),
-            fontSize: 10,
-            bold: true,
-            color: TimesheetDocumentPainter._gridBold,
-            rightAlignedAtX: true,
-          );
-          continue;
-        }
-        if (printed.isOdd) {
-          continue;
-        }
+  void _paintRowNumbers(Canvas canvas, _HalfFrame sheet) {
+    for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
+      final frame = sheet.startFrame + row;
+      final printed = _painter.layout.continuous
+          ? frame + 1
+          : frame % _painter.document.pageFrameCount + 1;
+      final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
+      if (printed % _painter.document.fps == 0) {
         _painter._text(
           canvas,
-          '$printed',
-          Offset(sheet.numbersRight, rowTop + 4),
-          fontSize: 8,
-          color: TimesheetDocumentPainter._gridMedium,
+          '${printed ~/ _painter.document.fps}',
+          Offset(sheet.numbersRight, rowTop + 3),
+          fontSize: 10,
+          bold: true,
+          color: TimesheetDocumentPainter._gridBold,
           rightAlignedAtX: true,
         );
+        continue;
       }
+      if (printed.isOdd) {
+        continue;
+      }
+      _painter._text(
+        canvas,
+        '$printed',
+        Offset(sheet.numbersRight, rowTop + 4),
+        fontSize: 8,
+        color: TimesheetDocumentPainter._gridMedium,
+        rightAlignedAtX: true,
+      );
     }
   }
 
@@ -304,13 +295,9 @@ class _TimesheetCellsPass {
     return seRanges;
   }
 
-  /// The column titles on the letter row, when the form and its texts draw.
-  void _paintColumnTitles(
-    Canvas canvas,
-    _HalfFrame sheet, {
-    required bool drawTexts,
-  }) {
-    if (drawTexts && _painter._drawForm) {
+  /// The column titles on the letter row, when the form draws.
+  void _paintColumnTitles(Canvas canvas, _HalfFrame sheet) {
+    if (_painter._drawForm) {
       _painter._bands.paintGroupTitles(canvas, sheet.left, sheet.columnsTop);
       for (
         var column = 0;
@@ -349,7 +336,6 @@ class _TimesheetCellsPass {
     required double rowsTop,
     required int startFrame,
     required int rowCount,
-    required bool drawTexts,
   }) {
     for (
       var column = 0;
@@ -404,9 +390,23 @@ class _TimesheetCellsPass {
         _paintCellOfKind(
           canvas,
           slot,
-          drawTexts: drawTexts,
           rowCount: rowCount,
         );
+        // F-165: an entry that began in an earlier half writes the rest of
+        // its dialogue here, from this half's top — its share of the words
+        // laid over the whole span ([_TimesheetSePass.paintSeDialogueShare]).
+        final offset = cell.spanOffset ?? 0;
+        if (seColumn && row == 0 && offset > 0) {
+          _painter._se.paintSeDialogueShare(
+            canvas,
+            start: cells[frame - offset],
+            spanOffset: offset,
+            row: row,
+            rowCount: rowCount,
+            centerX: centerX,
+            cellTop: cellTop,
+          );
+        }
       }
     }
   }
@@ -415,31 +415,28 @@ class _TimesheetCellsPass {
   void _paintDrawingCell(
     Canvas canvas,
     _CellSlot slot, {
-    required bool drawTexts,
     required int rowCount,
   }) {
-    if (drawTexts) {
-      if (slot.seColumn) {
-        _painter._se.paintSeEntryStart(
-          canvas,
-          cell: slot.cell,
-          row: slot.row,
-          rowCount: rowCount,
-          columnLeft: slot.columnLeft,
-          columnWidth: slot.columnWidth,
-          centerX: slot.centerX,
-          cellTop: slot.cellTop,
-        );
-      } else {
-        _painter._text(
-          canvas,
-          slot.cell.label ?? '',
-          Offset(slot.centerX, slot.cellTop + 3),
-          fontSize: 10,
-          color: TimesheetDocumentPainter._ink,
-          centeredAtX: true,
-        );
-      }
+    if (slot.seColumn) {
+      _painter._se.paintSeEntryStart(
+        canvas,
+        cell: slot.cell,
+        row: slot.row,
+        rowCount: rowCount,
+        columnLeft: slot.columnLeft,
+        columnWidth: slot.columnWidth,
+        centerX: slot.centerX,
+        cellTop: slot.cellTop,
+      );
+    } else {
+      _painter._text(
+        canvas,
+        slot.cell.label ?? '',
+        Offset(slot.centerX, slot.cellTop + 3),
+        fontSize: 10,
+        color: TimesheetDocumentPainter._ink,
+        centeredAtX: true,
+      );
     }
   }
 
@@ -474,36 +471,30 @@ class _TimesheetCellsPass {
 
   /// A repeat chain's first cell: the cel it restarts on, then the
   /// notation repeat word down the rest of the chain.
-  void _paintRepeatStart(
-    Canvas canvas,
-    _CellSlot slot, {
-    required bool drawTexts,
-  }) {
+  void _paintRepeatStart(Canvas canvas, _CellSlot slot) {
     // A repeat ghost chain prints the sheet CONVENTION (UI-R13
     // #4): its first slot.row writes the cel it restarts on, and the
     // NOTATION-language repeat word runs VERTICALLY from the
     // next slot.row (UI-R11 #14) — the expanded cel numbers live in
     // the timeline for exporters, never here. No guide line.
-    if (drawTexts) {
-      _painter._text(
+    _painter._text(
+      canvas,
+      slot.cell.label ?? '',
+      Offset(slot.centerX, slot.cellTop + 3),
+      fontSize: 10,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+    );
+    final wordRows = (slot.cell.spanLength ?? 1) - 1;
+    if (wordRows > 0) {
+      _painter._paintVerticalWord(
         canvas,
-        slot.cell.label ?? '',
-        Offset(slot.centerX, slot.cellTop + 3),
-        fontSize: 10,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
+        _painter.notation.repeat,
+        centerX: slot.centerX,
+        top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
+        rows: wordRows,
+        columnWidth: slot.columnWidth,
       );
-      final wordRows = (slot.cell.spanLength ?? 1) - 1;
-      if (wordRows > 0) {
-        _painter._paintVerticalWord(
-          canvas,
-          _painter.notation.repeat,
-          centerX: slot.centerX,
-          top: slot.cellTop + TimesheetDocumentLayout.rowHeight,
-          rows: wordRows,
-          columnWidth: slot.columnWidth,
-        );
-      }
     }
   }
 
@@ -514,7 +505,6 @@ class _TimesheetCellsPass {
   void _paintCellOfKind(
     Canvas canvas,
     _CellSlot slot, {
-    required bool drawTexts,
     required int rowCount,
   }) {
     switch (slot.cell.kind) {
@@ -522,7 +512,6 @@ class _TimesheetCellsPass {
         _paintDrawingCell(
           canvas,
           slot,
-          drawTexts: drawTexts,
           rowCount: rowCount,
         );
       case TimesheetCellKind.held:
@@ -544,33 +533,29 @@ class _TimesheetCellsPass {
           Paint()..color = TimesheetDocumentPainter._ink,
         );
       case TimesheetCellKind.repeatStart:
-        _paintRepeatStart(canvas, slot, drawTexts: drawTexts);
+        _paintRepeatStart(canvas, slot);
       case TimesheetCellKind.repeatSpan:
         break; // The word above covers the chain (UI-R11 #14).
       case TimesheetCellKind.holdStart:
         // One cel held from slot.row 1: the rear hold chain prints the
         // notation hold word (止め) vertically (UI-R11 #15).
-        if (drawTexts) {
-          _painter._paintVerticalWord(
-            canvas,
-            _painter.notation.hold,
-            centerX: slot.centerX,
-            top: slot.cellTop,
-            rows: slot.cell.spanLength ?? 1,
-            columnWidth: slot.columnWidth,
-          );
-        }
+        _painter._paintVerticalWord(
+          canvas,
+          _painter.notation.hold,
+          centerX: slot.centerX,
+          top: slot.cellTop,
+          rows: slot.cell.spanLength ?? 1,
+          columnWidth: slot.columnWidth,
+        );
       case TimesheetCellKind.emptyRunStart:
-        if (drawTexts) {
-          _painter._text(
-            canvas,
-            '×',
-            Offset(slot.centerX, slot.cellTop + 2),
-            fontSize: 11,
-            color: TimesheetDocumentPainter._gridMedium,
-            centeredAtX: true,
-          );
-        }
+        _painter._text(
+          canvas,
+          '×',
+          Offset(slot.centerX, slot.cellTop + 2),
+          fontSize: 11,
+          color: TimesheetDocumentPainter._gridMedium,
+          centeredAtX: true,
+        );
       case TimesheetCellKind.cameraKey:
         canvas.drawCircle(
           Offset(slot.centerX, slot.cellCenterY),
@@ -591,7 +576,6 @@ class _TimesheetCellsPass {
           columnWidth: slot.columnWidth,
           centerX: slot.centerX,
           cellTop: slot.cellTop,
-          drawTexts: drawTexts,
         );
       case TimesheetCellKind.empty:
         break;

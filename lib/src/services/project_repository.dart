@@ -12,6 +12,7 @@ import '../models/cut_camera.dart';
 import '../models/cut_content_translation.dart' show translateCutContentModel;
 import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
+import '../models/direction_spans_normalize.dart';
 import '../models/cut_metadata.dart';
 import '../models/media_viewer_bookmark.dart';
 import '../models/export_overrides.dart';
@@ -181,11 +182,21 @@ class ProjectRepository {
   ///    complete mirror of its base — one own cel + link per base cel —
   ///    no matter how the base gained the cel (create, move, paste,
   ///    undo/redo replay, file load).
+  /// 4. SPANS ON THEIR BLOCKS (R27, [cutWithSpansOnTheirBlocks]): a block
+  ///    carries an instruction exactly when its row's spans ride its blocks
+  ///    — a direction row's bare block takes the ＋'s span, any other row's
+  ///    block puts one down.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   static Project _reconcileAttachedMirrors(Project project) {
+    final firstInstruction = project.cameraInstructions.defs.isEmpty
+        ? null
+        : project.cameraInstructions.defs.first.id;
     final tracks = mappedOrSame(project.tracks, (track) {
-      final cuts = mappedOrSame(track.cuts, _normalizedCut);
+      final cuts = mappedOrSame(
+        track.cuts,
+        (cut) => _normalizedCut(cut, firstInstruction: firstInstruction),
+      );
       return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
     });
     return identical(tracks, project.tracks)
@@ -193,10 +204,14 @@ class ProjectRepository {
         : project.copyWith(tracks: tracks);
   }
 
-  /// The three invariants above, in their stated order, over one cut.
-  static Cut _normalizedCut(Cut cut) => cutWithReconciledAttachedMirrors(
-    cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
-  );
+  /// The four invariants above, in their stated order, over one cut.
+  static Cut _normalizedCut(Cut cut, {required String? firstInstruction}) =>
+      cutWithSpansOnTheirBlocks(
+        cutWithReconciledAttachedMirrors(
+          cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
+        ),
+        defaultInstructionId: firstInstruction,
+      );
 
   void updateTimesheetInfo(TimesheetInfo info) {
     updateProject((project) => project.copyWith(timesheetInfo: info));
@@ -725,18 +740,6 @@ class ProjectRepository {
     updateLayer(
       layerId: layerId,
       update: (layer) => layer.copyWith(mark: mark),
-    );
-  }
-
-  void updateLayerInstructions({
-    required CutId cutId,
-    required LayerId layerId,
-    required Map<int, InstructionEvent> instructions,
-  }) {
-    _mutateLayerInCut(
-      cutId,
-      layerId,
-      (layer) => layer.copyWith(instructions: instructions),
     );
   }
 

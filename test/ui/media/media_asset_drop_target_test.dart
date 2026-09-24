@@ -19,6 +19,8 @@ Future<void> _pump(
   required void Function(MediaAssetDragData data, Offset globalPosition)
   onDrop,
   required VoidCallback onTapUnder,
+  VoidCallback? onLeave,
+  bool Function(MediaAssetDragData data, Offset globalPosition)? accepts,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -70,6 +72,8 @@ Future<void> _pump(
                     child: MediaAssetDropTarget(
                       key: _targetKey,
                       onDrop: onDrop,
+                      onLeave: onLeave,
+                      accepts: accepts,
                     ),
                   ),
                 ],
@@ -142,5 +146,60 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dropped, 0);
+  });
+
+  // 🚨F-155: the framework never tells a target that took a drop that the
+  // file left it, and what a host drew for the hover stayed on screen.
+  testWidgets('the hover ends when the file is let go — taken or refused — '
+      'exactly as when it leaves', (tester) async {
+    for (final taken in [true, false]) {
+      final events = <String>[];
+      await _pump(
+        tester,
+        onDrop: (_, _) => events.add('drop'),
+        onTapUnder: () {},
+        onLeave: () => events.add('ended'),
+        accepts: (_, _) => taken,
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(_sourceKey)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveTo(tester.getCenter(find.byKey(_targetKey)));
+      await tester.pump();
+      expect(events, isEmpty, reason: 'premise: the file is standing there');
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        events,
+        taken ? ['ended', 'drop'] : ['ended'],
+        reason: taken
+            ? 'the hover is over before the drop is handled'
+            : 'a refused file lands nowhere, and its hover is over too',
+      );
+    }
+
+    // And the way it always ended: the file carried back off it.
+    final events = <String>[];
+    await _pump(
+      tester,
+      onDrop: (_, _) => events.add('drop'),
+      onTapUnder: () {},
+      onLeave: () => events.add('ended'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(_sourceKey)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await gesture.moveTo(tester.getCenter(find.byKey(_targetKey)));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(find.byKey(_otherSourceKey)));
+    await tester.pump();
+    expect(events, ['ended'], reason: 'it left');
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(events, ['ended'], reason: 'let go elsewhere: nothing landed here');
   });
 }

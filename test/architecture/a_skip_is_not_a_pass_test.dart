@@ -57,6 +57,19 @@ void main() {
       expect(lastSkipCount('+900 ~123: All tests passed!'), 123);
     });
 
+    test('🚨a count after a failure is still read', () {
+      // 2026-09-23: a whole-suite gate skipped 22 and said 「12 test(s)
+      // SKIPPED」. Once a test fails the counter grows a `-<failed>`, and
+      // the pattern stopped matching there — every skip after the first
+      // red went unsaid.
+      expect(lastSkipCount('17:38 +12113 ~22 -1: Some tests failed.'), 22);
+      expect(
+        lastSkipCount('+100 ~12: a\n+6310 ~12 -1: b\n+12113 ~22 -1: c'),
+        22,
+        reason: 'the counter is cumulative across the failure too',
+      );
+    });
+
     /// 🚨★★★**A TILDE IN A TEST NAME IS NOT A SKIP COUNT.** 실측
     /// 2026-09-08: a run reported 「105 test(s) SKIPPED」 where five had
     /// been, because one of the tests it printed is called 「a bare Row

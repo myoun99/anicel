@@ -56,7 +56,7 @@ Project _project({
 void main() {
   group('MediaAsset', () {
     test('round-trips through json; unknown kind decodes to audio', () {
-      const asset = MediaAsset(path: r'C:\snd\foot.wav', name: '발소리');
+      final asset = MediaAsset(path: r'C:\snd\foot.wav', name: '발소리');
       expect(MediaAsset.fromJson(asset.toJson()), asset);
       expect(asset.toJson()['kind'], 'audio');
 
@@ -100,13 +100,13 @@ void main() {
 
     test('🚨a placement takes the POOL entry\'s name, which a rename '
         'changed — and the default for a file the pool has not seen', () {
-      const entry = MediaAsset(path: '/pool/bg_street.png', name: '거리');
+      final entry = MediaAsset(path: '/pool/bg_street.png', name: '거리');
       expect(mediaAssetNameFor(entry, entry.path), '거리');
       expect(mediaAssetNameFor(null, '/pool/bg_street.png'), 'bg_street');
     });
 
     test('copyWith moves the path and keeps the name', () {
-      const asset = MediaAsset(path: '/old.wav', name: '발소리');
+      final asset = MediaAsset(path: '/old.wav', name: '발소리');
       final moved = asset.copyWith(path: '/new.wav');
       expect(moved.path, '/new.wav');
       expect(moved.name, '발소리');
@@ -119,7 +119,7 @@ void main() {
           name: 'P',
           tracks: const [],
           createdAt: DateTime.utc(2026, 7, 9),
-          mediaAssets: const [
+          mediaAssets: [
             MediaAsset(path: '/a.wav', name: 'a'),
             MediaAsset(path: '/a.wav', name: 'a again'),
           ],
@@ -132,9 +132,9 @@ void main() {
   group('Project.mediaAssets', () {
     test('serializes and round-trips', () {
       final project = _project(
-        mediaAssets: const [MediaAsset(path: '/snd/foot.wav', name: '발소리')],
-        audioClips: const [
-          AudioClip(filePath: '/snd/foot.wav', frameId: FrameId('f1')),
+        mediaAssets: [MediaAsset(path: '/snd/foot.wav', name: '발소리')],
+        audioClips: [
+          AudioClip(filePath: '/snd/foot.wav', frameId: const FrameId('f1')),
         ],
       );
 
@@ -147,39 +147,39 @@ void main() {
     test('loading reconciles clip references the stored pool misses '
         '(legacy projects predate the pool)', () {
       final legacy = _project(
-        audioClips: const [
-          AudioClip(filePath: r'C:\snd\foot.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: r'C:\snd\foot.wav', frameId: const FrameId('f1')),
         ],
       );
       final json = legacy.toJson()..remove('mediaAssets');
 
       final restored = Project.fromJson(json);
-      expect(restored.mediaAssets, const [
+      expect(restored.mediaAssets, [
         MediaAsset(path: r'C:\snd\foot.wav', name: 'foot'),
       ]);
     });
 
     test('reconciliation keeps stored entries (names) and appends only the '
         'unknown paths once', () {
-      final stored = [const MediaAsset(path: '/a.wav', name: '이름 있음')];
+      final stored = [MediaAsset(path: '/a.wav', name: '이름 있음')];
       final tracks = _project(
-        audioClips: const [
-          AudioClip(filePath: '/a.wav', frameId: FrameId('f1')),
-          AudioClip(filePath: '/b.wav', frameId: FrameId('f1')),
-          AudioClip(filePath: '/b.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: '/a.wav', frameId: const FrameId('f1')),
+          AudioClip(filePath: '/b.wav', frameId: const FrameId('f1')),
+          AudioClip(filePath: '/b.wav', frameId: const FrameId('f1')),
         ],
       ).tracks;
 
       final reconciled = reconciledMediaAssets(stored, tracks);
       expect(reconciled, [
-        const MediaAsset(path: '/a.wav', name: '이름 있음'),
-        const MediaAsset(path: '/b.wav', name: 'b'),
+        MediaAsset(path: '/a.wav', name: '이름 있음'),
+        MediaAsset(path: '/b.wav', name: 'b'),
       ]);
     });
 
     test('mediaAssetByPath finds pool entries', () {
       final project = _project(
-        mediaAssets: const [MediaAsset(path: '/a.wav', name: 'a')],
+        mediaAssets: [MediaAsset(path: '/a.wav', name: 'a')],
       );
       expect(project.mediaAssetByPath('/a.wav')?.name, 'a');
       expect(project.mediaAssetByPath('/missing.wav'), isNull);

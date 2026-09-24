@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🚨F-73 ① (유저 2026-09-11): 「브러시 탭 그룹 이름이나 스트로크 프리뷰 상태가
 /// 저장안됨. 그룹 이름을 해제하거나 스트로크 이름이랑 프리뷰 해제하고 패널닫고
@@ -16,8 +18,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 ///
 /// Through HomePage, the way it was met: the library's own rail group closed
 /// and opened again, the app started again on the same layout file, and the
-/// workspace reset — each read off the panel's OWN menu, whose check mark is
-/// the State that used to forget. ⚠️Not off the rows: in a widget test the
+/// workspace reset — each read off the panel's OWN menu, whose toggle mark
+/// (the app's ring, dotted when on) is the State that used to forget. ⚠️Not off the rows: in a widget test the
 /// workspace's library opens with none, so a row count would pass either way.
 void main() {
   final libraryGroup = find.byKey(
@@ -36,15 +38,13 @@ void main() {
   /// read, and closed again without picking anything.
   Future<bool> strokePreviewsChecked(WidgetTester tester) async {
     await tapKey(tester, 'brush-preset-menu-button');
-    final checked = find
-        .descendant(
-          of: find.byKey(
+    final checked = tester
+        .booleanDotIn(
+          find.byKey(
             const ValueKey<String>('brush-preset-view-stroke-toggle'),
           ),
-          matching: find.byIcon(Icons.check),
         )
-        .evaluate()
-        .isNotEmpty;
+        .value;
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     return checked;
@@ -110,7 +110,7 @@ void main() {
     final directory = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('brush_view_toggles'),
     ))!;
-    addTearDown(() => directory.deleteSync(recursive: true));
+    deleteAfterSessionEnds(directory);
     final store = WorkspaceLayoutStore(
       filePath: '${directory.path}/workspace_layout.json',
     );

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
 import '../theme/text_on_ground.dart';
+import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 
 class TimelineCellStyleColors {
@@ -47,11 +49,30 @@ Color get timelineSelectedFrameBorderColor => AppColors.accent;
 /// exactly this, so a key span cannot read as a different kind of
 /// selection than a cell span ("다른 프레임셀선택이랑 완전동일화").
 /// Non-const because the accent is live (UI-R22 #5).
-BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
-  color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
-  border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
-  borderRadius: const BorderRadius.all(Radius.circular(6)),
+///
+/// Over frame cells of [cellExtent] × [crossExtent] it wears the blocks' own
+/// corner ([timelineBlockCornerRadiusAt]) — F-26 made the band take the
+/// shape of what it selects, and F-79 is why that has to be the LAW rather
+/// than the bare 6: zoomed out the blocks round less, and a band that kept
+/// 6 was rounder than every block inside it.
+BoxDecoration timelineRangeSelectionBandDecorationAt({
+  required double cellExtent,
+  required double crossExtent,
+}) => _timelineSelectionBand(
+  BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: cellExtent,
+      crossExtent: crossExtent,
+    ),
+  ),
 );
+
+BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
+    BoxDecoration(
+      color: timelineSelectedFrameBorderColor.withValues(alpha: 0.18),
+      border: Border.all(color: timelineSelectedFrameBorderColor, width: 2),
+      borderRadius: borderRadius,
+    );
 
 /// The same band with SQUARE corners — the one the LAYER area wears.
 ///
@@ -65,15 +86,13 @@ BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
 /// a run of those is. Everything else about it — the ink, the fill, the
 /// stroke width — stays the single value above.
 BoxDecoration get timelineRowSelectionBandDecoration =>
-    timelineRangeSelectionBandDecoration.copyWith(
-      borderRadius: BorderRadius.zero,
-    );
+    _timelineSelectionBand(BorderRadius.zero);
 
 /// The ring on the cell you are STANDING on, wherever that is: a layer's
 /// row, an fx header, a property lane.
 ///
 /// ONE decoration, because standing is ONE thing (user, 2026-08-08). A
-/// lane used to borrow [timelineRangeSelectionBandDecoration] for this —
+/// lane used to borrow [timelineRangeSelectionBandDecorationAt] for this —
 /// filled, 2px, 6px corners against this unfilled 3px 4px one — so
 /// standing on a property read as a one-cell SELECTION rather than as
 /// standing, and you could see the difference in the stroke weight.
@@ -128,8 +147,8 @@ Color timelineInBlockInk({bool dimmed = false}) => dimmed
     ? timelineDrawingInkColor.withValues(alpha: 0.55)
     : timelineDrawingInkColor;
 
-/// How a WORD inside a block is printed: its ink, its fitted size, the bold
-/// rule, and the box that makes centring read as centred.
+/// How a WORD inside a block is printed: its ink, its size, the bold rule,
+/// and the box that makes centring read as centred.
 ///
 /// 🚨ONE print for the frame block's name and the lane key's name (유저
 /// 2026-09-12: 「내부에 있는 텍스트 디자인? 색도 똑같이 그대로 재사용」). What
@@ -206,6 +225,67 @@ double timelineBlockWordStart({
       return centred < endAligned ? centred : endAligned;
   }
 }
+
+/// Where a WORD in a block lands and how far it is narrowed — ONE answer
+/// for every word a block writes, painted or laid out as a widget.
+///
+/// 🚨유저 2026-09-24 (`block-word-size-at-zoom-Q1` 답 B): 「이름은
+/// 블록안에서만 있도록 하게하고싶은건 변함없고, 잘 보이는게 중요해서 B」 —
+/// the type keeps its size at every zoom, the word uses its whole block, and
+/// only past the block does it narrow — and 「법같은거 최대한 통일하면서.
+/// 컷블록의 텍스트든 se텍스트든 뭐든」. ⚠️The cost they took with it: blocks
+/// of different lengths print one name at different widths (「통일감을
+/// 헤치고있어서 그부분만 신경쓰이는데 … 나중에 거슬린다 싶으면 A」 — A
+/// narrows by the zoom instead).
+///
+/// Each axis is narrowed on its own only as far as the slot's room demands
+/// ([wordFit]); the narrowed word is then laid by F-96 along the frame axis
+/// ([timelineBlockWordStart]) — centred on its cell while it fits the cell,
+/// growing into its block from the cell's edge past that.
+({Offset origin, WordFit fit}) timelineBlockWordLayout(
+  Size word,
+  TimelineBlockWordSlot slot,
+) {
+  final axis = slot.axis;
+  final room = slot.room;
+  final fit = wordFit(word, room.size);
+  final fitted = Size(word.width * fit.x, word.height * fit.y);
+  final along = timelineBlockWordStart(
+    cellStart: slot.cellStart,
+    cellExtent: slot.cellExtent,
+    wordExtent: extentAlong(axis, fitted),
+    growth: slot.growth,
+  );
+  final acrossRoom = extentAcross(axis, room.size);
+  final acrossStart = axis == Axis.horizontal ? room.top : room.left;
+  final across =
+      acrossStart +
+      (acrossRoom - extentAcross(axis, fitted)) *
+          (slot.acrossAlignment + 1) /
+          2;
+  return (
+    origin: offsetAlong(axis, along: along, across: across),
+    fit: fit,
+  );
+}
+
+/// Where a block word may go ([timelineBlockWordLayout]).
+///
+/// `room` is what the word may cover: along the frame axis, the stretch of
+/// its BLOCK it can grow into — from its cell to the block's end for a word
+/// that grows toward the end, from the block's start to its cell's end for
+/// one that grows back — and across it, the block's paper. `cellStart` and
+/// `cellExtent` are the word's own cell along the frame axis;
+/// `acrossAlignment` is where it sits across its room (-1 the near edge, 0
+/// the middle, 1 the far edge).
+typedef TimelineBlockWordSlot = ({
+  Axis axis,
+  Rect room,
+  double cellStart,
+  double cellExtent,
+  TimelineBlockWordGrowth growth,
+  double acrossAlignment,
+});
 
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
@@ -306,6 +386,12 @@ const double timelineSecondGridAlpha = 1.0;
 /// 작아지는 한이 있어도 절대 안 사라지도록" — so the type shrinks with the
 /// cell instead, down to a hard floor that still reads as a mark.
 ///
+/// ⛔NOT FOR A BLOCK'S WORDS any more (유저 2026-09-24, `block-word-size-at-
+/// zoom-Q1` 답 B): a word keeps its type and narrows into its block instead
+/// ([timelineBlockWordLayout]), which says it just as surely. What still
+/// shrinks here is what cannot be narrowed on one axis — a key MARK is a
+/// square (D39-2) — and the rulers' numbers, which are no block's writing.
+///
 /// [crossExtent] is the cell's OTHER dimension (#15's vertical half of
 /// the same rule): the fit takes whichever axis is tighter, so squeezing
 /// a row's height shrinks its text exactly like squeezing its cells'
@@ -347,9 +433,9 @@ bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
   return exposureState.isCovered;
 }
 
-/// The active-row WASH — painted once per row as an underlay (UI-R21 #2),
-/// never per cell: cell rasters are active-independent now, so switching
-/// the active layer re-rasters nothing.
+/// The active-row WASH — painted once per row, under it (UI-R21 #2; the
+/// grid sheet paints it since I-44), never per cell: cell rasters are
+/// active-independent, so switching the active layer re-rasters nothing.
 Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
     colorScheme.secondaryContainer.withValues(alpha: 0.35);
 
@@ -381,7 +467,7 @@ Color storyboardCutBlockBackgroundColor(
     return base;
   }
   // 0.12 = the timeline's selected-CELL tint: the shared range-selection
-  // band ([timelineRangeSelectionBandDecoration], 0.18) rides above this,
+  // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above this,
   // and the pair must sum to the timeline's look, not overshoot it.
   return Color.alphaBlend(
     timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
@@ -427,8 +513,8 @@ TimelineCellStyleColors timelineCellStyleColors({
   required bool selected,
   Color paper = timelineDrawingHeldColor,
 }) {
-  // UI-R21 #2: empty cells paint NOTHING — the row-level underlay owns
-  // the paper (a surface base plus the active-row wash), so the cell
+  // UI-R21 #2: empty cells paint NOTHING — the ground under them is the
+  // grid sheet's (I-44: the host colour, the active-row wash), so the cell
   // substrate carries no per-row state at all.
   const emptyBaseColor = Colors.transparent;
   final exposureColor = switch (exposureState) {
@@ -484,11 +570,19 @@ TimelineCellStyleColors timelineCellStyleColors({
 /// The ONE corner radius every frame block wears — the timeline's rounded
 /// block language (D30 put the storyboard panels on it too, so the strip
 /// reads as frame blocks in thumbnail mode).
-const Radius timelineBlockCornerRadius = Radius.circular(6);
+///
+/// 🚨PRIVATE ON PURPOSE (유저 2026-09-23: 「모서리랑 블록이랑 모서리가
+/// 통일안되서 그런거같은데 확실하게 통일해줘」). Every reader that took this
+/// bare value drew a corner the blocks stop wearing below a 12px cell — the
+/// SE paper, the storyboard panels, the standing ring, the selection band, the
+/// pattern span, the classic cells pass — and each had been fixed one at a
+/// time. Only [timelineBlockCornerRadiusAt] reads it now, so there is no way
+/// left to draw a block corner that skips the law.
+const Radius _timelineBlockCornerRadius = Radius.circular(6);
 
 /// The corner a block actually wears over cells of [cellExtent] ×
-/// [crossExtent]: [timelineBlockCornerRadius], no larger than half the cell —
-/// the clamp the block tiles' rounded rects already apply to every cell they
+/// [crossExtent]: the block corner (6), no larger than half the cell — the
+/// clamp the block tiles' rounded rects already apply to every cell they
 /// round (`_blendRRect`).
 ///
 /// 🚨F-79 (유저 2026-09-11): 「현재 프레임 블록을 표시하는 블록의 외곽 라인.
@@ -501,6 +595,6 @@ Radius timelineBlockCornerRadiusAt({
   required double crossExtent,
 }) {
   final limit = (cellExtent < crossExtent ? cellExtent : crossExtent) / 2;
-  final radius = timelineBlockCornerRadius.x;
+  final radius = _timelineBlockCornerRadius.x;
   return Radius.circular(radius < limit ? radius : limit);
 }

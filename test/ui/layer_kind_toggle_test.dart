@@ -24,6 +24,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/boolean_dot_probe.dart';
 import 'flyout_test_helpers.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
@@ -84,6 +85,15 @@ Layer _layer(ProjectRepository repository) {
 
 Future<bool> _isCommandEnabled(WidgetTester tester, ValueKey<String> key) =>
     readCommandEnabled(tester, key);
+
+/// The app's ring on the storyboard toggle — its flyout opened, the dot
+/// read, the flyout closed.
+Future<bool> _storyboardRing(WidgetTester tester) async {
+  await openOwningFlyout(tester, _toggleKey.value);
+  final on = tester.booleanDotIn(find.byKey(_toggleKey)).value;
+  await dismissFlyout(tester);
+  return on;
+}
 
 Project _projectWithLayer({
   LayerKind kind = LayerKind.animation,
@@ -186,11 +196,17 @@ void main() {
 
     expect(_layer(repository).kind, LayerKind.animation);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
+    expect(
+      await _storyboardRing(tester),
+      isFalse,
+      reason: 'a TOGGLE while it is off too — the ring is there, empty',
+    );
 
     await _tapKey(tester, _toggleKey);
 
     expect(_layer(repository).kind, LayerKind.storyboard);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
+    expect(await _storyboardRing(tester), isTrue);
   });
 
   // storyboard→animation (model + metadata) is covered at the service level by

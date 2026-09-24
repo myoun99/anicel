@@ -144,14 +144,14 @@ void main() {
         Frame(id: const FrameId('f'), duration: 1, strokes: const []),
       ],
       timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 4)},
-      audioClips: const [
+      audioClips: [
         AudioClip(
           filePath: 'a.wav',
-          frameId: FrameId('f'),
+          frameId: const FrameId('f'),
           fadeCurve: AudioFadeCurve.equalPower,
           volumeKeys: [
-            AudioVolumeKey(frame: 0, gain: 1),
-            AudioVolumeKey(frame: 4, gain: 0.5),
+            const AudioVolumeKey(frame: 0, gain: 1),
+            const AudioVolumeKey(frame: 4, gain: 0.5),
           ],
         ),
       ],

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../timeline/layer_label_controls.dart' show LayerVisibilityToggleButton;
 import '../widgets/app_icon_button.dart';
+import '../widgets/boolean_dot.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_point.dart';
@@ -173,6 +174,9 @@ class GuideLibraryList extends StatelessWidget {
               guide: guide,
               selected: guide.id == selectedGuideId,
               acting: guides.activeSymmetryId == guide.id,
+              // ONE `activeSymmetryId`: turning a symmetry on turns the one
+              // that was acting off.
+              inPickOneGroup: true,
               onSelected: () => onGuideSelected(guide.id),
               onActingChanged: (acting) => onGuidesCommitted(
                 guides.copyWith(
@@ -196,6 +200,9 @@ class GuideLibraryList extends StatelessWidget {
               guide: guide,
               selected: guide.id == selectedGuideId,
               acting: (guide.shape as PerspectiveShape).snapEnabled,
+              // Per guide on purpose ([PerspectiveShape.snapEnabled]):
+              // several may snap at once.
+              inPickOneGroup: false,
               onSelected: () => onGuideSelected(guide.id),
               onActingChanged: (snapping) => _replace(
                 guide.copyWith(
@@ -267,6 +274,7 @@ class _GuideRow extends StatelessWidget {
     required this.guide,
     required this.selected,
     required this.acting,
+    required this.inPickOneGroup,
     required this.onSelected,
     required this.onActingChanged,
     required this.onVisibleChanged,
@@ -277,6 +285,11 @@ class _GuideRow extends StatelessWidget {
   final DrawingGuide guide;
   final bool selected;
   final bool acting;
+
+  /// See [BooleanDot.inPickOneGroup] — the two families answer it
+  /// differently, which is why each call site says it.
+  final bool inPickOneGroup;
+
   final VoidCallback onSelected;
   final ValueChanged<bool> onActingChanged;
   final ValueChanged<bool> onVisibleChanged;
@@ -297,32 +310,18 @@ class _GuideRow extends StatelessWidget {
         selectedTileColor: colorScheme.surfaceContainerHigh,
         onTap: onSelected,
         title: Text(guide.name),
-        leading: AppIconButton(
+        // 🚨THE BUTTON 유저 made the app's boolean from (guide-sym ⑥⑧,
+        // 2026-08-31: 「적용시 안에 동그라미 추가」) — [BooleanDot] carries
+        // the ring, the dot and the user's two off colours.
+        // ↩️It used to swap `circle_outlined` for `check_circle`: a check
+        // mark, which 「선택 표시는 색상만」 names outright. Then a copy of
+        // the ring drawn here by hand, until the ring had one home.
+        leading: BooleanDotButton(
           keyValue: 'guide-acting-${guide.id.value}',
           tooltip: acting ? strings.guideActsOn : strings.guideActsOff,
-          isSelected: acting,
-          // ⛔ONE GLYPH, and the state is the COLOUR. This used to swap
-          // `circle_outlined` for `check_circle` — a check mark, which the
-          // app's selection law names outright: 「선택 표시는 색상만」, never
-          // a check and never a filled chip ([[ui-selection-style]]).
-          //
-          // 🚨THE INNER DOT — 유저 2026-09-10 (guide-sym): 「적용/미적용 동그란
-          // 버튼에 **적용 시 안에 동그라미**(환경설정▸입력▸태블릿서비스
-          // 버튼처럼)」. That button is a stock Material radio
-          // (`input_settings_dialog.dart`, 'settings-tablet-standard'):
-          // ON is a ring with a filled dot in the accent, OFF the bare
-          // ring. `radio_button_checked`/`_unchecked` ARE that pair of
-          // glyphs, so the model and the copy are the same drawing.
-          //
-          // ⚠️It does NOT reopen the line above. A check mark is a
-          // DIFFERENT shape saying "done"; this is one shape whose middle
-          // fills, at the same size, in the same accent the colour rule
-          // already puts there. ⛔And still never a filled chip — the rim
-          // stays a ring, so nothing about the button's box changes.
-          icon: Icon(
-            acting ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-          ),
-          onPressed: () => onActingChanged(!acting),
+          value: acting,
+          inPickOneGroup: inPickOneGroup,
+          onChanged: onActingChanged,
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

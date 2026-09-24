@@ -282,6 +282,7 @@ class LayerVerbs {
       );
       _changes.refreshAfterCutCommand(
         preferredActiveLayerId: nextActiveLayerId,
+        filterSparesStanding: false,
       );
       _changes.notifyChanged();
       return;
@@ -297,7 +298,12 @@ class LayerVerbs {
       cutId: _project.requireActiveCut.id,
       layerId: activeLayer.id,
     );
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    // F-169: the row you stood on is gone and the walk picked this one — a
+    // hand-off, which the filter's exemption must not put on the screen.
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: nextActiveLayerId,
+      filterSparesStanding: false,
+    );
     _changes.notifyChanged();
   }
 
@@ -336,7 +342,10 @@ class LayerVerbs {
       }
     });
     _selection.clearRowSelection();
-    _changes.refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    _changes.refreshAfterCutCommand(
+      preferredActiveLayerId: nextActiveLayerId,
+      filterSparesStanding: false,
+    );
     _changes.notifyChanged();
   }
 

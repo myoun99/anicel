@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/mutation_run.dart';
 import '../../tool/mutations.dart';
+import '../helpers/temp_dir.dart';
 
 /// 🚨★★★THE TWO WAYS A MUTATION RUN LIES TO YOU.
 ///
@@ -232,7 +233,7 @@ void main() {
   group('resuming a campaign', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('resume_fx'));
-    tearDown(() => dir.deleteSync(recursive: true));
+    tearDown(() => deleteTempQuietly(dir));
 
     File out(String contents) =>
         File('${dir.path}/r.jsonl')..writeAsStringSync(contents);

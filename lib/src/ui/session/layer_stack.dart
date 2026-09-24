@@ -21,13 +21,10 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
-import '../timeline/timeline_cell_exposure_state.dart';
 import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
-import '../timeline/timeline_instruction_row_visual.dart'
-    show instructionCellExposureState;
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
@@ -199,6 +196,9 @@ class LayerStack {
     // the controller's active layer directly, so none of them went through
     // [selectLayer].
     _standing.seatVerbRowOnActiveLayer();
+    // F-169 ②: you went there, so what the rail's view hides it with opens
+    // (a new SE row in a hidden SE section shows the section).
+    _standing.keepStandingShown(reveal: true);
     _changes.notifyChanged();
   }
 
@@ -238,20 +238,14 @@ class LayerStack {
       frameIndex: frameIndex,
     );
     if (frame == null) {
-      // 🚨A SPAN-COVERED CELL ON A DIRECTION ROW IS A BLOCK — it simply has
-      // no cel behind it yet, which is the state 유저 asked to see: 「추가로
-      // **없으면 블록을 회색으로**」. Everywhere else a cell with no frame
-      // is not a block at all, so there is nothing to tint and `true` is
-      // the right answer.
+      // A cell with no frame is not a block at all: nothing to tint.
       //
-      // ⛔It asks the span ADAPTER rather than reading `layer.instructions`
-      // again — 「is this frame under a span」 has one home, and the band
-      // that draws the block reads the same one ([[no-copy-to-share]]).
-      if (!layer.kind.carriesInstructions) {
-        return true;
-      }
-      return instructionCellExposureState(layer, frameIndex) ==
-          TimelineCellExposureState.uncovered;
+      // ↩️A span-covered cell on a DIRECTION row used to be the exception —
+      // a block with no cel behind it yet, tinted here because 유저 asked
+      // to see exactly that state (「추가로 **없으면 블록을 회색으로**」).
+      // Since R27 every span is a block on a cel of its own, so that grey
+      // comes from the unworked-cel rule below, like any empty cel's.
+      return true;
     }
     // A LIVE stroke already counts. The store only learns about pixels at
     // commit (`markCelEdited` on pen-up), so waiting for it left the block

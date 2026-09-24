@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
 
 /// 🚨T16ⓐ′ — the folded row is the OPEN row seen through glass, not a look
 /// of its own.
@@ -20,10 +21,13 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 /// And 🚨the missing grid lines were never erased by chromeless mode. Every
 /// plain per-cell border is `Colors.transparent` on purpose
 /// (`timeline_cell_style`: 「the GRID OVERLAY owns every plain per-cell line
-/// now」), so a row that does not mount the overlay simply has no lines. The
-/// cut-end shading rides in the same painter, so one mount returns both —
-/// and that shading is information rather than chrome (유저 확정 08-10),
-/// which is why a folded row wants it too.
+/// now」), so a row that does not mount the grid simply has no lines.
+///
+/// ⚠️This header used to add that 「the cut-end shading rides in the same
+/// painter, so one mount returns both」. It never did: the line painter has
+/// no wash, and nothing here pinned one — the claim only rode along in the
+/// test's name. The wash is the overlay's own layer now, over the row, and
+/// `collapsed_row_overlay_test` pins it.
 Future<void> _pumpFolded(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -68,32 +72,43 @@ void main() {
     );
   });
 
-  testWidgets('the grid lines and the cut-end shading are mounted', (
+  testWidgets('the grid sheet is mounted UNDER the row, on no ground', (
     tester,
   ) async {
     await _pumpFolded(tester);
 
-    final lines = find.descendant(
+    final sheet = find.descendant(
       of: find.byType(CollapsedRowOverlay),
-      matching: find.byKey(const ValueKey<String>('collapsed-beat-lines')),
+      matching: find.byKey(const ValueKey<String>('collapsed-grid-sheet')),
     );
     expect(
-      lines,
+      sheet,
       findsOneWidget,
-      reason: 'not mounting this painter is the ONLY reason the folded row '
-          'had no lines — the per-cell borders are transparent by design',
+      reason: 'not mounting the grid is the ONLY reason the folded row had '
+          'no lines — the per-cell borders are transparent by design',
     );
 
-    final painter =
-        tester.widget<CustomPaint>(lines).painter! as TimelineBeatLinesPainter;
+    // I-44: under the row, as in the open panel — it used to be laid OVER
+    // the row here, while the row drew its own lines as well. It is the open
+    // grid's own stack that lays it now, in the slot under the rows (D32,
+    // `timeline_frame_grid_stack_test`), with where the film stops over them.
+    final stack = tester.widget<TimelineFrameGridStack>(
+      find.ancestor(of: sheet, matching: find.byType(TimelineFrameGridStack)),
+    );
+    expect(stack.gridSheet, tester.widget(sheet));
+
+    // The row lies over the ARTWORK: no ground to paint rows on, so no row
+    // is coloured and no seam is ruled; the lines stay the law's raw ink.
+    final painter = tester
+        .widget<CustomPaint>(
+          find.descendant(of: sheet, matching: find.byType(CustomPaint)),
+        )
+        .painter! as TimelineGridSheetPainter;
+    expect(painter.ground, isNull);
+    expect(painter.rows, TimelineGridRows.none);
+
     final overlay = tester.widget<CollapsedRowOverlay>(
       find.byType(CollapsedRowOverlay),
-    );
-    expect(
-      painter.crossCellExtent,
-      overlay.height,
-      reason: 'the lines span the row they are drawn on, not the grid\'s row '
-          'height — a folded row is one row tall and measures as one',
     );
     expect(
       overlay.height,

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'media_byte_source.dart';
+
 /// One open document the viewer can show: how many pages it has, how big
 /// one is, and a render of ONE page at exactly the pixels that will be
 /// drawn.
@@ -113,11 +115,17 @@ abstract class ViewerDocument {
 
   /// Releases whatever the document holds — a native handle, an encoded
   /// buffer, a decoder.
+  ///
+  /// 🚨Completes only once nothing reads the document's bytes any more: a
+  /// reader holding them for it (`ProjectFile.holdMediaBytes`) gives them
+  /// back on this, and a save may move them the moment it does.
   Future<void> dispose();
 }
 
-/// The open seam tests inject fakes through.
-typedef ViewerDocumentOpener = Future<ViewerDocument> Function(String path);
+/// The open seam tests inject fakes through — handed where the bytes are,
+/// exactly as the engine it stands in for would be.
+typedef ViewerDocumentOpener =
+    Future<ViewerDocument> Function(MediaByteSource source);
 
 /// A page's own size in whole PIXELS — the size
 /// [ViewerDocument.readRegionRgba] reads at. PDF points round to the

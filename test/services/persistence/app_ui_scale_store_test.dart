@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory directory;
@@ -15,7 +16,7 @@ void main() {
     store = AppUiScaleStore(filePath: '${directory.path}/ui_scale.json');
   });
 
-  tearDown(() => directory.deleteSync(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   test('a missing file is not an error — it is the default', () async {
     expect(await store.load(), isNull);

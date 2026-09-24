@@ -11,7 +11,7 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/models/timeline_exposure.dart';
 
 const _takeId = FrameId('take');
-const _sound = r'C:\snd\line.wav';
+const _sound = 'C:/snd/line.wav';
 
 Layer _seRow({
   required List<Frame> frames,
@@ -74,8 +74,8 @@ void main() {
         timeline: const {
           0: TimelineExposure.drawing(FrameId('f1'), length: 6),
         },
-        audioClips: const [
-          AudioClip(filePath: r'C:\snd\old.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: 'C:/snd/old.wav', frameId: const FrameId('f1')),
         ],
       ),
       start: 4,
@@ -102,10 +102,10 @@ void main() {
         timeline: const {
           4: TimelineExposure.drawing(FrameId('f1'), length: 6),
         },
-        audioClips: const [
+        audioClips: [
           AudioClip(
-            filePath: r'C:\snd\old.wav',
-            frameId: FrameId('f1'),
+            filePath: 'C:/snd/old.wav',
+            frameId: const FrameId('f1'),
             offsetFrames: 2,
           ),
         ],
@@ -133,8 +133,8 @@ void main() {
         timeline: const {
           2: TimelineExposure.drawing(FrameId('f1'), length: 2),
         },
-        audioClips: const [
-          AudioClip(filePath: r'C:\snd\old.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: 'C:/snd/old.wav', frameId: const FrameId('f1')),
         ],
       ),
       start: 0,
@@ -154,8 +154,8 @@ void main() {
         timeline: const {
           0: TimelineExposure.drawing(FrameId('f1'), length: 12),
         },
-        audioClips: const [
-          AudioClip(filePath: r'C:\snd\old.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: 'C:/snd/old.wav', frameId: const FrameId('f1')),
         ],
       ),
       start: 4,
@@ -175,7 +175,7 @@ void main() {
     expect(headClip.offsetFrames, 0);
     final tailClip = plan.layer.audioClips
         .firstWhere((clip) => clip.frameId == const FrameId('minted-0'));
-    expect(tailClip.filePath, r'C:\snd\old.wav');
+    expect(tailClip.filePath, 'C:/snd/old.wav');
     // Head 4 + take 4: the remainder resumes 8 frames into the file.
     expect(tailClip.offsetFrames, 8);
     // The remainder instance exists in the frame bank.
@@ -194,8 +194,8 @@ void main() {
           0: TimelineExposure.drawing(FrameId('f1'), length: 3),
           6: TimelineExposure.drawing(FrameId('f1'), length: 6),
         },
-        audioClips: const [
-          AudioClip(filePath: r'C:\snd\foot.wav', frameId: FrameId('f1')),
+        audioClips: [
+          AudioClip(filePath: 'C:/snd/foot.wav', frameId: const FrameId('f1')),
         ],
       ),
       start: 4,

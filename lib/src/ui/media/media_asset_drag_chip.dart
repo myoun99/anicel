@@ -2,13 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
-import '../theme/app_theme.dart';
+import '../widgets/drag_chip.dart';
 import 'media_asset_kind_icon.dart';
 
 /// The chip a dragged pool file hangs at the pointer: the file's kind and
 /// name — and, over a place the file cannot land, the ban (유저 2026-09-11,
 /// 미디어 배치 라운드: 「불가능 = 칩의 금지 표시(커서는 그대로)」, the
-/// mockup's drag chip).
+/// mockup's drag chip). The chip is every drag's ([DragChip], I-39); what is
+/// the pool's own is the answer it wears.
 ///
 /// [verdict] is the entrance's answer ([MediaDropVerdictScope]); `false`
 /// rings the chip in danger and adds the ban after the name. `true` and
@@ -36,39 +37,8 @@ class MediaAssetDragChip extends StatelessWidget {
           );
   }
 
-  Widget _chip({required bool refused}) => Material(
-    key: const ValueKey<String>('media-drag-chip'),
-    elevation: 4,
-    color: AppColors.surfaceHigh,
-    shape: AppShapes.container(
-      AppShapes.wellRadius,
-      side: BorderSide(
-        color: refused ? AppColors.danger : AppColors.hairlineStrong,
-      ),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(mediaAssetKindIcon(kind), size: 14),
-          const SizedBox(width: 5),
-          Text(name, style: const TextStyle(fontSize: 12)),
-          if (refused) ...[
-            const SizedBox(width: 2),
-            Container(
-              key: const ValueKey<String>('media-drag-chip-ban'),
-              width: 16,
-              height: 16,
-              decoration: const ShapeDecoration(
-                color: AppColors.danger,
-                shape: CircleBorder(),
-              ),
-              child: const Icon(Icons.block, size: 12, color: Color(0xFF1B0F0F)),
-            ),
-          ],
-        ],
-      ),
-    ),
+  Widget _chip({required bool refused}) => DragChip(
+    items: [(icon: mediaAssetKindIcon(kind), label: name)],
+    refused: refused,
   );
 }

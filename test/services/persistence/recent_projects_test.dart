@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
+import '../../helpers/temp_dir.dart';
 
 /// PICK-4. The list itself is ordinary MRU arithmetic; what is worth testing
 /// carefully is the two things that are NOT ordinary:
@@ -116,13 +117,7 @@ void main() {
       dir = Directory.systemTemp.createTempSync('qa_recent_');
       path = '${dir.path}/recent_projects.json';
     });
-    tearDown(() {
-      try {
-        dir.deleteSync(recursive: true);
-      } on Object {
-        // A leaked handle on Windows must not fail the suite.
-      }
-    });
+    tearDown(() => deleteTempQuietly(dir));
 
     test('round-trips, bookmark and flag included', () {
       final store = RecentProjectsStore(filePath: path);
@@ -203,11 +198,7 @@ void main() {
     });
     tearDown(() {
       AppRecent.projects.value = const RecentProjects();
-      try {
-        dir.deleteSync(recursive: true);
-      } on Object {
-        // A leaked handle on Windows must not fail the suite.
-      }
+      deleteTempQuietly(dir);
     });
 
     test('recording publishes to the live list', () {

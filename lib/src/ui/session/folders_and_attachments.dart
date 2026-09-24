@@ -13,6 +13,7 @@ import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'rail_view.dart' show StandingLaw;
 import 'row_selection.dart';
 import 'layer_id_mint.dart';
 import 'session_roles.dart';
@@ -34,13 +35,15 @@ class FoldersAndAttachments {
     required LayerIdMint layerIds,
     required ActiveCutEdits activeCut,
     required FoldHandOff handOffOnFold,
+    required StandingLaw keepStandingShown,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
        _layerIds = layerIds,
        _activeCut = activeCut,
-       _handOffOnFold = handOffOnFold;
+       _handOffOnFold = handOffOnFold,
+       _keepStandingShown = keepStandingShown;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -49,6 +52,10 @@ class FoldersAndAttachments {
   final LayerIdMint _layerIds;
   final ActiveCutEdits _activeCut;
   final FoldHandOff _handOffOnFold;
+
+  /// The standing law with its reveal — a new attach row is where you went
+  /// (`Standing.keepStandingShown`).
+  final StandingLaw _keepStandingShown;
 
   /// Whether the active layer can carry (or already rides within) an
   /// attach group — the Add Attach Layer entrance's gate (W5).
@@ -137,6 +144,11 @@ class FoldersAndAttachments {
       ),
       insertionIndex: insertionIndex,
     );
+    // F-169 ②: made from a folded group's base, the new row opens its group.
+    // ↩️It used to show that one row inside the shut group (the active attach
+    // row's exemption, UI-R20 #9) — the exemption that also put a handed-off
+    // row on the screen.
+    _keepStandingShown(reveal: true);
     _changes.notifyChanged();
   }
 

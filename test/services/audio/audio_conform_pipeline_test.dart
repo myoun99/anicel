@@ -13,6 +13,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/conform_file_path.dart';
+import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/temp_dir.dart';
 
 void main() {
   late Directory temp;
@@ -21,13 +23,7 @@ void main() {
     temp = Directory.systemTemp.createTempSync('qa_conform_');
   });
 
-  tearDown(() {
-    try {
-      temp.deleteSync(recursive: true);
-    } on Object {
-      // A locked file on Windows must not fail the suite.
-    }
-  });
+  tearDown(() => deleteTempQuietly(temp));
 
   Float32List ramp(int frames, int channels) {
     final out = Float32List(frames * channels);
@@ -147,7 +143,7 @@ void main() {
       // the app does not delete the user's files (user direction). All
       // this answers is whether there is something to say.
       final root = await Directory.systemTemp.createTemp('qa-legacy-assets');
-      addTearDown(() => root.delete(recursive: true));
+      deleteAfterSessionEnds(root);
       final project = '${root.path.replaceAll('\\', '/')}/scene.anicel';
       final layout = ProjectAssetLayout(project);
       expect(layout.hasLegacyAssetsDirectory, isFalse);

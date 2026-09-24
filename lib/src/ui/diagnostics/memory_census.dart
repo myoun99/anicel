@@ -160,7 +160,15 @@ MemoryCensus collectMemoryCensus(EditorSessionManager session) {
           session.renderCaches.conteInkPageStore.hotBakedBytes +
           session.renderCaches.envelopeInkStore.hotBakedBytes,
     ),
-    MemoryCensusItem(id: 'undo', bytes: session.historyManager.retainedBytes),
+    MemoryCensusItem(
+      id: 'undo',
+      bytes:
+          session.historyManager.retainedBytes +
+          // 확정's held stroke (confirm-button): a past edit kept to be laid
+          // down again, which is what this row counts. Folded in rather than
+          // given a row, for the reason `drawings` gives above.
+          session.renderCaches.lastStrokeBytes,
+    ),
     MemoryCensusItem(
       id: 'playbackFrames',
       bytes: session.renderCaches.cutFrameCompositeCache.estimatedBytes,

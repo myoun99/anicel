@@ -69,7 +69,31 @@ void main() {
   /// has no page routes to transition; `app_theme.dart` has the
   /// measurement. Shrinking it is not available, and skipping the override
   /// means keeping four offscreens over the window on every frame.
-  const wideSignatures = 386;
+  ///
+  /// ⚠️386 → 387 on 2026-09-23, one named as the rule above asks.
+  /// `_ImportDialogState._placeThrough` (six) is the ONE dispatch every
+  /// placed file goes through, and a trimmed file carried in now goes
+  /// through it as its PIECE (유저 2026-09-23: 자른 구간만 품는다, 「비디오든
+  /// 이미지든 오디오든 관계없이 법 하나로」) — the span cut into a file of
+  /// its own and placed whole by the same doors, which is why the doors know
+  /// nothing of pieces. The two it gained are the piece's: the settings it
+  /// is placed with — the original's, re-based onto the piece — which it
+  /// used to read off the path, and where it was cut from, the parameter
+  /// every door takes for the pool's provenance. The sound and movie cutters
+  /// the same round wrote came in under the line: the frame rate and the
+  /// audio speed travel as the one clock they are (`ProjectClock`), and the
+  /// window's IN/OUT as one trim.
+  ///
+  /// ⚠️387 → 388 on 2026-09-24, one named as the rule above asks.
+  /// `layerRowHiddenBy` (eight) is the ONE answer to 「is this layer's row on
+  /// screen」 that the grids draw by and the standing law lands by (F-169 —
+  /// the two answering it apart is what stood a hand-off inside a shut
+  /// group). It is the row builder's own four checks lifted out whole, so
+  /// its inputs are the ones that loop already took: the row, the rail's
+  /// three view facts, the row the filter spares and the fx answer the
+  /// filter asks — plus the folder index and attach base the builder
+  /// computes once for the indent too, passed in rather than asked twice.
+  const wideSignatures = 388;
   const longBodies = 437;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

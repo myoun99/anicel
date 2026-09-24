@@ -191,7 +191,7 @@ void main() {
   test('MediaReference round-trips on the Layer JSON, and clearing it is '
       'expressible through copyWith (the rasterize edit)', () {
     final referenced = imageLayer().copyWith(
-      mediaReference: const MediaReference(
+      mediaReference: MediaReference(
         assetPath: 'C:/media/bg.png',
         frameOffset: 7,
       ),

@@ -8,6 +8,7 @@ import '../../models/layer.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
 import '../../models/layer_kind.dart';
+import '../text/app_face.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart';
@@ -41,7 +42,6 @@ import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
-import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -63,6 +63,7 @@ import 'timeline_virtualization_plan.dart';
 import 'timeline_visible_range.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';
+import 'timeline_grid_sheet.dart';
 import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
@@ -481,23 +482,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     );
   }
 
-  Widget _buildBeatLines(ColorScheme colorScheme) {
-    return CustomPaint(
-      key: const ValueKey<String>('xsheet-beat-lines'),
-      painter: TimelineBeatLinesPainter(
-        axis: Axis.vertical,
-        frameCellExtent: _metrics.frameCellWidth,
-        crossCellExtent: _metrics.layerRowHeight,
-        framesPerSecond: _countingFps,
-        colorScheme: colorScheme,
-        // D43: the sheet host's Material colour.
-        ground: colorScheme.surfaceContainerHighest,
-      ),
+  /// The grid sheet under the columns (I-44) — the timeline's, turned on
+  /// its side: every column's ground, every frame line and every column
+  /// seam, once.
+  Widget _buildGridSheet(List<TimelineDisplayRow> entries) {
+    return TimelineRowsGridSheet(
+      key: const ValueKey<String>('xsheet-grid-sheet'),
+      axis: Axis.vertical,
+      rows: entries,
+      rowExtent: _metrics.layerRowHeight,
+      frameCellExtent: _metrics.frameCellWidth,
+      activeLayerId: widget.hooks.activeLayerId,
+      standing: widget.hooks.currentRowHooks?.currentRow,
     );
   }
 
   Widget _buildFrameVerticalViewport(
-    ColorScheme colorScheme,
     List<TimelineDisplayRow> entries,
     _SheetGeometry geometry,
   ) {
@@ -516,13 +516,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             valueListenable: _frameWindowBucket,
             builder: (context, _, _) {
               final plan = _framePlan(bodyViewportHeight, entries);
-              // The timeline's stack, turned on its side: beat lines under
-              // the columns (D32), the cursor layer over them, and where the
-              // film stops stated over everything (the user's layer order).
+              // The timeline's stack, turned on its side: the grid sheet
+              // under the columns (D32, I-44), the cursor layer over them,
+              // and where the film stops stated over everything (the user's
+              // layer order).
               return TimelineFrameGridStack(
                 axis: Axis.vertical,
                 rowsBody: _columns.buildColumns(entries, plan, bodyViewportHeight),
-                beatLines: _buildBeatLines(colorScheme),
+                gridSheet: _buildGridSheet(entries),
                 playheadExtent: geometry.totalFrameContentHeight,
                 playhead: _buildCursorLayer(entries, plan),
                 cutEndDrag: widget.hooks.cutEndDrag,
@@ -732,7 +733,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                     context,
                   ).copyWith(scrollbars: false),
                   child: _buildFrameVerticalViewport(
-                    colorScheme,
                     entries,
                     geometry,
                   ),
@@ -1313,6 +1313,7 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       crossExtent: metrics.layerControlsWidth,
       metrics: metrics,
       colorScheme: colorScheme,
+      face: appFaceOf(DefaultTextStyle.of(context).style),
       numberType: XSheetFrameRailPainter.numberType,
       framesPerSecond: framesPerSecond,
       showSeconds: showSeconds,
@@ -1431,6 +1432,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
       text: writing.second,
       fontSize: 8,
       color: scale.secondsInk(current: current),
+      face: scale.face,
     ));
     if (second != null) {
       glyphs.add(second);
@@ -1469,7 +1471,7 @@ class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
   static TextStyle numberType(
     TimelineRulerScale scale, {
     required bool everyFrame,
-  }) => TextStyle(
+  }) => scale.face.copyWith(
     // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the sheet's
     // own number, affordable only while the rail was 72 wide.
     fontSize: timelineFittedGlyphFontSize(

@@ -52,6 +52,89 @@ Widget _host(Widget child) => MaterialApp(
 void main() {
   tearDown(() {
     StaticRaster.globallyEnabled.value = true;
+    StaticRaster.debugCapturePaysOverride = null;
+  });
+
+  testWidgets('where a capture does not pay, a surface is a zone and bakes '
+      'nothing', (tester) async {
+    // Impeller: the test renderer is Skia, so the override takes the branch.
+    StaticRaster.debugCapturePaysOverride = false;
+    final counter = <int>[0];
+    final inner = <int>[0];
+    final parentRepaint = ValueNotifier<int>(0);
+    final childRepaint = ValueNotifier<int>(0);
+    final innerRepaint = ValueNotifier<int>(0);
+    addTearDown(parentRepaint.dispose);
+    addTearDown(childRepaint.dispose);
+    addTearDown(innerRepaint.dispose);
+
+    await tester.pumpWidget(
+      _host(
+        _RepaintingParent(
+          repaint: parentRepaint,
+          child: StaticRaster(
+            debugLabel: 'test',
+            child: Column(
+              children: [
+                Expanded(
+                  child: CustomPaint(
+                    painter: _CountingPainter(
+                      counter: counter,
+                      repaint: childRepaint,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _CountingPainter(
+                        counter: inner,
+                        repaint: innerRepaint,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final render = tester.renderObject<RenderStaticRaster>(
+      find.byType(StaticRaster),
+    );
+    expect(render.captureCount, 0, reason: 'nothing is captured');
+    expect(render.standDown, StandDownReason.renderer);
+    expect(StaticRaster.censusBytes, 0);
+    expect(
+      StaticRaster.censusAvoidableCost.$1,
+      0,
+      reason: 'the renderer is not a fault to fix',
+    );
+    expect(
+      render.debugNestedBoundary,
+      isFalse,
+      reason: 'a boundary inside freezes nothing when nothing is captured, '
+          'so the subtree is not walked for one',
+    );
+
+    // Still a zone: an ancestor repainting does not reach the child.
+    final painted = counter[0];
+    parentRepaint.value += 1;
+    await tester.pump();
+    expect(counter[0], painted);
+
+    // The child changing repaints it, and still takes no capture.
+    childRepaint.value += 1;
+    await tester.pump();
+    expect(counter[0], painted + 1);
+    expect(render.captureCount, 0);
+
+    // And the boundary inside keeps updating on its own.
+    final innerPainted = inner[0];
+    innerRepaint.value += 1;
+    await tester.pump();
+    expect(inner[0], innerPainted + 1);
   });
 
   testWidgets('an ancestor repainting does not re-bake the child', (

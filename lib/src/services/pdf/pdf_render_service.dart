@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
 
 /// The PDF rasterizer seam (R4). PDFium arrives through pdfrx's build-time
@@ -27,6 +28,27 @@ import '../media/viewer_document.dart';
 ///
 /// PDF is vector, so resolution is a call-site decision: canvas-fit for
 /// placement bakes, zoom-tier for the viewer.
+
+/// One window PDFium asked for, out of [reader]: ALL of it, or 0.
+///
+/// 🚨PDFium takes ANY non-zero answer for success, and pdfrx hands it -1
+/// when a read throws — so a failed or short read became a page drawn from
+/// whatever the buffer held. PDFium asks only within the file's length, so
+/// anything short of the whole window is a failure, and 0 is the one answer
+/// it reads as one (audit 2026-09-24).
+int readPdfWindow(
+  MediaWindowReader reader,
+  Uint8List buffer,
+  int position,
+  int size,
+) {
+  try {
+    final got = reader.readIntoSync(buffer, position, size);
+    return got == size ? got : 0;
+  } on Object {
+    return 0;
+  }
+}
 
 abstract final class PdfRenderService {
   /// Test seam: when set, [open] routes here and [availability] reads
@@ -67,23 +89,96 @@ abstract final class PdfRenderService {
     }
   }
 
-  /// Opens [path]. Null means the RENDERER is absent; a file that fails
-  /// to open (corrupt, password-locked) throws instead — the two states
-  /// deserve different messages.
-  static Future<ViewerDocument?> open(String path) async {
+  /// Opens the PDF [source] holds. Null means the RENDERER is absent; a
+  /// file that fails to open (corrupt, password-locked) throws instead —
+  /// the two states deserve different messages.
+  ///
+  /// A whole file is PDFium's to read by its path. Anything else — a PDF
+  /// carried inside the `.anicel`, or its framed copy — is served a window
+  /// at a time, through a reader that keeps its file open for as long as
+  /// the document is ([MediaByteSource.openWindowReader]): a hundred-page
+  /// conte is never pulled whole, and never unpacked to a temp file (유저
+  /// 2026-08-27 「사본 남으면 진짜 용서안할게」).
+  static Future<ViewerDocument?> open(MediaByteSource source) async {
     final override = debugOpenerOverride;
     if (override != null) {
-      return override(path);
+      return override(source);
     }
     if (!await ensureAvailable()) {
       return null;
     }
-    final document = await pdfrx.PdfDocument.openFile(path);
+    final file = source.wholeFilePath;
+    final document = file != null
+        ? await pdfrx.PdfDocument.openFile(file)
+        : await _openWindowed(source);
     return _PdfrxDocumentHandle(document);
+  }
+
+  /// [source] opened on a reader that keeps its file open for the
+  /// document's whole life ([MediaByteSource.openWindowReader]) — closed
+  /// when the document is, or at once when it never opens.
+  static Future<pdfrx.PdfDocument> _openWindowed(
+    MediaByteSource source,
+  ) async {
+    final reader = source.openWindowReader();
+    try {
+      return await pdfrx.PdfDocument.openCustom(
+        read: (buffer, position, size) =>
+            readPdfWindow(reader, buffer, position, size),
+        fileSize: source.lengthSync(),
+        sourceName: '$source',
+        onDispose: reader.close,
+      );
+    } on Object {
+      reader.close();
+      rethrow;
+    }
+  }
+
+  /// Test seam for [pageSpan], for the same reason as [debugOpenerOverride]:
+  /// flutter_tester never loads PDFium.
+  static Future<Uint8List?> Function(String path, int first, int count)?
+  debugPageSpanOverride;
+
+  /// Pages [first] .. [first] + [count] - 1 of [path] as a PDF of their
+  /// own — what a trimmed PDF is carried as (유저 2026-09-23: 자른 구간만
+  /// 품는다, 「비디오든 이미지든 오디오든 관계없이 법 하나로」). Null when
+  /// the renderer is absent.
+  ///
+  /// ⚠️The pages are PDFium's own objects moved into a new document, never
+  /// pictures of them: a conte page stays vector, and a page that renders
+  /// sharp at any zoom in the original renders sharp in its piece.
+  static Future<Uint8List?> pageSpan(
+    String path, {
+    required int first,
+    required int count,
+  }) async {
+    final override = debugPageSpanOverride;
+    if (override != null) {
+      return override(path, first, count);
+    }
+    if (!await ensureAvailable()) {
+      return null;
+    }
+    final source = await pdfrx.PdfDocument.openFile(path);
+    try {
+      final piece = await pdfrx.PdfDocument.createNew(sourceName: path);
+      try {
+        piece.pages = source.pages.sublist(first, first + count);
+        // Encoding assembles the piece first, while [source] — whose pages
+        // it is borrowing — is still open.
+        return await piece.encodePdf();
+      } finally {
+        await piece.dispose();
+      }
+    } finally {
+      await source.dispose();
+    }
   }
 
   static void debugResetForTests() {
     debugOpenerOverride = null;
+    debugPageSpanOverride = null;
     _availability = null;
     _probe = null;
   }

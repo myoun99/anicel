@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
+import '../../helpers/temp_dir.dart';
 
 /// The disk half of streaming (AUDIO-PRO R6): windowed reads out of a
 /// conform WAV must return byte-for-byte what a full decode would have —
@@ -16,7 +17,7 @@ void main() {
     directory = await Directory.systemTemp.createTemp('qa-wav-stream-test');
   });
 
-  tearDown(() => directory.delete(recursive: true));
+  tearDown(() => deleteTempQuietly(directory));
 
   /// A stereo ramp whose VALUE encodes its position, so a window read
   /// from the wrong offset cannot accidentally look right.

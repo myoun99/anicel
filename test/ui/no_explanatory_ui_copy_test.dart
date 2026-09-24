@@ -1,6 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
+import '../helpers/dart_sources.dart';
 
 /// F-2 — **no explanatory copy under a control.**
 ///
@@ -36,10 +35,7 @@ void main() {
     final offenders = <String>[];
     final unusedLedger = allowed.keys.toSet();
 
-    for (final entry in Directory('lib/src/ui')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = entry.readAsLinesSync();
@@ -83,10 +79,7 @@ void main() {
       r'''Text\(\s*(?:AppText\.)?strings?\.\w*(?:Help|Note)\b''',
     );
 
-    for (final entry in Directory('lib/src/ui')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'))) {
+    for (final entry in dartFilesUnder('lib/src/ui')) {
       final relative = entry.path.replaceAll(r'\', '/');
       final key = relative.substring(relative.indexOf('lib/src/ui'));
       final lines = entry.readAsLinesSync();

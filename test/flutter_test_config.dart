@@ -8,6 +8,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
+import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'helpers/native_engine_path.dart';
+import 'helpers/temp_dir.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///
@@ -96,6 +98,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // A lowered limit forces the ZIP64 per-entry shape onto small fixtures;
   // leaked, it would sentinel every entry in every other suite's archives.
   anicelZip64FieldLimit = anicelZip64FieldLimitShipped;
+  // A watcher left installed would hear — and hold on to — every later
+  // suite's saves.
+  anicelDebugWriteWatcher = null;
   // Same hazard, same fix: the flow's platform seam decides whether a pick
   // has to clear Android's storage grant first.
   debugOperatingSystemOverride = null;
@@ -114,6 +119,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // `media_staging_store_test` has it. Deleting that test would leave the
   // road production takes with no coverage at all.
   MediaStagingStore.debugStageInline = true;
+  // The same fake-clock reason: cutting a trimmed file's piece runs in a
+  // worker in the app, and a widget test cannot await one.
+  TrimmedPieces.debugCutInline = true;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;
@@ -127,7 +135,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // THE WHOLE POINT.** package:test runs every `addTearDown` callback
   // before any `tearDown`. Written as a plain `tearDown` here this is the
   // OUTERMOST one, so it ran dead last — after each suite's own
-  // `tearDown(() => directory.delete(recursive: true))`, which is the
+  // `tearDown(() => deleteTempQuietly(directory))`, which is the
   // exact line it exists to unblock (five suites failed that way with
   // errno 32). Registered from `setUp` it lands in the earlier phase and
   // gets there first.
@@ -142,10 +150,6 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   try {
     await testMain();
   } finally {
-    try {
-      sandbox.deleteSync(recursive: true);
-    } on Object {
-      // A leaked handle on Windows must not fail the suite.
-    }
+    deleteTempQuietly(sandbox);
   }
 }

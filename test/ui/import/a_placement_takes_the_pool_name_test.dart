@@ -8,6 +8,7 @@ import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/solid_png_fixture.dart';
+import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★A PLACEMENT NAMES WHAT IT MAKES BY THE POOL'S NAME
 /// (pool-name-without-extension).
@@ -23,13 +24,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('anicel-pool-name');
   });
 
-  tearDown(() async {
-    try {
-      await tempDir.delete(recursive: true);
-    } on Object {
-      // Windows keeps handles briefly.
-    }
-  });
+  tearDown(() => deleteTempQuietly(tempDir));
 
   Future<List<String>> placedRowNames(
     WidgetTester tester,

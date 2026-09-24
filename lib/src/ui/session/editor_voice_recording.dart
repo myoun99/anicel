@@ -1182,7 +1182,9 @@ class EditorVoiceRecording {
     try {
       for (var take = 1; take < 10000; take += 1) {
         final name = '${safeBase}_T${take.toString().padLeft(2, '0')}.wav';
-        final poolPath = '${_staging.directoryPath}/$name';
+        final poolPath = normalizedMediaPath(
+          '${_staging.directoryPath}/$name',
+        );
         if (taken.contains(name) || _staging.find(poolPath) != null) {
           continue;
         }

@@ -2,7 +2,9 @@
 #define RUNNER_FLUTTER_WINDOW_H_
 
 #include <flutter/dart_project.h>
+#include <flutter/encodable_value.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
 
 #include <memory>
 
@@ -27,11 +29,19 @@ class FlutterWindow : public Win32Window {
   // go. The WM_CLOSE case in MessageHandler says why the runner asks.
   void AskTheAppToClose(HWND window);
 
+  // Lets Dart switch |view|'s IME on while a text field holds the keyboard
+  // and off everywhere else. The channel's constants say why.
+  void ListenForTheIme(HWND view);
+
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Where Dart says a text field took or let go of the keyboard.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      ime_channel_;
 
   // Whether the app has drawn a frame, and so has someone to answer a close.
   bool app_can_answer_ = false;

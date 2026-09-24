@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +6,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import '../../helpers/library_source.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🚨★★★ONE COMPOSITE PAINT — the half #1304 left hand-written.
 ///
@@ -86,10 +86,7 @@ void main() {
 
   test('nothing in lib/ spells the alpha-only colour by hand', () {
     final offenders = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) {
-        continue;
-      }
+    for (final file in dartFilesUnder('lib')) {
       final path = file.path.replaceAll(r'\', '/');
       if (path.endsWith('lib/src/services/composite_effect_paint.dart')) {
         continue;
