@@ -1,5 +1,8 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// The shared flyout's opening direction (UI-R6 #1): plenty of room below
@@ -74,6 +77,144 @@ void main() {
     // …with the first item still on top (order preserved).
     expect(firstItemTop, lessThan(lastItemBottom));
   });
+
+  List<PanelFlyoutEntry> rows(String prefix, int count) => [
+    for (var i = 0; i < count; i++)
+      PanelFlyoutItem(keyValue: '$prefix-$i', label: '$prefix $i'),
+  ];
+
+  /// 🚨A DRAWER TALLER THAN THE WINDOW SCROLLS — the way the parent list
+  /// (Material's menu) always has (a-flyout-taller-than-the-screen-runs-off-it).
+  /// 🧪At 800×600 the panels drawer's last row centred at y=632: off the
+  /// window, and a tap there landed on nothing.
+  testWidgets('a drawer taller than the window stays inside it and scrolls '
+      'to its last row', (tester) async {
+    var picked = '';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              key: const ValueKey<String>('flyout-anchor'),
+              onPressed: () => showPanelFlyout(
+                context,
+                entries: [
+                  PanelFlyoutItem(
+                    keyValue: 'drawer',
+                    label: '패널',
+                    submenuBuilder: () => [
+                      for (var i = 0; i < 30; i++)
+                        PanelFlyoutItem(
+                          keyValue: 'kid-$i',
+                          label: 'kid $i',
+                          onSelected: () => picked = 'kid-$i',
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-anchor')));
+    await tester.pumpAndSettle();
+    // A finger has no hover: the tap opens the drawer, as hovering does.
+    await tester.tap(find.text('패널'));
+    await tester.pumpAndSettle();
+
+    final window = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final last = find.byKey(const ValueKey<String>('kid-29'));
+    Rect drawer() => tester.getRect(
+      find
+          .ancestor(
+            of: find.byKey(const ValueKey<String>('kid-0')),
+            matching: find.byType(Material),
+          )
+          .first,
+    );
+    expect(
+      tester.getCenter(last).dy,
+      greaterThan(window.height),
+      reason: '⛔전제: 서른 줄은 창보다 길다 — 마지막 줄은 처음엔 창 밖이다',
+    );
+    expect(
+      drawer().top,
+      greaterThanOrEqualTo(8),
+      reason: 'the drawer stops 8px inside the window, where the parent does',
+    );
+    expect(
+      drawer().bottom,
+      lessThanOrEqualTo(window.height - 8),
+      reason: 'a drawer that ran off the bottom is the bug itself',
+    );
+
+    // A wheel over the drawer — how a mouse reaches the rest of any list.
+    // ⛔Not a drag: a press on a row belongs to the row (ControlPressClaim).
+    final wheel = TestPointer(1, PointerDeviceKind.mouse)
+      ..hover(tester.getCenter(find.byKey(const ValueKey<String>('kid-3'))));
+    await tester.sendEventToBinding(wheel.scroll(const Offset(0, 2000)));
+    await tester.pumpAndSettle();
+    expect(
+      drawer().contains(tester.getCenter(last)),
+      isTrue,
+      reason: 'the last row scrolled into the drawer',
+    );
+
+    await tester.tap(last);
+    await tester.pumpAndSettle();
+    expect(picked, 'kid-29', reason: 'and a tap on it is a pick');
+  });
+
+  testWidgets('both levels wear the APP\'s bar while they overflow — one '
+      'scroll behaviour for the two', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        scrollBehavior: const AppScrollBehavior(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              key: const ValueKey<String>('flyout-anchor'),
+              onPressed: () => showPanelFlyout(
+                context,
+                entries: [
+                  PanelFlyoutItem(
+                    keyValue: 'drawer',
+                    label: '패널',
+                    submenuBuilder: () => rows('kid', 30),
+                  ),
+                  ...rows('item', 30),
+                ],
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-anchor')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('패널'));
+    await tester.pumpAndSettle();
+
+    Finder barOver(String key) => find.ancestor(
+      of: find.byKey(ValueKey<String>(key)),
+      matching: find.byType(PanelScrollbar),
+    );
+    expect(
+      barOver('item-0'),
+      findsOneWidget,
+      reason: 'the parent — Material\'s menu — scrolls under the app\'s bar',
+    );
+    expect(
+      barOver('kid-0'),
+      findsOneWidget,
+      reason: '⛔스크롤바를 자동으로 숨기지 않는다 — the drawer wears the same '
+          'bar, from the same behaviour',
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   /// **F-49 — A ROW'S INK IS THE ROW, WHETHER OR NOT IT HAS A CHILD.**
   ///

@@ -103,7 +103,9 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ);
+    // The character a real keyboard types here — a typed form for letters
+    // would take exactly this for Z.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyZ, character: 'Z');
     expect(CanvasPanHold.held.value, isFalse, reason: 'Shift+Z is not Z');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyZ);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
@@ -115,6 +117,42 @@ void main() {
     expect(CanvasPanHold.held.value, isTrue, reason: 'X still holds it');
     await tester.sendKeyUpEvent(LogicalKeyboardKey.keyX);
     expect(CanvasPanHold.held.value, isFalse);
+  });
+
+  // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types): a
+  // held key asks the same forms the shortcut map is built from. On a JIS
+  // keyboard `'` is Shift+7 — `7` with Shift held, typing `'`.
+  testWidgets('the pan moved to `\'` is held by a JIS Shift+7', (
+    tester,
+  ) async {
+    await pumpRoad(tester);
+    bindings.setActivators(EditorActionIds.canvasPanHold, const [
+      SingleActivator(LogicalKeyboardKey.quoteSingle),
+    ]);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.digit7, character: "'");
+    expect(CanvasPanHold.held.value, isTrue);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.digit7);
+    expect(CanvasPanHold.held.value, isFalse, reason: 'letting go lets go');
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  });
+
+  testWidgets('⛔Shift+Space is still not the pan — the typed form is for a '
+      'printed character a layout puts on Shift, and a space is none', (
+    tester,
+  ) async {
+    await pumpRoad(tester);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space, character: ' ');
+    expect(
+      CanvasPanHold.held.value,
+      isFalse,
+      reason: 'Shift+Space is not Space',
+    );
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
   });
 
   testWidgets('Alt over the brush, the eraser and the bucket IS the '

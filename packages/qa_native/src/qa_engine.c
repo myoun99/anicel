@@ -5097,4 +5097,12 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // native document meant a ~111ms re-open per switch, and a movie kept as a
 // reference put three callers in the room at once — the canvas where it is
 // shown, the playback warmer ahead of it, and export walking the cut.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 36; }
+// v36: qa_tile_pool_set_byte_cap + qa_app_memory_limit_bytes - the memory
+// tab's allowance reaches the parked tile blocks (C-ipad-crash).
+// v37: qa_media_span_* - ONE reader of a medium stored in a span, plain or
+// framed, for every decoder and for Dart. `qa_video_decode_open_span`
+// replaces `_open_range` and takes `framed`; `qa_video_decode_framed_
+// supported` says whether this device can be fed a framed span;
+// `qa_audio_decode_span` replaces `_range`, and `qa_audio_decode_memory` is
+// gone with the in-memory origin it served.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 37; }

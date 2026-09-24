@@ -249,7 +249,7 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
 /// made a movie's sound unreachable. 「The importer cannot see video audio」
 /// stood as a bug for months while its cause sat here looking like a
 /// decision. The cause is gone: the decoder takes a path plus a span
-/// ([MediaByteSource.range]), and the identity check in front of it streams.
+/// ([MediaByteSource.span]), and the identity check in front of it streams.
 ///
 /// ⛔Dropping the filter ENTIRELY was the first attempt and it was wrong in
 /// the other direction: a still with no conform can never match one, so

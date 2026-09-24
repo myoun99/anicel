@@ -58,6 +58,7 @@ void main() {
     final data = await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       TimesheetDocumentPainter(
+        face: const TextStyle(),
         document: document,
         layout: layout,
         dragPreview: channel,

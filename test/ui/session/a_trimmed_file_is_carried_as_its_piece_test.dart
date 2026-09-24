@@ -7,7 +7,6 @@ import 'package:anicel/src/models/kept_span.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_clock.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/native/qa_audio_decoder.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
@@ -17,6 +16,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
@@ -243,8 +243,8 @@ void main() {
       expect(cut?.frames, 12);
       final piece = cut!.path;
       expect(mediaFileName(piece), 'line_7-18.wav');
-      final kept = QaAudioDecoder.instance!.decode(File(piece).readAsBytesSync())!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(piece)!;
+      final all = decodeAudioFile(source)!;
       final from = rate.frameToSample(6, 48000) * 2;
       final to = rate.frameToSample(18, 48000) * 2;
       expect(kept.sampleRate, 48000);
@@ -279,10 +279,8 @@ void main() {
         ),
       );
 
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(cut!.path)!;
+      final all = decodeAudioFile(source)!;
       // 24 project frames are 1.001 seconds of source: 48048 samples.
       int sampleAt(int frame) =>
           frame * rate.denominator * 1001 * 48000 ~/ (rate.numerator * 1000);
@@ -315,10 +313,8 @@ void main() {
         ),
       );
 
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
-      final all = QaAudioDecoder.instance!.decode(File(source).readAsBytesSync())!;
+      final kept = decodeAudioFile(cut!.path)!;
+      final all = decodeAudioFile(source)!;
       expect(rate.frameToSample(1, 48000), 1602, reason: 'the premise');
       expect(
         kept.samples.first,
@@ -373,9 +369,7 @@ void main() {
       );
 
       expect(cut?.frames, counted - 20, reason: 'to the last frame it counts');
-      final kept = QaAudioDecoder.instance!.decode(
-        File(cut!.path).readAsBytesSync(),
-      )!;
+      final kept = decodeAudioFile(cut!.path)!;
       expect(
         kept.samples.length,
         (rate.frameToSample(counted, rateHz) -
@@ -404,6 +398,11 @@ void main() {
       await tester.pumpAndSettle();
     }, skip: skip);
 
+    /// How far apart two neighbouring frames' reds are in [writeMovie] —
+    /// and therefore how far a piece frame may drift and still be THAT
+    /// frame rather than its neighbour (see [cutsWhatTheProjectShows]).
+    const redStep = 30;
+
     /// Eight movie frames at [fps], each its own flat red, over a sound —
     /// the size and sound the other encoder fixtures use (the OS encoder
     /// turns tiny frames away).
@@ -430,7 +429,7 @@ void main() {
       for (var frame = 0; frame < 8; frame += 1) {
         final rgba = Uint8List(64 * 48 * 4);
         for (var i = 0; i < 64 * 48; i += 1) {
-          rgba[i * 4] = 20 + frame * 30;
+          rgba[i * 4] = 20 + frame * redStep;
           rgba[i * 4 + 3] = 255;
         }
         expect(encoder.writeFrame(rgba), isTrue, reason: encoder.lastError);
@@ -506,12 +505,24 @@ void main() {
         );
         for (var n = 0; n < span.count; n += 1) {
           final at = span.first + n;
-          final shown = decoder.frameOf(original, clock.movieFrameAt(at))!;
+          final movieFrame = clock.movieFrameAt(at);
+          final shown = decoder.frameOf(original, movieFrame)!;
           final piece = decoder.frameOf(cut, n)!;
+          // ⚠️The question is WHICH frame, so the bound is half the step
+          // between neighbouring reds: nearer than that is this frame and
+          // no other. A neighbour would sit ~30 away.
+          // 🪦The Apple engine landed a flat red 13 away here and it was
+          // read as that encoder's noise (2026-09-25, first run on a Mac).
+          // It was the writer's colour matrix — a loss that grows with the
+          // red, 17 at red 200 — and it is pinned where it lives, by the
+          // colour test below. The reds go into the reason so a failure
+          // says which it is.
           expect(
             (piece[0] - shown[0]).abs(),
-            lessThan(12),
-            reason: 'piece frame $n is what project frame $at showed',
+            lessThan(redStep ~/ 2),
+            reason: 'piece frame $n is what project frame $at showed — '
+                'red ${piece[0]} in the piece, ${shown[0]} in the take, '
+                '${20 + movieFrame * redStep} written',
           );
         }
       } finally {
@@ -521,6 +532,45 @@ void main() {
       await tester.pumpAndSettle();
       return span.count;
     }
+
+    /// How far a flat red may move through ONE encode and one decode.
+    ///
+    /// ⚠️Measured, not chosen: Media Foundation brings every red of
+    /// [writeMovie] back within 3 (2026-09-25). A writer and reader that
+    /// disagree about the YCbCr matrix lose a share of the red instead —
+    /// BT.709 in and BT.601 out keeps 0.9136 of it, 17 short at red 200 —
+    /// and this bound is what tells that loss from a codec's noise.
+    const colourSlack = 8;
+
+    testWidgets('🚨a frame the app writes comes back the colour it was '
+        'written — one encode and one decode, on every engine', (
+      tester,
+    ) async {
+      final encoder = QaVideoEncoder.instance;
+      if (encoder == null || !encoder.isSupported) {
+        return;
+      }
+      final source = inTemp('colours.mp4');
+      writeMovie(encoder, source, (numerator: 12, denominator: 1));
+      final decoder = QaVideoDecoder.instance!;
+      final movie = decoder.openDocument(source)!;
+      try {
+        for (var frame = 0; frame < 8; frame += 1) {
+          final written = 20 + frame * redStep;
+          final red = decoder.frameOf(movie, frame)![0];
+          expect(
+            (red - written).abs(),
+            lessThan(colourSlack),
+            reason: 'frame $frame was written red $written and came back '
+                '$red — a loss that grows with the red is the writer and '
+                'the reader using two matrices',
+          );
+        }
+      } finally {
+        decoder.closeDocument(movie);
+      }
+      await tester.pumpAndSettle();
+    }, skip: skip);
 
     testWidgets('🎯a trimmed movie is carried as an MP4 of the frames the '
         'project shows, one per project frame', (tester) async {

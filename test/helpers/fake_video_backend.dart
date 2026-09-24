@@ -17,6 +17,7 @@ import 'package:anicel/src/services/media/video_decode_worker.dart';
 class FakeVideoBackend implements VideoDecodeBackend {
   FakeVideoBackend({
     this.supported = true,
+    this.readsFramed = true,
     this.frameCount = 12,
     this.fpsNumerator = 24,
     this.fpsDenominator = 1,
@@ -43,8 +44,8 @@ class FakeVideoBackend implements VideoDecodeBackend {
   final List<int> asked = <int>[];
 
   /// Every movie opened, and where: a path of its own, or a stretch of one.
-  final List<({String path, ({int offset, int length})? range})> openedAt =
-      [];
+  final List<({String path, ({int offset, int length, bool framed})? span})>
+  openedAt = [];
 
   /// What this backend answers to 「can this build read a movie」.
   ///
@@ -57,12 +58,17 @@ class FakeVideoBackend implements VideoDecodeBackend {
   @override
   final bool supported;
 
+  /// What this backend answers to 「can this device be fed a movie kept
+  /// framed」 — true, as every platform but Android below API 28 answers.
+  @override
+  final bool readsFramed;
+
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async {
-    openedAt.add((path: path, range: range));
+    openedAt.add((path: path, span: span));
     return (
       token: 1,
       info: QaVideoInfo(

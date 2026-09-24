@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -200,21 +202,48 @@ class CutVerbs {
     ),
   );
 
-  /// R26 #32: sets the PROJECT's frame rate (one undo step, no-op when
-  /// unchanged). Everything timed — ruler seconds, sheet rows, playback,
-  /// audio placement — reads this one axis, so this single write moves
-  /// the whole project's time.
   /// The active cut's drawing guides — empty when parked in a gap.
+  ///
+  /// ⛔What is WRITTEN: what the brush snaps to and what is saved. A drag in
+  /// flight is not in it ([activeCutGuidesForDisplay]) — two questions, two
+  /// getters.
   CutGuides get activeCutGuides =>
       _project.activeCutOrNull?.guides ?? CutGuides.empty;
+
+  /// 🚨★★★THE GUIDE DRAG IN FLIGHT — shown, not written.
+  ///
+  /// 유저 (guide-sym): 「대칭자나 퍼스자 등 해당 자에 대한 위치이동 등 **편집도
+  /// 전부 언두 기록**」. 🧪Measured, it was the opposite of a missing entry:
+  /// ONE drag of the settings panel's line-count slider pushed ELEVEN,
+  /// because every sample committed.
+  ///
+  /// ★The law the canvas's handle layer already kept and the opacity bars
+  /// keep (`OpacityVerbs`): a drag PREVIEWS and a release COMMITS. The
+  /// handle layer's preview lived in the canvas area's own State, so the
+  /// panel — another subtree — had nowhere to preview to and committed
+  /// instead. It is here now, one of it, for both.
+  final ValueNotifier<CutGuides?> guidesDragPreview =
+      ValueNotifier<CutGuides?>(null);
+
+  /// What the guides look like right now, a drag in flight included — what
+  /// the overlay draws and nothing else reads.
+  CutGuides get activeCutGuidesForDisplay =>
+      guidesDragPreview.value ?? activeCutGuides;
+
+  /// Shows [guides] without writing anything: a drag in flight.
+  void previewActiveCutGuides(CutGuides guides) =>
+      guidesDragPreview.value = guides;
 
   /// Writes the active cut's guides, fanning out to its 겸용 siblings in one
   /// undoable step (see [SetCutGuidesCommand]).
   ///
-  /// Handle DRAGS call this once, at release. The live preview in between
-  /// paints from the drag layer's own value and never touches the project,
-  /// so a drag is one undo entry rather than one per pointer sample.
+  /// A drag calls this once, at release; its samples went to
+  /// [previewActiveCutGuides].
   void setActiveCutGuides(CutGuides guides) {
+    // ⚠️The preview goes either way — also when the drag ended on the value
+    // it began from and nothing is written: left up, it would pin the
+    // canvas to a picture nothing ever replaces.
+    guidesDragPreview.value = null;
     final cut = _project.activeCutOrNull;
     if (cut == null || cut.guides == guides) {
       return;
@@ -346,4 +375,7 @@ class CutVerbs {
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }
+
+  /// Releases the guide drag preview; the session's teardown calls it.
+  void dispose() => guidesDragPreview.dispose();
 }

@@ -170,10 +170,11 @@ void main() {
         entry: entry('media/take.wav'),
       );
       expect(plain.storedIsFramed, isFalse);
-      expect(plain.range, (
+      expect(plain.span, (
         path: archive.path,
         offset: archive.offset,
         length: archive.length,
+        framed: false,
       ), reason: 'decodable in place');
       expect(plain.knownCrc32, 0x1234);
       expect(plain.lengthSync(), archive.length);
@@ -184,9 +185,21 @@ void main() {
       );
       expect(framed.storedIsFramed, isTrue);
       expect(
-        framed.range,
-        isNull,
-        reason: 'framed bytes are compressed blocks, not the container',
+        framed.span,
+        (
+          path: archive.path,
+          offset: archive.offset,
+          length: archive.length,
+          framed: true,
+        ),
+        reason:
+            'the same stretch, SAYING it is framed — a reader handed it '
+            'decodes the blocks rather than reading them as the container',
+      );
+      expect(
+        MediaFramedBytes(framed).span,
+        framed.span,
+        reason: 'and the wrapper that decodes it names the same medium',
       );
     });
 

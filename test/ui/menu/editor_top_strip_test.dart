@@ -117,14 +117,10 @@ void main() {
   testWidgets('Settings: Reset Workspace Layout restores closed panels', (
     tester,
   ) async {
-    // ⚠️A REAL WINDOW, because the drawer is now as tall as the panel list.
-    // 🧪Measured at the default 800×600: `Reset workspace layout` centres at
-    // y=632 — off the bottom, and the tap lands on nothing. The flyout has
-    // never scrolled at either level (`panel_flyout.dart` has no scrollable
-    // anywhere), so a list taller than the screen simply runs off it; F-146
-    // moved twenty rows behind one row and made that easy to reach.
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // ⚠️THE DEFAULT 800×600, on purpose: the drawer is as tall as the panel
+    // list, and `Reset workspace layout` centres at y=632 — below the window
+    // until the drawer scrolls (a-flyout-taller-than-the-screen-runs-off-it).
+    // This case needed a 1600×1000 window while the drawer did not scroll.
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');

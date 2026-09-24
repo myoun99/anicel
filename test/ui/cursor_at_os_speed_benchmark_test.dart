@@ -310,6 +310,17 @@ void main() {
       // those same three verbs, and every frame each one costs until the
       // app is quiet again. Run it with `--dart-define=BRUSH_LAB_PROFILE=true`
       // and the lab probes inside the frame print their share.
+      //
+      // 🔬CORRECTED ON THE DEVICE the same day (the real Windows app on its
+      // GPU, debug, 24 inked rows, the engine's `FrameTiming`): the first
+      // frame's UI thread is select 26ms · solo on 55ms · solo off 66ms,
+      // its raster 5-9ms, and the canvas side of that UI work stays under
+      // the probes' 4ms floor. The +200ms is the TEST VM's — flutter_tester
+      // rasterises on the CPU and inflates exactly that composite tens of
+      // times over. So the stutter's body is the WIDGET rebuild (board
+      // `an-eye-rebuilds-its-whole-row`): this arm's counts stand, its
+      // milliseconds are not the device's, and a device cost is read by an
+      // integration test on the device (board `brush-render-roadmap`).
       final rows =
           int.tryParse(Platform.environment['F130_SOLO_ROWS'] ?? '') ?? 24;
       await probe.armTool(brushTool, CanvasTool.brush);
@@ -738,11 +749,14 @@ class _Probe {
       watch.stop();
       later.add(watch.elapsedMicroseconds);
     }
+    // Eight kinds of rebuild, not four: the stutter's body is the rebuild
+    // (the correction on the `solo` arm), and the solo meter that was a
+    // second copy of this arm read eight before it was folded in here.
     // ignore: avoid_print
     print(
       '[F130] $label: first frame ${_ms(first.pumpMicros)}ms (the verb '
       '${_ms(first.dispatchMicros)}ms) | rebuilt ${_sum(first.rebuiltBy)} '
-      '{${_top(first.rebuiltBy, 4)}} | painted ${first.painted} '
+      '{${_top(first.rebuiltBy, 8)}} | painted ${first.painted} '
       '{${_top(first.paintedBy, 4)}} | pictures re-recorded '
       '${first.picturesRerecorded} | later frames ${later.length}: '
       '${later.map(_ms).join(' ')}',

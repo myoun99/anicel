@@ -10,6 +10,7 @@ import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasAutoFrameRequest;
 import 'brush/sheet_canvas_panel.dart';
+import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
 import 'brush/brush_tool_state.dart';
@@ -557,6 +558,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 painter: TimesheetDocumentPainter(
                                   document: document,
                                   layout: layout,
+                                  face: appFaceOf(
+                                    DefaultTextStyle.of(context).style,
+                                  ),
                                   viewport: viewport,
                                   // The per-cell text cutoff is a legibility
                                   // question, so it counts DEVICE pixels.
@@ -593,6 +597,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 painter: TimesheetDocumentPainter(
                                   document: document,
                                   layout: layout,
+                                  face: appFaceOf(
+                                    DefaultTextStyle.of(context).style,
+                                  ),
                                   viewport: viewport,
                                   // The per-cell text cutoff is a legibility
                                   // question, so it counts DEVICE pixels.

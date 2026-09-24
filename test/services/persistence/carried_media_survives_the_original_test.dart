@@ -403,9 +403,8 @@ void main() {
       final staged = session.mediaStagingStore.find(to);
       expect(staged, isNotNull, reason: 'the new file is held');
 
-      final stored = staged!.readStoredSync();
       expect(
-        staged.framed ? decompressMediaBlob(stored) : stored,
+        mediaAppFileSource(staged!.path).readSync(),
         otherBytes,
         reason:
             '⛔the bytes are the ONE THE USER PICKED. Moving the old staged '
@@ -429,8 +428,7 @@ void main() {
 
       final staged = session.mediaStagingStore.find(to);
       expect(staged, isNotNull);
-      final stored = staged!.readStoredSync();
-      expect(staged.framed ? decompressMediaBlob(stored) : stored, original);
+      expect(mediaAppFileSource(staged!.path).readSync(), original);
       expect(session.mediaStagingStore.find(from), isNull);
     });
 

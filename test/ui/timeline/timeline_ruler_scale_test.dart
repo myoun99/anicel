@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart' show wordFitsAsItIs;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
@@ -193,10 +195,19 @@ void main() {
             ),
           );
           final digits = '$frames'.length;
-          bool fits(int stride) =>
-              widest(ruler.numberTypeAt(everyFrame: stride == 1), digits) +
-                  timelineMarkGap <=
-              stride * cell;
+          bool fits(int stride) {
+            final type = ruler.numberTypeAt(everyFrame: stride == 1);
+            final width = widest(type, digits);
+            // A number in a cell of its own narrows into it — as far as
+            // half-width (ruler-digits-in-the-app-face-Q1).
+            final needs = stride == 1
+                ? math.min(
+                    width,
+                    digits * type.fontSize! * timelineNumberNarrowestEm,
+                  )
+                : width;
+            return needs + timelineMarkGap <= stride * cell;
+          }
           final every = ruler.labelEveryFrames;
           final where = '$frames frames at ${cell}px';
           expect(fits(every), isTrue, reason: '$where: the rung holds it');
@@ -392,33 +403,131 @@ void main() {
 
     testWidgets('the cadence measures in the face it paints', (tester) async {
       await loadTheAppFaces();
-      // The cell that holds a three-digit number a frame in the app's face
-      // — and not in the test font's, whose every digit is an em wide. A
-      // measure that left the face out would thin, or crowd, numbers the
+      // Past every frame a number is written at its own width, so its face
+      // picks the rung: the cell three of which hold one `000` in the app's
+      // face — and not in the test font's, whose every digit is an em wide.
+      // A measure that left the face out would thin, or crowd, numbers the
       // strip sets in another width than it measured.
       double widestIn(TextStyle face) => [
         for (var digit = 0; digit <= 9; digit += 1)
           (TextPainter(
             text: TextSpan(
               text: '$digit' * 3,
-              style: face.copyWith(fontSize: 11),
+              style: face.copyWith(fontSize: 10),
             ),
             textDirection: TextDirection.ltr,
           )..layout()).width,
       ].reduce(math.max);
-      final cell = (widestIn(biz) + timelineMarkGap).ceilToDouble();
+      final cell = (widestIn(biz) + timelineMarkGap) / 3;
       expect(
         widestIn(const TextStyle()) + timelineMarkGap,
-        greaterThan(cell),
-        reason: 'the premise: the test font cannot write every frame here',
+        greaterThan(3 * cell),
+        reason: 'the premise: the test font needs a sparser rung here',
       );
       TimelineRulerScale hundredFrames(TextStyle face) => scale(
         face: face,
         frameEndIndexExclusive: 100,
         metrics: TimelineGridMetrics.defaults.copyWith(frameCellWidth: cell),
       );
-      expect(hundredFrames(const TextStyle()).labelEveryFrames, greaterThan(1));
-      expect(hundredFrames(biz).labelEveryFrames, 1);
+      expect(hundredFrames(biz).labelEveryFrames, 3);
+      expect(hundredFrames(const TextStyle()).labelEveryFrames, greaterThan(3));
     });
   });
+
+  group('a number written in a cell of its own narrows into it — as far as '
+      'half-width (ruler-digits-in-the-app-face-Q1)', () {
+    test('three digits hold every frame at 24px, each inside its own cell', () {
+      // In the test font `100` set at 11 is 33px: too wide for its 24px
+      // cell as it is set, not at half-width.
+      final ruler = scale(frameEndIndexExclusive: 144, playbackFrameCount: 144);
+      expect(ruler.labelEveryFrames, 1);
+      for (final frame in [99, 100, 143]) {
+        final number = TimelineFrameRulerPainter.glyphsAt(
+          ruler,
+          frame,
+          current: false,
+        ).first;
+        final cell = ruler.cellRectFor(frame);
+        expect(number.painter.plainText, '${frame + 1}');
+        expect(number.fit.x, lessThan(1), reason: 'frame ${frame + 1}');
+        expect(number.fit.y, 1, reason: 'its height never');
+        expect(
+          number.rect.width,
+          lessThanOrEqualTo(cell.width - timelineMarkGap + 1e-9),
+          reason: 'frame ${frame + 1} stays off its neighbours',
+        );
+        expect(number.rect.center.dx, closeTo(cell.center.dx, 1e-9));
+      }
+    });
+
+    test('the number the ruler PAINTS is the narrowed one', () {
+      // A placement that says narrow and a paint that draws wide would pass
+      // every test that reads the placement.
+      final ruler = scale(frameEndIndexExclusive: 144, playbackFrameCount: 144);
+      final drawn = _DrawnWidths();
+      TimelineFrameRulerPainter(scale: ruler).paint(drawn, const Size(3456, 28));
+      final numbers = drawn.widths.where((width) => width > 12).toList();
+      expect(numbers, isNotEmpty, reason: 'the premise: three digits drawn');
+      for (final width in numbers) {
+        expect(width, lessThanOrEqualTo(24 - timelineMarkGap + 1e-9));
+      }
+    });
+
+    test('a number that fits its cell keeps its width', () {
+      final ruler = scale();
+      final number = TimelineFrameRulerPainter.glyphsAt(
+        ruler,
+        29,
+        current: false,
+      ).first;
+      expect(number.painter.plainText, '30');
+      expect(number.fit, wordFitsAsItIs);
+    });
+
+    test('the rail narrows a number wider than itself, and centres it', () {
+      final rail = scale(
+        axis: Axis.vertical,
+        numberType: XSheetFrameRailPainter.numberType,
+        frameEndIndexExclusive: 1200,
+        playbackFrameCount: 1200,
+      );
+      final number = XSheetFrameRailPainter.glyphsAt(
+        rail,
+        999,
+        current: false,
+      ).last;
+      final row = rail.cellRectFor(999);
+      expect(number.painter.plainText, '1000');
+      expect(number.fit.x, lessThan(1));
+      expect(
+        number.rect.width,
+        lessThanOrEqualTo(row.width - timelineMarkGap + 1e-9),
+      );
+      expect(number.rect.center.dx, closeTo(row.center.dx, 1e-9));
+    });
+  });
+}
+
+/// The width every paragraph is DRAWN at — through the canvas's scale, since
+/// a narrowed number is drawn at the origin of a scaled canvas.
+class _DrawnWidths implements Canvas {
+  final widths = <double>[];
+  final _saved = <double>[];
+  var _scaleX = 1.0;
+
+  @override
+  void save() => _saved.add(_scaleX);
+
+  @override
+  void restore() => _scaleX = _saved.removeLast();
+
+  @override
+  void scale(double sx, [double? sy]) => _scaleX *= sx;
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) =>
+      widths.add(paragraph.maxIntrinsicWidth * _scaleX);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

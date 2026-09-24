@@ -35,7 +35,7 @@ class _Refusing extends FakeVideoBackend {
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async => null;
 }
 
@@ -50,9 +50,9 @@ class _Counting extends FakeVideoBackend {
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async {
-    final answer = await super.open(path, range: range);
+    final answer = await super.open(path, span: span);
     opened.add(opened.length + 1);
     return (token: opened.last, info: answer!.info);
   }

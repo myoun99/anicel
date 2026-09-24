@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart' show TextStyle;
+
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
@@ -34,6 +36,7 @@ class ExportEnvelopeTask {
 Future<ui.Image> renderCutEnvelopeImage({
   required CutEnvelopeLayout layout,
   required CutEnvelopeSource source,
+  required TextStyle face,
   Set<SheetPaintLayer>? layers,
   ui.Image? Function(String assetPath)? imageFor,
   BrushFrameKey Function(String boxId)? inkKeyFor,
@@ -54,6 +57,7 @@ Future<ui.Image> renderCutEnvelopeImage({
     paint: (canvas) => CutEnvelopePainter(
       layout: layout,
       source: source,
+      face: face,
       layers: layers,
       imageFor: imageFor,
       inkKeyFor: inkKeyFor,

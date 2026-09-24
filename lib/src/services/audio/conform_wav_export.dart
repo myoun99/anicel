@@ -58,6 +58,10 @@ Future<bool> writeConformAsWav({
     return false;
   }
   final out = File(destinationPath).openSync(mode: FileMode.write);
+  // ⚠️ONE reader for the whole copy: a framed conform's reader keeps the
+  // block it decoded, and a fresh read per chunk would open the entry and
+  // decode the block a chunk straddles once for each side of it.
+  final reader = source.openWindowReader();
   try {
     out.writeFromSync(
       wav16HeaderBytes(
@@ -72,7 +76,7 @@ Future<bool> writeConformAsWav({
       final want = header.dataBytes - at < _copyBytes
           ? header.dataBytes - at
           : _copyBytes;
-      final got = source.readIntoSync(buffer, ConformHeader.length + at, want);
+      final got = reader.readIntoSync(buffer, ConformHeader.length + at, want);
       if (got <= 0) {
         // The conform is shorter than its own header claims. What is
         // written so far is honest audio; the caller is told it failed so
@@ -83,6 +87,7 @@ Future<bool> writeConformAsWav({
       at += got;
     }
   } finally {
+    reader.close();
     out.closeSync();
   }
   return true;

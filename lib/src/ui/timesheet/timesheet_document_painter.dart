@@ -425,6 +425,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
+    required this.face,
     this.viewport,
     this.notation = TimesheetNotation.english,
     this.layers,
@@ -461,6 +462,13 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// The NOTATION-language vocabulary the sheet prints in (UI-R10 #7);
   /// focused tests keep the pre-R10 English default.
   final TimesheetNotation notation;
+
+  /// The app's face (`appFaceOf`) every word on the sheet is set in — the
+  /// panel's and the export window's ambient style. 🗣️유저 2026-09-24
+  /// (documents-in-which-face-Q1: 「둘다 앱글꼴로 통일」): the sheet named
+  /// no face and printed in the OS's, so one project exported from two
+  /// machines came out in two hands.
+  final TextStyle face;
 
   /// Which strata to draw; null = all of them (the pre-split single
   /// painter, which exports and focused tests still want).
@@ -700,7 +708,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     paintVerticalText(
       canvas,
       word,
-      style: const TextStyle(color: _ink, fontSize: 10),
+      style: face.copyWith(color: _ink, fontSize: 10),
       centerX: centerX,
       top: top,
       mainExtent: rows * TimesheetDocumentLayout.rowHeight,
@@ -723,7 +731,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(
+        style: face.copyWith(
           color: color,
           fontSize: fontSize,
           fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
@@ -748,6 +756,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     layout.resolvedSinglePage,
     viewport,
     ByIdentity(notation),
+    face,
     // Null means ALL strata, which is a different input from an empty set,
     // so the null is carried instead of folded into one.
     layers == null ? null : BySet(layers!),

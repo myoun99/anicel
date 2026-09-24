@@ -72,9 +72,7 @@ void main() {
       // what it was promised.
       File(path).deleteSync();
 
-      final stored = staged!.readStoredSync();
-      final back = staged.framed ? decompressMediaBlob(stored) : stored;
-      expect(back, original);
+      expect(mediaAppFileSource(staged!.path).readSync(), original);
     },
   );
 
@@ -87,8 +85,7 @@ void main() {
 
       File(path).writeAsBytesSync(Uint8List(16));
 
-      final stored = staged.readStoredSync();
-      expect(staged.framed ? decompressMediaBlob(stored) : stored, original);
+      expect(mediaAppFileSource(staged.path).readSync(), original);
     },
   );
 
@@ -101,9 +98,8 @@ void main() {
       File(path).writeAsBytesSync(Uint8List(32));
 
       final again = (await store.stage(path))!;
-      final stored = again.readStoredSync();
       expect(
-        again.framed ? decompressMediaBlob(stored) : stored,
+        mediaAppFileSource(again.path).readSync(),
         original,
         reason:
             'the file on disk moved on; the staged copy is what「품기」meant '
@@ -145,7 +141,7 @@ void main() {
       final staged = (await store.stage(path))!;
       expect(staged.framed, isFalse);
       expect(
-        staged.readStoredSync(),
+        File(staged.path).readAsBytesSync(),
         File(path).readAsBytesSync(),
         reason:
             '⛔nothing in front of it: a plain seek and an unzip tool both '
@@ -354,8 +350,7 @@ void main() {
             'nothing points at',
       );
       expect(moved!.framed, staged.framed);
-      final stored = moved.readStoredSync();
-      expect(moved.framed ? decompressMediaBlob(stored) : stored, original);
+      expect(mediaAppFileSource(moved.path).readSync(), original);
       expect(store.list(), hasLength(1), reason: 'moved, not copied');
     });
 
@@ -402,9 +397,9 @@ void main() {
       final staged = (await store.stage(path))!;
 
       expect(File(staged.path).existsSync(), isTrue);
-      // ⛔Through the un-framing source, not [StagedMedia.readStoredSync] —
-      // that one hands back the STORED bytes on purpose, so a save can
-      // stream them into the archive without a decode-and-re-encode.
+      // ⛔Through the un-framing source, not the file: the file holds the
+      // STORED bytes on purpose, so a save can stream them into the archive
+      // without a decode-and-re-encode.
       expect(
         mediaAppFileSource(staged.path).readSync(),
         original,

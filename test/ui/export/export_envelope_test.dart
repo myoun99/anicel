@@ -196,11 +196,13 @@ void main() {
       await tester.runAsync(() async {
         final layout = analogOn(320, 240);
         final full = await renderCutEnvelopeImage(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
         );
         addTearDown(full.dispose);
         final preview = await renderCutEnvelopeImage(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
           outputSize: (width: 160, height: 120),
@@ -222,11 +224,13 @@ void main() {
       await tester.runAsync(() async {
         final layout = analogOn(320, 240);
         final flat = await renderCutEnvelopeImage(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
         );
         addTearDown(flat.dispose);
         final formOnly = await renderCutEnvelopeImage(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
           layers: const {SheetPaintLayer.form},

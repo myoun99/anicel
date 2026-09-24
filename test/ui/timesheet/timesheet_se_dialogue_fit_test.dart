@@ -59,7 +59,11 @@ void main() {
     fps: 24,
   );
   final layout = TimesheetDocumentLayout(document: document);
-  final painter = TimesheetDocumentPainter(document: document, layout: layout);
+  final painter = TimesheetDocumentPainter(
+    document: document,
+    layout: layout,
+    face: const TextStyle(),
+  );
   final width = (layout.paperLeft + layout.paperWidth + 8).ceil();
   const height = 512;
 

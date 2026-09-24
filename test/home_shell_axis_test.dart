@@ -164,8 +164,15 @@ void main() {
 
     await zoomTo(12);
     expect(headerWidth(), 12);
-    // Narrow cells move their labels to the every-Nth ladder: unlabeled
-    // headers read '' off the painter model (frame 1 stays the anchor).
+    // Two digits narrow into a 12px cell as far as half-width
+    // (ruler-digits-in-the-app-face-Q1): every frame keeps its number.
+    expect(timelineHeaderModel(tester, 1).label, '2');
+
+    await zoomTo(8);
+    expect(headerWidth(), 8);
+    // Where not even half-width fits, the labels move to the every-Nth
+    // ladder: unlabeled headers read '' off the painter model (frame 1
+    // stays the anchor).
     expect(timelineHeaderModel(tester, 1).label, '');
     expect(timelineHeaderModel(tester, 0).label, isNotEmpty);
   });

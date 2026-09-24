@@ -393,9 +393,13 @@ void main() {
         result.conformBytes!.readSync(),
       );
       expect(written.fingerprint, isNotNull);
+      final bytes = File(source).readAsBytesSync();
       expect(
         written.fingerprint,
-        AudioConformPipeline.fingerprintOf(File(source).readAsBytesSync()),
+        ConformSourceFingerprint(
+          sourceLength: bytes.length,
+          sourceCrc32: anicelCrc32(bytes),
+        ),
       );
     });
 
@@ -564,19 +568,25 @@ void main() {
       // the old conform forever.
       final source = writeSource('deep.wav');
       final bytes = File(source).readAsBytesSync();
-      final before = AudioConformPipeline.fingerprintOf(bytes);
+      ConformSourceFingerprint fingerprintOf(Uint8List changed) {
+        final path = '${temp.path}/changed.wav';
+        File(path).writeAsBytesSync(changed);
+        return AudioConformPipeline.fingerprintOfSource(MediaFileBytes(path));
+      }
+
+      final before = fingerprintOf(bytes);
 
       final tail = Uint8List.fromList(bytes)
         ..[bytes.length - 1] = bytes[bytes.length - 1] ^ 0xFF;
       expect(
-        AudioConformPipeline.fingerprintOf(tail),
+        fingerprintOf(tail),
         isNot(before),
         reason: 'a change in the LAST byte has to move the fingerprint',
       );
 
       final middle = Uint8List.fromList(bytes)
         ..[bytes.length ~/ 2] = bytes[bytes.length ~/ 2] ^ 0xFF;
-      expect(AudioConformPipeline.fingerprintOf(middle), isNot(before));
+      expect(fingerprintOf(middle), isNot(before));
     });
 
     test('a source that is THERE but unreadable is transient, not missing', () {

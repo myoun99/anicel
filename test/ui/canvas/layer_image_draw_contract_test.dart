@@ -242,7 +242,12 @@ void main() {
 /// went whole (its three seeder draws and the predecessor compose), and
 /// the first-activation stand-in blit went with the stand-in - a tile
 /// pictures itself inside the paint now, so nothing stands in for one.
-const int _knownRawDraws = 27;
+/// **28** on 2026-09-24 (board `a-layer-switch-below-100-composes-the-full-
+/// cel`): +1 in surface_paint/level_blocks — a level block drawn from the
+/// image the cel was drawn with as a stack row (`TilePyramid.seed`). The
+/// 1:1 blit class, on the tile paint (`FilterQuality.none`), standing in
+/// for the level tile the block would otherwise have made in that frame.
+const int _knownRawDraws = 28;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

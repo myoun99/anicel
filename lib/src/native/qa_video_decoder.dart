@@ -53,11 +53,15 @@ final class QaVideoDecoder {
       .lookupFunction<Int32 Function(Pointer<Utf8>), int Function(Pointer<Utf8>)>(
         'qa_video_decode_open',
       );
-  late final _openRange = _library
+  late final _openSpan = _library
       .lookupFunction<
-        Int32 Function(Pointer<Utf8>, Int64, Int64),
-        int Function(Pointer<Utf8>, int, int)
-      >('qa_video_decode_open_range');
+        Int32 Function(Pointer<Utf8>, Int64, Int64, Int32),
+        int Function(Pointer<Utf8>, int, int, int)
+      >('qa_video_decode_open_span');
+  late final _framedSupported = _library
+      .lookupFunction<Int32 Function(), int Function()>(
+        'qa_video_decode_framed_supported',
+      );
   late final _info = _library
       .lookupFunction<
         Int32 Function(
@@ -99,6 +103,13 @@ final class QaVideoDecoder {
   /// shows, never a crash it recovers from.
   bool get isSupported => _supported() != 0;
 
+  /// Whether this DEVICE's decoder can be fed a movie kept FRAMED — every
+  /// platform can but Android below API 28, which has no custom source to
+  /// serve decoded blocks through (`qa_video_decode.c` says why). There a
+  /// carried movie kept framed is read from its original while one exists:
+  /// the cost 유저 accepted on board `carried-movie-compressed-Q1`.
+  bool get readsFramed => _framedSupported() != 0;
+
   /// What the last failure was, for the sentence the window shows.
   String get lastError {
     final pointer = _lastError();
@@ -120,22 +131,26 @@ final class QaVideoDecoder {
   /// ⛔A caller still cannot ask for a frame without saying WHICH movie —
   /// that shape is what made forgetting impossible, and it is unchanged.
   ///
-  /// [range] opens a MOVIE THAT LIVES INSIDE [path] rather than the file
+  /// [span] opens a MOVIE THAT LIVES INSIDE [path] rather than the file
   /// itself — the shape a carried video has, since its bytes are a stretch
-  /// of the `.anicel` and there is no path pointing at the movie. ⛔The
-  /// range must be the movie's own bytes, contiguous and unmodified; the
-  /// native side says why in its own comment, and the short version is that
-  /// Android below API 28 has no other way to open one.
+  /// of the `.anicel` or a staged copy and no path points at the movie. The
+  /// stretch holds the movie as it is, or FRAMED (compressed in blocks) —
+  /// which a device answers for through [readsFramed].
   QaVideoDocument? openDocument(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) {
     final utf8Path = path.toNativeUtf8(allocator: malloc);
     final int handle;
     try {
-      handle = range == null
+      handle = span == null
           ? _open(utf8Path)
-          : _openRange(utf8Path, range.offset, range.length);
+          : _openSpan(
+              utf8Path,
+              span.offset,
+              span.length,
+              span.framed ? 1 : 0,
+            );
     } finally {
       malloc.free(utf8Path);
     }
@@ -150,7 +165,7 @@ final class QaVideoDecoder {
     return QaVideoDocument._(
       handle: handle,
       path: path,
-      range: range,
+      span: span,
       info: info,
     );
   }
@@ -258,7 +273,7 @@ final class QaVideoDocument {
   const QaVideoDocument._({
     required this.handle,
     required this.path,
-    required this.range,
+    required this.span,
     required this.info,
   });
 
@@ -267,7 +282,7 @@ final class QaVideoDocument {
   final int handle;
 
   final String path;
-  final ({int offset, int length})? range;
+  final ({int offset, int length, bool framed})? span;
   final QaVideoInfo info;
 }
 

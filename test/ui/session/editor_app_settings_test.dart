@@ -246,7 +246,10 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await _settleUntil(() => false, rounds: 10);
+    await _settleUntil(
+      () => false,
+      within: const Duration(milliseconds: 100),
+    );
 
     expect(session.languageSettings.value, const AppLanguageSettings());
     expect(AppColors.accentSettings.value, const AppAccentSettings());
@@ -280,8 +283,19 @@ void main() {
 /// Polls [done] instead of sleeping a fixed span: it returns the moment the
 /// asynchronous restores land, and still gives up rather than hanging when
 /// they never do (the assertion after it names which one).
-Future<void> _settleUntil(bool Function() done, {int rounds = 300}) async {
-  for (var i = 0; i < rounds && !done(); i++) {
+///
+/// ⚠️A DEADLINE, not a count of rounds. Three hundred rounds of 10ms ran
+/// out while a parallel batch filled the machine (09-24,
+/// `settings-roundtrip-poll-runs-out-under-load`): the memory allowance was
+/// restored late, not never — the same file passed alone. A generous
+/// deadline costs nothing when the restores land; it only decides how long
+/// a real failure takes to say so.
+Future<void> _settleUntil(
+  bool Function() done, {
+  Duration within = const Duration(seconds: 30),
+}) async {
+  final clock = Stopwatch()..start();
+  while (!done() && clock.elapsed < within) {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 }

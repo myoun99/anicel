@@ -59,10 +59,15 @@ abstract interface class VideoDecodeBackend {
   /// document or a worker, so nothing has to be started to answer it.
   bool get supported;
 
-  /// Opens [path] (or the range inside it) and answers what it is, or null.
+  /// Whether this device's decoder can be fed a movie kept FRAMED
+  /// ([QaVideoDecoder.readsFramed]) — asked of the backend for the reason
+  /// [supported] is.
+  bool get readsFramed;
+
+  /// Opens [path] (or the span inside it) and answers what it is, or null.
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   });
 
   /// The frame at [index] of the document [token] named, or null.
@@ -106,15 +111,18 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
   bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
 
   @override
+  bool get readsFramed => QaVideoDecoder.instance?.readsFramed ?? false;
+
+  @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async {
     final decoder = QaVideoDecoder.instance;
     if (decoder == null || !decoder.isSupported) {
       return null;
     }
-    final document = decoder.openDocument(path, range: range);
+    final document = decoder.openDocument(path, span: span);
     if (document == null) {
       return null;
     }
@@ -174,6 +182,11 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   /// the build, and asking a worker would mean starting one to find out.
   @override
   bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
+
+  /// ⚠️On THIS isolate too, for the same reason: the device does not change
+  /// between isolates.
+  @override
+  bool get readsFramed => QaVideoDecoder.instance?.readsFramed ?? false;
 
   SendPort? _worker;
   Future<SendPort>? _starting;
@@ -295,7 +308,7 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   @override
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
-    ({int offset, int length})? range,
+    ({int offset, int length, bool framed})? span,
   }) async {
     // 🚨★★★**THE TOKEN IS MINTED HERE, BY THE SIDE THAT OUTLIVES THE
     // WORKER.** It used to be the worker's own list index, and the worker's
@@ -315,12 +328,7 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
     // path kept here, and inventing a silent reopen is not this round's to
     // decide (board: `a-dead-worker-forgets-its-documents`).
     final token = _nextToken++;
-    final answer = await _ask(_opOpen, (
-      token: token,
-      path: path,
-      offset: range?.offset ?? 0,
-      length: range?.length ?? 0,
-    ));
+    final answer = await _ask(_opOpen, (token: token, path: path, span: span));
     if (answer == null) {
       return null;
     }
@@ -444,15 +452,14 @@ void _serve(
     case _opOpen:
       final args =
           request.args!
-              as ({int token, String path, int offset, int length});
+              as ({
+                int token,
+                String path,
+                ({int offset, int length, bool framed})? span,
+              });
       final document = decoder == null || !decoder.isSupported
           ? null
-          : decoder.openDocument(
-              args.path,
-              range: args.length > 0
-                  ? (offset: args.offset, length: args.length)
-                  : null,
-            );
+          : decoder.openDocument(args.path, span: args.span);
       if (document == null) {
         request.reply.send(null);
         return;

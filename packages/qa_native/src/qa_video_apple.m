@@ -26,6 +26,9 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "qa_media_span.h"
+#include "qa_yuv601.h"
+
 // Mirrors qa_video_encode.c's ABI v21 values.
 #define QA_VIDEO_CONTAINER_MP4 0
 #define QA_VIDEO_CONTAINER_MOV 1
@@ -50,6 +53,9 @@ typedef struct {
   int32_t channels;
   int32_t open;
   int32_t preserve_alpha;
+  // Frames go to the encoder as NV12 this file made (`qa_yuv601.h`) rather
+  // than BGRA for VideoToolbox to convert — every codec but ProRes.
+  int32_t writes_ycbcr;
 } qa_video_apple_state;
 
 // The v10 pair matrix on Apple: H.264 in both containers, H.265 in MP4,
@@ -195,14 +201,62 @@ int32_t qa_video_apple_open(const char* utf8_path,
       video_settings[AVVideoCompressionPropertiesKey] =
           @{AVVideoAverageBitRateKey : @(bitrate_bps)};
     }
+    // 🚨★★★**THE H.26x PICTURES ARE MADE YCbCr HERE, IN THE APP'S COLOUR
+    // LAW, AND THE FILE SAYS SO** (`qa_yuv601.h`, BT.601 studio range —
+    // what the Android writer has always written). They used to go in as
+    // BGRA for VideoToolbox to convert, and what the Apple reader turned
+    // back had lost red in exact proportion — 0.9136 of it, BT.709 in and
+    // BT.601 out: red 110 came back 101, and a piece cut from a take 168
+    // where the take showed 185 (2026-09-25, board
+    // `trimmed-piece-apple-parity`). Naming BT.601 in these properties
+    // alone moved none of those numbers, so the pictures are converted
+    // before the encoder sees them, and these properties now describe what
+    // was really written. ⚠️ProRes stays BGRA: 4444 carries alpha, and its
+    // conversion is still VideoToolbox's to choose.
+    if (!is_prores) {
+      g_apple.writes_ycbcr = 1;
+      video_settings[AVVideoColorPropertiesKey] = @{
+        AVVideoColorPrimariesKey : AVVideoColorPrimaries_SMPTE_C,
+        AVVideoTransferFunctionKey : AVVideoTransferFunction_ITU_R_709_2,
+        AVVideoYCbCrMatrixKey : AVVideoYCbCrMatrix_ITU_R_601_4,
+      };
+    }
     g_video_input =
         [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
                                        outputSettings:video_settings];
     g_video_input.expectsMediaDataInRealTime = NO;
+    // 🚨THE TRACK KEEPS TIME IN A UNIT THAT HOLDS ONE FRAME EXACTLY. Frame
+    // i is appended at exactly i * den / num seconds, but an input left at
+    // its default time scale lets the writer pick its own, and in 1/600 s a
+    // 24000/1001 frame is 25.025 units: it rounds to 25, every frame lasts
+    // exactly 1/24 s, and the file says 24.0 fps. A trimmed 23.976 take came
+    // back as 24 on the Apple engine only (2026-09-25, first run of
+    // `a_trimmed_file_is_carried_as_its_piece_test` on a Mac). A multiple
+    // of the rate's numerator holds every frame time exactly; it is lifted
+    // to at least 600 so a 12 or 24 fps track keeps a conventional unit.
+    //
+    // ⚠️Guarded: AVFoundation raises when the output file type has no media
+    // time scale to set, and an exception here would take the process down
+    // over a property that only ever refines the timing.
+    {
+      int64_t scale = g_apple.fps_num;
+      if (scale > 0 && scale < 600) {
+        scale *= (600 + scale - 1) / scale;
+      }
+      if (scale > 0 && scale <= INT32_MAX) {
+        @try {
+          g_video_input.mediaTimeScale = (CMTimeScale)scale;
+        } @catch (NSException* ignored) {
+          (void)ignored;
+        }
+      }
+    }
     g_adaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
         initWithAssetWriterInput:g_video_input
      sourcePixelBufferAttributes:@{
-       (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA),
+       (id)kCVPixelBufferPixelFormatTypeKey : g_apple.writes_ycbcr
+           ? @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+           : @(kCVPixelFormatType_32BGRA),
        (id)kCVPixelBufferWidthKey : @(g_apple.width),
        (id)kCVPixelBufferHeightKey : @(g_apple.height),
      }];
@@ -279,6 +333,88 @@ int32_t qa_video_apple_open(const char* utf8_path,
   }
 }
 
+/// [rgba] into [pixel_buffer] as BGRA — the ProRes road, where VideoToolbox
+/// still makes the YCbCr (4444 carries alpha). 0 when the buffer is not the
+/// shape asked for.
+static int qa_apple_fill_bgra(CVPixelBufferRef pixel_buffer,
+                              const uint8_t* rgba) {
+  uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
+  const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
+  if (base == NULL || stride < (size_t)g_apple.width * 4 ||
+      CVPixelBufferGetHeight(pixel_buffer) < (size_t)g_apple.height) {
+    return 0;
+  }
+  // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
+  // with alpha keeps the real channel and pads TRANSPARENT (a hairline
+  // of paper would read as content in a compositing master).
+  const int keep_alpha = g_apple.preserve_alpha;
+  const uint8_t pad_value = keep_alpha ? 0x00 : 0xFF;
+  for (int32_t y = 0; y < g_apple.height; y += 1) {
+    uint8_t* out_row = base + (size_t)y * stride;
+    if (y >= g_apple.src_height) {
+      memset(out_row, pad_value, (size_t)g_apple.width * 4);
+      continue;
+    }
+    const uint8_t* in_row = rgba + (size_t)y * (size_t)g_apple.src_width * 4;
+    for (int32_t x = 0; x < g_apple.src_width; x += 1) {
+      out_row[x * 4 + 0] = in_row[x * 4 + 2];  // B
+      out_row[x * 4 + 1] = in_row[x * 4 + 1];  // G
+      out_row[x * 4 + 2] = in_row[x * 4 + 0];  // R
+      out_row[x * 4 + 3] = keep_alpha ? in_row[x * 4 + 3] : 0xFF;
+    }
+    for (int32_t x = g_apple.src_width; x < g_apple.width; x += 1) {
+      out_row[x * 4 + 0] = pad_value;
+      out_row[x * 4 + 1] = pad_value;
+      out_row[x * 4 + 2] = pad_value;
+      out_row[x * 4 + 3] = pad_value;
+    }
+  }
+  return 1;
+}
+
+/// [rgba] into [pixel_buffer] as NV12 in the app's colour law
+/// (`qa_yuv601.h`) — the H.26x road — and the buffer TOLD what it holds,
+/// so nothing between here and the encoder converts it again. 0 when the
+/// buffer is not the two-plane shape asked for.
+static int qa_apple_fill_ycbcr(CVPixelBufferRef pixel_buffer,
+                               const uint8_t* rgba) {
+  if (!CVPixelBufferIsPlanar(pixel_buffer) ||
+      CVPixelBufferGetPlaneCount(pixel_buffer) != 2) {
+    return 0;
+  }
+  uint8_t* luma =
+      (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 0);
+  uint8_t* chroma =
+      (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(pixel_buffer, 1);
+  const size_t luma_stride =
+      CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 0);
+  const size_t chroma_stride =
+      CVPixelBufferGetBytesPerRowOfPlane(pixel_buffer, 1);
+  if (luma == NULL || chroma == NULL ||
+      luma_stride < (size_t)g_apple.width ||
+      chroma_stride < (size_t)g_apple.width ||
+      CVPixelBufferGetHeightOfPlane(pixel_buffer, 0) <
+          (size_t)g_apple.height ||
+      CVPixelBufferGetHeightOfPlane(pixel_buffer, 1) <
+          (size_t)g_apple.height / 2) {
+    return 0;
+  }
+  qa_yuv601_from_rgba(rgba, g_apple.src_width, g_apple.src_height,
+                      g_apple.width, g_apple.height, luma,
+                      (int32_t)luma_stride, chroma, chroma + 1,
+                      (int32_t)chroma_stride, 2);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferYCbCrMatrixKey,
+                        kCVImageBufferYCbCrMatrix_ITU_R_601_4,
+                        kCVAttachmentMode_ShouldPropagate);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferColorPrimariesKey,
+                        kCVImageBufferColorPrimaries_SMPTE_C,
+                        kCVAttachmentMode_ShouldPropagate);
+  CVBufferSetAttachment(pixel_buffer, kCVImageBufferTransferFunctionKey,
+                        kCVImageBufferTransferFunction_ITU_R_709_2,
+                        kCVAttachmentMode_ShouldPropagate);
+  return 1;
+}
+
 int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
   if (!g_apple.open || rgba == NULL) {
     return 0;
@@ -308,41 +444,14 @@ int32_t qa_video_apple_write_frame(const uint8_t* rgba) {
       CVPixelBufferRelease(pixel_buffer);
       return 0;
     }
-    uint8_t* base = (uint8_t*)CVPixelBufferGetBaseAddress(pixel_buffer);
-    const size_t stride = CVPixelBufferGetBytesPerRow(pixel_buffer);
-    if (base == NULL || stride < (size_t)g_apple.width * 4 ||
-        CVPixelBufferGetHeight(pixel_buffer) < (size_t)g_apple.height) {
-      CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+    const int filled = g_apple.writes_ycbcr
+                           ? qa_apple_fill_ycbcr(pixel_buffer, rgba)
+                           : qa_apple_fill_bgra(pixel_buffer, rgba);
+    CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
+    if (!filled) {
       CVPixelBufferRelease(pixel_buffer);
       return 0;
     }
-    // Opaque codecs bake white pad pixels and force A=0xFF; ProRes 4444
-    // with alpha keeps the real channel and pads TRANSPARENT (a hairline
-    // of paper would read as content in a compositing master).
-    const int keep_alpha = g_apple.preserve_alpha;
-    const uint8_t pad_value = keep_alpha ? 0x00 : 0xFF;
-    for (int32_t y = 0; y < g_apple.height; y += 1) {
-      uint8_t* out_row = base + (size_t)y * stride;
-      if (y >= g_apple.src_height) {
-        memset(out_row, pad_value, (size_t)g_apple.width * 4);
-        continue;
-      }
-      const uint8_t* in_row =
-          rgba + (size_t)y * (size_t)g_apple.src_width * 4;
-      for (int32_t x = 0; x < g_apple.src_width; x += 1) {
-        out_row[x * 4 + 0] = in_row[x * 4 + 2];  // B
-        out_row[x * 4 + 1] = in_row[x * 4 + 1];  // G
-        out_row[x * 4 + 2] = in_row[x * 4 + 0];  // R
-        out_row[x * 4 + 3] = keep_alpha ? in_row[x * 4 + 3] : 0xFF;
-      }
-      for (int32_t x = g_apple.src_width; x < g_apple.width; x += 1) {
-        out_row[x * 4 + 0] = pad_value;
-        out_row[x * 4 + 1] = pad_value;
-        out_row[x * 4 + 2] = pad_value;
-        out_row[x * 4 + 3] = pad_value;
-      }
-    }
-    CVPixelBufferUnlockBaseAddress(pixel_buffer, 0);
 
     // frame i shows at i * den / num seconds — exact fraction, like every
     // other timing conversion in this program.
@@ -461,7 +570,7 @@ void qa_video_apple_abort(void) {
 // One document at a time, matching qa_video_decode.c's contract.
 
 // ---------------------------------------------------------------------------
-// Serving a RANGE of a file to AVFoundation.
+// Serving a SPAN of a file to AVFoundation.
 //
 // 🚨★★★**AVFoundation HAS NO 「open this file from byte N」.** `AVURLAsset`
 // takes a URL; there is no offset parameter anywhere. Its answer is a URL
@@ -469,73 +578,128 @@ void qa_video_apple_abort(void) {
 // request for it — so where Windows writes an `IMFByteStream` and Android
 // passes a descriptor with a range, Apple SERVES the bytes.
 //
-// ⛔The file handle is opened once and kept: a resource loader is asked for
-// small ranges constantly while a movie plays, and opening the archive per
-// request would turn playback into a stream of opens.
+// 🚨The bytes come from `qa_media_span`, the library's one reader of a span
+// (2026-09-24) — the movie as it is, or FRAMED (compressed in blocks by the
+// save), decompressed a block at a time as AVFoundation asks. This used to
+// read through an `NSFileHandle` at `base + wanted`, the third copy of those
+// three lines, and could serve only a span that held the movie as it is.
+//
+// ⛔The span is opened once and kept: a resource loader is asked for small
+// ranges constantly while a movie plays, and opening the archive per request
+// would turn playback into a stream of opens.
 @interface QaRangeResourceLoader : NSObject <AVAssetResourceLoaderDelegate>
 @property(nonatomic, readonly) BOOL opened;
 @property(nonatomic, readonly) dispatch_queue_t queue;
+/// The container the span holds, as a type AVFoundation can pick a reader
+/// for ([qa_apple_container_type]) — and the extension the served URL
+/// wears to match it.
+@property(nonatomic, readonly) NSString* containerType;
+@property(nonatomic, readonly) NSString* containerExtension;
 - (instancetype)initWithPath:(NSString*)path
                       offset:(int64_t)offset
-                      length:(int64_t)length;
+                      length:(int64_t)length
+                      framed:(BOOL)framed;
 - (void)close;
 @end
 
+/// The most one response hands AVFoundation at a time. A request 「to the end
+/// of the resource」 is the whole rest of the movie, and answering it in one
+/// piece was one allocation the size of the movie.
+static const int64_t kQaServedChunkBytes = 1024 * 1024;
+
+/// Which container [span] holds, read off its first bytes: an ISO media file
+/// says so in its `ftyp` box — `qt  ` is QuickTime, `M4V` an iTunes movie,
+/// anything else MPEG-4 — and a QuickTime file older than `ftyp` begins
+/// straight with its atoms.
+///
+/// 🚨★★★**AVFOUNDATION DOES NOT SNIFF WHAT A RESOURCE LOADER SERVES.** The
+/// loader used to answer `public.movie` — an abstract type — on the stated
+/// belief that 「the generic type lets it sniff the bytes」. It does not: on
+/// the Apple runner every movie served that way opened with no video track
+/// at all (2026-09-25, `a_movie_kept_compressed_plays_where_it_lies_test`,
+/// the first test ever to open a span on Apple). A plain span took the same
+/// road, so a movie carried inside a saved project had the same answer.
+static NSString* qa_apple_container_type(qa_media_span* span,
+                                         int64_t length) {
+  uint8_t head[12];
+  if (length < 12 || qa_media_span_read(span, 0, head, 12) != 12) {
+    return AVFileTypeMPEG4;
+  }
+  if (memcmp(head + 4, "ftyp", 4) != 0) {
+    return AVFileTypeQuickTimeMovie;
+  }
+  if (memcmp(head + 8, "qt  ", 4) == 0) {
+    return AVFileTypeQuickTimeMovie;
+  }
+  if (memcmp(head + 8, "M4V", 3) == 0) {
+    return AVFileTypeAppleM4V;
+  }
+  return AVFileTypeMPEG4;
+}
+
 @implementation QaRangeResourceLoader {
-  NSFileHandle* _file;
-  int64_t _base;
+  qa_media_span* _span;
   int64_t _length;
 }
 
 - (instancetype)initWithPath:(NSString*)path
                       offset:(int64_t)offset
-                      length:(int64_t)length {
+                      length:(int64_t)length
+                      framed:(BOOL)framed {
   self = [super init];
   if (self == nil) {
     return nil;
   }
-  _base = offset;
-  _length = length;
   _queue = dispatch_queue_create("qa.range.loader", DISPATCH_QUEUE_SERIAL);
-  _file = [NSFileHandle fileHandleForReadingAtPath:path];
-  if (_file == nil || offset < 0 || length <= 0) {
-    _opened = NO;
-    return self;
+  // ⛔The span refuses itself when it is not INSIDE the file, or when a
+  // framed header does not hold together: a loader that promised bytes the
+  // file cannot supply would produce a truncated movie, which reads as a
+  // corrupt one rather than as a span that was wrong.
+  _span = qa_media_span_open([path fileSystemRepresentation], offset, length,
+                             framed ? 1 : 0);
+  _length = qa_media_span_size(_span);
+  _opened = _span != NULL;
+  if (_opened) {
+    _containerType = qa_apple_container_type(_span, _length);
+    _containerExtension =
+        [_containerType isEqualToString:AVFileTypeQuickTimeMovie] ? @"mov"
+        : [_containerType isEqualToString:AVFileTypeAppleM4V]     ? @"m4v"
+                                                                  : @"mp4";
   }
-  // ⛔The range must be INSIDE the file. A loader that promises bytes the
-  // file cannot supply produces a truncated movie, which reads as a corrupt
-  // one rather than as a range that was wrong.
-  NSDictionary* attributes = [[NSFileManager defaultManager]
-      attributesOfItemAtPath:path
-                       error:nil];
-  const int64_t size = (int64_t)[attributes fileSize];
-  _opened = (offset + length <= size);
   return self;
 }
 
 - (void)close {
-  [_file closeFile];
-  _file = nil;
+  // ⚠️On the loader's own queue: a request being answered is reading the
+  // span, and closing it under that read is a read on a freed reader.
+  dispatch_sync(_queue, ^{
+    qa_media_span_close(self->_span);
+    self->_span = NULL;
+  });
 }
 
-/// What the range looks like from outside: a file of [_length] bytes whose
-/// type AVFoundation must guess, because a URL with our own scheme carries
-/// no extension it could read one from.
+- (void)dealloc {
+  qa_media_span_close(_span);
+}
+
+/// What the span looks like from outside: a file of [_length] bytes of the
+/// container its own first bytes name ([qa_apple_container_type]).
+///
+/// 🪦This answered `public.movie`, with the reason 「claiming a specific
+/// container we have not parsed would be a guess … the generic type lets it
+/// sniff the bytes」. The first half was fair and the second was never
+/// true; the container is now read, not guessed.
 - (void)fillInformation:(AVAssetResourceLoadingRequest*)request {
   request.contentInformationRequest.contentLength = _length;
   request.contentInformationRequest.byteRangeAccessSupported = YES;
-  // ⚠️`public.movie` rather than a precise type: this backend is handed a
-  // range, not a name, and claiming a specific container we have not parsed
-  // would be a guess AVFoundation then has to live with. The generic type
-  // lets it sniff the bytes it is about to be given.
-  request.contentInformationRequest.contentType = @"public.movie";
+  request.contentInformationRequest.contentType = _containerType;
 }
 
 - (BOOL)resourceLoader:(AVAssetResourceLoader*)resourceLoader
     shouldWaitForLoadingOfRequestedResource:
         (AVAssetResourceLoadingRequest*)loadingRequest {
   (void)resourceLoader;
-  if (_file == nil) {
+  if (_span == NULL) {
     return NO;
   }
   if (loadingRequest.contentInformationRequest != nil) {
@@ -561,17 +725,26 @@ void qa_video_apple_abort(void) {
   if (take > _length - wanted) {
     take = _length - wanted;
   }
-  // 🚨base + wanted. Reading at `wanted` alone hands back the archive's own
-  // header as if it were the movie — the same arithmetic the other two
-  // backends have to get right, in the same one place each.
-  @try {
-    [_file seekToFileOffset:(unsigned long long)(_base + wanted)];
-    NSData* bytes = [_file readDataOfLength:(NSUInteger)take];
+  // A chunk at a time, so the largest thing held is one chunk however much
+  // was asked for — and a request AVFoundation gave up on stops being read.
+  while (take > 0 && !loadingRequest.isCancelled) {
+    const int64_t chunk = take < kQaServedChunkBytes ? take
+                                                     : kQaServedChunkBytes;
+    NSMutableData* bytes = [NSMutableData dataWithLength:(NSUInteger)chunk];
+    const int64_t read =
+        qa_media_span_read(_span, wanted, [bytes mutableBytes], chunk);
+    if (read <= 0) {
+      // The file would not read, or a block would not decode: said as a
+      // failure rather than served as whatever the buffer held.
+      [loadingRequest finishLoadingWithError:nil];
+      return YES;
+    }
+    [bytes setLength:(NSUInteger)read];
     [data respondWithData:bytes];
-    [loadingRequest finishLoading];
-  } @catch (NSException* failure) {
-    [loadingRequest finishLoadingWithError:nil];
+    wanted += read;
+    take -= read;
   }
+  [loadingRequest finishLoading];
   return YES;
 }
 
@@ -649,6 +822,7 @@ void qa_video_apple_decode_close(void) {
 int32_t qa_video_apple_decode_open(const char* utf8_path,
                                    int64_t range_offset,
                                    int64_t range_length,
+                                   int32_t framed,
                                    char* error,
                                    int32_t error_capacity) {
   @autoreleasepool {
@@ -675,15 +849,19 @@ int32_t qa_video_apple_decode_open(const char* utf8_path,
       g_decode_serving =
           [[QaRangeResourceLoader alloc] initWithPath:path
                                                offset:range_offset
-                                               length:range_length];
+                                               length:range_length
+                                               framed:framed != 0];
       if (g_decode_serving == nil || !g_decode_serving.opened) {
         g_decode_serving = nil;
         qa_apple_set_error(error, error_capacity,
-                           "that range is not inside the file");
+                           "that span does not hold a readable movie");
         return 0;
       }
-      NSURL* served =
-          [NSURL URLWithString:@"qa-anicel-range:///movie"];
+      // ⚠️The name wears the container's extension too, so nothing that
+      // reads the URL before asking the loader guesses otherwise.
+      NSString* served_name = [@"qa-anicel-range:///movie."
+          stringByAppendingString:g_decode_serving.containerExtension];
+      NSURL* served = [NSURL URLWithString:served_name];
       AVURLAsset* urlAsset = [AVURLAsset URLAssetWithURL:served options:nil];
       [urlAsset.resourceLoader setDelegate:g_decode_serving
                                      queue:g_decode_serving.queue];

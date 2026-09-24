@@ -70,6 +70,7 @@ class _Form {
 Future<_Form> _paintForm(TimesheetDocument document) async {
   final layout = TimesheetDocumentLayout(document: document);
   final painter = TimesheetDocumentPainter(
+    face: const TextStyle(),
     document: document,
     layout: layout,
     layers: const {SheetPaintLayer.form},

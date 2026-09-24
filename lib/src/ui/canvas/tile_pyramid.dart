@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/collection_equality.dart';
 import '../../models/tile_coord.dart';
 import 'deferred_image_disposal.dart';
@@ -174,6 +176,7 @@ class TilePyramid {
 
   /// Lets every level picture of [scope] go.
   void drop(Object? scope) {
+    dropSeed(scope);
     final scoped = _byScope.remove(scope);
     if (scoped == null) {
       return;
@@ -181,6 +184,115 @@ class TilePyramid {
     for (final tile in scoped.tiles.values) {
       tile.release();
     }
+  }
+
+  /// The one level image the pyramid may draw a scope's blocks from instead
+  /// of making them, and whose it is — see [seed].
+  ({Object? scope, LevelSeed seed})? _seed;
+
+  /// 🚨★★★A CEL THAT BECOMES THE ACTIVE ROW SHOWS WHAT IT SHOWED A FRAME
+  /// AGO WITHOUT MAKING IT AGAIN (2026-09-24, board
+  /// `a-layer-switch-below-100-composes-the-full-cel`).
+  ///
+  /// Below 100% every other row is drawn from ONE image of its cel at the
+  /// display's level, and the active row in level blocks — every block it
+  /// has no level tile for made in the paint that shows it, a `toImageSync`
+  /// each: a fresh MSAA target and a whole mip chain. 🔬Switching to a layer
+  /// not stood on before, on the real Windows app at 50% (the user's work
+  /// file, a 2540×1654 cel): 29–52 level tiles made in the switch frame, the
+  /// raster thread busy 55–66 ms before it could draw it.
+  ///
+  /// So the stack hands over the image the row was drawn with, and what
+  /// every coordinate showed when it was composed ([LevelSeed]). A block
+  /// whose coordinates all still show exactly that is drawn from the image,
+  /// 1:1 ([seededBlock]); a block an edit or a stroke has touched is made as
+  /// it always was. On Windows (GLES) and in the test runner (Skia) a level
+  /// of the whole image is the same bytes as the halving of its blocks —
+  /// measured; on Vulkan the two differ by up to 2/255 at 50% and below,
+  /// which is what the row showed a frame ago and what every other row
+  /// shows. The pyramid owns [seed]'s image handle from here on.
+  ///
+  /// ONE seed, the last handed over: one row is the active one, and the
+  /// next switch replaces it — or [dropSeed] lets it go first.
+  void seed(Object? scope, LevelSeed seed) {
+    _releaseSeed();
+    _seed = (scope: scope, seed: seed);
+  }
+
+  /// Lets [scope]'s seed go, if the one there is is its.
+  void dropSeed(Object? scope) {
+    if (_seed != null && _seed!.scope == scope) {
+      _releaseSeed();
+    }
+  }
+
+  void _releaseSeed() {
+    final held = _seed;
+    if (held == null) {
+      return;
+    }
+    DeferredImageDisposer.instance.retire(held.seed.image);
+    _seed = null;
+  }
+
+  /// Whether [scope] holds the seed. ⚠️TEST ONLY.
+  @visibleForTesting
+  bool debugHasSeed(Object? scope) => _seed != null && _seed!.scope == scope;
+
+  /// How many level tiles [scope] keeps. ⚠️TEST ONLY.
+  @visibleForTesting
+  int debugTileCountOf(Object? scope) => _byScope[scope]?.tiles.length ?? 0;
+
+  /// The part of the seed that draws the level-[level] block at [coord] of
+  /// [ask]'s scope — the seed's texels ([src]) and the canvas rect they land
+  /// on ([dst]), 1:1 in a level buffer — when every coordinate under the
+  /// block still shows what the seed was made from. Null otherwise, and for
+  /// a block that shows nothing.
+  ({ui.Image image, ui.Rect src, ui.Rect dst})? seededBlock(
+    LevelTileAsk ask, {
+    required int level,
+    required TileCoord coord,
+  }) {
+    final held = _seed;
+    if (held == null ||
+        level <= 0 ||
+        held.seed.level != level ||
+        held.scope != ask.scope) {
+      return null;
+    }
+    final seed = held.seed;
+    var showsAnything = false;
+    for (final at in tilesOfBlock(level, coord)) {
+      final key = ask.keyAt(at);
+      if (!identical(key, seed.madeFrom[at])) {
+        return null;
+      }
+      showsAnything = showsAnything || key != null;
+    }
+    if (!showsAnything) {
+      return null;
+    }
+    final side = (ask.tileSize << level).toDouble();
+    final dst = ui.Rect.fromLTWH(
+      coord.x * side,
+      coord.y * side,
+      side,
+      side,
+    ).intersect(seed.worldRect);
+    if (dst.isEmpty) {
+      return null;
+    }
+    final step = (1 << level).toDouble();
+    return (
+      image: seed.image,
+      src: ui.Rect.fromLTRB(
+        (dst.left - seed.worldRect.left) / step,
+        (dst.top - seed.worldRect.top) / step,
+        (dst.right - seed.worldRect.left) / step,
+        (dst.bottom - seed.worldRect.top) / step,
+      ),
+      dst: dst,
+    );
   }
 
   /// [scope]'s pyramid, [scope] made the most recently used; scopes
@@ -210,6 +322,18 @@ class TilePyramid {
   static List<Object?> _keysUnder(LevelTileAsk ask, int level, TileCoord coord) =>
       [for (final at in tilesOfBlock(level, coord)) ask.keyAt(at)];
 }
+
+/// A level image of a whole cel ([image], its own handle — a clone of the
+/// one the row was drawn with, the pixels shared), the level it is at, the
+/// canvas rect its texels cover there, and what every coordinate showed
+/// when it was composed ([madeFrom], `LayerFrameImage.madeFrom`) — what
+/// [TilePyramid.seed] takes.
+typedef LevelSeed = ({
+  ui.Image image,
+  int level,
+  ui.Rect worldRect,
+  Map<TileCoord, Object> madeFrom,
+});
 
 /// What one paint hands the pyramid with every ask: the grid's tile size,
 /// the scope the level tiles are filed under, the paint's one answer to

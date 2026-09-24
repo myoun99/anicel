@@ -30,6 +30,7 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_video_decode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
@@ -54,6 +55,12 @@ endif()
 if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+endif()
+# ⛔ANDROID only, for the same reason: the NDK media table is libmediandk's
+# answer and nobody else's (see qa_ndk_media.h for why there is one of it).
+if(ANDROID)
+  target_sources(qa_engine PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/qa_ndk_media.c")
 endif()
 
 set_target_properties(qa_engine PROPERTIES
@@ -97,6 +104,25 @@ if(NOT ANDROID AND NOT IOS)
   add_test(NAME qa_video_decode_law COMMAND qa_video_decode_law_test)
 endif()
 
+# The span reader — plain and framed — with nothing platform-specific in it,
+# so it runs on every host CI has. See qa_media_span_test.c for why it
+# COUNTS blocks rather than only comparing bytes.
+if(NOT ANDROID AND NOT IOS)
+  add_executable(qa_media_span_test
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span_test.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
+  set_target_properties(qa_media_span_test PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+  )
+  if(MSVC)
+    target_compile_options(qa_media_span_test PRIVATE /utf-8)
+  endif()
+  enable_testing()
+  add_test(NAME qa_media_span COMMAND qa_media_span_test)
+endif()
+
 # Decoding a container that is a RANGE of a file. ⚠️This one carries the
 # WHOLE decoder — dr_libs, stb_vorbis and whatever OS stack the host has —
 # because the thing under test is the dispatch itself: the same chain has to
@@ -106,7 +132,9 @@ endif()
 if(NOT ANDROID AND NOT IOS)
   add_executable(qa_audio_range_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_audio_range_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c")
+    "${CMAKE_CURRENT_LIST_DIR}/qa_audio_decode.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
   set_target_properties(qa_audio_range_test PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
@@ -124,7 +152,7 @@ if(NOT ANDROID AND NOT IOS)
     target_sources(qa_audio_range_test PRIVATE
       "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
     target_link_libraries(qa_audio_range_test
-      mfplat mfreadwrite mfuuid shlwapi ole32)
+      mfplat mfreadwrite mfuuid ole32)
   else()
     find_library(QA_M_LIB m)
     if(QA_M_LIB)
@@ -149,7 +177,9 @@ endif()
 if(WIN32)
   add_executable(qa_win_range_stream_test
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream_test.c"
-    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+    "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+    "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c")
   set_target_properties(qa_win_range_stream_test PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
@@ -235,10 +265,11 @@ elseif(ANDROID)
   # so only OpenSLES (miniaudio) links here.
   target_link_libraries(qa_engine OpenSLES)
 elseif(WIN32)
-  # The OS decoder (AAC/m4a): Media Foundation source reader over an
-  # in-memory stream. shlwapi carries SHCreateMemStream, ole32 the COM
-  # runtime.
-  target_link_libraries(qa_engine mfplat mfreadwrite mfuuid shlwapi ole32)
+  # The OS decoders (AAC/m4a, and every movie): Media Foundation source
+  # readers over the span stream (qa_win_range_stream.c). ole32 carries the
+  # COM runtime. 🪦shlwapi went with the in-memory audio origin it served
+  # (SHCreateMemStream, 2026-09-24).
+  target_link_libraries(qa_engine mfplat mfreadwrite mfuuid ole32)
 endif()
 
 if(MSVC)

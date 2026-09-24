@@ -67,14 +67,10 @@ final class EditorKeyHolds {
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
     }
-    for (final activator in bindings.activatorsFor(
-      EditorActionIds.canvasPanHold,
-    )) {
-      if (activator.accepts(event, HardwareKeyboard.instance)) {
-        _held[key] = _KeyHold.pan;
-        CanvasPanHold.held.value = true;
-        return KeyEventResult.handled;
-      }
+    if (bindings.presses(EditorActionIds.canvasPanHold, event)) {
+      _held[key] = _KeyHold.pan;
+      CanvasPanHold.held.value = true;
+      return KeyEventResult.handled;
     }
     if (_isEyedropperKey(key)) {
       if (strokeLive.value) {

@@ -80,6 +80,7 @@ void main() {
 
     final paper = _PrologueSpy();
     TimesheetDocumentPainter(
+      face: const TextStyle(),
       document: document,
       layout: layout,
       viewport: viewport,
@@ -114,6 +115,7 @@ void main() {
 
     final paper = _PrologueSpy();
     TimesheetDocumentPainter(
+      face: const TextStyle(),
       document: document,
       layout: layout,
     ).paint(paper, const Size(800, 600));

@@ -595,6 +595,14 @@ class _SubmenuLayer extends StatelessWidget {
 
   static const double _width = 200;
 
+  /// How far a level stays inside the window — the PARENT's inset.
+  ///
+  /// The parent list is Material's menu, which lays itself out 8px inside
+  /// the overlay (`_kMenuScreenPadding`, private to `popup_menu.dart`) and
+  /// scrolls inside that. The child keeps the same 8, so both levels stop
+  /// at one line.
+  static const double _screenMargin = 8;
+
   @override
   Widget build(BuildContext context) {
     final overlaySize = MediaQuery.sizeOf(context);
@@ -614,6 +622,18 @@ class _SubmenuLayer extends StatelessWidget {
     );
     final height =
         request.entries.fold(16.0, (sum, entry) => sum + _entryHeight(entry));
+    // 🚨A DRAWER TALLER THAN THE WINDOW SCROLLS, the way the parent list
+    // (Material's menu) always has: it stops [_screenMargin] short of the
+    // edges and scrolls inside, and the app's scroll behaviour puts ITS bar
+    // on it for as long as it overflows (`AppScrollBehavior` — presence is
+    // the signal). This level had no scrollable at all, so a list taller
+    // than the window ran off it: at 800×600 the panels drawer's last row
+    // centred at y=632, and a tap there landed on nothing
+    // (a-flyout-taller-than-the-screen-runs-off-it).
+    final shown = height.clamp(
+      0.0,
+      (overlaySize.height - 2 * _screenMargin).clamp(0.0, double.infinity),
+    );
     // Flush against the parent's right edge, its first row level with the
     // row that opened it — and folded back to the parent's LEFT when there
     // is no room, which is what every submenu does at a screen edge.
@@ -621,13 +641,17 @@ class _SubmenuLayer extends StatelessWidget {
         ? request.anchor.right
         : request.anchor.left - _width;
     final top = (request.anchor.top - 8).clamp(
-      0.0,
-      (overlaySize.height - height).clamp(0.0, double.infinity),
+      _screenMargin,
+      (overlaySize.height - shown - _screenMargin).clamp(
+        _screenMargin,
+        double.infinity,
+      ),
     );
     return Positioned(
       left: left,
       top: top,
       width: _width,
+      height: shown,
       child: Material(
         // ⛔THE SHARED popup surface, not a colour of its own. Naming
         // `AppColors.surface` here is exactly what let the child and its
@@ -635,7 +659,9 @@ class _SubmenuLayer extends StatelessWidget {
         color: AppPopupSurface.color,
         elevation: AppPopupSurface.elevation,
         shape: AppPopupSurface.shape,
-        child: Padding(
+        // The padding scrolls WITH the rows, as the parent's does
+        // (`SingleChildScrollView.padding` there too).
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,

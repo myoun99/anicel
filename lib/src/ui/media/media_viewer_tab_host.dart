@@ -18,6 +18,7 @@ import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/movie_bytes.dart';
+import '../../services/media/video_decode_worker.dart' show videoDecodeBackend;
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/straight_rgba_image.dart';
@@ -710,9 +711,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
   /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
   /// (유저 2026-08-30), so an original edited or deleted after the import
-  /// changes nothing the viewer shows. ⏸One exception, until board
-  /// `carried-movie-compressed-Q1` is answered: a movie kept compressed,
-  /// which no decoder reads in place ([movieBytesToDecode]).
+  /// changes nothing the viewer shows. One exception, the cost 유저 accepted
+  /// on board `carried-movie-compressed-Q1`: a movie kept compressed, on a
+  /// device whose decoder cannot be fed one (Android below 9), reads its
+  /// original while there is one ([movieBytesToDecode]).
   /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
   /// whose original was gone — or a project opened on another machine —
   /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
@@ -737,7 +739,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       case MediaAssetKind.video:
         return held(
           (source) => VideoViewerDocument.open(
-            movieBytesToDecode(source, request.path),
+            movieBytesToDecode(source, request.path, videoDecodeBackend),
           ),
         );
       case MediaAssetKind.audio:

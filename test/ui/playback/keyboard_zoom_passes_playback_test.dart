@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import '../../helpers/fake_playback_transport.dart';
@@ -98,6 +100,41 @@ void main() {
       textOf(tester, 'canvas-viewport-zoom-label'),
       isNot(before),
       reason: 'and the view zoomed',
+    );
+
+    session.playbackRig.transports.stopAll();
+    await tester.pumpAndSettle();
+  });
+
+  // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types): the
+  // gate's question and the funnel's map read ONE set of forms. On a JIS
+  // keyboard `'` is Shift+7, arriving as `7` with Shift held, typing `'`.
+  testWidgets('a zoom moved to `\'` zooms from a JIS Shift+7 while the canvas '
+      'plays — the gate and the map read the same typed form', (tester) async {
+    final session = await playingCanvas(tester);
+    EditorShortcutScope.peek(
+      tester.element(find.byType(EditorCanvasArea)),
+    )!.setActivators(EditorActionIds.canvasZoomIn, const [
+      SingleActivator(LogicalKeyboardKey.quoteSingle),
+    ]);
+    await tester.pump();
+    final before = textOf(tester, 'canvas-viewport-zoom-label');
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.digit7, character: "'");
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.digit7);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(
+      session.playbackRig.playback.isPlaying,
+      isTrue,
+      reason: 'the gate knew it for a zoom',
+    );
+    expect(
+      textOf(tester, 'canvas-viewport-zoom-label'),
+      isNot(before),
+      reason: 'and the map zoomed',
     );
 
     session.playbackRig.transports.stopAll();

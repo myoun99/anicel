@@ -176,7 +176,19 @@ import 'dart:io';
 ///   own: `qa_available_memory_bytes` on a desktop is the machine's free
 ///   memory, a different question, and the automatic allowance is half of
 ///   the app's limit where one exists and half the RAM where none does.
-const int kQaEngineAbiVersion = 36;
+/// - v37: `qa_media_span_*` — ONE reader of a medium stored in a span of a
+///   file, its own bytes or FRAMED (compressed in blocks), for every decoder
+///   in the library and for Dart's own reads of a framed medium
+///   (`QaMediaSpan`). `qa_video_decode_open_span` replaces `_open_range` and
+///   takes `framed`; `qa_video_decode_framed_supported` says whether this
+///   device's decoder can be fed a framed span (Android below API 28
+///   cannot); `qa_audio_decode_span` replaces `_range`, and
+///   `qa_audio_decode_memory` is gone with the in-memory origin it served.
+///   Until this, a movie kept framed had no reader at all and a framed sound
+///   was assembled whole in memory before anything decoded it (board
+///   `carried-movie-compressed`, 유저 2026-09-24 「압축 유지 + 풀면서 디코더에
+///   먹이는 리더를 플랫폼마다 만든다」).
+const int kQaEngineAbiVersion = 37;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

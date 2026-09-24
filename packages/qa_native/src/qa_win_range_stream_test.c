@@ -23,9 +23,8 @@
 #include <stdio.h>
 #include <string.h>
 
-extern IMFByteStream* qa_win_range_stream_create(const wchar_t* path,
-                                                 int64_t offset,
-                                                 int64_t length);
+#include "qa_framed_fixture.h"
+#include "qa_win_range_stream.h"
 
 static int g_failures;
 
@@ -109,6 +108,14 @@ int main(void) {
     printf("FAIL fixture: no temp file\n");
     return 1;
   }
+  // The stream takes the path as UTF-8, like every path that crosses into
+  // this library (qa_platform_path.h widens it once, inside).
+  char fixture_utf8[MAX_PATH * 4];
+  if (WideCharToMultiByte(CP_UTF8, 0, fixture, -1, fixture_utf8,
+                          (int)sizeof(fixture_utf8), NULL, NULL) == 0) {
+    printf("FAIL fixture: the temp path is not UTF-8-able\n");
+    return 1;
+  }
   {
     uint8_t bytes[FIXTURE_BYTES];
     for (int64_t at = 0; at < FIXTURE_BYTES; at += 1) {
@@ -128,7 +135,7 @@ int main(void) {
   }
 
   IMFByteStream* stream =
-      qa_win_range_stream_create(fixture, RANGE_BASE, RANGE_LEN);
+      qa_win_range_stream_create(fixture_utf8, RANGE_BASE, RANGE_LEN, 0);
   if (stream == NULL) {
     printf("FAIL fixture: the stream would not open\n");
     DeleteFileW(fixture);
@@ -225,17 +232,58 @@ int main(void) {
   // a stream promising bytes the file cannot supply turns into a movie that
   // looks corrupt instead of a range that was wrong.
   IMFByteStream* past =
-      qa_win_range_stream_create(fixture, FIXTURE_BYTES - 10, 100);
+      qa_win_range_stream_create(fixture_utf8, FIXTURE_BYTES - 10, 100, 0);
   expect_int("a range past the end is refused", past == NULL ? 1 : 0, 1);
   if (past != NULL) {
     IMFByteStream_Release(past);
   }
   IMFByteStream* exact =
-      qa_win_range_stream_create(fixture, FIXTURE_BYTES - 100, 100);
+      qa_win_range_stream_create(fixture_utf8, FIXTURE_BYTES - 100, 100, 0);
   expect_int("a range ending exactly at the end is fine",
              exact == NULL ? 0 : 1, 1);
   if (exact != NULL) {
     IMFByteStream_Release(exact);
+  }
+
+  // 🚨A FRAMED SPAN: the stream serves the MEDIUM's bytes, decompressed —
+  // its length is the medium's and a position is a position in the medium.
+  // This is what lets Media Foundation play a movie the save compressed.
+  {
+    enum { kMedium = 20000, kBlock = 4096 };
+    static uint8_t medium[kMedium];
+    for (int64_t at = 0; at < kMedium; at += 1) {
+      medium[at] = pattern_byte(at);
+    }
+    uint32_t lengths[QA_FIXTURE_MAX_BLOCKS];
+    FILE* out = _wfopen(fixture, L"wb");
+    int64_t blob = -1;
+    if (out != NULL) {
+      for (int i = 0; i < RANGE_BASE; i += 1) {
+        fputc(0xEE, out);
+      }
+      blob = qa_fixture_write_framed(out, medium, kMedium, kBlock, lengths);
+      fclose(out);
+    }
+    IMFByteStream* framed =
+        blob > 0 ? qa_win_range_stream_create(fixture_utf8, RANGE_BASE, blob, 1)
+                 : NULL;
+    expect_int("a framed span opens", framed == NULL ? 0 : 1, 1);
+    if (framed != NULL) {
+      QWORD medium_length = 0;
+      IMFByteStream_GetLength(framed, &medium_length);
+      expect_int("its length is the MEDIUM's", (long long)medium_length,
+                 kMedium);
+      // Across a block boundary, where a wrong block index shows.
+      IMFByteStream_SetCurrentPosition(framed, kBlock * 2 - 8);
+      read = 0;
+      IMFByteStream_Read(framed, got, 16, &read);
+      expect_int("a read across a block boundary", read, 16);
+      for (int i = 0; i < 16; i += 1) {
+        expect_int("and the bytes are the medium's, decompressed", got[i],
+                   pattern_byte(kBlock * 2 - 8 + i));
+      }
+      IMFByteStream_Release(framed);
+    }
   }
 
   DeleteFileW(fixture);

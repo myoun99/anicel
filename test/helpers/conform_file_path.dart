@@ -24,7 +24,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 /// conform's own bytes reads the SOURCE (`readSync`), never the file — that
 /// is the whole reason the wrapper exists.
 String? conformFilePathOrNull(MediaByteSource? source) => switch (source) {
-  MediaFramedBytes(:final stored?) => conformFilePathOrNull(stored),
+  MediaFramedBytes(:final stored) => conformFilePathOrNull(stored),
   MediaAppFileBytes(:final path) => path,
   MediaFileBytes(:final path) => path,
   _ => null,

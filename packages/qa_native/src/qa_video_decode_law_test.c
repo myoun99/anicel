@@ -252,26 +252,83 @@ int main(void) {
     expect_int("luma 235 is white", rgba[0], 255);
   }
 
+  // 🚨★★★**THE TWO DIRECTIONS ARE ONE LAW** (`qa_yuv601.h`): what a writer
+  // makes of a colour, the reader turns back into that colour. The Apple
+  // writer let VideoToolbox pick its matrix instead and lost red in
+  // proportion — 110 came back 101 — which is exactly what a round trip
+  // catches (2026-09-25, board `trimmed-piece-apple-parity`). Both layouts,
+  // and the padding an odd picture gets is WHITE, as exports always drew.
+  {
+    // A 3x1 picture in a 4x4 frame: the top-left 2x2 block takes its
+    // chroma from picture pixel (0,0), and the bottom-right block is
+    // padding through and through.
+    const int32_t src_w = 3;
+    const int32_t src_h = 1;
+    const int32_t w = 4;
+    const int32_t h = 4;
+    static const uint8_t colours[][3] = {
+        {20, 0, 0},  {110, 0, 0},  {200, 0, 0},   {230, 0, 0},
+        {0, 170, 0}, {0, 0, 140},  {90, 160, 40}, {250, 250, 250},
+    };
+    for (size_t c = 0; c < sizeof(colours) / sizeof(colours[0]); c += 1) {
+      uint8_t source[3 * 1 * 4];
+      for (int32_t i = 0; i < src_w * src_h; i += 1) {
+        source[i * 4 + 0] = colours[c][0];
+        source[i * 4 + 1] = colours[c][1];
+        source[i * 4 + 2] = colours[c][2];
+        source[i * 4 + 3] = 255;
+      }
+      for (int semi = 0; semi <= 1; semi += 1) {
+        uint8_t frame[4 * 4 * 3 / 2];
+        uint8_t* chroma = frame + w * h;
+        qa_yuv601_from_rgba(source, src_w, src_h, w, h, frame, w, chroma,
+                            semi ? chroma + 1 : chroma + (w / 2) * (h / 2),
+                            semi ? w : w / 2, semi ? 2 : 1);
+        uint8_t back[4 * 4 * 4];
+        qa_yuv420_to_rgba(frame, w, h, w, h, semi, back);
+        for (int k = 0; k < 3; k += 1) {
+          const int drift = (int)back[k] - (int)colours[c][k];
+          if (drift < -2 || drift > 2) {
+            expect_int("a colour comes back where it was written (±2)",
+                       back[k], colours[c][k]);
+          }
+          expect_int("and the padding is white",
+                     back[(3 * w + 3) * 4 + k], 255);
+        }
+      }
+    }
+  }
+
   // 🚨A RANGE IS CHECKED BEFORE ANY BACKEND SEES IT, and the two refusals
   // say different things. That distinction is the same one the viewer got
   // wrong in Dart — 「no decoder in this build」 for a file the decoder
   // simply would not read — and it is worth pinning on this side too.
   expect_int("a negative offset is refused",
-             qa_video_decode_open_range("movie.anicel", -1, 10), 0);
+             qa_video_decode_open_span("movie.anicel", -1, 10, 0), 0);
   expect_text("and says the range is wrong, not that a decoder is missing",
               qa_video_decode_last_error(),
-              "that range is not inside the file");
+              "that span is not inside the file");
   expect_int("a zero length is refused",
-             qa_video_decode_open_range("movie.anicel", 0, 0), 0);
+             qa_video_decode_open_span("movie.anicel", 0, 0, 0), 0);
   expect_text("same reason", qa_video_decode_last_error(),
-              "that range is not inside the file");
+              "that span is not inside the file");
   // ⚠️This build has the「no decoder」backend, so a WELL-FORMED range gets
   // past the check and is refused for the other reason. Both fail; only the
   // sentence tells them apart, which is the point.
   expect_int("a well-formed range reaches the backend",
-             qa_video_decode_open_range("movie.anicel", 4096, 10), 0);
+             qa_video_decode_open_span("movie.anicel", 4096, 10, 0), 0);
   expect_text("and the backend's own reason is what comes back",
               qa_video_decode_last_error(), "no video decoder in this build");
+  // A FRAMED span is asked of the backend's capability first — a device
+  // that cannot serve its decoder a source (Android below 9) says THAT,
+  // rather than failing the open as if the movie were broken.
+  expect_int("this build cannot read a framed span",
+             qa_video_decode_framed_supported(), 0);
+  expect_int("so a framed span is refused at the door",
+             qa_video_decode_open_span("movie.anicel", 4096, 10, 1), 0);
+  expect_text("with the reason that is true",
+              qa_video_decode_last_error(),
+              "this device cannot read a movie kept compressed");
 
   if (g_failures == 0) {
     printf("qa_video_decode law: all checks passed\n");

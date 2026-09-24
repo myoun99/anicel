@@ -22,6 +22,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   const CutEnvelopePainter({
     required this.layout,
     required this.source,
+    required this.face,
     this.layers,
     this.viewport,
     this.effectiveRatio = 1.0,
@@ -37,6 +38,12 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
 
   final CutEnvelopeLayout layout;
   final CutEnvelopeSource source;
+
+  /// The app's face (`appFaceOf`) the envelope's words are set in — the
+  /// panel's and the export window's ambient style. 🗣️유저 2026-09-24
+  /// (documents-in-which-face-Q1: 「둘다 앱글꼴로 통일」): the envelope
+  /// named no face and printed in the OS's.
+  final TextStyle face;
 
   /// Which strata to draw; null draws all four (the panel, and any export
   /// that wants one flat image).
@@ -229,7 +236,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(
+        style: face.copyWith(
           color: color,
           fontSize: size * layout.textScale,
           height: 1.1,
@@ -261,6 +268,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     layout.paperWidth,
     layout.paperHeight,
     source,
+    face,
     ByIdentity(layers),
     viewport,
     effectiveRatio,

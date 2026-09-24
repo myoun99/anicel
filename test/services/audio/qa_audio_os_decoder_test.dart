@@ -9,7 +9,9 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/persistence/media_blob_codec.dart';
 
+import '../../helpers/decode_audio_file.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -35,13 +37,14 @@ void main() {
     debugQaEngineLibraryPathOverride = null;
   });
 
-  Uint8List fixtureBytes() => File('test/fixtures/tone.m4a').readAsBytesSync();
+  const fixturePath = 'test/fixtures/tone.m4a';
+  Uint8List fixtureBytes() => File(fixturePath).readAsBytesSync();
 
   test('m4a decodes through the OS codec stack where one exists — and is '
       'honestly undecodable where none does', () {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull, reason: 'the binary did not bind');
-    final decoded = decoder!.decode(fixtureBytes());
+    final decoded = decodeAudioFile(fixturePath);
 
     if (Platform.isLinux) {
       // Not a shipping platform and no OS codec to lean on: undecodable,
@@ -122,9 +125,7 @@ void main() {
       'the last format that used to lean on ffmpeg', () {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
-    final decoded = decoder!.decode(
-      File('test/fixtures/tone.ogg').readAsBytesSync(),
-    );
+    final decoded = decodeAudioFile('test/fixtures/tone.ogg');
     expect(
       decoded,
       isNotNull,
@@ -154,7 +155,7 @@ void main() {
       channels: 2,
       rate: 44100,
     );
-    final decoded = decoder!.decode(wav);
+    final decoded = decodeAudioBytes(wav);
     expect(decoded, isNotNull);
     expect(
       decoded!.format,
@@ -194,16 +195,17 @@ void main() {
   }
 
   test('an ogg inside a bigger file decodes from its RANGE, identically to '
-      'the same bytes in memory', () {
+      'the same file read whole', () {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
     final bytes = File('test/fixtures/tone.ogg').readAsBytesSync();
     final at = buried(bytes, 'carried.ogg');
 
-    final ranged = decoder!.decodeRange(
+    final ranged = decoder!.decodeSpan(
       at.path,
       offset: at.offset,
       length: at.length,
+      framed: false,
     );
     expect(
       ranged,
@@ -213,9 +215,9 @@ void main() {
     );
     expect(ranged!.format, QaAudioFormat.vorbis);
 
-    // Byte-for-byte the same answer as the memory door. ⛔If these ever
+    // Byte-for-byte the same answer as the whole file. ⛔If these ever
     // differ, the range path has quietly become a second decoder.
-    final assembled = decoder.decode(bytes)!;
+    final assembled = decodeAudioFile('test/fixtures/tone.ogg')!;
     expect(ranged.channels, assembled.channels);
     expect(ranged.sampleRate, assembled.sampleRate);
     expect(ranged.samples.length, assembled.samples.length);
@@ -227,15 +229,16 @@ void main() {
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
     final at = buried(fixtureBytes(), 'carried.m4a');
-    final ranged = decoder!.decodeRange(
+    final ranged = decoder!.decodeSpan(
       at.path,
       offset: at.offset,
       length: at.length,
+      framed: false,
     );
 
     if (Platform.isLinux) {
       // No OS codec to lean on — undecodable, the same honest answer the
-      // memory door gives there.
+      // whole file gives there.
       expect(ranged, isNull);
       return;
     }
@@ -322,11 +325,12 @@ void main() {
     final bytes = File('test/fixtures/tone_with_video.mp4').readAsBytesSync();
     final at = buried(bytes, 'carried.mp4');
 
-    final whole = decoder!.decode(bytes);
-    final ranged = decoder.decodeRange(
+    final whole = decodeAudioFile('test/fixtures/tone_with_video.mp4');
+    final ranged = decoder!.decodeSpan(
       at.path,
       offset: at.offset,
       length: at.length,
+      framed: false,
     );
 
     if (Platform.isLinux) {
@@ -406,7 +410,12 @@ void main() {
     final at = buried(bytes, 'carried.ogg');
 
     expect(
-      decoder!.decodeRange(at.path, offset: at.offset, length: at.length + 4096),
+      decoder!.decodeSpan(
+        at.path,
+        offset: at.offset,
+        length: at.length + 4096,
+        framed: false,
+      ),
       isNull,
       reason: 'a container cut short decodes as corrupt — refusing says what '
           'actually went wrong',
@@ -414,9 +423,110 @@ void main() {
     // ⛔The assertion the offset dies on: reading from the start of the file
     // finds the junk, not the ogg.
     expect(
-      decoder.decodeRange(at.path, offset: 0, length: at.length),
+      decoder.decodeSpan(at.path, offset: 0, length: at.length, framed: false),
       isNull,
     );
+  }, skip: skip);
+
+  // -------------------------------------------------------------------------
+  // A container kept FRAMED — compressed in blocks, the shape a carried
+  // movie takes when it shrinks (board `carried-movie-compressed`).
+  //
+  // 🚨★★★The OS stack is fed the blocks DECODED, through the engine's span
+  // reader: an `IMFByteStream` on Windows, the resource loader on Apple. The
+  // fixture is a real movie, so that plumbing is asked everything a real
+  // movie asks of it.
+
+  /// The real movie at [fixture] with a `free` box of zeros after it — so it
+  /// shrinks, and the writer that ships keeps it FRAMED — written where a
+  /// staged copy would be. A `free` box is part of the format: every reader
+  /// skips one, so the movie in front of it is untouched.
+  String framedMovie(String fixture) {
+    const padding = 1024 * 1024;
+    final box = ByteData(8)
+      ..setUint32(0, 8 + padding)
+      ..setUint8(4, 0x66) // f
+      ..setUint8(5, 0x72) // r
+      ..setUint8(6, 0x65) // e
+      ..setUint8(7, 0x65); // e
+    final bytes = (BytesBuilder(copy: false)
+          ..add(File(fixture).readAsBytesSync())
+          ..add(box.buffer.asUint8List())
+          ..add(Uint8List(padding)))
+        .takeBytes();
+    final directory = Directory.systemTemp.createTempSync('qa_framed');
+    deleteAfterSessionEnds(directory);
+    final written = writeMediaBlob(
+      basePath: '${directory.path}${Platform.pathSeparator}carried.mp4',
+      length: bytes.length,
+      readInto: mediaBytesReader(bytes),
+    );
+    expect(written.framed, isTrue, reason: 'fixture: the free box shrinks');
+    return written.path;
+  }
+
+  test('🚨a movie kept FRAMED gives up its soundtrack through the OS stack — '
+      'the carried movie that shrank', () {
+    final decoder = QaAudioDecoder.instance;
+    expect(decoder, isNotNull);
+    final path = framedMovie('test/fixtures/tone_with_video.mp4');
+
+    final decoded = decoder!.decodeSpan(
+      path,
+      length: File(path).lengthSync(),
+      framed: true,
+    );
+
+    if (Platform.isLinux) {
+      expect(decoded, isNull);
+      return;
+    }
+    expect(
+      decoded,
+      isNotNull,
+      reason: 'the OS reader must be fed the blocks decoded, not the blocks',
+    );
+    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded.sampleRate, 44100);
+    expect(decoded.channels, 2);
+    expect(decoded.length, inInclusiveRange(19000, 25000));
+    var peak = 0.0;
+    final start = (decoded.length ~/ 4) * decoded.channels;
+    final end = (3 * decoded.length ~/ 4) * decoded.channels;
+    for (var index = start; index < end; index += 1) {
+      peak = math.max(peak, decoded.samples[index].abs());
+    }
+    expect(peak, inInclusiveRange(0.35, 0.65));
+  }, skip: skip);
+
+  test('and it conforms end to end from where the project keeps it', () {
+    final result = runConformHere(
+      ConformRequest(
+        sourcePath: 'reference.mp4',
+        conformPath: null,
+        source: mediaAppFileSource(
+          framedMovie('test/fixtures/tone_with_video.mp4'),
+        ),
+        libraryPathOverride: libraryPath,
+      ),
+    );
+
+    if (Platform.isLinux) {
+      expect(result.outcome, ConformOutcome.undecodable);
+      return;
+    }
+    expect(
+      result.outcome,
+      ConformOutcome.built,
+      reason: 'reason: ${result.error}',
+    );
+    expect(result.sampleRate, 48000);
+    expect(result.channels, 2);
+    var peak = 0.0;
+    for (final value in result.peaks!.peaks) {
+      peak = math.max(peak, value);
+    }
+    expect(peak, inInclusiveRange(0.35, 0.65));
   }, skip: skip);
 }
 

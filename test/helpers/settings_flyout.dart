@@ -60,10 +60,8 @@ Future<void> openSettingsFlyout(WidgetTester tester) async {
 /// every layout choice.
 ///
 /// ⚠️The drawer is as tall as the panel list (≈726px at the shipped tab
-/// count), and the flyout has never scrolled at either level, so a case that
-/// uses this needs a window it fits in — 1600×1000 is what the menu cases
-/// use. 🧪At the default 800×600 the last row centres at y=632 and the tap
-/// lands on nothing (`a-flyout-taller-than-the-screen-runs-off-it`).
+/// count) and SCROLLS in a smaller window, so a row below the fold is
+/// reached the way [tapPanelsDrawerRow] does: `ensureVisible` first.
 Future<void> openPanelsDrawer(WidgetTester tester) async {
   await openSettingsFlyout(tester);
   await hoverFlyoutRow(tester, 'menu-window-panels');

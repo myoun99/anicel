@@ -111,6 +111,7 @@ void main() {
 
       final rendered = await paintSheet(
         CutEnvelopePainter(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
           inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
@@ -143,6 +144,7 @@ void main() {
 
       final rendered = await paintSheet(
         CutEnvelopePainter(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
           inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),
@@ -168,6 +170,7 @@ void main() {
     final leftKey = envelopeInkBoxKey(owner, 'left');
     CutEnvelopePainter painterWith(Set<BrushFrameKey> live) =>
         CutEnvelopePainter(
+          face: const TextStyle(),
           layout: layout,
           source: const CutEnvelopeSource(),
           inkKeyFor: (boxId) => envelopeInkBoxKey(owner, boxId),

@@ -4,28 +4,38 @@ import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import 'media_byte_source.dart';
 import 'video_decode_worker.dart';
 
-/// Where a movie decoder is pointed at [source]: a file of its own by its
-/// path, or a plain stretch of one by its range — or null when it cannot
-/// be. A movie kept FRAMED (compressed in blocks) is not the container's own
-/// bytes, and the OS decoders read nothing else (board
-/// `carried-movie-compressed`).
+/// Where [backend]'s decoder is pointed at [source]: a file of its own by
+/// its path, or the span of one it is stored in — or null when it cannot be
+/// pointed there.
 ///
-/// ⚠️A whole file goes by its PATH even though it is also a range: Windows
-/// and Apple refuse a range by name while they decode paths perfectly well.
-({String path, ({int offset, int length})? range})? movieOpening(
+/// 🚨★★★**A MOVIE KEPT FRAMED IS READ IN PLACE.** It could not be until
+/// 2026-09-24 — the OS decoders read nothing but the container's own bytes —
+/// and the answer was to serve them decoded blocks through the engine's
+/// one span reader, on every platform (유저 on board
+/// `carried-movie-compressed-Q1`: 「압축 유지 + 풀면서 디코더에 먹이는 리더를
+/// 플랫폼마다 만든다」). The one device that cannot be fed one is Android
+/// below API 28 ([VideoDecodeBackend.readsFramed]), and there this answers
+/// null — see [movieBytesToDecode] for what happens next.
+///
+/// ⚠️A whole file goes by its PATH even though it is also a span: the OS
+/// opens a file it is handed by name itself, which is faster and better
+/// tested than anything wrapped around one.
+({String path, ({int offset, int length, bool framed})? span})? movieOpening(
   MediaByteSource source,
+  VideoDecodeBackend backend,
 ) {
   final file = source.wholeFilePath;
   if (file != null) {
-    return (path: file, range: null);
+    return (path: file, span: null);
   }
-  final stretch = source.range;
-  return stretch == null
-      ? null
-      : (
-          path: stretch.path,
-          range: (offset: stretch.offset, length: stretch.length),
-        );
+  final at = source.span;
+  if (at == null || (at.framed && !backend.readsFramed)) {
+    return null;
+  }
+  return (
+    path: at.path,
+    span: (offset: at.offset, length: at.length, framed: at.framed),
+  );
 }
 
 /// [backend] opened on [source] where it lies ([movieOpening]) — null when
@@ -35,8 +45,8 @@ Future<({int token, QaVideoInfo info})?> openMovieOn(
   VideoDecodeBackend backend,
   MediaByteSource source,
 ) async {
-  final at = movieOpening(source);
-  return at == null ? null : backend.open(at.path, range: at.range);
+  final at = movieOpening(source, backend);
+  return at == null ? null : backend.open(at.path, span: at.span);
 }
 
 /// A movie open on a decoder, and how it is put back: `close` shuts the
@@ -66,7 +76,7 @@ Future<HeldMovie?> openHeldMovie(
   (source) async {
     final opened = await openMovieOn(
       backend,
-      movieBytesToDecode(source, path),
+      movieBytesToDecode(source, path, backend),
     );
     return opened == null
         ? null
@@ -89,17 +99,25 @@ Future<HeldMovie?> openHeldMovie(
   ),
 );
 
-/// ⏸**INTERIM, until board `carried-movie-compressed-Q1` is answered.** The
-/// bytes a movie decoder should read for a medium the project answers with
-/// [carried]: those — or, when no decoder can read them where they lie and
-/// [original] is still there, the original, which is what every reader of a
-/// carried movie read before 2026-09-24. Without it, [carried] goes on, and
-/// its reader says it cannot be read in place.
+/// The bytes a movie decoder should read for a medium the project answers
+/// with [carried]: those — or, when [backend]'s decoder cannot read them
+/// where they lie and [original] is still there, the original.
 ///
-/// ⚠️The one place a reader still prefers an original to the project's own
-/// copy (「품은 순간 데이터를 가지고있고 불변」) — which is exactly what the
-/// card asks. ONE function, so the answer changes in one place.
-MediaByteSource movieBytesToDecode(MediaByteSource carried, String original) =>
-    movieOpening(carried) != null || !File(original).existsSync()
+/// 🚨★★★**THE ONE PLACE A READER PREFERS AN ORIGINAL TO THE PROJECT'S OWN
+/// COPY** (「품은 순간 데이터를 가지고있고 불변」), and it is reached on one
+/// device class only: Android below API 28 with a movie kept framed. 유저
+/// accepted exactly that cost with the answer on board
+/// `carried-movie-compressed-Q1` — such a device reads a carried movie
+/// kept compressed only while its original exists. ONE function, so the
+/// answer lives in one place.
+///
+/// 🪦Until that answer this was ⏸INTERIM and reached on every platform,
+/// because no decoder anywhere read a framed movie in place.
+MediaByteSource movieBytesToDecode(
+  MediaByteSource carried,
+  String original,
+  VideoDecodeBackend backend,
+) =>
+    movieOpening(carried, backend) != null || !File(original).existsSync()
     ? carried
     : MediaFileBytes(original);

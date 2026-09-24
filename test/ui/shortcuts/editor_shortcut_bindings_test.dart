@@ -56,6 +56,27 @@ void main() {
     expect(playback.defaultTouchGesture, 'fourFingerTap');
   });
 
+  // a-key-is-the-character-it-types: the typed form exists for a binding
+  // that NAMES a character. ⛔A binding with Shift names a KEY — Shift+. is
+  // the `>` key's place — and on a layout that types `.` under Shift, the
+  // `.` it types is Next Frame's (the binding that names `.`), not the
+  // zoom's: two typed forms of one character would leave the press to map
+  // order. Unobservable through the defaults, so it is pinned here.
+  test('a binding WITH Shift gets no typed form — only one that names a '
+      'character does', () {
+    expect(
+      pressableForms(
+        const SingleActivator(LogicalKeyboardKey.period, shift: true),
+      ),
+      hasLength(1),
+    );
+    expect(
+      pressableForms(const SingleActivator(LogicalKeyboardKey.period)),
+      hasLength(2),
+      reason: '⛔전제: the same key without Shift does',
+    );
+  });
+
   test('overrides replace defaults, re-recording back to the default '
       'clears the override, unbinding is expressible', () {
     final bindings = EditorShortcutBindings();

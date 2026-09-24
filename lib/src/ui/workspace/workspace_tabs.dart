@@ -486,6 +486,11 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .setActiveCutGuides,
+                                          onGuidesPreview: _state
+                                              .widget
+                                              .session
+                                              .cutVerbs
+                                              .previewActiveCutGuides,
                                           tips: _state._tipLibrary.tips,
                                           onTipImportRequested: () {
                                             unawaited(

@@ -36,6 +36,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../../services/cel_source_effect_pass.dart';
 import 'raster_picture.dart';
 import 'tile_origin.dart';
+import 'tile_pyramid.dart';
 
 part 'layer_stack/layer_stack_paint_pass.dart';
 
@@ -410,6 +411,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         widget.imageCache.retainPin(entry.key, entry.value.quality);
       }
     }
+    // The active row that left takes the image it was handed with it.
+    final leftLineage = oldWidget.activeSurfacePainter?.lineage;
+    if (leftLineage != widget.activeSurfacePainter?.lineage) {
+      TilePyramid.instance.dropSeed(leftLineage);
+    }
     _syncImagesWithCache(leftTheActiveSlot: oldWidget.activeCels.toSet());
     unawaited(_ensureImages());
   }
@@ -459,6 +465,25 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// tying invalidation to the dispose ITSELF is what makes the window
   /// impossible rather than merely unlikely.
   int _imagesRevision = 0;
+
+  /// Hands [held] — the image [key]'s cel was drawn with as a row of this
+  /// stack — to the pyramid, when the cel is leaving the stack because it
+  /// is now the active row and the display is a level: the active paint
+  /// draws what still matches it from it instead of making it again
+  /// ([TilePyramid.seed]).
+  void _handToTheActiveRow(BrushFrameKey key, _HeldImage held) {
+    final active = widget.activeSurfacePainter;
+    final level = held.quality.level;
+    if (active == null || level <= 0 || !widget.activeCels.contains(key)) {
+      return;
+    }
+    TilePyramid.instance.seed(active.lineage, (
+      image: held.clone.clone(),
+      level: level,
+      worldRect: held.worldRect,
+      madeFrom: held.madeFrom,
+    ));
+  }
 
   void _dropImage(BrushFrameKey key, _HeldImage held) {
     // A6: the pin travels with the clone — held pixels are declared
@@ -531,6 +556,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: held.revision,
       quality: held.quality,
       content: held.content,
+      madeFrom: held.madeFrom,
       // The same pixels, so the same whole.
       laidBack: held.laidBack,
     );
@@ -554,6 +580,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
+    TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
       entry.value.clone.dispose();
@@ -628,6 +655,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: revision,
       quality: quality,
       content: image.content,
+      madeFrom: image.madeFrom,
       laidBack: LaidBackWhole(),
     ));
     return true;
@@ -684,7 +712,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     };
     for (final key in _images.keys.toList()) {
       if (!wanted.contains(key)) {
-        _dropImage(key, _images.remove(key)!);
+        final held = _images.remove(key)!;
+        _handToTheActiveRow(key, held);
+        _dropImage(key, held);
       }
     }
     // A row that left the stack takes its failure record with it — the
@@ -1201,6 +1231,10 @@ typedef _HeldImage = ({
   // What the pixels ARE ([LayerFrameImage.content]) — what the paint tree
   // and the composite key compare, so a settle changes neither.
   Object content,
+  // What every coordinate showed when they were composed
+  // ([LayerFrameImage.madeFrom]) — what the active row checks before it
+  // draws from them ([TilePyramid.seed]).
+  Map<TileCoord, Object> madeFrom,
   // The whole these pixels stand for, once a draw has laid it back — kept
   // while they are held, disposed with the clone.
   LaidBackWhole laidBack,

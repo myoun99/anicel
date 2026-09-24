@@ -54,6 +54,7 @@ TimesheetDocument _document({
 Future<int> _inkInCell(TimesheetDocument document, {required int row}) async {
   final layout = TimesheetDocumentLayout(document: document);
   final painter = TimesheetDocumentPainter(
+    face: const TextStyle(),
     document: document,
     layout: layout,
     layers: const {SheetPaintLayer.content},
