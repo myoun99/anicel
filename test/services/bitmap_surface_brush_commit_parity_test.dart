@@ -670,6 +670,51 @@ void main() {
     // that from rounding a half to even: a hard dab at flow 0.5 over opaque
     // ink lands every channel on (source + destination) / 2 exactly, so
     // (100 + 53) / 2 = 76.5 must come out 77, not 76.
+    // The C kernel blends a masked tip two pixels at a time only when it has
+    // no dual and no texture mask (board `brush-kernel-next` ①): a tip under
+    // a paper texture must stay on the loop that multiplies the paper in,
+    // and the pairs must take every edge step the scalar loop takes.
+    test('a masked tip under a paper texture alone blends the same bytes', () {
+      expectParity(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 4; i += 1)
+            dab(
+              x: 61.3 + i * 9.1,
+              y: 57.8 + i * 4.4,
+              size: 64,
+              tipMask: _testTipMask,
+              textureMask: _upperHalfTipMask,
+              textureScale: 1.3,
+              textureDensity: 0.7,
+              sequence: i,
+            ),
+        ]),
+        reason: 'masked tip, texture only',
+      );
+    });
+
+    test('every EDGE step agrees on a masked tip, two pixels at a time', () {
+      for (final antiAlias in BrushAntiAlias.values) {
+        expectParity(
+          surface: blankSurface(tileSize: 256),
+          sequence: strokeOf([
+            for (var i = 0; i < 3; i += 1)
+              dab(
+                x: 64.7 + i * 12.3,
+                y: 60.2 + i * 5.1,
+                size: 58,
+                hardness: 0.4,
+                tipMask: _testTipMask,
+                antiAlias: antiAlias,
+                sequence: i,
+              ),
+          ]),
+          reason: 'masked tip edge $antiAlias',
+        );
+      }
+    });
+
     test('a channel that lands on an exact half rounds away from zero', () {
       final opaque = materializeBrushDabSequenceOnBitmapSurface(
         surface: blankSurface(),
