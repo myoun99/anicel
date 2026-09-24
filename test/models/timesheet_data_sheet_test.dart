@@ -166,4 +166,34 @@ void main() {
       expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
     }
   });
+
+  test('🗣️an UNNAMED cel keeps its mark through the fused run, and a dotted '
+      'row keeps its dot — one mark as data (유저 2026-09-24)', () {
+    var layer = Layer(
+      id: const LayerId('h'),
+      name: 'H',
+      frames: [Frame(id: const FrameId('cel'), duration: 1, strokes: const [])],
+      timeline: const {
+        4: TimelineExposure.drawing(
+          FrameId('cel'),
+          length: 3,
+          breakdownOffsets: [1],
+          startEdge: holdMark,
+          endEdge: holdMark,
+        ),
+      },
+    );
+    layer = rederiveRunBehaviors(layer, cutFrameCount: 12);
+
+    final data = _document(layer, dataSheet: true).columns.first.cells;
+    expect(data[0].kind, TimesheetCellKind.drawing, reason: '⛔전제');
+    expect(data[0].mark, unnamedDrawingMark, reason: 'the head wears it');
+    expect(data[0].label, isEmpty, reason: 'and writes no word');
+    expect(data[5].kind, TimesheetCellKind.mark, reason: 'the block dot');
+    expect(data[5].mark, breakdownMark);
+    for (final row in [1, 4, 6, 7, 11]) {
+      expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
+      expect(data[row].mark, isNull, reason: 'row $row');
+    }
+  });
 }

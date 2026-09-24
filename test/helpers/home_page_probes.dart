@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -249,6 +250,19 @@ bool anyCellSemanticsLabel(String layerId, String label) {
 
 void expectNoCellText(String layerId, int frameIndex, String text) {
   expect(rowPainter(layerId).cellModelAt(frameIndex).glyph, isNot(text));
+}
+
+/// The in-between mark the cell wears — an unnamed drawing's head and the
+/// dot inside a block alike (one mark as data, 유저 2026-09-24) — and no
+/// word beside it.
+void expectCellMark(String layerId, int frameIndex, InbetweenMark mark) {
+  final model = rowPainter(layerId).cellModelAt(frameIndex);
+  expect(model.mark, mark);
+  expect(model.glyph, isEmpty, reason: 'a cell wearing a mark writes no word');
+}
+
+void expectNoCellMark(String layerId, int frameIndex, InbetweenMark mark) {
+  expect(rowPainter(layerId).cellModelAt(frameIndex).mark, isNot(mark));
 }
 
 Future<void> renameCurrentFrame(WidgetTester tester, String name) async {

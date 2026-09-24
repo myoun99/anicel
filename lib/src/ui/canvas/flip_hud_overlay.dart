@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
-import '../../models/frame.dart' show celNumberOrMark;
+import '../../models/frame.dart' show drawingHeadOf;
+import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
@@ -748,10 +749,27 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       ),
       Paint()..color = timelineDrawingHeldColor,
     );
+    final head = drawingHeadOf(run.label);
+    final mark = head.mark;
+    if (mark != null) {
+      // At the size its word would take.
+      paintInbetweenMark(
+        canvas,
+        mark,
+        center: rect.center,
+        radius: timelineInbetweenMarkRadius(
+          _headWordSize,
+          cellExtent: rect.width,
+          crossExtent: rect.height,
+        ),
+        color: timelineDrawingInkColor,
+      );
+      return;
+    }
     _paintGlyph(
       canvas,
       Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height),
-      celNumberOrMark(run.label),
+      head.word,
       color: timelineDrawingInkColor,
       bold: true,
     );
@@ -779,6 +797,10 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     );
   }
 
+  /// The type a block's head word is set in — its cel number, or the mark's
+  /// size when it has none.
+  static const double _headWordSize = 14;
+
   /// [text] centred in [rect] as the reader sees it — upright on a
   /// [standing] window, the way the sheet sets a cel number. 🚨A block word
   /// like every other (B, 유저 2026-09-24): its type at every width, narrowed
@@ -798,7 +820,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         timelineBlockWordStyle(
           baseTextStyle.copyWith(fontWeight: FontWeight.w400),
           ink: color,
-          fontSize: bold ? 14 : 12,
+          fontSize: bold ? _headWordSize : 12,
           bold: bold,
         ),
       );

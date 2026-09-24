@@ -19,6 +19,11 @@ import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/inbetween_mark_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
+    show timelineCellWritesNothing;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineTextOnColor;
 import 'storyboard_cut_block_probe.dart';
 
 /// The cut block is THREE BANDS: a thin one, the strip, a thin one. The
@@ -44,14 +49,21 @@ Cut _cut(String id, int duration, {Layer? storyboardLayer}) => Cut(
   ],
 );
 
-/// A storyboard row divided into three panels at 0, 4 and 9.
-Layer _dividedStoryboardLayer(String cutId) => Layer(
+/// A storyboard row divided into three panels at 0, 4 and 9 — [named]
+/// gives their drawings the cel numbers `a`, `b`, `c`; without it they have
+/// none, and wear the in-between mark.
+Layer _dividedStoryboardLayer(String cutId, {bool named = false}) => Layer(
   id: LayerId('$cutId-sb'),
   name: 'SB',
   kind: LayerKind.storyboard,
   frames: [
     for (final name in ['a', 'b', 'c'])
-      Frame(id: FrameId('$cutId-$name'), duration: 1, strokes: const []),
+      Frame(
+        id: FrameId('$cutId-$name'),
+        duration: 1,
+        strokes: const [],
+        name: named ? name : null,
+      ),
   ],
   timeline: {
     0: TimelineExposure.drawing(FrameId('$cutId-a'), length: 4),
@@ -106,6 +118,8 @@ Future<void> _pump(
 class _ParagraphOffsetSpy implements Canvas {
   final List<Offset> offsets = [];
   final List<Rect> rects = [];
+  final List<({Offset center, double radius, Color color})> circles = [];
+  final List<({Rect rect, Color color})> plates = [];
   final _saved = <Matrix4>[];
   var _transform = Matrix4.identity();
 
@@ -134,6 +148,19 @@ class _ParagraphOffsetSpy implements Canvas {
       ),
     );
   }
+
+  @override
+  void drawCircle(Offset c, double radius, Paint paint) => circles.add((
+    center: MatrixUtils.transformPoint(_transform, c),
+    radius: radius,
+    color: paint.color,
+  ));
+
+  @override
+  void drawRRect(RRect rrect, Paint paint) => plates.add((
+    rect: MatrixUtils.transformRect(_transform, rrect.outerRect),
+    color: paint.color,
+  ));
 
   @override
   int getSaveCount() => _saved.length + 1;
@@ -267,7 +294,11 @@ void main() {
     await _pump(tester, storyboardLayer: layer);
     final block = requireCutBlock(tester, 'cut-1');
 
-    expect(block.cellNames, ['LO', unnamedDrawingMark, unnamedDrawingMark]);
+    expect(block.cellHeads, [
+      (word: 'LO', mark: null),
+      (word: '', mark: unnamedDrawingMark),
+      (word: '', mark: unnamedDrawingMark),
+    ]);
     expect(block.cellCommaLabels, ['4', '5', '3']);
   });
 
@@ -303,7 +334,7 @@ void main() {
     await _pump(tester);
     final block = requireCutBlock(tester, 'cut-1');
 
-    expect(block.cellNames, ['']);
+    expect(block.cellHeads, [timelineCellWritesNothing]);
     expect(block.cellCommaLabels, ['']);
   });
 
@@ -334,7 +365,7 @@ void main() {
 
     expect(block.bandsFolded, isTrue);
     expect(block.cells, hasLength(3), reason: 'the panels themselves stay');
-    expect(block.cellNames, isEmpty);
+    expect(block.cellHeads, isEmpty);
     expect(block.cellCommaLabels, isEmpty);
   });
 
@@ -344,7 +375,7 @@ void main() {
         'paragraph at the offset would be the outline back', (tester) async {
       await _pump(
         tester,
-        storyboardLayer: _dividedStoryboardLayer('cut-1'),
+        storyboardLayer: _dividedStoryboardLayer('cut-1', named: true),
         thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
             null,
       );
@@ -362,6 +393,66 @@ void main() {
         _paragraphsAt(offsets, (o) => (o - expected).distance < 0.01),
         1,
         reason: 'one ground-law fill, no second stroke/outline pass',
+      );
+    });
+
+    testWidgets('🗣️a panel whose drawing has no cel number wears the '
+        'in-between mark there instead — DRAWN, on its own plate, the '
+        'timeline\'s mark (유저 2026-09-24: 「같은취급으로 통일」)', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        storyboardLayer: _dividedStoryboardLayer('cut-1'),
+        thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+            null,
+      );
+      final block = requireCutBlock(tester, 'cut-1');
+      final painter = cutBlocksPainter(tester);
+      final spy = _ParagraphOffsetSpy();
+      painter.paint(
+        spy,
+        tester.getSize(
+          find.byKey(
+            const ValueKey<String>('storyboard-cut-blocks-band-track'),
+          ),
+        ),
+      );
+      // Panel b's name anchor, as in the pin above.
+      final anchor = Offset(block.rect.left + 4 * 12.0 + 2, block.strip.top + 1);
+
+      expect(
+        _paragraphsAt(spy.offsets, (o) => (o - anchor).distance < 0.01),
+        0,
+        reason: 'no glyph stands in for the mark any more',
+      );
+      final plate = spy.plates.singleWhere(
+        (plate) => (plate.rect.topLeft - (anchor - const Offset(1, 1)))
+            .distance < 0.01,
+      );
+      final mark = spy.circles.singleWhere(
+        (circle) => plate.rect.contains(circle.center),
+      );
+      expect(mark.center, plate.rect.center);
+      final fontSize = painter.baseTextStyle.fontSize ?? 12;
+      expect(
+        block.strip.height,
+        greaterThan(14),
+        reason: '⛔전제: a roomy panel — no shrink applies',
+      );
+      expect(
+        mark.radius,
+        timelineInbetweenMarkRadius(
+          fontSize,
+          cellExtent: 100,
+          crossExtent: 100,
+        ),
+        reason: 'the timeline row\'s mark at the same type size',
+      );
+      expect(
+        mark.color,
+        timelineTextOnColor(plate.color),
+        reason: 'the ground law resolves the mark as it resolves a name',
       );
     });
 

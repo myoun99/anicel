@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'frame_window_semantics.dart';
 
-import '../../models/frame.dart' show celNumberOrMark, inbetweenMark;
+import '../../models/frame.dart' show drawingHeadOf;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -18,6 +18,7 @@ import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_marker.dart';
+import 'inbetween_mark_painter.dart';
 import 'timeline_instruction_row_visual.dart' show bandExposureState;
 import 'timeline_beat_lines.dart'
     show
@@ -303,22 +304,21 @@ class TimelineRowCellsPainter extends CustomPainter
     // text — UI-R12 #18): the continuing stroke is structure.
     final holdGhost =
         runEdgeGhostAt(layer, frameIndex)?.mode == TimelineRunEdgeMode.hold;
-    String glyph;
+    final TimelineCellWriting writing;
     if (holdGhost) {
-      glyph = _holdDashGlyph;
+      writing = (word: _holdDashGlyph, mark: null);
     } else if (ghost) {
       // Ghosts are TEXT-ONLY (UI-R10 #11): a repeat ghost prints just the
       // cel names, exactly like before — the SHEET alone carries the
       // repeat-word convention (UI-R14 #3 rolled the timeline back).
-      glyph = switch (exposureState) {
-        TimelineCellExposureState.drawingStart =>
-          celNumberOrMark(frameName),
+      writing = switch (exposureState) {
+        TimelineCellExposureState.drawingStart => drawingHeadOf(frameName),
         TimelineCellExposureState.markHeld ||
-        TimelineCellExposureState.markUncovered => inbetweenMark,
-        _ => '',
+        TimelineCellExposureState.markUncovered => timelineInbetweenMarkWriting,
+        _ => timelineCellWritesNothing,
       };
     } else {
-      glyph = timelineCellMarker(
+      writing = timelineCellMarker(
         layer: layer,
         exposureState: exposureState,
         emptyRunStart: emptyRunStart,
@@ -338,7 +338,8 @@ class TimelineRowCellsPainter extends CustomPainter
       // own overlay now, above the cells, so it can follow a drag without
       // re-baking a single tile.
       dimmed: ghost,
-      glyph: glyph,
+      glyph: writing.word,
+      mark: writing.mark,
       semanticsLabel: timelineCellSemanticsLabel(
         layerKind: layer.kind,
         exposureState: exposureState,
@@ -778,6 +779,26 @@ class TimelineRowCellsPainter extends CustomPainter
     ));
   }
 
+  /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
+  /// and how large it is: centred on the cell's paper, at the size of the
+  /// cell's word ([timelineInbetweenMarkRadius]). PUBLIC: the tile emitter
+  /// bakes the mark exactly here.
+  ///
+  /// It keeps to its cell, so the tile that holds the cell is the only one
+  /// that draws it — a word growing past its cell needed [wordCellBefore].
+  @override
+  ({Offset center, double radius}) inbetweenMarkLayoutFor(int frameIndex) {
+    final paper = paperRectFor(frameIndex);
+    return (
+      center: paper.center,
+      radius: timelineInbetweenMarkRadius(
+        baseTextStyle.fontSize ?? 12,
+        cellExtent: frameCellExtent,
+        crossExtent: axis == Axis.horizontal ? paper.height : paper.width,
+      ),
+    );
+  }
+
   /// Where the room the word at [frameIndex] may grow into ENDS along the
   /// frame axis: the end of its block, looked up only as far as a word of
   /// [extent] could reach. A word on no block — an empty stretch's `x` —
@@ -807,6 +828,9 @@ class TimelineRowCellsPainter extends CustomPainter
   /// grow into [frameIndex]'s cell from before it (F-96). PUBLIC: the
   /// classic pass lays it at the start of what it paints, the tile emitter
   /// at the start of a tile.
+  ///
+  /// A mark is no word: it keeps to its own cell, so it neither grows into
+  /// [frameIndex] nor stands in the way of a word before it that does.
   @override
   int? wordCellBefore(int frameIndex) {
     for (var index = frameIndex - 1; index >= frameStartIndex; index -= 1) {
@@ -819,11 +843,23 @@ class TimelineRowCellsPainter extends CustomPainter
     return null;
   }
 
-  /// The cell's sparse foreground ink (hold dashes, glyph text) — the
-  /// classic pass; tile mode bakes the same content into the tiles (T3)
-  /// and skips this for covered spans.
+  /// The cell's sparse foreground ink (hold dashes, in-between marks, glyph
+  /// text) — the classic pass; tile mode bakes the same content into the
+  /// tiles (T3) and skips this for covered spans.
   void _paintCellForeground(Canvas canvas, int frameIndex) {
     final model = cellModelAt(frameIndex);
+    final mark = model.mark;
+    if (mark != null) {
+      final layout = inbetweenMarkLayoutFor(frameIndex);
+      paintInbetweenMark(
+        canvas,
+        mark,
+        center: layout.center,
+        radius: layout.radius,
+        color: foregroundInkFor(model),
+      );
+      return;
+    }
     if (model.glyph.isEmpty) {
       return;
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../text/word_condensation.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -23,6 +24,7 @@ class TimelineRowCellModel {
     required this.ghost,
     required this.dimmed,
     required this.glyph,
+    required this.mark,
     required this.semanticsLabel,
   });
 
@@ -34,6 +36,11 @@ class TimelineRowCellModel {
 
   /// The text drawn in the cell ('' when none / too narrow).
   final String glyph;
+
+  /// The in-between mark the cell wears, or null — a drawing with no cel
+  /// number and the dot inside a block alike ([timelineCellMarker]). A cell
+  /// with a mark writes no [glyph].
+  final InbetweenMark? mark;
   final String? semanticsLabel;
 }
 
@@ -143,6 +150,11 @@ abstract interface class TimelineTileRasterSource {
   /// that outgrows its cell grows on into its block; B: it narrows only past
   /// the block). The tile emitter bakes its word exactly here, this narrow.
   ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word);
+
+  /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
+  /// and how large it is. The tile emitter bakes the mark exactly here, in
+  /// the cell's [foregroundInkFor].
+  ({Offset center, double radius}) inbetweenMarkLayoutFor(int frameIndex);
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null — the
   /// word that may grow into [frameIndex]'s cell from before it (F-96). A

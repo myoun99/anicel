@@ -256,7 +256,7 @@ void main() {
   });
 
   group('names (유저 2026-09-12: 「이름을 안보이게, 수정못하게」)', () {
-    test('a direction block shows no name — not even the ○', () {
+    test('a direction block shows no name — not even the mark', () {
       plus(2);
       for (final name in [null, 'A1']) {
         expect(
@@ -266,7 +266,7 @@ void main() {
             emptyRunStart: false,
             frameName: name,
           ),
-          isEmpty,
+          timelineCellWritesNothing,
           reason: 'name $name',
         );
       }

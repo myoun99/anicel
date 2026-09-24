@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show inbetweenMark, unnamedDrawingMark;
+    show breakdownMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 
@@ -22,7 +22,7 @@ void main() {
 
     await renameCurrentFrame(tester, '   ');
 
-    expectCellText('default-layer-1', 0, unnamedDrawingMark);
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
   });
 
   testWidgets('conflicting frame name dialog cancel leaves frames unchanged', (
@@ -56,7 +56,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectCellText('default-layer-1', 0, 'A1');
-    expectCellText('default-layer-1', 1, unnamedDrawingMark);
+    expectCellMark('default-layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets('conflicting frame name link merges into existing material', (
@@ -104,7 +104,7 @@ void main() {
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
     await tester.pumpAndSettle();
-    expectCellText('default-layer-1', 0, unnamedDrawingMark);
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
     expect(find.text('Cancelled'), findsNothing);
   });
 
@@ -162,8 +162,8 @@ void main() {
       const ValueKey<String>('shared-paste-linked-button'),
     );
 
-    expectCellText('default-layer-1', 0, unnamedDrawingMark);
-    expectCellText('default-layer-1', 1, unnamedDrawingMark);
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
+    expectCellMark('default-layer-1', 1, unnamedDrawingMark);
   });
 
   testWidgets(
@@ -208,7 +208,7 @@ void main() {
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellText('default-layer-1', 1, inbetweenMark);
+      expectCellMark('default-layer-1', 1, breakdownMark);
       expect(
         selectedCellStateLabel(tester),
         'inbetween mark',
@@ -227,7 +227,7 @@ void main() {
       // drawing looked different. 유저 made them one mark (F-149, 2026-09-16:
       // 「이름 없는 기본상태를 속이 찬 동그라미로 통일적용」), so the glyph
       // can no longer say which one the cell is — the cell's state can.
-      expectCellText('default-layer-1', 1, unnamedDrawingMark);
+      expectCellMark('default-layer-1', 1, unnamedDrawingMark);
       expect(selectedCellStateLabel(tester), 'drawing start');
     },
   );

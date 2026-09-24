@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../models/frame.dart' show InbetweenMark;
 import '../../native/qa_native_engine.dart';
 import '../text/word_condensation.dart';
 import 'timeline_frame_window.dart';
@@ -26,14 +27,14 @@ import '../../core/bake_once_lru.dart';
 /// canvas calls per cell.
 ///
 /// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
-/// the foreground — hold-dash capsules inline, glyph text through the A8
-/// atlas (T3) — into one op stream, and `_paint` skips its Dart foreground
-/// pass for any span a tile covers. This doc used to say the opposite
-/// ("foreground ink stays the painter's Dart pass on top"), which was true
-/// of the tile's first shape and has misled at least one reader into
-/// costing a text-layering round wrongly; the stale-while-revalidate note
-/// below is the honest description, naming the two technologies it chooses
-/// between as "baked A8 glyphs ↔ TextPainter".
+/// the foreground — hold-dash capsules and in-between marks inline, glyph
+/// text through the A8 atlas (T3) — into one op stream, and `_paint` skips
+/// its Dart foreground pass for any span a tile covers. This doc used to say
+/// the opposite ("foreground ink stays the painter's Dart pass on top"),
+/// which was true of the tile's first shape and has misled at least one
+/// reader into costing a text-layering round wrongly; the
+/// stale-while-revalidate note below is the honest description, naming the
+/// two technologies it chooses between as "baked A8 glyphs ↔ TextPainter".
 ///
 /// The classic Dart pass is the FALLBACK, for spans with no usable tile.
 ///
@@ -507,10 +508,30 @@ class TimelineGridTileStore {
     return (image: image, celContentRevision: sampledCelContentRevision);
   }
 
-  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules
-  /// inline, glyph text through the A8 atlas — geometry and ink probed
-  /// from the painter (the substrate's fidelity rule). Returns the
-  /// transient atlas the GLYPH ops reference, or null (no glyphs).
+  /// The op stream [_emitForeground] writes for a span — what a tile bakes
+  /// over its substrate, readable without a native engine.
+  @visibleForTesting
+  Future<Int32List> debugForegroundOps({
+    required TimelineTileRasterSource painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) async {
+    final writer = TimelineGridTileOpWriter();
+    await _emitForeground(
+      writer,
+      painter: painter,
+      spanStartIndex: spanStartIndex,
+      spanEndIndexExclusive: spanEndIndexExclusive,
+      devicePixelRatio: devicePixelRatio,
+    );
+    return writer.build();
+  }
+
+  /// Bakes and emits the span's FOREGROUND ink (T3): hold-dash capsules and
+  /// in-between marks inline, glyph text through the A8 atlas — geometry and
+  /// ink probed from the painter (the substrate's fidelity rule). Returns
+  /// the transient atlas the GLYPH ops reference, or null (no glyphs).
   Future<_TileAtlas?> _emitForeground(
     TimelineGridTileOpWriter writer, {
     required TimelineTileRasterSource painter,
@@ -543,6 +564,21 @@ class TimelineGridTileStore {
         index,
     ]) {
       final model = painter.cellModelAt(frameIndex);
+      final mark = model.mark;
+      if (mark != null) {
+        final layout = painter.inbetweenMarkLayoutFor(frameIndex);
+        _emitInbetweenMark(
+          writer,
+          mark,
+          center: horizontal
+              ? layout.center.translate(-originMain, 0)
+              : layout.center.translate(0, -originMain),
+          radius: layout.radius,
+          rgba: timelineGridPackRgba(painter.foregroundInkFor(model)),
+          devicePixelRatio: dpr,
+        );
+        continue;
+      }
       if (model.glyph.isEmpty) {
         continue;
       }
@@ -664,6 +700,32 @@ class TimelineGridTileStore {
       );
     }
     return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
+  }
+
+  /// An in-between mark as tile ops — the shape [paintInbetweenMark] draws
+  /// on the classic pass, where the painter lays it.
+  static void _emitInbetweenMark(
+    TimelineGridTileOpWriter writer,
+    InbetweenMark mark, {
+    required Offset center,
+    required double radius,
+    required int rgba,
+    required double devicePixelRatio,
+  }) {
+    final dpr = devicePixelRatio;
+    switch (mark) {
+      case InbetweenMark.one:
+        // A rounded rect as round as it is large is the disc.
+        writer.rrectFill(
+          (center.dx - radius) * dpr,
+          (center.dy - radius) * dpr,
+          2 * radius * dpr,
+          2 * radius * dpr,
+          radius * dpr,
+          15,
+          rgba,
+        );
+    }
   }
 
   Future<ui.Image> _upload(

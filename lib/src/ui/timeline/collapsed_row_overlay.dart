@@ -3,10 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
-import '../../models/frame.dart' show celNumberOrMark;
+import '../../models/frame.dart' show InbetweenMark, drawingHeadOf;
 import '../canvas/flip_hud_model.dart';
 import '../text/word_condensation.dart';
 import '../theme/app_theme.dart';
+import 'inbetween_mark_painter.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'layer_rail_window.dart' show LayerRailExtent, LayerRailWindow;
 import 'timeline_beat_lines.dart';
@@ -575,7 +576,13 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
           ..strokeWidth = covered ? 2 : 1
           ..color = covered ? colorScheme.primary : const Color(0x9EE9E7E2),
       );
-      _label(canvas, rect, celNumberOrMark(run.label));
+      final head = drawingHeadOf(run.label);
+      final mark = head.mark;
+      if (mark != null) {
+        _headMark(canvas, rect, mark);
+      } else {
+        _label(canvas, rect, head.word);
+      }
     }
 
     // The `x` markers, and the SELECTION when the cursor is not on a block.
@@ -637,7 +644,7 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     Canvas canvas,
     Rect room,
     String text, {
-    Color color = const Color(0xF2FFFFFF),
+    Color color = _headInk,
   }) {
     final glyph = timelineGlyphPainter(
       text,
@@ -664,8 +671,28 @@ class _CollapsedStripPainter extends CustomPainter with RepaintOnProps {
     paintFittedText(canvas, glyph, layout.origin, layout.fit);
   }
 
+  /// The [mark] a block with no cel number wears where [_label] would lay
+  /// its name: its first cell, at the size of the strip's type.
+  void _headMark(Canvas canvas, Rect room, InbetweenMark mark) {
+    final cellExtent = math.min(pixelsPerFrame, room.width);
+    paintInbetweenMark(
+      canvas,
+      mark,
+      center: Offset(room.left + cellExtent / 2, room.center.dy),
+      radius: timelineInbetweenMarkRadius(
+        _labelFontSize,
+        cellExtent: cellExtent,
+        crossExtent: room.height,
+      ),
+      color: _headInk,
+    );
+  }
+
   /// The strip's type — its own size, the one law every block word keeps.
   static const double _labelFontSize = 9.5;
+
+  /// What a block's head is written in — its name, or its mark.
+  static const Color _headInk = Color(0xF2FFFFFF);
 
   @override
   Object get props =>

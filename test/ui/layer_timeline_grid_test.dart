@@ -1672,8 +1672,8 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).glyph, unnamedDrawingMark);
-    expect(timelineCellModel(tester, 'layer-2', 3).glyph, isNot(unnamedDrawingMark));
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, unnamedDrawingMark);
+    expect(timelineCellModel(tester, 'layer-2', 3).mark, isNot(unnamedDrawingMark));
   });
 
   testWidgets('shows held exposure marker', (tester) async {
@@ -1711,7 +1711,7 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
     expect(
       timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
       'inbetween mark',
@@ -1728,7 +1728,7 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
     expect(
       timelineCellModel(tester, 'layer-2', 2).semanticsLabel,
       'inbetween mark',
@@ -1738,7 +1738,7 @@ void main() {
   testWidgets('empty cells show no drawing markers', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(timelineCellModel(tester, 'layer-1', 2).glyph, isNot(unnamedDrawingMark));
+    expect(timelineCellModel(tester, 'layer-1', 2).mark, isNot(unnamedDrawingMark));
     expect(timelineCellModel(tester, 'layer-1', 2).semanticsLabel, isNull);
   });
 
@@ -1967,7 +1967,7 @@ void main() {
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-2', 2).glyph, '●');
+    expect(timelineCellModel(tester, 'layer-2', 2).mark, breakdownMark);
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -2001,7 +2001,7 @@ void main() {
             : TimelineCellExposureState.uncovered,
       ),
     );
-    expect(timelineCellModel(tester, 'layer-1', 0).glyph, unnamedDrawingMark);
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, unnamedDrawingMark);
 
     await tester.pumpWidget(
       _grid(
@@ -2039,7 +2039,7 @@ void main() {
             : null,
       ),
     );
-    expect(timelineCellModel(tester, 'layer-1', 0).glyph, '●');
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, breakdownMark);
   });
 
   testWidgets('drawing exposure cells keep divider-safe block radius rules', (
