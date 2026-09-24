@@ -174,11 +174,36 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
 /// The mirrored ghost entries keep their stamps (UI-R24 #2), so the cells
 /// painter reads the base's hold/repeat modes straight off the mirror row
 /// and prints the same dashes.
+///
+/// 🚨ONE CLONE PER PAIR OF INSTANCES (F-166 「선을 긋기 시작해서 0.1초 뒤
+/// 버벅임」, measured 2026-09-24 on the real Windows app, FU cut 301). Every
+/// read of the cut's rows (`LayerController.layers`) made every synced row's
+/// clone anew — a copy of the base's whole timeline — and the timeline's
+/// unworked-block tint asks for the active layer once per CELL during a
+/// stroke, which reads the rows to check that layer still exists. In the
+/// first 80 ms after a pen-down a fifth of the UI thread went to these
+/// clones — and on Windows the UI thread is the window's thread, so the
+/// pen's moves pile up and coalesce meanwhile, and the start of a circle
+/// comes out straight. Both inputs are immutable, so their identities are
+/// the whole key: a changed row or base is a new instance and misses, and
+/// a miss costs what every call cost before.
 Layer attachedDisplayLayer({required Layer attached, required Layer base}) {
-  return attached.copyWith(
+  final made = _displayClones[attached];
+  if (made != null && identical(made.base, base)) {
+    return made.display;
+  }
+  final display = attached.copyWith(
     timeline: attachedDisplayTimeline(attached: attached, base: base),
   );
+  _displayClones[attached] = (base: base, display: display);
+  return display;
 }
+
+/// The last clone made of each attach row instance, with the base instance
+/// it mirrored — held weakly, so it goes when the row instance does.
+final Expando<({Layer base, Layer display})> _displayClones = Expando(
+  'attached display clone',
+);
 
 /// The mirror cel id a SYNCED attach row uses for [baseFrameId] (UI-R23 #7
 /// v2, auto-mirroring). DETERMINISTIC — reconciliation after an undo/redo
